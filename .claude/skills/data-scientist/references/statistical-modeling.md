@@ -28,7 +28,7 @@ These materials draw extensively from several open-access resources that the
 authors have generously made available to the research community:
 
 - Joshua Angrist and Jorn-Steffen Pischke's *Mostly Harmless Econometrics* and *Mastering 'Metrics*, which established the modern applied econometrics pedagogy
-- Scott Cunningham's *Causal Inference: The Mixtape* (https://mixtape.scunning.com/), particularly Chapter 2 on regression and the CEF
+- Scott Cunningham's *Causal Inference: The Mixtape* (1st edition, now at https://mixtape-1ed.netlify.app/), particularly Chapter 2 on regression and the CEF
 - Nick Huntington-Klein's *The Effect* (https://theeffectbook.net/) for research design thinking
 - Grant McDermott's pedagogical materials on standard error adjustment (https://grantmcdermott.com/) and the LOST wiki (https://lost-stats.github.io/)
 - Joshua Angrist's Mastering Econometrics course on MRU (https://mru.org/mastering-econometrics-joshua-angrist)
@@ -42,17 +42,17 @@ Start with the nature of your dependent variable. The outcome type constrains wh
 | Outcome Type | Primary Model | Alternatives | Key Consideration |
 |---|---|---|---|
 | Continuous | OLS | WLS, GLS, quantile regression | Check residual distribution and heteroskedasticity |
-| Binary (0/1) | Logit | Probit, Linear Probability Model (LPM) | LPM gives interpretable AME (Angrist & Pischke 2009); see caveats below |
-| Count (0, 1, 2, ...) | Poisson | Negative Binomial, Zero-Inflated | Poisson QMLE is consistent for mean parameters even under variance misspecification, given correct mean spec (Wooldridge 2010) |
+| Binary (0/1) | Logit | Probit, Linear Probability Model (LPM) | LPM gives interpretable AME (in the Angrist-Pischke tradition); see caveats below |
+| Count (0, 1, 2, ...) | Poisson | Negative Binomial, Zero-Inflated | Poisson QMLE is consistent for mean parameters even under variance misspecification, given correct mean spec (Wooldridge 2010; Santos Silva and Tenreyro 2006) |
 | Categorical (unordered) | Multinomial Logit | Mixed Logit | Requires Independence of Irrelevant Alternatives (IIA) assumption |
 | Categorical (ordered) | Ordered Logit/Probit | --- | Requires proportional odds assumption |
 | Repeated observations (panel) | FE / RE panel models | Correlated Random Effects | Choice depends on research question, not just the Hausman test |
 
 ### The "Start Simple" Principle
 
-Following Angrist and Pischke's (2009) guidance, begin with the simplest model that addresses your question and add complexity only when diagnostics demand it:
+In the Angrist-Pischke tradition, begin with the simplest model that addresses your question and add complexity only when diagnostics demand it:
 
-1. **Start with OLS.** Even for binary outcomes, the Linear Probability Model provides interpretable average marginal effects and consistent estimates under mild conditions. Angrist and Pischke argue that the LPM is underappreciated: its coefficients are directly interpretable as probability changes, and with robust standard errors, inference is reliable for the interior of the distribution.
+1. **Start with OLS.** Even for binary outcomes, the Linear Probability Model provides interpretable average marginal effects and consistent estimates under mild conditions. Proponents of this tradition regard the LPM as underappreciated: its coefficients are directly interpretable as probability changes, and with robust standard errors, inference is reliable for the interior of the distribution.
 
 2. **Check diagnostics.** Do residual patterns suggest the model is inadequate? Is the predicted range problematic (negative probabilities, probabilities above 1)?
 
@@ -62,7 +62,7 @@ Following Angrist and Pischke's (2009) guidance, begin with the simplest model t
 
 **A note on the "start simple" philosophy:** This framing reflects the influential Angrist-Pischke tradition in applied microeconomics. Other traditions (e.g., Gelman and Hill 2006) emphasize matching the model to the data-generating process from the start. The "start simple" approach works well when the primary goal is transparent causal or descriptive inference with interpretable coefficients; it is less appropriate when the data structure clearly demands a specific model class (e.g., multilevel data).
 
-**LPM caveats:** The LPM can produce predicted probabilities outside [0,1] and has mechanical heteroskedasticity (the error variance is p(1-p) for binary outcomes, so robust SEs are mandatory). The LPM and logit AME are typically very close for binary treatments with average marginal effects in the interior of the probability distribution. However, for continuous treatments, effects near the boundaries (p near 0 or 1), or when the probability model itself is of interest, logit/probit is preferred.
+**LPM caveats:** The LPM can produce predicted probabilities outside [0,1] and has mechanical heteroskedasticity (the error variance is p(1-p) for binary outcomes, so robust SEs are mandatory). As a rule of thumb, the LPM and logit AME are typically very close for binary treatments with average marginal effects in the interior of the probability distribution. However, for continuous treatments, effects near the boundaries (p near 0 or 1), or when the probability model itself is of interest, logit/probit is preferred.
 
 ### Fixed Effects vs. Random Effects
 
@@ -70,7 +70,7 @@ The choice between fixed effects (FE) and random effects (RE) is about what vari
 
 - **FE** absorbs all time-invariant unobserved heterogeneity by using only within-unit variation over time. Use when unobserved unit characteristics are likely correlated with the treatment variable. FE is more conservative but eliminates a major source of omitted variable bias.
 - **RE** assumes unobserved heterogeneity is uncorrelated with regressors. More efficient than FE (uses both within- and between-unit variation) but biased if the assumption fails.
-- **Correlated Random Effects (CRE)** --- the Mundlak (1978) approach --- includes group means of time-varying regressors as additional controls in the RE model. This nests FE within RE, allows a formal test of the RE assumption, and preserves the ability to estimate effects of time-invariant characteristics (which FE cannot do).
+- **Correlated Random Effects (CRE)** --- the Mundlak (1978) approach --- includes group means of time-varying regressors as additional controls in the RE model. This nests FE within RE and preserves the ability to estimate effects of time-invariant characteristics (which FE cannot do). A Wald test that the group-mean coefficients are zero is commonly used to test the RE assumption.
 - **Practical advice:** In most applied research on observational data, FE is the safer default for questions about within-unit change. Use RE only when you have a strong theoretical reason to believe the RE assumption holds, or when estimating effects of time-invariant characteristics is central to your question.
 
 ## Regression as Approximation (The Angrist-Pischke Framing)
@@ -83,7 +83,7 @@ The **CEF**, E(Y|X), gives the average value of Y for each value of X. It is the
 
 1. **Linear CEF Theorem:** If the true CEF is linear, population OLS recovers it exactly.
 2. **Best Linear Predictor (BLP) Theorem:** OLS minimizes E[(Y - X'b)^2] over all linear functions --- it is the best linear approximation to **Y** itself.
-3. **Regression CEF Theorem:** OLS minimizes E[(E(Y|X) - X'b)^2] over all linear functions --- it is the best linear approximation to **E(Y|X)**. This is the stronger and more important result: it establishes that OLS inherits the desirable properties of the CEF (the optimal predictor), not just that it is the best linear predictor of the raw outcome.
+3. **Regression CEF Theorem:** OLS minimizes E[(E(Y|X) - X'b)^2] over all linear functions --- it is the best linear approximation to **E(Y|X)**. Both theorems give the same coefficients; the CEF framing explains why regression is useful when the CEF is nonlinear.
 
 **Practical implication:** You do not need to believe the world is linear to use OLS. You need to believe that a linear approximation is adequate for your question in the region of interest. When it is not, add flexibility (polynomials, splines, interactions) or use nonparametric methods.
 
@@ -102,7 +102,7 @@ This mechanical understanding has important implications:
 
 ### The "Bad Controls" Problem
 
-Never control for **post-treatment variables** --- variables that are themselves affected by the treatment. Following Angrist and Pischke (2009), a classic example:
+Never control for **post-treatment variables** --- variables that are themselves affected by the treatment. Angrist and Pischke (2009) call these "bad controls." An illustration, paraphrasing Cunningham (2021, ch. 3):
 
 > Estimating the gender wage gap while controlling for occupation. If gender affects occupational choice (which it does), occupation is a post-treatment variable. Controlling for it removes the part of the gender effect that operates *through* occupational sorting --- precisely the channel you may want to measure.
 
@@ -131,8 +131,8 @@ When X is discrete (or treated as discrete through binning) and a model includes
 | Independence | Durbin-Watson (time series), Moran's I (spatial) | Cluster SEs at the appropriate level, or use time-series/spatial models |
 | Homoscedasticity | Breusch-Pagan test, White test, residual vs. fitted plot | Use heteroskedasticity-robust SEs (HC1/HC2/HC3) |
 | Normality of residuals | Q-Q plot, Shapiro-Wilk, Jarque-Bera | Usually fine with large N (CLT); use bootstrap for small samples |
-| No perfect multicollinearity | VIF (> 10 is a concern), condition number | Drop redundant variables, combine into index, or accept wider SEs |
-| No influential outliers | Cook's distance (> 4/N), leverage (> 2k/N), DFBETAS | Winsorize, use robust regression (M-estimators), report with and without |
+| No perfect multicollinearity | VIF (> 10 is a concern; rule of thumb), condition number | Drop redundant variables, combine into index, or accept wider SEs |
+| No influential outliers | Cook's distance (> 4/N), leverage (> 2k/N) (rules of thumb), DFBETAS | Winsorize, use robust regression (M-estimators), report with and without |
 
 **Reading the residual vs. fitted plot** --- your single most informative diagnostic:
 - **Fan shape** (widening spread) indicates heteroskedasticity. Use robust SEs.
@@ -144,17 +144,17 @@ When X is discrete (or treated as discrete through binning) and a model includes
 
 For models beyond OLS, additional checks apply:
 
-- **Link function appropriateness:** Does the chosen link (logit, log, identity) match how you believe the covariates relate to the outcome? For binary outcomes, logit and probit give nearly identical average marginal effects; the choice rarely matters in practice.
-- **Dispersion in count models:** Poisson assumes the conditional mean equals the conditional variance. When the variance exceeds the mean (overdispersion), standard errors will be too small. Solutions: Negative Binomial (models overdispersion explicitly), quasi-Poisson (adjusts SEs), or --- following Wooldridge's (2010) recommendation --- use Poisson with robust standard errors, which remains consistent even when the variance function is misspecified.
-- **Separation in logistic regression:** When a predictor perfectly predicts the outcome (complete separation) or nearly so (quasi-complete separation), maximum likelihood estimates diverge to infinity. Use Firth's (1993) penalized likelihood or investigate whether the offending predictor should be removed from the model.
+- **Link function appropriateness:** Does the chosen link (logit, log, identity) match how you believe the covariates relate to the outcome? For binary outcomes, logit and probit give nearly identical average marginal effects; the choice rarely matters in practice (rule of thumb).
+- **Dispersion in count models:** Poisson assumes the conditional mean equals the conditional variance. When the variance exceeds the mean (overdispersion), standard errors will be too small. Solutions: Negative Binomial (models overdispersion explicitly), quasi-Poisson (adjusts SEs), or --- following Wooldridge's (2010) recommendation --- use Poisson with robust standard errors, which remains consistent even when the variance function is misspecified (see also Santos Silva and Tenreyro 2006).
+- **Separation in logistic regression:** When a predictor perfectly predicts the outcome (complete separation) or nearly so (quasi-complete separation), maximum likelihood estimates diverge to infinity. Use Firth's (1993) penalized likelihood, which yields finite estimates under separation (Heinze and Schemper 2002), or investigate whether the offending predictor should be removed from the model.
 
 ### When Violations Matter vs. When They Don't
 
-Not all assumption violations are equally consequential. Following Angrist and Pischke's (2009) pragmatic approach:
+Not all assumption violations are equally consequential. In the pragmatic spirit of the Angrist-Pischke tradition:
 
 **Heteroskedasticity:** Almost always present in real data. The coefficient estimates remain consistent and unbiased --- only the classical standard errors are wrong. Use robust standard errors (HC1 or better) and move on. This is such standard practice that many applied researchers consider robust SEs the default rather than the exception.
 
-**Non-normality of residuals:** With N > 50 or so, the Central Limit Theorem ensures that the sampling distribution of the coefficient estimator is approximately normal regardless of the error distribution. Normality of residuals only matters for exact small-sample tests (t-tests and F-tests with small N). For large samples, it is effectively irrelevant.
+**Non-normality of residuals:** With N > 50 or so (rule of thumb), the Central Limit Theorem ensures that the sampling distribution of the coefficient estimator is approximately normal regardless of the error distribution. Normality of residuals only matters for exact small-sample tests (t-tests and F-tests with small N). For large samples, it is effectively irrelevant.
 
 **Multicollinearity:** Individual coefficient estimates become imprecise (wider standard errors), but joint prediction is unaffected. Whether this matters depends entirely on your question: if you need to distinguish individual effects of correlated variables, multicollinearity is a genuine problem. If you only need the overall prediction or the effect of one variable conditional on the others, wider SEs may be an acceptable price.
 
@@ -165,9 +165,9 @@ Not all assumption violations are equally consequential. Following Angrist and P
 Run diagnostics in this order after estimation. This sequence is designed so that each step builds on the previous one:
 
 1. **Residual vs. fitted plot** --- check linearity and heteroskedasticity simultaneously. This is your single most informative diagnostic and should always come first.
-2. **VIF / condition number** --- check multicollinearity. If VIF > 10 for a variable, consider whether its individual effect is essential to your question. VIF between 5 and 10 is a gray zone: investigate but do not automatically drop variables.
+2. **VIF / condition number** --- check multicollinearity. If VIF > 10 for a variable, consider whether its individual effect is essential to your question. VIF between 5 and 10 is a gray zone (rule of thumb): investigate but do not automatically drop variables.
 3. **Influence diagnostics** --- Cook's distance, leverage, DFBETAS. If removing a small number of influential points changes the conclusion, the result is fragile and this should be documented, not silently resolved by dropping observations.
-4. **Normality check** --- only if N < 50. For larger samples, skip this; the CLT handles it.
+4. **Normality check** --- only if N < 50 (rule of thumb). For larger samples, skip this; the CLT handles it.
 5. **Independence check** --- only if the data has panel, time-series, or spatial structure. Use Durbin-Watson (time series) or Moran's I (spatial).
 
 If any diagnostic reveals a problem, address it (robust SEs, functional form adjustment, etc.) before interpreting coefficients.
@@ -176,9 +176,9 @@ If any diagnostic reveals a problem, address it (robust SEs, functional form adj
 
 Missing data handling is a modeling decision that should be documented explicitly:
 
-**When listwise deletion is acceptable:** When missingness is plausibly MCAR (Missing Completely at Random) or unrelated to the outcome conditional on included covariates, AND the sample size reduction is tolerable (less than 5-10% of observations dropped). Always report the number of observations dropped due to missingness and compare the analytic sample to the full sample on key covariates.
+**When listwise deletion is acceptable:** When missingness is plausibly MCAR (Missing Completely at Random) or unrelated to the outcome conditional on included covariates, AND the sample size reduction is tolerable (less than 5-10% of observations dropped; DAAF convention). Always report the number of observations dropped due to missingness and compare the analytic sample to the full sample on key covariates.
 
-**When multiple imputation should be considered:** When more than 5-10% of observations are dropped, missingness is plausibly MAR (Missing at Random), and variables are available that predict the missing values. Multiple imputation under MNAR (Missing Not at Random) is also biased but may be less so than listwise deletion.
+**When multiple imputation should be considered:** When more than 5-10% of observations are dropped (DAAF convention), missingness is plausibly MAR (Missing at Random), and variables are available that predict the missing values. Multiple imputation under MNAR (Missing Not at Random) is also biased but may be less so than listwise deletion.
 
 **Practical decision rule:** (1) Report the full-sample N and the analytic-sample N after listwise deletion. (2) Compare means of key variables between the full and analytic samples. (3) If they differ systematically, consider whether the missingness pattern threatens your conclusions and document this assessment. (4) For detailed coverage of MCAR/MAR/MNAR frameworks, see `./descriptive-analysis.md`.
 
@@ -188,19 +188,19 @@ Minimum sample size heuristics vary by model type. These are rules of thumb, not
 
 | Model | Minimum N Heuristic | Consequence if Violated |
 |---|---|---|
-| OLS with k regressors | N >= 10k-20k per regressor | Unstable coefficient estimates, unreliable SEs |
-| Logistic regression | >= 10 events per variable (EPV) | Biased coefficients, inflated SEs; use Firth's penalized likelihood if EPV < 10 |
+| OLS with k regressors | ≥ 10–20 observations per regressor | Unstable coefficient estimates, unreliable SEs |
+| Logistic regression | >= 10 events per variable (EPV) (Peduzzi et al. 1996; van Smeden et al. 2016 judge the evidence for EPV rules weak) | Biased coefficients, inflated SEs; use Firth's penalized likelihood when EPV is low (van Smeden et al. 2016 find it improves coefficient accuracy and helps with separation) |
 | Interaction effects | Multiplicatively increases required N | Three-way interactions with small N are statistically meaningless regardless of p-value |
 | Clustered SEs | See few-clusters table in Robust Inference | Anti-conservative inference; use CRV3 or bootstrap |
 
-**When N is marginal:** Use HC3 instead of HC1 (more reliable for small samples), avoid complex specifications with many parameters, and emphasize confidence intervals over p-values. Acknowledge limited statistical power for detecting small effects --- a non-significant result may reflect insufficient power rather than a true null.
+**When N is marginal:** Use HC3 instead of HC1 (more reliable for small samples; Long and Ervin 2000), avoid complex specifications with many parameters, and emphasize confidence intervals over p-values. Acknowledge limited statistical power for detecting small effects --- a non-significant result may reflect insufficient power rather than a true null.
 
 ### Multiple Testing
 
 When running multiple regression models, determine whether a multiple testing correction is needed:
 
 - **Pre-specified primary analysis with a single primary outcome:** No correction needed. This is the standard case for a focused research question.
-- **Multiple outcomes or subgroup analyses:** Each test is an additional comparison. Use Benjamini-Hochberg (FDR) correction for exploratory analyses with many outcomes. Bonferroni is valid but overly conservative.
+- **Multiple outcomes or subgroup analyses:** Each test is an additional comparison. Use Benjamini-Hochberg (FDR) correction (Benjamini and Hochberg 1995) for exploratory analyses with many outcomes. Bonferroni controls the familywise error rate and is valid but more conservative.
 - **Robustness checks of the same hypothesis:** These are sensitivity analyses, NOT multiple tests. The coefficient of interest should be qualitatively consistent across specifications, but each specification does not need to be individually significant.
 - **Transparency rule:** If you are running many models, designate one as the primary (pre-specified) analysis and the rest as exploratory or robustness checks. Be explicit about this distinction in documentation and reporting.
 
@@ -208,18 +208,18 @@ When running multiple regression models, determine whether a multiple testing co
 
 ### Standard Error Types and When to Use Each
 
-This table is the primary quick-reference for SE selection. When uncertain, default to HC1 for cross-sectional data or CRV1 for clustered data.
+This table is the primary quick-reference for SE selection. When uncertain, default to HC1 for cross-sectional data (HC3 when N ≤ 250; Long and Ervin 2000) or CRV1 for clustered data (DAAF convention). The N and cluster-count bands below are DAAF heuristics unless a source is given.
 
 | SE Type | When to Use | pyfixest | statsmodels |
 |---|---|---|---|
 | IID (classical) | Only if certain errors are homoscedastic and independent | `vcov="iid"` | Default |
-| HC1 (White with df correction) | Default for cross-sectional data | `vcov="hetero"` | `cov_type='HC1'` |
-| HC2 | Moderate small samples (N = 30-50); less biased than HC1 | `vcov="HC2"` | `cov_type='HC2'` |
-| HC3 | Very small samples (N < 30); jackknife-like correction | `vcov="HC3"` | `cov_type='HC3'` |
+| HC1 (White with df correction) | Default for cross-sectional data with N > 250 (DAAF convention) | `vcov="hetero"` | `cov_type='HC1'` |
+| HC2 | Small-sample alternative; less biased than HC1 | `vcov="HC2"` | `cov_type='HC2'` |
+| HC3 | Small or moderate samples (N ≤ 250; Long and Ervin 2000); jackknife-like correction | `vcov="HC3"` | `cov_type='HC3'` |
 | CRV1 (cluster-robust) | Observations correlated within groups | `vcov={"CRV1": "group"}` | Via linearmodels |
-| CRV3 | Few clusters (< 50) | `vcov={"CRV3": "group"}` | N/A (use bootstrap) |
+| CRV3 | Few clusters (< 50; DAAF heuristic) | `vcov={"CRV3": "group"}` | N/A (use bootstrap) |
 | HAC (Newey-West) | Time series with serial correlation | `vcov="HAC"` | `cov_type='HAC'` |
-| Wild cluster bootstrap | Very few clusters (< 20) | `.wildboottest()` | Via wildboottest |
+| Wild cluster bootstrap | Very few clusters (< 20; DAAF heuristic) | `.wildboottest()` | Via wildboottest |
 
 > **R route:** the same SE menu is available in R. `fixest` covers iid, heteroskedasticity-robust, cluster-robust, two-way, and Newey-West via its `vcov` argument; the `sandwich` + `lmtest` packages (both installed) cover the HC1/HC2/HC3 family for `lm()`/`glm()` models. Load the `fixest` or `r-stats` skill for exact syntax and coverage before writing R code.
 
@@ -229,9 +229,9 @@ This table is the primary quick-reference for SE selection. When uncertain, defa
 What is your data structure?
 ├─ Cross-sectional (one observation per unit)
 │   ├─ Errors likely homoscedastic? → IID (rare in practice)
-│   └─ Errors likely heteroscedastic? → HC1 (default choice)
-│       └─ Small sample (N < 50)? → HC2 or HC3
-├─ Clustered (observations grouped, e.g., students in schools)
+│   └─ Errors likely heteroscedastic? → HC1 (default choice; DAAF convention)
+│       └─ N ≤ 250? → HC3 (Long and Ervin 2000)
+├─ Clustered (observations grouped, e.g., students in schools; count bands are a DAAF heuristic)
 │   ├─ Many clusters (>= 50)? → CRV1
 │   ├─ Few clusters (20-49)? → CRV3
 │   └─ Very few clusters (< 20)? → Wild cluster bootstrap
@@ -261,11 +261,11 @@ Following Abadie, Athey, Imbens, and Wooldridge (2023), the decision about wheth
 Practical guidelines:
 - If treatment is assigned at the state level, cluster at the state level (design reason)
 - If treatment varies at the individual level but individuals are observed repeatedly, cluster at the individual level (serial correlation)
-- If observations share a common group-level shock (e.g., students in the same school), cluster at the group level (sampling reason)
+- If units were sampled in clusters (e.g., schools sampled, then students), cluster at the sampling-cluster level. Correlated outcomes alone are not a reason to cluster (Abadie et al. 2023).
 
-**When in doubt, cluster at a higher level.** Clustering at too fine a level understates uncertainty (anti-conservative). Clustering at too coarse a level overstates uncertainty (conservative) but keeps inference valid. Conservative errors are preferable to anti-conservative errors.
+**Choosing between levels.** A common convention is to use larger, more aggregate clusters, up to the point where too few clusters becomes a concern (Cameron and Miller 2015). Abadie et al. (2023) caution that unnecessary clustering yields overly conservative intervals.
 
-**The few-clusters problem:** Standard cluster-robust SEs (CRV1) perform poorly with fewer than approximately 50 clusters. The finite-sample correction is inadequate, and actual test rejection rates can far exceed nominal levels (e.g., a 5% test rejecting 15% of the time). Solutions by cluster count:
+**The few-clusters problem:** Standard cluster-robust SEs (CRV1) can over-reject when clusters are few. There is no sharp cut-off. G ≈ 50 is a common consensus for balanced state-year panels, and unbalanced clusters need more. In one simulation a nominal 5% test rejected 8.1% of the time with 20 clusters and 20.8% with 5 (Cameron, Gelbach, and Miller 2008, as summarized in Cameron and Miller 2015). Solutions by cluster count (DAAF heuristic):
 
 | Number of Clusters | Recommended Approach |
 |---|---|
@@ -273,6 +273,8 @@ Practical guidelines:
 | 20--49 | CRV3 (bias-reduced linearization) |
 | < 20 | Wild cluster bootstrap (Cameron, Gelbach, and Miller 2008) |
 | < 5 | Randomization inference or aggregate data to cluster level |
+
+MacKinnon, Nielsen, and Webb (2023) recommend that a wild cluster restricted (WCR) bootstrap be among the inference methods in most applications, alongside CRV1/CRV3; heterogeneity in cluster sizes matters as well as the number of clusters.
 
 **Multi-way clustering:** When observations are correlated along multiple dimensions simultaneously (e.g., students clustered within both schools and cohort years), use multi-way clustering following Cameron, Gelbach, and Miller (2011). This computes variance estimates from each clustering dimension and combines them to capture both sources of dependence.
 
@@ -291,9 +293,9 @@ Misinterpreting coefficients is among the most common errors in applied research
 | Logit: P(Y=1) ~ X | A 1-unit increase in X changes the log-odds by beta; use marginal effects for probability interpretation |
 | Poisson: E(count) ~ X | A 1-unit increase in X multiplies expected count by exp(beta); approximately (beta x 100)% for small beta |
 
-**The log approximation caveat:** The "beta times 100 percent" interpretation for log-linear models is an approximation that works well for |beta| < 0.1. For larger coefficients, the exact percentage change is (exp(beta) - 1) x 100. For example, beta = 0.5 does not mean a 50% increase --- it means a 65% increase (exp(0.5) - 1 = 0.649). Always use the exact formula when beta is not small. This caveat is especially important for **dummy variables in log-linear models** (e.g., a treatment indicator in a log-wage regression): the coefficient on a dummy is typically large enough that the approximation fails, and the exact formula (exp(beta) - 1) should always be used (Kennedy 1981).
+**The log approximation caveat:** The "beta times 100 percent" interpretation for log-linear models is an approximation that works well for |beta| < 0.1 (rule of thumb). For larger coefficients, the exact percentage change is 100·(exp(β) − 1). For example, beta = 0.5 does not mean a 50% increase --- it means a 65% increase (exp(0.5) - 1 = 0.649). Always use the exact formula when beta is not small. This caveat is especially important for **dummy variables in log-linear models** (e.g., a treatment indicator in a log-wage regression): the coefficient on a dummy is typically large enough that the approximation fails, so use the exact formula 100·(exp(β) − 1). A bias correction commonly attributed to Kennedy (1981; not checked against the original), 100·(exp(β − ½Var(β̂)) − 1), adjusts for the sampling variance of β̂.
 
-**Interaction terms:** The coefficient on an interaction X1 x X2 represents how the marginal effect of X1 changes as X2 changes (and vice versa). In nonlinear models (logit, Poisson), the interaction effect on the outcome scale (probability, count) is NOT simply the interaction coefficient. Ai and Norton (2003) demonstrate that the sign of the true interaction effect can even differ from the sign of the interaction coefficient in logit models. Always compute marginal interaction effects for nonlinear models.
+**Interaction terms:** The coefficient on an interaction X1 x X2 represents how the marginal effect of X1 changes as X2 changes (and vice versa). In nonlinear models (logit, Poisson), the interaction effect on the outcome scale (probability, count) is NOT simply the interaction coefficient. Ai and Norton (2003; see also Norton, Wang, and Ai 2004) demonstrate that the sign of the true interaction effect can even differ from the sign of the interaction coefficient in logit models. Always compute marginal interaction effects for nonlinear models.
 
 ### Marginal Effects
 
@@ -303,7 +305,7 @@ For nonlinear models, raw coefficients are not directly interpretable as margina
 - **Marginal Effects at the Mean (MEM):** Compute the marginal effect evaluated at the sample means of all covariates. Answers: "What is the effect for a hypothetical individual at the sample averages?"
 
 **AME is generally preferred** for three reasons:
-1. The "average individual" defined by sample means may not exist or be meaningful --- averaging over a binary variable like gender produces a nonsensical value (Angrist and Pischke 2009)
+1. The "average individual" defined by sample means may not exist or be meaningful --- averaging over a binary variable like gender produces a nonsensical value
 2. AME respects the actual distribution of covariates in the sample rather than evaluating at a potentially unrepresentative point
 3. AME is closer to the quantity of interest for policy evaluation: the average effect across the population, not the effect for a fictitious "average" person
 
@@ -317,9 +319,9 @@ The `marginaleffects` package provides a unified interface for computing AME and
 - "A one-standard-deviation increase in school funding is associated with a 0.08 SD increase in test scores" communicates both direction and scale
 - "The effect is statistically significant (p < 0.05)" communicates neither
 
-**Standardized effect sizes** (Cohen 1988) provide a scale-free measure of magnitude when natural units are not available or not intuitive. Cohen himself cautioned against using these benchmarks mechanically --- they are rough conventions, and substantive context should always guide interpretation. In many applied settings (education policy, public health), effect sizes of 0.1-0.2 SD are considered practically significant at scale:
+**Standardized effect sizes** (Cohen 1988) provide a scale-free measure of magnitude when natural units are not available or not intuitive. Cohen himself cautioned against using these benchmarks mechanically --- they are rough conventions, and substantive context should always guide interpretation. In education, Kraft (2020) proposes benchmarks for causal studies of pre-K–12 achievement: < 0.05 SD small, 0.05–0.20 medium, ≥ 0.20 large. Cohen's conventional benchmarks follow; the practical-note column is a DAAF paraphrase, not Cohen's wording:
 
-| Cohen's d | Conventional Benchmark | Practical Note |
+| Cohen's d | Conventional Benchmark | Practical Note (DAAF paraphrase) |
 |---|---|---|
 | ~0.2 | Small | Typically requires large N to detect; may still be policy-relevant at scale |
 | ~0.5 | Medium | Visible in everyday experience |
@@ -331,7 +333,7 @@ The `marginaleffects` package provides a unified interface for computing AME and
 
 ## Robustness Checks
 
-Robustness checks test whether conclusions are sensitive to specific analytical choices. A result that appears under only one specification is fragile; a result that persists across reasonable alternatives is credible. Following Angrist and Pischke (2009), robustness is not about running hundreds of specifications --- it is about varying the choices a skeptical reader would question.
+Robustness checks test whether conclusions are sensitive to specific analytical choices. A result that appears under only one specification is fragile; a result that persists across reasonable alternatives is credible. As Leamer (1983) put it, "an inference is not believable if it is fragile, if it can be reversed by minor changes in assumptions." Robustness is not about running hundreds of specifications --- it is about varying the choices a skeptical reader would question.
 
 ### Specification Sensitivity
 
@@ -386,9 +388,9 @@ This framework expresses omitted variable bias in terms of two partial R-squared
 - **Robustness Value (RV):** A single scalar summarizing how strong confounding must be to overturn the result. Example interpretation: "Unobserved confounders would need to explain more than 14% of the residual variance of both treatment and outcome to bring the estimate to zero."
 - **Sensitivity contour plots** visualize which combinations of confounder-treatment and confounder-outcome partial R-squared values would change the conclusion.
 - **Benchmarking** calibrates sensitivity parameters against observed covariates: "How strong would the confounder need to be relative to [observed variable X]?" This grounds the analysis empirically rather than relying on arbitrary assumptions.
-- Implemented in the `sensemakr` R package and `pysensemakr` Python package.
+- Implemented in the `sensemakr` R package and the `PySensemakr` Python package. Neither is installed in DAAF (Dockerfile grep, 2026-10-06).
 
-**Using both methods is strongest.** Oster's approach is standard in economics journals. Cinelli and Hazlett's framework provides more interpretable visualization and the robustness value summary statistic. They are complementary because they parameterize the sensitivity analysis differently --- Oster through total R-squared movement, Cinelli and Hazlett through partial R-squared decomposition.
+**Using both methods is strongest.** Oster's approach is widely used in economics. Cinelli and Hazlett's framework provides more interpretable visualization and the robustness value summary statistic. They are complementary because they parameterize the sensitivity analysis differently --- Oster through total R-squared movement, Cinelli and Hazlett through partial R-squared decomposition.
 
 ### Bounding Exercises
 
@@ -431,7 +433,9 @@ Angrist, J.D. and Pischke, J.-S. (2009). *Mostly Harmless Econometrics: An Empir
 
 Angrist, J.D. and Pischke, J.-S. (2015). *Mastering 'Metrics: The Path from Cause to Effect*. Princeton University Press. https://www.masteringmetrics.com/
 
-Cunningham, S. (2021). *Causal Inference: The Mixtape*. Yale University Press. https://mixtape.scunning.com/
+Cunningham, S. (2021). *Causal Inference: The Mixtape*. Yale University Press. https://mixtape-1ed.netlify.app/ (1st edition; mixtape.scunning.com now serves the 2nd edition, *Causal Inference: The Remix*)
+
+Gelman, A. and Hill, J. (2006). *Data Analysis Using Regression and Multilevel/Hierarchical Models*. Cambridge University Press. https://doi.org/10.1017/CBO9780511790942
 
 Huntington-Klein, N. (2022). *The Effect: An Introduction to Research Design and Causality*. Chapman & Hall/CRC. https://theeffectbook.net/
 
@@ -445,6 +449,8 @@ Ai, C. and Norton, E.C. (2003). "Interaction Terms in Logit and Probit Models." 
 
 Altonji, J.G., Elder, T.E., and Taber, C.R. (2005). "Selection on Observed and Unobserved Variables: Assessing the Effectiveness of Catholic Schools." *Journal of Political Economy*, 113(1), 151-184.
 
+Benjamini, Y. and Hochberg, Y. (1995). "Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing." *Journal of the Royal Statistical Society: Series B*. https://doi.org/10.1111/j.2517-6161.1995.tb02031.x
+
 Cameron, A.C., Gelbach, J.B., and Miller, D.L. (2008). "Bootstrap-Based Improvements for Inference with Clustered Errors." *Review of Economics and Statistics*, 90(3), 414-427.
 
 Cameron, A.C., Gelbach, J.B., and Miller, D.L. (2011). "Robust Inference with Multiway Clustering." *Journal of Business & Economic Statistics*, 29(2), 238-249.
@@ -457,9 +463,15 @@ Cohen, J. (1988). *Statistical Power Analysis for the Behavioral Sciences*. 2nd 
 
 Firth, D. (1993). "Bias Reduction of Maximum Likelihood Estimates." *Biometrika*, 80(1), 27-38.
 
+Heinze, G. and Schemper, M. (2002). "A Solution to the Problem of Separation in Logistic Regression." *Statistics in Medicine*. https://doi.org/10.1002/sim.1047
+
 Kennedy, P.E. (1981). "Estimation with Correctly Interpreted Dummy Variables in Semilogarithmic Equations." *American Economic Review*, 71(4), 801.
 
+Kraft, M.A. (2020). "Interpreting Effect Sizes of Education Interventions." *Educational Researcher*. https://doi.org/10.3102/0013189X20912798
+
 Leamer, E.E. (1983). "Let's Take the Con Out of Econometrics." *American Economic Review*, 73(1), 31-43.
+
+Long, J.S. and Ervin, L.H. (2000). "Using Heteroscedasticity Consistent Standard Errors in the Linear Regression Model." *The American Statistician*. https://doi.org/10.1080/00031305.2000.10474549
 
 MacKinnon, J.G., Nielsen, M.O., and Webb, M.D. (2023). "Cluster-Robust Inference: A Guide to Empirical Practice." *Journal of Econometrics*, 232(2), 272-299.
 
@@ -467,9 +479,17 @@ Manski, C.F. (2003). *Partial Identification of Probability Distributions*. Spri
 
 Mundlak, Y. (1978). "On the Pooling of Time Series and Cross Section Data." *Econometrica*, 46(1), 69-85.
 
+Norton, E.C., Wang, H., and Ai, C. (2004). "Computing Interaction Effects and Standard Errors in Logit and Probit Models." *Stata Journal*. https://doi.org/10.1177/1536867X0400400206
+
 Oster, E. (2019). "Unobservable Selection and Coefficient Stability: Theory and Evidence." *Journal of Business & Economic Statistics*, 37(2), 187-204.
 
+Peduzzi, P., Concato, J., Kemper, E., Holford, T.R., and Feinstein, A.R. (1996). "A Simulation Study of the Number of Events per Variable in Logistic Regression Analysis." *Journal of Clinical Epidemiology*, 49, 1373-1379. https://doi.org/10.1016/S0895-4356(96)00236-3
+
 Ramsey, J.B. (1969). "Tests for Specification Errors in Classical Linear Least-Squares Regression Analysis." *Journal of the Royal Statistical Society: Series B*, 31(2), 350-371.
+
+Santos Silva, J. and Tenreyro, S. (2006). "The Log of Gravity." *Review of Economics and Statistics*. https://doi.org/10.1162/rest.88.4.641
+
+van Smeden, M., de Groot, J.A.H., Moons, K.G.M., Collins, G.S., Altman, D.G., Eijkemans, M.J.C., and Reitsma, J.B. (2016). "No Rationale for 1 Variable per 10 Events Criterion for Binary Logistic Regression Analysis." *BMC Medical Research Methodology*. https://doi.org/10.1186/s12874-016-0267-3
 
 ### Software Documentation
 

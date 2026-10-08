@@ -590,7 +590,7 @@ Gligorić, K., Zrnic, T., Lee, C., Candès, E., and Jurafsky, D. (2025). "Can Un
 
 Hopkins, D.J. and King, G. (2010). "A Method of Automated Nonparametric Content Analysis for Social Science." *American Journal of Political Science*, 54(1), 229-247. https://doi.org/10.1111/j.1540-5907.2009.00428.x
 
-Lanza, S.T., Tan, X., and Bray, B.C. (2013). "Latent Class Analysis with Distal Outcomes: A Flexible Model-Based Approach." *Structural Equation Modeling*, 20(1), 1-26. https://doi.org/10.1080/10705511.2013.742377
+Lanza, S.T., Tan, X., and Bray, B.C. (2013). "Latent Class Analysis with Distal Outcomes: A Flexible Model-Based Approach." *Structural Equation Modeling: A Multidisciplinary Journal*, 20(1), 1-26. https://doi.org/10.1080/10705511.2013.742377
 
 Meyer, B.D. and Mittag, N. (2017). "Misclassification in Binary Choice Models." *Journal of Econometrics*, 200(2), 295-311. https://doi.org/10.1016/j.jeconom.2017.06.012
 

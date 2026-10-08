@@ -45,7 +45,7 @@ from sklearn.linear_model import LogisticRegression
 # X_mat: numpy array of covariates (N x p)
 # T: numpy array of treatment indicator (N,), values 0/1
 
-# C=1e6 effectively removes regularization -- goal is BALANCE, not prediction
+# C=1e6 effectively removes regularization (DAAF convention) -- goal is BALANCE, not prediction
 ps_model = LogisticRegression(C=1e6, max_iter=1000, solver="lbfgs")
 ps_model.fit(X_mat, T)
 e_hat = ps_model.predict_proba(X_mat)[:, 1]
@@ -67,8 +67,10 @@ modeling. The goal is **balance** on confounders, not prediction accuracy.
 
 **Exclude:**
 - **Instruments** (variables that predict T but not Y directly) -- including
-  instruments in the propensity score amplifies bias and increases variance
-  (Brookhart et al. 2006; Myers et al. 2011)
+  them reduces precision without reducing bias (Brookhart et al. 2006) and can
+  increase bias (Myers et al. 2011). Myers et al. found these costs usually
+  small, so do not drop a plausible confounder only because it might be an
+  instrument.
 - **Colliders** (variables caused by both T and Y) -- conditioning on a collider
   opens a non-causal path between treatment and outcome
 - **Post-treatment variables** (variables affected by treatment) -- conditioning
@@ -174,9 +176,10 @@ print(f"Max match distance:  {distances.max():.4f}")
 
 ### Nearest-Neighbor Matching Without Replacement
 
-Matching without replacement prevents a control unit from being reused, which
-reduces bias from repeatedly using a poor match but increases bias from later
-matches being worse. This is a bias-variance tradeoff.
+Matching with replacement often lowers bias, because good controls can be reused
+(Stuart 2010). Without replacement, later matches may be worse. Reusing controls
+lowers the effective sample size and can raise variance. This is a bias-variance
+tradeoff.
 
 ```python
 # Greedy matching without replacement
@@ -331,8 +334,10 @@ print(f"Strata with both groups: {strata_effects.height}")
 ### Coarsened Exact Matching (CEM)
 
 CEM (Iacus, King, and Porro 2012) coarsens continuous covariates into bins, then
-performs exact matching on the coarsened values. It guarantees a maximum imbalance
-on the matched covariates (the "equal percent bias reducing" property).
+performs exact matching on the coarsened values. The analyst chooses the maximum
+allowed imbalance on each covariate in advance, and CEM guarantees it is not
+exceeded: the "monotonic imbalance bounding" (MIB) property. CEM is not an
+equal-percent-bias-reducing (EPBR) method.
 
 ```python
 import polars as pl
@@ -367,7 +372,9 @@ print(f"Matched strata (both T and C): {strata.height}")
 
 # Step 3: Compute CEM weights
 # Treated weight = 1 (targeting ATT)
-# Control weight = (n_treated_s / n_control_s) * (N_control / N_treated)
+# Control weight = n_treated_s / n_control_s
+# A constant rescaling (e.g., by matched N_control / N_treated) leaves the
+# within-group weighted means unchanged, so it is omitted here (DAAF inference)
 # This creates balance within each stratum
 df_weighted = (
     df_cem.join(strata.select(cem_vars + ["n_treated", "n_control"]),
@@ -441,7 +448,10 @@ print(f"ATT (IPW): {att:.4f}")
 
 Standard IPW weights can be highly variable, especially when propensity scores
 are near 0 or 1. Stabilized weights replace the numerator 1 with the marginal
-treatment probability, reducing variance without introducing bias:
+treatment probability. Stabilization is often said to reduce variance without
+adding bias; that claim is unsourced here. With normalized (Hajek) estimators,
+multiplying one group's weights by a constant leaves the point estimate unchanged
+(DAAF inference):
 
 ```python
 # Marginal treatment probability
@@ -469,7 +479,7 @@ Always inspect weight distributions before proceeding to outcome estimation.
 Extreme weights signal common support problems and inflate variance.
 
 ```python
-# Effective sample size (Kish 1965)
+# Effective sample size (commonly attributed to Kish 1965; not checked against the book)
 # ESS = (sum(w))^2 / sum(w^2) -- the "number of independent observations"
 # equivalent to the weighted sample
 ess = w_ate.sum()**2 / (w_ate**2).sum()
@@ -486,7 +496,7 @@ for label, mask in [("Treated", T == 1), ("Control", T == 0)]:
     print(f"  Max:    {w_group.max():.3f}")
     print(f"  P99:    {np.percentile(w_group, 99):.3f}")
 
-# Truncation at 99th percentile (when extreme weights are present)
+# Truncation at 99th percentile (rule of thumb; when extreme weights are present)
 p99 = np.percentile(w_ate, 99)
 w_truncated = np.clip(w_ate, a_min=None, a_max=p99)
 n_truncated = (w_ate > p99).sum()
@@ -539,11 +549,13 @@ influence-function SE (see AIPW section) for correct inference.
 **This is the recommended default for selection-on-observables designs.**
 
 The augmented inverse probability weighted (AIPW) estimator combines a propensity
-score model with an outcome model. It is **doubly robust**: consistent if *either*
-the propensity score model or the outcome model is correctly specified (Robins,
-Rotnitzky, and Zhao 1994; Bang and Robins 2005). Even when both models are
-slightly misspecified, the doubly robust estimator typically has smaller bias than
-either pure matching or pure IPW.
+score model with an outcome model. The AIPW estimator class traces to Robins,
+Rotnitzky, and Zhao (1994). It is **doubly robust**: consistent if *either* the
+propensity score model or the outcome model is correctly specified (Bang and
+Robins 2005). When both models are wrong, AIPW has no guaranteed advantage. In
+Kang and Schafer's (2007) missing-data simulation, no DR method they tried beat
+outcome regression (though many beat simple IPW), and inverse-probability methods were sensitive to small
+estimated propensities.
 
 ### Basic AIPW Estimator
 
@@ -606,7 +618,7 @@ from sklearn.model_selection import KFold
 from sklearn.linear_model import LogisticRegression, LinearRegression
 
 n = len(Y)
-K = 5  # number of folds
+K = 5  # number of folds; Chernozhukov et al. (2018, Remark 3.1) found 4 or 5 worked better than 2
 kf = KFold(n_splits=K, shuffle=True, random_state=42)
 
 # Storage for cross-fitted predictions
@@ -633,6 +645,8 @@ for train_idx, eval_idx in kf.split(X_mat):
     mu0_cf[eval_idx] = mu0_k.predict(X_eval)
 
 # Clip propensity scores to avoid division by near-zero
+# [0.01, 0.99] is an example, not a rule: Chernozhukov et al. (2018) trim at
+# 0.01 and 0.99 in their empirical application
 e_cf = np.clip(e_cf, 0.01, 0.99)
 
 # AIPW with cross-fitted nuisance parameters
@@ -677,9 +691,11 @@ the estimation method is.
 
 ### Standardized Mean Difference (SMD)
 
-The SMD is the primary balance metric. The threshold for acceptable balance is
-|SMD| < 0.1 (Austin 2011; Stuart 2010). Some authors recommend |SMD| < 0.05
-for high-stakes analyses.
+The SMD is the primary balance metric. A common convention treats |SMD| < 0.1 as
+negligible (Austin 2011, citing Normand et al. 2001). Austin notes there is no
+agreed threshold. Stuart (2010) reports Rubin's (2001) bound of 0.25 for
+trustworthy regression adjustment; in Rubin's list it applies to the SMD of the
+propensity score.
 
 ```python
 import numpy as np
@@ -753,9 +769,12 @@ for r in smd_weighted:
 
 ### Variance Ratios
 
-Variance ratios assess balance in dispersion, not just location. Acceptable range:
-[0.5, 2.0] (Rubin 2001). Values outside this range suggest the matching or
-weighting failed to equalize the covariate distributions.
+Variance ratios assess balance in dispersion, not just location. Rubin (2001;
+summarized by Stuart 2010) recommends variance ratios between 0.5 and 2 for the
+propensity score and for covariate residuals orthogonal to it. Applying this band
+to raw covariates, as the code below does, is a DAAF convention. Values outside
+this range suggest the matching or weighting failed to equalize the covariate
+distributions.
 
 ```python
 print("\nVariance ratios:")
@@ -798,20 +817,24 @@ plot = (
 
 ### KS Tests for Distributional Balance
 
-SMD checks balance in means; the Kolmogorov-Smirnov test checks balance across
-the entire distribution. This catches cases where means are balanced but
-distributions differ in shape (e.g., different variances or skewness):
+SMD checks balance in means; the Kolmogorov-Smirnov statistic checks balance
+across the entire distribution. This catches cases where means are balanced but
+distributions differ in shape (e.g., different variances or skewness).
+
+Report the KS statistic as a distance. Do not use its p-value as a balance
+criterion: p-values depend on sample size, and matching shrinks the sample
+(Austin 2011; Stuart 2010).
 
 ```python
 from scipy.stats import ks_2samp
 
-print("\nKS tests for distributional balance:")
+print("\nKS statistics for distributional balance (compare before vs. after):")
 for j, name in enumerate(covariate_names):
     x_t = X_mat[T == 1, j]
     x_c = X_mat[T == 0, j]
-    ks_stat, ks_pval = ks_2samp(x_t, x_c)
-    flag = " ***" if ks_pval < 0.05 else ""
-    print(f"  {name:20s}  KS = {ks_stat:.4f}, p = {ks_pval:.4f}{flag}")
+    # Keep only the statistic; the p-value is not a balance criterion
+    ks_stat = ks_2samp(x_t, x_c).statistic
+    print(f"  {name:20s}  KS = {ks_stat:.4f}")
 ```
 
 ### Balance Diagnostic Decision Rule
@@ -819,8 +842,8 @@ for j, name in enumerate(covariate_names):
 | Diagnostic | Threshold | Action if Failed |
 |------------|-----------|------------------|
 | SMD | \|SMD\| < 0.1 for all covariates | Revise PS model, add interactions/polynomials, or switch method |
-| Variance ratio | [0.5, 2.0] for all covariates | Consider CEM or Mahalanobis matching on offending variable |
-| KS test | p > 0.05 for key covariates | Investigate distributional differences; consider flexible PS model |
+| Variance ratio | [0.5, 2.0] for all covariates (DAAF convention; Rubin 2001 applies it to the PS and PS-orthogonal residuals) | Consider CEM or Mahalanobis matching on offending variable |
+| KS statistic | KS statistic, before vs. after; no fixed cutoff (DAAF convention) | Investigate distributional differences; consider flexible PS model |
 | Effective sample size | ESS > 50% of N (rule of thumb) | Common support problem; consider overlap weights or trimming |
 
 **If balance diagnostics fail, do not proceed to outcome estimation.** Revise the
@@ -843,7 +866,7 @@ on each bootstrap resample:
 import numpy as np
 
 n = len(Y)
-n_boot = 1000
+n_boot = 1000  # DAAF convention
 boot_ates = np.zeros(n_boot)
 
 for b in range(n_boot):
@@ -854,7 +877,7 @@ for b in range(n_boot):
     ps_b = LogisticRegression(C=1e6, max_iter=1000)
     ps_b.fit(X_b, T_b)
     e_b = ps_b.predict_proba(X_b)[:, 1]
-    e_b = np.clip(e_b, 0.01, 0.99)
+    e_b = np.clip(e_b, 0.01, 0.99)  # example trim (cf. Chernozhukov et al. 2018), not a rule
 
     # IPW estimate on bootstrap sample
     boot_ates[b] = ((T_b - e_b) / (e_b * (1 - e_b)) * Y_b).mean()
@@ -866,19 +889,21 @@ print(f"Bootstrap SE: {se_boot:.4f}")
 print(f"Bootstrap 95% CI: [{ci_lower:.4f}, {ci_upper:.4f}]")
 ```
 
-### Bootstrap is INVALID for Nearest-Neighbor Matching
+### Standard Bootstrap Is Invalid for NN Matching With Replacement
 
 Abadie and Imbens (2008) proved that the standard bootstrap is inconsistent for
-nearest-neighbor matching estimators. The bootstrap does not correctly replicate
+nearest-neighbor matching estimators with replacement and a fixed number of
+matches. The bootstrap does not correctly replicate
 the matching structure -- the distribution of match quality changes across
 resamples in ways that invalidate the bootstrap approximation.
 
 **For NN matching, use one of these alternatives:**
-1. **Abadie-Imbens variance estimator** (Abadie and Imbens 2006): uses the match
-   discrepancy to estimate the conditional variance. This is the theoretically
-   correct approach but requires custom implementation.
-2. **Block bootstrap** (or subsampling): valid under weaker conditions than the
-   standard bootstrap but requires choosing a block/subsample size.
+1. **Abadie-Imbens variance estimator** (Abadie and Imbens 2006): an estimator
+   of the conditional variance that does not require consistent nonparametric
+   estimation of unknown functions. This is the theoretically correct approach
+   but requires custom implementation.
+2. **Subsampling** (recommended by Abadie and Imbens 2008): valid, but requires
+   choosing a subsample size.
 3. **Cross-fitted AIPW** (recommended): switch from pure matching to doubly
    robust estimation, which has straightforward inference via the influence
    function SE.
@@ -896,16 +921,15 @@ se_if = scores_cf.std() / np.sqrt(n)
 # This is a valid asymptotic SE -- no bootstrap needed
 ```
 
-### Naive OLS SEs on Matched Data Are Wrong
+### When Naive OLS SEs on Matched Data Are Invalid
 
-Abadie and Spiess (2022) show that running OLS on matched data and using standard
-OLS standard errors produces incorrect inference. The matching step introduces
-dependence between observations (matched pairs are not independent), and OLS SEs
-ignore this dependence. This applies to all forms of matching (NN, caliper,
-Mahalanobis).
+Abadie and Spiess (2022) show that SEs ignoring the matching step are valid only
+for matching without replacement with a correctly specified regression. They are
+invalid with replacement or under misspecification. The paper proposes two
+alternatives robust to misspecification.
 
-**Never** report OLS standard errors from a regression on matched data as if
-they were valid. Use bootstrap (for non-NN methods), Abadie-Imbens SEs (for NN),
+Do not report OLS standard errors from a regression on matched data as if they
+were valid unless both of those conditions hold. Use bootstrap (for non-NN methods), Abadie-Imbens SEs or subsampling (for NN with replacement), the Abadie-Spiess robust alternatives (for NN without replacement),
 or switch to AIPW with influence-function SEs.
 
 ### Inference Summary
@@ -913,9 +937,10 @@ or switch to AIPW with influence-function SEs.
 | Method | Valid SE Approach | Invalid |
 |--------|-------------------|---------|
 | IPW / Weighted regression | Bootstrap (re-estimate PS each iteration) | Naive WLS SE (ignores PS estimation step) |
-| NN matching (with/without replacement) | Abadie-Imbens variance; block bootstrap | Standard bootstrap; OLS on matched data |
-| Caliper / radius matching | Bootstrap; Abadie-Imbens | OLS on matched data |
-| AIPW (non-cross-fitted) | Bootstrap | Influence-function SE (requires cross-fitting) |
+| NN matching with replacement | Abadie-Imbens variance; subsampling | Standard bootstrap; OLS on matched data |
+| NN matching without replacement | OLS SEs only with a correctly specified regression; otherwise the misspecification-robust alternatives in Abadie and Spiess (2022) | OLS SEs under misspecification |
+| Caliper / radius matching | Abadie-Imbens variance or subsampling (the 1:1 caliper code above is NN matching with replacement; Abadie and Imbens 2008 do not study calipers, DAAF inference); or cross-fitted AIPW | Standard bootstrap (not formally justified); OLS on matched data (valid only without replacement and with a correctly specified regression; Abadie and Spiess 2022) |
+| AIPW (non-cross-fitted) | Bootstrap; influence-function SE with simple parametric nuisance models | Influence-function SE with flexible ML nuisance models (needs cross-fitting; Chernozhukov et al. 2018) |
 | Cross-fitted AIPW | Influence-function SE: std(scores)/sqrt(N) | None (this is the gold standard) |
 | CEM + weighted regression | Bootstrap | Unweighted OLS SE |
 
@@ -928,28 +953,26 @@ the PS) can increase imbalance and model dependence as more observations are pru
 The core issue is that collapsing a multidimensional covariate space to a scalar
 (the PS) discards information about which specific covariates are balanced.
 
-**Scope of the critique:** This critique is specific to **PSM matching** -- it does
-not apply to IPW or doubly robust estimators that use propensity scores for
-weighting rather than matching. When the propensity score is used for weighting,
-the dimensional reduction is less harmful because all observations contribute to
-the estimate.
+**Scope of the critique:** King and Nielsen target **PSM matching** and note that
+"propensity scores have other productive uses." Whether their critique
+carries over to weighting (IPW, doubly robust) is DAAF inference.
 
 **Practical response:** If using PSM, verify covariate-level balance (not just PS
 balance) and compare results to Mahalanobis matching or CEM. If using IPW or AIPW,
-the King-Nielsen critique is less relevant.
+the King-Nielsen critique is likely less relevant (DAAF inference).
 
-### 2. Bootstrap is Invalid for NN Matching
+### 2. Bootstrap Is Invalid for NN Matching With Replacement
 
 Abadie and Imbens (2008) proved the standard bootstrap is inconsistent for
-nearest-neighbor matching. See the Inference section for alternatives. This is
+nearest-neighbor matching with replacement. See the Inference section for alternatives. This is
 not a minor technical point -- the coverage of bootstrap confidence intervals
 for NN matching can be substantially wrong.
 
-### 3. Variable Selection: Instruments Amplify Bias
+### 3. Variable Selection: Instruments Cost Precision and Can Add Bias
 
 Including a variable that predicts treatment but not the outcome (an instrument)
-in the propensity score model amplifies bias and increases variance (Brookhart
-et al. 2006). This is the opposite of the intuition from predictive modeling,
+in the propensity score model increases variance without reducing bias (Brookhart
+et al. 2006) and may increase bias (Myers et al. 2011). This is the opposite of the intuition from predictive modeling,
 where "more variables is better." In the propensity score context, the right
 variables to include are confounders and outcome predictors.
 
@@ -961,7 +984,7 @@ fundamentally different from the population where treatment is uncertain.
 
 **Diagnostics:** Check weight distributions, ESS, max weights. **Remedies:**
 trim to [0.1, 0.9] (Crump et al. 2009), use stabilized weights, truncate at
-a percentile (99th), or use overlap weights (Li, Morgan, and Zaslavsky 2018).
+a percentile (e.g., 99th; rule of thumb), or use overlap weights (Li, Morgan, and Zaslavsky 2018).
 
 ### 5. Matching With vs. Without Replacement
 
@@ -985,24 +1008,24 @@ remedies, in order of preference:
 1. **Overlap weights** (Li et al. 2018): change the estimand to the overlap
    population -- weights are naturally bounded
 2. **Stabilized weights**: replace numerator 1 with marginal treatment probability
-3. **Weight truncation**: clip at a percentile (e.g., 99th) -- this introduces
+3. **Weight truncation**: clip at a percentile (e.g., 99th; rule of thumb) -- this introduces
    bias but reduces variance
 
 Always report the effective sample size and maximum weight alongside the estimate.
 
 ### 8. Naive Post-Matching Standard Errors
 
-Abadie and Spiess (2022) demonstrate that OLS standard errors computed on matched
-data are incorrect. The matching process creates dependence between observations
-that OLS SEs do not account for. This affects all matching methods, not just
-nearest-neighbor. See the Inference section for correct alternatives.
+Abadie and Spiess (2022) show that SEs ignoring the matching step are valid only
+for matching without replacement with a correctly specified regression. They are
+invalid with replacement or under misspecification. See the Inference section for
+correct alternatives.
 
 ## Decision Guide: Which Method to Use
 
 ```
 Selection-on-observables design confirmed?
 │
-├─ Yes → How many covariates?
+├─ Yes → How many covariates? (count bands are a DAAF heuristic)
 │   │
 │   ├─ Few (< 5), mostly categorical
 │   │   └─ Exact matching or CEM
@@ -1043,15 +1066,15 @@ Rosenbaum, P.R. and Rubin, D.B. (1983). "The Central Role of the Propensity Scor
 
 Stuart, E.A. (2010). "Matching Methods for Causal Inference: A Review and a Look Forward." *Statistical Science*, 25(1), 1-21. https://doi.org/10.1214/09-STS313
 
-Ho, D.E., Imai, K., King, G., and Stuart, E.A. (2007). "Matching as Nonparametric Preprocessing for Reducing Model Dependence in Parametric Causal Inference." *Political Analysis*, 15(3), 199-236.
+Ho, D.E., Imai, K., King, G., and Stuart, E.A. (2007). "Matching as Nonparametric Preprocessing for Reducing Model Dependence in Parametric Causal Inference." *Political Analysis*, 15(3), 199-236. https://doi.org/10.1093/pan/mpl013
 
 ### Matching Methods
 
-Austin, P.C. (2011). "An Introduction to Propensity Score Methods for Reducing the Effects of Confounding in Observational Studies." *Multivariate Behavioral Research*, 46(3), 399-424.
+Austin, P.C. (2011). "An Introduction to Propensity Score Methods for Reducing the Effects of Confounding in Observational Studies." *Multivariate Behavioral Research*, 46(3), 399-424. https://doi.org/10.1080/00273171.2011.568786
 
 Iacus, S.M., King, G., and Porro, G. (2012). "Causal Inference without Balance Checking: Coarsened Exact Matching." *Political Analysis*, 20(1), 1-24. https://doi.org/10.1093/pan/mpr013
 
-King, G. and Nielsen, R. (2019). "Why Propensity Scores Should Not Be Used for Matching." *Political Analysis*, 27(4), 435-454.
+King, G. and Nielsen, R. (2019). "Why Propensity Scores Should Not Be Used for Matching." *Political Analysis*, 27(4), 435-454. https://doi.org/10.1017/pan.2019.11
 
 Caliendo, M. and Kopeinig, S. (2008). "Some Practical Guidance for the Implementation of Propensity Score Matching." *Journal of Economic Surveys*, 22(1), 31-72.
 
@@ -1066,6 +1089,8 @@ Crump, R.K., Hotz, V.J., Imbens, G.W., and Mitnik, O.A. (2009). "Dealing with Li
 Robins, J.M., Rotnitzky, A., and Zhao, L.P. (1994). "Estimation of Regression Coefficients When Some Regressors Are Not Always Observed." *Journal of the American Statistical Association*, 89(427), 846-866.
 
 Bang, H. and Robins, J.M. (2005). "Doubly Robust Estimation in Missing Data and Causal Inference Models." *Biometrics*, 61(4), 962-973.
+
+Kang, J.D.Y. and Schafer, J.L. (2007). "Demystifying Double Robustness: A Comparison of Alternative Strategies for Estimating a Population Mean from Incomplete Data." *Statistical Science*, 22(4). https://doi.org/10.1214/07-STS227
 
 Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., and Robins, J. (2018). "Double/Debiased Machine Learning for Treatment and Structural Parameters." *Econometrics Journal*, 21(1), C1-C68.
 

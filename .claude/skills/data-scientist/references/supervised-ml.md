@@ -18,7 +18,7 @@ These materials draw extensively from several open-access resources that the aut
 
 - Gareth James, Daniela Witten, Trevor Hastie, and Robert Tibshirani's *An Introduction to Statistical Learning*, 2nd Edition (https://www.statlearning.com/), particularly Chapters 2-10 on supervised learning methods
 - Trevor Hastie, Robert Tibshirani, and Jerome Friedman's *The Elements of Statistical Learning*, 2nd Edition (https://hastie.su.domains/ElemStatLearn/download.html), particularly Chapters 7-10 on model assessment and ensemble methods
-- Christoph Molnar's *Interpretable Machine Learning* (https://christophm.github.io/interpretable-ml-book/), the standard practitioner reference for model interpretation methods
+- Christoph Molnar's *Interpretable Machine Learning* (https://christophm.github.io/interpretable-ml-book/), which its author describes as "a go-to resource for interpreting machine learning models"
 - The scikit-learn project's comprehensive documentation and user guide (https://scikit-learn.org/)
 
 ## Contents
@@ -64,10 +64,10 @@ This is the most consequential methodological decision in applied quantitative s
 
 Breiman's foundational paper identifies two distinct approaches to learning from data:
 
-- **Data-modeling culture:** Assumes a stochastic model generated the data (e.g., Y = Xb + e). The goal is to estimate the parameters of that model. Success is judged by coefficient interpretability, goodness-of-fit, and the validity of statistical inferences about the parameters. This is the dominant tradition in econometrics and social science.
+- **Data-modeling culture:** Assumes a stochastic model generated the data (e.g., Y = Xb + e). The goal is to estimate the parameters of that model. Success is judged by coefficient interpretability, goodness-of-fit, and the validity of statistical inferences about the parameters. Breiman describes this as the dominant tradition in statistics; it is also common in econometrics.
 - **Algorithmic-modeling culture:** Treats the data-generating mechanism as unknown. The goal is to find an algorithm that accurately predicts new observations. Success is judged by held-out prediction accuracy. This is the dominant tradition in machine learning and computer science.
 
-These cultures are not competing — they answer different questions. The error is using one culture's tools to answer the other culture's questions: applying ML when you need an interpretable causal estimate, or applying OLS when you need to predict who will drop out of school next year.
+DAAF's view: the cultures answer different questions (Breiman himself argued for moving "away from exclusive dependence on data models"). The error is using one culture's tools to answer the other culture's questions: applying ML when you need an interpretable causal estimate, or applying OLS when you need to predict who will drop out of school next year.
 
 ### The Explain-Predict Distinction (Shmueli, 2010)
 
@@ -89,11 +89,11 @@ A model can predict well yet have misleading coefficients (and vice versa). Foll
 
 Kleinberg, Ludwig, Mullainathan, and Obermeyer (2015) identify an important class of policy decisions where prediction quality — not causal identification — is the binding constraint. In these problems:
 
-- **The intervention is already decided** — the question is *whom to target*
+- **The action does not change the outcome being predicted, and its payoff is known**, so only prediction is needed (the "umbrella" case: "umbrellas have no direct effect on rain")
 - The causal effect of the intervention is known or assumed; ML adds value by improving the accuracy of targeting
-- Examples in education: early warning systems for dropout, targeting tutoring resources to students most likely to benefit, identifying schools for inspection, screening financial aid applications
+- Examples in education: early warning systems for dropout, targeting tutoring resources to students at highest predicted risk, identifying schools for inspection, screening financial aid applications
 
-This is the strongest justification for ML in policy research. The researcher does not need to establish that tutoring causes better outcomes (that evidence already exists) — they need to predict which students are most likely to drop out so the tutoring can be directed to them.
+In this framing, the researcher does not need to establish that tutoring causes better outcomes (that is taken as given) — they need to predict which students are most likely to drop out so the tutoring can be directed to them. Targeting students by who would *benefit* most is a different question: it requires treatment-effect estimates, which is a causal problem (see `causal-inference.md`).
 
 ### When Each Approach Is Appropriate
 
@@ -121,7 +121,7 @@ This is why ML models can predict better than OLS despite being "biased" estimat
 
 ### The Decomposition
 
-The expected prediction error for a new observation decomposes into three irreducible components:
+The expected prediction error for a new observation decomposes into three components, only one of which (noise) is irreducible:
 
 **Expected prediction error = Irreducible noise + Bias-squared + Variance**
 
@@ -137,7 +137,7 @@ The practical consequences are direct:
 ### Practical Implications
 
 - Adding more features does NOT always improve prediction — beyond a point, additional features increase variance faster than they reduce bias (the "curse of dimensionality")
-- Regularization shrinks coefficients toward zero, accepting bias for lower variance — this is why regularization almost always improves predictive performance
+- Regularization shrinks coefficients toward zero, accepting bias for lower variance — this is why regularization typically improves predictive performance when the penalty is chosen by CV
 - Cross-validation empirically finds the bias-variance sweet spot by estimating test error across different model complexities
 - "More data" reduces variance but not bias; "a more flexible model" reduces bias but increases variance
 - The irreducible noise sets a floor on prediction error — no model, however complex, can beat it
@@ -150,7 +150,7 @@ In-sample fit (R-squared, training accuracy) is meaningless for prediction tasks
 
 Following James et al. (2021, Ch. 5), the standard discipline is:
 
-1. **Split** data into training (typically 80%) and test (typically 20%) — the test set is NEVER used for model selection, hyperparameter tuning, or feature engineering
+1. **Split** data into training and test sets (an 80%/20% split is a DAAF convention, not a fixed rule) — the test set is NEVER used for model selection, hyperparameter tuning, or feature engineering
 2. **Use cross-validation** on the training set for model selection and hyperparameter tuning
 3. **Evaluate** the final chosen model ONCE on the test set
 4. **Report** the test set performance as the estimate of generalization error
@@ -159,7 +159,7 @@ Violating this discipline — tuning on the test set, selecting the model that p
 
 ### Cross-Validation Strategies for Social Science Data
 
-**This is the most critical technical section for applied social science researchers.** Standard k-fold cross-validation assumes observations are independent and identically distributed (i.i.d.). Social science data almost always violates this assumption. Following Roberts et al. (2017), using standard CV on structured data dramatically overstates performance because information leaks across folds through the data's dependence structure.
+**This section addresses a central technical risk for applied social science researchers.** Standard k-fold cross-validation assumes observations are independent and identically distributed (i.i.d.). Social science data almost always violates this assumption. Following Roberts et al. (2017), using standard CV on structured data dramatically overstates performance because information leaks across folds through the data's dependence structure.
 
 | CV Strategy | When to Use | How It Works |
 |-------------|-------------|--------------|
@@ -167,21 +167,21 @@ Violating this discipline — tuning on the test set, selecting the model that p
 | **Stratified k-fold** | Imbalanced classes (e.g., rare dropout events) | Preserves class proportions in each fold |
 | **Group k-fold** | Clustered data (students within schools, schools within districts) | All observations from a cluster stay in the same fold |
 | **Time-series split** | Temporal data (predicting future from past) | Expanding or rolling window; never train on future to predict past |
-| **Spatial block CV** | Geographic data (spatial autocorrelation) | Block partitioning with separation distances matching the autocorrelation range |
+| **Spatial block CV** | Geographic data (spatial autocorrelation) | Block partitioning with block sizes substantially larger than the residual autocorrelation range (Roberts et al., 2017) |
 | **Leave-one-group-out** | Predicting for entirely new units (new schools, new districts) | Each fold holds out all observations from one group |
 
-**The single most common CV mistake in applied social science:** Using standard k-fold on clustered data. If students are nested within schools, random splitting leaks school-level information across folds — the model "sees" other students from the same school during training, producing optimistic performance estimates that collapse when applied to genuinely new schools.
+**A common CV mistake in applied social science:** Using standard k-fold on clustered data. If students are nested within schools, random splitting leaks school-level information across folds — the model "sees" other students from the same school during training, producing optimistic performance estimates that collapse when applied to genuinely new schools.
 
 **Decision rule for CV strategy:**
 - If the eventual deployment will predict for *new units* (new schools, new districts), use group k-fold or leave-one-group-out with the unit as the group
 - If the deployment will predict *future observations* for existing units, use time-series split
-- If the data has spatial structure, use spatial block CV with block sizes matching the spatial autocorrelation range
+- If the data has spatial structure, use spatial block CV with block sizes substantially larger than the residual autocorrelation range (Roberts et al., 2017); note that overly large blocks can overstate error by forcing extrapolation
 - If none of these structures apply (genuinely i.i.d. data, which is rare in social science), standard k-fold is acceptable
 
 ### Hyperparameter Tuning
 
 - **GridSearchCV:** Exhaustive search over a parameter grid. Reliable but computationally expensive for large grids.
-- **RandomizedSearchCV:** Random sampling from parameter distributions. More efficient for large search spaces; Bergstra and Bengio (2012) showed random search finds good hyperparameters faster than grid search in most settings.
+- **RandomizedSearchCV:** Random sampling from parameter distributions. More efficient for large search spaces; Bergstra and Bengio (2012) showed random search found equally good or better neural-network hyperparameters in a fraction of grid search's computation time.
 - Always use cross-validation inside the training set — NEVER tune on the test set.
 - Report the hyperparameter search process: the grid or distributions searched, the best parameters found, and the CV scores across candidates.
 
@@ -191,9 +191,9 @@ For the tool-level details of all CV strategies and hyperparameter search — wh
 
 Social science data is riddled with missing values — administrative records have reporting gaps, surveys have nonresponse, longitudinal data has attrition. This is a practical issue that must be handled explicitly in every ML pipeline.
 
-**Models that handle NaN natively:** HistGradientBoostingClassifier/Regressor, LightGBM, and XGBoost all route missing values to optimal tree splits without requiring imputation. When missing data is prevalent, these models are preferred because they eliminate the need for imputation decisions entirely.
+**Models that handle NaN natively:** HistGradientBoostingClassifier/Regressor, LightGBM, and XGBoost all route missing values to optimal tree splits without requiring imputation (in scikit-learn 1.8.0, the version pinned in DAAF, RandomForest also supports NaN natively). When missing data is prevalent, these models are preferred because they eliminate the need for imputation decisions entirely.
 
-**When imputation is required:** For models that cannot handle NaN (logistic regression, standard random forest, SVM, neural networks), imputation is necessary. **CRITICAL: imputation must happen INSIDE the cross-validation loop.** Fitting an imputer on the full dataset before splitting leaks test-set information into the training data — the imputed values in the training fold incorporate statistics from the test fold. Use `sklearn.pipeline.Pipeline` with `SimpleImputer` or `IterativeImputer` as the first step to ensure leak-free imputation.
+**When imputation is required:** For models that cannot handle NaN (logistic regression, SVM, neural networks), imputation is necessary. **CRITICAL: imputation must happen INSIDE the cross-validation loop.** Fitting an imputer on the full dataset before splitting leaks test-set information into the training data — the imputed values in the training fold incorporate statistics from the test fold. Use `sklearn.pipeline.Pipeline` with `SimpleImputer` or `IterativeImputer` as the first step to ensure leak-free imputation.
 
 **Missingness as a feature:** Missing values are often informative in social science data — a school that fails to report a metric may differ systematically from one that reports. Create binary missingness indicator columns (1 = was missing, 0 = was observed) BEFORE imputation. These indicators preserve the information content of the missingness pattern as predictive features.
 
@@ -212,7 +212,7 @@ No single algorithm dominates across all datasets — this is the "No Free Lunch
 | Tabular, moderate features, need interpretability | Logistic regression / Ridge regression | Fully interpretable; competitive baseline |
 | Tabular, moderate features, need best performance | HistGradientBoosting (scikit-learn) or LightGBM | Strongest general-purpose tabular predictors |
 | High-dimensional, sparse features | Logistic regression with L1 penalty (Lasso) | L1 performs automatic feature selection |
-| Small dataset (<1000 rows) | Logistic regression or KNN | Complex models overfit small samples |
+| Small dataset (<1000 rows; DAAF rule of thumb) | Logistic regression or KNN | Complex models overfit small samples |
 | Need calibrated probabilities | CalibratedClassifierCV wrapper | Ensures predicted probabilities match observed frequencies |
 | Non-tabular (text, images) | See "When Deep Learning Methods Are Appropriate" | Tree methods do not handle unstructured data |
 
@@ -224,7 +224,7 @@ Following Rudin's (2019) influential argument in *Nature Machine Intelligence*, 
 
 - **Prefer inherently interpretable models** (logistic regression, small decision trees, rule lists) unless there is a meaningful and demonstrated performance gap with more complex models
 - **The Rashomon set principle:** When many models achieve similar predictive accuracy — which is common — at least one is likely interpretable. Try interpretable models first before reaching for black boxes.
-- **Post-hoc explanations of black boxes** (SHAP, LIME, permutation importance) are approximations of the model's behavior, not faithful representations of its reasoning. They can disagree with each other and can be misleading when the model itself captures spurious patterns.
+- **Post-hoc explanations of black boxes** (e.g., SHAP, LIME) approximate the black box and "cannot have perfect fidelity with respect to the original model" (Rudin, 2019); Rudin argues that calling them "summaries of predictions" rather than "explanations" would be less misleading.
 - **Always compare:** When using a complex model, report its performance alongside the best interpretable model and quantify the gap explicitly. If a logistic regression achieves AUC = 0.82 and a gradient boosting model achieves AUC = 0.84, the 0.02 gain must be weighed against the loss of transparency.
 
 > **Cross-reference:** For the tool-level details of all algorithms listed above — whether you're advising or writing code — load the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md` (Python), or the `tidymodels` skill, specifically `models.md` and `engines.md` (R).
@@ -233,8 +233,8 @@ Following Rudin's (2019) influential argument in *Nature Machine Intelligence*, 
 
 ML models generally need more data than parametric regression models to perform well because they estimate more flexible functions with more effective parameters.
 
-**Rules of thumb for minimum sample size:**
-- Simple models (logistic regression, Ridge): at least 10-20 observations per feature
+**DAAF rules of thumb for minimum sample size:**
+- Simple models (logistic regression, Ridge): for binary outcomes, at least 10 events (minority-class cases) per candidate predictor — a rule of thumb from Peduzzi et al. (1996), whose simulation concerned coefficient bias in logistic regression, not predictive accuracy
 - Tree-based ensembles (random forest, gradient boosting): more data-hungry; hundreds to thousands of observations are needed before they outperform logistic regression
 - With very small samples (<500 rows), prefer simple models (logistic regression, small decision trees with limited depth) — complex models will memorize the training data rather than learn generalizable patterns
 
@@ -276,10 +276,10 @@ The default classification threshold of 0.5 is almost never optimal for policy a
 Class imbalance is the norm in social science classification tasks: dropout is rare, school closures are rare, violence incidents are rare. When the positive class is 5% of the sample, a model that predicts "no" for every observation achieves 95% accuracy — and is completely useless.
 
 **Approaches to class imbalance:**
-- **`class_weight="balanced"`:** Reweights the loss function to penalize misclassification of the minority class more heavily. Simple, effective, and generally sufficient for tree-based models.
-- **Threshold adjustment:** Train on the natural distribution but lower the classification threshold. Often the best approach because it separates model training from the decision policy.
+- **`class_weight="balanced"`:** Reweights the loss function to penalize misclassification of the minority class more heavily. Simple and effective; DAAF guidance treats it as generally sufficient for tree-based models.
+- **Threshold adjustment:** Train on the natural distribution but lower the classification threshold. Often the best approach (DAAF guidance) because it separates model training from the decision policy.
 - **Stratified cross-validation:** Ensures each CV fold preserves the class proportions, preventing folds where the minority class is absent.
-- **SMOTE and oversampling** (available via the `imbalanced-learn` package): Synthetic minority oversampling. Available but generally less effective than `class_weight` adjustment for tree-based models, and problematic with categorical features.
+- **SMOTE and oversampling** (available via the `imbalanced-learn` package): Synthetic minority oversampling. Available but, in DAAF guidance, generally less effective than `class_weight` adjustment for tree-based models, and problematic with categorical features.
 - **Always evaluate on the natural class distribution** — never on resampled test data, which produces misleading performance estimates.
 
 ### Calibration: When Predictions Inform Individual Decisions
@@ -289,15 +289,15 @@ Calibration measures whether a model's predicted probabilities match observed fr
 **Why calibration matters for policy:** When predictions drive individual-level decisions — flagging students for intervention, allocating resources based on risk scores, triggering early warning protocols — the absolute probability matters, not just the ranking. A model can have excellent AUC (it rank-orders students correctly) but terrible calibration (a student scored at "80% risk" actually has a 40% chance of the outcome). Stakeholders interpret predicted probabilities at face value; if those probabilities are wrong, resource allocation decisions are poorly calibrated even when targeting is directionally correct.
 
 **Assessing calibration:**
-- **Reliability diagrams (calibration curves):** Plot predicted probabilities (binned) against observed frequencies. A well-calibrated model falls on the diagonal. Deviations above the diagonal indicate underconfidence; below indicates overconfidence.
-- **Brier score:** Mean squared difference between predicted probabilities and actual outcomes. Decomposes into calibration, refinement, and uncertainty components. Lower is better; 0 is perfect.
+- **Reliability diagrams (calibration curves):** Plot predicted probabilities (binned) against observed frequencies. A well-calibrated model falls on the diagonal. Points above the diagonal mean the outcome is more frequent than predicted. A sigmoid-shaped curve (below the diagonal at low p, above it at high p) indicates underconfidence; the reverse S indicates overconfidence.
+- **Brier score:** Mean squared difference between predicted probabilities and actual outcomes. Decomposes into reliability (calibration), resolution, and uncertainty components (Murphy decomposition). Lower is better; 0 is perfect.
 
 **Fixing poor calibration:**
 - **CalibratedClassifierCV** wraps any classifier and recalibrates its outputs using a held-out calibration set
 - **Platt scaling (method='sigmoid'):** Fits a logistic regression to the model's raw outputs. Works well when the calibration curve is approximately sigmoidal.
 - **Isotonic regression (method='isotonic'):** Non-parametric; fits a stepwise non-decreasing function. More flexible but requires more calibration data to avoid overfitting.
 
-**Key insight:** Tree-based models (random forests, gradient boosting) are often poorly calibrated out of the box despite strong discriminative performance. Random forests tend to push probabilities toward 0.5; gradient boosting tends toward extreme probabilities. Always check calibration when using ensemble methods for probability-sensitive decisions.
+**Key insight:** Tree-based models (random forests, gradient boosting) are often poorly calibrated out of the box despite strong discriminative performance. Random forests and boosted trees (as studied by Niculescu-Mizil and Caruana, 2005) tend to push probabilities away from 0 and 1. Always check calibration when using ensemble methods for probability-sensitive decisions.
 
 > **Cross-reference:** For the tool-level details of CalibratedClassifierCV and the sklearn.calibration module — whether you're advising or writing code — load the `scikit-learn` skill (Python). Calibration tooling is a Python-side asymmetry in this environment: the tidymodels calibration package (`probably`) is not installed, so R workflows should assess calibration manually (reliability diagrams, Brier score are straightforward to compute) — see the `tidymodels` skill for the modeling side.
 
@@ -326,7 +326,7 @@ Regularization is the primary tool for managing the bias-variance tradeoff in re
 - **Lasso (L1 penalty):** Drives some coefficients exactly to zero, performing automatic feature selection. Best when only a subset of features matters for prediction.
 - **ElasticNet (L1 + L2):** Combines both penalties. Best when features are correlated — Lasso alone can arbitrarily select one from a group of correlated features, while ElasticNet tends to include or exclude them together.
 - **Regularization strength** (alpha/lambda) is always chosen by cross-validation, not set manually
-- In the prediction context, regularization is always helpful or neutral — there is no reason to avoid it
+- In the prediction context, regularization typically improves performance when the penalty is chosen by CV
 
 ## Ensemble Methods
 
@@ -349,7 +349,7 @@ Ensemble methods combine multiple base models to achieve better predictive perfo
 | **LightGBM** | Large datasets; native SHAP TreeExplainer support; available in DAAF Dockerfile | learning_rate, num_leaves, n_estimators |
 | **XGBoost** | Custom loss functions; GPU training | Not pre-installed; runtime installs blocked — escalate to add to the Dockerfile (see CLAUDE.md § Runtime Package Installation) |
 
-For most applied social science work, start with Random Forest (simple, robust), then try HistGradientBoosting or LightGBM if more performance is needed. The performance difference between gradient boosting implementations (scikit-learn, LightGBM, XGBoost) is usually small; choose based on practical considerations (SHAP compatibility, native categorical support, installation constraints).
+For most applied social science work, start with Random Forest (simple, robust), then try HistGradientBoosting or LightGBM if more performance is needed. The performance difference between gradient boosting implementations (scikit-learn, LightGBM, XGBoost) is usually small (DAAF guidance); choose based on practical considerations (SHAP compatibility, native categorical support, installation constraints).
 
 > **Cross-reference:** For the tool-level details of all ensemble methods — whether you're advising or writing code — load the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md` (Python), or the `tidymodels` skill, specifically `models.md` and `engines.md` (R — ranger and xgboost engines).
 
@@ -357,7 +357,7 @@ For most applied social science work, start with Random Forest (simple, robust),
 
 ### The Fundamental Conceptual Error
 
-**Feature importance is not causal importance.** This is the single most important methodological warning for social scientists using machine learning.
+**Feature importance is not causal importance.** This is a central methodological warning for social scientists using machine learning.
 
 The pattern is familiar and dangerous: a researcher trains a prediction model, extracts feature importances or SHAP values, and interprets them as if they identify causes or policy levers. This reasoning is wrong because:
 
@@ -390,7 +390,7 @@ Following the pattern established in `exploratory-unsupervised.md` for causal la
 
 ### Following Rudin (2019)
 
-Rudin (2019) argues that post-hoc explanations (SHAP, LIME) are approximations of the model, not of reality. They can be misleading if the model itself captures spurious patterns — explaining a bad model faithfully still produces bad explanations. For policy-relevant research:
+Rudin (2019) argues that post-hoc explanations (e.g., SHAP, LIME) are approximations that are "not faithful to what the original model computes," so they can mislead about what the model does. For policy-relevant research:
 
 - Prefer inherently interpretable models unless the performance gap is substantial and documented
 - When SHAP is used, always include the caveat that SHAP explains the model's behavior, not causal relationships in the data
@@ -404,7 +404,7 @@ Rudin (2019) argues that post-hoc explanations (SHAP, LIME) are approximations o
 
 Prediction models in education and social policy — dropout risk scoring, intervention targeting, resource allocation, admissions screening, child welfare screening — directly affect people's lives and life chances. When these models perform differently across demographic groups, they can perpetuate or amplify existing inequities. This is not a theoretical concern: Obermeyer et al. (2019) demonstrated that a widely used healthcare algorithm systematically underestimated the health needs of Black patients because it used healthcare costs (which reflect access barriers) as a proxy for health needs.
 
-Federal guidance increasingly requires fairness audits for algorithmic decision-making in education. Any prediction model deployed in an education context should include a fairness assessment as a standard component of the analysis, not an afterthought.
+Fairness assessment is a DAAF standard for any prediction model deployed in an education context, regardless of external mandates: include it as a standard component of the analysis, not an afterthought.
 
 ### Fairness Criteria Definitions
 
@@ -414,20 +414,20 @@ Three families of fairness criteria dominate the literature. Understanding what 
 |-----------|------------------|-----------|-------------|
 | **Demographic parity** | P(Y-hat=1 \| A=a) = P(Y-hat=1 \| A=b) | Equal selection rates across groups | Equal outcomes regardless of merit |
 | **Equalized odds** | P(Y-hat=1 \| Y=y, A=a) = P(Y-hat=1 \| Y=y, A=b) for all y | Equal error rates (FPR and TPR) across groups | Equal treatment of equally situated individuals |
-| **Predictive parity (calibration)** | P(Y=1 \| Y-hat=1, A=a) = P(Y=1 \| Y-hat=1, A=b) | Predictions mean the same thing for all groups | Equal meaning of scores across groups |
+| **Predictive parity (equal PPV)** | P(Y=1 \| Y-hat=1, A=a) = P(Y=1 \| Y-hat=1, A=b) | Predictions mean the same thing for all groups | Equal meaning of scores across groups |
 
 Each criterion captures a legitimate moral intuition about what "fairness" means. The tension between them is not a technical limitation to be engineered away — it reflects genuine value conflicts.
 
 ### The Impossibility Theorems
 
-Kleinberg, Mullainathan, and Raghavan (2016) and Chouldechova (2017) independently proved a result of profound practical importance: **when base rates differ across groups — and they almost always do in social data — calibration and error rate balance cannot simultaneously hold.**
+Kleinberg, Mullainathan, and Raghavan (2016) and Chouldechova (2017) independently proved that, **when base rates differ and prediction is imperfect, calibration within groups cannot coexist with balance for the positive and negative classes (Kleinberg et al.), and predictive parity cannot coexist with equal FPR and FNR (Chouldechova).**
 
 This means:
-- You CANNOT have a model that is simultaneously calibrated (predictions mean the same thing across groups) and has equal false positive/negative rates across groups
+- Short of perfect prediction, when base rates differ you cannot have a risk score that is both calibrated within groups and balanced for the positive and negative classes across groups. Likewise, when base rates differ, a thresholded classifier with equal PPV across groups cannot also have equal false positive and false negative rates
 - You MUST choose which fairness criterion to prioritize — this is a **normative choice**, not a technical one
 - The choice depends on the decision context, the stakeholders affected, and the values of the institution deploying the model
 
-**Concrete example:** A dropout prediction model where the base dropout rate differs by income group (e.g., 15% for low-income students vs. 5% for high-income students). You can calibrate the model so that "80% risk" means the same thing regardless of income group. OR you can equalize the false positive rate so that the same proportion of non-dropouts are incorrectly flagged in each group. But you cannot do both simultaneously. The choice between these criteria is a policy decision that should be made by stakeholders, not by the data scientist.
+**Concrete example:** A dropout prediction model where the base dropout rate differs by income group (e.g., 15% for low-income students vs. 5% for high-income students). If the model's high-risk flag is calibrated (a flagged student has the same dropout probability in each income group, i.e., equal PPV), the flag cannot also have equal false positive *and* equal false negative rates across groups (Chouldechova, 2017). Equalizing the false positive rate alone is still possible, but only by letting the false negative rates differ. The choice between these criteria is a policy decision that should be made by stakeholders, not by the data scientist.
 
 ### Connection to Civil Rights Frameworks
 
@@ -436,8 +436,8 @@ Algorithmic fairness in education operates within established legal frameworks:
 - **Title VI** (Civil Rights Act of 1964): Prohibits discrimination on the basis of race, color, or national origin in programs receiving federal financial assistance
 - **Title IX** (Education Amendments of 1972): Prohibits sex-based discrimination in federally funded education programs
 - **IDEA** (Individuals with Disabilities Education Act): Protections for students with disabilities
-- **Disparate impact doctrine:** A facially neutral model that produces systematically different outcomes for protected groups triggers scrutiny — intentional discrimination is not required
-- **"Business necessity" defense:** The model must be demonstrably necessary for a legitimate purpose, and no less discriminatory alternative achieves the same purpose
+- **Disparate impact doctrine** (a doctrine under Title VII and Title VI regulations; consult counsel): A facially neutral model that produces systematically different outcomes for protected groups triggers scrutiny — intentional discrimination is not required
+- **"Business necessity" defense** (Title VII terminology; consult counsel on its application in education): The model must be demonstrably necessary for a legitimate purpose, and no less discriminatory alternative achieves the same purpose
 
 These are not abstract legal concerns. A dropout early warning system that flags Black students at disproportionately higher rates than white students with similar academic profiles raises Title VI concerns regardless of whether the model was designed with any discriminatory intent.
 
@@ -457,7 +457,7 @@ These are not abstract legal concerns. A dropout early warning system that flags
 
 ### The Tabular vs. Unstructured Data Divide
 
-For typical social science research using structured/tabular data — surveys, administrative records, census data — tree-based ensemble methods outperform neural networks on medium-sized datasets. Grinsztajn, Oyallon, and Varoquaux (2022) provide rigorous empirical evidence across 45 tabular datasets, finding that tree-based methods (especially gradient boosting) consistently outperform or match deep learning approaches while being faster to train and easier to tune.
+For typical social science research using structured/tabular data — surveys, administrative records, census data — tree-based ensemble methods outperform neural networks on medium-sized datasets. Grinsztajn, Oyallon, and Varoquaux (2022) provide rigorous empirical evidence across 45 tabular datasets, finding that tree-based methods consistently outperform or match deep learning approaches while being faster to train and easier to tune.
 
 Deep learning's advantages emerge primarily with unstructured data:
 
@@ -470,13 +470,13 @@ Deep learning's advantages emerge primarily with unstructured data:
 
 ### Text Classification: The Most Common Entry Point
 
-For social science researchers, text classification is the most likely use case for deep learning. Pretrained transformer models (via Hugging Face) can be fine-tuned for domain-specific classification with relatively small labeled datasets. However, for many text classification tasks, traditional supervised methods — logistic regression on TF-IDF features, or random forest on sentence embeddings — perform comparably to deep learning with far less computational cost. Always establish a traditional baseline before reaching for transformers.
+For social science researchers, text classification is the most likely use case for deep learning. Pretrained transformer models (via Hugging Face) can be fine-tuned for domain-specific classification with relatively small labeled datasets. However, for many text classification tasks, traditional supervised methods — logistic regression on TF-IDF features, or random forest on sentence embeddings — perform comparably to deep learning with far less computational cost (DAAF guidance). Always establish a traditional baseline before reaching for transformers.
 
 **Model-based annotators as a no-training alternative.** A prompted LLM or a typed-judgment API (one that returns probabilities over options you define) can code text without a task-specific training set. Skipping training does not skip validation. Such an annotator still needs a human-coded validation set it was never tuned on, per-class precision and recall with a confusion matrix rather than accuracy alone, and a comparison against a simple trained baseline on the same held-out items. If its codes become analysis variables, the misclassification-bias and correction issues apply as well. For that methodology (annotation as measurement, validation-set design, agreement metrics, downstream bias and DSL/PPI corrections, reproducibility with hosted models, and data governance before sending text to a third party), see `./text-annotation-measurement.md`. For typed-judgment calls from DAAF scripts, load the `typesafe-ai` skill.
 
 ### Current DAAF Support Status
 
-**DAAF does not currently provide implementation support for deep learning frameworks.** PyTorch, TensorFlow, and Hugging Face transformers are not included in the Dockerfile to avoid significant bloat (2-4 GB combined) and scope creep for users who do not need these capabilities.
+**DAAF does not currently provide implementation support for deep learning frameworks.** PyTorch, TensorFlow, and Hugging Face transformers are not included in the Dockerfile to avoid significant bloat (roughly 2-4 GB combined, a DAAF estimate) and scope creep for users who do not need these capabilities.
 
 If your research requires deep learning:
 - The methodological guidance in this section applies regardless of framework
@@ -487,7 +487,7 @@ If your research requires deep learning:
 
 ### Required Elements
 
-Following the reporting norms emerging for prediction-focused research in applied social science (Athey and Imbens, 2019; Mullainathan and Spiess, 2017):
+The checklist below is a DAAF synthesis. Mullainathan and Spiess (2017) supply the hold-out "firewall principle" and hold-out confidence intervals behind items 3, 4 and 7. The remaining items are DAAF conventions.
 
 1. **Problem framing:** Why prediction (not inference) is the appropriate approach for this research question. Explicitly connect to the Shmueli (2010) or Kleinberg et al. (2015) framework.
 2. **Data description:** Sample size, features used (with justification), outcome variable definition, time period, and any exclusion criteria
@@ -517,7 +517,7 @@ These pitfalls reflect the specific challenges that arise when researchers train
 
 2. **Ignoring data structure in cross-validation.** Social science data is almost always clustered, temporal, or spatial. Standard k-fold CV dramatically overstates performance because it allows information leakage across the dependence structure. Always match the CV strategy to the data structure (Roberts et al., 2017).
 
-3. **Neglecting base rate differences in fairness.** The impossibility theorems (Kleinberg et al., 2016; Chouldechova, 2017) bite hardest when base rates differ by group — which is nearly always true in social data. Ignoring this means deploying models that appear fair on one criterion while violating another.
+3. **Neglecting base rate differences in fairness.** The impossibility theorems (Kleinberg et al., 2016; Chouldechova, 2017) apply when base rates differ by group and prediction is imperfect — which is nearly always true in social data. Ignoring this means deploying models that appear fair on one criterion while violating another.
 
 4. **Overfitting to an in-sample narrative.** Social scientists are accustomed to interpreting individual coefficients and building a narrative from them. In an ensemble of hundreds of trees, there is no single coefficient to interpret — the model IS the ensemble. Attempting to extract a coefficient-level narrative from an ensemble is fundamentally misguided.
 
@@ -592,5 +592,9 @@ Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., and Liu, T.-Y.
 Bergstra, J. and Bengio, Y. (2012). "Random Search for Hyper-Parameter Optimization." *Journal of Machine Learning Research*, 13, 281-305.
 
 ### Additional Resources
+
+Niculescu-Mizil, A. and Caruana, R. (2005). "Predicting Good Probabilities with Supervised Learning." *Proceedings of ICML*. https://doi.org/10.1145/1102351.1102430
+
+Peduzzi, P., Concato, J., Kemper, E., Holford, T.R., and Feinstein, A.R. (1996). "A Simulation Study of the Number of Events per Variable in Logistic Regression Analysis." *Journal of Clinical Epidemiology*, 49, 1373-1379. https://doi.org/10.1016/S0895-4356(96)00236-3
 
 Wolpert, D.H. (1996). "The Lack of A Priori Distinctions Between Learning Algorithms." *Neural Computation*, 8(7), 1341-1390.

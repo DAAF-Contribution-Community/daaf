@@ -1,6 +1,6 @@
 # Manifold Learning
 
-t-SNE, UMAP (via umap-learn), Isomap, LocallyLinearEmbedding, MDS, and SpectralEmbedding for nonlinear dimension reduction and visualization. For methodology guidance (interpreting embeddings, parameter sensitivity, visualization-only warnings), see `exploratory-unsupervised.md` in the `data-scientist` skill.
+t-SNE, UMAP (via umap-learn), Isomap, LocallyLinearEmbedding, MDS, and SpectralEmbedding for nonlinear dimension reduction and visualization. For methodology guidance (interpreting embeddings, parameter sensitivity, visualization-only warnings), see `exploratory-unsupervised.md` in the `data-scientist` skill; its References section gives full citations for works cited here.
 
 **Key principle:** These methods are primarily **visualization tools**, not analysis tools. Cluster sizes, between-cluster distances, and apparent structure in 2D embeddings should not be interpreted as real properties of the high-dimensional data without formal validation.
 
@@ -8,7 +8,7 @@ t-SNE, UMAP (via umap-learn), Isomap, LocallyLinearEmbedding, MDS, and SpectralE
 
 | Method | Preserves | Speed | Key Parameter | Output Dims |
 |--------|-----------|-------|---------------|-------------|
-| t-SNE | Local neighborhoods | Slow (>10K rows) | `perplexity` (5-50) | 2-3 only |
+| t-SNE | Local neighborhoods | Slow (>10K rows) | `perplexity` (5-50) | 2-3 (Barnes-Hut default) |
 | UMAP | Local + some global | Fast | `n_neighbors`, `min_dist` | Any |
 | Isomap | Geodesic distances | Moderate | `n_neighbors` | Any |
 | LLE | Local linear structure | Moderate | `n_neighbors` | Any |
@@ -26,7 +26,7 @@ from sklearn.manifold import TSNE
 tsne = TSNE(
     n_components=2,          # Almost always 2 (or 3)
     perplexity=30,           # Balance local/global structure (5-50)
-    n_iter=1000,             # Iterations (increase if not converged)
+    max_iter=1000,           # Iterations (increase if not converged)
     learning_rate="auto",    # Auto-scales with dataset size (default in 1.2+)
     init="pca",              # Initialize with PCA (more stable than random)
     random_state=42
@@ -35,7 +35,7 @@ X_embedded = tsne.fit_transform(X_scaled)
 
 # --- Check convergence ---
 print(f"KL divergence: {tsne.kl_divergence_:.4f}")
-# Lower is better; if decreasing with more iterations, increase n_iter
+# Lower is better; if decreasing with more iterations, increase max_iter
 ```
 
 ### Perplexity Sensitivity
@@ -54,13 +54,13 @@ for perp in [5, 15, 30, 50]:
 ### What t-SNE Cannot Tell You
 
 - Cluster sizes in the plot are not meaningful (algorithm equalizes apparent density)
-- Distances between clusters are not meaningful (only within-cluster neighborhoods are preserved)
+- Distances between well-separated clusters may not be meaningful (only within-cluster neighborhoods are preserved)
 - Apparent clusters in t-SNE can emerge from random noise at low perplexity
 - Different random seeds produce different layouts
 
 ## UMAP (via umap-learn)
 
-Uniform Manifold Approximation and Projection. Generally preferred over t-SNE: faster, preserves more global structure, supports arbitrary output dimensions.
+Uniform Manifold Approximation and Projection. Often preferred over t-SNE: faster, arguably preserves more global structure (McInnes, Healy & Melville, 2018), and supports arbitrary output dimensions.
 
 > `umap-learn` (0.5.11) is **pre-installed** in the DAAF container — no install
 > needed; just `import umap`. Runtime installs are blocked in any case (see
@@ -72,8 +72,8 @@ import umap
 # --- Fit UMAP ---
 reducer = umap.UMAP(
     n_components=2,          # Output dimensions (can be >3 for general reduction)
-    n_neighbors=15,          # Local neighborhood size (5-50)
-    min_dist=0.1,            # Minimum distance between points in embedding (0-1)
+    n_neighbors=15,          # Local neighborhood size (docs: 2-100; 5-50 common)
+    min_dist=0.1,            # Minimum distance between points in embedding (set relative to spread)
     metric="euclidean",      # Distance metric
     random_state=42
 )
@@ -87,16 +87,16 @@ X_new_embedded = reducer.transform(X_new_scaled)
 
 | Parameter | Effect of Increasing | Typical Range |
 |-----------|---------------------|---------------|
-| `n_neighbors` | More global structure preserved; less fine detail | 5-50 |
-| `min_dist` | Points spread out more; less tight clusters | 0.0-1.0 |
+| `n_neighbors` | More global structure preserved; less fine detail | 2-100 (umap-learn docs); 5-50 common in practice |
+| `min_dist` | Points spread out more; less tight clusters | Rule of thumb; set relative to `spread` |
 
 ### UMAP vs t-SNE
 
 | Feature | UMAP | t-SNE |
 |---------|------|-------|
 | Speed | Much faster (especially >10K rows) | Slow on large data |
-| Global structure | Better preserved | Poor |
-| Reproducibility | More stable across runs | Highly variable |
+| Global structure | Arguably better preserved, partly owing to spectral initialization (McInnes et al., 2018) | Not reliably preserved; distances between well-separated clusters may mean nothing (Wattenberg, Viégas & Johnson, 2016) |
+| Reproducibility | Differs between runs; more stable than t-SNE under subsampling (McInnes et al., 2018) | Layout can change across seeds; most examples keep the same global shape, but some data sets differ markedly (Wattenberg et al., 2016) |
 | Transform new data | Yes (`reducer.transform()`) | No (must re-fit) |
 | Output dimensions | Any number | Practically limited to 2-3 |
 | Implementation | `umap-learn` (separate library) | `sklearn.manifold.TSNE` |
