@@ -16,6 +16,7 @@ TIER                  <- 2            # 1, 2, or 3; T4 uses a different template
 SUPPRESSION_THRESHOLD <- 5            # minimum usable support AND categorical cell threshold
 MAX_CATEGORICAL_LEVELS <- 50
 RELATIONSHIP_SPEC     <- list()       # c(outcome, predictor) or categorical pairs
+# Nothing to declare: the profiler marks a check not applicable itself, with a fixed reason.
 # -----------------------------------------------------------------------------
 
 # --- Config -----------------------------------------------------------------
@@ -55,6 +56,17 @@ n_rows <- nrow(df)
 n_cols <- ncol(df)
 stopifnot(n_rows > 0, n_cols > 0, !anyDuplicated(names(df)))
 for (pair in RELATIONSHIP_SPEC) stopifnot(length(pair) == 2, all(pair %in% names(df)))
+# INTENT: refuse a pair that names one column twice, or a pair listed twice, before anything is written.
+# REASONING: one pair tabulated twice can be suppressed differently each time, and the two tables
+# combined recover cells that each one hides. Messages name pair positions (1-based), never values.
+spec_problems <- character(0)
+for (j in seq_along(RELATIONSHIP_SPEC)) {
+  p <- RELATIONSHIP_SPEC[[j]]
+  if (p[1] == p[2]) spec_problems <- c(spec_problems, paste0("pair ", j, " names one column twice"))
+  for (i in seq_len(j - 1)) if (all(RELATIONSHIP_SPEC[[i]] == p))
+    spec_problems <- c(spec_problems, paste0("pair ", j, " repeats pair ", i))
+}
+if (length(spec_problems) > 0) stop(paste0("Invalid relationship spec: ", paste(spec_problems, collapse = "; ")), call. = FALSE)
 cat(sprintf("Loaded %d rows x %d columns. No raw values printed.\n", n_rows, n_cols))
 
 # --- Profile ----------------------------------------------------------------
@@ -132,7 +144,10 @@ for (cname in names(df)) {
   } else if (role == "categorical") {
     # INTENT: preserve primary binning and complementary roll-in of rare levels.
     # REASONING: the __OTHER__ aggregate must not itself be a small visible cell.
-    tbl <- sort(table(x_nn), decreasing = TRUE)
+    # Order: count descending, ties by code-point label order (radix = C-locale byte order),
+    # so the level the roll-in below pools matches Python, not the session's locale collation.
+    tbl <- table(x_nn)
+    tbl <- tbl[order(-as.numeric(tbl), names(tbl), method = "radix")]
     # The literal reserved label joins the pool even when its own count is large.
     # This emits one unambiguous bucket; n_levels_binned includes that source level.
     keep <- tbl[tbl >= SUPPRESSION_THRESHOLD & names(tbl) != "__OTHER__"]
@@ -163,6 +178,15 @@ for (cname in names(df)) {
   }
   columns[[length(columns) + 1]] <- col
 }
+# INTENT: refuse a reversed repeat (c(b, a) after c(a, b)) now that roles are known; nothing is written yet.
+# REASONING: two numeric columns in both orders are two different regressions (y ~ x and x ~ y)
+# and release no cells, so only that case may stay; any other reversed pair repeats one table.
+for (j in seq_along(RELATIONSHIP_SPEC)) {
+  p <- RELATIONSHIP_SPEC[[j]]
+  for (i in seq_len(j - 1)) if (all(RELATIONSHIP_SPEC[[i]] == p[c(2, 1)]) && !all(col_roles[p] == "numeric"))
+    spec_problems <- c(spec_problems, paste0("pair ", j, " reverses pair ", i, "; only two numeric columns may be listed in both orders"))
+}
+if (length(spec_problems) > 0) stop(paste0("Invalid relationship spec: ", paste(spec_problems, collapse = "; ")), call. = FALSE)
 
 # --- Relationships ----------------------------------------------------------
 relationships <- NULL
@@ -236,10 +260,23 @@ if (TIER == 3) {
       ok <- is.finite(x) & is.finite(y)
       n <- sum(ok)
       entry <- list(outcome = pair[1], predictor = pair[2], n = n, available = FALSE)
+      # INTENT: release a regression only when each column's complement group -- records with
+      # that column finite but the other not -- is empty or holds at least k records.
+      # REASONING: the released mean of x describes the numeric block's n_x records; the fitted
+      # line pins the mean of x over the n pair-complete records (via the released mean of y,
+      # or via the reversed regression), so n_x * mean_x - n * that mean recovers the mean of
+      # the n_x - n records lacking y. A group of 1 to k-1 records would leak its mean.
+      # ASSUMES: the numeric block's n (finite values) is the population its mean describes.
+      # Order: the gates decidable from released counts (insufficient_support,
+      # ineligible_marginal, small_complement_group), then value-dependent zero_pair_variance.
+      complement <- numeric(0)
+      for (name in pair) for (col_entry in columns) if (identical(col_entry$name, name)) complement <- c(complement, col_entry$numeric$n - n)
       if (n < FULL_CUTOFF) {
         entry$reason <- "insufficient_support"
       } else if (!all(pair %in% numeric_cols)) {
         entry$reason <- "ineligible_marginal"
+      } else if (any(complement > 0 & complement < SUPPRESSION_THRESHOLD)) {
+        entry$reason <- "small_complement_group"
       } else if (stats::sd(x[ok]) == 0 || stats::sd(y[ok]) == 0) {
         entry$reason <- "zero_pair_variance"
       } else {
@@ -263,9 +300,38 @@ if (TIER == 3) {
       } else if (n < SUPPRESSION_THRESHOLD) {
         entry$reason <- "insufficient_support"
       } else {
-        tb <- table(df[[pair[1]]][ok], df[[pair[2]]][ok])
-        # Drop only zero margins from unused paired factor levels; retain all paired records.
-        tb <- tb[rowSums(tb) > 0, colSums(tb) > 0, drop = FALSE]
+        # INTENT: tabulate on each column's RELEASED categories, not its raw source levels.
+        # REASONING: if a level pooled into __OTHER__ kept a row of its own, a fully visible
+        # row could be subtracted from the released __OTHER__ count and isolate a rare
+        # level. So every pooled source level (a literal "__OTHER__" label included) maps to
+        # ONE pooled category. Order: kept labels in code-point order (radix), then the pooled
+        # category last; the factor levels fix that full set, so a released level with no
+        # pair-complete record is a row/column of structural zeros and rows and cols always
+        # equal the released level counts. Cramer's V above still uses the full table.
+        # ASSUMES: a column with a pooled source level always releases __OTHER__ (pair
+        # support >= k implies the pool reached k); the stopifnot below enforces it.
+        mapped <- list()
+        totals <- list()          # released level count per category, in category order
+        nonmissing <- numeric(0)  # each pair column's nonmissing_n (NA excluded)
+        for (cname in pair) {
+          released <- character(0)
+          released_counts <- numeric(0)
+          for (c in columns) if (identical(c$name, cname)) {
+            for (l in c$categorical$levels) {
+              released <- c(released, l$value)
+              released_counts <- c(released_counts, l$count)
+            }
+            nonmissing <- c(nonmissing, c$nonmissing_n)
+          }
+          kept <- sort(released[released != "__OTHER__"], method = "radix")
+          categories <- c(kept, if ("__OTHER__" %in% released) "__OTHER__")
+          totals[[length(totals) + 1]] <- released_counts[match(categories, released)]
+          values <- as.character(df[[cname]][ok])
+          values[!(values %in% kept)] <- "__OTHER__"
+          stopifnot(all(values %in% categories))
+          mapped[[length(mapped) + 1]] <- factor(values, levels = categories)
+        }
+        tb <- table(mapped[[1]], mapped[[2]])
         stopifnot(sum(tb) == n)
         m <- matrix(as.numeric(tb), nrow(tb), ncol(tb))
         supp <- m > 0 & m < SUPPRESSION_THRESHOLD
@@ -288,13 +354,202 @@ if (TIER == 3) {
           if (!changed) break
         }
         lone <- any(rowSums(supp) == 1) || any(colSums(supp) == 1)
-        if (lone) supp[,] <- TRUE
+        # INTENT: no hidden cell may be exactly recoverable from the row/column totals.
+        # REASONING: read hidden cells as edges of a graph whose vertices are the table's
+        # rows and columns. Differencing the totals pins a hidden cell exactly iff its edge
+        # is a BRIDGE (lies on no cycle); a lone hidden cell is only the degree-1 case, so
+        # two hidden cycles joined by one cell pass the rule above yet leak that cell.
+        # ASSUMES: every row/column total is known (worst case); interval bounds from
+        # non-negativity are out of scope. Python and R follow the same rule exactly.
+        n_r <- nrow(m)
+        n_c <- ncol(m)
+        # INTENT: no missing-partner count below k may be pinned by the released totals either.
+        # REASONING: a record whose partner column is missing is outside this table but inside
+        # the categorical blocks' counts. Extend the table by a "partner missing" column (this
+        # row's category, column variable missing) and a "partner missing" row (row variable
+        # missing, this column's category). Every total of the extended table is released (level
+        # counts, row_count - nonmissing_n), and so is the both-missing corner: corner =
+        # row_missing + col_missing - (row_count - n). So the extended table's hidden cells --
+        # hidden core cells plus every missing-partner cell -- are edges of the same row/column
+        # graph with one extra vertex for the missing row and one for the missing column; the
+        # corner is known, not an edge. A missing-partner line whose cells sum to zero is a line
+        # of known zeros and adds no edge, so with no missing value in either column nothing
+        # below changes. The BASELINE is what the released counts reveal with every core cell
+        # hidden: the core is then one connected block, so a missing-partner cell is a bridge
+        # only when its line has a single partner (the missing column of a one-row table, the
+        # missing row of a one-column table). Released n and missing counts already fix those
+        # cells, no cell suppression can reach them, and they are exempt. Every other
+        # missing-partner cell with 0 < count < k must not be a bridge.
+        # ASSUMES: missing means NA, exactly as nonmissing_n counts it.
+        ext_col <- totals[[1]] - rowSums(m)    # row category i, column variable missing
+        ext_row <- totals[[2]] - colSums(m)    # row variable missing, column category j
+        stopifnot(all(c(ext_col, ext_row) >= 0), sum(ext_col) == nonmissing[1] - n, sum(ext_row) == nonmissing[2] - n)
+        miss_row <- n_r + n_c + 1
+        miss_col <- n_r + n_c + 2
+        # Missing-partner edges (row-side vertex, column-side vertex, count, exempt), extended row-major order.
+        ext_u <- numeric(0)
+        ext_w <- numeric(0)
+        ext_count <- numeric(0)
+        ext_exempt <- logical(0)
+        if (sum(ext_col) > 0) {
+          ext_u <- c(ext_u, seq_len(n_r))
+          ext_w <- c(ext_w, rep(miss_col, n_r))
+          ext_count <- c(ext_count, ext_col)
+          ext_exempt <- c(ext_exempt, rep(n_r == 1, n_r))
+        }
+        if (sum(ext_row) > 0) {
+          ext_u <- c(ext_u, rep(miss_row, n_c))
+          ext_w <- c(ext_w, n_r + seq_len(n_c))
+          ext_count <- c(ext_count, ext_row)
+          ext_exempt <- c(ext_exempt, rep(n_c == 1, n_c))
+        }
+        # One deterministic loop serves both rules. Each step takes the FIRST violation: a
+        # core bridge in row-major order (hidden core cells, core totals treated as known),
+        # else the first non-exempt missing-partner cell with 0 < count < k that is a bridge of
+        # the extended graph, in extended row-major order (partner-missing column cells for
+        # rows 0..rows-1, then partner-missing row cells for columns 0..cols-1). It splits that
+        # graph without the bridge into the bridge row's side and the bridge column's side and
+        # hides the smallest visible NON-ZERO core cell joining the two sides (ties: first in
+        # row-major order), which puts the bridge on a cycle. Zeros are structural and stay
+        # visible. Each joining step puts the bridge it targets on a cycle.
+        # (A missing-partner cell with no joining cell gets the primary-cell treatment
+        # described below.) Every step hides at least one more cell, so rows x cols + rows +
+        # cols + 2 iterations always suffice; if a core bridge has no joining cell, a lone
+        # hidden cell remains, or the bound is reached, the whole table collapses, which
+        # leaves exactly the baseline. With no missing-partner edge the loop is the core
+        # rule alone, step for step.
+        bridge_free <- FALSE
+        for (step in seq_len(n_r * n_c + n_r + n_c + 2)) {
+          if (lone) break
+          bridge <- NULL
+          for (r in seq_len(n_r)) for (cc in seq_len(n_c)) {
+            if (!is.null(bridge) || !supp[r, cc]) next
+            # Component labels of the hidden-cell graph WITHOUT cell (r, cc); vertex
+            # i <= n_r is row i, vertex n_r + j is column j; a label is the smallest
+            # vertex of its component, so traversal order is moot.
+            label <- rep(0L, n_r + n_c)
+            for (start in seq_len(n_r + n_c)) {
+              if (label[start] > 0L) next
+              label[start] <- start
+              stack <- start
+              while (length(stack) > 0) {
+                vertex <- stack[length(stack)]
+                stack <- stack[-length(stack)]
+                if (vertex <= n_r) {
+                  nbrs <- n_r + which(supp[vertex, ])
+                  nbrs <- nbrs[!(vertex == r & nbrs == n_r + cc)]
+                } else {
+                  nbrs <- which(supp[, vertex - n_r])
+                  nbrs <- nbrs[!(nbrs == r & vertex - n_r == cc)]
+                }
+                for (w in nbrs) if (label[w] == 0L) {
+                  label[w] <- start
+                  stack <- c(stack, w)
+                }
+              }
+            }
+            if (label[r] != label[n_r + cc]) bridge <- list(u = r, w = n_r + cc, label = label, ext = FALSE)
+          }
+          if (is.null(bridge) && length(ext_u) > 0) {
+            # Extended graph: vertices 1..n_r rows, n_r+1..n_r+n_c columns, then the missing
+            # row and the missing column; edges are the hidden core cells, then the
+            # missing-partner cells. Each candidate is tested by dropping its own edge.
+            core_r <- row(supp)[supp]
+            core_c <- col(supp)[supp]
+            edge_u <- c(core_r, ext_u)
+            edge_w <- c(n_r + core_c, ext_w)
+            edge_id <- seq_along(edge_u)
+            adj_nbr <- split(c(edge_w, edge_u), factor(c(edge_u, edge_w), levels = seq_len(n_r + n_c + 2)))
+            adj_id <- split(c(edge_id, edge_id), factor(c(edge_u, edge_w), levels = seq_len(n_r + n_c + 2)))
+            for (x in seq_along(ext_u)) {
+              if (!is.null(bridge) || ext_exempt[x] || !(ext_count[x] > 0 && ext_count[x] < SUPPRESSION_THRESHOLD)) next
+              skip <- length(core_r) + x
+              label <- rep(0L, n_r + n_c + 2)
+              for (start in seq_len(n_r + n_c + 2)) {
+                if (label[start] > 0L) next
+                label[start] <- start
+                stack <- start
+                while (length(stack) > 0) {
+                  vertex <- stack[length(stack)]
+                  stack <- stack[-length(stack)]
+                  nbrs <- adj_nbr[[vertex]][adj_id[[vertex]] != skip]
+                  for (w in nbrs) if (label[w] == 0L) {
+                    label[w] <- start
+                    stack <- c(stack, w)
+                  }
+                }
+              }
+              if (label[ext_u[x]] != label[ext_w[x]]) bridge <- list(u = ext_u[x], w = ext_w[x], label = label, ext = TRUE)
+            }
+          }
+          if (is.null(bridge)) {
+            bridge_free <- TRUE
+            break
+          }
+          label <- bridge$label
+          side_row <- label[bridge$u]
+          side_col <- label[bridge$w]
+          best <- NULL
+          for (i in seq_len(n_r)) for (j in seq_len(n_c)) {
+            joins <- (label[i] == side_row && label[n_r + j] == side_col) || (label[i] == side_col && label[n_r + j] == side_row)
+            if (joins && !supp[i, j] && m[i, j] > 0 && (is.null(best) || m[i, j] < m[best[1], best[2]])) best <- c(i, j)
+          }
+          if (is.null(best) && bridge$ext) {
+            # INTENT: no joining cell for an exposed missing-partner cell (typically its row
+            # or column has no hidden core cell) -- treat it like a primary cell instead of
+            # collapsing: hide the smallest visible NON-ZERO core cell on its own row (partner-
+            # missing column) or column (partner-missing row), first in order on ties, then
+            # re-run complementary suppression on non-zero cells (a hidden cell alone in its
+            # row/column gets the smallest visible non-zero partner, first index on ties), up
+            # to ten passes. The loop then re-checks both rules. Zeros stay visible.
+            line_hidden <- FALSE
+            if (bridge$w == miss_col) {
+              vis <- which(!supp[bridge$u, ] & m[bridge$u, ] > 0)
+              if (length(vis)) {
+                supp[bridge$u, vis[which.min(m[bridge$u, vis])]] <- TRUE
+                line_hidden <- TRUE
+              }
+            } else {
+              vis <- which(!supp[, bridge$w - n_r] & m[, bridge$w - n_r] > 0)
+              if (length(vis)) {
+                supp[vis[which.min(m[vis, bridge$w - n_r])], bridge$w - n_r] <- TRUE
+                line_hidden <- TRUE
+              }
+            }
+            if (line_hidden) {
+              for (rerun in seq_len(10)) {
+                changed <- FALSE
+                for (r in seq_len(n_r)) {
+                  vis <- which(!supp[r, ] & m[r, ] > 0)
+                  if (sum(supp[r, ]) == 1 && length(vis)) {
+                    supp[r, vis[which.min(m[r, vis])]] <- TRUE
+                    changed <- TRUE
+                  }
+                }
+                for (cc in seq_len(n_c)) {
+                  vis <- which(!supp[, cc] & m[, cc] > 0)
+                  if (sum(supp[, cc]) == 1 && length(vis)) {
+                    supp[vis[which.min(m[vis, cc])], cc] <- TRUE
+                    changed <- TRUE
+                  }
+                }
+                if (!changed) break
+              }
+              lone <- any(rowSums(supp) == 1) || any(colSums(supp) == 1)
+              next
+            }
+          }
+          if (is.null(best)) break
+          supp[best[1], best[2]] <- TRUE
+        }
+        collapse <- lone || !bridge_free
+        if (collapse) supp[,] <- TRUE
         cells <- as.list(as.numeric(t(m)))    # JSON row-major, not R's column-major order
         hidden <- as.logical(t(supp))
         for (i in which(hidden)) cells[i] <- list(NULL)  # retain null list elements
         entry <- c(entry, list(rows = nrow(m), cols = ncol(m), cells = cells, cells_suppressed = sum(supp)))
         entry$available <- TRUE
-        if (lone) entry$collapsed <- TRUE
+        if (collapse) entry$collapsed <- TRUE
       }
       relationships$crosstabs[[length(relationships$crosstabs) + 1]] <- entry
     }
@@ -318,239 +573,632 @@ if (!is.null(relationships)) report$relationships <- relationships
 required_checks <- c("column_shapes_and_support", "percentiles_monotone", "category_counts_le_rowcount",
                      "missing_rate_in_unit_interval", "no_subthreshold_cells_emitted",
                      "correlation_matrix_symmetric", "relationship_support_and_shape")
+# INTENT: no researcher declarations. A check is NOT_APPLICABLE only where the candidate has
+# no target for it, and its reason is one of the fixed forms below -- never free text, which
+# would cross the boundary. The disclosure sweep has no such form: it always runs.
+# Wire status enum: PASS | FAIL | NOT_APPLICABLE | NOT_VERIFIED. The stdout token for
+# NOT_APPLICABLE is [SKIPPED]; a skipped check is never silent.
+status_tokens <- list(PASS = "[PASS]", FAIL = "[FAIL]", NOT_APPLICABLE = "[SKIPPED]", NOT_VERIFIED = "[NOT VERIFIED]")
+counter_keys <- list(PASS = "passed", FAIL = "failed", NOT_APPLICABLE = "skipped", NOT_VERIFIED = "not_verified")
 checks <- list()
+check_details <- list()
 for (check_name in required_checks) {
+  status <- "PASS"
   applicable <- TRUE
   reason <- "candidate_fields_checked"
+  detail <- ""
   result <- try({
-    cols <- report$columns
-    rows <- report$dataset$row_count
-    tier <- report$settings$tier
-    threshold <- report$settings$suppression_threshold
+    cols <- report[["columns"]]
+    rows <- report[["dataset"]][["row_count"]]
+    tier <- report[["settings"]][["tier"]]
+    threshold <- report[["settings"]][["suppression_threshold"]]
     cutoff <- max(threshold, 10)
     col_names <- character(0)
-    for (c in cols) col_names <- c(col_names, c$name)
-    rels <- report$relationships
+    for (c in cols) col_names <- c(col_names, c[["name"]])
+    rels <- report[["relationships"]]
     if (check_name == "column_shapes_and_support") {
-      stopifnot(identical(report$report_version, "2.0"), tier %in% c(1, 2, 3),
+      stopifnot(identical(report[["report_version"]], "2.0"), tier %in% c(1, 2, 3),
                 length(rows) == 1, is.finite(rows), rows > 0, rows == floor(rows),
-                length(cols) == report$dataset$column_count, !anyDuplicated(col_names),
+                length(cols) == report[["dataset"]][["column_count"]], !anyDuplicated(col_names),
                 length(threshold) == 1, is.finite(threshold), threshold >= 1, threshold == floor(threshold),
-                report$settings$full_summary_cutoff == cutoff, identical(report$settings$support_unit, "record"),
+                report[["settings"]][["full_summary_cutoff"]] == cutoff,
+                identical(report[["settings"]][["support_unit"]], "record"),
                 !is.null(rels) == (tier == 3))
       stopifnot(setequal(names(report), c("report_version", "dataset_name", "generated_utc", "generator", "settings", "dataset", "columns", if (tier == 3) "relationships")),
-                setequal(names(report$dataset), c("row_count", "column_count")),
-                setequal(names(report$settings), c("tier", "suppression_threshold", "max_categorical_levels", "relationship_spec", "support_unit", "full_summary_cutoff")))
-      for (c in cols) {
-        stopifnot(c$dtype %in% c("integer", "double", "string"))
-        if (tier == 1) { stopifnot(setequal(names(c), c("name", "dtype"))); next }
-        nn <- c$nonmissing_n
-        stopifnot(length(nn) == 1, is.numeric(nn), is.finite(nn), nn == floor(nn), nn >= 0, nn <= rows,
-                  length(c$n_distinct) == 1, is.finite(c$n_distinct), c$n_distinct == floor(c$n_distinct),
-                  c$n_distinct >= 0, c$n_distinct <= nn, length(c$uniqueness_ratio) == 1,
-                  is.finite(c$uniqueness_ratio), c$uniqueness_ratio >= 0, c$uniqueness_ratio <= 1)
-        key <- switch(c$role, numeric = "numeric", categorical = "categorical", identifier = "string_structure", string = "string_structure")
-        stopifnot(length(key) == 1, setequal(names(c), c("name", "dtype", "role", "missing_rate", "nonmissing_n", "n_distinct", "uniqueness_ratio", "is_identifier", key)))
-        b <- c[[key]]
-        stopifnot(is.list(b), !anyDuplicated(names(b)))
-        n <- b$n
-        stopifnot(length(n) == 1, is.numeric(n), is.finite(n), n == floor(n), n >= 0, n <= nn)
-        if (key != "numeric") stopifnot(n == nn)
-        if (key == "numeric") {
-          if (isTRUE(b$all_missing)) {
-            stopifnot(setequal(names(b), c("n", "all_missing")), n == 0, nn == 0)
-          } else if (isTRUE(b$withheld)) {
-            stopifnot(setequal(names(b), c("n", "withheld", "reason")), nn > 0, n < threshold,
-                      identical(b$reason, if (n == 0) "no_finite_values" else "insufficient_support"))
-          } else if (isTRUE(b$constant)) {
-            stopifnot(setequal(names(b), c("n", "constant", "value", "mean", "sd")), n >= threshold,
-                      typeof(b$value) %in% c("integer", "double"), !is.object(b$value), is.null(dim(b$value)),
-                      length(b$value) == 1, is.finite(b$value), identical(b$mean, b$value))
-            if (n > 1) stopifnot(is.numeric(b$sd), !is.object(b$sd), is.null(dim(b$sd)), length(b$sd) == 1, b$sd == 0) else stopifnot(is.null(b$sd))
-          } else if (isTRUE(b$small_n)) {
-            stopifnot(setequal(names(b), c("n", "small_n", "percentiles")), n >= threshold, n < cutoff,
-                      setequal(names(b$percentiles), c("p25", "p50", "p75")))
-          } else {
-            stopifnot(setequal(names(b), c("n", "mean", "sd", "percentiles")), n >= cutoff,
-                      is.numeric(b$mean), !is.object(b$mean), is.null(dim(b$mean)),
-                      is.numeric(b$sd), !is.object(b$sd), is.null(dim(b$sd)),
-                      length(b$mean) == 1, length(b$sd) == 1, is.finite(b$mean), is.finite(b$sd), b$sd >= 0,
-                      setequal(names(b$percentiles), PROB_NAMES))
+                setequal(names(report[["dataset"]]), c("row_count", "column_count")),
+                setequal(names(report[["settings"]]), c("tier", "suppression_threshold", "max_categorical_levels", "relationship_spec", "support_unit", "full_summary_cutoff")))
+      shape_column <- NA_character_
+      shape_result <- try({
+        for (c in cols) {
+          shape_column <- c[["name"]]
+          stopifnot(c[["dtype"]] %in% c("integer", "double", "string"))
+          if (tier == 1) { stopifnot(setequal(names(c), c("name", "dtype"))); next }
+          nn <- c[["nonmissing_n"]]
+          stopifnot(length(nn) == 1, is.numeric(nn), is.finite(nn), nn == floor(nn), nn >= 0, nn <= rows,
+                    length(c[["n_distinct"]]) == 1, is.finite(c[["n_distinct"]]), c[["n_distinct"]] == floor(c[["n_distinct"]]),
+                    c[["n_distinct"]] >= 0, c[["n_distinct"]] <= nn, length(c[["uniqueness_ratio"]]) == 1,
+                    is.finite(c[["uniqueness_ratio"]]), c[["uniqueness_ratio"]] >= 0, c[["uniqueness_ratio"]] <= 1)
+          key <- switch(c[["role"]], numeric = "numeric", categorical = "categorical", identifier = "string_structure", string = "string_structure")
+          stopifnot(length(key) == 1, setequal(names(c), c("name", "dtype", "role", "missing_rate", "nonmissing_n", "n_distinct", "uniqueness_ratio", "is_identifier", key)))
+          b <- c[[key]]
+          stopifnot(is.list(b), !anyDuplicated(names(b)))
+          n <- b[["n"]]
+          stopifnot(length(n) == 1, is.numeric(n), is.finite(n), n == floor(n), n >= 0, n <= nn)
+          if (key != "numeric") stopifnot(n == nn)
+          if (key == "numeric") {
+            if (isTRUE(b[["all_missing"]])) {
+              stopifnot(setequal(names(b), c("n", "all_missing")), n == 0, nn == 0)
+            } else if (isTRUE(b[["withheld"]])) {
+              stopifnot(setequal(names(b), c("n", "withheld", "reason")), nn > 0, n < threshold,
+                        identical(b[["reason"]], if (n == 0) "no_finite_values" else "insufficient_support"))
+            } else if (isTRUE(b[["constant"]])) {
+              stopifnot(setequal(names(b), c("n", "constant", "value", "mean", "sd")), n >= threshold,
+                        typeof(b[["value"]]) %in% c("integer", "double"), !is.object(b[["value"]]), is.null(dim(b[["value"]])),
+                        length(b[["value"]]) == 1, is.finite(b[["value"]]), identical(b[["mean"]], b[["value"]]))
+              if (n > 1) stopifnot(is.numeric(b[["sd"]]), !is.object(b[["sd"]]), is.null(dim(b[["sd"]])), length(b[["sd"]]) == 1, b[["sd"]] == 0) else stopifnot(is.null(b[["sd"]]))
+            } else if (isTRUE(b[["small_n"]])) {
+              stopifnot(setequal(names(b), c("n", "small_n", "percentiles")), n >= threshold, n < cutoff,
+                        setequal(names(b[["percentiles"]]), c("p25", "p50", "p75")))
+            } else {
+              stopifnot(setequal(names(b), c("n", "mean", "sd", "percentiles")), n >= cutoff,
+                        is.numeric(b[["mean"]]), !is.object(b[["mean"]]), is.null(dim(b[["mean"]])),
+                        is.numeric(b[["sd"]]), !is.object(b[["sd"]]), is.null(dim(b[["sd"]])),
+                        length(b[["mean"]]) == 1, length(b[["sd"]]) == 1, is.finite(b[["mean"]]), is.finite(b[["sd"]]), b[["sd"]] >= 0,
+                        setequal(names(b[["percentiles"]]), PROB_NAMES))
+            }
+          } else if (key == "string_structure") {
+            if (isTRUE(b[["withheld"]])) {
+              stopifnot(setequal(names(b), c("n", "withheld", "reason")), nn < threshold,
+                        identical(b[["reason"]], if (nn == 0) "all_missing" else "insufficient_support"))
+            } else {
+              stopifnot(setequal(names(b), c("n", "length_min", "length_mean", "length_max", "pattern_flags")), nn >= threshold)
+              for (field in c("length_min", "length_mean", "length_max")) {
+                v <- b[[field]]
+                stopifnot(typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), length(v) == 1, !is.na(v), is.finite(v))
+              }
+              lengths <- unlist(b[c("length_min", "length_mean", "length_max")])
+              stopifnot(lengths[1] >= 0, all(diff(lengths) >= 0),
+                        is.list(b[["pattern_flags"]]), !anyDuplicated(names(b[["pattern_flags"]])),
+                        setequal(names(b[["pattern_flags"]]), c("email", "phone", "date", "id", "free_text")))
+              for (v in b[["pattern_flags"]]) stopifnot(is.logical(v), length(v) == 1, !is.na(v))
+            }
           }
-        } else if (key == "string_structure") {
-          if (isTRUE(b$withheld)) {
-            stopifnot(setequal(names(b), c("n", "withheld", "reason")), nn < threshold,
-                      identical(b$reason, if (nn == 0) "all_missing" else "insufficient_support"))
-          } else {
-            stopifnot(setequal(names(b), c("n", "length_min", "length_mean", "length_max", "pattern_flags")), nn >= threshold)
-            for (field in c("length_min", "length_mean", "length_max")) {
+        }
+      }, silent = TRUE)
+      # INTENT: a shape/support failure must name the offending COLUMN, not just a condition class.
+      if (inherits(shape_result, "try-error"))
+        stop(paste0("column '", shape_column, "': ", conditionMessage(attr(shape_result, "condition"))), call. = FALSE)
+      detail <- paste0(length(cols), " columns checked for shape and support at tier ", tier)
+    } else if (check_name == "percentiles_monotone") {
+      # INTENT: enumerate the DECLARED numeric columns, then the grids they release.
+      # REASONING: an absent grid on a column that declares role numeric is missing evidence
+      # (NOT VERIFIED); a report releasing no grids at all is a structural fact with its own counts.
+      numeric_columns <- list()
+      for (c in cols) if (identical(c[["role"]], "numeric")) numeric_columns[[length(numeric_columns) + 1]] <- c
+      grids <- list()
+      grid_names <- character(0)
+      grid_expected <- list()
+      for (c in numeric_columns) {
+        b <- c[["numeric"]]
+        if (is.null(b) || !is.list(b)) {
+          status <- "NOT_VERIFIED"
+          reason <- paste0("column '", c[["name"]], "' declares role numeric with no numeric block")
+          break
+        }
+        if ("percentiles" %in% names(b)) {
+          grids[[length(grids) + 1]] <- b[["percentiles"]]
+          grid_names <- c(grid_names, c[["name"]])
+          grid_expected[[length(grid_expected) + 1]] <- if (isTRUE(b[["small_n"]])) c("p25", "p50", "p75") else PROB_NAMES
+        }
+      }
+      if (identical(status, "PASS") && length(numeric_columns) == 0) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- paste0("report declares 0 numeric columns at tier ", tier)
+      } else if (identical(status, "PASS") && length(grids) == 0) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- paste0("0 of ", length(numeric_columns), " numeric columns release a percentile grid")
+      } else if (identical(status, "PASS")) {
+        n_values <- 0L
+        for (i in seq_along(grids)) {
+          expected <- grid_expected[[i]]
+          grid_result <- try({
+            b <- grids[[i]]
+            # INTENT: validate EACH outgoing scalar, not a compensating unlist() length.
+            # REASONING: NULL plus a two-element neighbor can masquerade as three quantiles.
+            stopifnot(is.list(b), !anyDuplicated(names(b)), setequal(names(b), expected))
+            for (field in expected) {
               v <- b[[field]]
               stopifnot(typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), length(v) == 1, !is.na(v), is.finite(v))
             }
-            lengths <- unlist(b[c("length_min", "length_mean", "length_max")])
-            stopifnot(lengths[1] >= 0, all(diff(lengths) >= 0),
-                      is.list(b$pattern_flags), !anyDuplicated(names(b$pattern_flags)),
-                      setequal(names(b$pattern_flags), c("email", "phone", "date", "id", "free_text")))
-            for (v in b$pattern_flags) stopifnot(is.logical(v), length(v) == 1, !is.na(v))
+            values <- unlist(b[expected], use.names = FALSE)
+            stopifnot("percentile grid is not non-decreasing" = all(diff(values) >= 0))
+          }, silent = TRUE)
+          if (inherits(grid_result, "try-error"))
+            stop(paste0("column '", grid_names[i], "': ", conditionMessage(attr(grid_result, "condition"))), call. = FALSE)
+          n_values <- n_values + length(expected)
+        }
+        detail <- paste0(length(grids), " columns x ", n_values, " percentiles checked, all finite and non-decreasing")
+      }
+    } else if (check_name == "category_counts_le_rowcount") {
+      categorical_columns <- list()
+      for (c in cols) if (identical(c[["role"]], "categorical")) categorical_columns[[length(categorical_columns) + 1]] <- c
+      blocks <- list()
+      block_names <- character(0)
+      for (c in categorical_columns) {
+        b <- c[["categorical"]]
+        if (is.null(b) || !is.list(b)) {
+          status <- "NOT_VERIFIED"
+          reason <- paste0("column '", c[["name"]], "' declares role categorical with no categorical block")
+          break
+        }
+        blocks[[length(blocks) + 1]] <- b
+        block_names <- c(block_names, c[["name"]])
+      }
+      if (identical(status, "PASS") && length(blocks) == 0) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- paste0("report declares 0 categorical columns at tier ", tier)
+      } else if (identical(status, "PASS")) {
+        n_levels <- 0L
+        for (i in seq_along(blocks)) {
+          block_result <- try({
+            b <- blocks[[i]]
+            stopifnot(setequal(names(b), c("n", "n_levels_binned", "levels")),
+                      length(b[["n_levels_binned"]]) == 1, is.finite(b[["n_levels_binned"]]), b[["n_levels_binned"]] >= 0,
+                      b[["n_levels_binned"]] == floor(b[["n_levels_binned"]]))
+            counts <- numeric(0)
+            labels <- character(0)
+            for (l in b[["levels"]]) {
+              stopifnot(!anyDuplicated(names(l)), setequal(names(l), c("value", "count")),
+                        is.character(l[["value"]]), length(l[["value"]]) == 1, !is.na(l[["value"]]),
+                        length(l[["count"]]) == 1, is.numeric(l[["count"]]), is.finite(l[["count"]]),
+                        l[["count"]] == floor(l[["count"]]), l[["count"]] >= threshold)
+              counts <- c(counts, l[["count"]])
+              labels <- c(labels, l[["value"]])
+            }
+            stopifnot(!anyDuplicated(labels), sum(counts) <= b[["n"]], b[["n"]] <= rows,
+                      sum(counts) == if (b[["n"]] >= threshold) b[["n"]] else 0)
+            n_levels <- n_levels + length(labels)
+          }, silent = TRUE)
+          if (inherits(block_result, "try-error"))
+            stop(paste0("column '", block_names[i], "': ", conditionMessage(attr(block_result, "condition"))), call. = FALSE)
+        }
+        detail <- paste0(length(blocks), " columns x ", n_levels, " released levels checked against row count ", rows)
+      }
+    } else if (check_name == "missing_rate_in_unit_interval") {
+      if (tier < 2) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- "tier 1 releases name and dtype only"
+      } else {
+        for (c in cols) {
+          rate <- c[["missing_rate"]]
+          rate_ok <- length(rate) == 1 && is.numeric(rate) && !is.na(rate) && is.finite(rate) &&
+            rate >= 0 && rate <= 1 && abs(rate - (rows - c[["nonmissing_n"]]) / rows) <= .00000051
+          if (!isTRUE(rate_ok))
+            stop(paste0("column '", c[["name"]], "': missing_rate is absent, non-numeric, NA, outside [0,1], or disagrees with nonmissing_n"), call. = FALSE)
+        }
+        detail <- paste0(length(cols), " columns checked, every rate in [0, 1] and consistent with nonmissing_n")
+      }
+    } else if (check_name == "no_subthreshold_cells_emitted") {
+      # INTENT: scan COMPLETENESS is itself the check -- a block we failed to reach is a FAIL.
+      # REASONING: an empty sweep list is indistinguishable from a clean sweep, so the blocks
+      # scanned are counted and reconciled against the blocks the report declares.
+      # ASSUMES: evidence stays aggregate; no cell value, minimum, or per-level count is printed.
+      declared_blocks <- 0L
+      scanned_blocks <- 0L
+      visible_cells <- 0L
+      hidden_checked <- 0L
+      ext_checked <- 0L
+      unreachable <- character(0)
+      for (c in cols) {
+        if (!identical(c[["role"]], "categorical")) next
+        declared_blocks <- declared_blocks + 1L
+        b <- c[["categorical"]]
+        if (is.null(b) || !is.list(b) || !("levels" %in% names(b))) {
+          unreachable <- c(unreachable, paste0("column:", c[["name"]]))
+          next
+        }
+        scanned_blocks <- scanned_blocks + 1L
+        for (l in b[["levels"]]) {
+          v <- l[["count"]]
+          cell_ok <- length(v) == 1 && is.numeric(v) && !is.na(v) && is.finite(v) &&
+            v == floor(v) && (v == 0 || v >= threshold)
+          if (!isTRUE(cell_ok))
+            stop(paste0("column '", c[["name"]], "': released level below threshold"), call. = FALSE)
+          visible_cells <- visible_cells + 1L
+        }
+      }
+      if (tier == 3 && (is.null(rels) || !("crosstabs" %in% names(rels)))) {
+        status <- "NOT_VERIFIED"
+        reason <- "crosstab collection absent at tier 3; the sweep could not be completed"
+      } else if (!is.null(rels) && "crosstabs" %in% names(rels)) {
+        for (b in rels[["crosstabs"]]) {
+          declared_blocks <- declared_blocks + 1L
+          pair_label <- paste(b[["pair"]], collapse = " x ")
+          if (!isTRUE(b[["available"]])) {
+            # An unavailable block must carry no cells at all; cells here would be a release.
+            if ("cells" %in% names(b))
+              stop(paste0("crosstab ", pair_label, ": unavailable block carries cells"), call. = FALSE)
+            scanned_blocks <- scanned_blocks + 1L
+            next
+          }
+          if (!("cells" %in% names(b))) {
+            unreachable <- c(unreachable, paste0("crosstab:", pair_label))
+            next
+          }
+          scanned_blocks <- scanned_blocks + 1L
+          hidden_positions <- integer(0)
+          for (position in seq_along(b[["cells"]])) {
+            v <- b[["cells"]][[position]]
+            if (is.null(v)) {
+              hidden_positions <- c(hidden_positions, position)
+              next
+            }
+            cell_ok <- length(v) == 1 && is.numeric(v) && !is.na(v) && is.finite(v) &&
+              v == floor(v) && (v == 0 || v >= threshold)
+            if (!isTRUE(cell_ok))
+              stop(paste0("crosstab ", pair_label, " cell position ", position, ": below threshold"), call. = FALSE)
+            visible_cells <- visible_cells + 1L
+          }
+          # INTENT: a hidden cell the released totals pin exactly is an emitted cell.
+          # REASONING: with hidden cells as edges of the row/column graph, differencing
+          # the totals recovers exactly the bridge edges (cells on no cycle). Each hidden
+          # cell is tested by removing it and asking whether its row still reaches its
+          # column through other hidden cells.
+          # ASSUMES: every margin is known (worst case); a collapsed entry whose cells are
+          # all null releases no visible cell and is exempt. A FAIL names positions only
+          # (0-based row/column indices, as in the JSON).
+          n_r <- b[["rows"]]
+          n_c <- b[["cols"]]
+          shape_ok <- length(n_r) == 1 && length(n_c) == 1 && is.numeric(n_r) && is.numeric(n_c) &&
+            is.finite(n_r) && is.finite(n_c) && n_r == floor(n_r) && n_c == floor(n_c) &&
+            n_r > 0 && n_c > 0 && n_r * n_c == length(b[["cells"]])
+          if (!isTRUE(shape_ok))
+            stop(paste0("crosstab ", pair_label, ": rows x cols does not match the released cells"), call. = FALSE)
+          if (length(hidden_positions) > 0 && !(isTRUE(b[["collapsed"]]) && length(hidden_positions) == n_r * n_c)) {
+            hidden_grid <- matrix(FALSE, n_r, n_c)
+            for (position in hidden_positions) hidden_grid[(position - 1) %/% n_c + 1, (position - 1) %% n_c + 1] <- TRUE
+            for (position in hidden_positions) {
+              hr <- (position - 1) %/% n_c + 1
+              hc <- (position - 1) %% n_c + 1
+              label <- rep(0L, n_r + n_c)
+              for (start in seq_len(n_r + n_c)) {
+                if (label[start] > 0L) next
+                label[start] <- start
+                stack <- start
+                while (length(stack) > 0) {
+                  vertex <- stack[length(stack)]
+                  stack <- stack[-length(stack)]
+                  if (vertex <= n_r) {
+                    nbrs <- n_r + which(hidden_grid[vertex, ])
+                    nbrs <- nbrs[!(vertex == hr & nbrs == n_r + hc)]
+                  } else {
+                    nbrs <- which(hidden_grid[, vertex - n_r])
+                    nbrs <- nbrs[!(nbrs == hr & vertex - n_r == hc)]
+                  }
+                  for (w in nbrs) if (label[w] == 0L) {
+                    label[w] <- start
+                    stack <- c(stack, w)
+                  }
+                }
+              }
+              if (label[hr] != label[n_r + hc])
+                stop(paste0("crosstab ", pair_label, ": hidden cell at row index ", hr - 1, ", column index ", hc - 1,
+                            " is recoverable from the released totals"), call. = FALSE)
+              hidden_checked <- hidden_checked + 1L
+            }
+          }
+          # INTENT: no missing-partner count below threshold is pinned by the released totals,
+          # beyond the baseline the released counts fix on their own.
+          # REASONING: rebuilt from released facts only -- level counts, nonmissing_n,
+          # row_count, entry n and visible cells -- as an analyst would. The extended table adds
+          # a partner-missing column and row; the both-missing corner is known from released
+          # counts. A missing-partner cell that is a bridge of the extended graph is the only
+          # hidden cell crossing the cut around its side, so its count is the totals of the rows
+          # on that side, minus the totals of the columns on that side, minus the known cells
+          # leaving the side, plus the known cells entering it. Exempt (baseline): the missing
+          # column of a one-row table and the missing row of a one-column table.
+          # ASSUMES: a FAIL names the row or column index only (0-based, as in the JSON), never a
+          # count. Without the pair columns' released categories the sweep cannot run: a FAIL.
+          pair_cols <- list()
+          for (name in b[["pair"]]) pair_cols[[length(pair_cols) + 1]] <- cols[[match(name, col_names)]]
+          nonmissing <- c(pair_cols[[1]][["nonmissing_n"]], pair_cols[[2]][["nonmissing_n"]])
+          residual <- nonmissing - b[["n"]]
+          if (!isTRUE(all(residual >= 0)))
+            stop(paste0("crosstab ", pair_label, ": entry n exceeds a pair column's nonmissing_n"), call. = FALSE)
+          if (any(residual > 0)) {
+            totals <- list()
+            for (pc in pair_cols) {
+              level_values <- character(0)
+              level_counts <- numeric(0)
+              for (l in pc[["categorical"]][["levels"]]) {
+                level_values <- c(level_values, l[["value"]])
+                level_counts <- c(level_counts, l[["count"]])
+              }
+              kept <- sort(level_values[level_values != "__OTHER__"], method = "radix")
+              totals[[length(totals) + 1]] <- level_counts[match(c(kept, if ("__OTHER__" %in% level_values) "__OTHER__"), level_values)]
+            }
+            if (!isTRUE(length(totals[[1]]) == n_r && length(totals[[2]]) == n_c))
+              stop(paste0("crosstab ", pair_label, ": rows x cols differ from the released categories; the missing-partner sweep could not run"), call. = FALSE)
+            miss_row <- n_r + n_c + 1
+            miss_col <- n_r + n_c + 2
+            row_vertices <- c(seq_len(n_r), miss_row)
+            col_vertices <- c(n_r + seq_len(n_c), miss_col)
+            row_total <- c(totals[[1]], rows - nonmissing[1])
+            col_total <- c(totals[[2]], rows - nonmissing[2])
+            corner <- (rows - nonmissing[1]) + (rows - nonmissing[2]) - (rows - b[["n"]])
+            visible <- setdiff(seq_along(b[["cells"]]), hidden_positions)
+            known_r <- c((visible - 1) %/% n_c + 1, miss_row)
+            known_c <- c(n_r + (visible - 1) %% n_c + 1, miss_col)
+            known_v <- corner
+            if (length(visible) > 0) known_v <- c(unlist(b[["cells"]][visible]), corner)
+            ext_u <- numeric(0)
+            ext_w <- numeric(0)
+            ext_exempt <- logical(0)
+            if (residual[1] > 0) {
+              ext_u <- c(ext_u, seq_len(n_r))
+              ext_w <- c(ext_w, rep(miss_col, n_r))
+              ext_exempt <- c(ext_exempt, rep(n_r == 1, n_r))
+            }
+            if (residual[2] > 0) {
+              ext_u <- c(ext_u, rep(miss_row, n_c))
+              ext_w <- c(ext_w, n_r + seq_len(n_c))
+              ext_exempt <- c(ext_exempt, rep(n_c == 1, n_c))
+            }
+            edge_u <- c((hidden_positions - 1) %/% n_c + 1, ext_u)
+            edge_w <- c(n_r + (hidden_positions - 1) %% n_c + 1, ext_w)
+            edge_id <- seq_along(edge_u)
+            adj_nbr <- split(c(edge_w, edge_u), factor(c(edge_u, edge_w), levels = seq_len(n_r + n_c + 2)))
+            adj_id <- split(c(edge_id, edge_id), factor(c(edge_u, edge_w), levels = seq_len(n_r + n_c + 2)))
+            for (x in seq_along(ext_u)) {
+              if (ext_exempt[x]) next
+              skip <- length(hidden_positions) + x
+              label <- rep(0L, n_r + n_c + 2)
+              for (start in seq_len(n_r + n_c + 2)) {
+                if (label[start] > 0L) next
+                label[start] <- start
+                stack <- start
+                while (length(stack) > 0) {
+                  vertex <- stack[length(stack)]
+                  stack <- stack[-length(stack)]
+                  nbrs <- adj_nbr[[vertex]][adj_id[[vertex]] != skip]
+                  for (w in nbrs) if (label[w] == 0L) {
+                    label[w] <- start
+                    stack <- c(stack, w)
+                  }
+                }
+              }
+              ext_checked <- ext_checked + 1L
+              if (label[ext_u[x]] == label[ext_w[x]]) next
+              in_side <- label == label[ext_u[x]]
+              value <- sum(row_total[in_side[row_vertices]]) - sum(col_total[in_side[col_vertices]]) -
+                sum(known_v[in_side[known_r] & !in_side[known_c]]) + sum(known_v[in_side[known_c] & !in_side[known_r]])
+              if (value > 0 && value < threshold)
+                stop(paste0("crosstab ", pair_label, ": missing-partner cell at ",
+                            if (ext_w[x] == miss_col) paste0("row index ", ext_u[x] - 1) else paste0("column index ", ext_w[x] - n_r - 1),
+                            " is recoverable from the released totals"), call. = FALSE)
+            }
           }
         }
       }
-    } else if (check_name == "percentiles_monotone") {
-      applicable <- FALSE
-      for (c in cols) if (!is.null(c$numeric$percentiles)) {
-        applicable <- TRUE
-        b <- c$numeric$percentiles
-        expected <- if (isTRUE(c$numeric$small_n)) c("p25", "p50", "p75") else PROB_NAMES
-        # INTENT: validate EACH outgoing scalar, not a compensating unlist() length.
-        # REASONING: NULL plus a two-element neighbor can masquerade as three quantiles.
-        stopifnot(is.list(b), !anyDuplicated(names(b)), setequal(names(b), expected))
-        for (field in expected) {
-          v <- b[[field]]
-          stopifnot(typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), length(v) == 1, !is.na(v), is.finite(v))
-        }
-        values <- unlist(b[expected], use.names = FALSE)
-        stopifnot(all(diff(values) >= 0))
+      if (identical(status, "PASS") && length(unreachable) > 0) {
+        status <- "FAIL"
+        reason <- paste0("scanned ", scanned_blocks, " of ", declared_blocks,
+                         " declared blocks; unreachable: ", paste(unreachable, collapse = ", "))
+      } else if (identical(status, "PASS")) {
+        detail <- paste0(scanned_blocks, " of ", declared_blocks, " declared blocks scanned, ",
+                         visible_cells, " visible cells, all >= threshold ", threshold, "; ",
+                         hidden_checked, " hidden cross-tab cells checked, none recoverable from the row and column totals; ",
+                         ext_checked, " missing-partner cells checked, none below threshold recoverable from the released totals")
       }
-    } else if (check_name == "category_counts_le_rowcount") {
-      applicable <- FALSE
-      for (c in cols) if (!is.null(c$categorical)) {
-        applicable <- TRUE
-        b <- c$categorical
-        stopifnot(setequal(names(b), c("n", "n_levels_binned", "levels")),
-                  length(b$n_levels_binned) == 1, is.finite(b$n_levels_binned), b$n_levels_binned >= 0,
-                  b$n_levels_binned == floor(b$n_levels_binned))
-        counts <- numeric(0)
-        labels <- character(0)
-        for (l in b$levels) {
-          stopifnot(!anyDuplicated(names(l)), setequal(names(l), c("value", "count")),
-                    is.character(l$value), length(l$value) == 1, !is.na(l$value),
-                    length(l$count) == 1, is.numeric(l$count), is.finite(l$count), l$count == floor(l$count), l$count >= threshold)
-          counts <- c(counts, l$count)
-          labels <- c(labels, l$value)
-        }
-        stopifnot(!anyDuplicated(labels), sum(counts) <= b$n, b$n <= rows,
-                  sum(counts) == if (b$n >= threshold) b$n else 0)
-      }
-    } else if (check_name == "missing_rate_in_unit_interval") {
-      applicable <- tier >= 2
-      if (applicable) for (c in cols) {
-        rate <- c$missing_rate
-        stopifnot(length(rate) == 1, is.numeric(rate), is.finite(rate), rate >= 0, rate <= 1,
-                  abs(rate - (rows - c$nonmissing_n) / rows) <= .00000051)
-      }
-    } else if (check_name == "no_subthreshold_cells_emitted") {
-      counts <- numeric(0)
-      for (c in cols) for (l in c$categorical$levels) counts <- c(counts, l$count)
-      if (!is.null(rels)) for (b in rels$crosstabs) for (v in b$cells) if (!is.null(v)) counts <- c(counts, v)
-      applicable <- length(counts) > 0
-      stopifnot(is.numeric(counts), all(is.finite(counts)), all(counts == floor(counts)), all(counts == 0 | counts >= threshold))
     } else if (check_name == "correlation_matrix_symmetric") {
-      applicable <- FALSE
-      if (!is.null(rels)) for (key in c("pearson", "spearman")) {
-        b <- rels[[key]]
-        if (isTRUE(b$available)) {
-          applicable <- TRUE
-          m <- b$matrix
-          dim_n <- length(b$columns)
-          stopifnot(dim_n >= 2, is.matrix(m), identical(dim(m), c(dim_n, dim_n)), all(is.finite(m)),
-                    all(abs(m - t(m)) <= 1e-6), all(abs(diag(m) - 1) <= 1e-6), all(abs(m) <= 1))
+      if (tier != 3) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- paste0("tier ", tier, " releases no correlations")
+      } else if (is.null(rels) || !all(c("pearson", "spearman") %in% names(rels))) {
+        status <- "NOT_VERIFIED"
+        reason <- "pearson/spearman block absent at tier 3"
+      } else {
+        released <- character(0)
+        for (key in c("pearson", "spearman")) if (isTRUE(rels[[key]][["available"]])) released <- c(released, key)
+        if (length(released) == 0) {
+          declared_reason <- rels[["pearson"]][["reason"]]
+          if (!(is.character(declared_reason) && length(declared_reason) == 1 && nzchar(declared_reason)))
+            declared_reason <- "no reason stated"
+          status <- "NOT_APPLICABLE"
+          applicable <- FALSE
+          reason <- paste0("0 of 2 correlation blocks released (", declared_reason, ")")
+        } else {
+          max_asymmetry <- 0
+          shapes <- character(0)
+          for (key in released) {
+            b <- rels[[key]]
+            m <- b[["matrix"]]
+            dim_n <- length(b[["columns"]])
+            stopifnot(dim_n >= 2, is.matrix(m), identical(dim(m), c(dim_n, dim_n)), all(is.finite(m)),
+                      all(abs(m - t(m)) <= 1e-6), all(abs(diag(m) - 1) <= 1e-6), all(abs(m) <= 1))
+            max_asymmetry <- max(max_asymmetry, max(abs(m - t(m))))
+            shapes <- c(shapes, paste0(key, " ", dim_n, "x", dim_n))
+          }
+          detail <- paste0(paste(shapes, collapse = ", "), "; max asymmetry ",
+                           format(max_asymmetry, scientific = TRUE, digits = 3), " <= 1e-06 tolerance")
         }
       }
     } else {
-      applicable <- tier == 3
-      if (applicable) {
+      if (tier != 3) {
+        status <- "NOT_APPLICABLE"
+        applicable <- FALSE
+        reason <- paste0("tier ", tier, " releases no relationships")
+      } else if (is.null(rels)) {
+        status <- "NOT_VERIFIED"
+        reason <- "relationships block absent at tier 3"
+      } else {
         stopifnot(setequal(names(rels), c("pearson", "spearman", "named", "cramers_v", "crosstabs")))
         eligible <- character(0)
-        for (c in cols) if (setequal(names(c$numeric), c("n", "mean", "sd", "percentiles"))) eligible <- c(eligible, c$name)
+        for (c in cols) if (setequal(names(c[["numeric"]]), c("n", "mean", "sd", "percentiles"))) eligible <- c(eligible, c[["name"]])
         for (key in c("pearson", "spearman")) {
           b <- rels[[key]]
-          stopifnot(is.logical(b$available), length(b$available) == 1, !is.na(b$available), identical(b$columns, eligible))
-          dim_n <- length(b$columns)
-          pn <- b$pair_n
+          stopifnot(is.logical(b[["available"]]), length(b[["available"]]) == 1, !is.na(b[["available"]]), identical(b[["columns"]], eligible))
+          dim_n <- length(b[["columns"]])
+          pn <- b[["pair_n"]]
           stopifnot(is.matrix(pn), identical(dim(pn), c(dim_n, dim_n)), all(is.finite(pn)),
                     all(pn == floor(pn)), all(pn >= 0), all(pn == t(pn)))
           for (i in seq_len(dim_n)) {
-            c <- cols[[match(b$columns[i], col_names)]]
-            stopifnot(pn[i, i] == c$numeric$n, all(pn[i, ] <= pn[i, i]))
+            c <- cols[[match(b[["columns"]][i], col_names)]]
+            stopifnot(pn[i, i] == c[["numeric"]][["n"]], all(pn[i, ] <= pn[i, i]))
           }
-          if (b$available) {
+          if (isTRUE(b[["available"]])) {
             stopifnot(setequal(names(b), c("available", "columns", "pair_n", "matrix")), dim_n >= 2, all(pn >= max(threshold, 2)))
           } else {
-            stopifnot(setequal(names(b), c("available", "columns", "pair_n", "matrix", "reason")), length(b$matrix) == 0,
-                      b$reason %in% c("fewer_than_two_eligible_columns", "insufficient_pair_support", "zero_pair_variance", "nonfinite_correlation"))
+            stopifnot(setequal(names(b), c("available", "columns", "pair_n", "matrix", "reason")), length(b[["matrix"]]) == 0,
+                      b[["reason"]] %in% c("fewer_than_two_eligible_columns", "insufficient_pair_support", "zero_pair_variance", "nonfinite_correlation"))
           }
         }
         for (kind in c("named", "cramers_v", "crosstabs")) for (b in rels[[kind]]) {
-          stopifnot(is.logical(b$available), length(b$available) == 1, !is.na(b$available),
-                    length(b$n) == 1, is.numeric(b$n), is.finite(b$n), b$n == floor(b$n), b$n >= 0, b$n <= rows)
-          pair <- if (kind == "named") c(b$outcome, b$predictor) else b$pair
+          stopifnot(is.logical(b[["available"]]), length(b[["available"]]) == 1, !is.na(b[["available"]]),
+                    length(b[["n"]]) == 1, is.numeric(b[["n"]]), is.finite(b[["n"]]), b[["n"]] == floor(b[["n"]]), b[["n"]] >= 0, b[["n"]] <= rows)
+          pair <- if (kind == "named") c(b[["outcome"]], b[["predictor"]]) else b[["pair"]]
           stopifnot(length(pair) == 2, all(pair %in% col_names))
-          for (name in pair) stopifnot(b$n <= cols[[match(name, col_names)]]$nonmissing_n)
+          for (name in pair) stopifnot(b[["n"]] <= cols[[match(name, col_names)]][["nonmissing_n"]])
           base <- if (kind == "named") c("outcome", "predictor", "n", "available") else c("pair", "n", "available")
-          if (!b$available) {
-            stopifnot(setequal(names(b), c(base, "reason")), b$reason %in% c("insufficient_support", "ineligible_marginal", "zero_pair_variance", "ineligible_roles", "degenerate_table"))
+          if (!isTRUE(b[["available"]])) {
+            stopifnot(setequal(names(b), c(base, "reason")), b[["reason"]] %in% c("insufficient_support", "ineligible_marginal", "small_complement_group", "zero_pair_variance", "ineligible_roles", "degenerate_table"))
             next
           }
-          stopifnot(b$n >= if (kind == "named") cutoff else threshold)
+          stopifnot(b[["n"]] >= if (kind == "named") cutoff else threshold)
           if (kind == "named") {
             stopifnot(setequal(names(b), c(base, "pearson", "spearman", "ols")), all(pair %in% eligible),
-                      is.list(b$ols), !anyDuplicated(names(b$ols)), setequal(names(b$ols), c("intercept", "slope", "r_squared")))
-            for (name in pair) stopifnot(b$n <= cols[[match(name, col_names)]]$numeric$n)
-            for (v in b$ols) stopifnot(length(v) == 1, typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), is.finite(v))
+                      is.list(b[["ols"]]), !anyDuplicated(names(b[["ols"]])), setequal(names(b[["ols"]]), c("intercept", "slope", "r_squared")))
+            for (name in pair) stopifnot(b[["n"]] <= cols[[match(name, col_names)]][["numeric"]][["n"]])
+            # Complement groups (finite in one column, not the other) are 0 or >= threshold.
+            for (name in pair) {
+              group <- cols[[match(name, col_names)]][["numeric"]][["n"]] - b[["n"]]
+              if (!isTRUE(group == 0 || group >= threshold))
+                stop(paste0("named entry (", pair[1], " ~ ", pair[2], "): a complement group is below threshold"), call. = FALSE)
+            }
+            for (v in b[["ols"]]) stopifnot(length(v) == 1, typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), is.finite(v))
             for (k in c("pearson", "spearman")) stopifnot(length(b[[k]]) == 1, is.finite(b[[k]]), abs(b[[k]]) <= 1)
-            stopifnot(b$ols$r_squared >= 0, b$ols$r_squared <= 1)
+            stopifnot(b[["ols"]][["r_squared"]] >= 0, b[["ols"]][["r_squared"]] <= 1)
           } else {
-            for (name in pair) stopifnot(cols[[match(name, col_names)]]$role == "categorical")
+            for (name in pair) stopifnot(cols[[match(name, col_names)]][["role"]] == "categorical")
             if (kind == "cramers_v") {
-              stopifnot(setequal(names(b), c(base, "v")), length(b$v) == 1, is.finite(b$v), b$v >= 0, b$v <= 1)
+              stopifnot(setequal(names(b), c(base, "v")), length(b[["v"]]) == 1, is.finite(b[["v"]]), b[["v"]] >= 0, b[["v"]] <= 1)
             } else {
               stopifnot(setequal(names(b), c(base, "rows", "cols", "cells", "cells_suppressed", if ("collapsed" %in% names(b)) "collapsed")),
-                        length(b$rows) == 1, length(b$cols) == 1, b$rows > 0, b$cols > 0,
-                        b$rows == floor(b$rows), b$cols == floor(b$cols), length(b$cells) == b$rows * b$cols)
-              hidden <- logical(length(b$cells))
+                        length(b[["rows"]]) == 1, length(b[["cols"]]) == 1, b[["rows"]] > 0, b[["cols"]] > 0,
+                        b[["rows"]] == floor(b[["rows"]]), b[["cols"]] == floor(b[["cols"]]), length(b[["cells"]]) == b[["rows"]] * b[["cols"]])
+              hidden <- logical(length(b[["cells"]]))
               total <- 0
-              for (i in seq_along(b$cells)) {
-                hidden[i] <- is.null(b$cells[[i]])
+              for (i in seq_along(b[["cells"]])) {
+                hidden[i] <- is.null(b[["cells"]][[i]])
                 if (!hidden[i]) {
-                  v <- b$cells[[i]]
+                  v <- b[["cells"]][[i]]
                   stopifnot(length(v) == 1, typeof(v) %in% c("integer", "double"), !is.object(v), is.null(dim(v)), is.finite(v), v == floor(v))
                   total <- total + v
                 }
               }
-              mask <- matrix(hidden, b$rows, b$cols, byrow = TRUE)
-              stopifnot(sum(hidden) == b$cells_suppressed, total <= b$n, any(hidden) || total == b$n)
-              if (isTRUE(b$collapsed)) stopifnot(all(hidden)) else
+              mask <- matrix(hidden, b[["rows"]], b[["cols"]], byrow = TRUE)
+              stopifnot(sum(hidden) == b[["cells_suppressed"]], total <= b[["n"]], any(hidden) || total == b[["n"]])
+              if (isTRUE(b[["collapsed"]])) stopifnot(all(hidden)) else
                 stopifnot(!any(rowSums(mask) == 1), !any(colSums(mask) == 1))
             }
           }
         }
+        # INTENT: each cross-tab sits on its own pair and on the released categories.
+        # REASONING: a second table of one pair can be suppressed differently and combined
+        # with the first; a row or column for a pooled source level can be subtracted from
+        # __OTHER__. Rows/cols equal to the released level counts rule the latter out.
+        # Messages name the entry index (0-based, as in the JSON) and column names only.
+        for (i in seq_along(rels[["crosstabs"]])) {
+          b <- rels[["crosstabs"]][[i]]
+          pair <- b[["pair"]]
+          if (pair[1] == pair[2]) stop(paste0("crosstab entry ", i - 1, ": pair names one column twice"), call. = FALSE)
+          for (j in seq_len(i - 1)) if (setequal(rels[["crosstabs"]][[j]][["pair"]], pair))
+            stop(paste0("crosstab entry ", i - 1, ": repeats the pair of an earlier entry"), call. = FALSE)
+          if (isTRUE(b[["available"]])) {
+            level_counts <- c(length(cols[[match(pair[1], col_names)]][["categorical"]][["levels"]]),
+                              length(cols[[match(pair[2], col_names)]][["categorical"]][["levels"]]))
+            if (!isTRUE(b[["rows"]] == level_counts[1] && b[["cols"]] == level_counts[2]))
+              stop(paste0("crosstab entry ", i - 1, " (", pair[1], " x ", pair[2],
+                          "): rows x cols differ from the released level counts of its pair columns"), call. = FALSE)
+          }
+        }
+        entries <- length(rels[["named"]]) + length(rels[["cramers_v"]]) + length(rels[["crosstabs"]])
+        detail <- paste0("2 correlation blocks + ", entries, " relationship entries checked for support and shape")
       }
     }
     TRUE
   }, silent = TRUE)
   if (inherits(result, "try-error")) {
+    # INTENT: a FAIL names the failing field/column and what was observed, not just a class.
     status <- "FAIL"
     applicable <- TRUE
-    reason <- "candidate_validation_error"
-  } else {
-    status <- if (applicable) "PASS" else "NOT_APPLICABLE"
-    if (!applicable) reason <- "no_released_targets_at_this_tier_or_block_unavailable"
+    # A condition can carry an empty message; the reason must stay non-empty or the
+    # aggregation would downgrade it to NOT VERIFIED and lose the fact that a check
+    # actually ran and actually failed.
+    condition_text <- conditionMessage(attr(result, "condition"))
+    if (!(is.character(condition_text) && length(condition_text) == 1 && nzchar(condition_text)))
+      condition_text <- "assertion failed without a message"
+    reason <- paste0("candidate_validation_error: ", substr(condition_text, 1, 300))
   }
+  if (identical(status, "PASS") && !nzchar(detail)) detail <- reason
+  check_details[[check_name]] <- if (nzchar(detail)) detail else reason
   checks[[length(checks) + 1]] <- list(name = check_name, status = status, applicable = applicable, reason = reason)
 }
 # INTENT: completeness is required, not vacuous all(logical(0)); exceptions cannot become N/A.
+# REASONING: counters derive the verdict; a NULL/empty reason is NOT VERIFIED, never a silent pass.
+profile <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 actual_names <- character(0)
-all_passed <- TRUE
-for (c in checks) {
-  actual_names <- c(actual_names, c$name)
-  all_passed <- all_passed && nzchar(c$reason) &&
-    ((isTRUE(c$applicable) && identical(c$status, "PASS")) || (identical(c$applicable, FALSE) && identical(c$status, "NOT_APPLICABLE")))
+for (i in seq_along(checks)) {
+  entry <- checks[[i]]
+  actual_names <- c(actual_names, entry[["name"]])
+  reason_ok <- is.character(entry[["reason"]]) && length(entry[["reason"]]) == 1 && nzchar(entry[["reason"]])
+  if (!isTRUE(reason_ok)) {
+    entry[["status"]] <- "NOT_VERIFIED"
+    entry[["applicable"]] <- TRUE
+    entry[["reason"]] <- "check carries an empty reason"
+    check_details[[entry[["name"]]]] <- entry[["reason"]]
+  }
+  if (!(entry[["status"]] %in% names(status_tokens))) {
+    entry[["status"]] <- "NOT_VERIFIED"
+    entry[["applicable"]] <- TRUE
+    entry[["reason"]] <- "unrecognized validation status"
+    check_details[[entry[["name"]]]] <- entry[["reason"]]
+  }
+  checks[[i]] <- entry
+  counter <- counter_keys[[entry[["status"]]]]
+  profile[counter] <- profile[counter] + 1L
+  line <- if (entry[["name"]] %in% names(check_details)) check_details[[entry[["name"]]]] else entry[["reason"]]
+  cat(status_tokens[[entry[["status"]]]], " ", entry[["name"]], ": ", line, "\n", sep = "")
 }
-all_passed <- all_passed && identical(actual_names, required_checks)
-report$validation <- list(checks = checks, all_passed = all_passed)
+all_passed <- profile[["failed"]] == 0L && profile[["not_verified"]] == 0L &&
+  identical(actual_names, required_checks)
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            profile[["passed"]], profile[["warning"]], profile[["failed"]],
+            profile[["not_verified"]], profile[["skipped"]]))
+profile_verdict <- if (profile[["failed"]] > 0L || profile[["not_verified"]] > 0L || !all_passed ||
+                       (profile[["passed"]] + profile[["warning"]] + profile[["failed"]]) == 0L) {
+  "FAILED"
+} else if (profile[["warning"]] > 0L) {
+  "PASSED WITH WARNINGS"
+} else {
+  "PASSED"
+}
+cat("PROFILE VALIDATION: ", profile_verdict, "\n", sep = "")
+report[["validation"]] <- list(checks = checks, all_passed = all_passed)
 if (!all_passed) {
   cat("VALIDATION FAILED -- no reports written; do not share. Failed checks:\n")
-  for (c in checks) if (c$status == "FAIL") cat(c$name, "\n")
+  unresolved <- character(0)
+  for (entry in checks) if (entry[["status"]] %in% c("FAIL", "NOT_VERIFIED")) unresolved <- c(unresolved, entry[["name"]])
+  if (length(unresolved) > 0) {
+    cat(paste(unresolved, collapse = ", "), "\n")
+  } else {
+    cat("(required checks missing from the validation list)\n")
+  }
   stop("Candidate rejected", call. = FALSE)
 }
 

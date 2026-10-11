@@ -12,6 +12,7 @@ How to construct a seeded synthetic dataset *from a profile report alone* in R, 
 - [Categorical generation and the __OTHER__ bucket](#categorical-generation-and-the-__other__-bucket)
 - [Identifier columns](#identifier-columns)
 - [Missingness](#missingness)
+- [Column types CPS-GEN can compare](#column-types-cps-gen-can-compare)
 - [fabricatr for hierarchical structure](#fabricatr-for-hierarchical-structure)
 - [Seeding and output](#seeding-and-output)
 - [Caveats](#caveats)
@@ -30,7 +31,7 @@ How to construct a seeded synthetic dataset *from a profile report alone* in R, 
 4. **Generate categoricals** from the reported (suppressed) level proportions, including an `__OTHER__` draw.
 5. **Synthesize identifier columns** structurally (right length/shape, fake values) — never reproduce real values.
 6. **Inject missingness** per column at the reported rate.
-7. **Validate** synthetic-vs-profile (`validation-checks.md` QA(c)) and write seeded parquet to `data/synthetic/`.
+7. **Validate** synthetic-vs-profile (QAS-C, see `validation-checks.md`, which routes to `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints) and the shipped CPS-GEN block in `agent_reference/VALIDATION_CHECKPOINTS.md`, and write seeded parquet to `data/synthetic/`.
 
 ## T1: schema-only skeleton
 
@@ -184,66 +185,110 @@ This reproduces the reported slope/intercept within tolerance (the synthetic OLS
 
 ## Categorical generation and the `__OTHER__` bucket
 
-Draw categorical levels from the reported (suppressed) proportions. `__OTHER__` is one reserved aggregate, including any original source level literally named `__OTHER__` as well as pooled rare/rolled-in levels; that source label also counts toward `n_levels_binned`. Generate one synthetic bucket, never separate duplicate labels or reconstructed source detail. Validate label uniqueness before drawing. A fully-suppressed categorical column (`levels: []`, all levels sparse) carries no usable marginal — synthesize a single constant placeholder level and note the column was withheld.
+Draw categorical levels from the reported (suppressed) proportions. `__OTHER__` is one reserved aggregate, including any original source level literally named `__OTHER__` as well as pooled rare/rolled-in levels; that source label also counts toward `n_levels_binned`. Generate one synthetic bucket, never separate duplicate labels or reconstructed source detail. Validate label uniqueness before drawing. A fully-suppressed categorical column (`levels: []`, all levels sparse) carries no usable marginal. When `n_levels_binned > 0`, every source level was pooled away (the profiler's shape when the column's support is below the threshold), so fill it with the literal `__OTHER__` (or `NA`) and note that the column was withheld. `NA` is allowed, but a column filled with `NA` no longer matches its reported missing rate, so it may cost a `missingness_within_tolerance` WARNING; `__OTHER__` does not. Never fill it with `""`. CPS-GEN's `synthetic_levels_within_released_levels` admits `__OTHER__` for exactly this shape and nothing else, so an empty-string level is a synthetic level outside the released set and is a `[FAIL]`.
 
-Check `available` before reading any cross-tab fields: `available:false` has only pair/n/reason, with no association fidelity target. When an available crosstab informs the draw, remember its `cells` array uses **`null` for suppressed cells** (not `0`): a `null` means "unknown, withheld" and must be skipped, while a real `0` means a genuine empty combination. Never treat a `null` as a zero-probability or a zero count. A crosstab carrying `"collapsed": true` was fully suppressed and offers no association signal at all.
+Check `available` before reading any cross-tab fields: `available:false` has only pair/n/reason, with no association fidelity target. When an available crosstab informs the draw, remember its `cells` array uses **`null` for suppressed cells** (not `0`): a `null` means "unknown, withheld" and must be skipped, while a real `0` means a genuine empty combination. Never treat a `null` as a zero-probability or a zero count. A crosstab carrying `"collapsed": true` was fully suppressed and offers no association signal at all. **Row and column order:** `cells` is row-major over the pair's *released categories*: the kept labels in code-point order (R `sort(kept, method = "radix")`, never the session locale's collation), then `__OTHER__` last when the column releases it. That is **not** the order of the column's categorical `levels` block, which lists counts descending. So map cells to labels by label — rebuild the category vector as `sort(kept, method = "radix")` plus `"__OTHER__"` only when it is released, and index `cells[[(i - 1) * cols + j]]` with it — never by pairing the `levels` list positionally with the rows or columns.
 
 ```r
-# --- Generate a categorical column from suppressed level proportions ---
+# --- Generate a categorical column from suppressed level proportions (i selects the column) ---
 # INTENT: reproduce category frequencies; __OTHER__ stays an explicit aggregate bucket.
-levs   <- vapply(cat$levels, \(l) l$value, character(1))
+# REASONING: write the column in the dtype the report DECLARES. CPS-GEN's column_set_and_dtypes
+#            FAILs a character column where the report declares integer or double, and a
+#            numeric or logical column where it declares string.
+col     <- report$columns[[i]]
+colname <- col$name
+cat_blk <- col$categorical
+levs    <- vapply(cat_blk$levels, \(l) l$value, character(1))
 stopifnot(!anyDuplicated(levs))
-counts <- vapply(cat$levels, \(l) l$count, numeric(1))
+counts  <- vapply(cat_blk$levels, \(l) l$count, numeric(1))
 if (length(levs)) {
-  syn[[colname]] <- sample(levs, size = n, replace = TRUE, prob = counts / sum(counts))
+  draws <- sample(levs, size = n, replace = TRUE, prob = counts / sum(counts))
+  if (col$dtype %in% c("integer", "double")) {
+    # ASSUMES: a numeric-declared column's labels are numbers whose canonical text is the
+    #          label itself, so the level checks still match them; no numeric type holds __OTHER__.
+    stopifnot(!"__OTHER__" %in% levs)
+    num <- suppressWarnings(as.double(levs))
+    stopifnot(identical(ifelse(num == round(num), sprintf("%.0f", num), sprintf("%.17g", num)), levs))
+    draws <- if (col$dtype == "integer") as.integer(draws) else as.double(draws)
+  }
+  syn[[colname]] <- draws
 } else {
-  syn[[colname]] <- rep("", n)
+  # INTENT: a fully pooled column (levels: [], n_levels_binned > 0) gets the literal
+  #         __OTHER__ placeholder; with nothing pooled, or a numeric dtype, NA.
+  # REASONING: CPS-GEN admits __OTHER__ as the one label a fully pooled column may carry;
+  #            "" is a level outside the released set and FAILs the level checks.
+  syn[[colname]] <- switch(col$dtype, integer = rep(NA_integer_, n), double = rep(NA_real_, n),
+                           rep(if (cat_blk$n_levels_binned > 0) "__OTHER__" else NA_character_, n))
   cat(colname, "NOT_APPLICABLE: unobserved categorical distribution", "\n")
 }
 ```
+
+**Write the declared dtype.** The shipped profilers make a column categorical only when it is text, so they declare every categorical `string`, and the character branch is the one their reports exercise. That covers logical source columns too. The R profiler releases any logical column as the labels `TRUE`/`FALSE`, and the Python profiler releases a boolean column that has nulls as `True`/`False`, both declared `string`. Keep them `character`: a `logical` column fails `column_set_and_dtypes` against a declared `string`. (A Python boolean column with no nulls is profiled as an `integer` numeric column of 0/1, not as a categorical.) The integer/double branch serves a report that declares a numeric categorical, which the shipped profilers do not produce. It stops rather than write a column CPS-GEN must fail: no numeric type holds `__OTHER__`, and each label has to come back unchanged through the canonical text form (see [Column types CPS-GEN can compare](#column-types-cps-gen-can-compare)), so `"1"` works and `"1.0"` does not.
 
 ## Identifier columns
 
 Identifier columns arrive without raw identifier values. Generate explicitly synthetic scaffolds matching the declared dtype and available length/pattern targets; unavailable structure gets NOT_APPLICABLE fidelity independently of dtype. Preserve eligible missingness. A profile alone cannot establish noncollision with unknown real identifiers.
 
 ```r
-# --- Synthesize an email-shaped identifier structurally ---
+# --- Synthesize an identifier column structurally (unique, value-free scaffold) ---
 # INTENT: produce right-shaped-but-fake identifiers; REASONING: real values never crossed the boundary.
+# REASONING: CPS-GEN's identifier_columns_value_free FAILs an identifier column that repeats a
+#            value or equals any released categorical label, so every branch is index-based
+#            (unique by construction) and is checked against the released labels before use.
 col <- report$columns[[match(colname, col_names)]]
 struct <- col$string_structure
+released <- character(0)
+for (cc in report$columns) if (identical(cc$role, "categorical"))
+  for (l in cc$categorical$levels) released <- c(released, l$value)
 # Availability logging is independent of dtype: numeric identifiers also lose structure.
 if (isTRUE(struct$withheld)) cat(colname, "NOT_APPLICABLE: unobserved identifier structure", "\n")
 if (col$dtype %in% c("integer", "double")) {
   # Structure-only numeric ID: preserve type, not an invented numeric marginal.
-  syn[[colname]] <- if (col$dtype == "integer") seq_len(n) else as.double(seq_len(n))
-} else if (isTRUE(struct$withheld)) {
-  syn[[colname]] <- rep("", n)
-} else if (isTRUE(struct$pattern_flags$email)) {
-  syn[[colname]] <- sprintf("user%06d@example.invalid", seq_len(n))
+  # REASONING: offset away from integer-coded released labels ("1", "2", ...).
+  ids <- 10000000L + seq_len(n)
+  vals <- sprintf("%d", ids)                 # the canonical text CPS-GEN compares with labels
+  syn[[colname]] <- if (col$dtype == "integer") ids else as.double(ids)
 } else {
-  L <- round(struct$length_mean)
-  syn[[colname]] <- rep("", n)
-  for (j in seq_len(n)) syn[[colname]][j] <- paste0(sample(c(0:9, letters), L, replace = TRUE), collapse = "")
+  if (isTRUE(struct$withheld)) {
+    vals <- sprintf("ID%07d", seq_len(n))    # no length/pattern target: a prefixed index
+  } else if (isTRUE(struct$pattern_flags$email)) {
+    vals <- sprintf("user%06d@example.invalid", seq_len(n))
+  } else {
+    # The reported mean length, widened only when n needs more digits than that leaves.
+    width <- max(round(struct$length_mean) - 2, nchar(n))
+    vals <- paste0("ID", formatC(seq_len(n), width = width, flag = "0"))
+  }
+  syn[[colname]] <- vals
 }
+stopifnot(!anyDuplicated(vals), !any(vals %in% released))  # unique, and reuses no released label
 ```
 
 Use reserved non-routable email domains (`example.invalid`) and explicitly label identifier scaffolds as synthetic. Numeric/string placeholders can coincidentally equal unknown real values; do not promise noncollision or demand that every synthetic value look unlike anything real.
+
+**Unique, and offset away from released labels.** Real values are unknowable, but released labels are not. CPS-GEN's `identifier_columns_value_free` tests two things: every non-null identifier value is unique across rows, and none has a canonical text (see [Column types CPS-GEN can compare](#column-types-cps-gen-can-compare)) equal to a level label released for *any* categorical column. Random draws guarantee neither: `sample()` of two alphanumerics over a few hundred rows repeats values, and a one-character draw can equal a released label such as `"a"`. So each branch above is an index. A withheld structure gets a plain prefixed index rather than one repeated placeholder: `""` on every row is one value repeated, which fails the uniqueness test. Many reports release integer-coded labels (`"1"`, `"2"`, …), so `seq_len(n)` collides with them, and so does a double ID such as `1`. Start numeric IDs above every integer-coded released label. The default above starts just past 10,000,000, which is safe unless a report releases labels that large. Character IDs carry a non-numeric prefix (`ID0000001`). The `stopifnot()` at the end checks both rules against this report's own labels, so a collision stops generation instead of failing CPS-GEN later; if it fires, change the prefix or the offset. Missingness injected afterwards does not break uniqueness, because the check ignores nulls.
 
 ## Free-text `role: "string"` columns
 
 A column with `role: "string"` (high-cardinality free text, non-identifier) arrives value-free — only length stats + pattern flags. Generate right-shaped fake strings from the length stats; **never** reconstruct real content. Seeded random alphanumerics of the reported mean length are enough for code development (or `stringi`/a wordlist if the code needs word-like tokens).
 
 ```r
-# --- Synthesize a free-text (role "string") column from length stats only ---
+# --- Synthesize free-text (role "string") columns from length stats only ---
 # INTENT: right-shaped fake strings; REASONING: no real values ever crossed the boundary.
-struct <- report$columns[[match(colname, col_names)]]$string_structure
-syn[[colname]] <- rep("", n)
-if (isTRUE(struct$withheld)) {
-  cat(colname, "NOT_APPLICABLE: unobserved string structure", "\n")
-} else {
-  L <- round(struct$length_mean)
-  alnum <- c(0:9, letters)
-  for (j in seq_len(n)) syn[[colname]][j] <- paste0(sample(alnum, L, replace = TRUE), collapse = "")
+# REASONING: the snippet walks every role "string" column itself, so it needs no column
+#            selected by the categorical or identifier snippets; a report can carry free text
+#            and no identifier. Draws use the RNG seeded by set.seed() in the T1 Config.
+# ASSUMES: the T1 snippet defined report, n, and syn.
+for (col in report$columns) {
+  if (!identical(col$role, "string")) next
+  struct <- col$string_structure
+  syn[[col$name]] <- rep("", n)
+  if (isTRUE(struct$withheld)) {
+    cat(col$name, "NOT_APPLICABLE: unobserved string structure", "\n")
+  } else {
+    L <- round(struct$length_mean)
+    alnum <- c(0:9, letters)
+    for (j in seq_len(n)) syn[[col$name]][j] <- paste0(sample(alnum, L, replace = TRUE), collapse = "")
+  }
 }
 ```
 
@@ -265,6 +310,29 @@ if (rate > 0) {
   syn[[colname]][idx] <- NA
 }
 ```
+
+## Column types CPS-GEN can compare
+
+CPS-GEN (`agent_reference/VALIDATION_CHECKPOINTS.md` § CPS-GEN: Synthetic Generation Validation (DS-5)) compares synthetic values with the report's released labels as text, and its Python and R blocks must read every value the same way. The R block classifies each column by the arrow type `write_parquet()` stored, so every synthetic column has to land in one of these classes:
+
+| Class | R column type → stored arrow type | Note |
+|---|---|---|
+| text | `character` → `string` | A column the report declares `string` must be this plain string type |
+| text (dictionary-encoded) | `factor` → `dictionary<values=string>` | Compared as its string values, but `column_set_and_dtypes` does **not** accept it for a declared `string` column. Keep categoricals as `character` (`sample()` on a character vector already does) |
+| integer | `integer` → `int32`; `bit64::integer64` → `int64` | Every value must be below 2^53 in magnitude |
+| float | `double` → `double` | |
+| boolean | `logical` → `bool` | |
+
+Anything else counts as "other": `Date`, `POSIXct`, `difftime`, `hms`, list columns, and decimal or binary types. So does an integer column holding a value of 2^53 or more. A categorical or identifier column of that kind is a `[FAIL]` (`column '<c>' holds values outside the text-comparable types (string, categorical, integer below 2^53, float, boolean) — its levels cannot be compared`). Write dates as ISO text, as the free-text section does. Declared dtypes are matched by class: `string` needs a plain string column, `double` accepts integer or double, and `integer` accepts an integer column or a double column whose values are all whole.
+
+**Canonical text form.** Before any comparison with released labels, each synthetic value becomes one canonical text, identical in both languages and matching what the profilers write as labels:
+
+- Text is used as written.
+- An integer, or a finite double with a whole value, becomes integer text (`sprintf("%.0f", v + 0)`), so `1L` and `1` both become `"1"` and `-0` becomes `"0"`.
+- Any other finite double becomes `%.17g` text. Infinities become `inf` / `-inf`, and `NaN` counts as missing.
+- A logical becomes `true` / `false` and is compared with released labels case-insensitively, so the R profiler's `"TRUE"` and the Python profiler's `"True"` both match.
+
+An integer-coded categorical can therefore be written in its declared integer type and still match its released labels. A non-whole double label is fragile, so write such a column as the released strings when the report declares it `string`. The same canonical text is what an identifier must never equal (see the identifier offset above).
 
 ## fabricatr for hierarchical structure
 

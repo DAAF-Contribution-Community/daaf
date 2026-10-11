@@ -12,6 +12,7 @@ support gates, candidate mutations challenge actual release validation, and I/O
 faults challenge success reporting. A failed assertion is retained, never waived.
 """
 import argparse
+import ast
 import hashlib
 import json
 import math
@@ -127,6 +128,17 @@ def inspect_report(report, frame, tier, threshold):
                 pair = [b["outcome"], b["predictor"]] if kind == "named" else b["pair"]
                 actual = sum(x is not None and y is not None and (kind != "named" or (math.isfinite(x) and math.isfinite(y))) for x, y in zip(frame[pair[0]], frame[pair[1]]))
                 require(b["n"] == actual, "Wrong named/association/cell support")
+                if kind == "named":
+                    # INTENT: a regression is released only when each complement group (finite in one
+                    # column, not the other) is empty or at least threshold; the reason vocabulary
+                    # includes small_complement_group. Group sizes are recomputed from the frame.
+                    groups = [sum(v is not None and math.isfinite(v) for v in frame[c]) - actual for c in pair]
+                    small = any(0 < g < threshold for g in groups)
+                    if b["available"]:
+                        require(not small, "Named regression released with a complement group below threshold")
+                    else:
+                        require(b["reason"] in ("insufficient_support", "ineligible_marginal", "small_complement_group", "zero_pair_variance"), f"Unknown named reason {b['reason']}")
+                        require((b["reason"] == "small_complement_group") <= small, "small_complement_group without a small group")
                 if not b["available"]:
                     require(set(b) == ({"outcome", "predictor", "n", "available", "reason"} if kind == "named" else {"pair", "n", "available", "reason"}), "Unavailable relationship leaks values")
                     continue
@@ -137,15 +149,112 @@ def inspect_report(report, frame, tier, threshold):
                     require(int(mask.sum()) == b["cells_suppressed"], "Wrong hidden-cell count")
                     require(all(v is None or v == 0 or v >= threshold for v in b["cells"]), "Small cross-tab cell leaked")
                     require(mask.all() if b.get("collapsed") else not ((mask.sum(0) == 1).any() or (mask.sum(1) == 1).any()), "Lone suppressed cell")
+                    # INTENT: the table sits on the RELEASED categories of its pair columns.
+                    # REASONING: independent tabulation from the fabricated frame -- every source
+                    # level the categorical block pools maps to one __OTHER__ row/column; kept labels
+                    # in code-point order, pooled category last, zero rows/cols kept. A pooled level
+                    # with a row of its own could be subtracted from __OTHER__ to recover its count.
+                    # ASSUMES: categorical fixture values are strings; nulls are excluded pairwise.
+                    released = [[l["value"] for l in by_name[c]["categorical"]["levels"]] for c in pair]
+                    require([b["rows"], b["cols"]] == [len(v) for v in released], "Cross-tab dimensions differ from the released level counts")
+                    kept = [sorted(v for v in r if v != "__OTHER__") for r in released]
+                    cats = [k + (["__OTHER__"] if "__OTHER__" in r else []) for k, r in zip(kept, released)]
+                    tally = {}
+                    for x, y in zip(frame[pair[0]], frame[pair[1]]):
+                        if x is None or y is None:
+                            continue
+                        key = (x if x in kept[0] else "__OTHER__", y if y in kept[1] else "__OTHER__")
+                        tally[key] = tally.get(key, 0) + 1
+                    expected_cells = [tally.get((cats[0][k // b["cols"]], cats[1][k % b["cols"]]), 0) for k in range(b["rows"] * b["cols"])]
+                    require(all(v is None or v == e for v, e in zip(b["cells"], expected_cells)), "Visible cross-tab cell differs from the released-category tabulation")
+                    # INTENT: no hidden cell may be pinned exactly by the row/column totals.
+                    # REASONING: independent of the templates' graph walk -- linear algebra on the
+                    # margin equations. Hidden cell h is determined iff the unit vector e_h lies in
+                    # the row space of the (rows + cols) x hidden incidence matrix.
+                    # ASSUMES: every margin is known (worst case); a fully collapsed entry is exempt.
+                    # INTENT: no missing-partner count below threshold may be pinned by the released
+                    # totals beyond what the released counts alone fix (the all-hidden baseline).
+                    # REASONING: independent of the templates' graph walk -- the extended table adds a
+                    # column-variable-missing column and a row-variable-missing row; its totals are
+                    # released (level counts, row_count - nonmissing_n) and its corner is derivable. The
+                    # unknowns are the hidden core cells plus every missing-partner cell (a missing line
+                    # summing to zero is known zeros); a missing-partner cell is determined iff its unit
+                    # vector lies in the row space of the extended incidence matrix. The baseline repeats
+                    # the test with every core cell unknown. Truth counts come from the fabricated frame.
+                    # ASSUMES: missing means null in the fabricated frame, as nonmissing_n counts it.
+                    nonnull = [sum(v is not None for v in frame[c]) for c in pair]
+                    residual = [nonnull[0] - b["n"], nonnull[1] - b["n"]]
+                    if max(residual) > 0:
+                        mapped = [[None if v is None else (v if v in kept[t] else "__OTHER__") for v in frame[pair[t]]] for t in (0, 1)]
+                        ext = ([("col", i) for i in range(b["rows"])] if residual[0] > 0 else []) + ([("row", j) for j in range(b["cols"])] if residual[1] > 0 else [])
+                        # `line` (never `kind`): rebinding the enclosing loop's `kind` here would make
+                        # every later cross-tab entry skip the `kind == "crosstabs"` inspection.
+                        truth = [sum(1 for x, y in zip(*mapped) if x == cats[0][i] and y is None) if line == "col" else
+                                 sum(1 for x, y in zip(*mapped) if x is None and y == cats[1][i]) for line, i in ext]
+                        determined = []
+                        for baseline in (False, True):
+                            unknown = [k for k in range(b["rows"] * b["cols"]) if baseline or b["cells"][k] is None]
+                            incidence = np.zeros((b["rows"] + b["cols"] + 2, len(unknown) + len(ext)))
+                            for h, k in enumerate(unknown):
+                                incidence[k // b["cols"], h] = incidence[b["rows"] + 1 + k % b["cols"], h] = 1
+                            for h, (line, i) in enumerate(ext):
+                                if line == "col":
+                                    incidence[i, len(unknown) + h] = incidence[b["rows"] + b["cols"] + 1, len(unknown) + h] = 1
+                                else:
+                                    incidence[b["rows"], len(unknown) + h] = incidence[b["rows"] + 1 + i, len(unknown) + h] = 1
+                            base_rank = np.linalg.matrix_rank(incidence)
+                            flags = []
+                            for h in range(len(ext)):
+                                unit = np.zeros((1, incidence.shape[1]))
+                                unit[0, len(unknown) + h] = 1
+                                flags.append(np.linalg.matrix_rank(np.vstack([incidence, unit])) == base_rank)
+                            determined.append(flags)
+                        for h, (line, i) in enumerate(ext):
+                            require(not (0 < truth[h] < threshold and determined[0][h] and not determined[1][h]),
+                                    f"Missing-partner {line} cell {i} below threshold is recoverable from the released totals")
+                    if not b.get("collapsed"):
+                        hidden = [(k // b["cols"], k % b["cols"]) for k, v in enumerate(b["cells"]) if v is None]
+                        if hidden:
+                            incidence = np.zeros((b["rows"] + b["cols"], len(hidden)))
+                            for h, (i, j) in enumerate(hidden):
+                                incidence[i, h] = incidence[b["rows"] + j, h] = 1
+                            base_rank = np.linalg.matrix_rank(incidence)
+                            for h in range(len(hidden)):
+                                unit = np.zeros((1, len(hidden)))
+                                unit[0, h] = 1
+                                require(np.linalg.matrix_rank(np.vstack([incidence, unit])) > base_rank,
+                                        f"Hidden cross-tab cell {hidden[h]} recoverable from the row and column totals")
     checks = report["validation"]["checks"]
     require([c["name"] for c in checks] == CHECKS, "Missing/duplicate required checks")
     require(report["validation"]["all_passed"] is True, "Embedded validation failed")
     cols = report["columns"]
-    applicable = [True, any("percentiles" in c.get("numeric", {}) for c in cols), any("categorical" in c for c in cols), tier >= 2,
-                  any(c.get("categorical", {}).get("levels", []) for c in cols) or any(any(v is not None for v in b.get("cells", [])) for b in rel.get("crosstabs", [])),
-                  any(rel.get(k, {}).get("available", False) for k in ("pearson", "spearman")), tier == 3]
-    for c, expected in zip(checks, applicable):
-        require(c["applicable"] is bool(expected) and c["reason"] and c["status"] == ("PASS" if expected else "NOT_APPLICABLE"), f"Dishonest applicability: {c}")
+    # INTENT: model the expected outcome per check per fixture across the FOUR-state wire
+    # enum (PASS | FAIL | NOT_APPLICABLE | NOT_VERIFIED), not the old two-state model.
+    # REASONING: the previous model encoded the automatic not-applicable behaviour that was itself
+    # the defect, so rerunning it could never detect the defect it was meant to gate.
+    # ASSUMES: a structural skip (report declares zero blocks of the relevant kind) is
+    # NOT_APPLICABLE with a counted reason; a MISSING required input is NOT_VERIFIED.
+    has_grid = any("percentiles" in c.get("numeric", {}) for c in cols)
+    has_categorical_role = any(c.get("role") == "categorical" for c in cols)
+    has_matrix = any(rel.get(k, {}).get("available", False) for k in ("pearson", "spearman"))
+    expected_status = {
+        "column_shapes_and_support": "PASS",
+        "percentiles_monotone": "PASS" if has_grid else "NOT_APPLICABLE",
+        "category_counts_le_rowcount": "PASS" if has_categorical_role else "NOT_APPLICABLE",
+        "missing_rate_in_unit_interval": "PASS" if tier >= 2 else "NOT_APPLICABLE",
+        # Disclosure sweep: a report with zero categorical/crosstab blocks is an
+        # evidence-bearing "0 of 0 declared blocks" PASS, never NOT_APPLICABLE and never
+        # a vacuous all([]) success. The profiler has no N/A form for it at any tier.
+        "no_subthreshold_cells_emitted": "PASS",
+        "correlation_matrix_symmetric": "PASS" if has_matrix else "NOT_APPLICABLE",
+        "relationship_support_and_shape": "PASS" if tier == 3 else "NOT_APPLICABLE",
+    }
+    for c in checks:
+        require(c["status"] in ("PASS", "FAIL", "NOT_APPLICABLE", "NOT_VERIFIED"), f"Status outside the wire enum: {c}")
+        require(isinstance(c["reason"], str) and len(c["reason"]) > 0, f"Check carries no reason: {c}")
+        expected = expected_status[c["name"]]
+        require(c["status"] == expected, f"Dishonest applicability: {c} (expected {expected})")
+        require(c["applicable"] is (expected != "NOT_APPLICABLE"), f"applicable disagrees with status: {c}")
 
 
 def build_fixtures():
@@ -184,6 +293,87 @@ def build_fixtures():
         "y": pl.Series(list(range(5)) + [None] * 5 + list(range(5)), dtype=pl.Float64)}), 3, 5, [["y", "x"]], "zero_pair_variance"))
     fixtures.append(("categorical_pool", pl.DataFrame({"group": ["A"] * 20 + ["B"] * 5 + ["rare"]}), 2, 5, [], None))
     fixtures.append(("categorical_cells", pl.DataFrame({"group": ["A"] * 11 + ["B"] * 20, "sector": ["X"] + ["Y"] * 10 + ["X"] * 10 + ["Y"] * 10}), 3, 5, [["group", "sector"]], None))
+    # INTENT: genuine bridge shape -- primary hidden cells form two cycles joined by ONE cell
+    # (row 1, column 2), which the lone-cell rule misses and margin differencing recovers.
+    # REASONING: this 4x4 table is the counterexample a review recovered exactly from released
+    # totals; the profilers must now hide one more cell (or collapse) and both must agree.
+    bridge_table = [[2, 3, 10, 12], [1, 4, 2, 15], [11, 13, 3, 1], [9, 8, 4, 2]]
+    fixtures.append(("bridge_4x4", pl.DataFrame({
+        "cat_a": [f"a{i}" for i in range(4) for j in range(4) for _ in range(bridge_table[i][j])],
+        "cat_b": [f"b{j}" for i in range(4) for j in range(4) for _ in range(bridge_table[i][j])]}), 3, 5, [["cat_a", "cat_b"]], None))
+    # INTENT: collapse branch -- the bridge (row 0, column 2) joins two hidden 2x2 cycles, but
+    # every visible cell that could close a cycle through it is a structural zero, which stays
+    # visible; with no joining non-zero cell the whole table must collapse (all null).
+    collapse_table = [[3, 2, 4, 0], [2, 3, 0, 0], [0, 0, 3, 2], [0, 0, 2, 3]]
+    fixtures.append(("bridge_collapse", pl.DataFrame({
+        "cat_a": [f"a{i}" for i in range(4) for j in range(4) for _ in range(collapse_table[i][j])],
+        "cat_b": [f"b{j}" for i in range(4) for j in range(4) for _ in range(collapse_table[i][j])]}), 3, 5, [["cat_a", "cat_b"]], None))
+    # INTENT: pooled-level rows -- g pools p1 (6, rolled in) and p2 (2) into __OTHER__ (8). Tabulated on
+    # raw source levels, p1's row [6, 0] would be fully visible and __OTHER__ - 6 would recover p2's 2.
+    # REASONING: on the released categories the table is rows A, B, C, __OTHER__ x cols W, X, Y; C and
+    # W are released levels with no pair-complete record, so they stay as rows/columns of zeros.
+    # ASSUMES: code-point label order ("W" < "X" < "Y"; "A" < "B" < "C"), pooled category last.
+    g = ["A"] * 30 + ["B"] * 20 + ["C"] * 7 + ["p1"] * 6 + ["p2"] * 2 + [None] * 6
+    h = ["X", "Y"] * 15 + ["X", "Y"] * 10 + [None] * 7 + ["X"] * 6 + ["X"] * 2 + ["W"] * 6
+    fixtures.append(("pooled_level_rows", pl.DataFrame({"g": g, "h": h}), 3, 5, [["g", "h"]], None))
+    # INTENT: label order -- mixed case, non-ASCII and a tie. Released cross-tab rows/columns follow
+    # code-point order in both languages (not locale collation), and of the two levels tied at 6 the
+    # roll-in pools the one later in code-point order ("y"), keeping "x", in both languages.
+    # Every mixed x side cell is >= 8, so nothing is hidden and the visible cells pin the full order.
+    mixed = ["a"] * 20 + ["B"] * 18 + ["b"] * 16 + ["é"] * 22 + ["Z"] * 24
+    fixtures.append(("label_order", pl.DataFrame({
+        "mixed": mixed + [None] * 23,
+        "side": [["x", "Y"][i % 2] for i in range(100)] + [None] * 23,
+        "ties": [None] * 100 + ["y"] * 6 + ["x"] * 6 + ["r"] * 2 + ["w"] * 9}), 3, 5, [["mixed", "side"]], None))
+    # INTENT: missing-partner cells. Twin tables on one core [[2,3,10],[3,2,10],[10,10,10]]: complete,
+    # it releases the four primary cells hidden as a cycle and row a2 fully visible (the core rule
+    # alone, unchanged). With two extra a2 records whose cat_b is missing, that visible row would give
+    # the missing-partner count (2) as a2's released count minus the row sum, so the repair hides
+    # (row 2, column 0) to join a2 to the hidden cycle and then (row 2, column 1) for the core rule.
+    # REASONING: pins the documented order and tie-break (smallest joining non-zero cell, first in
+    # row-major order), plus the no-change property on the complete twin.
+    mp = [[2, 3, 10], [3, 2, 10], [10, 10, 10]]
+    mp_a = [f"a{i}" for i in range(3) for j in range(3) for _ in range(mp[i][j])]
+    mp_b = [f"b{j}" for i in range(3) for j in range(3) for _ in range(mp[i][j])]
+    fixtures.append(("missing_partner_complete_twin", pl.DataFrame({"cat_a": mp_a, "cat_b": mp_b}), 3, 5, [["cat_a", "cat_b"]], None))
+    fixtures.append(("missing_partner_repair", pl.DataFrame({"cat_a": mp_a + ["a2", "a2"], "cat_b": pl.Series(mp_b + [None, None], dtype=pl.String)}), 3, 5, [["cat_a", "cat_b"]], None))
+    # INTENT: a fully visible table whose only small count is a missing-partner count (a1 with cat_b
+    # missing, 2 records) has no hidden cell to join it to. Instead of collapsing, the count gets the
+    # primary-cell treatment: hide a1's smallest non-zero cell (row 1, column 1) = 9, then
+    # complementary steps hide (1, 0), (2, 0) and (2, 1), leaving row 0 visible and rows 1-2 hidden.
+    # REASONING: pins the no-joining-cell fallback, its tie-break and its complementary re-run.
+    fv = [[10, 12], [11, 9], [8, 10]]
+    fv_a = [f"a{i}" for i in range(3) for j in range(2) for _ in range(fv[i][j])] + ["a1", "a1"]
+    fv_b = [f"b{j}" for i in range(3) for j in range(2) for _ in range(fv[i][j])] + [None, None]
+    fixtures.append(("missing_partner_no_join",pl.DataFrame({"cat_a": fv_a, "cat_b": pl.Series(fv_b, dtype=pl.String)}), 3, 5, [["cat_a", "cat_b"]], None))
+    # INTENT: the column-side mirror of the fallback -- the table transposed, with the only small
+    # count a missing-ROW cell (2 records with cat_a missing in column b1), so the exposed line is a
+    # core column. The fallback hides b1's smallest non-zero cell (row 1, column 1) = 9; the
+    # complementary pass then hides (1, 2) = 10 for row 1, and (0, 1) and (0, 2) for columns 1-2.
+    # REASONING: pins the "own core column for a missing-row cell" branch and its tie-break.
+    fc = [[10, 11, 8], [12, 9, 10]]
+    fc_a = [f"a{i}" for i in range(2) for j in range(3) for _ in range(fc[i][j])] + [None, None]
+    fc_b = [f"b{j}" for i in range(2) for j in range(3) for _ in range(fc[i][j])] + ["b1", "b1"]
+    fixtures.append(("missing_partner_no_join_column", pl.DataFrame({"cat_a": pl.Series(fc_a, dtype=pl.String), "cat_b": fc_b}), 3, 5, [["cat_a", "cat_b"]], None))
+    # INTENT: several cross-tabs in ONE report, each with a missing-partner line: cat_a is missing on
+    # 3 records and cat_c on 2, so [cat_a, cat_b], [cat_a, cat_c] and [cat_b, cat_c] all carry a
+    # non-zero residual. The last pair repeats the no-join table above on cat_b x cat_c.
+    # REASONING: inspect_report once rebound its relationship-kind loop variable inside the first
+    # cross-tab's missing-line loop, so every later entry silently skipped inspection. main() replays
+    # a leak in the LAST entry and requires the inspection to reject it.
+    mb = [f"b{i}" for i in range(3) for j in range(2) for _ in range(fv[i][j])] + ["b1", "b1"]
+    mc = [f"c{j}" for i in range(3) for j in range(2) for _ in range(fv[i][j])] + [None, None]
+    ma = [None if k % 20 == 7 else f"a{k % 2}" for k in range(len(mb))]
+    fixtures.append(("multi_crosstab_missing_lines", pl.DataFrame({"cat_a": pl.Series(ma, dtype=pl.String), "cat_b": mb, "cat_c": pl.Series(mc, dtype=pl.String)}),
+                     3, 5, [["cat_a", "cat_b"], ["cat_a", "cat_c"], ["cat_b", "cat_c"]], None))
+    # INTENT: regression complement groups. Two records lack y, so x's complement group is 2 (1..k-1):
+    # both orders must be unavailable with small_complement_group. Five records lacking y (= k) keep
+    # both regressions available.
+    gx = [i * 0.5 for i in range(120)]
+    gy2 = [None if i in (3, 50) else v * 0.7 + (i % 7) for i, v in enumerate(gx)]
+    gy5 = [None if i in (3, 17, 50, 71, 99) else v * 0.7 + (i % 7) for i, v in enumerate(gx)]
+    fixtures.append(("named_small_group", pl.DataFrame({"x": gx, "y": pl.Series(gy2, dtype=pl.Float64)}), 3, 5, [["y", "x"], ["x", "y"]], None))
+    fixtures.append(("named_group_at_k", pl.DataFrame({"x": gx, "y": pl.Series(gy5, dtype=pl.Float64)}), 3, 5, [["y", "x"], ["x", "y"]], None))
     fixtures.append(("categorical_pair_four", pl.DataFrame({"group": ["A", "B"] * 5 + [None] * 6, "sector": [None] * 6 + ["X", "Y"] * 5}), 3, 5, [["group", "sector"]], None))
     fixtures.append(("categorical_underk", pl.DataFrame({"group": ["A"] * 4 + [None] * 16}), 2, 5, [], None))
     fixtures.append(("escaping", pl.DataFrame({'quoted"\\\t\n雪': ['a"b\\c\t\n雪'] * 10 + ['\x01edge\r'] * 10}), 2, 5, [], None))
@@ -216,6 +406,26 @@ def mutate(source, language, mutation):
         "invalid_matrix": 'report["relationships"]["pearson"]["matrix"][0][1] = 2.0',
         "missing_check": 'checks.pop()',
         "second_write": 'os.mkdir(txt_path)',
+        # Scan completeness: a declared categorical column whose block cannot be reached.
+        "missing_categorical_block": 'del report["columns"][3]["categorical"]',
+        # A crosstab entry carrying cells_suppressed but no cells must never PASS.
+        "crosstab_cells_removed": 'del report["relationships"]["crosstabs"][0]["cells"]',
+        # An empty/absent reason is NOT VERIFIED, never a silent pass.
+        "empty_reason": 'checks[0]["reason"] = ""',
+        # Bridge: re-show the extra cell the repair hid (bridge_4x4 fixture), leaving no lone
+        # hidden cell but a bridge at (row 1, column 2) that the totals pin exactly.
+        "bridge_restored": 'report["relationships"]["crosstabs"][0]["cells"][13] = 8\nreport["relationships"]["crosstabs"][0]["cells_suppressed"] -= 1',
+        # A row of zeros beyond the released categories: totals, nulls and the bridge sweep all
+        # still hold, so only the rows-equal-released-levels assertion can catch it.
+        "crosstab_extra_row": 'report["relationships"]["crosstabs"][0]["cells"] += [0] * report["relationships"]["crosstabs"][0]["cols"]\nreport["relationships"]["crosstabs"][0]["rows"] += 1',
+        # A second entry on the same pair (two tables of one pair can be combined).
+        "crosstab_duplicated": 'report["relationships"]["crosstabs"].append(dict(report["relationships"]["crosstabs"][0]))',
+        # Re-show the two cells the missing-partner repair hid (missing_partner_repair fixture): the
+        # core cycle stays bridge-free, but row a2 is fully visible again and its missing-partner count
+        # is pinned -- only the missing-partner sweep can catch it.
+        "missing_partner_restored": 'report["relationships"]["crosstabs"][0]["cells"][6] = 10\nreport["relationships"]["crosstabs"][0]["cells"][7] = 10\nreport["relationships"]["crosstabs"][0]["cells_suppressed"] -= 2',
+        # Release a regression whose complement group is 2 records (named_small_group fixture).
+        "named_group_released": 'del report["relationships"]["named"][0]["reason"]\nreport["relationships"]["named"][0].update(available=True, pearson=0.5, spearman=0.5, ols={"intercept": 0.0, "slope": 1.0, "r_squared": 0.25})',
     }
     r = {
         "underk_value": 'report$columns[[1]]$numeric$mean <- 923456.25',
@@ -225,10 +435,18 @@ def mutate(source, language, mutation):
         "invalid_matrix": 'report$relationships$pearson$matrix[1, 2] <- 2',
         "missing_check": 'checks <- checks[-length(checks)]',
         "second_write": 'dir.create(txt_path)',
+        "missing_categorical_block": 'report$columns[[4]]$categorical <- NULL',
+        "crosstab_cells_removed": 'report$relationships$crosstabs[[1]]$cells <- NULL',
+        "empty_reason": 'checks[[1]]$reason <- NULL',
+        "bridge_restored": 'report$relationships$crosstabs[[1]]$cells[[14]] <- 8\nreport$relationships$crosstabs[[1]]$cells_suppressed <- report$relationships$crosstabs[[1]]$cells_suppressed - 1',
+        "crosstab_extra_row": 'report$relationships$crosstabs[[1]]$cells <- c(report$relationships$crosstabs[[1]]$cells, as.list(rep(0, report$relationships$crosstabs[[1]]$cols)))\nreport$relationships$crosstabs[[1]]$rows <- report$relationships$crosstabs[[1]]$rows + 1',
+        "crosstab_duplicated": 'report$relationships$crosstabs[[length(report$relationships$crosstabs) + 1]] <- report$relationships$crosstabs[[1]]',
+        "missing_partner_restored": 'report$relationships$crosstabs[[1]]$cells[[7]] <- 10\nreport$relationships$crosstabs[[1]]$cells[[8]] <- 10\nreport$relationships$crosstabs[[1]]$cells_suppressed <- report$relationships$crosstabs[[1]]$cells_suppressed - 2',
+        "named_group_released": 'report$relationships$named[[1]]$reason <- NULL\nreport$relationships$named[[1]]$available <- TRUE\nreport$relationships$named[[1]]$pearson <- 0.5\nreport$relationships$named[[1]]$spearman <- 0.5\nreport$relationships$named[[1]]$ols <- list(intercept = 0, slope = 1, r_squared = 0.25)',
     }
     statement = (py if language == "python" else r)[mutation]
     marker = '# --- Validate ---------------------------------------------------------------'
-    if mutation == "missing_check":
+    if mutation in ("missing_check", "empty_reason"):
         marker = '# INTENT: completeness is required,'
         start = source.index(marker)
         marker = source[start:source.index('\n', start)]
@@ -418,7 +636,7 @@ def adjudicate_claims(base, work, env, sources, languages, results):
                     'report_columns': report['columns'] if report else None,
                     'relationships': report.get('relationships') if report else None,
                     'log': str(path.with_suffix(path.suffix + '.runner.log'))}
-        # INTENT: compare each observation against the desired contract, not against the allegation.
+        # INTENT: compare each observation against the desired behaviour, not against the allegation.
         # REASONING: characterizing a defect successfully does not make product acceptance pass.
         # ASSUMES: generic unrelated failures do not count as a supported precision diagnostic.
         passed = False
@@ -533,6 +751,23 @@ def main():
         results.append({'name': f'{language}/dependencies', 'passed': r.returncode == 0, 'detail': str(probe)})
     if args.suite == 'adjudication':
         return adjudicate_claims(base, work, env, source_by_language, args.languages, results)
+    # INTENT: the profilers take no researcher declarations, so no template may carry a
+    # user-editable `not_applicable` setting (or code reading one).
+    # REASONING: a typed reason would be written verbatim into validation.checks[].reason --
+    # a free-text channel across the disclosure boundary. Any occurrence of the identifier
+    # is a reintroduced setting; prose saying "not applicable" is not matched.
+    for language in args.languages:
+        hits = [i + 1 for i, line in enumerate(source_by_language[language].splitlines()) if re.search(r'\bnot_applicable\b', line)]
+        results.append({'name': f'{language}/no_declaration_setting', 'passed': len(hits) == 0,
+                        'detail': 'no not_applicable identifier in the template' if not hits else f'not_applicable on template lines {hits}'})
+    # INTENT: read CPS-INTAKE's accepted NOT_APPLICABLE reason forms from its live Python fence.
+    # REASONING: the assertion must track the intake gate itself, not a copy that can drift.
+    # ASSUMES: the fence assigns `cpsi_na_reason_forms` as one literal dict closed by a "}" line.
+    vc_text = (base / 'agent_reference/VALIDATION_CHECKPOINTS.md').read_text(encoding='utf-8')
+    forms_start = vc_text.index('cpsi_na_reason_forms = {')
+    forms_end = vc_text.index('\n}\n', forms_start) + 2
+    intake_na_forms = ast.literal_eval(vc_text[forms_start + len('cpsi_na_reason_forms = '):forms_end])
+    require(set(intake_na_forms) < set(CHECKS), 'CPS-INTAKE reason forms name an unknown check')
     fixtures = build_fixtures()
     for name, frame, tier, threshold, spec, reason in fixtures:
         fixture = work / f'{name}.parquet'
@@ -559,6 +794,11 @@ def main():
                 else:
                     require(result.returncode == 0, f'Asset failed: {path.with_suffix(path.suffix + ".runner.log")}')
                     require(jp.exists() and tp.exists() and 'Wrote BOTH reports' in result.stdout, 'No dual-output success')
+                    # The count line and the derived verdict must be on stdout, and the
+                    # verdict must agree with all_passed (true here, so PASSED).
+                    require('Checks: ' in result.stdout, 'No Checks: count line on stdout')
+                    require('PROFILE VALIDATION: PASSED' in result.stdout, 'No derived PASSED verdict on an accepted candidate')
+                    require('PROFILE VALIDATION: FAILED' not in result.stdout, 'Accepted candidate also reported FAILED')
                     report = json.loads(jp.read_text())
                     txt = tp.read_text()
                     txt_json, _ = json.JSONDecoder().raw_decode(txt.split('EXACT RELEASE CANDIDATE (same fields and values as JSON):', 1)[1].lstrip())
@@ -579,6 +819,78 @@ def main():
                     if name == 'categorical_pool':
                         levels = report['columns'][0]['categorical']['levels']
                         require(sorted((b['value'], b['count']) for b in levels) == [('A', 20), ('__OTHER__', 6)], 'Complementary rare-level roll-in failed')
+                    if name == 'bridge_4x4':
+                        # INTENT: pin the documented tie-break -- the smallest visible non-zero cell
+                        # joining the bridge's two sides is (row 3, column 1) = 8 -- and replay the
+                        # review's differencing attack, which must no longer return the true 2.
+                        ct = report['relationships']['crosstabs'][0]
+                        primary = {0, 1, 4, 5, 6, 10, 11, 14, 15}
+                        require(ct.get('collapsed') is not True and ct['cells_suppressed'] == 10, 'Bridge table not repaired by one extra cell')
+                        require({k for k, v in enumerate(ct['cells']) if v is None} == primary | {13}, 'Bridge repair hid an unexpected cell')
+                        levels = {c['name']: {l['value']: l['count'] for l in c['categorical']['levels']} for c in report['columns']}
+                        grid = [[0 if v is None else v for v in ct['cells'][i * 4:(i + 1) * 4]] for i in range(4)]
+                        row_hidden = [levels['cat_a'][f'a{i}'] - sum(grid[i]) for i in range(4)]
+                        col_hidden = [levels['cat_b'][f'b{j}'] - sum(grid[i][j] for i in range(4)) for j in range(4)]
+                        require(row_hidden[0] + row_hidden[1] - col_hidden[0] - col_hidden[1] != 2, 'Review differencing attack still recovers the bridge cell')
+                    if name == 'pooled_level_rows':
+                        # Rows A, B, C, __OTHER__ x columns W, X, Y; no row for p1 or p2. The released
+                        # __OTHER__ row equals the released pooled count, so differencing isolates nothing.
+                        ct = report['relationships']['crosstabs'][0]
+                        levels = {c['name']: [(l['value'], l['count']) for l in c['categorical']['levels']] for c in report['columns']}
+                        require(levels['g'] == [('A', 30), ('B', 20), ('C', 7), ('__OTHER__', 8)] and levels['h'] == [('X', 33), ('Y', 25), ('W', 6)], 'Unexpected released levels for the pooled-row fixture')
+                        require([ct['rows'], ct['cols']] == [4, 3], 'Pooled source levels got rows of their own')
+                        require(ct['cells'] == [0, 15, 15, 0, 10, 10, 0, 0, 0, 0, 8, 0] and ct['cells_suppressed'] == 0, 'Cross-tab not on released categories in code-point order with zero rows/columns kept')
+                    if name == 'label_order':
+                        # Tie-break: the roll-in pools "y" (later in code-point order), keeping "x".
+                        ties = next(c for c in report['columns'] if c['name'] == 'ties')['categorical']
+                        require([(l['value'], l['count']) for l in ties['levels']] == [('w', 9), ('x', 6), ('__OTHER__', 8)], 'Tied levels not ordered by code point before roll-in')
+                        ct = report['relationships']['crosstabs'][0]
+                        require([ct['rows'], ct['cols']] == [5, 2] and ct['cells_suppressed'] == 0, 'Label-order cross-tab shape or suppression changed')
+                    if name.startswith('missing_partner_'):
+                        ct = report['relationships']['crosstabs'][0]
+                        expected = {'missing_partner_complete_twin': ([None, None, 10, None, None, 10, 10, 10, 10], 4, False),
+                                    'missing_partner_repair': ([None, None, 10, None, None, 10, None, None, 10], 6, False),
+                                    # No joining cell: the exposed a1 count gets the primary-cell treatment
+                                    # (hide a1's smallest non-zero cell, then complementary steps), not a collapse.
+                                    'missing_partner_no_join': ([10, 12, None, None, None, None], 4, False),
+                                    # Column side: the exposed line is core column 1, so the fallback
+                                    # starts there; the release is the transpose of the row-side pin.
+                                    'missing_partner_no_join_column': ([10, None, None, 12, None, None], 4, False)}[name]
+                        require((ct['cells'], ct['cells_suppressed'], ct.get('collapsed') is True) == expected, f'Missing-partner fixture released {ct["cells"]}')
+                    if name == 'multi_crosstab_missing_lines':
+                        # INTENT: every entry carries a missing-partner line, so the fixture keeps
+                        # exercising inspection beyond the first such entry.
+                        cts = report['relationships']['crosstabs']
+                        by_name = {c['name']: c for c in report['columns']}
+                        require(len(cts) == 3 and all(e['available'] for e in cts), 'Multi-cross-tab fixture lost an entry')
+                        require(all(max(by_name[p]['nonmissing_n'] - e['n'] for p in e['pair']) > 0 for e in cts), 'A cross-tab entry has no missing-partner line')
+                        # INTENT: replay a leak in the LAST entry -- its hidden cells re-shown at their
+                        # true values (all >= threshold) leave the 2 records of b1 lacking cat_c pinned
+                        # by the released totals -- and require the inspection to reject it.
+                        # REASONING: a relationship-kind loop variable rebound by an earlier entry's
+                        # missing-line loop would skip this entry and accept the leak.
+                        # ASSUMES: neither column of the last pair pools a level (asserted).
+                        tampered = copy.deepcopy(report)
+                        last = tampered['relationships']['crosstabs'][-1]
+                        cats = [sorted(l['value'] for l in by_name[p]['categorical']['levels']) for p in last['pair']]
+                        require('__OTHER__' not in cats[0] + cats[1], 'Last multi-cross-tab pair pools a level')
+                        last['cells'] = [sum(1 for x, y in zip(frame[last['pair'][0]], frame[last['pair'][1]]) if x == cats[0][k // last['cols']] and y == cats[1][k % last['cols']])
+                                         for k in range(last['rows'] * last['cols'])]
+                        last['cells_suppressed'] = 0
+                        last.pop('collapsed', None)
+                        rejected = None
+                        try:
+                            inspect_report(tampered, frame, tier, threshold)
+                        except AssertionError as inspection_exc:
+                            rejected = str(inspection_exc)
+                        require(rejected is not None and rejected.startswith('Missing-partner'), f'Inspection accepted a missing-partner leak in the last cross-tab entry: {rejected}')
+                    if name in ('named_small_group', 'named_group_at_k'):
+                        named = report['relationships']['named']
+                        want = [(False, 'small_complement_group')] * 2 if name == 'named_small_group' else [(True, None)] * 2
+                        require([(e['available'], e.get('reason')) for e in named] == want, f'Complement-group gate gave {named}')
+                    if name == 'bridge_collapse':
+                        ct = report['relationships']['crosstabs'][0]
+                        require(ct.get('collapsed') is True and ct['cells_suppressed'] == 16 and all(v is None for v in ct['cells']), 'Unrepairable bridge table not collapsed')
                     if name == 'boundary_k5':
                         require('923456.25' in jp.read_text(), 'Eligible constant positive control absent')
                         # Below-k blocks checked structurally; exact support metadata is allowed.
@@ -588,19 +900,75 @@ def main():
             except Exception as exc:
                 results.append({'name': f'{language}/{name}', 'passed': False, 'detail': str(exc)})
                 print('FAIL', language, name, str(exc), flush=True)
+    # INTENT: every embedded reason in every accepted report is in CPS-INTAKE's vocabulary:
+    # PASS carries exactly `candidate_fields_checked`; NOT_APPLICABLE fully matches one of
+    # the intake's fixed forms for that check (none exist for the disclosure sweep).
+    # REASONING: with no declaration setting, every N/A is the profiler's own; a reason
+    # outside the forms would fail intake and mean the template emits free text.
+    for language in args.languages:
+        n_reports, n_na, outside = 0, 0, []
+        for (lang, name), report in sorted(reports.items()):
+            if lang != language:
+                continue
+            n_reports += 1
+            for c in report['validation']['checks']:
+                if c['status'] == 'NOT_APPLICABLE':
+                    n_na += 1
+                    if not any(re.fullmatch(form, c['reason']) for form in intake_na_forms.get(c['name'], ())):
+                        outside.append(f"{name}:{c['name']}")
+                elif c['status'] != 'PASS' or c['reason'] != 'candidate_fields_checked':
+                    outside.append(f"{name}:{c['name']}")
+        results.append({'name': f'{language}/embedded_reasons_in_intake_vocabulary', 'passed': n_reports > 0 and n_na > 0 and not outside,
+                        'detail': f'{n_reports} reports, {n_na} NOT_APPLICABLE reasons matched to CPS-INTAKE forms' if not outside else f'outside the vocabulary: {outside}'})
     if args.suite != 'generation':
         dense = next(f for f in fixtures if f[0] == 'dense_t3')
         for language in args.languages:
             ext = 'py' if language == 'python' else 'R'
-            for mutation in ('underk_value', 'invalid_rate', 'invalid_count', 'unordered_grid', 'invalid_matrix', 'missing_check', 'second_write', 'existing_json', 'existing_txt'):
+            # INTENT: the outcome-vocabulary negative fixtures sit alongside the original faults;
+            # each asserts the EXPECTED per-check outcome line, not merely a nonzero exit code.
+            expected_outcome_line = {
+                'missing_categorical_block': '[FAIL] no_subthreshold_cells_emitted:',
+                'crosstab_cells_removed': '[FAIL] no_subthreshold_cells_emitted:',
+                'empty_reason': '[NOT VERIFIED] column_shapes_and_support:',
+                'bridge_restored': '[FAIL] no_subthreshold_cells_emitted:',
+                'crosstab_extra_row': '[FAIL] relationship_support_and_shape:',
+                'crosstab_duplicated': '[FAIL] relationship_support_and_shape:',
+                'missing_partner_restored': '[FAIL] no_subthreshold_cells_emitted:',
+                'named_group_released': '[FAIL] relationship_support_and_shape:',
+            }
+            # Position-only failure text for the missing-partner and complement-group faults, and the
+            # check each one must leave passing (isolating the assertion that catches it).
+            isolated = {
+                'missing_partner_restored': ('missing-partner cell at row index 2 is recoverable from the released totals', '[PASS] relationship_support_and_shape'),
+                'named_group_released': ('named entry (y ~ x): a complement group is below threshold', '[PASS] no_subthreshold_cells_emitted'),
+            }
+            # Exact failure text (pair and entry index only, no values) for the cross-tab placement faults.
+            expected_message = {
+                'crosstab_extra_row': 'crosstab entry 0 (group x sector): rows x cols differ from the released level counts of its pair columns',
+                'crosstab_duplicated': 'crosstab entry 1: repeats the pair of an earlier entry',
+            }
+            for mutation in ('underk_value', 'invalid_rate', 'invalid_count', 'unordered_grid', 'invalid_matrix', 'missing_check', 'second_write', 'existing_json', 'existing_txt',
+                             'missing_categorical_block', 'crosstab_cells_removed', 'empty_reason', 'bridge_restored', 'crosstab_extra_row', 'crosstab_duplicated',
+                             'missing_partner_restored', 'named_group_released'):
                 folder = work / f'{language}_fault_{mutation}'
                 folder.mkdir()
                 fixture = work / 'dense_t3.parquet'
+                spec = dense[4]
                 if mutation == 'underk_value':
                     fixture = work / 'underk_fault.parquet'
+                    spec = []
                     if not fixture.exists():
                         pl.DataFrame({'sparse': [923456.25] * 4 + [None] * 16}).write_parquet(fixture)
-                source = configure(source_by_language[language], language, fixture, folder, 3 if mutation != 'underk_value' else 2, 5, dense[4] if mutation != 'underk_value' else [])
+                elif mutation == 'bridge_restored':
+                    fixture = work / 'bridge_4x4.parquet'
+                    spec = [['cat_a', 'cat_b']]
+                elif mutation == 'missing_partner_restored':
+                    fixture = work / 'missing_partner_repair.parquet'
+                    spec = [['cat_a', 'cat_b']]
+                elif mutation == 'named_group_released':
+                    fixture = work / 'named_small_group.parquet'
+                    spec = [['y', 'x'], ['x', 'y']]
+                source = configure(source_by_language[language], language, fixture, folder, 3 if mutation != 'underk_value' else 2, 5, spec)
                 if not mutation.startswith('existing'):
                     source = mutate(source, language, mutation)
                 sentinel = None
@@ -623,11 +991,62 @@ def main():
                             require(jp.is_file() and tp.is_dir() and 'OUTPUT FAILED' in output, 'Second-write failure not diagnosed')
                         else:
                             require(not jp.exists() and not tp.exists() and 'VALIDATION FAILED' in output, 'Candidate failure leaked output or missed validation')
+                            # Stdout must carry the count line and a verdict consistent with
+                            # all_passed; a false candidate can never print PASSED.
+                            require('Checks: ' in output, 'No Checks: count line on stdout')
+                            require('PROFILE VALIDATION: FAILED' in output, 'No derived FAILED verdict on a rejected candidate')
+                            require('PROFILE VALIDATION: PASSED' not in output, 'Rejected candidate reported a PASSED verdict')
+                            if mutation in expected_outcome_line:
+                                require(expected_outcome_line[mutation] in output, f'Missing expected outcome line: {expected_outcome_line[mutation]!r}')
+                            if mutation in ('missing_categorical_block', 'crosstab_cells_removed', 'bridge_restored'):
+                                require('[PASS] no_subthreshold_cells_emitted' not in output, 'Disclosure sweep passed on an incomplete scan')
+                            if mutation == 'bridge_restored':
+                                require('hidden cell at row index 1, column index 2 is recoverable from the released totals' in output, 'Bridge FAIL does not name the bridge position')
+                                require('[PASS] relationship_support_and_shape' in output, 'Bridge fault should pass the lone-cell rule, isolating the bridge sweep')
+                            if mutation in isolated:
+                                require(isolated[mutation][0] in output, f'Missing expected failure text: {isolated[mutation][0]!r}')
+                                require(isolated[mutation][1] in output, f'Fault not isolated: {isolated[mutation][1]!r} absent')
+                            if mutation in expected_message:
+                                require(expected_message[mutation] in output, f'Missing expected failure text: {expected_message[mutation]!r}')
+                                require('[PASS] no_subthreshold_cells_emitted' in output, 'Placement fault should pass the disclosure sweep, isolating the placement assertion')
                     results.append({'name': f'{language}/fault_{mutation}', 'passed': True, 'detail': str(path)})
                     print('PASS', language, 'fault', mutation, flush=True)
                 except Exception as exc:
                     results.append({'name': f'{language}/fault_{mutation}', 'passed': False, 'detail': str(exc)})
                     print('FAIL', language, 'fault', mutation, str(exc), flush=True)
+            # INTENT: RELATIONSHIP_SPEC refusal -- a self-pair, an exact repeat, or a reversed repeat
+            # of a non-numeric pair stops the profiler before any file is written; a reversed pair
+            # of two numeric columns is two regressions (y ~ x, x ~ y) and is accepted.
+            # REASONING: two differently suppressed tables of one pair can be combined to recover
+            # cells, so the spec itself is refused rather than either table being trusted.
+            # ASSUMES: dense_t3 has numeric x, y and categorical group, sector; messages name positions only.
+            spec_cases = [
+                ('spec_self_pair', [['group', 'group']], 'Invalid relationship spec: pair 1 names one column twice'),
+                ('spec_repeated_pair', [['group', 'sector'], ['group', 'sector']], 'Invalid relationship spec: pair 2 repeats pair 1'),
+                ('spec_reversed_categorical', [['group', 'sector'], ['sector', 'group']], 'Invalid relationship spec: pair 2 reverses pair 1; only two numeric columns may be listed in both orders'),
+                ('spec_reversed_numeric', [['y', 'x'], ['x', 'y']], None),
+            ]
+            for case, spec, message in spec_cases:
+                folder = work / f'{language}_{case}'
+                folder.mkdir()
+                path = folder / f'profile.{ext}'
+                path.write_text(configure(source_by_language[language], language, work / 'dense_t3.parquet', folder, 3, 5, spec))
+                result = run_captured(path, base, env)
+                output = result.stdout + result.stderr
+                jp, tp = folder / 'fixture_profile_report.json', folder / 'fixture_profile_report.txt'
+                try:
+                    if message is None:
+                        require(result.returncode == 0 and jp.exists() and tp.exists() and 'PROFILE VALIDATION: PASSED' in result.stdout, 'Reversed numeric pair refused or failed')
+                        named = json.loads(jp.read_text())['relationships']['named']
+                        require([(e['outcome'], e['predictor'], e['available']) for e in named] == [('y', 'x', True), ('x', 'y', True)], 'Reversed numeric pair not released as two regressions')
+                    else:
+                        require(result.returncode != 0 and not jp.exists() and not tp.exists() and 'Wrote BOTH reports' not in output, 'Invalid spec accepted or a report written')
+                        require(message in output, f'Missing refusal message: {message!r}')
+                    results.append({'name': f'{language}/{case}', 'passed': True, 'detail': str(path)})
+                    print('PASS', language, case, flush=True)
+                except Exception as exc:
+                    results.append({'name': f'{language}/{case}', 'passed': False, 'detail': str(exc)})
+                    print('FAIL', language, case, str(exc), flush=True)
     if set(args.languages) == {'python', 'r'}:
         for name, *_ in fixtures:
             if ('python', name) not in reports or ('r', name) not in reports:
@@ -685,7 +1104,7 @@ def main():
                 rejected = False
             except AssertionError as exc:
                 rejected = str(exc) == 'Wrong report version'
-            results.append({'name': f'{language}/legacy_intake_rejected', 'passed': rejected, 'detail': 'Independent regression contract checker rejects 1.0; no standalone DS-3 implementation is exercised'})
+            results.append({'name': f'{language}/legacy_intake_rejected', 'passed': rejected, 'detail': 'Independent report-version checker in this tool rejects 1.0; no standalone DS-3 implementation is exercised'})
     # --- Summary ---
     # INTENT: derive completion from recorded outcomes, preserve failures and inventory.
     for r in results:

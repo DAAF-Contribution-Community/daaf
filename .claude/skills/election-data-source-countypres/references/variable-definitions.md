@@ -136,6 +136,6 @@ null `county_fips` values create ambiguity.
 
 | Metric | Formula | Notes |
 |--------|---------|-------|
-| Vote share | `candidatevotes / totalvotes` | Filter `mode='TOTAL'` and `totalvotes > 0` first |
+| Vote share | `candidatevotes / totalvotes` | Reconstruct TOTAL first (3-pattern, see `mode-reconstruction.md`) and require `totalvotes > 0`; a bare `mode='TOTAL'` filter drops ~1,000 counties in 2020+ |
 | Two-party share | `candidatevotes / (dem_votes + rep_votes)` | Requires pivot; common for swing analysis |
 | Turnout proxy | `totalvotes` | Not true turnout (no denominator of eligible voters in this dataset) |

@@ -39,6 +39,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 | **Substantiveness Validation** | Stage 12 final review | Stub and placeholder detection in data, text, and code | No — **advisory only** |
 | **Pre-Output Verification** | Stage 12 | Deliverable completeness against the Plan | Human gate (`checkpoint:human-verify`) |
 
+> **Mode-specific blocks.** Data Onboarding Mode adds two further families, both `checkpoint:auto` and script-halting: **CPP1-CPP4 / CPP-SKILL** (§ Profiling Validation Checkpoints) on the standard path, and **CPS-INTAKE / CPS-GEN** (§ Synthetic-Path Validation Checkpoints, stages DS-3 and DS-5) on the privacy-preserving synthetic path.
+
 ### Secondary Checkpoints (QA1-QA4b)
 
 QA checkpoints run AFTER primary checkpoints, providing independent secondary verification via code-reviewer agent. CP checkpoints validate operations; QA checkpoints validate outputs and methodology alignment.
@@ -5966,3 +5968,6256 @@ if cpps_verdict == "FAILED":
 **Reported-status mapping.** As with CP1-CP4, `PASSED WITH WARNINGS` on the log line maps to reported status **`WARNING`** in the data-ingest agent's return; `PASSED` maps to `PASSED`, `FAILED` to `FAILED`. Report the mapped value, never the raw log string.
 
 **Comparator note.** `scripts/compare_execution_logs.py` matches `CP\d` verdict lines; `CPP\d` lines are not currently machine-compared across runs. The count line is therefore the primary machine-readable evidence for CPP checkpoints, and the human reviewer (code-reviewer at QAP) is the consumer that matters. Do not assume a CPP regression would be caught by log comparison.
+
+---
+
+## Synthetic-Path Validation Checkpoints (Data Onboarding, synthetic path)
+
+> **Mode:** These checkpoints apply to Data Onboarding Mode's **synthetic (privacy-preserving) path** only — the branch taken when the raw data must never enter the container. They replace CPP1-CPP4, which cannot run here because there is no source file to load and recompute against: everything DAAF knows about the data arrives as a profile report.
+>
+> **This section is canonical.** The blocks below are the only maintained copies of the CPS code. `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md` tells the executing agent *when* to embed each checkpoint and supplies the per-stage `# --- Config ---` values, then points here for the block itself. Copy the block verbatim into the validation script's `# --- Validate ---` section; do not paraphrase it and do not maintain a second copy elsewhere.
+
+### CPS Overview
+
+CPS checkpoints follow the same outcome vocabulary, count line, and verdict rules as CP1-CP4 and CPP1-CPP4 (see § Per-Check Outcome Vocabulary, § Count Line and Verdict Line, § Applicability Configuration above). Each block prints `Checks: ...` then `CPS-{name} VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`, and raises/stops on `FAILED` — but only after every check has reported, so the log records the complete picture rather than aborting at the first problem.
+
+| Checkpoint | Stage | Runs in | Classification | Purpose | FAILED when |
+|------------|-------|---------|----------------|---------|-------------|
+| **CPS-INTAKE** | DS-3 (report intake) | `scripts/profile_report_intake/01_validate-report.py` (`.R` for R) | `checkpoint:auto`, script-halting | The returned profile report is structurally sound, internally consistent, and free of disclosure-shaped content | Schema violated, a released count below threshold, a report threshold below the approved one, a report beyond the approved tier ceiling (its `settings.tier` above the approved tier, or a `relationships` block released below tier 3), released totals that do not reconcile (a categorical or cross-tab residual recoverable by differencing), a hidden cross-tab cell recoverable from the released row and column totals (a lone hidden cell or any other bridge), a missing-partner count below the threshold recoverable from those totals and the released missing counts, an available regression with a complement group below the threshold, a categorical block that repeats a level label, a cross-tab that names one column twice or repeats another entry's pair, an available cross-tab whose rows or cols differ from its columns' released level counts, an incomplete disclosure sweep, a raw-value-shaped field, a field outside the spec's key allow-lists or vocabularies — or any input those checks need is missing and not declared not-applicable |
+| **CPS-GEN** | DS-5 (post-generation) | `scripts/synth_generate/01_generate-synthetic.py` (`.R` for R), at the end of the generation script (T4: `scripts/synth_generate/01_import-synthetic.{py,R}`, at the end of the import) | `checkpoint:auto`, script-halting | The generated synthetic data matches the profile it was built from and fabricates nothing the report withheld | Row count/schema mismatch, a synthetic level outside the released level set, a required `__OTHER__` bucket missing, a synthetic column outside the text-comparable types where it must be compared with released labels, a non-numeric column under a released percentile grid or correlation, an identifier that is not unique or carries a released value, a configured `tier` that differs from the report's declared `settings.tier`, no recorded seed, or `seed_exception` misused (set at tier 1–3, or alongside `seed`) — or any input those checks need is missing and not declared not-applicable |
+
+**Relationship to the review family.** CPS-INTAKE and CPS-GEN are the script-halting counterparts of QAS-B and QAS-C (`agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints). The CPS blocks implement the *computable* subset of the b- and c-checks; the reviewer re-derives the rest and reads the source of these scripts. A gate reads both — a CPS `PASSED` is necessary, never sufficient.
+
+**Why `[NOT VERIFIED]` matters here specifically.** On every other path a missing input can be recovered by going back to the data. Here the data is unreachable by construction, so an absent report field is not a temporary gap — it is the end of the evidence. A check that cannot run therefore says so and fails the checkpoint rather than passing on a report the container cannot cross-examine.
+
+### CPS-INTAKE: Profile Report Intake Validation (DS-3)
+
+**When:** Immediately after the returned profile report lands in `data/profile_report/` and before any generation work reads it (DS-3).
+
+CPS-INTAKE re-derives every claim the report makes from the report's own numbers. It never trusts the report's embedded `validation.all_passed` as evidence of anything except that the user's profiler said so — that flag is a claim the block checks, not a result it consumes. Four of its twelve checks are disclosure-critical and carry no legal `not_applicable` key; declaring one of them is itself a `[FAIL]`, and the check still runs.
+
+One input deliberately comes from outside the report: `expected_threshold`, the suppression threshold the researcher approved at tier selection (PSU-DS1) and recorded in STATE.md § Synthetic Path Tracking (**Suppression Threshold**). The disclosure sweep gates on it as well as on the report's own `settings.suppression_threshold`, so a report cannot lower its own bar. The config `tier` is treated the same way: it is the tier the researcher approved at PSU-DS1, and a report whose `settings.tier` exceeds it, or that releases a `relationships` block below tier 3, fails the sweep — a report cannot widen its own release scope either. Released totals must reconcile, so no hidden count can be recovered by subtraction: in the sweep, a categorical block's level counts must sum to its `n` (and that `n` must equal its column's `nonmissing_n`); in `crosstab_schema_and_suppression`, a cross-tab entry's visible cells must not sum past its `n`, and must sum to it exactly when no cell is hidden. The same check keeps hidden cross-tab cells hidden: with every row and column total treated as released, no hidden cell may be a bridge, because a bridge is exactly recoverable from those totals. A lone hidden cell in its row or column is the simplest bridge; a hidden cell that is the only link between two otherwise separate groups of hidden cells is one too. The same test covers the records whose partner column is missing: the categorical blocks count them while the grid does not, so a sub-threshold count of them must not be pinned by the released totals either. In the sweep, a named regression is released only when each column's complement group, the records with that column but not the other, is empty or at least the threshold, because the released mean and the fitted line together give the summed value of that group. Each cross-tab must also sit on its own unordered pair of two distinct column names, and an available one on the released categories of both (its `rows` and `cols` equal to the two columns' released level counts), so a second table of the same named pair, or a row for a level pooled into `__OTHER__`, cannot be differenced against what the report already releases. The guarantee is per entry and stops at the row and column totals: no hidden cell or missing-partner count is recoverable from one cross-tab together with the released totals, and no named regression has a small complement group. At tier 3 the released Cramér's V, computed on the full table, can let a determined analyst reconstruct small cells from the released margins, or split the pooled `__OTHER__` category into its rare source levels' counts; and several cross-tabs or regressions that share a column, or two encodings of one variable under different names, can disclose together what each protects alone. No check here detects either — both are accepted, documented tier-3 limitations (§ CPS Usage Notes). The block also never stops early on a malformed report: a field of the wrong JSON type becomes a named `[FAIL]` or `[NOT VERIFIED]`, every check prints its own outcome line, and the count and verdict lines always print. These rules are spelled out in § CPS Usage Notes.
+
+**Embedded in:** `scripts/profile_report_intake/01_validate-report.py` (`.R` for R)
+
+**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — assign your values there):**
+```python
+# --- Config ---
+report_path = None       # path to the returned profile report JSON; None if intake staged no file
+tier = None              # 1 | 2 | 3 — the tier approved at PSU-DS1 (STATE Disclosure Tier; at T4, T4 Companion Profile Tier) — never the report's settings.tier; None if not recorded
+expected_threshold = None  # the suppression threshold approved at tier selection (STATE.md § Synthetic Path Tracking); None if not recorded
+not_applicable = {}      # e.g. {"correlation_matrix_wellformed": "tier 2 — the report releases no correlations"}
+```
+
+```python
+# --- CPS-INTAKE Validation ---
+# INTENT: Verify that a returned profile report is structurally sound, internally
+# consistent, and free of disclosure-shaped content before anything downstream
+# generates data from it.
+# REASONING: The report is the only artifact that crosses the privacy boundary, so
+# every claim must be re-derived from its own numbers rather than taken from its
+# embedded all_passed flag. Each check emits exactly one token and increments
+# exactly one counter; the verdict is derived from the counters, never asserted.
+# ASSUMES: report_path / tier / expected_threshold / not_applicable are assigned in the
+# `# --- Config ---` region below; report_path is None when intake staged no file.
+# A field of the wrong JSON type never raises: it becomes a [FAIL] when it is the
+# field a check validates, or a [NOT VERIFIED] when it is evidence a check needs.
+import json
+import re
+from pathlib import Path
+
+# --- Config ---
+report_path = None       # path to the returned profile report JSON; None if intake staged no file
+tier = None              # 1 | 2 | 3 — the tier approved at PSU-DS1 (STATE Disclosure Tier; at T4, T4 Companion Profile Tier) — never the report's settings.tier; None if not recorded
+expected_threshold = None  # the suppression threshold approved at tier selection (STATE.md § Synthetic Path Tracking); None if not recorded
+not_applicable = {}      # e.g. {"correlation_matrix_wellformed": "tier 2 — the report releases no correlations"}
+
+print("\n" + "=" * 60)
+print("CPS-INTAKE VALIDATION: PROFILE REPORT INTAKE")
+print("=" * 60)
+
+cps_intake = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+
+# INTENT: A declared skip without a reason is indistinguishable from a silent one, so
+# it is dropped — but the key stays visible to the two sweeps below, so an empty
+# reason cannot be used to smuggle a declaration past the non-declarable or
+# unrecognized-key gates. The declarable check it named does not then run either:
+# `cpsi_empty_reason` carries it to a [NOT VERIFIED], because printing a [PASS]
+# would answer a question the author explicitly withdrew.
+cpsi_declared_keys = sorted(not_applicable)
+cpsi_empty_reason = {k for k, v in not_applicable.items() if not (isinstance(v, str) and v.strip())}
+not_applicable = {k: v for k, v in not_applicable.items() if isinstance(v, str) and v.strip()}
+
+# INTENT: Disclosure-critical checks may never be declared not applicable.
+# REASONING: Once a report has crossed the boundary it cannot be recalled, so the
+# only safe reading of "this disclosure check does not apply" is that someone
+# wanted it not to run. The declaration is itself the finding, and the check
+# still runs afterwards on the un-declared path.
+cpsi_non_declarable = ("no_released_count_below_threshold", "no_raw_value_shaped_fields",
+                       "identifier_columns_value_free", "crosstab_schema_and_suppression")
+for cpsi_key in cpsi_non_declarable:
+    if cpsi_key in cpsi_declared_keys:
+        print(f"[FAIL] {cpsi_key}: non-declarable check declared not_applicable under key '{cpsi_key}'")
+        cps_intake["failed"] += 1
+        not_applicable.pop(cpsi_key, None)
+
+# INTENT: A not_applicable key that names no check of this block is a silent no-op.
+# REASONING: A typo'd or stale key would otherwise declare nothing and be ignored,
+# leaving the author believing a check was skipped when it in fact ran (or the
+# reverse). Naming it once is the only way the log can carry the discrepancy.
+cpsi_declarable = ("report_version", "required_top_level_keys", "row_count_positive",
+                   "percentiles_monotone", "category_counts_le_rowcount",
+                   "missing_rate_in_unit_interval", "correlation_matrix_wellformed",
+                   "embedded_validation_complete")
+for cpsi_key in cpsi_declared_keys:
+    if cpsi_key in cpsi_non_declarable or cpsi_key in cpsi_declarable:
+        continue
+    print(f"[FAIL] not_applicable: unrecognized key '{cpsi_key}' (declarable keys: {', '.join(cpsi_declarable)})")
+    cps_intake["failed"] += 1
+    not_applicable.pop(cpsi_key, None)
+
+# INTENT: Bind every downstream input once, so a missing piece becomes a named
+# [NOT VERIFIED] rather than a KeyError halfway through the block.
+cpsi_parse_error = "report did not parse as JSON (parser message withheld: it can quote report content)"
+cpsi_report = None
+cpsi_load_error = None
+cpsi_report_strings = set()
+if report_path is None:
+    cpsi_load_error = "report_path is not set — no report was staged for intake"
+elif not Path(report_path).is_file():
+    cpsi_load_error = f"no file at report_path '{report_path}'"
+else:
+    # REASONING: the parser's own message is withheld — it can quote report text,
+    # and the R parser words it differently, so neither belongs on an outcome line.
+    # Parsing is STRICT, with the same outcome as the R block and as CPS-GEN on every
+    # file: `parse_constant=int` makes the non-JSON literals NaN / Infinity / -Infinity
+    # a parse error (int("NaN") raises ValueError), as they are in jsonlite: Python's
+    # default would admit them, and a NaN in a field no check reads then PASSED here
+    # while the R block FAILED the same file. A duplicate object key at any depth is a
+    # parse error too: Python's dict keeps the LAST value silently while jsonlite keeps
+    # BOTH and `[[` reads the FIRST, so one file was judged on two different values.
+    # The first pass keeps every object as its raw (key, value) list, so a repeat stays
+    # visible to the sweep below; the second builds the dicts the checks read.
+    # RecursionError is caught because json.loads recurses once per nesting level and
+    # a deep enough file used to escape the block with no verdict.
+    cpsi_pairs = None
+    cpsi_text = None
+    # INTENT: Refuse, before either parser runs, every input the two parsers would read
+    # differently.
+    # REASONING: jsonlite accepts a leading UTF-8 byte-order mark with only a warning
+    # where json.loads refuses it; jsonlite silently cuts a string at an escaped NUL
+    # (\u0000) and replaces an unpaired surrogate escape, where Python keeps both. A raw
+    # NUL byte and invalid UTF-8 are refused by both parsers, but R's text reader would
+    # stop at the NUL first. All of these are therefore parse errors, decided on the
+    # bytes and on the escape sequences, the same way in both blocks.
+    try:
+        cpsi_bytes = Path(report_path).read_bytes()
+        if cpsi_bytes[:3] != b"\xef\xbb\xbf" and b"\x00" not in cpsi_bytes:
+            cpsi_text = cpsi_bytes.decode("utf-8")
+    except (ValueError, OSError):
+        cpsi_text = None
+    if cpsi_text is not None:
+        # INTENT: Walk the escape sequences left to right. An escaped backslash is one
+        # token, so the text `\\u0000` (a backslash, then u0000) is not an escape.
+        # ASSUMES: a \u escape is exactly six characters, so a surrogate pair is a high
+        # escape immediately followed by a low one.
+        cpsi_toks = [(cpsi_m.start(), cpsi_m.group(0)) for cpsi_m in re.finditer(r"\\(?:u[0-9a-fA-F]{4}|[^u])", cpsi_text)]
+        cpsi_cps = [int(cpsi_t[1][2:], 16) if cpsi_t[1][1] == "u" else -1 for cpsi_t in cpsi_toks]
+        for cpsi_i in range(len(cpsi_toks)):
+            cpsi_cp = cpsi_cps[cpsi_i]
+            cpsi_hi_ok = (cpsi_i + 1 < len(cpsi_toks) and cpsi_toks[cpsi_i + 1][0] == cpsi_toks[cpsi_i][0] + 6
+                          and 0xDC00 <= cpsi_cps[cpsi_i + 1] <= 0xDFFF)
+            cpsi_lo_ok = (cpsi_i > 0 and cpsi_toks[cpsi_i - 1][0] == cpsi_toks[cpsi_i][0] - 6
+                          and 0xD800 <= cpsi_cps[cpsi_i - 1] <= 0xDBFF)
+            if (cpsi_cp == 0 or (0xD800 <= cpsi_cp <= 0xDBFF and not cpsi_hi_ok)
+                    or (0xDC00 <= cpsi_cp <= 0xDFFF and not cpsi_lo_ok)):
+                cpsi_text = None
+                break
+    if cpsi_text is not None:
+        # INTENT: A JSON number token longer than 64 characters (sign, digits, fraction
+        # and exponent together), outside strings, is a parse error.
+        # REASONING: The two parsers split on long numbers: Python refuses an integer of
+        # more than 4300 digits while jsonlite reads it (and any huge literal) as Inf, so
+        # the same file got two verdicts. No number the profiler writes comes near 64
+        # characters. Strings are blanked first (an escaped quote stays inside its
+        # string), so digits inside a label are never counted; the R block applies the
+        # same two patterns to the same text.
+        cpsi_unstrung = re.sub(r'(?s)"[^"\\]*(?:\\.[^"\\]*)*"', '""', cpsi_text)
+        if re.search(r"[-+0-9.eE]{65,}", cpsi_unstrung) is not None:
+            cpsi_text = None
+    if cpsi_text is None:
+        cpsi_load_error = cpsi_parse_error
+    else:
+        try:
+            cpsi_pairs = json.loads(cpsi_text, parse_constant=int, object_pairs_hook=list)
+            cpsi_report = json.loads(cpsi_text, parse_constant=int)
+        except (ValueError, RecursionError):
+            cpsi_load_error = cpsi_parse_error
+            cpsi_report = None
+    # INTENT: Iterative sweep over the pair-list tree (no recursion, so depth cannot
+    # raise) that refuses a duplicate key and any container nested deeper than 64
+    # levels, counting the top-level object as level 1. Under the list hook an object
+    # is a list of (key, value) tuples ({} is an empty list); a decoded array never
+    # holds a tuple, so every object and array is one list and one level. The sweep
+    # also collects every key and string value, so any report text a line prints can
+    # be escaped (see the escape table below).
+    # REASONING: The two parsers give up at different depths (Python's recursion limit,
+    # jsonlite's own), so between those limits one block judged a file the other refused.
+    # An explicit cap far above the schema's own depth (6) makes the outcome depend on
+    # the file, not on the parser.
+    cpsi_max_depth = 64
+    cpsi_stack = [] if cpsi_report is None else [(cpsi_pairs, 1)]
+    while len(cpsi_stack) > 0:
+        cpsi_node, cpsi_depth = cpsi_stack.pop()
+        if isinstance(cpsi_node, str):
+            cpsi_report_strings.add(cpsi_node)
+            continue
+        if not isinstance(cpsi_node, list):
+            continue
+        if cpsi_depth > cpsi_max_depth:
+            cpsi_load_error = cpsi_parse_error
+            cpsi_report = None
+            break
+        if len(cpsi_node) > 0 and all(isinstance(cpsi_e, tuple) for cpsi_e in cpsi_node):
+            if len(set(cpsi_e[0] for cpsi_e in cpsi_node)) != len(cpsi_node):
+                cpsi_load_error = cpsi_parse_error
+                cpsi_report = None
+                break
+            cpsi_report_strings.update(cpsi_e[0] for cpsi_e in cpsi_node)
+            cpsi_stack.extend((cpsi_e[1], cpsi_depth + 1) for cpsi_e in cpsi_node)
+        else:
+            cpsi_stack.extend((cpsi_e, cpsi_depth + 1) for cpsi_e in cpsi_node)
+if cpsi_report is not None and not isinstance(cpsi_report, dict):
+    cpsi_load_error = "report parsed, but its top level is not a JSON object"
+    cpsi_report = None
+
+# INTENT: Escape every report-derived string before it reaches an outcome line,
+# identically in both languages: a character outside printable ASCII (0x20-0x7E)
+# prints as \uXXXX in lowercase hex, and one above U+FFFF as its UTF-16 surrogate pair.
+# REASONING: A column name or key carrying a newline or control character could
+# otherwise forge an extra outcome line (a fake count line or verdict), and a non-ASCII
+# one could fail the write on a console that cannot encode it. The table covers every
+# key and string value of the parsed report, so each print site looks its text up in
+# it. Config strings (report_path, not_applicable reasons) are the researcher's own
+# text and print as written.
+cpsi_esc = {cpsi_s: "".join(cpsi_ch if " " <= cpsi_ch <= "~" else (
+    "\\u%04x" % ord(cpsi_ch) if ord(cpsi_ch) < 0x10000 else "\\u%04x\\u%04x" % (
+        0xD800 + ((ord(cpsi_ch) - 0x10000) >> 10), 0xDC00 + ((ord(cpsi_ch) - 0x10000) & 0x3FF)))
+    for cpsi_ch in cpsi_s) for cpsi_s in cpsi_report_strings}
+# INTENT: Value-shaped key names are matched case-insensitively over ASCII letters
+# only, so both languages fold exactly the same characters (str.lower() and tolower()
+# each fold some non-ASCII letters, and not the same ones).
+cpsi_ascii_lower = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+# INTENT: One numeric model for both languages. A JSON number is usable only when it
+# is finite and |v| < 2^53 — the profiler refuses larger magnitudes, every such value
+# is exact in a double, and jsonlite turns a 401-digit integer into Inf where Python
+# keeps an exact int (math.isfinite on that int raises OverflowError). Whole numbers
+# are compared by value (40 and 40.0 agree), because JSON does not type them apart.
+# ASSUMES: chained comparisons short-circuit after the isinstance test, so a string
+# or list never reaches `<`.
+cpsi_max_exact = 2 ** 53
+
+cpsi_columns_raw = None
+cpsi_columns = None
+cpsi_row_count = None
+cpsi_threshold = None
+cpsi_rep_tier = None
+cpsi_relationships = None
+cpsi_crosstabs = []
+cpsi_crosstabs_not_array = False
+if cpsi_report is not None:
+    if isinstance(cpsi_report.get("columns"), list):
+        cpsi_columns_raw = cpsi_report["columns"]
+        cpsi_columns = [c for c in cpsi_columns_raw if isinstance(c, dict)]
+    if isinstance(cpsi_report.get("settings"), dict):
+        cpsi_threshold = cpsi_report["settings"].get("suppression_threshold")
+        cpsi_rep_tier = cpsi_report["settings"].get("tier")
+    if isinstance(cpsi_report.get("dataset"), dict):
+        cpsi_row_count = cpsi_report["dataset"].get("row_count")
+    if isinstance(cpsi_report.get("relationships"), dict):
+        cpsi_relationships = cpsi_report["relationships"]
+        if isinstance(cpsi_relationships.get("crosstabs"), list):
+            cpsi_crosstabs = cpsi_relationships["crosstabs"]
+        elif cpsi_relationships.get("crosstabs") is not None:
+            cpsi_crosstabs_not_array = True
+cpsi_col_names = set() if cpsi_columns is None else {c["name"] for c in cpsi_columns if isinstance(c.get("name"), str)}
+cpsi_rc_ok = (isinstance(cpsi_row_count, (int, float)) and not isinstance(cpsi_row_count, bool)
+              and -cpsi_max_exact < cpsi_row_count < cpsi_max_exact
+              and cpsi_row_count == int(cpsi_row_count) and cpsi_row_count > 0)
+cpsi_rc = int(cpsi_row_count) if cpsi_rc_ok else None
+cpsi_tier_ok = not isinstance(tier, bool) and tier in (1, 2, 3)
+cpsi_tier_label = str(int(tier)) if cpsi_tier_ok else ("unrecorded" if tier is None else "invalid")
+cpsi_rep_tier_ok = not isinstance(cpsi_rep_tier, bool) and isinstance(cpsi_rep_tier, (int, float)) and cpsi_rep_tier in (1, 2, 3)
+# INTENT: "released relationships content" is any `relationships` value other than an
+# absent key, JSON null, or an empty object / array.
+cpsi_rel_content = (cpsi_report is not None and cpsi_report.get("relationships") is not None
+                    and not (isinstance(cpsi_report["relationships"], (dict, list)) and len(cpsi_report["relationships"]) == 0))
+
+# Check: report_version — the accepted schema, never a relabelled legacy report
+if "report_version" in not_applicable:
+    print(f"[SKIPPED] report_version: {not_applicable['report_version']}")
+    cps_intake["skipped"] += 1
+elif "report_version" in cpsi_empty_reason:
+    print("[NOT VERIFIED] report_version: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] report_version: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif "report_version" not in cpsi_report:
+    print("[NOT VERIFIED] report_version: the report carries no report_version field")
+    cps_intake["not_verified"] += 1
+elif not (isinstance(cpsi_report["report_version"], str) and 0 < len(cpsi_report["report_version"]) <= 16
+          and all(ch in "0123456789." for ch in cpsi_report["report_version"])):
+    # REASONING: only a dotted version string is echoed; anything else could be
+    # report content, so it is named by shape, never quoted.
+    print("[FAIL] report_version: the report_version field is not a dotted version string — a legacy or unknown report is never relabelled into compliance")
+    cps_intake["failed"] += 1
+elif cpsi_report["report_version"] != "2.0":
+    print(f"[FAIL] report_version: '{cpsi_report['report_version']}' is not the accepted 2.0 schema — a legacy or unknown report is never relabelled into compliance")
+    cps_intake["failed"] += 1
+else:
+    print("[PASS] report_version: '2.0' — the accepted schema version")
+    cps_intake["passed"] += 1
+
+# Check: required top-level keys — set equality against the 2.0 schema
+# ASSUMES: `relationships` is optional below tier 3 and required at tier 3.
+cpsi_required_top = {"report_version", "dataset_name", "generated_utc", "generator",
+                     "settings", "dataset", "columns", "validation"}
+if "required_top_level_keys" in not_applicable:
+    print(f"[SKIPPED] required_top_level_keys: {not_applicable['required_top_level_keys']}")
+    cps_intake["skipped"] += 1
+elif "required_top_level_keys" in cpsi_empty_reason:
+    print("[NOT VERIFIED] required_top_level_keys: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] required_top_level_keys: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_present = set(cpsi_report.keys())
+    cpsi_missing = sorted(cpsi_required_top - cpsi_present)
+    cpsi_unexpected = sorted(cpsi_present - cpsi_required_top - {"relationships"})
+    if cpsi_tier_ok and tier == 3 and "relationships" not in cpsi_present:
+        cpsi_missing = sorted(cpsi_missing + ["relationships"])
+    # INTENT: a present key of the wrong JSON type is a schema violation this check
+    # owns (report_version's own type is judged by the report_version check).
+    cpsi_top_kinds = {"dataset_name": str, "generated_utc": str, "generator": dict, "settings": dict,
+                      "dataset": dict, "columns": list, "validation": dict, "relationships": dict}
+    cpsi_wrong_kind = sorted(k for k, t in cpsi_top_kinds.items() if k in cpsi_present and not isinstance(cpsi_report[k], t))
+    if len(cpsi_missing) > 0 or len(cpsi_unexpected) > 0 or len(cpsi_wrong_kind) > 0:
+        print(f"[FAIL] required_top_level_keys: missing [{', '.join(cpsi_missing)}], unexpected [{', '.join(cpsi_esc[k] for k in cpsi_unexpected)}]"
+              + (f", wrong JSON type [{', '.join(cpsi_wrong_kind)}]" if len(cpsi_wrong_kind) > 0 else "")
+              + f" (tier {cpsi_tier_label})")
+        cps_intake["failed"] += 1
+    else:
+        print(f"[PASS] required_top_level_keys: {len(cpsi_required_top)} of {len(cpsi_required_top)} required keys present, 0 unexpected (tier {cpsi_tier_label})")
+        cps_intake["passed"] += 1
+
+# Check: row count is a positive integer — the denominator every later check needs
+if "row_count_positive" in not_applicable:
+    print(f"[SKIPPED] row_count_positive: {not_applicable['row_count_positive']}")
+    cps_intake["skipped"] += 1
+elif "row_count_positive" in cpsi_empty_reason:
+    print("[NOT VERIFIED] row_count_positive: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] row_count_positive: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_row_count is None:
+    print("[NOT VERIFIED] row_count_positive: dataset.row_count is absent — no denominator for the count checks")
+    cps_intake["not_verified"] += 1
+elif not cpsi_rc_ok:
+    print("[FAIL] row_count_positive: dataset.row_count is not a positive whole number")
+    cps_intake["failed"] += 1
+else:
+    print(f"[PASS] row_count_positive: dataset.row_count = {cpsi_rc:,} over {len(cpsi_columns_raw) if cpsi_columns_raw is not None else 0} declared columns")
+    cps_intake["passed"] += 1
+
+# Check: released percentile grids are non-decreasing in probability order
+# REASONING: A column that declares a role but carries no block is missing
+# evidence ([NOT VERIFIED]); a report that declares no columns of that role at
+# all is a structural fact about the tier ([SKIPPED]).
+cpsi_pctl_order = ["p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99"]
+cpsi_num_cols = [] if cpsi_columns is None else [c for c in cpsi_columns if c.get("role") == "numeric"]
+if "percentiles_monotone" in not_applicable:
+    print(f"[SKIPPED] percentiles_monotone: {not_applicable['percentiles_monotone']}")
+    cps_intake["skipped"] += 1
+elif "percentiles_monotone" in cpsi_empty_reason:
+    print("[NOT VERIFIED] percentiles_monotone: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] percentiles_monotone: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_columns is None:
+    print("[NOT VERIFIED] percentiles_monotone: the report carries no columns array")
+    cps_intake["not_verified"] += 1
+elif len(cpsi_num_cols) == 0:
+    print(f"[SKIPPED] percentiles_monotone: report declares 0 numeric columns at tier {cpsi_tier_label} (0 grids, 0 percentiles)")
+    cps_intake["skipped"] += 1
+else:
+    cpsi_grids = 0
+    cpsi_points = 0
+    cpsi_bad = []
+    cpsi_absent = []
+    for cpsi_col in cpsi_num_cols:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        cpsi_blk = cpsi_col.get("numeric")
+        if not isinstance(cpsi_blk, dict):
+            cpsi_absent.append(f"column '{cpsi_name}' declares role numeric but has no numeric block")
+        elif "percentiles" not in cpsi_blk:
+            # A withheld / all-missing / constant shape legitimately carries no grid.
+            if not (cpsi_blk.get("withheld") is True or cpsi_blk.get("all_missing") is True
+                    or cpsi_blk.get("constant") is True):
+                cpsi_absent.append(f"column '{cpsi_name}' has a numeric block with no percentiles and no withheld/all_missing/constant marker")
+        elif not isinstance(cpsi_blk["percentiles"], dict) or len(cpsi_blk["percentiles"]) == 0:
+            cpsi_absent.append(f"column '{cpsi_name}' has an empty or non-object percentiles block")
+        else:
+            cpsi_grid = cpsi_blk["percentiles"]
+            cpsi_unknown = [k for k in cpsi_grid if k not in cpsi_pctl_order]
+            cpsi_vals = [cpsi_grid[k] for k in cpsi_pctl_order if k in cpsi_grid]
+            cpsi_nonreal = [v for v in cpsi_vals
+                            if not (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                    and -cpsi_max_exact < v < cpsi_max_exact)]
+            if len(cpsi_unknown) > 0:
+                cpsi_bad.append(f"column '{cpsi_name}' carries unrecognized percentile keys [{', '.join(cpsi_esc[k] for k in sorted(cpsi_unknown))}]")
+            elif len(cpsi_nonreal) > 0:
+                cpsi_absent.append(f"column '{cpsi_name}' has a non-numeric or out-of-range percentile value")
+            else:
+                cpsi_grids += 1
+                cpsi_points += len(cpsi_vals)
+                cpsi_keys_in_order = [k for k in cpsi_pctl_order if k in cpsi_grid]
+                for cpsi_i in range(1, len(cpsi_vals)):
+                    if cpsi_vals[cpsi_i] < cpsi_vals[cpsi_i - 1]:
+                        cpsi_bad.append(f"column '{cpsi_name}' is non-monotone between {cpsi_keys_in_order[cpsi_i - 1]} and {cpsi_keys_in_order[cpsi_i]}")
+                        break
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] percentiles_monotone: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif len(cpsi_absent) > 0:
+        print(f"[NOT VERIFIED] percentiles_monotone: {cpsi_absent[0]}" + (f" (+{len(cpsi_absent) - 1} more)" if len(cpsi_absent) > 1 else ""))
+        cps_intake["not_verified"] += 1
+    else:
+        print(f"[PASS] percentiles_monotone: {len(cpsi_num_cols)} numeric columns, {cpsi_grids} released grids x {cpsi_points} percentiles checked, all non-decreasing")
+        cps_intake["passed"] += 1
+
+# Check: every category count, and each column's level total, is <= row_count
+cpsi_cat_cols = [] if cpsi_columns is None else [c for c in cpsi_columns if c.get("role") == "categorical"]
+if "category_counts_le_rowcount" in not_applicable:
+    print(f"[SKIPPED] category_counts_le_rowcount: {not_applicable['category_counts_le_rowcount']}")
+    cps_intake["skipped"] += 1
+elif "category_counts_le_rowcount" in cpsi_empty_reason:
+    print("[NOT VERIFIED] category_counts_le_rowcount: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] category_counts_le_rowcount: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_columns is None:
+    print("[NOT VERIFIED] category_counts_le_rowcount: the report carries no columns array")
+    cps_intake["not_verified"] += 1
+elif len(cpsi_cat_cols) == 0:
+    print(f"[SKIPPED] category_counts_le_rowcount: report declares 0 categorical columns at tier {cpsi_tier_label} (0 levels)")
+    cps_intake["skipped"] += 1
+elif not cpsi_rc_ok:
+    print("[NOT VERIFIED] category_counts_le_rowcount: dataset.row_count is absent or not a positive integer — no comparison basis")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_levels_seen = 0
+    cpsi_bad = []
+    cpsi_absent = []
+    for cpsi_col in cpsi_cat_cols:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        cpsi_blk = cpsi_col.get("categorical")
+        if not isinstance(cpsi_blk, dict):
+            cpsi_absent.append(f"column '{cpsi_name}' declares role categorical but has no categorical block")
+        elif not isinstance(cpsi_blk.get("levels"), list):
+            cpsi_absent.append(f"column '{cpsi_name}' has a categorical block with no levels array")
+        else:
+            cpsi_total = 0
+            for cpsi_i, cpsi_lv in enumerate(cpsi_blk["levels"]):
+                if not isinstance(cpsi_lv, dict) or "count" not in cpsi_lv:
+                    cpsi_absent.append(f"column '{cpsi_name}' level index {cpsi_i} carries no count field")
+                    continue
+                cpsi_v = cpsi_lv["count"]
+                if not (isinstance(cpsi_v, (int, float)) and not isinstance(cpsi_v, bool)
+                        and -cpsi_max_exact < cpsi_v < cpsi_max_exact and cpsi_v == int(cpsi_v)):
+                    cpsi_bad.append(f"column '{cpsi_name}' level index {cpsi_i} has a non-integer count")
+                    continue
+                cpsi_levels_seen += 1
+                cpsi_total += cpsi_v
+                if cpsi_v > cpsi_rc:
+                    cpsi_bad.append(f"column '{cpsi_name}' level index {cpsi_i} exceeds row_count")
+            if cpsi_total > cpsi_rc:
+                cpsi_bad.append(f"column '{cpsi_name}' level total exceeds row_count")
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] category_counts_le_rowcount: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif len(cpsi_absent) > 0:
+        print(f"[NOT VERIFIED] category_counts_le_rowcount: {cpsi_absent[0]}" + (f" (+{len(cpsi_absent) - 1} more)" if len(cpsi_absent) > 1 else ""))
+        cps_intake["not_verified"] += 1
+    else:
+        print(f"[PASS] category_counts_le_rowcount: {len(cpsi_cat_cols)} categorical columns, {cpsi_levels_seen} levels, every count and column total <= row_count {cpsi_rc:,}")
+        cps_intake["passed"] += 1
+
+# Check: missingness rates are finite reals in [0, 1] and agree with nonmissing_n
+cpsi_rated = [] if cpsi_columns is None else [c for c in cpsi_columns if "missing_rate" in c]
+if "missing_rate_in_unit_interval" in not_applicable:
+    print(f"[SKIPPED] missing_rate_in_unit_interval: {not_applicable['missing_rate_in_unit_interval']}")
+    cps_intake["skipped"] += 1
+elif "missing_rate_in_unit_interval" in cpsi_empty_reason:
+    print("[NOT VERIFIED] missing_rate_in_unit_interval: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] missing_rate_in_unit_interval: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_columns is None:
+    print("[NOT VERIFIED] missing_rate_in_unit_interval: the report carries no columns array")
+    cps_intake["not_verified"] += 1
+elif len(cpsi_rated) == 0 and cpsi_tier_ok and tier == 1:
+    print("[SKIPPED] missing_rate_in_unit_interval: tier 1 releases no missingness rates (0 of 0 columns carry one)")
+    cps_intake["skipped"] += 1
+elif len(cpsi_rated) == 0:
+    print(f"[NOT VERIFIED] missing_rate_in_unit_interval: no column carries a missing_rate at tier {cpsi_tier_label}, where rates are expected")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_bad = []
+    cpsi_absent = []
+    cpsi_agreed = 0
+    for cpsi_col in cpsi_rated:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        cpsi_v = cpsi_col["missing_rate"]
+        if not (isinstance(cpsi_v, (int, float)) and not isinstance(cpsi_v, bool)
+                and -cpsi_max_exact < cpsi_v < cpsi_max_exact):
+            cpsi_bad.append(f"column '{cpsi_name}' has a non-finite or non-numeric missing_rate")
+        elif cpsi_v < 0.0 or cpsi_v > 1.0:
+            cpsi_bad.append(f"column '{cpsi_name}' has a missing_rate outside [0, 1]")
+        else:
+            cpsi_nm = cpsi_col.get("nonmissing_n")
+            if not (isinstance(cpsi_nm, (int, float)) and not isinstance(cpsi_nm, bool)
+                    and -cpsi_max_exact < cpsi_nm < cpsi_max_exact and cpsi_nm == int(cpsi_nm)):
+                cpsi_absent.append(f"column '{cpsi_name}' carries a rate but no whole-number nonmissing_n to reconcile it against")
+            elif not cpsi_rc_ok:
+                cpsi_absent.append("dataset.row_count is absent or not positive — rates cannot be reconciled")
+            elif abs(cpsi_v - (cpsi_rc - cpsi_nm) / cpsi_rc) > 1e-6:
+                cpsi_bad.append(f"column '{cpsi_name}' missing_rate disagrees with nonmissing_n beyond rounding tolerance")
+            else:
+                cpsi_agreed += 1
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] missing_rate_in_unit_interval: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif len(cpsi_absent) > 0:
+        print(f"[NOT VERIFIED] missing_rate_in_unit_interval: {cpsi_absent[0]}" + (f" (+{len(cpsi_absent) - 1} more)" if len(cpsi_absent) > 1 else ""))
+        cps_intake["not_verified"] += 1
+    else:
+        print(f"[PASS] missing_rate_in_unit_interval: {len(cpsi_rated)} rates in [0, 1], {cpsi_agreed} reconciled against nonmissing_n within 1e-06")
+        cps_intake["passed"] += 1
+
+# Check: released correlation matrices are square, symmetric, unit-diagonal, in [-1, 1]
+if "correlation_matrix_wellformed" in not_applicable:
+    print(f"[SKIPPED] correlation_matrix_wellformed: {not_applicable['correlation_matrix_wellformed']}")
+    cps_intake["skipped"] += 1
+elif "correlation_matrix_wellformed" in cpsi_empty_reason:
+    print("[NOT VERIFIED] correlation_matrix_wellformed: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] correlation_matrix_wellformed: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif not cpsi_tier_ok:
+    print("[NOT VERIFIED] correlation_matrix_wellformed: tier is not a recorded 1/2/3 — the tier decides whether matrices are expected")
+    cps_intake["not_verified"] += 1
+elif tier < 3:
+    # The count is what the report actually declares; matrices released below tier 3 are
+    # no_released_count_below_threshold's finding, not a structural fact to wave through.
+    cpsi_mats = len([k for k in ("pearson", "spearman") if isinstance(cpsi_relationships, dict)
+                     and isinstance(cpsi_relationships.get(k), dict) and cpsi_relationships[k].get("available") is True])
+    print(f"[SKIPPED] correlation_matrix_wellformed: tier {cpsi_tier_label} releases no correlation matrices ({cpsi_mats} matrices declared)")
+    cps_intake["skipped"] += 1
+elif not isinstance(cpsi_relationships, dict):
+    print("[NOT VERIFIED] correlation_matrix_wellformed: tier 3 but the report carries no relationships object")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_bad = []
+    cpsi_absent = []
+    cpsi_checked = 0
+    cpsi_max_asym = 0.0
+    cpsi_dim = 0
+    for cpsi_name in ("pearson", "spearman"):
+        cpsi_blk = cpsi_relationships.get(cpsi_name)
+        if not isinstance(cpsi_blk, dict):
+            cpsi_absent.append(f"the '{cpsi_name}' block is absent at tier 3")
+            continue
+        if cpsi_blk.get("available") is not True:
+            if not (isinstance(cpsi_blk.get("reason"), str) and cpsi_blk["reason"].strip()):
+                cpsi_bad.append(f"the '{cpsi_name}' block is unavailable with no recorded reason")
+            continue
+        cpsi_m = cpsi_blk.get("matrix")
+        if not isinstance(cpsi_m, list) or len(cpsi_m) == 0:
+            cpsi_absent.append(f"the '{cpsi_name}' block is available but carries no matrix")
+            continue
+        cpsi_n = len(cpsi_m)
+        if any(not isinstance(row, list) or len(row) != cpsi_n for row in cpsi_m):
+            cpsi_bad.append(f"the '{cpsi_name}' matrix is not square")
+            continue
+        cpsi_flat = [v for row in cpsi_m for v in row]
+        if any(not (isinstance(v, (int, float)) and not isinstance(v, bool) and -cpsi_max_exact < v < cpsi_max_exact)
+               for v in cpsi_flat):
+            cpsi_bad.append(f"the '{cpsi_name}' matrix carries a non-finite entry")
+            continue
+        cpsi_asym = max(abs(cpsi_m[i][j] - cpsi_m[j][i]) for i in range(cpsi_n) for j in range(cpsi_n))
+        if cpsi_asym > 1e-09:
+            cpsi_bad.append(f"the '{cpsi_name}' matrix is not symmetric within 1e-09")
+        elif any(abs(cpsi_m[i][i] - 1.0) > 1e-09 for i in range(cpsi_n)):
+            cpsi_bad.append(f"the '{cpsi_name}' matrix does not have a unit diagonal")
+        elif any(v < -1.0 or v > 1.0 for v in cpsi_flat):
+            cpsi_bad.append(f"the '{cpsi_name}' matrix carries an entry outside [-1, 1]")
+        else:
+            cpsi_checked += 1
+            cpsi_dim = cpsi_n
+            cpsi_max_asym = max(cpsi_max_asym, cpsi_asym)
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] correlation_matrix_wellformed: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif len(cpsi_absent) > 0:
+        print(f"[NOT VERIFIED] correlation_matrix_wellformed: {cpsi_absent[0]}" + (f" (+{len(cpsi_absent) - 1} more)" if len(cpsi_absent) > 1 else ""))
+        cps_intake["not_verified"] += 1
+    elif cpsi_checked == 0:
+        print("[PASS] correlation_matrix_wellformed: 0 available matrices at tier 3, every block unavailable with a recorded reason")
+        cps_intake["passed"] += 1
+    else:
+        print(f"[PASS] correlation_matrix_wellformed: {cpsi_checked} matrices, {cpsi_dim}x{cpsi_dim}, max asymmetry {cpsi_max_asym:.2e}, unit diagonal, entries in [-1, 1]")
+        cps_intake["passed"] += 1
+
+# Check: no released count lies below the suppression threshold (NON-DECLARABLE)
+# REASONING: This is the disclosure sweep. Its evidence is aggregate by design —
+# the PASS line reports how many blocks and cells were examined against which
+# threshold and never a count value; a FAIL names the block and the cell
+# position only. Scanning is also a completeness claim: the number of blocks
+# actually scanned is cross-checked against the number the report declares, so a
+# missing block cannot masquerade as a clean sweep.
+# The gate is never the report's word alone: a report could declare threshold 1 and
+# release a count of 2. `expected_threshold` is the threshold the researcher approved
+# at tier selection (recorded in STATE.md); a report declaring less is a [FAIL], and
+# visible counts are gated at max(declared, approved). Thresholds are allowed facts.
+cpsi_exp_ok = (isinstance(expected_threshold, (int, float)) and not isinstance(expected_threshold, bool)
+               and -cpsi_max_exact < expected_threshold < cpsi_max_exact
+               and expected_threshold == int(expected_threshold) and expected_threshold >= 1)
+cpsi_thr_ok = (isinstance(cpsi_threshold, (int, float)) and not isinstance(cpsi_threshold, bool)
+               and -cpsi_max_exact < cpsi_threshold < cpsi_max_exact
+               and cpsi_threshold == int(cpsi_threshold) and cpsi_threshold >= 1)
+if cpsi_report is None:
+    print(f"[NOT VERIFIED] no_released_count_below_threshold: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_columns is None:
+    print("[NOT VERIFIED] no_released_count_below_threshold: the report carries no columns array — the sweep has nothing to enumerate")
+    cps_intake["not_verified"] += 1
+elif not cpsi_exp_ok:
+    print("[NOT VERIFIED] no_released_count_below_threshold: expected_threshold not configured")
+    cps_intake["not_verified"] += 1
+elif not cpsi_tier_ok:
+    # INTENT: the approved tier is the other PSU-DS1 approval this check enforces; without
+    # it the release scope cannot be checked, exactly as with an unset threshold.
+    print("[NOT VERIFIED] no_released_count_below_threshold: tier not configured — the approved release scope is unknown")
+    cps_intake["not_verified"] += 1
+elif not cpsi_thr_ok:
+    print("[NOT VERIFIED] no_released_count_below_threshold: settings.suppression_threshold is absent or not a positive integer — the sweep has no gate to test against")
+    cps_intake["not_verified"] += 1
+elif int(cpsi_threshold) < int(expected_threshold):
+    print(f"[FAIL] no_released_count_below_threshold: report declares threshold {int(cpsi_threshold)}, below the approved threshold {int(expected_threshold)}")
+    cps_intake["failed"] += 1
+elif not cpsi_rep_tier_ok:
+    print("[FAIL] no_released_count_below_threshold: settings.tier is absent or not a whole number 1-3 — the report's release scope is unstated")
+    cps_intake["failed"] += 1
+elif int(cpsi_rep_tier) > int(tier):
+    # REASONING: a report profiled at a higher tier than the researcher approved has
+    # already released blocks nobody approved; tiers are settings, allowed on the line.
+    print(f"[FAIL] no_released_count_below_threshold: report declares tier {int(cpsi_rep_tier)}, above the approved tier {cpsi_tier_label}")
+    cps_intake["failed"] += 1
+elif (int(tier) < 3 or int(cpsi_rep_tier) < 3) and cpsi_rel_content:
+    print(f"[FAIL] no_released_count_below_threshold: the report releases a relationships block below tier 3 (approved tier {cpsi_tier_label}, declared tier {int(cpsi_rep_tier)})")
+    cps_intake["failed"] += 1
+else:
+    cpsi_gate = max(int(cpsi_threshold), int(expected_threshold))
+    cpsi_declared_cat = len(cpsi_cat_cols)
+    cpsi_declared_ct = len([x for x in cpsi_crosstabs if isinstance(x, dict) and x.get("available") is True])
+    cpsi_declared = cpsi_declared_cat + cpsi_declared_ct
+    cpsi_scanned = 0
+    cpsi_cells = 0
+    cpsi_breach = []
+    for cpsi_col in cpsi_cat_cols:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        cpsi_blk = cpsi_col.get("categorical")
+        if not isinstance(cpsi_blk, dict) or not isinstance(cpsi_blk.get("levels"), list):
+            continue
+        cpsi_scanned += 1
+        cpsi_blk_breaches = len(cpsi_breach)
+        for cpsi_i, cpsi_lv in enumerate(cpsi_blk["levels"]):
+            if not isinstance(cpsi_lv, dict) or "count" not in cpsi_lv:
+                cpsi_breach.append(f"categorical block '{cpsi_name}' level index {cpsi_i} carries no count to gate")
+                continue
+            cpsi_v = cpsi_lv["count"]
+            cpsi_cells += 1
+            if not (isinstance(cpsi_v, (int, float)) and not isinstance(cpsi_v, bool)
+                    and -cpsi_max_exact < cpsi_v < cpsi_max_exact and cpsi_v == int(cpsi_v)):
+                cpsi_breach.append(f"categorical block '{cpsi_name}' level index {cpsi_i} carries a non-integer count")
+            elif cpsi_v < cpsi_gate:
+                # INTENT: a released level is a positive count >= the gate, so 0 and
+                # negatives breach too — a level listed at 0 still names a category, and a
+                # negative count is a sub-threshold count wearing a sign.
+                cpsi_breach.append(f"categorical block '{cpsi_name}' level index {cpsi_i} carries a visible count below the gate")
+        # INTENT: Differencing residuals, mirroring the profiler's own assertions
+        # (profiling-script-spec.md § Categorical and string structure): the block's n is
+        # its column's nonmissing_n; when n >= gate the released levels (`__OTHER__`
+        # included) sum to n, and when n < gate no level is released at all.
+        # REASONING: Otherwise n minus the visible sum (or nonmissing_n minus n) is a
+        # hidden count anyone can recover by subtraction. The sum is tested only when
+        # every level count in the block already passed the gate.
+        cpsi_cn = cpsi_blk.get("n")
+        cpsi_nm = cpsi_col.get("nonmissing_n")
+        if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and -cpsi_max_exact < x < cpsi_max_exact
+                   and x == int(x) for x in (cpsi_cn, cpsi_nm)):
+            cpsi_breach.append(f"categorical block '{cpsi_name}' carries no whole-number n and nonmissing_n to reconcile its levels against")
+        elif cpsi_cn != cpsi_nm:
+            cpsi_breach.append(f"categorical block '{cpsi_name}' n does not equal its column's nonmissing_n")
+        elif cpsi_cn < cpsi_gate and len(cpsi_blk["levels"]) > 0:
+            cpsi_breach.append(f"categorical block '{cpsi_name}' releases levels although its n is below the gate")
+        elif (cpsi_cn >= cpsi_gate and len(cpsi_breach) == cpsi_blk_breaches
+              and sum(int(lv["count"]) for lv in cpsi_blk["levels"]) != cpsi_cn):
+            cpsi_breach.append(f"categorical block '{cpsi_name}' level counts do not sum to its n")
+    for cpsi_idx, cpsi_ct in enumerate(cpsi_crosstabs):
+        if not isinstance(cpsi_ct, dict) or cpsi_ct.get("available") is not True or not isinstance(cpsi_ct.get("cells"), list):
+            continue
+        cpsi_scanned += 1
+        # INTENT: a pair is printed only when it names declared columns (schema facts);
+        # anything else is referred to by its position, never quoted.
+        cpsi_pair = cpsi_ct.get("pair")
+        cpsi_pair = (" x ".join(cpsi_esc[p] for p in cpsi_pair) if isinstance(cpsi_pair, list) and len(cpsi_pair) > 0
+                     and all(isinstance(p, str) and p in cpsi_col_names for p in cpsi_pair)
+                     else f"index {cpsi_idx}")
+        for cpsi_i, cpsi_v in enumerate(cpsi_ct["cells"]):
+            if cpsi_v is None:
+                continue
+            cpsi_cells += 1
+            if not (isinstance(cpsi_v, (int, float)) and not isinstance(cpsi_v, bool)
+                    and -cpsi_max_exact < cpsi_v < cpsi_max_exact and cpsi_v == int(cpsi_v)):
+                cpsi_breach.append(f"cross-tab block {cpsi_pair} cell index {cpsi_i} carries a non-integer count")
+            elif cpsi_v < 0 or 0 < cpsi_v < cpsi_gate:
+                # A visible 0 is a legitimate structural zero (the profiler emits them);
+                # a negative cell is a sub-threshold count wearing a sign.
+                cpsi_breach.append(f"cross-tab block {cpsi_pair} cell index {cpsi_i} carries a visible count below the gate")
+    # INTENT: Support gate — every value summary's shape must be the one its support
+    # admits (profiling-script-spec.md § Numeric shapes, § Categorical and string
+    # structure, § Relationships; both profilers branch identically). With k the gate
+    # and f = max(k, 10) the full-summary cutoff (the spec's derived
+    # `full_summary_cutoff`, recomputed here so the report cannot lower it), a numeric
+    # block of n usable values is all_missing (n = 0 and nonmissing_n = 0), withheld
+    # (n < k), constant (n >= k), small_n (k <= n < f) or a full summary (n >= f), and
+    # its n never exceeds the column's nonmissing_n; a string_structure's n equals its
+    # column's nonmissing_n and is withheld below k, full at or above it; an available
+    # named relationship needs n >= f and complement groups of 0 or >= k (below), and an
+    # available Cramer's V n >= k.
+    # REASONING: A summary of fewer than k values is close to the values themselves —
+    # one value at n = 1. The gate is never the report's word alone: k already includes
+    # the approved threshold. A FAIL names the column or entry and the shape, never n.
+    # ASSUMES: a numeric shape is named by its first marker that is literally true, in
+    # the spec's branch order; with none, a block carrying mean / sd / percentiles /
+    # value is a full summary, and one carrying none of them releases no value (the
+    # percentile check owns that finding).
+    cpsi_cutoff = max(cpsi_gate, 10)
+    for cpsi_col in cpsi_columns:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        cpsi_nm = cpsi_col.get("nonmissing_n")
+        cpsi_blk = cpsi_col.get("numeric")
+        if isinstance(cpsi_blk, dict):
+            cpsi_bn = cpsi_blk.get("n")
+            cpsi_shape = next((m for m in ("all_missing", "withheld", "constant", "small_n") if cpsi_blk.get(m) is True),
+                              "full" if any(k in cpsi_blk for k in ("mean", "sd", "percentiles", "value")) else None)
+            if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x < cpsi_max_exact
+                       and x == int(x) for x in (cpsi_bn, cpsi_nm)):
+                cpsi_breach.append(f"numeric block '{cpsi_name}' carries no non-negative whole-number n and nonmissing_n to gate its shape on")
+            elif cpsi_bn > cpsi_nm:
+                cpsi_breach.append(f"numeric block '{cpsi_name}' n exceeds its column's nonmissing_n")
+            elif cpsi_shape is not None and not (
+                    (cpsi_shape == "all_missing" and cpsi_bn == 0 and cpsi_nm == 0)
+                    or (cpsi_shape == "withheld" and cpsi_bn < cpsi_gate)
+                    or (cpsi_shape == "constant" and cpsi_bn >= cpsi_gate)
+                    or (cpsi_shape == "small_n" and cpsi_gate <= cpsi_bn < cpsi_cutoff)
+                    or (cpsi_shape == "full" and cpsi_bn >= cpsi_cutoff)):
+                cpsi_breach.append(f"numeric block '{cpsi_name}' shape '{cpsi_shape}' does not match the support band of its n")
+        cpsi_blk = cpsi_col.get("string_structure")
+        if isinstance(cpsi_blk, dict):
+            cpsi_bn = cpsi_blk.get("n")
+            cpsi_shape = "withheld" if cpsi_blk.get("withheld") is True else "full"
+            if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x < cpsi_max_exact
+                       and x == int(x) for x in (cpsi_bn, cpsi_nm)):
+                cpsi_breach.append(f"string_structure block '{cpsi_name}' carries no non-negative whole-number n and nonmissing_n to gate its shape on")
+            elif cpsi_bn != cpsi_nm:
+                cpsi_breach.append(f"string_structure block '{cpsi_name}' n does not equal its column's nonmissing_n")
+            elif (cpsi_shape == "withheld") != (cpsi_bn < cpsi_gate):
+                cpsi_breach.append(f"string_structure block '{cpsi_name}' shape '{cpsi_shape}' does not match the support band of its n")
+    for cpsi_kind, cpsi_floor in (("named", cpsi_cutoff), ("cramers_v", cpsi_gate)):
+        cpsi_entries = cpsi_relationships.get(cpsi_kind) if isinstance(cpsi_relationships, dict) else None
+        for cpsi_idx, cpsi_ent in enumerate(cpsi_entries if isinstance(cpsi_entries, list) else []):
+            if not isinstance(cpsi_ent, dict) or cpsi_ent.get("available") is not True:
+                continue
+            cpsi_ends = [cpsi_ent.get("outcome"), cpsi_ent.get("predictor")] if cpsi_kind == "named" else cpsi_ent.get("pair")
+            cpsi_label = ((" ~ " if cpsi_kind == "named" else " x ").join(cpsi_esc[p] for p in cpsi_ends)
+                          if isinstance(cpsi_ends, list) and len(cpsi_ends) == 2
+                          and all(isinstance(p, str) and p in cpsi_col_names for p in cpsi_ends)
+                          else f"index {cpsi_idx}")
+            cpsi_bn = cpsi_ent.get("n")
+            if not (isinstance(cpsi_bn, (int, float)) and not isinstance(cpsi_bn, bool)
+                    and 0 <= cpsi_bn < cpsi_max_exact and cpsi_bn == int(cpsi_bn)):
+                cpsi_breach.append(f"{cpsi_kind} entry {cpsi_label} carries no non-negative whole-number n to gate its availability on")
+            elif cpsi_bn < cpsi_floor:
+                cpsi_breach.append(f"{cpsi_kind} entry {cpsi_label} is available although its n is below the "
+                                   + ("full-summary cutoff" if cpsi_kind == "named" else "gate"))
+            elif cpsi_kind == "named":
+                # INTENT: Complement-group gate. For each end of an available named entry,
+                # g = (the end column's numeric-block n) - (the entry's pair-complete n) is the
+                # number of records with that column finite but the other end missing. It must
+                # be 0 or at least k (the profilers' `small_complement_group` reason).
+                # REASONING: the released mean of x describes the numeric block's n_x records
+                # and the fitted line pins the mean of x over the n pair-complete ones, so
+                # n_x * mean_x - n * (that mean) is the summed value of the n_x - n records
+                # lacking y — one record's value when g = 1. A negative g (more pair-complete
+                # records than the column holds) is a sub-threshold count wearing a sign.
+                # Outcome first, then predictor; one finding per entry, naming the end only.
+                # ASSUMES: the first column record carrying the name is the end column, as for
+                # cross-tab pair columns; a missing or non-whole numeric n is a breach too.
+                for cpsi_end_role in ("outcome", "predictor"):
+                    cpsi_end = cpsi_ent.get(cpsi_end_role)
+                    cpsi_end_col = next((c for c in cpsi_columns if isinstance(cpsi_end, str) and c.get("name") == cpsi_end), None)
+                    cpsi_end_blk = None if cpsi_end_col is None else cpsi_end_col.get("numeric")
+                    cpsi_end_n = cpsi_end_blk.get("n") if isinstance(cpsi_end_blk, dict) else None
+                    if not (isinstance(cpsi_end_n, (int, float)) and not isinstance(cpsi_end_n, bool)
+                            and 0 <= cpsi_end_n < cpsi_max_exact and cpsi_end_n == int(cpsi_end_n)):
+                        cpsi_breach.append(f"named entry {cpsi_label} has no whole-number numeric n for its {cpsi_end_role} to gate the complement group on")
+                        break
+                    cpsi_g = int(cpsi_end_n) - int(cpsi_bn)
+                    if cpsi_g < 0 or 0 < cpsi_g < cpsi_gate:
+                        cpsi_breach.append(f"named entry {cpsi_label} is available although the complement group of its {cpsi_end_role} is below the gate")
+                        break
+    if len(cpsi_breach) > 0:
+        print(f"[FAIL] no_released_count_below_threshold: {cpsi_breach[0]}" + (f" (+{len(cpsi_breach) - 1} more)" if len(cpsi_breach) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif cpsi_scanned != cpsi_declared:
+        print(f"[FAIL] no_released_count_below_threshold: scanned {cpsi_scanned} of {cpsi_declared} declared blocks — the sweep is incomplete")
+        cps_intake["failed"] += 1
+    else:
+        print(f"[PASS] no_released_count_below_threshold: {cpsi_scanned} of {cpsi_declared} declared blocks scanned ({cpsi_declared_cat} categorical + {cpsi_declared_ct} cross-tab), {cpsi_cells} visible cells examined, all >= effective threshold {cpsi_gate} (declared {int(cpsi_threshold)}, approved {int(expected_threshold)})")
+        cps_intake["passed"] += 1
+
+# Check: the embedded validation record is complete and internally honest
+cpsi_required_checks = {"column_shapes_and_support", "percentiles_monotone",
+                        "category_counts_le_rowcount", "missing_rate_in_unit_interval",
+                        "no_subthreshold_cells_emitted", "correlation_matrix_symmetric",
+                        "relationship_support_and_shape"}
+cpsi_legal_status = {"PASS", "FAIL", "NOT_APPLICABLE", "NOT_VERIFIED"}
+if "embedded_validation_complete" in not_applicable:
+    print(f"[SKIPPED] embedded_validation_complete: {not_applicable['embedded_validation_complete']}")
+    cps_intake["skipped"] += 1
+elif "embedded_validation_complete" in cpsi_empty_reason:
+    print("[NOT VERIFIED] embedded_validation_complete: declared not_applicable with an empty reason")
+    cps_intake["not_verified"] += 1
+elif cpsi_report is None:
+    print(f"[NOT VERIFIED] embedded_validation_complete: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif not isinstance(cpsi_report.get("validation"), dict) or not isinstance(cpsi_report["validation"].get("checks"), list):
+    print("[NOT VERIFIED] embedded_validation_complete: the report carries no validation object with a checks array")
+    cps_intake["not_verified"] += 1
+else:
+    # INTENT: every entry, name, and status is type-tested before it is hashed or
+    # compared — a JSON array in `name` or `status` used to escape as a TypeError
+    # with no verdict. Names outside the required set are counted, never quoted:
+    # an arbitrary string here is report content, not a schema fact.
+    cpsi_val = cpsi_report["validation"]
+    cpsi_names = []
+    cpsi_rec_bad = []
+    for cpsi_i, cpsi_rec in enumerate(cpsi_val["checks"]):
+        if not isinstance(cpsi_rec, dict):
+            cpsi_rec_bad.append(f"checks entry {cpsi_i} is not a JSON object")
+            continue
+        cpsi_nm = cpsi_rec.get("name")
+        if not isinstance(cpsi_nm, str):
+            cpsi_rec_bad.append(f"checks entry {cpsi_i} has a name that is not a string")
+            cpsi_label = f"entry {cpsi_i}"
+        else:
+            cpsi_names.append(cpsi_nm)
+            cpsi_label = f"'{cpsi_nm}'" if cpsi_nm in cpsi_required_checks else f"entry {cpsi_i}"
+        cpsi_st = cpsi_rec.get("status")
+        if not isinstance(cpsi_st, str) or cpsi_st not in cpsi_legal_status:
+            cpsi_rec_bad.append(f"check {cpsi_label} has a status outside the wire enum")
+        elif cpsi_st in ("FAIL", "NOT_VERIFIED"):
+            cpsi_rec_bad.append(f"check {cpsi_label} reports {cpsi_st}")
+        if not (isinstance(cpsi_rec.get("reason"), str) and cpsi_rec["reason"].strip()):
+            cpsi_rec_bad.append(f"check {cpsi_label} carries an empty reason")
+    cpsi_bad = []
+    cpsi_missing_checks = sorted(cpsi_required_checks - set(cpsi_names))
+    cpsi_unrecognized = len([n for n in cpsi_names if n not in cpsi_required_checks])
+    if len(cpsi_missing_checks) > 0 or cpsi_unrecognized > 0:
+        cpsi_bad.append(f"check set is not the seven required names (missing [{', '.join(cpsi_missing_checks)}], {cpsi_unrecognized} unrecognized)")
+    if len(cpsi_names) != len(set(cpsi_names)):
+        cpsi_bad.append("the checks array carries duplicate names")
+    cpsi_bad.extend(cpsi_rec_bad)
+    if cpsi_val.get("all_passed") is not True:
+        cpsi_bad.append("all_passed is not true")
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] embedded_validation_complete: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    else:
+        print(f"[PASS] embedded_validation_complete: {len(cpsi_names)} of {len(cpsi_required_checks)} required checks present, every status in the wire enum with a non-empty reason, all_passed true")
+        cps_intake["passed"] += 1
+
+# Check: no raw-value-shaped fields anywhere in the report (NON-DECLARABLE)
+# REASONING: Two heuristics, both stated in the CPS Usage Notes. (1) A list
+# parked under a value-shaped key name (values / sample / rows / head /
+# examples) is a raw dump regardless of its contents — note the type test, since
+# a cross-tab's integer `rows` dimension is legitimate. (2) A list of scalars
+# longer than the largest structure the report itself declares is carrying
+# something the schema did not ask for. (3) A *string*-valued key whose name is one
+# of the value-shaped names below is a single released value — the one-row version
+# of the same leak, which rules (1) and (2) miss because they only inspect lists.
+# (4) Every non-identifier column record is held to a per-role ALLOW-LIST of the
+# schema's keys (profiling-script-spec.md § Column metadata and the numeric /
+# categorical / string_structure shapes), at the record and inside its role block —
+# the same pattern identifier_columns_value_free applies to identifier columns,
+# which it owns. A deny-list only catches the names someone thought of (`Sample`,
+# `top_values` both passed one); the schema already says which keys are legitimate.
+# Name tests are case-insensitive; only key names, column names and JSON paths
+# are ever printed, never a value.
+cpsi_value_keys = {"values", "sample", "rows", "head", "examples"}
+cpsi_scalar_value_keys = {"example", "examples", "sample", "first_value", "last_value",
+                          "mode_value", "min_value", "max_value", "values", "head", "tail"}
+cpsi_col_allowed = ("name", "dtype", "role", "missing_rate", "nonmissing_n",
+                    "n_distinct", "uniqueness_ratio", "is_identifier")
+cpsi_role_block = {"numeric": "numeric", "categorical": "categorical", "string": "string_structure"}
+# ASSUMES: a numeric block's shape is named by its first present marker, in the
+# spec's branch order; a marker that is not literally true is not that shape.
+cpsi_num_shapes = (("all_missing", ("n", "all_missing")),
+                   ("withheld", ("n", "withheld", "reason")),
+                   ("constant", ("n", "constant", "value", "mean", "sd")),
+                   ("small_n", ("n", "small_n", "percentiles")))
+cpsi_num_full = ("n", "mean", "sd", "percentiles")
+cpsi_cat_allowed = ("n", "n_levels_binned", "levels")
+cpsi_level_allowed = ("value", "count")
+cpsi_ss_allowed_full = ("n", "length_min", "length_mean", "length_max", "pattern_flags")
+cpsi_ss_allowed_withheld = ("n", "withheld", "reason")
+cpsi_flag_allowed = ("email", "phone", "date", "id", "free_text")
+# INTENT: An allow-listed key the schema types as a number or boolean must hold one —
+# a string (or array / object) parked under `n` or `p50` is a released value wearing
+# a structural key's name, and the key-name test alone let it through. JSON null is
+# accepted (the spec emits `sd: null` at n = 1). Applies at the record, inside the
+# role block (except the shape markers, held to literal true above), and to every
+# percentile / pattern_flags entry. Level `value` labels are strings by design and
+# are not in this set; level `count` is gated by the threshold sweep.
+cpsi_number_keys = ("missing_rate", "nonmissing_n", "n_distinct", "uniqueness_ratio", "is_identifier",
+                    "n", "mean", "sd", "value", "n_levels_binned", "length_min", "length_mean", "length_max")
+# INTENT: The column-record strings the spec fixes to a vocabulary are held to it —
+# `dtype`, `role` (profiling-script-spec.md § Column metadata) and a withheld block's
+# `reason` (§ Numeric shapes, § Categorical and string structure). A free string there
+# is a released value wearing a structural key's name, exactly like a string under `n`.
+cpsi_col_vocab = {"dtype": ("integer", "double", "string"),
+                  "role": ("numeric", "categorical", "identifier", "string")}
+cpsi_block_reason_vocab = {"numeric": ("no_finite_values", "insufficient_support"),
+                           "string_structure": ("all_missing", "insufficient_support")}
+# INTENT: Rule (5) — the report's other free-text leak paths. Every record outside
+# `columns` is held to the spec's key allow-list (profiling-script-spec.md § Canonical
+# JSON report schema, § Relationships, § Embedded validation checks), and each field to
+# the type or closed vocabulary the spec fixes for it. Kinds: "number" (number, boolean
+# or null — the cpsi_number_keys rule), "flag" (a JSON boolean), "vocab:<v>" (one string
+# of cpsi_r5_vocab[v]), "name" / "names" / "pair" / "pairs" (declared column names in the
+# spec's shape), "matrix" (rows of numbers), "record:<s>" / "entries:<s>" (a nested
+# object / array of objects held to spec <s>), "check_reason" (below), and "owned" (a
+# subtree another check owns: cross-tab entries belong to crosstab_schema_and_suppression).
+cpsi_r5_specs = {
+    "dataset": {"row_count": "number", "column_count": "number"},
+    "settings": {"tier": "number", "suppression_threshold": "number", "max_categorical_levels": "number",
+                 "relationship_spec": "pairs", "support_unit": "vocab:support_unit", "full_summary_cutoff": "number"},
+    "generator": {"language": "vocab:language", "template": "vocab:template", "template_version": "vocab:template_version"},
+    "relationships": {"pearson": "record:correlation", "spearman": "record:correlation", "cramers_v": "entries:cramers_v",
+                      "named": "entries:named", "crosstabs": "owned"},
+    "correlation": {"available": "flag", "columns": "names", "pair_n": "matrix", "matrix": "matrix",
+                    "reason": "vocab:correlation_reason"},
+    "cramers_v": {"pair": "pair", "n": "number", "available": "flag", "v": "number", "reason": "vocab:cramers_v_reason"},
+    "named": {"outcome": "name", "predictor": "name", "n": "number", "available": "flag", "pearson": "number",
+              "spearman": "number", "ols": "record:ols", "reason": "vocab:named_reason"},
+    "ols": {"intercept": "number", "slope": "number", "r_squared": "number"},
+    "validation": {"checks": "entries:check", "all_passed": "flag"},
+    "check": {"name": "vocab:check_name", "status": "vocab:check_status", "applicable": "flag", "reason": "check_reason"},
+}
+# ASSUMES: `language` / `template` take the two shipped profilers' constants
+# (profile_data_template.py / .R, Candidate section); the spec fixes template_version.
+cpsi_r5_vocab = {
+    "support_unit": ("record",),
+    "language": ("Python", "R"),
+    "template": ("profile_data_template.py", "profile_data_template.R"),
+    "template_version": ("2.0",),
+    "correlation_reason": ("fewer_than_two_eligible_columns", "insufficient_pair_support",
+                           "zero_pair_variance", "nonfinite_correlation"),
+    "cramers_v_reason": ("insufficient_support", "degenerate_table"),
+    "named_reason": ("insufficient_support", "ineligible_marginal", "small_complement_group", "zero_pair_variance"),
+    "check_name": tuple(sorted(cpsi_required_checks)),
+    "check_status": tuple(sorted(cpsi_legal_status)),
+}
+# INTENT: `validation.checks[].reason` is held to the forms the two profilers emit.
+# REASONING: A report is written only when every check is PASS or NOT_APPLICABLE, so
+# those are the only statuses with a shareable reason. PASS carries the fixed token
+# `candidate_fields_checked`; NOT_APPLICABLE carries the spec's no-target / tier /
+# unavailable forms below (fullmatch; the numbers are counts and tiers, the
+# parenthesis a spec correlation reason). The profilers take no researcher
+# declarations and write only these forms, so any other reason means a modified
+# template or a hand-edited report. A FAIL /
+# NOT_VERIFIED entry has no shareable reason at all; an entry whose status is outside
+# the wire enum is named by its `status` finding instead.
+cpsi_na_reason_forms = {
+    "percentiles_monotone": (r"report declares 0 numeric columns at tier [123]",
+                             r"0 of [1-9][0-9]* numeric columns release a percentile grid"),
+    "category_counts_le_rowcount": (r"report declares 0 categorical columns at tier [123]",),
+    "missing_rate_in_unit_interval": (r"tier 1 releases name and dtype only",),
+    "correlation_matrix_symmetric": (r"tier [12] releases no correlations",
+                                     r"0 of 2 correlation blocks released \((fewer_than_two_eligible_columns|insufficient_pair_support|zero_pair_variance|nonfinite_correlation|no reason stated)\)"),
+    "relationship_support_and_shape": (r"tier [12] releases no relationships",),
+}
+if cpsi_report is None:
+    print(f"[NOT VERIFIED] no_raw_value_shaped_fields: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_cap = max(len(cpsi_pctl_order), 0 if cpsi_columns is None else len(cpsi_columns))
+    for cpsi_col in cpsi_cat_cols:
+        cpsi_blk = cpsi_col.get("categorical")
+        if isinstance(cpsi_blk, dict) and isinstance(cpsi_blk.get("levels"), list):
+            cpsi_cap = max(cpsi_cap, len(cpsi_blk["levels"]))
+    for cpsi_ct in cpsi_crosstabs:
+        if isinstance(cpsi_ct, dict) and isinstance(cpsi_ct.get("cells"), list):
+            cpsi_cap = max(cpsi_cap, len(cpsi_ct["cells"]))
+    cpsi_stack = [("report", cpsi_report)]
+    cpsi_nodes = 0
+    cpsi_longest = 0
+    cpsi_hits = []
+    while len(cpsi_stack) > 0:
+        cpsi_path, cpsi_node = cpsi_stack.pop()
+        cpsi_nodes += 1
+        if isinstance(cpsi_node, dict):
+            for cpsi_k, cpsi_v in cpsi_node.items():
+                if cpsi_k.translate(cpsi_ascii_lower) in cpsi_value_keys and isinstance(cpsi_v, list):
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_esc[cpsi_k]} is a list under a value-shaped key name")
+                if isinstance(cpsi_v, str) and cpsi_k.translate(cpsi_ascii_lower) in cpsi_scalar_value_keys:
+                    cpsi_hits.append(f"value-shaped key '{cpsi_esc[cpsi_k]}' at {cpsi_path}.{cpsi_esc[cpsi_k]}")
+                cpsi_stack.append((f"{cpsi_path}.{cpsi_esc[cpsi_k]}", cpsi_v))
+        elif isinstance(cpsi_node, list):
+            if len(cpsi_node) > 0 and all(not isinstance(x, (dict, list)) for x in cpsi_node):
+                cpsi_longest = max(cpsi_longest, len(cpsi_node))
+                if len(cpsi_node) > cpsi_cap:
+                    cpsi_hits.append(f"{cpsi_path} is a {len(cpsi_node)}-element scalar list, longer than the declared cap {cpsi_cap}")
+            for cpsi_i, cpsi_v in enumerate(cpsi_node):
+                cpsi_stack.append((f"{cpsi_path}[{cpsi_i}]", cpsi_v))
+    # Rule (4): the per-role column-record allow-list. Hits follow the walker's.
+    cpsi_records = 0
+    for cpsi_i, cpsi_col in enumerate([] if cpsi_columns_raw is None else cpsi_columns_raw):
+        if not isinstance(cpsi_col, dict):
+            cpsi_hits.append(f"column index {cpsi_i} is not a JSON object")
+            continue
+        if not isinstance(cpsi_col.get("name"), str):
+            cpsi_hits.append(f"column index {cpsi_i} has a name that is not a string")
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        if cpsi_col.get("role") == "identifier" or cpsi_col.get("is_identifier") is True:
+            continue
+        cpsi_records += 1
+        cpsi_role = cpsi_col.get("role")
+        cpsi_bkey = cpsi_role_block.get(cpsi_role) if isinstance(cpsi_role, str) and not (cpsi_tier_ok and tier == 1) else None
+        cpsi_allowed = ("name", "dtype") if cpsi_tier_ok and tier == 1 else cpsi_col_allowed + (() if cpsi_bkey is None else (cpsi_bkey,))
+        for cpsi_f in sorted(cpsi_col):
+            if cpsi_f not in cpsi_allowed:
+                cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+            elif cpsi_f in cpsi_number_keys and not (cpsi_col[cpsi_f] is None or isinstance(cpsi_col[cpsi_f], (int, float))):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+            elif cpsi_f in cpsi_col_vocab and not (isinstance(cpsi_col[cpsi_f], str) and cpsi_col[cpsi_f] in cpsi_col_vocab[cpsi_f]):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a '{cpsi_f}' outside the spec vocabulary")
+        # INTENT: A categorical column is a string column: both profilers assign the
+        # categorical role only to dtype "string" (a numeric dtype is profiled as
+        # numeric), so a categorical record declaring "integer" or "double" is not
+        # something either profiler writes. The dtype is a vocabulary word but is not
+        # echoed; a dtype outside the vocabulary is the line above's finding.
+        if (cpsi_bkey == "categorical" and cpsi_col.get("dtype") in cpsi_col_vocab["dtype"]
+                and cpsi_col.get("dtype") != "string"):
+            cpsi_hits.append(f"column '{cpsi_name}' declares role 'categorical' with a dtype other than 'string'")
+        cpsi_blk = None if cpsi_bkey is None else cpsi_col.get(cpsi_bkey)
+        if cpsi_blk is None:
+            continue
+        if not isinstance(cpsi_blk, dict):
+            cpsi_hits.append(f"column '{cpsi_name}' carries a non-object '{cpsi_bkey}'")
+            continue
+        cpsi_sub = None
+        cpsi_sub_allowed = ()
+        if cpsi_bkey == "numeric":
+            cpsi_blk_allowed = cpsi_num_full
+            for cpsi_marker, cpsi_keys in cpsi_num_shapes:
+                if cpsi_marker in cpsi_blk:
+                    cpsi_blk_allowed = cpsi_keys
+                    if cpsi_blk.get(cpsi_marker) is not True:
+                        cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_marker}'")
+                    break
+            cpsi_sub = "percentiles"
+            cpsi_sub_allowed = ("p25", "p50", "p75") if "small_n" in cpsi_blk_allowed else tuple(cpsi_pctl_order)
+        elif cpsi_bkey == "categorical":
+            cpsi_blk_allowed = cpsi_cat_allowed
+        else:
+            cpsi_blk_allowed = cpsi_ss_allowed_withheld if "withheld" in cpsi_blk else cpsi_ss_allowed_full
+            if "withheld" in cpsi_blk and cpsi_blk.get("withheld") is not True:
+                cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key 'withheld'")
+            cpsi_sub = "pattern_flags"
+            cpsi_sub_allowed = cpsi_flag_allowed
+        for cpsi_f in sorted(cpsi_blk):
+            if cpsi_f not in cpsi_blk_allowed:
+                cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+            elif cpsi_f in cpsi_number_keys and not (cpsi_blk[cpsi_f] is None or isinstance(cpsi_blk[cpsi_f], (int, float))):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+            elif cpsi_f == "reason" and not (isinstance(cpsi_blk[cpsi_f], str) and cpsi_blk[cpsi_f] in cpsi_block_reason_vocab.get(cpsi_bkey, ())):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a 'reason' outside the spec vocabulary")
+        if cpsi_sub is not None and cpsi_sub in cpsi_blk_allowed and cpsi_blk.get(cpsi_sub) is not None:
+            if not isinstance(cpsi_blk[cpsi_sub], dict):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a non-object '{cpsi_sub}'")
+            else:
+                for cpsi_f in sorted(cpsi_blk[cpsi_sub]):
+                    if cpsi_f not in cpsi_sub_allowed:
+                        cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+                    elif not (cpsi_blk[cpsi_sub][cpsi_f] is None or isinstance(cpsi_blk[cpsi_sub][cpsi_f], (int, float))):
+                        cpsi_hits.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+        if cpsi_bkey == "categorical" and cpsi_blk.get("levels") is not None:
+            if not isinstance(cpsi_blk["levels"], list):
+                cpsi_hits.append(f"column '{cpsi_name}' carries a non-array 'levels'")
+            else:
+                # INTENT: one released level per label. A string label repeated within a
+                # block is named by the later level's index and the first one's, never by
+                # the label itself.
+                # REASONING: no profiler writes a label twice (each released level is one
+                # category), and two entries under one label would split a category's count
+                # in a way no check reconciles, make the cross-tab's category mapping
+                # ambiguous, and leave generation two counts for one level.
+                cpsi_lv_first = {}
+                for cpsi_j, cpsi_lv in enumerate(cpsi_blk["levels"]):
+                    if not isinstance(cpsi_lv, dict):
+                        cpsi_hits.append(f"column '{cpsi_name}' level index {cpsi_j} is not a JSON object")
+                        continue
+                    for cpsi_f in sorted(cpsi_lv):
+                        if cpsi_f not in cpsi_level_allowed:
+                            cpsi_hits.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+                        elif cpsi_f == "value" and not isinstance(cpsi_lv[cpsi_f], str):
+                            # A level label is a string by schema; an array or object
+                            # there is a value dump wearing the label's name.
+                            cpsi_hits.append(f"column '{cpsi_name}' level index {cpsi_j} carries a non-string 'value'")
+                    if isinstance(cpsi_lv.get("value"), str):
+                        if cpsi_lv["value"] in cpsi_lv_first:
+                            cpsi_hits.append(f"column '{cpsi_name}' level index {cpsi_j} repeats the 'value' of level index {cpsi_lv_first[cpsi_lv['value']]}")
+                        else:
+                            cpsi_lv_first[cpsi_lv["value"]] = cpsi_j
+    # Rule (5): the subtree records, breadth-first in a fixed order (both languages).
+    # A top-level subtree of the wrong JSON type is required_top_level_keys' finding.
+    cpsi_queue = [(k, cpsi_report[k], k) for k in ("dataset", "settings", "generator", "relationships", "validation")
+                  if isinstance(cpsi_report.get(k), dict)]
+    cpsi_qi = 0
+    while cpsi_qi < len(cpsi_queue):
+        cpsi_path, cpsi_rec, cpsi_spec_name = cpsi_queue[cpsi_qi]
+        cpsi_qi += 1
+        cpsi_spec = cpsi_r5_specs[cpsi_spec_name]
+        for cpsi_f in sorted(cpsi_rec):
+            cpsi_v = cpsi_rec[cpsi_f]
+            cpsi_kind = cpsi_spec.get(cpsi_f)
+            if cpsi_kind is None:
+                cpsi_hits.append(f"{cpsi_path} carries non-structural key '{cpsi_esc[cpsi_f]}'")
+            elif cpsi_kind == "number":
+                if not (cpsi_v is None or isinstance(cpsi_v, (int, float))):
+                    cpsi_hits.append(f"{cpsi_path} carries a non-numeric '{cpsi_f}'")
+            elif cpsi_kind == "flag":
+                if not isinstance(cpsi_v, bool):
+                    cpsi_hits.append(f"{cpsi_path} carries a non-boolean '{cpsi_f}'")
+            elif cpsi_kind.startswith("vocab:"):
+                if not (isinstance(cpsi_v, str) and cpsi_v in cpsi_r5_vocab[cpsi_kind[6:]]):
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is outside the spec vocabulary")
+            elif cpsi_kind == "check_reason":
+                cpsi_st = cpsi_rec.get("status")
+                cpsi_nm = cpsi_rec.get("name")
+                if cpsi_st == "PASS":
+                    cpsi_ok = cpsi_v == "candidate_fields_checked"
+                elif cpsi_st == "NOT_APPLICABLE":
+                    cpsi_ok = (isinstance(cpsi_v, str) and isinstance(cpsi_nm, str)
+                               and any(re.fullmatch(p, cpsi_v) is not None for p in cpsi_na_reason_forms.get(cpsi_nm, ())))
+                else:
+                    cpsi_ok = cpsi_st not in ("FAIL", "NOT_VERIFIED")
+                if not cpsi_ok:
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is outside the spec vocabulary")
+            elif cpsi_kind in ("name", "names", "pair", "pairs"):
+                if cpsi_kind == "pairs":
+                    cpsi_ok = cpsi_v is None or (isinstance(cpsi_v, list) and all(
+                        isinstance(p, list) and len(p) == 2 and all(isinstance(x, str) and x in cpsi_col_names for x in p)
+                        for p in cpsi_v))
+                else:
+                    cpsi_items = [cpsi_v] if cpsi_kind == "name" else (cpsi_v if isinstance(cpsi_v, list) else None)
+                    cpsi_ok = (cpsi_items is not None and (cpsi_kind != "pair" or len(cpsi_items) == 2)
+                               and all(isinstance(x, str) and x in cpsi_col_names for x in cpsi_items))
+                if not cpsi_ok:
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is not built from declared column names")
+            elif cpsi_kind == "matrix":
+                if not (isinstance(cpsi_v, list) and all(
+                        isinstance(r, list) and all(x is None or isinstance(x, (int, float)) for x in r) for r in cpsi_v)):
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is not an array of numeric rows")
+            elif cpsi_kind.startswith("record:"):
+                if isinstance(cpsi_v, dict):
+                    cpsi_queue.append((f"{cpsi_path}.{cpsi_f}", cpsi_v, cpsi_kind[7:]))
+                else:
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is not a JSON object")
+            elif cpsi_kind.startswith("entries:"):
+                if isinstance(cpsi_v, list):
+                    for cpsi_e, cpsi_ent in enumerate(cpsi_v):
+                        if isinstance(cpsi_ent, dict):
+                            cpsi_queue.append((f"{cpsi_path}.{cpsi_f}[{cpsi_e}]", cpsi_ent, cpsi_kind[8:]))
+                        else:
+                            cpsi_hits.append(f"{cpsi_path}.{cpsi_f}[{cpsi_e}] is not a JSON object")
+                else:
+                    cpsi_hits.append(f"{cpsi_path}.{cpsi_f} is not a JSON array")
+    # Rule (6): the top level itself — key set, value types, and the formats both shipped
+    # profilers write (report_version a dotted version, dataset_name the Config slug
+    # `[A-Za-z0-9_-]+`, generated_utc `YYYY-MM-DDTHH:MM:SSZ`). Held here as well as in
+    # required_top_level_keys because that check is declarable: declaring it away must
+    # not open a free-text channel at the top of the report. Missing keys are not a
+    # channel and stay required_top_level_keys' finding. ASCII classes only ([0-9],
+    # never \d, which is Unicode-aware in Python).
+    cpsi_top_kind = {"report_version": "fmt", "dataset_name": "fmt", "generated_utc": "fmt", "generator": "object",
+                     "settings": "object", "dataset": "object", "validation": "object", "relationships": "object",
+                     "columns": "array"}
+    cpsi_top_fmt = {"report_version": r"[0-9.]{1,16}", "dataset_name": r"[A-Za-z0-9_-]+",
+                    "generated_utc": r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"}
+    for cpsi_k in sorted(cpsi_report):
+        cpsi_v = cpsi_report[cpsi_k]
+        cpsi_kind = cpsi_top_kind.get(cpsi_k)
+        if cpsi_kind is None:
+            cpsi_hits.append(f"report carries non-structural key '{cpsi_esc[cpsi_k]}'")
+        elif cpsi_kind == "object" and not isinstance(cpsi_v, dict):
+            cpsi_hits.append(f"report.{cpsi_k} is not a JSON object")
+        elif cpsi_kind == "array" and not isinstance(cpsi_v, list):
+            cpsi_hits.append(f"report.{cpsi_k} is not a JSON array")
+        elif cpsi_kind == "fmt" and not (isinstance(cpsi_v, str) and re.fullmatch(cpsi_top_fmt[cpsi_k], cpsi_v) is not None):
+            cpsi_hits.append(f"report.{cpsi_k} is outside the spec format")
+    if len(cpsi_hits) > 0:
+        print(f"[FAIL] no_raw_value_shaped_fields: {cpsi_hits[0]}" + (f" (+{len(cpsi_hits) - 1} more)" if len(cpsi_hits) > 1 else ""))
+        cps_intake["failed"] += 1
+    else:
+        print(f"[PASS] no_raw_value_shaped_fields: {cpsi_nodes} JSON nodes walked, 0 value-shaped keys, longest scalar list {cpsi_longest} <= declared cap {cpsi_cap}, {cpsi_records} column records within the per-role key allow-list, {cpsi_qi} subtree records within the spec key allow-lists and vocabularies")
+        cps_intake["passed"] += 1
+
+# Check: identifier columns carry structure only, never values (NON-DECLARABLE)
+# REASONING: An allow-list, not a deny-list. A deny-list only catches the leak
+# shapes someone thought of — `string_structure.example` sailed past one. The
+# schema fixes exactly which keys an identifier record may carry
+# (profiling-script-spec.md: name, dtype, role, missing_rate, nonmissing_n,
+# n_distinct, uniqueness_ratio, is_identifier, and the one role block), so any
+# other key is by construction something the schema did not sanction. Only the
+# key NAME is printed — naming its value would be the leak itself.
+cpsi_id_allowed_col = ("name", "dtype", "role", "missing_rate", "nonmissing_n",
+                       "n_distinct", "uniqueness_ratio", "is_identifier", "string_structure")
+cpsi_id_allowed_ss = cpsi_ss_allowed_full
+cpsi_id_allowed_ss_withheld = cpsi_ss_allowed_withheld
+# INTENT: At tier 1 — the approved tier or the report's own settings.tier — an
+# identifier record is held to {name, dtype}, like every other tier-1 record.
+# REASONING: Tier 1 releases the schema only (profiling-script-spec.md: T1 columns are
+# exactly {name,dtype}). Rule (4) of no_raw_value_shaped_fields skips identifier
+# records because this check owns them, so a tier-1 identifier carrying tier-2
+# metadata and a string_structure would otherwise pass both checks.
+cpsi_id_t1 = (cpsi_tier_ok and tier == 1) or (cpsi_rep_tier_ok and cpsi_rep_tier == 1)
+if cpsi_report is None:
+    print(f"[NOT VERIFIED] identifier_columns_value_free: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_columns is None:
+    print("[NOT VERIFIED] identifier_columns_value_free: the report carries no columns array")
+    cps_intake["not_verified"] += 1
+else:
+    cpsi_id_cols = [c for c in cpsi_columns if c.get("role") == "identifier" or c.get("is_identifier") is True]
+    cpsi_bad = []
+    cpsi_withheld = 0
+    for cpsi_col in cpsi_id_cols:
+        cpsi_name = cpsi_esc[cpsi_col["name"]] if isinstance(cpsi_col.get("name"), str) else "<unnamed>"
+        # INTENT: the same number-or-boolean typing rule as no_raw_value_shaped_fields
+        # (cpsi_number_keys): a string under `n_distinct` is a value, not structure.
+        for cpsi_f in sorted(cpsi_col):
+            if cpsi_f not in (("name", "dtype") if cpsi_id_t1 else cpsi_id_allowed_col):
+                cpsi_bad.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+            elif cpsi_f in cpsi_number_keys and not (cpsi_col[cpsi_f] is None or isinstance(cpsi_col[cpsi_f], (int, float))):
+                cpsi_bad.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+            elif cpsi_f in cpsi_col_vocab and not (isinstance(cpsi_col[cpsi_f], str) and cpsi_col[cpsi_f] in cpsi_col_vocab[cpsi_f]):
+                cpsi_bad.append(f"column '{cpsi_name}' carries a '{cpsi_f}' outside the spec vocabulary")
+        # At tier 1 the string_structure key itself is the finding (named above).
+        cpsi_ss = None if cpsi_id_t1 else cpsi_col.get("string_structure")
+        # INTENT: a non-object string_structure (e.g. a bare string) is the value
+        # itself standing where structure belongs — it used to pass unexamined.
+        if cpsi_ss is not None and not isinstance(cpsi_ss, dict):
+            cpsi_bad.append(f"column '{cpsi_name}' carries a non-object 'string_structure'")
+        if isinstance(cpsi_ss, dict):
+            # ASSUMES: the withheld shape is identified by the presence of the
+            # `withheld` key (n < k, profiling-script-spec.md); a `withheld` that
+            # is not literally true is not that shape, so the key is unsanctioned.
+            if "withheld" in cpsi_ss:
+                cpsi_ss_allowed = cpsi_id_allowed_ss_withheld
+                if cpsi_ss.get("withheld") is True:
+                    cpsi_withheld += 1
+                else:
+                    cpsi_bad.append(f"column '{cpsi_name}' carries non-structural key 'withheld'")
+            else:
+                cpsi_ss_allowed = cpsi_id_allowed_ss
+            for cpsi_f in sorted(cpsi_ss):
+                if cpsi_f not in cpsi_ss_allowed:
+                    cpsi_bad.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+                elif cpsi_f in cpsi_number_keys and not (cpsi_ss[cpsi_f] is None or isinstance(cpsi_ss[cpsi_f], (int, float))):
+                    cpsi_bad.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+                elif cpsi_f == "reason" and not (isinstance(cpsi_ss[cpsi_f], str) and cpsi_ss[cpsi_f] in cpsi_block_reason_vocab["string_structure"]):
+                    cpsi_bad.append(f"column '{cpsi_name}' carries a 'reason' outside the spec vocabulary")
+            # The pattern_flags object is held to its five schema flags too.
+            if "pattern_flags" in cpsi_ss_allowed and cpsi_ss.get("pattern_flags") is not None:
+                if not isinstance(cpsi_ss["pattern_flags"], dict):
+                    cpsi_bad.append(f"column '{cpsi_name}' carries a non-object 'pattern_flags'")
+                else:
+                    for cpsi_f in sorted(cpsi_ss["pattern_flags"]):
+                        if cpsi_f not in cpsi_flag_allowed:
+                            cpsi_bad.append(f"column '{cpsi_name}' carries non-structural key '{cpsi_esc[cpsi_f]}'")
+                        elif not (cpsi_ss["pattern_flags"][cpsi_f] is None or isinstance(cpsi_ss["pattern_flags"][cpsi_f], (int, float))):
+                            cpsi_bad.append(f"column '{cpsi_name}' carries a non-numeric '{cpsi_f}'")
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] identifier_columns_value_free: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    else:
+        print(f"[PASS] identifier_columns_value_free: {len(cpsi_id_cols)} identifier columns examined, structure keys only (allow-list), {cpsi_withheld} withheld")
+        cps_intake["passed"] += 1
+
+# Check: cross-tab schema and suppression are well formed (NON-DECLARABLE)
+if cpsi_report is None:
+    print(f"[NOT VERIFIED] crosstab_schema_and_suppression: {cpsi_load_error}")
+    cps_intake["not_verified"] += 1
+elif cpsi_crosstabs_not_array:
+    print("[FAIL] crosstab_schema_and_suppression: relationships.crosstabs is not a JSON array")
+    cps_intake["failed"] += 1
+elif len(cpsi_crosstabs) == 0:
+    print(f"[PASS] crosstab_schema_and_suppression: 0 cross-tab entries declared at tier {cpsi_tier_label}")
+    cps_intake["passed"] += 1
+else:
+    cpsi_bad = []
+    cpsi_absent = []
+    cpsi_cells = 0
+    cpsi_hidden = 0
+    cpsi_collapsed = 0
+    # Unordered pair (sorted column names) -> index of the first entry on it.
+    cpsi_pair_seen = {}
+    # INTENT: the missing-partner scan below gates a recovered count on the same effective
+    # threshold the sweep uses, max(declared, approved); None when either is unusable.
+    cpsi_xgate = max(int(cpsi_threshold), int(expected_threshold)) if cpsi_thr_ok and cpsi_exp_ok else None
+    for cpsi_idx, cpsi_ct in enumerate(cpsi_crosstabs):
+        if not isinstance(cpsi_ct, dict):
+            cpsi_bad.append(f"entry index {cpsi_idx} is not a JSON object")
+            continue
+        # Same pair-label rule as the sweep: declared column names, else the position.
+        cpsi_pair = cpsi_ct.get("pair")
+        cpsi_pair = (" x ".join(cpsi_esc[p] for p in cpsi_pair) if isinstance(cpsi_pair, list) and len(cpsi_pair) > 0
+                     and all(isinstance(p, str) and p in cpsi_col_names for p in cpsi_pair)
+                     else f"index {cpsi_idx}")
+        # INTENT: The entry is held to the spec's key allow-list (profiling-script-
+        # spec.md § Relationships, cross-tab), `pair` to two declared column names,
+        # `available` to a boolean, `n` to a number, `collapsed` to literal true, and an
+        # unavailable entry's reason to the spec's two reasons. Only the key, the pair
+        # label (declared names) or the index is printed, never a value. rows / cols /
+        # cells on an unavailable entry keep their own `still carries` finding below.
+        cpsi_raw_pair = cpsi_ct.get("pair")
+        cpsi_pair_ok = (isinstance(cpsi_raw_pair, list) and len(cpsi_raw_pair) == 2
+                        and all(isinstance(p, str) and p in cpsi_col_names for p in cpsi_raw_pair))
+        if not cpsi_pair_ok:
+            cpsi_bad.append(f"entry index {cpsi_idx} carries a 'pair' that is not two declared column names")
+        else:
+            # INTENT: one cross-tab per unordered pair of two distinct columns, whatever
+            # each entry's `available` says (the profiler refuses both shapes).
+            # REASONING: two tables of one pair can hide different cells, and the union
+            # of what they release recovers cells that neither hides alone; a pair that
+            # names one column twice is no cross-tab at all. Only entry indices print.
+            if cpsi_raw_pair[0] == cpsi_raw_pair[1]:
+                cpsi_bad.append(f"entry index {cpsi_idx} names one column twice in its 'pair'")
+            cpsi_key = tuple(sorted(cpsi_raw_pair))
+            if cpsi_key in cpsi_pair_seen:
+                cpsi_bad.append(f"entry index {cpsi_idx} repeats the pair of entry index {cpsi_pair_seen[cpsi_key]}")
+            else:
+                cpsi_pair_seen[cpsi_key] = cpsi_idx
+        if not isinstance(cpsi_ct.get("available"), bool):
+            cpsi_bad.append(f"entry {cpsi_pair} carries a non-boolean 'available'")
+        cpsi_ct_allowed = (("pair", "n", "available", "rows", "cols", "cells", "cells_suppressed", "collapsed")
+                           if cpsi_ct.get("available") is True
+                           else ("pair", "n", "available", "reason", "rows", "cols", "cells"))
+        for cpsi_f in sorted(cpsi_ct):
+            if cpsi_f not in cpsi_ct_allowed:
+                cpsi_bad.append(f"entry {cpsi_pair} carries non-structural key '{cpsi_esc[cpsi_f]}'")
+            elif cpsi_f == "n" and not (cpsi_ct[cpsi_f] is None or isinstance(cpsi_ct[cpsi_f], (int, float))):
+                cpsi_bad.append(f"entry {cpsi_pair} carries a non-numeric 'n'")
+            elif cpsi_f == "collapsed" and cpsi_ct[cpsi_f] is not True:
+                cpsi_bad.append(f"entry {cpsi_pair} carries non-structural key 'collapsed'")
+        if cpsi_ct.get("available") is not True:
+            if not (isinstance(cpsi_ct.get("reason"), str) and cpsi_ct["reason"].strip()):
+                cpsi_bad.append(f"unavailable entry {cpsi_pair} carries no reason")
+            elif cpsi_ct["reason"] not in ("ineligible_roles", "insufficient_support"):
+                cpsi_bad.append(f"unavailable entry {cpsi_pair} carries a reason outside the spec vocabulary")
+            for cpsi_f in ("rows", "cols", "cells"):
+                if cpsi_f in cpsi_ct:
+                    cpsi_bad.append(f"unavailable entry {cpsi_pair} still carries '{cpsi_f}'")
+            continue
+        cpsi_r = cpsi_ct.get("rows")
+        cpsi_c = cpsi_ct.get("cols")
+        cpsi_grid = cpsi_ct.get("cells")
+        if not (isinstance(cpsi_r, (int, float)) and not isinstance(cpsi_r, bool)
+                and 0 < cpsi_r < cpsi_max_exact and cpsi_r == int(cpsi_r)
+                and isinstance(cpsi_c, (int, float)) and not isinstance(cpsi_c, bool)
+                and 0 < cpsi_c < cpsi_max_exact and cpsi_c == int(cpsi_c)
+                and isinstance(cpsi_grid, list)):
+            # REASONING: rows / cols / cells are fields this check validates, so a wrong type
+            # or a non-positive / non-whole dimension is a [FAIL], not missing evidence.
+            cpsi_bad.append(f"entry {cpsi_pair} has no positive integer rows/cols with a cells array — the grid cannot be reshaped")
+            continue
+        cpsi_r = int(cpsi_r)
+        cpsi_c = int(cpsi_c)
+        # INTENT: an available grid sits on the released categories: its rows are the
+        # first pair column's released levels and its cols the second's, so rows / cols
+        # must equal those level counts (the profiler asserts the same).
+        # REASONING: a row or column for a source level the categorical block pooled into
+        # __OTHER__ could be subtracted from the released __OTHER__ count to isolate a
+        # rare level; a grid on the released categories has no such row. The level cap
+        # bounds the grid's size for the same reason. Only the position prints.
+        # ASSUMES: the first column record carrying the name is the pair column.
+        # The two pair column records are kept for the missing-partner scan below, which
+        # runs only on an entry of two distinct columns whose grid passed this rule.
+        cpsi_x_cols = []
+        if cpsi_pair_ok:
+            for cpsi_p, cpsi_dim, cpsi_side in ((0, cpsi_r, "rows"), (1, cpsi_c, "cols")):
+                cpsi_pc = next(c for c in cpsi_columns if c.get("name") == cpsi_raw_pair[cpsi_p])
+                cpsi_pblk = cpsi_pc.get("categorical")
+                if not (cpsi_pc.get("role") == "categorical" and isinstance(cpsi_pblk, dict)
+                        and isinstance(cpsi_pblk.get("levels"), list)):
+                    cpsi_bad.append(f"entry {cpsi_pair} pair position {cpsi_p} is not a categorical column with a released levels array")
+                elif len(cpsi_pblk["levels"]) != cpsi_dim:
+                    cpsi_bad.append(f"entry {cpsi_pair} has {cpsi_side} unequal to the released level count of pair position {cpsi_p}")
+                else:
+                    cpsi_x_cols.append(cpsi_pc)
+        cpsi_x_run = len(cpsi_x_cols) == 2 and cpsi_raw_pair[0] != cpsi_raw_pair[1]
+        if len(cpsi_grid) != cpsi_r * cpsi_c:
+            cpsi_bad.append(f"entry {cpsi_pair} has {len(cpsi_grid)} cells, not rows x cols = {cpsi_r * cpsi_c}")
+            continue
+        cpsi_nulls = [i for i, v in enumerate(cpsi_grid) if v is None]
+        cpsi_cells += len(cpsi_grid)
+        cpsi_hidden += len(cpsi_nulls)
+        # A visible 0 is a structural zero and legitimate; a hidden cell mis-coded as 0
+        # still shows up here, because cells_suppressed then disagrees with the nulls.
+        cpsi_cs = cpsi_ct.get("cells_suppressed")
+        if not (isinstance(cpsi_cs, (int, float)) and not isinstance(cpsi_cs, bool) and cpsi_cs == len(cpsi_nulls)):
+            cpsi_bad.append(f"entry {cpsi_pair} reports a cells_suppressed that disagrees with the {len(cpsi_nulls)} nulls in the grid")
+        # INTENT: Differencing residual, mirroring the profiler (profiling-script-spec.md
+        # § Relationships, cross-tab): visible cells never sum past the entry's n, and with
+        # no hidden cell they sum to it exactly — else n minus the visible sum is a
+        # released count. Tested only when every visible cell is a whole number >= 0
+        # (a malformed cell is the threshold sweep's finding).
+        cpsi_vis = [v for v in cpsi_grid if v is not None]
+        cpsi_ctn = cpsi_ct.get("n")
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v < cpsi_max_exact and v == int(v) for v in cpsi_vis):
+            cpsi_tot = sum(int(v) for v in cpsi_vis)
+            if not (isinstance(cpsi_ctn, (int, float)) and not isinstance(cpsi_ctn, bool)
+                    and 0 <= cpsi_ctn < cpsi_max_exact and cpsi_ctn == int(cpsi_ctn)):
+                cpsi_bad.append(f"entry {cpsi_pair} carries no whole-number 'n' to reconcile its cells against")
+            elif cpsi_tot > cpsi_ctn:
+                cpsi_bad.append(f"entry {cpsi_pair} releases visible cells that sum past its n")
+            elif len(cpsi_nulls) == 0 and cpsi_tot != cpsi_ctn:
+                cpsi_bad.append(f"entry {cpsi_pair} hides no cell but its visible cells do not sum to its n")
+        # INTENT: `collapsed: true` is the whole-table hide of last resort, so it
+        # earns the bypass only when the table really is hidden whole.
+        # REASONING: A collapsed flag over a grid that still shows cells would
+        # otherwise switch off the complementary-suppression scan while the
+        # recoverable cells stay on the wire — the flag would be a bypass, not a
+        # suppression. The index, not the pair, is what a FAIL needs to point at.
+        if cpsi_ct.get("collapsed") is True:
+            if len(cpsi_nulls) == len(cpsi_grid):
+                cpsi_collapsed += 1
+            else:
+                cpsi_bad.append(f"entry {cpsi_idx} is marked collapsed but still releases visible cells")
+        else:
+            for cpsi_i in range(cpsi_r):
+                if len([j for j in range(cpsi_c) if cpsi_grid[cpsi_i * cpsi_c + j] is None]) == 1:
+                    cpsi_bad.append(f"entry {cpsi_pair} leaves a lone hidden cell in row index {cpsi_i} — recoverable by differencing")
+                    break
+            for cpsi_j in range(cpsi_c):
+                if len([i for i in range(cpsi_r) if cpsi_grid[i * cpsi_c + cpsi_j] is None]) == 1:
+                    cpsi_bad.append(f"entry {cpsi_pair} leaves a lone hidden cell in column index {cpsi_j} — recoverable by differencing")
+                    break
+            # INTENT: Bridge scan. Read the hidden cells as the edges of a bipartite graph
+            # whose vertices are the entry's rows and columns, and treat every row and
+            # column total as released (the categorical blocks release the margins). A
+            # hidden cell is then pinned exactly by the totals iff its edge lies on no
+            # cycle, i.e. it is a bridge. The lone hidden cell is the degree-1 case and
+            # keeps its own finding above; every other bridge is named here by row and
+            # column index, in row-major order.
+            # REASONING: One iterative depth-first walk per component (low-link bridge
+            # test) visits each hidden cell a bounded number of times, so a large grid
+            # cannot stall the block. Vertices: row i is i, column j is rows + j.
+            # ASSUMES: Interval (non-exact) inference from non-negativity is out of
+            # scope; a fully collapsed entry is exempt (it releases no visible cell).
+            cpsi_br_adj = {}
+            for cpsi_br_k in cpsi_nulls:
+                cpsi_br_adj.setdefault(cpsi_br_k // cpsi_c, []).append(cpsi_br_k)
+                cpsi_br_adj.setdefault(cpsi_r + cpsi_br_k % cpsi_c, []).append(cpsi_br_k)
+            cpsi_br_disc = {}
+            cpsi_br_low = {}
+            cpsi_br_found = []
+            for cpsi_br_root in sorted(cpsi_br_adj):
+                if cpsi_br_root in cpsi_br_disc:
+                    continue
+                cpsi_br_disc[cpsi_br_root] = len(cpsi_br_disc) + 1
+                cpsi_br_low[cpsi_br_root] = cpsi_br_disc[cpsi_br_root]
+                # Stack frames: [vertex, hidden cell it was reached by (-1 at the root),
+                # next position in its adjacency list].
+                cpsi_br_stack = [[cpsi_br_root, -1, 0]]
+                while len(cpsi_br_stack) > 0:
+                    cpsi_br_top = cpsi_br_stack[-1]
+                    cpsi_br_v = cpsi_br_top[0]
+                    if cpsi_br_top[2] < len(cpsi_br_adj[cpsi_br_v]):
+                        cpsi_br_k = cpsi_br_adj[cpsi_br_v][cpsi_br_top[2]]
+                        cpsi_br_top[2] += 1
+                        if cpsi_br_k == cpsi_br_top[1]:
+                            continue
+                        cpsi_br_w = cpsi_r + cpsi_br_k % cpsi_c if cpsi_br_v < cpsi_r else cpsi_br_k // cpsi_c
+                        if cpsi_br_w not in cpsi_br_disc:
+                            cpsi_br_disc[cpsi_br_w] = len(cpsi_br_disc) + 1
+                            cpsi_br_low[cpsi_br_w] = cpsi_br_disc[cpsi_br_w]
+                            cpsi_br_stack.append([cpsi_br_w, cpsi_br_k, 0])
+                        else:
+                            cpsi_br_low[cpsi_br_v] = min(cpsi_br_low[cpsi_br_v], cpsi_br_disc[cpsi_br_w])
+                    else:
+                        cpsi_br_stack.pop()
+                        if len(cpsi_br_stack) > 0:
+                            cpsi_br_u = cpsi_br_stack[-1][0]
+                            cpsi_br_low[cpsi_br_u] = min(cpsi_br_low[cpsi_br_u], cpsi_br_low[cpsi_br_v])
+                            if cpsi_br_low[cpsi_br_v] > cpsi_br_disc[cpsi_br_u]:
+                                cpsi_br_found.append(cpsi_br_top[1])
+            for cpsi_br_k in sorted(cpsi_br_found):
+                if len(cpsi_br_adj[cpsi_br_k // cpsi_c]) > 1 and len(cpsi_br_adj[cpsi_r + cpsi_br_k % cpsi_c]) > 1:
+                    cpsi_bad.append(f"entry {cpsi_pair} leaves hidden cell at row index {cpsi_br_k // cpsi_c}, "
+                                    f"column index {cpsi_br_k % cpsi_c} recoverable from the released totals")
+        # INTENT: Missing-partner scan. A record whose partner column is missing sits outside
+        # the grid but inside both categorical blocks' counts. Extend the grid by a "partner
+        # missing" column (row category i, the second pair column missing) and a "partner
+        # missing" row (the first pair column missing, column category j); the both-missing
+        # corner is then fixed by released facts, corner = (row_count - nonmissing_n of
+        # position 0) + (row_count - nonmissing_n of position 1) - (row_count - n), so it is
+        # known, not an edge. The extended graph's vertices are the rows, the columns, the
+        # missing row and the missing column; its edges are the hidden cells plus every
+        # missing-partner cell of a line whose total (nonmissing_n - n of its column) is
+        # non-zero — a line totalling 0 is a line of known zeros and adds no edge. With
+        # every vertex total released, a missing-partner cell is pinned exactly iff its
+        # edge is a bridge, and its value is the cut: over the side S of the graph without
+        # it that holds its row-side end, value = sum over S's row-side vertices of
+        # (total - known cells) minus the same sum over S's column-side vertices. The
+        # weights below fold the known cells (visible cells, the corner) into each vertex.
+        # A bridge also present when EVERY grid cell is hidden — a missing-partner column
+        # cell of a one-row grid, a missing-partner row cell of a one-column grid — is
+        # pinned by the released n and missing counts alone, whatever the grid shows, so it
+        # is exempt (a documented residual). Every other bridge whose value is negative or
+        # in (0, gate) is a [FAIL] naming the entry and the position, never the value.
+        # REASONING: the categorical blocks release every level count over ALL non-missing
+        # records, while the grid counts pair-complete records only; a fully visible row
+        # then leaves "level count minus row sum" — the count of that category among records
+        # missing the partner — on the wire. Zero-total lines change nothing, so with no
+        # missing value in either pair column this scan adds no edge and no finding. An
+        # all-null grid (collapsed or not) leaves exactly the all-hidden graph, so it is
+        # skipped. One iterative low-link walk finds every bridge and the subtree sums give
+        # each cut, so the cost stays linear in the grid.
+        # ASSUMES: grid rows / cols follow the released categories in the profilers' order
+        # (kept labels in code-point order, then __OTHER__), checked above by count only;
+        # every released total is a whole number >= 0, their sum is below 2^53 (so both
+        # languages add exactly), and labels are distinct — otherwise the scan cannot run
+        # and the entry is [NOT VERIFIED] evidence. Vertices: row i is i, column j is
+        # rows + j, the missing row rows + cols, the missing column rows + cols + 1.
+        if cpsi_x_run:
+            cpsi_xn = cpsi_ct.get("n")
+            cpsi_xnn = [cpsi_x_cols[0].get("nonmissing_n"), cpsi_x_cols[1].get("nonmissing_n")]
+            if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x < cpsi_max_exact and x == int(x)
+                       for x in [cpsi_xn] + cpsi_xnn):
+                cpsi_absent.append(f"entry {cpsi_pair} lacks the released totals the missing-partner scan needs")
+            else:
+                cpsi_xn = int(cpsi_xn)
+                cpsi_xnn = [int(x) for x in cpsi_xnn]
+                for cpsi_p in (0, 1):
+                    if cpsi_xn > cpsi_xnn[cpsi_p]:
+                        cpsi_bad.append(f"entry {cpsi_pair} has an n above the nonmissing_n of pair position {cpsi_p}")
+                # Line totals: records with a category of position 0 and position 1 missing,
+                # and records with position 0 missing and a category of position 1.
+                cpsi_xa = cpsi_xnn[0] - cpsi_xn
+                cpsi_xb = cpsi_xnn[1] - cpsi_xn
+                cpsi_xtot = []
+                if cpsi_xa >= 0 and cpsi_xb >= 0 and cpsi_xa + cpsi_xb > 0 and len(cpsi_nulls) < len(cpsi_grid):
+                    for cpsi_pc in cpsi_x_cols:
+                        cpsi_lvs = cpsi_pc["categorical"]["levels"]
+                        if not (all(isinstance(lv, dict) and isinstance(lv.get("value"), str)
+                                    and isinstance(lv.get("count"), (int, float)) and not isinstance(lv.get("count"), bool)
+                                    and 0 <= lv["count"] < cpsi_max_exact and lv["count"] == int(lv["count"]) for lv in cpsi_lvs)
+                                and len(set(lv["value"] for lv in cpsi_lvs)) == len(cpsi_lvs)):
+                            cpsi_xtot = None
+                            break
+                        # Released categories in grid order: kept labels in code-point order,
+                        # then __OTHER__ last when the block releases it.
+                        cpsi_xcnt = {lv["value"]: int(lv["count"]) for lv in cpsi_lvs}
+                        cpsi_xtot.append([cpsi_xcnt[v] for v in sorted(v for v in cpsi_xcnt if v != "__OTHER__")]
+                                         + ([cpsi_xcnt["__OTHER__"]] if "__OTHER__" in cpsi_xcnt else []))
+                    cpsi_xvis_ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v < cpsi_max_exact
+                                       and v == int(v) for v in cpsi_vis)
+                    if (cpsi_xtot is None or not cpsi_xvis_ok
+                            or sum(cpsi_xtot[0]) + sum(cpsi_xtot[1]) + 2 * sum(int(v) for v in cpsi_vis)
+                            + cpsi_xnn[0] + cpsi_xnn[1] + 2 * cpsi_xn >= cpsi_max_exact):
+                        cpsi_absent.append(f"entry {cpsi_pair} lacks the released totals the missing-partner scan needs")
+                    else:
+                        # Vertex weights: (total - known cells) for a row-side vertex and its
+                        # negative for a column-side one. The missing row's residual is
+                        # nonmissing_n(1) - n and the missing column's nonmissing_n(0) - n
+                        # (their totals minus the known corner).
+                        cpsi_xw = [0] * (cpsi_r + cpsi_c + 2)
+                        for cpsi_i in range(cpsi_r):
+                            cpsi_xw[cpsi_i] = cpsi_xtot[0][cpsi_i] - sum(int(v) for v in cpsi_grid[cpsi_i * cpsi_c:(cpsi_i + 1) * cpsi_c] if v is not None)
+                        for cpsi_j in range(cpsi_c):
+                            cpsi_xw[cpsi_r + cpsi_j] = -(cpsi_xtot[1][cpsi_j] - sum(int(cpsi_grid[cpsi_i * cpsi_c + cpsi_j]) for cpsi_i in range(cpsi_r)
+                                                                                   if cpsi_grid[cpsi_i * cpsi_c + cpsi_j] is not None))
+                        cpsi_xw[cpsi_r + cpsi_c] = cpsi_xb
+                        cpsi_xw[cpsi_r + cpsi_c + 1] = -cpsi_xa
+                        # Edges, row-side end first: the hidden cells (row-major), then the
+                        # missing-partner column cells (rows 0..), then the missing-partner row
+                        # cells (columns 0..), each line only when its total is non-zero.
+                        cpsi_xu = [cpsi_k // cpsi_c for cpsi_k in cpsi_nulls]
+                        cpsi_xv = [cpsi_r + cpsi_k % cpsi_c for cpsi_k in cpsi_nulls]
+                        cpsi_xcore = len(cpsi_xu)
+                        if cpsi_xa > 0:
+                            cpsi_xu += list(range(cpsi_r))
+                            cpsi_xv += [cpsi_r + cpsi_c + 1] * cpsi_r
+                        if cpsi_xb > 0:
+                            cpsi_xu += [cpsi_r + cpsi_c] * cpsi_c
+                            cpsi_xv += [cpsi_r + cpsi_j for cpsi_j in range(cpsi_c)]
+                        cpsi_xadj = [[] for cpsi_i in range(cpsi_r + cpsi_c + 2)]
+                        for cpsi_e in range(len(cpsi_xu)):
+                            cpsi_xadj[cpsi_xu[cpsi_e]].append(cpsi_e)
+                            cpsi_xadj[cpsi_xv[cpsi_e]].append(cpsi_e)
+                        # Iterative low-link walk; frames are [vertex, edge it was reached by
+                        # (-1 at a root), next adjacency position]. cpsi_xsub accumulates each
+                        # vertex's subtree weight, so a bridge's cut is its child's subtree.
+                        cpsi_xdisc = [0] * (cpsi_r + cpsi_c + 2)
+                        cpsi_xlow = [0] * (cpsi_r + cpsi_c + 2)
+                        cpsi_xsub = list(cpsi_xw)
+                        cpsi_xtime = 0
+                        cpsi_xfound = []
+                        for cpsi_xroot in range(cpsi_r + cpsi_c + 2):
+                            if cpsi_xdisc[cpsi_xroot] > 0 or len(cpsi_xadj[cpsi_xroot]) == 0:
+                                continue
+                            cpsi_xtime += 1
+                            cpsi_xdisc[cpsi_xroot] = cpsi_xtime
+                            cpsi_xlow[cpsi_xroot] = cpsi_xtime
+                            cpsi_xstack = [[cpsi_xroot, -1, 0]]
+                            while len(cpsi_xstack) > 0:
+                                cpsi_xtop = cpsi_xstack[-1]
+                                cpsi_xvx = cpsi_xtop[0]
+                                if cpsi_xtop[2] < len(cpsi_xadj[cpsi_xvx]):
+                                    cpsi_e = cpsi_xadj[cpsi_xvx][cpsi_xtop[2]]
+                                    cpsi_xtop[2] += 1
+                                    if cpsi_e == cpsi_xtop[1]:
+                                        continue
+                                    cpsi_xw2 = cpsi_xv[cpsi_e] if cpsi_xu[cpsi_e] == cpsi_xvx else cpsi_xu[cpsi_e]
+                                    if cpsi_xdisc[cpsi_xw2] == 0:
+                                        cpsi_xtime += 1
+                                        cpsi_xdisc[cpsi_xw2] = cpsi_xtime
+                                        cpsi_xlow[cpsi_xw2] = cpsi_xtime
+                                        cpsi_xstack.append([cpsi_xw2, cpsi_e, 0])
+                                    else:
+                                        cpsi_xlow[cpsi_xvx] = min(cpsi_xlow[cpsi_xvx], cpsi_xdisc[cpsi_xw2])
+                                else:
+                                    cpsi_xstack.pop()
+                                    if len(cpsi_xstack) > 0:
+                                        cpsi_xpar = cpsi_xstack[-1][0]
+                                        cpsi_xlow[cpsi_xpar] = min(cpsi_xlow[cpsi_xpar], cpsi_xlow[cpsi_xvx])
+                                        cpsi_xsub[cpsi_xpar] += cpsi_xsub[cpsi_xvx]
+                                        if cpsi_xlow[cpsi_xvx] > cpsi_xdisc[cpsi_xpar] and cpsi_xtop[1] >= cpsi_xcore:
+                                            # The child's subtree is one side of the cut; its sum
+                                            # is the value when the child is the row-side end.
+                                            cpsi_xfound.append((cpsi_xtop[1], cpsi_xsub[cpsi_xvx] if cpsi_xu[cpsi_xtop[1]] == cpsi_xvx
+                                                                else -cpsi_xsub[cpsi_xvx]))
+                        cpsi_xungated = False
+                        for cpsi_e, cpsi_xval in sorted(cpsi_xfound):
+                            cpsi_xt = cpsi_e - cpsi_xcore
+                            if cpsi_xa > 0 and cpsi_xt < cpsi_r:
+                                cpsi_xside, cpsi_xpos, cpsi_xexempt = "row", cpsi_xt, cpsi_r == 1
+                            else:
+                                cpsi_xside, cpsi_xpos, cpsi_xexempt = "column", cpsi_xt - (cpsi_r if cpsi_xa > 0 else 0), cpsi_c == 1
+                            if cpsi_xexempt:
+                                continue
+                            if cpsi_xgate is None:
+                                cpsi_xungated = True
+                            elif cpsi_xval < 0 or 0 < cpsi_xval < cpsi_xgate:
+                                cpsi_bad.append(f"entry {cpsi_pair} leaves the missing-partner cell at {cpsi_xside} index {cpsi_xpos} recoverable from the released totals")
+                        if cpsi_xungated:
+                            cpsi_absent.append(f"entry {cpsi_pair} cannot gate its missing-partner cells: expected_threshold or settings.suppression_threshold is unusable")
+    if len(cpsi_bad) > 0:
+        print(f"[FAIL] crosstab_schema_and_suppression: {cpsi_bad[0]}" + (f" (+{len(cpsi_bad) - 1} more)" if len(cpsi_bad) > 1 else ""))
+        cps_intake["failed"] += 1
+    elif len(cpsi_absent) > 0:
+        print(f"[NOT VERIFIED] crosstab_schema_and_suppression: {cpsi_absent[0]}" + (f" (+{len(cpsi_absent) - 1} more)" if len(cpsi_absent) > 1 else ""))
+        cps_intake["not_verified"] += 1
+    else:
+        print(f"[PASS] crosstab_schema_and_suppression: {len(cpsi_crosstabs)} entries, {cpsi_cells} cells examined, {cpsi_hidden} hidden as null, {cpsi_collapsed} fully collapsed, no hidden cell recoverable from the row and column totals")
+        cps_intake["passed"] += 1
+
+# Count line, then verdict derived from the counts. Every check above reaches its own
+# outcome line without raising, so the count line and verdict are always printed.
+cpsi_checks_run = cps_intake["passed"] + cps_intake["warning"] + cps_intake["failed"]
+if cps_intake["failed"] > 0 or cps_intake["not_verified"] > 0 or cpsi_checks_run == 0:
+    cpsi_verdict = "FAILED"
+elif cps_intake["warning"] > 0:
+    cpsi_verdict = "PASSED WITH WARNINGS"
+else:
+    cpsi_verdict = "PASSED"
+
+print(f"\nChecks: {cps_intake['passed']} passed, {cps_intake['warning']} warnings, {cps_intake['failed']} failed, {cps_intake['not_verified']} not verified, {cps_intake['skipped']} skipped")
+print(f"CPS-INTAKE VALIDATION: {cpsi_verdict}")
+print("=" * 60)
+
+if cpsi_verdict == "FAILED":
+    raise ValueError("CPS-INTAKE FAILED - see details above")
+```
+
+**R:**
+```r
+# --- CPS-INTAKE Validation ---
+# INTENT: Verify that a returned profile report is structurally sound, internally
+# consistent, and free of disclosure-shaped content before generation reads it.
+# REASONING: Same contract as the Python block. jsonlite parses with
+# simplifyVector = FALSE so the nested structure survives intact: simplification
+# would silently turn a ragged cells array into something else and a null cell
+# into NA, which is exactly the distinction the suppression checks rest on.
+# ASSUMES: report_path / tier / expected_threshold / not_applicable are assigned in the
+# `# --- Config ---` region below; report_path is NULL when intake staged no file.
+# A field of the wrong JSON type never stops the block: it becomes a [FAIL] when it is
+# the field a check validates, or a [NOT VERIFIED] when it is evidence a check needs.
+# A JSON object is a named list and a JSON array an unnamed one (jsonlite keeps `{}`
+# named), so `is.list()` alone is never used as a type test. Printed lists are sorted
+# with method = "radix" (C-locale byte order) to match Python's sorted().
+library(jsonlite)
+
+# --- Config ---
+report_path <- NULL      # path to the returned profile report JSON; NULL if intake staged no file
+tier <- NULL             # 1 | 2 | 3 — the tier approved at PSU-DS1 (STATE Disclosure Tier; at T4, T4 Companion Profile Tier) — never the report's settings.tier; NULL if not recorded
+expected_threshold <- NULL # the suppression threshold approved at tier selection (STATE.md § Synthetic Path Tracking); NULL if not recorded
+not_applicable <- list() # e.g. list(correlation_matrix_wellformed = "tier 2 — the report releases no correlations")
+
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("CPS-INTAKE VALIDATION: PROFILE REPORT INTAKE\n")
+cat(strrep("=", 60), "\n")
+
+cps_intake <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
+
+# INTENT: One definition of "blank" for both languages: a string is blank when every
+# code point is Unicode whitespace — exactly the 29 code points Python's str.strip()
+# removes (str.isspace). trimws(whitespace = "[\\h\\v]") is not that set: PCRE's \h\v
+# omit U+001C-U+001F and include U+180E. Testing code points needs no regex, so it also
+# cannot stop on a string that is not valid UTF-8 (utf8ToInt gives NA: not blank).
+cpsi_ws <- c(9:13, 28:32, 133, 160, 5760, 8192:8202, 8232, 8233, 8239, 8287, 12288)
+
+# INTENT: A declared skip without a reason is indistinguishable from a silent one, so
+# it is dropped — but the key stays visible to the two sweeps below, so an empty
+# reason cannot be used to smuggle a declaration past the non-declarable or
+# unrecognized-key gates. The declarable check it named does not then run either:
+# `cpsi_empty_reason` carries it to a [NOT VERIFIED], because printing a [PASS]
+# would answer a question the author explicitly withdrew.
+cpsi_declared_keys <- names(not_applicable)
+if (is.null(cpsi_declared_keys)) cpsi_declared_keys <- character(0)
+cpsi_declared_keys <- sort(cpsi_declared_keys, method = "radix")
+na_keep <- character(0)
+for (k in cpsi_declared_keys) {
+  v <- not_applicable[[k]]
+  if (is.character(v) && length(v) == 1 && !all(utf8ToInt(v) %in% cpsi_ws)) na_keep <- c(na_keep, k)
+}
+cpsi_empty_reason <- setdiff(cpsi_declared_keys, na_keep)
+not_applicable <- not_applicable[na_keep]
+
+# INTENT: Disclosure-critical checks may never be declared not applicable.
+cpsi_non_declarable <- c("no_released_count_below_threshold", "no_raw_value_shaped_fields",
+                         "identifier_columns_value_free", "crosstab_schema_and_suppression")
+for (cpsi_key in cpsi_non_declarable) {
+  if (cpsi_key %in% cpsi_declared_keys) {
+    cat(sprintf("[FAIL] %s: non-declarable check declared not_applicable under key '%s'\n",
+                cpsi_key, cpsi_key))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+    not_applicable[[cpsi_key]] <- NULL
+  }
+}
+
+# INTENT: A not_applicable key that names no check of this block is a silent no-op.
+# REASONING: A typo'd or stale key would otherwise declare nothing and be ignored,
+# leaving the author believing a check was skipped when it in fact ran (or the
+# reverse). Naming it once is the only way the log can carry the discrepancy.
+cpsi_declarable <- c("report_version", "required_top_level_keys", "row_count_positive",
+                     "percentiles_monotone", "category_counts_le_rowcount",
+                     "missing_rate_in_unit_interval", "correlation_matrix_wellformed",
+                     "embedded_validation_complete")
+for (cpsi_key in cpsi_declared_keys) {
+  if (cpsi_key %in% cpsi_non_declarable || cpsi_key %in% cpsi_declarable) next
+  cat(sprintf("[FAIL] not_applicable: unrecognized key '%s' (declarable keys: %s)\n",
+              cpsi_key, paste(cpsi_declarable, collapse = ", ")))
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+  not_applicable[[cpsi_key]] <- NULL
+}
+
+cpsi_parse_error <- "report did not parse as JSON (parser message withheld: it can quote report content)"
+cpsi_report <- NULL
+cpsi_load_error <- NULL
+cpsi_report_strings <- character(0)
+if (is.null(report_path)) {
+  cpsi_load_error <- "report_path is not set — no report was staged for intake"
+} else if (!(file.exists(report_path) && !dir.exists(report_path))) {
+  cpsi_load_error <- sprintf("no file at report_path '%s'", report_path)
+} else {
+  # REASONING: the parser's own message is withheld — it can quote report text, and
+  # the Python parser words it differently, so neither belongs on an outcome line.
+  # Parsing is STRICT, with the same outcome as the Python block and as CPS-GEN on
+  # every file. jsonlite already refuses NaN / Infinity / -Infinity, but it KEEPS a
+  # duplicate object key as a repeated name (`[[` then reads the first, where Python's
+  # dict keeps the last), so the sweep below makes a duplicate key at any depth a parse
+  # error, and refuses nesting deeper than the schema could need (cap 64): the two
+  # parsers give up at different depths, and the cap makes the outcome depend on the
+  # file rather than on the parser.
+  # INTENT: Refuse, before the parser runs, every input the two parsers would read
+  # differently: a leading UTF-8 byte-order mark (jsonlite accepts it with a warning,
+  # json.loads refuses it), a NUL byte (R's text reader would stop at it), invalid
+  # UTF-8, an escaped NUL (jsonlite cuts the string there) and an unpaired surrogate
+  # escape (jsonlite replaces it). The bytes are read whole and parsed as text with
+  # parse_json(), which never treats its input as a path or URL.
+  cpsi_text <- NULL
+  cpsi_raw_bytes <- try(readBin(report_path, what = "raw", n = file.info(report_path)$size), silent = TRUE)
+  if (!inherits(cpsi_raw_bytes, "try-error") &&
+      !(length(cpsi_raw_bytes) >= 3 && identical(cpsi_raw_bytes[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) &&
+      !any(cpsi_raw_bytes == as.raw(0))) {
+    cpsi_text <- rawToChar(cpsi_raw_bytes)
+    Encoding(cpsi_text) <- "UTF-8"
+    if (!validUTF8(cpsi_text)) cpsi_text <- NULL
+  }
+  if (!is.null(cpsi_text)) {
+    # INTENT: Walk the escape sequences left to right, as the Python block does. An
+    # escaped backslash is one token, so the text `\\u0000` is not an escape.
+    # ASSUMES: a \u escape is exactly six characters, so a surrogate pair is a high
+    # escape immediately followed by a low one.
+    cpsi_m <- gregexpr("\\\\(?:u[0-9a-fA-F]{4}|[^u])", cpsi_text, perl = TRUE)[[1]]
+    cpsi_pos <- if (cpsi_m[1] == -1L) integer(0) else as.integer(cpsi_m)
+    cpsi_toks <- if (cpsi_m[1] == -1L) character(0) else regmatches(cpsi_text, list(cpsi_m))[[1]]
+    cpsi_cps <- rep(-1, length(cpsi_toks))
+    cpsi_is_u <- substr(cpsi_toks, 2, 2) == "u"
+    cpsi_cps[cpsi_is_u] <- strtoi(substr(cpsi_toks[cpsi_is_u], 3, 6), 16L)
+    for (cpsi_i in seq_along(cpsi_toks)) {
+      cpsi_cp <- cpsi_cps[cpsi_i]
+      cpsi_hi_ok <- cpsi_i < length(cpsi_toks) && cpsi_pos[cpsi_i + 1L] == cpsi_pos[cpsi_i] + 6L &&
+        cpsi_cps[cpsi_i + 1L] >= 0xDC00 && cpsi_cps[cpsi_i + 1L] <= 0xDFFF
+      cpsi_lo_ok <- cpsi_i > 1L && cpsi_pos[cpsi_i - 1L] == cpsi_pos[cpsi_i] - 6L &&
+        cpsi_cps[cpsi_i - 1L] >= 0xD800 && cpsi_cps[cpsi_i - 1L] <= 0xDBFF
+      if (cpsi_cp == 0 || (cpsi_cp >= 0xD800 && cpsi_cp <= 0xDBFF && !cpsi_hi_ok) ||
+          (cpsi_cp >= 0xDC00 && cpsi_cp <= 0xDFFF && !cpsi_lo_ok)) {
+        cpsi_text <- NULL
+        break
+      }
+    }
+  }
+  if (!is.null(cpsi_text)) {
+    # INTENT: A JSON number token longer than 64 characters (sign, digits, fraction and
+    # exponent together), outside strings, is a parse error — the same two patterns on
+    # the same text as the Python block.
+    # REASONING: jsonlite reads a huge literal as Inf where Python keeps an exact int (or
+    # refuses one of more than 4300 digits), so the same file got two verdicts. Strings
+    # are blanked first, so digits inside a label are never counted.
+    cpsi_unstrung <- gsub('(?s)"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"', '""', cpsi_text, perl = TRUE)
+    if (grepl("[-+0-9.eE]{65,}", cpsi_unstrung, perl = TRUE)) cpsi_text <- NULL
+  }
+  cpsi_parsed <- if (is.null(cpsi_text)) NULL else try(jsonlite::parse_json(cpsi_text, simplifyVector = FALSE), silent = TRUE)
+  if (is.null(cpsi_text) || inherits(cpsi_parsed, "try-error")) {
+    cpsi_load_error <- cpsi_parse_error
+  } else {
+    # INTENT: Breadth-first sweep over every container in the tree that refuses a
+    # duplicate object name and any container nested deeper than 64 levels, counting
+    # the top-level object as level 1; an array is an unnamed list, an object a named
+    # one (an empty object has names() of length 0, never NULL), and each is one level.
+    # The sweep also collects every key and string value, so any report text a line
+    # prints can be escaped (see the escape table below).
+    cpsi_max_depth <- 64L
+    cpsi_queue <- list(cpsi_parsed)
+    cpsi_queue_depth <- 1L
+    cpsi_qi <- 1L
+    cpsi_refused <- FALSE
+    while (cpsi_qi <= length(cpsi_queue) && !cpsi_refused) {
+      cpsi_node <- cpsi_queue[[cpsi_qi]]
+      cpsi_d <- cpsi_queue_depth[cpsi_qi]
+      cpsi_qi <- cpsi_qi + 1L
+      if (is.list(cpsi_node)) {
+        if (cpsi_d > cpsi_max_depth || (!is.null(names(cpsi_node)) && anyDuplicated(names(cpsi_node)) > 0)) cpsi_refused <- TRUE
+        if (!is.null(names(cpsi_node))) cpsi_report_strings <- c(cpsi_report_strings, names(cpsi_node))
+        cpsi_queue <- c(cpsi_queue, unname(cpsi_node))
+        cpsi_queue_depth <- c(cpsi_queue_depth, rep(cpsi_d + 1L, length(cpsi_node)))
+      } else if (is.character(cpsi_node)) {
+        cpsi_report_strings <- c(cpsi_report_strings, cpsi_node)
+      }
+    }
+    if (cpsi_refused) {
+      cpsi_load_error <- cpsi_parse_error
+    } else if (!is.list(cpsi_parsed) || is.null(names(cpsi_parsed))) {
+      cpsi_load_error <- "report parsed, but its top level is not a JSON object"
+    } else {
+      cpsi_report <- cpsi_parsed
+    }
+  }
+}
+
+# INTENT: Escape every report-derived string before it reaches an outcome line,
+# exactly as the Python block does: a character outside printable ASCII (0x20-0x7E)
+# prints as \uXXXX in lowercase hex, and one above U+FFFF as its UTF-16 surrogate pair.
+# REASONING: A column name or key carrying a newline or control character could
+# otherwise forge an extra outcome line (a fake count line or verdict), and a non-ASCII
+# one could fail the write on a console that cannot encode it. The table covers every
+# key and string value of the parsed report; each print site looks its text up with
+# match(), which — unlike [[ ]] — also finds an empty name. Config strings
+# (report_path, not_applicable reasons) are the researcher's own text and print as written.
+cpsi_esc_from <- unique(cpsi_report_strings)
+cpsi_esc_to <- character(length(cpsi_esc_from))
+for (cpsi_i in seq_along(cpsi_esc_from)) {
+  cpsi_cp <- utf8ToInt(enc2utf8(cpsi_esc_from[cpsi_i]))
+  if (length(cpsi_cp) == 0 || anyNA(cpsi_cp)) {
+    cpsi_esc_to[cpsi_i] <- if (length(cpsi_cp) == 0) "" else "\\ufffd"
+    next
+  }
+  cpsi_esc_to[cpsi_i] <- paste(ifelse(cpsi_cp >= 32L & cpsi_cp <= 126L, intToUtf8(cpsi_cp, multiple = TRUE),
+                                      ifelse(cpsi_cp < 65536L, sprintf("\\u%04x", cpsi_cp),
+                                             sprintf("\\u%04x\\u%04x", 55296L + (cpsi_cp - 65536L) %/% 1024L,
+                                                     56320L + (cpsi_cp - 65536L) %% 1024L))), collapse = "")
+}
+# INTENT: Value-shaped key names are matched case-insensitively over ASCII letters
+# only, exactly as the Python block does (tolower() follows the locale and folds some
+# non-ASCII letters; chartr() over the 26 ASCII letters folds nothing else).
+cpsi_upper_ascii <- "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+cpsi_lower_ascii <- "abcdefghijklmnopqrstuvwxyz"
+
+# INTENT: One numeric model for both languages: a JSON number is usable only when it
+# is finite and |v| < 2^53 (the profiler refuses larger magnitudes; jsonlite turns a
+# 401-digit integer into Inf). Whole numbers are tested as v == floor(v), never via
+# as.integer(), which turns 3e9 into NA and would hand `if ()` an NA.
+cpsi_max_exact <- 2^53
+
+cpsi_columns_raw <- NULL
+cpsi_columns <- NULL
+cpsi_row_count <- NULL
+cpsi_threshold <- NULL
+cpsi_relationships <- NULL
+cpsi_crosstabs <- list()
+cpsi_crosstabs_not_array <- FALSE
+if (!is.null(cpsi_report)) {
+  cpsi_x <- cpsi_report[["columns"]]
+  if (is.list(cpsi_x) && is.null(names(cpsi_x))) {
+    cpsi_columns_raw <- cpsi_x
+    cpsi_columns <- Filter(function(c) is.list(c) && !is.null(names(c)), cpsi_x)
+  }
+  cpsi_x <- cpsi_report[["settings"]]
+  if (is.list(cpsi_x) && !is.null(names(cpsi_x))) cpsi_threshold <- cpsi_x[["suppression_threshold"]]
+  cpsi_x <- cpsi_report[["dataset"]]
+  if (is.list(cpsi_x) && !is.null(names(cpsi_x))) cpsi_row_count <- cpsi_x[["row_count"]]
+  cpsi_x <- cpsi_report[["relationships"]]
+  if (is.list(cpsi_x) && !is.null(names(cpsi_x))) {
+    cpsi_relationships <- cpsi_x
+    cpsi_x <- cpsi_relationships[["crosstabs"]]
+    if (is.list(cpsi_x) && is.null(names(cpsi_x))) {
+      cpsi_crosstabs <- cpsi_x
+    } else if (!is.null(cpsi_x)) {
+      cpsi_crosstabs_not_array <- TRUE
+    }
+  }
+}
+cpsi_col_names <- character(0)
+for (cpsi_col in if (is.null(cpsi_columns)) list() else cpsi_columns) {
+  if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_col_names <- c(cpsi_col_names, cpsi_col[["name"]])
+}
+cpsi_tier_ok <- is.numeric(tier) && length(tier) == 1 && !is.na(tier) && tier %in% c(1, 2, 3)
+cpsi_tier_label <- if (cpsi_tier_ok) as.character(as.integer(tier)) else if (is.null(tier)) "unrecorded" else "invalid"
+cpsi_rep_tier <- if (!is.null(cpsi_report) && is.list(cpsi_report[["settings"]]) && !is.null(names(cpsi_report[["settings"]]))) cpsi_report[["settings"]][["tier"]] else NULL
+cpsi_rep_tier_ok <- is.numeric(cpsi_rep_tier) && length(cpsi_rep_tier) == 1 && !is.na(cpsi_rep_tier) && cpsi_rep_tier %in% c(1, 2, 3)
+# INTENT: "released relationships content" is any `relationships` value other than an
+# absent key, JSON null, or an empty object / array (same rule as the Python block).
+cpsi_rel_raw <- if (is.null(cpsi_report)) NULL else cpsi_report[["relationships"]]
+cpsi_rel_content <- !is.null(cpsi_rel_raw) && !(is.list(cpsi_rel_raw) && length(cpsi_rel_raw) == 0)
+
+# INTENT: Bind the role subsets once — every later check partitions the same way. A
+# role counts only as a single string, as in Python (R's list == "x" would coerce).
+cpsi_num_cols <- list()
+cpsi_cat_cols <- list()
+cpsi_id_cols <- list()
+cpsi_rated <- list()
+if (!is.null(cpsi_columns)) {
+  for (cpsi_col in cpsi_columns) {
+    cpsi_role <- cpsi_col[["role"]]
+    if (!(is.character(cpsi_role) && length(cpsi_role) == 1)) cpsi_role <- NA_character_
+    if (isTRUE(cpsi_role == "numeric")) cpsi_num_cols <- c(cpsi_num_cols, list(cpsi_col))
+    if (isTRUE(cpsi_role == "categorical")) cpsi_cat_cols <- c(cpsi_cat_cols, list(cpsi_col))
+    if (isTRUE(cpsi_role == "identifier") || isTRUE(cpsi_col[["is_identifier"]])) {
+      cpsi_id_cols <- c(cpsi_id_cols, list(cpsi_col))
+    }
+    if ("missing_rate" %in% names(cpsi_col)) cpsi_rated <- c(cpsi_rated, list(cpsi_col))
+  }
+}
+cpsi_row_count_ok <- is.numeric(cpsi_row_count) && length(cpsi_row_count) == 1 &&
+  !is.na(cpsi_row_count) && abs(cpsi_row_count) < cpsi_max_exact &&
+  cpsi_row_count == floor(cpsi_row_count) && cpsi_row_count > 0
+
+# Check: report_version
+if ("report_version" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] report_version: %s\n", not_applicable[["report_version"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("report_version" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] report_version: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] report_version: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!("report_version" %in% names(cpsi_report))) {
+  cat("[NOT VERIFIED] report_version: the report carries no report_version field\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!(is.character(cpsi_report[["report_version"]]) && length(cpsi_report[["report_version"]]) == 1 &&
+             grepl("^[0-9.]{1,16}$", cpsi_report[["report_version"]]))) {
+  # REASONING: only a dotted version string is echoed; anything else could be report
+  # content, so it is named by shape, never quoted.
+  cat("[FAIL] report_version: the report_version field is not a dotted version string — a legacy or unknown report is never relabelled into compliance\n")
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else if (!identical(cpsi_report[["report_version"]], "2.0")) {
+  cat(sprintf("[FAIL] report_version: '%s' is not the accepted 2.0 schema — a legacy or unknown report is never relabelled into compliance\n",
+              cpsi_report[["report_version"]]))
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else {
+  cat("[PASS] report_version: '2.0' — the accepted schema version\n")
+  cps_intake["passed"] <- cps_intake["passed"] + 1L
+}
+
+# Check: required top-level keys
+cpsi_required_top <- c("report_version", "dataset_name", "generated_utc", "generator",
+                       "settings", "dataset", "columns", "validation")
+if ("required_top_level_keys" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] required_top_level_keys: %s\n", not_applicable[["required_top_level_keys"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("required_top_level_keys" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] required_top_level_keys: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] required_top_level_keys: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_present <- names(cpsi_report)
+  cpsi_missing <- sort(setdiff(cpsi_required_top, cpsi_present), method = "radix")
+  cpsi_unexpected <- sort(setdiff(cpsi_present, c(cpsi_required_top, "relationships")), method = "radix")
+  if (cpsi_tier_ok && tier == 3 && !("relationships" %in% cpsi_present)) {
+    cpsi_missing <- sort(c(cpsi_missing, "relationships"), method = "radix")
+  }
+  # INTENT: a present key of the wrong JSON type is a schema violation this check owns.
+  cpsi_top_kinds <- c(dataset_name = "string", generated_utc = "string", generator = "object",
+                      settings = "object", dataset = "object", columns = "array",
+                      validation = "object", relationships = "object")
+  cpsi_wrong_kind <- character(0)
+  for (cpsi_k in names(cpsi_top_kinds)) {
+    if (!(cpsi_k %in% cpsi_present)) next
+    cpsi_x <- cpsi_report[[cpsi_k]]
+    cpsi_kind_ok <- switch(cpsi_top_kinds[[cpsi_k]],
+                           string = is.character(cpsi_x) && length(cpsi_x) == 1,
+                           object = is.list(cpsi_x) && !is.null(names(cpsi_x)),
+                           array = is.list(cpsi_x) && is.null(names(cpsi_x)))
+    if (!cpsi_kind_ok) cpsi_wrong_kind <- c(cpsi_wrong_kind, cpsi_k)
+  }
+  cpsi_wrong_kind <- sort(cpsi_wrong_kind, method = "radix")
+  if (length(cpsi_missing) > 0 || length(cpsi_unexpected) > 0 || length(cpsi_wrong_kind) > 0) {
+    cat(sprintf("[FAIL] required_top_level_keys: missing [%s], unexpected [%s]%s (tier %s)\n",
+                paste(cpsi_missing, collapse = ", "), paste(cpsi_esc_to[match(cpsi_unexpected, cpsi_esc_from)], collapse = ", "),
+                if (length(cpsi_wrong_kind) > 0) sprintf(", wrong JSON type [%s]", paste(cpsi_wrong_kind, collapse = ", ")) else "",
+                cpsi_tier_label))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] required_top_level_keys: %d of %d required keys present, 0 unexpected (tier %s)\n",
+                length(cpsi_required_top), length(cpsi_required_top), cpsi_tier_label))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: row count is a positive integer
+if ("row_count_positive" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] row_count_positive: %s\n", not_applicable[["row_count_positive"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("row_count_positive" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] row_count_positive: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] row_count_positive: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_row_count)) {
+  cat("[NOT VERIFIED] row_count_positive: dataset.row_count is absent — no denominator for the count checks\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!cpsi_row_count_ok) {
+  cat("[FAIL] row_count_positive: dataset.row_count is not a positive whole number\n")
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else {
+  cat(sprintf("[PASS] row_count_positive: dataset.row_count = %s over %d declared columns\n",
+              format(cpsi_row_count, big.mark = ",", scientific = FALSE),
+              if (is.null(cpsi_columns_raw)) 0L else length(cpsi_columns_raw)))
+  cps_intake["passed"] <- cps_intake["passed"] + 1L
+}
+
+# Check: released percentile grids are non-decreasing in probability order
+cpsi_pctl_order <- c("p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99")
+if ("percentiles_monotone" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] percentiles_monotone: %s\n", not_applicable[["percentiles_monotone"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("percentiles_monotone" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] percentiles_monotone: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] percentiles_monotone: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_columns)) {
+  cat("[NOT VERIFIED] percentiles_monotone: the report carries no columns array\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (length(cpsi_num_cols) == 0) {
+  cat(sprintf("[SKIPPED] percentiles_monotone: report declares 0 numeric columns at tier %s (0 grids, 0 percentiles)\n",
+              cpsi_tier_label))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else {
+  cpsi_grids <- 0L
+  cpsi_points <- 0L
+  cpsi_bad <- character(0)
+  cpsi_absent <- character(0)
+  for (cpsi_col in cpsi_num_cols) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_blk <- cpsi_col[["numeric"]]
+    if (!(is.list(cpsi_blk) && !is.null(names(cpsi_blk)))) {
+      cpsi_absent <- c(cpsi_absent, sprintf("column '%s' declares role numeric but has no numeric block", cpsi_name))
+    } else if (!("percentiles" %in% names(cpsi_blk))) {
+      if (!(isTRUE(cpsi_blk[["withheld"]]) || isTRUE(cpsi_blk[["all_missing"]]) || isTRUE(cpsi_blk[["constant"]]))) {
+        cpsi_absent <- c(cpsi_absent, sprintf("column '%s' has a numeric block with no percentiles and no withheld/all_missing/constant marker", cpsi_name))
+      }
+    } else if (!(is.list(cpsi_blk[["percentiles"]]) && !is.null(names(cpsi_blk[["percentiles"]]))) ||
+               length(cpsi_blk[["percentiles"]]) == 0) {
+      cpsi_absent <- c(cpsi_absent, sprintf("column '%s' has an empty or non-object percentiles block", cpsi_name))
+    } else {
+      cpsi_grid <- cpsi_blk[["percentiles"]]
+      cpsi_unknown <- setdiff(names(cpsi_grid), cpsi_pctl_order)
+      cpsi_keys <- cpsi_pctl_order[cpsi_pctl_order %in% names(cpsi_grid)]
+      cpsi_vals <- unlist(lapply(cpsi_keys, function(k) {
+        v <- cpsi_grid[[k]]
+        if (is.numeric(v) && length(v) == 1 && !is.na(v) && abs(v) < cpsi_max_exact) v else NA_real_
+      }))
+      if (length(cpsi_unknown) > 0) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries unrecognized percentile keys [%s]",
+                                        cpsi_name, paste(cpsi_esc_to[match(sort(cpsi_unknown, method = "radix"), cpsi_esc_from)], collapse = ", ")))
+      } else if (any(is.na(cpsi_vals))) {
+        cpsi_absent <- c(cpsi_absent, sprintf("column '%s' has a non-numeric or out-of-range percentile value", cpsi_name))
+      } else {
+        cpsi_grids <- cpsi_grids + 1L
+        cpsi_points <- cpsi_points + length(cpsi_vals)
+        if (length(cpsi_vals) > 1) {
+          for (cpsi_i in seq(2, length(cpsi_vals))) {
+            if (cpsi_vals[cpsi_i] < cpsi_vals[cpsi_i - 1]) {
+              cpsi_bad <- c(cpsi_bad, sprintf("column '%s' is non-monotone between %s and %s",
+                                              cpsi_name, cpsi_keys[cpsi_i - 1], cpsi_keys[cpsi_i]))
+              break
+            }
+          }
+        }
+      }
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] percentiles_monotone: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (length(cpsi_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] percentiles_monotone: %s%s\n", cpsi_absent[1],
+                if (length(cpsi_absent) > 1) sprintf(" (+%d more)", length(cpsi_absent) - 1) else ""))
+    cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] percentiles_monotone: %d numeric columns, %d released grids x %d percentiles checked, all non-decreasing\n",
+                length(cpsi_num_cols), cpsi_grids, cpsi_points))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: every category count, and each column's level total, is <= row_count
+if ("category_counts_le_rowcount" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] category_counts_le_rowcount: %s\n", not_applicable[["category_counts_le_rowcount"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("category_counts_le_rowcount" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] category_counts_le_rowcount: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] category_counts_le_rowcount: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_columns)) {
+  cat("[NOT VERIFIED] category_counts_le_rowcount: the report carries no columns array\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (length(cpsi_cat_cols) == 0) {
+  cat(sprintf("[SKIPPED] category_counts_le_rowcount: report declares 0 categorical columns at tier %s (0 levels)\n",
+              cpsi_tier_label))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if (!cpsi_row_count_ok) {
+  cat("[NOT VERIFIED] category_counts_le_rowcount: dataset.row_count is absent or not a positive integer — no comparison basis\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_levels_seen <- 0L
+  cpsi_bad <- character(0)
+  cpsi_absent <- character(0)
+  for (cpsi_col in cpsi_cat_cols) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_blk <- cpsi_col[["categorical"]]
+    if (!(is.list(cpsi_blk) && !is.null(names(cpsi_blk)))) {
+      cpsi_absent <- c(cpsi_absent, sprintf("column '%s' declares role categorical but has no categorical block", cpsi_name))
+    } else if (!(is.list(cpsi_blk[["levels"]]) && is.null(names(cpsi_blk[["levels"]])))) {
+      cpsi_absent <- c(cpsi_absent, sprintf("column '%s' has a categorical block with no levels array", cpsi_name))
+    } else {
+      cpsi_total <- 0
+      cpsi_levels <- cpsi_blk[["levels"]]
+      for (cpsi_i in seq_along(cpsi_levels)) {
+        cpsi_lv <- cpsi_levels[[cpsi_i]]
+        if (!is.list(cpsi_lv) || !("count" %in% names(cpsi_lv))) {
+          cpsi_absent <- c(cpsi_absent, sprintf("column '%s' level index %d carries no count field", cpsi_name, cpsi_i - 1L))
+          next
+        }
+        cpsi_v <- cpsi_lv[["count"]]
+        if (!(is.numeric(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v) && abs(cpsi_v) < cpsi_max_exact &&
+              cpsi_v == floor(cpsi_v))) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' level index %d has a non-integer count", cpsi_name, cpsi_i - 1L))
+          next
+        }
+        cpsi_levels_seen <- cpsi_levels_seen + 1L
+        cpsi_total <- cpsi_total + cpsi_v
+        if (cpsi_v > cpsi_row_count) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' level index %d exceeds row_count", cpsi_name, cpsi_i - 1L))
+        }
+      }
+      if (cpsi_total > cpsi_row_count) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' level total exceeds row_count", cpsi_name))
+      }
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] category_counts_le_rowcount: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (length(cpsi_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] category_counts_le_rowcount: %s%s\n", cpsi_absent[1],
+                if (length(cpsi_absent) > 1) sprintf(" (+%d more)", length(cpsi_absent) - 1) else ""))
+    cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] category_counts_le_rowcount: %d categorical columns, %d levels, every count and column total <= row_count %s\n",
+                length(cpsi_cat_cols), cpsi_levels_seen, format(cpsi_row_count, big.mark = ",", scientific = FALSE)))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: missingness rates are finite reals in [0, 1] and agree with nonmissing_n
+if ("missing_rate_in_unit_interval" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] missing_rate_in_unit_interval: %s\n", not_applicable[["missing_rate_in_unit_interval"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("missing_rate_in_unit_interval" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] missing_rate_in_unit_interval: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] missing_rate_in_unit_interval: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_columns)) {
+  cat("[NOT VERIFIED] missing_rate_in_unit_interval: the report carries no columns array\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (length(cpsi_rated) == 0 && cpsi_tier_ok && tier == 1) {
+  cat("[SKIPPED] missing_rate_in_unit_interval: tier 1 releases no missingness rates (0 of 0 columns carry one)\n")
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if (length(cpsi_rated) == 0) {
+  cat(sprintf("[NOT VERIFIED] missing_rate_in_unit_interval: no column carries a missing_rate at tier %s, where rates are expected\n",
+              cpsi_tier_label))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_bad <- character(0)
+  cpsi_absent <- character(0)
+  cpsi_agreed <- 0L
+  for (cpsi_col in cpsi_rated) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_v <- cpsi_col[["missing_rate"]]
+    if (!(is.numeric(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v) && abs(cpsi_v) < cpsi_max_exact)) {
+      cpsi_bad <- c(cpsi_bad, sprintf("column '%s' has a non-finite or non-numeric missing_rate", cpsi_name))
+    } else if (cpsi_v < 0 || cpsi_v > 1) {
+      cpsi_bad <- c(cpsi_bad, sprintf("column '%s' has a missing_rate outside [0, 1]", cpsi_name))
+    } else {
+      cpsi_nm <- cpsi_col[["nonmissing_n"]]
+      if (!(is.numeric(cpsi_nm) && length(cpsi_nm) == 1 && !is.na(cpsi_nm) && abs(cpsi_nm) < cpsi_max_exact &&
+            cpsi_nm == floor(cpsi_nm))) {
+        cpsi_absent <- c(cpsi_absent, sprintf("column '%s' carries a rate but no whole-number nonmissing_n to reconcile it against", cpsi_name))
+      } else if (!cpsi_row_count_ok) {
+        cpsi_absent <- c(cpsi_absent, "dataset.row_count is absent or not positive — rates cannot be reconciled")
+      } else if (abs(cpsi_v - (cpsi_row_count - cpsi_nm) / cpsi_row_count) > 1e-06) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' missing_rate disagrees with nonmissing_n beyond rounding tolerance", cpsi_name))
+      } else {
+        cpsi_agreed <- cpsi_agreed + 1L
+      }
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] missing_rate_in_unit_interval: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (length(cpsi_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] missing_rate_in_unit_interval: %s%s\n", cpsi_absent[1],
+                if (length(cpsi_absent) > 1) sprintf(" (+%d more)", length(cpsi_absent) - 1) else ""))
+    cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] missing_rate_in_unit_interval: %d rates in [0, 1], %d reconciled against nonmissing_n within 1e-06\n",
+                length(cpsi_rated), cpsi_agreed))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: released correlation matrices are square, symmetric, unit-diagonal, in [-1, 1]
+if ("correlation_matrix_wellformed" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] correlation_matrix_wellformed: %s\n", not_applicable[["correlation_matrix_wellformed"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("correlation_matrix_wellformed" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] correlation_matrix_wellformed: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] correlation_matrix_wellformed: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!cpsi_tier_ok) {
+  cat("[NOT VERIFIED] correlation_matrix_wellformed: tier is not a recorded 1/2/3 — the tier decides whether matrices are expected\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (tier < 3) {
+  # The count is what the report actually declares (same rule as the Python block).
+  cpsi_mats <- 0L
+  for (cpsi_k in c("pearson", "spearman")) {
+    cpsi_x <- if (is.null(cpsi_relationships)) NULL else cpsi_relationships[[cpsi_k]]
+    if (is.list(cpsi_x) && !is.null(names(cpsi_x)) && isTRUE(cpsi_x[["available"]])) cpsi_mats <- cpsi_mats + 1L
+  }
+  cat(sprintf("[SKIPPED] correlation_matrix_wellformed: tier %s releases no correlation matrices (%d matrices declared)\n",
+              cpsi_tier_label, cpsi_mats))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if (is.null(cpsi_relationships)) {
+  cat("[NOT VERIFIED] correlation_matrix_wellformed: tier 3 but the report carries no relationships object\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_bad <- character(0)
+  cpsi_absent <- character(0)
+  cpsi_checked <- 0L
+  cpsi_max_asym <- 0
+  cpsi_dim <- 0L
+  for (cpsi_name in c("pearson", "spearman")) {
+    cpsi_blk <- cpsi_relationships[[cpsi_name]]
+    if (!(is.list(cpsi_blk) && !is.null(names(cpsi_blk)))) {
+      cpsi_absent <- c(cpsi_absent, sprintf("the '%s' block is absent at tier 3", cpsi_name))
+      next
+    }
+    if (!isTRUE(cpsi_blk[["available"]])) {
+      cpsi_reason <- cpsi_blk[["reason"]]
+      if (!(is.character(cpsi_reason) && length(cpsi_reason) == 1 && !all(utf8ToInt(cpsi_reason) %in% cpsi_ws))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("the '%s' block is unavailable with no recorded reason", cpsi_name))
+      }
+      next
+    }
+    cpsi_rows <- cpsi_blk[["matrix"]]
+    if (!(is.list(cpsi_rows) && is.null(names(cpsi_rows))) || length(cpsi_rows) == 0) {
+      cpsi_absent <- c(cpsi_absent, sprintf("the '%s' block is available but carries no matrix", cpsi_name))
+      next
+    }
+    cpsi_n <- length(cpsi_rows)
+    cpsi_ok_shape <- all(vapply(cpsi_rows, function(r) is.list(r) && is.null(names(r)) && length(r) == cpsi_n, logical(1)))
+    if (!cpsi_ok_shape) {
+      cpsi_bad <- c(cpsi_bad, sprintf("the '%s' matrix is not square", cpsi_name))
+      next
+    }
+    cpsi_m <- matrix(NA_real_, nrow = cpsi_n, ncol = cpsi_n)
+    for (cpsi_i in seq_len(cpsi_n)) {
+      for (cpsi_j in seq_len(cpsi_n)) {
+        cpsi_v <- cpsi_rows[[cpsi_i]][[cpsi_j]]
+        if (is.numeric(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v) && abs(cpsi_v) < cpsi_max_exact) cpsi_m[cpsi_i, cpsi_j] <- cpsi_v
+      }
+    }
+    if (any(is.na(cpsi_m))) {
+      cpsi_bad <- c(cpsi_bad, sprintf("the '%s' matrix carries a non-finite entry", cpsi_name))
+      next
+    }
+    cpsi_asym <- max(abs(cpsi_m - t(cpsi_m)))
+    if (cpsi_asym > 1e-09) {
+      cpsi_bad <- c(cpsi_bad, sprintf("the '%s' matrix is not symmetric within 1e-09", cpsi_name))
+    } else if (max(abs(diag(cpsi_m) - 1)) > 1e-09) {
+      cpsi_bad <- c(cpsi_bad, sprintf("the '%s' matrix does not have a unit diagonal", cpsi_name))
+    } else if (max(abs(cpsi_m)) > 1) {
+      cpsi_bad <- c(cpsi_bad, sprintf("the '%s' matrix carries an entry outside [-1, 1]", cpsi_name))
+    } else {
+      cpsi_checked <- cpsi_checked + 1L
+      cpsi_dim <- cpsi_n
+      cpsi_max_asym <- max(cpsi_max_asym, cpsi_asym)
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] correlation_matrix_wellformed: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (length(cpsi_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] correlation_matrix_wellformed: %s%s\n", cpsi_absent[1],
+                if (length(cpsi_absent) > 1) sprintf(" (+%d more)", length(cpsi_absent) - 1) else ""))
+    cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+  } else if (cpsi_checked == 0) {
+    cat("[PASS] correlation_matrix_wellformed: 0 available matrices at tier 3, every block unavailable with a recorded reason\n")
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  } else {
+    cat(sprintf("[PASS] correlation_matrix_wellformed: %d matrices, %dx%d, max asymmetry %.2e, unit diagonal, entries in [-1, 1]\n",
+                cpsi_checked, cpsi_dim, cpsi_dim, cpsi_max_asym))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: no released count lies below the suppression threshold (NON-DECLARABLE)
+# The gate is never the report's word alone (same contract as the Python block): a
+# report declaring less than the approved expected_threshold is a [FAIL], and visible
+# counts are gated at max(declared, approved). Thresholds are allowed facts.
+cpsi_exp_ok <- is.numeric(expected_threshold) && length(expected_threshold) == 1 &&
+  !is.na(expected_threshold) && abs(expected_threshold) < cpsi_max_exact &&
+  expected_threshold == floor(expected_threshold) && expected_threshold >= 1
+cpsi_threshold_ok <- is.numeric(cpsi_threshold) && length(cpsi_threshold) == 1 &&
+  !is.na(cpsi_threshold) && abs(cpsi_threshold) < cpsi_max_exact &&
+  cpsi_threshold == floor(cpsi_threshold) && cpsi_threshold >= 1
+if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] no_released_count_below_threshold: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_columns)) {
+  cat("[NOT VERIFIED] no_released_count_below_threshold: the report carries no columns array — the sweep has nothing to enumerate\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!cpsi_exp_ok) {
+  cat("[NOT VERIFIED] no_released_count_below_threshold: expected_threshold not configured\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!cpsi_tier_ok) {
+  # INTENT: the approved tier is the other PSU-DS1 approval this check enforces.
+  cat("[NOT VERIFIED] no_released_count_below_threshold: tier not configured — the approved release scope is unknown\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (!cpsi_threshold_ok) {
+  cat("[NOT VERIFIED] no_released_count_below_threshold: settings.suppression_threshold is absent or not a positive integer — the sweep has no gate to test against\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (cpsi_threshold < expected_threshold) {
+  cat(sprintf("[FAIL] no_released_count_below_threshold: report declares threshold %s, below the approved threshold %s\n",
+              format(cpsi_threshold, scientific = FALSE), format(expected_threshold, scientific = FALSE)))
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else if (!cpsi_rep_tier_ok) {
+  cat("[FAIL] no_released_count_below_threshold: settings.tier is absent or not a whole number 1-3 — the report's release scope is unstated\n")
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else if (cpsi_rep_tier > tier) {
+  # REASONING: blocks profiled above the approved tier were released without approval.
+  cat(sprintf("[FAIL] no_released_count_below_threshold: report declares tier %d, above the approved tier %s\n",
+              as.integer(cpsi_rep_tier), cpsi_tier_label))
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else if ((tier < 3 || cpsi_rep_tier < 3) && cpsi_rel_content) {
+  cat(sprintf("[FAIL] no_released_count_below_threshold: the report releases a relationships block below tier 3 (approved tier %s, declared tier %d)\n",
+              cpsi_tier_label, as.integer(cpsi_rep_tier)))
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else {
+  cpsi_gate <- max(cpsi_threshold, expected_threshold)
+  cpsi_declared_cat <- length(cpsi_cat_cols)
+  cpsi_declared_ct <- 0L
+  for (cpsi_ct in cpsi_crosstabs) {
+    if (is.list(cpsi_ct) && !is.null(names(cpsi_ct)) && isTRUE(cpsi_ct[["available"]])) cpsi_declared_ct <- cpsi_declared_ct + 1L
+  }
+  cpsi_declared <- cpsi_declared_cat + cpsi_declared_ct
+  cpsi_scanned <- 0L
+  cpsi_cells <- 0L
+  cpsi_breach <- character(0)
+  for (cpsi_col in cpsi_cat_cols) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_blk <- cpsi_col[["categorical"]]
+    if (!(is.list(cpsi_blk) && !is.null(names(cpsi_blk))) ||
+        !(is.list(cpsi_blk[["levels"]]) && is.null(names(cpsi_blk[["levels"]])))) next
+    cpsi_scanned <- cpsi_scanned + 1L
+    cpsi_blk_breaches <- length(cpsi_breach)
+    cpsi_levels <- cpsi_blk[["levels"]]
+    for (cpsi_i in seq_along(cpsi_levels)) {
+      cpsi_lv <- cpsi_levels[[cpsi_i]]
+      if (!is.list(cpsi_lv) || !("count" %in% names(cpsi_lv))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' level index %d carries no count to gate", cpsi_name, cpsi_i - 1L))
+        next
+      }
+      cpsi_v <- cpsi_lv[["count"]]
+      cpsi_cells <- cpsi_cells + 1L
+      if (!(is.numeric(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v) && abs(cpsi_v) < cpsi_max_exact &&
+            cpsi_v == floor(cpsi_v))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' level index %d carries a non-integer count", cpsi_name, cpsi_i - 1L))
+      } else if (cpsi_v < cpsi_gate) {
+        # INTENT: 0 and negatives breach too (same rule as the Python block).
+        cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' level index %d carries a visible count below the gate", cpsi_name, cpsi_i - 1L))
+      }
+    }
+    # INTENT: Differencing residuals — same rule, order and wording as the Python block:
+    # n == nonmissing_n; n >= gate => the levels sum to n; n < gate => no level released.
+    cpsi_cn <- cpsi_blk[["n"]]
+    cpsi_nm <- cpsi_col[["nonmissing_n"]]
+    if (!all(vapply(list(cpsi_cn, cpsi_nm), function(x) is.numeric(x) && length(x) == 1 && !is.na(x) &&
+                    abs(x) < cpsi_max_exact && x == floor(x), logical(1)))) {
+      cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' carries no whole-number n and nonmissing_n to reconcile its levels against", cpsi_name))
+    } else if (cpsi_cn != cpsi_nm) {
+      cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' n does not equal its column's nonmissing_n", cpsi_name))
+    } else if (cpsi_cn < cpsi_gate && length(cpsi_levels) > 0) {
+      cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' releases levels although its n is below the gate", cpsi_name))
+    } else if (cpsi_cn >= cpsi_gate && length(cpsi_breach) == cpsi_blk_breaches &&
+               sum(vapply(cpsi_levels, function(lv) lv[["count"]], numeric(1))) != cpsi_cn) {
+      cpsi_breach <- c(cpsi_breach, sprintf("categorical block '%s' level counts do not sum to its n", cpsi_name))
+    }
+  }
+  for (cpsi_e in seq_along(cpsi_crosstabs)) {
+    cpsi_ct <- cpsi_crosstabs[[cpsi_e]]
+    if (!(is.list(cpsi_ct) && !is.null(names(cpsi_ct))) || !isTRUE(cpsi_ct[["available"]])) next
+    if (!(is.list(cpsi_ct[["cells"]]) && is.null(names(cpsi_ct[["cells"]])))) next
+    cpsi_scanned <- cpsi_scanned + 1L
+    # INTENT: a pair is printed only when it names declared columns (schema facts);
+    # anything else is referred to by its 0-based position, never quoted.
+    cpsi_pair <- cpsi_ct[["pair"]]
+    cpsi_pair <- if (is.list(cpsi_pair) && is.null(names(cpsi_pair)) && length(cpsi_pair) > 0 &&
+                     all(vapply(cpsi_pair, function(p) is.character(p) && length(p) == 1 && p %in% cpsi_col_names, logical(1)))) {
+      paste(cpsi_esc_to[match(unlist(cpsi_pair), cpsi_esc_from)], collapse = " x ")
+    } else {
+      sprintf("index %d", cpsi_e - 1L)
+    }
+    cpsi_grid <- cpsi_ct[["cells"]]
+    for (cpsi_i in seq_along(cpsi_grid)) {
+      cpsi_v <- cpsi_grid[[cpsi_i]]
+      if (is.null(cpsi_v)) next
+      cpsi_cells <- cpsi_cells + 1L
+      if (!(is.numeric(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v) && abs(cpsi_v) < cpsi_max_exact &&
+            cpsi_v == floor(cpsi_v))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("cross-tab block %s cell index %d carries a non-integer count", cpsi_pair, cpsi_i - 1L))
+      } else if (cpsi_v < 0 || (cpsi_v > 0 && cpsi_v < cpsi_gate)) {
+        # A visible 0 is a legitimate structural zero; a negative cell breaches.
+        cpsi_breach <- c(cpsi_breach, sprintf("cross-tab block %s cell index %d carries a visible count below the gate", cpsi_pair, cpsi_i - 1L))
+      }
+    }
+  }
+  # INTENT: Support gate — same bands, order and wording as the Python block
+  # (profiling-script-spec.md § Numeric shapes, § Categorical and string structure,
+  # § Relationships). k is the gate and f = max(k, 10) the full-summary cutoff,
+  # recomputed so the report cannot lower it: numeric all_missing (n = 0 and
+  # nonmissing_n = 0), withheld (n < k), constant (n >= k), small_n (k <= n < f), full
+  # summary (n >= f), and n never above nonmissing_n; string_structure n equals
+  # nonmissing_n, withheld below k and full at or above it; an available named entry
+  # needs n >= f and complement groups of 0 or >= k, and an available Cramer's V n >= k.
+  # A FAIL names the column or entry and the shape, never n.
+  # ASSUMES: a numeric shape is its first marker that is literally TRUE in the spec's
+  # branch order; with none, a block carrying mean / sd / percentiles / value is a full
+  # summary, and one carrying none of them releases no value.
+  cpsi_cutoff <- max(cpsi_gate, 10)
+  for (cpsi_col in cpsi_columns) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_nm <- cpsi_col[["nonmissing_n"]]
+    cpsi_blk <- cpsi_col[["numeric"]]
+    if (is.list(cpsi_blk) && !is.null(names(cpsi_blk))) {
+      cpsi_bn <- cpsi_blk[["n"]]
+      cpsi_shape <- NA_character_
+      for (cpsi_m in c("all_missing", "withheld", "constant", "small_n")) {
+        if (isTRUE(cpsi_blk[[cpsi_m]])) {
+          cpsi_shape <- cpsi_m
+          break
+        }
+      }
+      if (is.na(cpsi_shape) && any(c("mean", "sd", "percentiles", "value") %in% names(cpsi_blk))) cpsi_shape <- "full"
+      if (!all(vapply(list(cpsi_bn, cpsi_nm), function(x) is.numeric(x) && length(x) == 1 && !is.na(x) &&
+                      x >= 0 && x < cpsi_max_exact && x == floor(x), logical(1)))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("numeric block '%s' carries no non-negative whole-number n and nonmissing_n to gate its shape on", cpsi_name))
+      } else if (cpsi_bn > cpsi_nm) {
+        cpsi_breach <- c(cpsi_breach, sprintf("numeric block '%s' n exceeds its column's nonmissing_n", cpsi_name))
+      } else if (!is.na(cpsi_shape) && !(
+          (cpsi_shape == "all_missing" && cpsi_bn == 0 && cpsi_nm == 0) ||
+          (cpsi_shape == "withheld" && cpsi_bn < cpsi_gate) ||
+          (cpsi_shape == "constant" && cpsi_bn >= cpsi_gate) ||
+          (cpsi_shape == "small_n" && cpsi_bn >= cpsi_gate && cpsi_bn < cpsi_cutoff) ||
+          (cpsi_shape == "full" && cpsi_bn >= cpsi_cutoff))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("numeric block '%s' shape '%s' does not match the support band of its n", cpsi_name, cpsi_shape))
+      }
+    }
+    cpsi_blk <- cpsi_col[["string_structure"]]
+    if (is.list(cpsi_blk) && !is.null(names(cpsi_blk))) {
+      cpsi_bn <- cpsi_blk[["n"]]
+      cpsi_shape <- if (isTRUE(cpsi_blk[["withheld"]])) "withheld" else "full"
+      if (!all(vapply(list(cpsi_bn, cpsi_nm), function(x) is.numeric(x) && length(x) == 1 && !is.na(x) &&
+                      x >= 0 && x < cpsi_max_exact && x == floor(x), logical(1)))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("string_structure block '%s' carries no non-negative whole-number n and nonmissing_n to gate its shape on", cpsi_name))
+      } else if (cpsi_bn != cpsi_nm) {
+        cpsi_breach <- c(cpsi_breach, sprintf("string_structure block '%s' n does not equal its column's nonmissing_n", cpsi_name))
+      } else if ((cpsi_shape == "withheld") != (cpsi_bn < cpsi_gate)) {
+        cpsi_breach <- c(cpsi_breach, sprintf("string_structure block '%s' shape '%s' does not match the support band of its n", cpsi_name, cpsi_shape))
+      }
+    }
+  }
+  for (cpsi_kind in c("named", "cramers_v")) {
+    cpsi_floor <- if (cpsi_kind == "named") cpsi_cutoff else cpsi_gate
+    cpsi_entries <- if (is.list(cpsi_relationships) && !is.null(names(cpsi_relationships))) cpsi_relationships[[cpsi_kind]] else NULL
+    if (!(is.list(cpsi_entries) && is.null(names(cpsi_entries)))) cpsi_entries <- list()
+    for (cpsi_idx in seq_along(cpsi_entries)) {
+      cpsi_ent <- cpsi_entries[[cpsi_idx]]
+      if (!(is.list(cpsi_ent) && !is.null(names(cpsi_ent))) || !isTRUE(cpsi_ent[["available"]])) next
+      cpsi_ends <- if (cpsi_kind == "named") list(cpsi_ent[["outcome"]], cpsi_ent[["predictor"]]) else cpsi_ent[["pair"]]
+      cpsi_label <- if (is.list(cpsi_ends) && is.null(names(cpsi_ends)) && length(cpsi_ends) == 2 &&
+                        all(vapply(cpsi_ends, function(p) is.character(p) && length(p) == 1 && p %in% cpsi_col_names, logical(1)))) {
+        paste(cpsi_esc_to[match(unlist(cpsi_ends), cpsi_esc_from)], collapse = if (cpsi_kind == "named") " ~ " else " x ")
+      } else {
+        sprintf("index %d", cpsi_idx - 1L)
+      }
+      cpsi_bn <- cpsi_ent[["n"]]
+      if (!(is.numeric(cpsi_bn) && length(cpsi_bn) == 1 && !is.na(cpsi_bn) && cpsi_bn >= 0 &&
+            cpsi_bn < cpsi_max_exact && cpsi_bn == floor(cpsi_bn))) {
+        cpsi_breach <- c(cpsi_breach, sprintf("%s entry %s carries no non-negative whole-number n to gate its availability on", cpsi_kind, cpsi_label))
+      } else if (cpsi_bn < cpsi_floor) {
+        cpsi_breach <- c(cpsi_breach, sprintf("%s entry %s is available although its n is below the %s", cpsi_kind, cpsi_label,
+                                              if (cpsi_kind == "named") "full-summary cutoff" else "gate"))
+      } else if (cpsi_kind == "named") {
+        # INTENT: Complement-group gate — same rule, order and wording as the Python block:
+        # for each end, g = (end column's numeric-block n) - (entry n) must be 0 or >= k;
+        # a negative g breaches too; outcome first, one finding per entry; the first column
+        # record carrying the name is the end column.
+        for (cpsi_end_role in c("outcome", "predictor")) {
+          cpsi_end <- cpsi_ent[[cpsi_end_role]]
+          cpsi_end_n <- NULL
+          if (is.character(cpsi_end) && length(cpsi_end) == 1) {
+            for (cpsi_ecand in cpsi_columns) {
+              if (is.character(cpsi_ecand[["name"]]) && length(cpsi_ecand[["name"]]) == 1 && cpsi_ecand[["name"]] == cpsi_end) {
+                cpsi_end_blk <- cpsi_ecand[["numeric"]]
+                if (is.list(cpsi_end_blk) && !is.null(names(cpsi_end_blk))) cpsi_end_n <- cpsi_end_blk[["n"]]
+                break
+              }
+            }
+          }
+          if (!(is.numeric(cpsi_end_n) && length(cpsi_end_n) == 1 && !is.na(cpsi_end_n) && cpsi_end_n >= 0 &&
+                cpsi_end_n < cpsi_max_exact && cpsi_end_n == floor(cpsi_end_n))) {
+            cpsi_breach <- c(cpsi_breach, sprintf("named entry %s has no whole-number numeric n for its %s to gate the complement group on",
+                                                  cpsi_label, cpsi_end_role))
+            break
+          }
+          cpsi_g <- cpsi_end_n - cpsi_bn
+          if (cpsi_g < 0 || (cpsi_g > 0 && cpsi_g < cpsi_gate)) {
+            cpsi_breach <- c(cpsi_breach, sprintf("named entry %s is available although the complement group of its %s is below the gate",
+                                                  cpsi_label, cpsi_end_role))
+            break
+          }
+        }
+      }
+    }
+  }
+  if (length(cpsi_breach) > 0) {
+    cat(sprintf("[FAIL] no_released_count_below_threshold: %s%s\n", cpsi_breach[1],
+                if (length(cpsi_breach) > 1) sprintf(" (+%d more)", length(cpsi_breach) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (cpsi_scanned != cpsi_declared) {
+    cat(sprintf("[FAIL] no_released_count_below_threshold: scanned %d of %d declared blocks — the sweep is incomplete\n",
+                cpsi_scanned, cpsi_declared))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] no_released_count_below_threshold: %d of %d declared blocks scanned (%d categorical + %d cross-tab), %d visible cells examined, all >= effective threshold %s (declared %s, approved %s)\n",
+                cpsi_scanned, cpsi_declared, cpsi_declared_cat, cpsi_declared_ct, cpsi_cells,
+                format(cpsi_gate, scientific = FALSE), format(cpsi_threshold, scientific = FALSE),
+                format(expected_threshold, scientific = FALSE)))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: the embedded validation record is complete and internally honest
+cpsi_required_checks <- c("column_shapes_and_support", "percentiles_monotone",
+                          "category_counts_le_rowcount", "missing_rate_in_unit_interval",
+                          "no_subthreshold_cells_emitted", "correlation_matrix_symmetric",
+                          "relationship_support_and_shape")
+cpsi_legal_status <- c("PASS", "FAIL", "NOT_APPLICABLE", "NOT_VERIFIED")
+cpsi_val <- NULL
+if (!is.null(cpsi_report) && is.list(cpsi_report[["validation"]]) && !is.null(names(cpsi_report[["validation"]]))) {
+  cpsi_val <- cpsi_report[["validation"]]
+}
+if ("embedded_validation_complete" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] embedded_validation_complete: %s\n", not_applicable[["embedded_validation_complete"]]))
+  cps_intake["skipped"] <- cps_intake["skipped"] + 1L
+} else if ("embedded_validation_complete" %in% cpsi_empty_reason) {
+  cat("[NOT VERIFIED] embedded_validation_complete: declared not_applicable with an empty reason\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] embedded_validation_complete: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_val) || !(is.list(cpsi_val[["checks"]]) && is.null(names(cpsi_val[["checks"]])))) {
+  cat("[NOT VERIFIED] embedded_validation_complete: the report carries no validation object with a checks array\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  # INTENT: every entry, name, and status is type-tested before use (as.character()
+  # on a list name used to yield several names, and on a null name none at all);
+  # names outside the required set are counted, never quoted. Same order of
+  # findings as the Python block: set, duplicates, per-entry, all_passed.
+  cpsi_recs <- cpsi_val[["checks"]]
+  cpsi_names <- character(0)
+  cpsi_rec_bad <- character(0)
+  for (cpsi_i in seq_along(cpsi_recs)) {
+    cpsi_rec <- cpsi_recs[[cpsi_i]]
+    if (!(is.list(cpsi_rec) && !is.null(names(cpsi_rec)))) {
+      cpsi_rec_bad <- c(cpsi_rec_bad, sprintf("checks entry %d is not a JSON object", cpsi_i - 1L))
+      next
+    }
+    cpsi_nm <- cpsi_rec[["name"]]
+    if (!(is.character(cpsi_nm) && length(cpsi_nm) == 1)) {
+      cpsi_rec_bad <- c(cpsi_rec_bad, sprintf("checks entry %d has a name that is not a string", cpsi_i - 1L))
+      cpsi_label <- sprintf("entry %d", cpsi_i - 1L)
+    } else {
+      cpsi_names <- c(cpsi_names, cpsi_nm)
+      cpsi_label <- if (cpsi_nm %in% cpsi_required_checks) sprintf("'%s'", cpsi_nm) else sprintf("entry %d", cpsi_i - 1L)
+    }
+    cpsi_st <- cpsi_rec[["status"]]
+    if (!(is.character(cpsi_st) && length(cpsi_st) == 1 && cpsi_st %in% cpsi_legal_status)) {
+      cpsi_rec_bad <- c(cpsi_rec_bad, sprintf("check %s has a status outside the wire enum", cpsi_label))
+    } else if (cpsi_st %in% c("FAIL", "NOT_VERIFIED")) {
+      cpsi_rec_bad <- c(cpsi_rec_bad, sprintf("check %s reports %s", cpsi_label, cpsi_st))
+    }
+    cpsi_rs <- cpsi_rec[["reason"]]
+    if (!(is.character(cpsi_rs) && length(cpsi_rs) == 1 && !all(utf8ToInt(cpsi_rs) %in% cpsi_ws))) {
+      cpsi_rec_bad <- c(cpsi_rec_bad, sprintf("check %s carries an empty reason", cpsi_label))
+    }
+  }
+  cpsi_bad <- character(0)
+  cpsi_missing_checks <- sort(setdiff(cpsi_required_checks, cpsi_names), method = "radix")
+  cpsi_unrecognized <- sum(!(cpsi_names %in% cpsi_required_checks))
+  if (length(cpsi_missing_checks) > 0 || cpsi_unrecognized > 0) {
+    cpsi_bad <- c(cpsi_bad, sprintf("check set is not the seven required names (missing [%s], %d unrecognized)",
+                                    paste(cpsi_missing_checks, collapse = ", "), cpsi_unrecognized))
+  }
+  if (length(cpsi_names) != length(unique(cpsi_names))) {
+    cpsi_bad <- c(cpsi_bad, "the checks array carries duplicate names")
+  }
+  cpsi_bad <- c(cpsi_bad, cpsi_rec_bad)
+  if (!isTRUE(cpsi_val[["all_passed"]])) {
+    cpsi_bad <- c(cpsi_bad, "all_passed is not true")
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] embedded_validation_complete: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] embedded_validation_complete: %d of %d required checks present, every status in the wire enum with a non-empty reason, all_passed true\n",
+                length(cpsi_names), length(cpsi_required_checks)))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: no raw-value-shaped fields anywhere in the report (NON-DECLARABLE)
+# REASONING: Rule (3), parallel to the Python block — a *string*-valued key with a
+# value-shaped name is the one-row version of a value dump, which the list-only
+# rules miss. Rule (4), also parallel: every non-identifier column record is held to
+# the per-role allow-list of schema keys, at the record and inside its role block.
+# Name tests are case-insensitive; only key names, column names and JSON paths print.
+cpsi_value_keys <- c("values", "sample", "rows", "head", "examples")
+cpsi_scalar_value_keys <- c("example", "examples", "sample", "first_value", "last_value",
+                            "mode_value", "min_value", "max_value", "values", "head", "tail")
+cpsi_col_allowed <- c("name", "dtype", "role", "missing_rate", "nonmissing_n",
+                      "n_distinct", "uniqueness_ratio", "is_identifier")
+cpsi_role_block <- c(numeric = "numeric", categorical = "categorical", string = "string_structure")
+# ASSUMES: a numeric block's shape is named by its first present marker, in the spec's
+# branch order; a marker that is not literally TRUE is not that shape.
+cpsi_num_shapes <- list(all_missing = c("n", "all_missing"),
+                        withheld = c("n", "withheld", "reason"),
+                        constant = c("n", "constant", "value", "mean", "sd"),
+                        small_n = c("n", "small_n", "percentiles"))
+cpsi_num_full <- c("n", "mean", "sd", "percentiles")
+cpsi_cat_allowed <- c("n", "n_levels_binned", "levels")
+cpsi_level_allowed <- c("value", "count")
+cpsi_ss_allowed_full <- c("n", "length_min", "length_mean", "length_max", "pattern_flags")
+cpsi_ss_allowed_withheld <- c("n", "withheld", "reason")
+cpsi_flag_allowed <- c("email", "phone", "date", "id", "free_text")
+# INTENT: Same typing rule as the Python block — an allow-listed key the schema types
+# as a number or boolean must hold a single number / logical or JSON null (NULL); a
+# string, array (unnamed list) or object (named list) there is a value wearing a
+# structural key's name. Shape markers keep their literal-TRUE test instead.
+cpsi_number_keys <- c("missing_rate", "nonmissing_n", "n_distinct", "uniqueness_ratio", "is_identifier",
+                      "n", "mean", "sd", "value", "n_levels_binned", "length_min", "length_mean", "length_max")
+# INTENT: Same vocabularies as the Python block — `dtype`, `role`, and a withheld
+# block's `reason` are held to the spec's closed sets.
+cpsi_col_vocab <- list(dtype = c("integer", "double", "string"),
+                       role = c("numeric", "categorical", "identifier", "string"))
+cpsi_block_reason_vocab <- list(numeric = c("no_finite_values", "insufficient_support"),
+                                string_structure = c("all_missing", "insufficient_support"))
+# INTENT: Rule (5), same specs, kinds and vocabularies as the Python block (see its
+# comments for the spec sections each list comes from).
+cpsi_r5_specs <- list(
+  dataset = c(row_count = "number", column_count = "number"),
+  settings = c(tier = "number", suppression_threshold = "number", max_categorical_levels = "number",
+               relationship_spec = "pairs", support_unit = "vocab:support_unit", full_summary_cutoff = "number"),
+  generator = c(language = "vocab:language", template = "vocab:template", template_version = "vocab:template_version"),
+  relationships = c(pearson = "record:correlation", spearman = "record:correlation", cramers_v = "entries:cramers_v",
+                    named = "entries:named", crosstabs = "owned"),
+  correlation = c(available = "flag", columns = "names", pair_n = "matrix", matrix = "matrix",
+                  reason = "vocab:correlation_reason"),
+  cramers_v = c(pair = "pair", n = "number", available = "flag", v = "number", reason = "vocab:cramers_v_reason"),
+  named = c(outcome = "name", predictor = "name", n = "number", available = "flag", pearson = "number",
+            spearman = "number", ols = "record:ols", reason = "vocab:named_reason"),
+  ols = c(intercept = "number", slope = "number", r_squared = "number"),
+  validation = c(checks = "entries:check", all_passed = "flag"),
+  check = c(name = "vocab:check_name", status = "vocab:check_status", applicable = "flag", reason = "check_reason")
+)
+cpsi_r5_vocab <- list(
+  support_unit = "record",
+  language = c("Python", "R"),
+  template = c("profile_data_template.py", "profile_data_template.R"),
+  template_version = "2.0",
+  correlation_reason = c("fewer_than_two_eligible_columns", "insufficient_pair_support",
+                         "zero_pair_variance", "nonfinite_correlation"),
+  cramers_v_reason = c("insufficient_support", "degenerate_table"),
+  named_reason = c("insufficient_support", "ineligible_marginal", "small_complement_group", "zero_pair_variance"),
+  check_name = cpsi_required_checks,
+  check_status = cpsi_legal_status
+)
+# INTENT: `validation.checks[].reason` forms — same rule as the Python block. Patterns
+# are anchored with ^(?: … )\z under perl = TRUE so they match exactly what Python's
+# re.fullmatch matches (a PCRE `$` would also accept a trailing newline).
+cpsi_na_reason_forms <- list(
+  percentiles_monotone = c("report declares 0 numeric columns at tier [123]",
+                           "0 of [1-9][0-9]* numeric columns release a percentile grid"),
+  category_counts_le_rowcount = "report declares 0 categorical columns at tier [123]",
+  missing_rate_in_unit_interval = "tier 1 releases name and dtype only",
+  correlation_matrix_symmetric = c("tier [12] releases no correlations",
+                                   "0 of 2 correlation blocks released \\((fewer_than_two_eligible_columns|insufficient_pair_support|zero_pair_variance|nonfinite_correlation|no reason stated)\\)"),
+  relationship_support_and_shape = "tier [12] releases no relationships"
+)
+if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] no_raw_value_shaped_fields: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_cap <- length(cpsi_pctl_order)
+  if (!is.null(cpsi_columns)) cpsi_cap <- max(cpsi_cap, length(cpsi_columns))
+  for (cpsi_col in cpsi_cat_cols) {
+    cpsi_blk <- cpsi_col[["categorical"]]
+    if (is.list(cpsi_blk) && !is.null(names(cpsi_blk)) && is.list(cpsi_blk[["levels"]]) &&
+        is.null(names(cpsi_blk[["levels"]]))) cpsi_cap <- max(cpsi_cap, length(cpsi_blk[["levels"]]))
+  }
+  for (cpsi_ct in cpsi_crosstabs) {
+    if (is.list(cpsi_ct) && !is.null(names(cpsi_ct)) && is.list(cpsi_ct[["cells"]]) &&
+        is.null(names(cpsi_ct[["cells"]]))) cpsi_cap <- max(cpsi_cap, length(cpsi_ct[["cells"]]))
+  }
+  # INTENT: the walk's stack (nodes and their JSON paths) is preallocated and grown by
+  # doubling, with an explicit top index. Push and pop order are the Python block's
+  # (last pushed, first walked), so every path and finding is unchanged.
+  # REASONING: appending with c() or at length + 1 and dropping the last element copy
+  # the whole stack on every step — quadratic in the node count, so a 300 x 300
+  # cross-tab (90,000 cells) took about a minute where it now takes about a second.
+  cpsi_stack_size <- 1024L
+  cpsi_nodes_stack <- vector("list", cpsi_stack_size)
+  cpsi_paths <- character(cpsi_stack_size)
+  cpsi_nodes_stack[1L] <- list(cpsi_report)
+  cpsi_paths[1L] <- "report"
+  cpsi_top <- 1L
+  cpsi_nodes <- 0L
+  cpsi_longest <- 0L
+  cpsi_hits <- character(0)
+  while (cpsi_top > 0L) {
+    cpsi_node <- cpsi_nodes_stack[[cpsi_top]]
+    cpsi_path <- cpsi_paths[cpsi_top]
+    cpsi_nodes_stack[cpsi_top] <- list(NULL)
+    cpsi_top <- cpsi_top - 1L
+    cpsi_nodes <- cpsi_nodes + 1L
+    if (!is.list(cpsi_node)) next
+    if (cpsi_top + length(cpsi_node) > cpsi_stack_size) {
+      cpsi_stack_size <- max(2L * cpsi_stack_size, cpsi_top + length(cpsi_node))
+      length(cpsi_nodes_stack) <- cpsi_stack_size
+      length(cpsi_paths) <- cpsi_stack_size
+    }
+    cpsi_nms <- names(cpsi_node)
+    if (is.null(cpsi_nms)) {
+      # An unnamed list is a JSON array. A scalar array is the value-dump shape.
+      # ASSUMES: a JSON null (NULL here) is a scalar, as in the Python block — else
+      # one null would exempt an over-long value list from rule (2).
+      cpsi_is_scalar <- all(vapply(cpsi_node, function(x) is.null(x) || (!is.list(x) && length(x) == 1), logical(1)))
+      if (length(cpsi_node) > 0 && cpsi_is_scalar) {
+        cpsi_longest <- max(cpsi_longest, length(cpsi_node))
+        if (length(cpsi_node) > cpsi_cap) {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s is a %d-element scalar list, longer than the declared cap %d",
+                                            cpsi_path, length(cpsi_node), cpsi_cap))
+        }
+      }
+      # INTENT: push with `[<- list(x)`, never `[[<- x`: assigning a NULL through
+      # `[[<-` deletes the slot instead of storing a JSON null, which would
+      # desynchronise the node stack from cpsi_paths and print a FAIL at the wrong
+      # JSON path.
+      for (cpsi_i in seq_along(cpsi_node)) {
+        cpsi_top <- cpsi_top + 1L
+        cpsi_nodes_stack[cpsi_top] <- list(cpsi_node[[cpsi_i]])
+        cpsi_paths[cpsi_top] <- sprintf("%s[%d]", cpsi_path, cpsi_i - 1L)
+      }
+    } else {
+      for (cpsi_i in seq_along(cpsi_node)) {
+        cpsi_k <- cpsi_nms[cpsi_i]
+        cpsi_ek <- cpsi_esc_to[match(cpsi_k, cpsi_esc_from)]
+        cpsi_v <- cpsi_node[[cpsi_i]]
+        if (chartr(cpsi_upper_ascii, cpsi_lower_ascii, cpsi_k) %in% cpsi_value_keys && is.list(cpsi_v) && is.null(names(cpsi_v))) {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is a list under a value-shaped key name", cpsi_path, cpsi_ek))
+        }
+        if (is.character(cpsi_v) && length(cpsi_v) == 1 &&
+            chartr(cpsi_upper_ascii, cpsi_lower_ascii, cpsi_k) %in% cpsi_scalar_value_keys) {
+          cpsi_hits <- c(cpsi_hits, sprintf("value-shaped key '%s' at %s.%s", cpsi_ek, cpsi_path, cpsi_ek))
+        }
+        cpsi_top <- cpsi_top + 1L
+        cpsi_nodes_stack[cpsi_top] <- list(cpsi_v)
+        cpsi_paths[cpsi_top] <- sprintf("%s.%s", cpsi_path, cpsi_ek)
+      }
+    }
+  }
+  # Rule (4): the per-role column-record allow-list. Hits follow the walker's.
+  cpsi_records <- 0L
+  cpsi_raw <- if (is.null(cpsi_columns_raw)) list() else cpsi_columns_raw
+  for (cpsi_i in seq_along(cpsi_raw)) {
+    cpsi_col <- cpsi_raw[[cpsi_i]]
+    if (!(is.list(cpsi_col) && !is.null(names(cpsi_col)))) {
+      cpsi_hits <- c(cpsi_hits, sprintf("column index %d is not a JSON object", cpsi_i - 1L))
+      next
+    }
+    cpsi_name_ok <- is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1
+    if (!cpsi_name_ok) cpsi_hits <- c(cpsi_hits, sprintf("column index %d has a name that is not a string", cpsi_i - 1L))
+    cpsi_name <- if (cpsi_name_ok) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    cpsi_role <- cpsi_col[["role"]]
+    if (!(is.character(cpsi_role) && length(cpsi_role) == 1)) cpsi_role <- NA_character_
+    if (isTRUE(cpsi_role == "identifier") || isTRUE(cpsi_col[["is_identifier"]])) next
+    cpsi_records <- cpsi_records + 1L
+    cpsi_t1 <- cpsi_tier_ok && tier == 1
+    cpsi_bkey <- if (!cpsi_t1 && !is.na(cpsi_role) && cpsi_role %in% names(cpsi_role_block)) cpsi_role_block[[cpsi_role]] else NA_character_
+    cpsi_allowed <- if (cpsi_t1) c("name", "dtype") else c(cpsi_col_allowed, if (is.na(cpsi_bkey)) character(0) else cpsi_bkey)
+    for (cpsi_f in sort(names(cpsi_col), method = "radix")) {
+      cpsi_fv <- cpsi_col[[cpsi_f]]
+      if (!(cpsi_f %in% cpsi_allowed)) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+      } else if (cpsi_f %in% cpsi_number_keys && !(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+      } else if (cpsi_f %in% names(cpsi_col_vocab) &&
+                 !(is.character(cpsi_fv) && length(cpsi_fv) == 1 && cpsi_fv %in% cpsi_col_vocab[[cpsi_f]])) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a '%s' outside the spec vocabulary", cpsi_name, cpsi_f))
+      }
+    }
+    # INTENT: A categorical column is a string column (same rule and wording as the
+    # Python block): a vocabulary dtype other than "string" is not something either
+    # profiler writes. The dtype itself is not echoed.
+    cpsi_dt <- cpsi_col[["dtype"]]
+    if (isTRUE(cpsi_bkey == "categorical") && is.character(cpsi_dt) && length(cpsi_dt) == 1 &&
+        cpsi_dt %in% cpsi_col_vocab[["dtype"]] && cpsi_dt != "string") {
+      cpsi_hits <- c(cpsi_hits, sprintf("column '%s' declares role 'categorical' with a dtype other than 'string'", cpsi_name))
+    }
+    cpsi_blk <- if (is.na(cpsi_bkey)) NULL else cpsi_col[[cpsi_bkey]]
+    if (is.null(cpsi_blk)) next
+    if (!(is.list(cpsi_blk) && !is.null(names(cpsi_blk)))) {
+      cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-object '%s'", cpsi_name, cpsi_bkey))
+      next
+    }
+    cpsi_sub <- NA_character_
+    cpsi_sub_allowed <- character(0)
+    if (cpsi_bkey == "numeric") {
+      cpsi_blk_allowed <- cpsi_num_full
+      for (cpsi_marker in names(cpsi_num_shapes)) {
+        if (cpsi_marker %in% names(cpsi_blk)) {
+          cpsi_blk_allowed <- cpsi_num_shapes[[cpsi_marker]]
+          if (!isTRUE(cpsi_blk[[cpsi_marker]])) {
+            cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_marker))
+          }
+          break
+        }
+      }
+      cpsi_sub <- "percentiles"
+      cpsi_sub_allowed <- if ("small_n" %in% cpsi_blk_allowed) c("p25", "p50", "p75") else cpsi_pctl_order
+    } else if (cpsi_bkey == "categorical") {
+      cpsi_blk_allowed <- cpsi_cat_allowed
+    } else {
+      cpsi_blk_allowed <- if ("withheld" %in% names(cpsi_blk)) cpsi_ss_allowed_withheld else cpsi_ss_allowed_full
+      if ("withheld" %in% names(cpsi_blk) && !isTRUE(cpsi_blk[["withheld"]])) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key 'withheld'", cpsi_name))
+      }
+      cpsi_sub <- "pattern_flags"
+      cpsi_sub_allowed <- cpsi_flag_allowed
+    }
+    for (cpsi_f in sort(names(cpsi_blk), method = "radix")) {
+      cpsi_fv <- cpsi_blk[[cpsi_f]]
+      if (!(cpsi_f %in% cpsi_blk_allowed)) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+      } else if (cpsi_f %in% cpsi_number_keys && !(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+      } else if (cpsi_f == "reason" &&
+                 !(is.character(cpsi_fv) && length(cpsi_fv) == 1 &&
+                   cpsi_bkey %in% names(cpsi_block_reason_vocab) && cpsi_fv %in% cpsi_block_reason_vocab[[cpsi_bkey]])) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a 'reason' outside the spec vocabulary", cpsi_name))
+      }
+    }
+    if (!is.na(cpsi_sub) && cpsi_sub %in% cpsi_blk_allowed && !is.null(cpsi_blk[[cpsi_sub]])) {
+      cpsi_x <- cpsi_blk[[cpsi_sub]]
+      if (!(is.list(cpsi_x) && !is.null(names(cpsi_x)))) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-object '%s'", cpsi_name, cpsi_sub))
+      } else {
+        for (cpsi_f in sort(names(cpsi_x), method = "radix")) {
+          cpsi_fv <- cpsi_x[[cpsi_f]]
+          if (!(cpsi_f %in% cpsi_sub_allowed)) {
+            cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+          } else if (!(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+            cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+          }
+        }
+      }
+    }
+    if (cpsi_bkey == "categorical" && !is.null(cpsi_blk[["levels"]])) {
+      cpsi_x <- cpsi_blk[["levels"]]
+      if (!(is.list(cpsi_x) && is.null(names(cpsi_x)))) {
+        cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries a non-array 'levels'", cpsi_name))
+      } else {
+        # INTENT: one released level per label — same rule, order and wording as the Python
+        # block: a repeated string label names the later level index and the first one's.
+        cpsi_lv_vals <- character(0)
+        cpsi_lv_idx <- integer(0)
+        for (cpsi_j in seq_along(cpsi_x)) {
+          cpsi_lv <- cpsi_x[[cpsi_j]]
+          if (!(is.list(cpsi_lv) && !is.null(names(cpsi_lv)))) {
+            cpsi_hits <- c(cpsi_hits, sprintf("column '%s' level index %d is not a JSON object", cpsi_name, cpsi_j - 1L))
+            next
+          }
+          for (cpsi_f in sort(names(cpsi_lv), method = "radix")) {
+            if (!(cpsi_f %in% cpsi_level_allowed)) {
+              cpsi_hits <- c(cpsi_hits, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+            } else if (cpsi_f == "value" && !(is.character(cpsi_lv[["value"]]) && length(cpsi_lv[["value"]]) == 1)) {
+              # A level label is a string by schema (same rule as the Python block).
+              cpsi_hits <- c(cpsi_hits, sprintf("column '%s' level index %d carries a non-string 'value'", cpsi_name, cpsi_j - 1L))
+            }
+          }
+          cpsi_lvv <- cpsi_lv[["value"]]
+          if (is.character(cpsi_lvv) && length(cpsi_lvv) == 1) {
+            cpsi_seen <- match(cpsi_lvv, cpsi_lv_vals)
+            if (!is.na(cpsi_seen)) {
+              cpsi_hits <- c(cpsi_hits, sprintf("column '%s' level index %d repeats the 'value' of level index %d",
+                                                cpsi_name, cpsi_j - 1L, cpsi_lv_idx[cpsi_seen]))
+            } else {
+              cpsi_lv_vals <- c(cpsi_lv_vals, cpsi_lvv)
+              cpsi_lv_idx <- c(cpsi_lv_idx, cpsi_j - 1L)
+            }
+          }
+        }
+      }
+    }
+  }
+  # Rule (5): the subtree records, breadth-first in the same fixed order as Python.
+  # Fields are visited by position in C-locale name order, so an empty-string key
+  # is reached without a `[[""]]` lookup.
+  cpsi_queue <- list()
+  cpsi_queue_path <- character(0)
+  cpsi_queue_spec <- character(0)
+  for (cpsi_k in c("dataset", "settings", "generator", "relationships", "validation")) {
+    cpsi_x <- cpsi_report[[cpsi_k]]
+    if (is.list(cpsi_x) && !is.null(names(cpsi_x))) {
+      cpsi_queue[length(cpsi_queue) + 1L] <- list(cpsi_x)
+      cpsi_queue_path <- c(cpsi_queue_path, cpsi_k)
+      cpsi_queue_spec <- c(cpsi_queue_spec, cpsi_k)
+    }
+  }
+  cpsi_qi <- 0L
+  while (cpsi_qi < length(cpsi_queue)) {
+    cpsi_qi <- cpsi_qi + 1L
+    cpsi_rec <- cpsi_queue[[cpsi_qi]]
+    cpsi_path <- cpsi_queue_path[cpsi_qi]
+    cpsi_spec <- cpsi_r5_specs[[cpsi_queue_spec[cpsi_qi]]]
+    cpsi_rec_names <- names(cpsi_rec)
+    for (cpsi_j in order(cpsi_rec_names, method = "radix")) {
+      cpsi_f <- cpsi_rec_names[cpsi_j]
+      cpsi_v <- cpsi_rec[[cpsi_j]]
+      cpsi_kind <- if (cpsi_f %in% names(cpsi_spec)) cpsi_spec[[cpsi_f]] else NA_character_
+      if (is.na(cpsi_kind)) {
+        cpsi_hits <- c(cpsi_hits, sprintf("%s carries non-structural key '%s'", cpsi_path, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+      } else if (cpsi_kind == "number") {
+        if (!(is.null(cpsi_v) || ((is.numeric(cpsi_v) || is.logical(cpsi_v)) && length(cpsi_v) == 1))) {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s carries a non-numeric '%s'", cpsi_path, cpsi_f))
+        }
+      } else if (cpsi_kind == "flag") {
+        if (!(is.logical(cpsi_v) && length(cpsi_v) == 1 && !is.na(cpsi_v))) {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s carries a non-boolean '%s'", cpsi_path, cpsi_f))
+        }
+      } else if (startsWith(cpsi_kind, "vocab:")) {
+        if (!(is.character(cpsi_v) && length(cpsi_v) == 1 && cpsi_v %in% cpsi_r5_vocab[[substring(cpsi_kind, 7)]])) {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is outside the spec vocabulary", cpsi_path, cpsi_f))
+        }
+      } else if (cpsi_kind == "check_reason") {
+        cpsi_st <- cpsi_rec[["status"]]
+        cpsi_nm <- cpsi_rec[["name"]]
+        cpsi_st <- if (is.character(cpsi_st) && length(cpsi_st) == 1) cpsi_st else NA_character_
+        cpsi_nm <- if (is.character(cpsi_nm) && length(cpsi_nm) == 1) cpsi_nm else NA_character_
+        cpsi_is_str <- is.character(cpsi_v) && length(cpsi_v) == 1
+        cpsi_ok <- if (identical(cpsi_st, "PASS")) {
+          cpsi_is_str && identical(cpsi_v, "candidate_fields_checked")
+        } else if (identical(cpsi_st, "NOT_APPLICABLE")) {
+          cpsi_is_str && !is.na(cpsi_nm) && cpsi_nm %in% names(cpsi_na_reason_forms) &&
+            any(vapply(cpsi_na_reason_forms[[cpsi_nm]],
+                       function(p) grepl(paste0("^(?:", p, ")\\z"), cpsi_v, perl = TRUE), logical(1)))
+        } else {
+          !(cpsi_st %in% c("FAIL", "NOT_VERIFIED"))
+        }
+        if (!cpsi_ok) cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is outside the spec vocabulary", cpsi_path, cpsi_f))
+      } else if (cpsi_kind %in% c("name", "names", "pair", "pairs")) {
+        if (cpsi_kind == "pairs") {
+          cpsi_ok <- is.null(cpsi_v) || (is.list(cpsi_v) && is.null(names(cpsi_v)) && all(vapply(cpsi_v, function(p)
+            is.list(p) && is.null(names(p)) && length(p) == 2 &&
+              all(vapply(p, function(x) is.character(x) && length(x) == 1 && x %in% cpsi_col_names, logical(1))),
+            logical(1))))
+        } else {
+          cpsi_items <- if (cpsi_kind == "name") list(cpsi_v) else if (is.list(cpsi_v) && is.null(names(cpsi_v))) cpsi_v else NULL
+          cpsi_ok <- !is.null(cpsi_items) && (cpsi_kind != "pair" || length(cpsi_items) == 2) &&
+            all(vapply(cpsi_items, function(x) is.character(x) && length(x) == 1 && x %in% cpsi_col_names, logical(1)))
+        }
+        if (!cpsi_ok) cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is not built from declared column names", cpsi_path, cpsi_f))
+      } else if (cpsi_kind == "matrix") {
+        cpsi_ok <- is.list(cpsi_v) && is.null(names(cpsi_v)) && all(vapply(cpsi_v, function(r)
+          is.list(r) && is.null(names(r)) &&
+            all(vapply(r, function(x) is.null(x) || ((is.numeric(x) || is.logical(x)) && length(x) == 1), logical(1))),
+          logical(1)))
+        if (!cpsi_ok) cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is not an array of numeric rows", cpsi_path, cpsi_f))
+      } else if (startsWith(cpsi_kind, "record:")) {
+        if (is.list(cpsi_v) && !is.null(names(cpsi_v))) {
+          cpsi_queue[length(cpsi_queue) + 1L] <- list(cpsi_v)
+          cpsi_queue_path <- c(cpsi_queue_path, sprintf("%s.%s", cpsi_path, cpsi_f))
+          cpsi_queue_spec <- c(cpsi_queue_spec, substring(cpsi_kind, 8))
+        } else {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is not a JSON object", cpsi_path, cpsi_f))
+        }
+      } else if (startsWith(cpsi_kind, "entries:")) {
+        if (is.list(cpsi_v) && is.null(names(cpsi_v))) {
+          for (cpsi_e in seq_along(cpsi_v)) {
+            cpsi_ent <- cpsi_v[[cpsi_e]]
+            if (is.list(cpsi_ent) && !is.null(names(cpsi_ent))) {
+              cpsi_queue[length(cpsi_queue) + 1L] <- list(cpsi_ent)
+              cpsi_queue_path <- c(cpsi_queue_path, sprintf("%s.%s[%d]", cpsi_path, cpsi_f, cpsi_e - 1L))
+              cpsi_queue_spec <- c(cpsi_queue_spec, substring(cpsi_kind, 9))
+            } else {
+              cpsi_hits <- c(cpsi_hits, sprintf("%s.%s[%d] is not a JSON object", cpsi_path, cpsi_f, cpsi_e - 1L))
+            }
+          }
+        } else {
+          cpsi_hits <- c(cpsi_hits, sprintf("%s.%s is not a JSON array", cpsi_path, cpsi_f))
+        }
+      }
+    }
+  }
+  # Rule (6): the top level itself — same key set, types, formats and order as the
+  # Python block. Patterns are anchored with ^(?: … )\z under perl = TRUE and matched
+  # byte-wise (useBytes), so a non-ASCII or invalid string simply fails the ASCII class.
+  cpsi_top_kind <- c(report_version = "fmt", dataset_name = "fmt", generated_utc = "fmt", generator = "object",
+                     settings = "object", dataset = "object", validation = "object", relationships = "object",
+                     columns = "array")
+  cpsi_top_fmt <- c(report_version = "[0-9.]{1,16}", dataset_name = "[A-Za-z0-9_-]+",
+                    generated_utc = "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+  cpsi_top_names <- names(cpsi_report)
+  for (cpsi_j in order(cpsi_top_names, method = "radix")) {
+    cpsi_k <- cpsi_top_names[cpsi_j]
+    cpsi_v <- cpsi_report[[cpsi_j]]
+    cpsi_kind <- if (cpsi_k %in% names(cpsi_top_kind)) cpsi_top_kind[[cpsi_k]] else NA_character_
+    if (is.na(cpsi_kind)) {
+      cpsi_hits <- c(cpsi_hits, sprintf("report carries non-structural key '%s'", cpsi_esc_to[match(cpsi_k, cpsi_esc_from)]))
+    } else if (cpsi_kind == "object" && !(is.list(cpsi_v) && !is.null(names(cpsi_v)))) {
+      cpsi_hits <- c(cpsi_hits, sprintf("report.%s is not a JSON object", cpsi_k))
+    } else if (cpsi_kind == "array" && !(is.list(cpsi_v) && is.null(names(cpsi_v)))) {
+      cpsi_hits <- c(cpsi_hits, sprintf("report.%s is not a JSON array", cpsi_k))
+    } else if (cpsi_kind == "fmt" && !(is.character(cpsi_v) && length(cpsi_v) == 1 &&
+                                       grepl(paste0("^(?:", cpsi_top_fmt[[cpsi_k]], ")\\z"), cpsi_v, perl = TRUE, useBytes = TRUE))) {
+      cpsi_hits <- c(cpsi_hits, sprintf("report.%s is outside the spec format", cpsi_k))
+    }
+  }
+  if (length(cpsi_hits) > 0) {
+    cat(sprintf("[FAIL] no_raw_value_shaped_fields: %s%s\n", cpsi_hits[1],
+                if (length(cpsi_hits) > 1) sprintf(" (+%d more)", length(cpsi_hits) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] no_raw_value_shaped_fields: %d JSON nodes walked, 0 value-shaped keys, longest scalar list %d <= declared cap %d, %d column records within the per-role key allow-list, %d subtree records within the spec key allow-lists and vocabularies\n",
+                cpsi_nodes, cpsi_longest, cpsi_cap, cpsi_records, cpsi_qi))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: identifier columns carry structure only, never values (NON-DECLARABLE)
+# REASONING: An allow-list, not a deny-list — same contract as the Python block. The
+# schema fixes exactly which keys an identifier record may carry, so any other key
+# is by construction unsanctioned, and only the key NAME is ever printed.
+cpsi_id_allowed_col <- c("name", "dtype", "role", "missing_rate", "nonmissing_n",
+                         "n_distinct", "uniqueness_ratio", "is_identifier", "string_structure")
+cpsi_id_allowed_ss <- cpsi_ss_allowed_full
+cpsi_id_allowed_ss_withheld <- cpsi_ss_allowed_withheld
+# INTENT: At tier 1 — the approved tier or the report's own settings.tier — an
+# identifier record is held to {name, dtype} (same rule as the Python block).
+cpsi_id_t1 <- (cpsi_tier_ok && tier == 1) || (cpsi_rep_tier_ok && cpsi_rep_tier == 1)
+if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] identifier_columns_value_free: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (is.null(cpsi_columns)) {
+  cat("[NOT VERIFIED] identifier_columns_value_free: the report carries no columns array\n")
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else {
+  cpsi_bad <- character(0)
+  cpsi_withheld <- 0L
+  for (cpsi_col in cpsi_id_cols) {
+    cpsi_name <- if (is.character(cpsi_col[["name"]]) && length(cpsi_col[["name"]]) == 1) cpsi_esc_to[match(cpsi_col[["name"]], cpsi_esc_from)] else "<unnamed>"
+    # INTENT: the same number-or-boolean typing rule as no_raw_value_shaped_fields
+    # (cpsi_number_keys): a string under `n_distinct` is a value, not structure.
+    for (cpsi_f in sort(names(cpsi_col), method = "radix")) {
+      cpsi_fv <- cpsi_col[[cpsi_f]]
+      if (!(cpsi_f %in% (if (cpsi_id_t1) c("name", "dtype") else cpsi_id_allowed_col))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+      } else if (cpsi_f %in% cpsi_number_keys && !(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+      } else if (cpsi_f %in% names(cpsi_col_vocab) &&
+                 !(is.character(cpsi_fv) && length(cpsi_fv) == 1 && cpsi_fv %in% cpsi_col_vocab[[cpsi_f]])) {
+        cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a '%s' outside the spec vocabulary", cpsi_name, cpsi_f))
+      }
+    }
+    # At tier 1 the string_structure key itself is the finding (named above).
+    cpsi_ss <- if (cpsi_id_t1) NULL else cpsi_col[["string_structure"]]
+    # INTENT: a non-object string_structure (e.g. a bare string) is the value itself
+    # standing where structure belongs — it used to pass unexamined.
+    if (!is.null(cpsi_ss) && !(is.list(cpsi_ss) && !is.null(names(cpsi_ss)))) {
+      cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a non-object 'string_structure'", cpsi_name))
+    }
+    if (is.list(cpsi_ss) && !is.null(names(cpsi_ss))) {
+      # ASSUMES: the withheld shape is identified by the presence of the `withheld`
+      # key (n < k); a `withheld` that is not literally TRUE is not that shape.
+      if ("withheld" %in% names(cpsi_ss)) {
+        cpsi_ss_allowed <- cpsi_id_allowed_ss_withheld
+        if (isTRUE(cpsi_ss[["withheld"]])) {
+          cpsi_withheld <- cpsi_withheld + 1L
+        } else {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries non-structural key 'withheld'", cpsi_name))
+        }
+      } else {
+        cpsi_ss_allowed <- cpsi_id_allowed_ss
+      }
+      for (cpsi_f in sort(names(cpsi_ss), method = "radix")) {
+        cpsi_fv <- cpsi_ss[[cpsi_f]]
+        if (!(cpsi_f %in% cpsi_ss_allowed)) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+        } else if (cpsi_f %in% cpsi_number_keys && !(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+        } else if (cpsi_f == "reason" &&
+                   !(is.character(cpsi_fv) && length(cpsi_fv) == 1 && cpsi_fv %in% cpsi_block_reason_vocab[["string_structure"]])) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a 'reason' outside the spec vocabulary", cpsi_name))
+        }
+      }
+      # The pattern_flags object is held to its five schema flags too.
+      if ("pattern_flags" %in% cpsi_ss_allowed && !is.null(cpsi_ss[["pattern_flags"]])) {
+        cpsi_x <- cpsi_ss[["pattern_flags"]]
+        if (!(is.list(cpsi_x) && !is.null(names(cpsi_x)))) {
+          cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a non-object 'pattern_flags'", cpsi_name))
+        } else {
+          for (cpsi_f in sort(names(cpsi_x), method = "radix")) {
+            cpsi_fv <- cpsi_x[[cpsi_f]]
+            if (!(cpsi_f %in% cpsi_flag_allowed)) {
+              cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries non-structural key '%s'", cpsi_name, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+            } else if (!(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+              cpsi_bad <- c(cpsi_bad, sprintf("column '%s' carries a non-numeric '%s'", cpsi_name, cpsi_f))
+            }
+          }
+        }
+      }
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] identifier_columns_value_free: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] identifier_columns_value_free: %d identifier columns examined, structure keys only (allow-list), %d withheld\n",
+                length(cpsi_id_cols), cpsi_withheld))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Check: cross-tab schema and suppression are well formed (NON-DECLARABLE)
+if (is.null(cpsi_report)) {
+  cat(sprintf("[NOT VERIFIED] crosstab_schema_and_suppression: %s\n", cpsi_load_error))
+  cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+} else if (cpsi_crosstabs_not_array) {
+  cat("[FAIL] crosstab_schema_and_suppression: relationships.crosstabs is not a JSON array\n")
+  cps_intake["failed"] <- cps_intake["failed"] + 1L
+} else if (length(cpsi_crosstabs) == 0) {
+  cat(sprintf("[PASS] crosstab_schema_and_suppression: 0 cross-tab entries declared at tier %s\n", cpsi_tier_label))
+  cps_intake["passed"] <- cps_intake["passed"] + 1L
+} else {
+  cpsi_bad <- character(0)
+  cpsi_absent <- character(0)
+  cpsi_cells <- 0L
+  cpsi_hidden <- 0L
+  cpsi_collapsed <- 0L
+  # INTENT: the missing-partner scan gates on the sweep's effective threshold,
+  # max(declared, approved); NULL when either is unusable (same rule as the Python block).
+  cpsi_xgate <- if (cpsi_threshold_ok && cpsi_exp_ok) max(cpsi_threshold, expected_threshold) else NULL
+  # Unordered pairs seen so far (sorted column names) and the first entry index on each.
+  cpsi_pair_k1 <- character(0)
+  cpsi_pair_k2 <- character(0)
+  cpsi_pair_ix <- integer(0)
+  for (cpsi_e in seq_along(cpsi_crosstabs)) {
+    cpsi_ct <- cpsi_crosstabs[[cpsi_e]]
+    # INTENT: 0-based index for parity with the Python block's message text.
+    cpsi_idx <- cpsi_e - 1L
+    if (!(is.list(cpsi_ct) && !is.null(names(cpsi_ct)))) {
+      cpsi_bad <- c(cpsi_bad, sprintf("entry index %d is not a JSON object", cpsi_idx))
+      next
+    }
+    # Same pair-label rule as the sweep: declared column names, else the position.
+    cpsi_pair <- cpsi_ct[["pair"]]
+    cpsi_pair <- if (is.list(cpsi_pair) && is.null(names(cpsi_pair)) && length(cpsi_pair) > 0 &&
+                     all(vapply(cpsi_pair, function(p) is.character(p) && length(p) == 1 && p %in% cpsi_col_names, logical(1)))) {
+      paste(cpsi_esc_to[match(unlist(cpsi_pair), cpsi_esc_from)], collapse = " x ")
+    } else {
+      sprintf("index %d", cpsi_idx)
+    }
+    # INTENT: Entry allow-list and free-text fields — same contract and order of
+    # findings as the Python block. Fields are visited by position in C-locale order.
+    cpsi_raw_pair <- cpsi_ct[["pair"]]
+    cpsi_pair_ok <- is.list(cpsi_raw_pair) && is.null(names(cpsi_raw_pair)) && length(cpsi_raw_pair) == 2 &&
+      all(vapply(cpsi_raw_pair, function(p) is.character(p) && length(p) == 1 && p %in% cpsi_col_names, logical(1)))
+    if (!cpsi_pair_ok) {
+      cpsi_bad <- c(cpsi_bad, sprintf("entry index %d carries a 'pair' that is not two declared column names", cpsi_idx))
+    } else {
+      # INTENT: one cross-tab per unordered pair of two distinct columns, whatever each
+      # entry's `available` says — same rule, order and wording as the Python block.
+      if (cpsi_raw_pair[[1]] == cpsi_raw_pair[[2]]) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry index %d names one column twice in its 'pair'", cpsi_idx))
+      }
+      cpsi_key <- sort(c(cpsi_raw_pair[[1]], cpsi_raw_pair[[2]]), method = "radix")
+      cpsi_seen <- which(cpsi_pair_k1 == cpsi_key[1] & cpsi_pair_k2 == cpsi_key[2])
+      if (length(cpsi_seen) > 0) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry index %d repeats the pair of entry index %d", cpsi_idx, cpsi_pair_ix[cpsi_seen[1]]))
+      } else {
+        cpsi_pair_k1 <- c(cpsi_pair_k1, cpsi_key[1])
+        cpsi_pair_k2 <- c(cpsi_pair_k2, cpsi_key[2])
+        cpsi_pair_ix <- c(cpsi_pair_ix, cpsi_idx)
+      }
+    }
+    cpsi_av <- cpsi_ct[["available"]]
+    if (!(is.logical(cpsi_av) && length(cpsi_av) == 1 && !is.na(cpsi_av))) {
+      cpsi_bad <- c(cpsi_bad, sprintf("entry %s carries a non-boolean 'available'", cpsi_pair))
+    }
+    cpsi_ct_allowed <- if (isTRUE(cpsi_av)) c("pair", "n", "available", "rows", "cols", "cells", "cells_suppressed", "collapsed") else
+      c("pair", "n", "available", "reason", "rows", "cols", "cells")
+    cpsi_ct_names <- names(cpsi_ct)
+    for (cpsi_j in order(cpsi_ct_names, method = "radix")) {
+      cpsi_f <- cpsi_ct_names[cpsi_j]
+      cpsi_fv <- cpsi_ct[[cpsi_j]]
+      if (!(cpsi_f %in% cpsi_ct_allowed)) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s carries non-structural key '%s'", cpsi_pair, cpsi_esc_to[match(cpsi_f, cpsi_esc_from)]))
+      } else if (cpsi_f == "n" && !(is.null(cpsi_fv) || ((is.numeric(cpsi_fv) || is.logical(cpsi_fv)) && length(cpsi_fv) == 1))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s carries a non-numeric 'n'", cpsi_pair))
+      } else if (cpsi_f == "collapsed" && !isTRUE(cpsi_fv)) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s carries non-structural key 'collapsed'", cpsi_pair))
+      }
+    }
+    if (!isTRUE(cpsi_ct[["available"]])) {
+      cpsi_reason <- cpsi_ct[["reason"]]
+      if (!(is.character(cpsi_reason) && length(cpsi_reason) == 1 && !all(utf8ToInt(cpsi_reason) %in% cpsi_ws))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("unavailable entry %s carries no reason", cpsi_pair))
+      } else if (!(cpsi_reason %in% c("ineligible_roles", "insufficient_support"))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("unavailable entry %s carries a reason outside the spec vocabulary", cpsi_pair))
+      }
+      for (cpsi_f in c("rows", "cols", "cells")) {
+        if (cpsi_f %in% names(cpsi_ct)) {
+          cpsi_bad <- c(cpsi_bad, sprintf("unavailable entry %s still carries '%s'", cpsi_pair, cpsi_f))
+        }
+      }
+      next
+    }
+    cpsi_r <- cpsi_ct[["rows"]]
+    cpsi_c <- cpsi_ct[["cols"]]
+    cpsi_grid <- cpsi_ct[["cells"]]
+    if (!(is.numeric(cpsi_r) && length(cpsi_r) == 1 && !is.na(cpsi_r) && cpsi_r > 0 &&
+          cpsi_r < cpsi_max_exact && cpsi_r == floor(cpsi_r)) ||
+        !(is.numeric(cpsi_c) && length(cpsi_c) == 1 && !is.na(cpsi_c) && cpsi_c > 0 &&
+          cpsi_c < cpsi_max_exact && cpsi_c == floor(cpsi_c)) ||
+        !(is.list(cpsi_grid) && is.null(names(cpsi_grid)))) {
+      # REASONING: validated fields, so a wrong type or bad dimension is a [FAIL].
+      cpsi_bad <- c(cpsi_bad, sprintf("entry %s has no positive integer rows/cols with a cells array — the grid cannot be reshaped", cpsi_pair))
+      next
+    }
+    # INTENT: an available grid sits on the released categories — rows / cols equal the
+    # released level counts of the first / second pair column. Same rule, order and
+    # wording as the Python block; the first column record carrying the name is used.
+    # The two pair column records are kept for the missing-partner scan below.
+    cpsi_x_cols <- list()
+    if (cpsi_pair_ok) {
+      for (cpsi_p in 0:1) {
+        cpsi_pc <- NULL
+        for (cpsi_pcand in cpsi_columns) {
+          if (is.character(cpsi_pcand[["name"]]) && length(cpsi_pcand[["name"]]) == 1 &&
+              cpsi_pcand[["name"]] == cpsi_raw_pair[[cpsi_p + 1L]]) {
+            cpsi_pc <- cpsi_pcand
+            break
+          }
+        }
+        cpsi_prole <- cpsi_pc[["role"]]
+        cpsi_pblk <- cpsi_pc[["categorical"]]
+        if (!(is.character(cpsi_prole) && length(cpsi_prole) == 1 && cpsi_prole == "categorical" &&
+              is.list(cpsi_pblk) && !is.null(names(cpsi_pblk)) &&
+              is.list(cpsi_pblk[["levels"]]) && is.null(names(cpsi_pblk[["levels"]])))) {
+          cpsi_bad <- c(cpsi_bad, sprintf("entry %s pair position %d is not a categorical column with a released levels array",
+                                          cpsi_pair, cpsi_p))
+        } else if (length(cpsi_pblk[["levels"]]) != (if (cpsi_p == 0L) cpsi_r else cpsi_c)) {
+          cpsi_bad <- c(cpsi_bad, sprintf("entry %s has %s unequal to the released level count of pair position %d",
+                                          cpsi_pair, if (cpsi_p == 0L) "rows" else "cols", cpsi_p))
+        } else {
+          cpsi_x_cols <- c(cpsi_x_cols, list(cpsi_pc))
+        }
+      }
+    }
+    cpsi_x_run <- length(cpsi_x_cols) == 2 && cpsi_raw_pair[[1]] != cpsi_raw_pair[[2]]
+    if (length(cpsi_grid) != cpsi_r * cpsi_c) {
+      # INTENT: print rows x cols from exact integers, as Python's int product does: a
+      # double product above 2^53 rounds. Base-1e7 limbs keep every partial product and
+      # carry below 2^53, so each step is exact; the limbs are then printed in order.
+      cpsi_rl <- c(cpsi_r %% 1e7, ((cpsi_r - cpsi_r %% 1e7) / 1e7) %% 1e7, (cpsi_r - cpsi_r %% 1e14) / 1e14)
+      cpsi_cl <- c(cpsi_c %% 1e7, ((cpsi_c - cpsi_c %% 1e7) / 1e7) %% 1e7, (cpsi_c - cpsi_c %% 1e14) / 1e14)
+      cpsi_pl <- numeric(6)
+      for (cpsi_i in 1:3) for (cpsi_j in 1:3) cpsi_pl[cpsi_i + cpsi_j - 1] <- cpsi_pl[cpsi_i + cpsi_j - 1] + cpsi_rl[cpsi_i] * cpsi_cl[cpsi_j]
+      for (cpsi_i in 1:5) {
+        cpsi_pl[cpsi_i + 1] <- cpsi_pl[cpsi_i + 1] + (cpsi_pl[cpsi_i] - cpsi_pl[cpsi_i] %% 1e7) / 1e7
+        cpsi_pl[cpsi_i] <- cpsi_pl[cpsi_i] %% 1e7
+      }
+      cpsi_prod <- sub("^0+(?=[0-9])", "", paste(sprintf("%07.0f", rev(cpsi_pl)), collapse = ""), perl = TRUE)
+      cpsi_bad <- c(cpsi_bad, sprintf("entry %s has %d cells, not rows x cols = %s",
+                                      cpsi_pair, length(cpsi_grid), cpsi_prod))
+      next
+    }
+    cpsi_is_null <- vapply(cpsi_grid, is.null, logical(1))
+    cpsi_cells <- cpsi_cells + length(cpsi_grid)
+    cpsi_hidden <- cpsi_hidden + sum(cpsi_is_null)
+    # A visible 0 is a structural zero and legitimate; a hidden cell mis-coded as 0 is
+    # still caught, because cells_suppressed then disagrees with the nulls.
+    cpsi_reported <- cpsi_ct[["cells_suppressed"]]
+    if (!(is.numeric(cpsi_reported) && length(cpsi_reported) == 1 && !is.na(cpsi_reported) &&
+          cpsi_reported == sum(cpsi_is_null))) {
+      cpsi_bad <- c(cpsi_bad, sprintf("entry %s reports a cells_suppressed that disagrees with the %d nulls in the grid",
+                                      cpsi_pair, sum(cpsi_is_null)))
+    }
+    # INTENT: Differencing residual — same rule, order and wording as the Python block.
+    # ASSUMES: with every visible cell a whole number in [0, 2^53) the running double sum
+    # is exact until it passes 2^53, after which it stays above any valid n.
+    cpsi_vis <- cpsi_grid[!cpsi_is_null]
+    cpsi_ctn <- cpsi_ct[["n"]]
+    if (all(vapply(cpsi_vis, function(v) is.numeric(v) && length(v) == 1 && !is.na(v) && v >= 0 &&
+                   v < cpsi_max_exact && v == floor(v), logical(1)))) {
+      cpsi_tot <- sum(vapply(cpsi_vis, function(v) as.numeric(v), numeric(1)))
+      if (!(is.numeric(cpsi_ctn) && length(cpsi_ctn) == 1 && !is.na(cpsi_ctn) && cpsi_ctn >= 0 &&
+            cpsi_ctn < cpsi_max_exact && cpsi_ctn == floor(cpsi_ctn))) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s carries no whole-number 'n' to reconcile its cells against", cpsi_pair))
+      } else if (cpsi_tot > cpsi_ctn) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s releases visible cells that sum past its n", cpsi_pair))
+      } else if (sum(cpsi_is_null) == 0 && cpsi_tot != cpsi_ctn) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s hides no cell but its visible cells do not sum to its n", cpsi_pair))
+      }
+    }
+    # INTENT: `collapsed: true` earns the lone-cell bypass only when the table is
+    # hidden whole; a collapsed flag over visible cells is a bypass, not a
+    # suppression. Same contract as the Python block.
+    if (isTRUE(cpsi_ct[["collapsed"]])) {
+      if (sum(cpsi_is_null) == length(cpsi_grid)) {
+        cpsi_collapsed <- cpsi_collapsed + 1L
+      } else {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %d is marked collapsed but still releases visible cells", cpsi_idx))
+      }
+    } else {
+      # INTENT: name the first offending row / column by 0-based index, as Python does.
+      cpsi_mask <- matrix(cpsi_is_null, nrow = cpsi_r, ncol = cpsi_c, byrow = TRUE)
+      cpsi_lone <- which(rowSums(cpsi_mask) == 1)
+      if (length(cpsi_lone) > 0) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s leaves a lone hidden cell in row index %d — recoverable by differencing", cpsi_pair, cpsi_lone[1] - 1L))
+      }
+      cpsi_lone <- which(colSums(cpsi_mask) == 1)
+      if (length(cpsi_lone) > 0) {
+        cpsi_bad <- c(cpsi_bad, sprintf("entry %s leaves a lone hidden cell in column index %d — recoverable by differencing", cpsi_pair, cpsi_lone[1] - 1L))
+      }
+      # INTENT: Bridge scan — same rule, order and wording as the Python block: a hidden
+      # cell whose edge in the row/column graph of hidden cells lies on no cycle is
+      # pinned exactly by the released totals. Degree-1 bridges keep the lone-cell
+      # finding above; every other bridge is named by 0-based row and column index in
+      # row-major order. Vertices (1-based here): row i is i + 1, column j is rows + j + 1;
+      # cells are carried by their 0-based row-major index, as in the Python block.
+      # REASONING: iterative low-link walk with the stack held in parallel vectors, so
+      # a large grid neither recurses nor stalls the block. The adjacency lists are built
+      # in one split() rather than by appending cell by cell (which copies each list on
+      # every append); split() keeps each vertex's cells in ascending order, the order
+      # the Python block appends them in.
+      cpsi_br_ks <- which(cpsi_is_null) - 1
+      cpsi_br_adj <- unname(split(c(cpsi_br_ks, cpsi_br_ks),
+                                  factor(c(cpsi_br_ks %/% cpsi_c + 1, cpsi_r + cpsi_br_ks %% cpsi_c + 1),
+                                         levels = seq_len(cpsi_r + cpsi_c))))
+      cpsi_br_disc <- numeric(cpsi_r + cpsi_c)
+      cpsi_br_low <- numeric(cpsi_r + cpsi_c)
+      cpsi_br_time <- 0
+      cpsi_br_found <- numeric(0)
+      for (cpsi_br_root in which(lengths(cpsi_br_adj) > 0)) {
+        if (cpsi_br_disc[cpsi_br_root] > 0) next
+        cpsi_br_time <- cpsi_br_time + 1
+        cpsi_br_disc[cpsi_br_root] <- cpsi_br_time
+        cpsi_br_low[cpsi_br_root] <- cpsi_br_time
+        # Stack frames: vertex, hidden cell it was reached by (-1 at the root), next
+        # position in its adjacency list.
+        cpsi_br_sv <- cpsi_br_root
+        cpsi_br_se <- -1
+        cpsi_br_si <- 1
+        while (length(cpsi_br_sv) > 0) {
+          cpsi_br_n <- length(cpsi_br_sv)
+          cpsi_br_v <- cpsi_br_sv[cpsi_br_n]
+          if (cpsi_br_si[cpsi_br_n] <= length(cpsi_br_adj[[cpsi_br_v]])) {
+            cpsi_br_k <- cpsi_br_adj[[cpsi_br_v]][cpsi_br_si[cpsi_br_n]]
+            cpsi_br_si[cpsi_br_n] <- cpsi_br_si[cpsi_br_n] + 1
+            if (cpsi_br_k == cpsi_br_se[cpsi_br_n]) next
+            cpsi_br_w <- if (cpsi_br_v <= cpsi_r) cpsi_r + cpsi_br_k %% cpsi_c + 1 else cpsi_br_k %/% cpsi_c + 1
+            if (cpsi_br_disc[cpsi_br_w] == 0) {
+              cpsi_br_time <- cpsi_br_time + 1
+              cpsi_br_disc[cpsi_br_w] <- cpsi_br_time
+              cpsi_br_low[cpsi_br_w] <- cpsi_br_time
+              cpsi_br_sv <- c(cpsi_br_sv, cpsi_br_w)
+              cpsi_br_se <- c(cpsi_br_se, cpsi_br_k)
+              cpsi_br_si <- c(cpsi_br_si, 1)
+            } else {
+              cpsi_br_low[cpsi_br_v] <- min(cpsi_br_low[cpsi_br_v], cpsi_br_disc[cpsi_br_w])
+            }
+          } else {
+            cpsi_br_pe <- cpsi_br_se[cpsi_br_n]
+            cpsi_br_sv <- cpsi_br_sv[-cpsi_br_n]
+            cpsi_br_se <- cpsi_br_se[-cpsi_br_n]
+            cpsi_br_si <- cpsi_br_si[-cpsi_br_n]
+            if (cpsi_br_n > 1) {
+              cpsi_br_u <- cpsi_br_sv[cpsi_br_n - 1]
+              cpsi_br_low[cpsi_br_u] <- min(cpsi_br_low[cpsi_br_u], cpsi_br_low[cpsi_br_v])
+              if (cpsi_br_low[cpsi_br_v] > cpsi_br_disc[cpsi_br_u]) cpsi_br_found <- c(cpsi_br_found, cpsi_br_pe)
+            }
+          }
+        }
+      }
+      for (cpsi_br_k in sort(cpsi_br_found, method = "radix")) {
+        if (length(cpsi_br_adj[[cpsi_br_k %/% cpsi_c + 1]]) > 1 && length(cpsi_br_adj[[cpsi_r + cpsi_br_k %% cpsi_c + 1]]) > 1) {
+          cpsi_bad <- c(cpsi_bad, sprintf("entry %s leaves hidden cell at row index %.0f, column index %.0f recoverable from the released totals",
+                                          cpsi_pair, cpsi_br_k %/% cpsi_c, cpsi_br_k %% cpsi_c))
+        }
+      }
+    }
+    # INTENT: Missing-partner scan — same model, order and wording as the Python block
+    # (see its comment): the grid is extended by a partner-missing column (vertex
+    # rows + cols + 2 here, 1-based) and a partner-missing row (rows + cols + 1); the
+    # corner is known; a line totalling 0 adds no edge; a missing-partner cell whose edge
+    # is a bridge is pinned, with the value of its cut; bridges of the all-hidden graph
+    # (a one-row grid's column cells, a one-column grid's row cells) are exempt; a value
+    # that is negative or in (0, gate) is a [FAIL] naming the position only.
+    # REASONING: every total is a whole number below 2^53 and so is their sum, so each
+    # subtree sum below is an exact double. Edges are carried by 1-based id in the
+    # Python block's order (hidden cells, then the partner-missing column, then the
+    # partner-missing row); every vertex appears at one end only, so split() keeps each
+    # adjacency list in ascending id order, the order the Python block appends in, and
+    # the walk visits the graph identically.
+    if (cpsi_x_run) {
+      cpsi_xn <- cpsi_ct[["n"]]
+      cpsi_xnn <- list(cpsi_x_cols[[1]][["nonmissing_n"]], cpsi_x_cols[[2]][["nonmissing_n"]])
+      if (!all(vapply(c(list(cpsi_xn), cpsi_xnn), function(x) is.numeric(x) && length(x) == 1 && !is.na(x) &&
+                      x >= 0 && x < cpsi_max_exact && x == floor(x), logical(1)))) {
+        cpsi_absent <- c(cpsi_absent, sprintf("entry %s lacks the released totals the missing-partner scan needs", cpsi_pair))
+      } else {
+        cpsi_xnn <- c(cpsi_xnn[[1]], cpsi_xnn[[2]])
+        for (cpsi_p in 0:1) {
+          if (cpsi_xn > cpsi_xnn[cpsi_p + 1L]) {
+            cpsi_bad <- c(cpsi_bad, sprintf("entry %s has an n above the nonmissing_n of pair position %d", cpsi_pair, cpsi_p))
+          }
+        }
+        cpsi_xa <- cpsi_xnn[1] - cpsi_xn
+        cpsi_xb <- cpsi_xnn[2] - cpsi_xn
+        if (cpsi_xa >= 0 && cpsi_xb >= 0 && cpsi_xa + cpsi_xb > 0 && sum(cpsi_is_null) < length(cpsi_grid)) {
+          cpsi_xtot <- list()
+          for (cpsi_pc in cpsi_x_cols) {
+            cpsi_lvs <- cpsi_pc[["categorical"]][["levels"]]
+            cpsi_lv_ok <- all(vapply(cpsi_lvs, function(lv) is.list(lv) && !is.null(names(lv)) &&
+                                       is.character(lv[["value"]]) && length(lv[["value"]]) == 1 &&
+                                       is.numeric(lv[["count"]]) && length(lv[["count"]]) == 1 && !is.na(lv[["count"]]) &&
+                                       lv[["count"]] >= 0 && lv[["count"]] < cpsi_max_exact && lv[["count"]] == floor(lv[["count"]]),
+                                     logical(1)))
+            cpsi_xvals <- if (cpsi_lv_ok) vapply(cpsi_lvs, function(lv) lv[["value"]], character(1)) else character(0)
+            if (!cpsi_lv_ok || anyDuplicated(cpsi_xvals) > 0) {
+              cpsi_xtot <- NULL
+              break
+            }
+            # Released categories in grid order: kept labels in code-point (C-locale byte)
+            # order, then __OTHER__ last when the block releases it.
+            cpsi_xcnts <- vapply(cpsi_lvs, function(lv) as.numeric(lv[["count"]]), numeric(1))
+            cpsi_xord <- c(sort(cpsi_xvals[cpsi_xvals != "__OTHER__"], method = "radix"), cpsi_xvals[cpsi_xvals == "__OTHER__"])
+            cpsi_xtot <- c(cpsi_xtot, list(cpsi_xcnts[match(cpsi_xord, cpsi_xvals)]))
+          }
+          cpsi_xvis_ok <- all(vapply(cpsi_vis, function(v) is.numeric(v) && length(v) == 1 && !is.na(v) && v >= 0 &&
+                                       v < cpsi_max_exact && v == floor(v), logical(1)))
+          if (is.null(cpsi_xtot) || !cpsi_xvis_ok ||
+              sum(cpsi_xtot[[1]]) + sum(cpsi_xtot[[2]]) + 2 * sum(vapply(cpsi_vis, as.numeric, numeric(1))) +
+              cpsi_xnn[1] + cpsi_xnn[2] + 2 * cpsi_xn >= cpsi_max_exact) {
+            cpsi_absent <- c(cpsi_absent, sprintf("entry %s lacks the released totals the missing-partner scan needs", cpsi_pair))
+          } else {
+            cpsi_xV <- cpsi_r + cpsi_c + 2
+            cpsi_xm <- matrix(vapply(cpsi_grid, function(v) if (is.null(v)) 0 else as.numeric(v), numeric(1)),
+                              nrow = cpsi_r, ncol = cpsi_c, byrow = TRUE)
+            cpsi_xw <- c(cpsi_xtot[[1]] - rowSums(cpsi_xm), -(cpsi_xtot[[2]] - colSums(cpsi_xm)), cpsi_xb, -cpsi_xa)
+            cpsi_xks <- which(cpsi_is_null) - 1
+            cpsi_xu <- cpsi_xks %/% cpsi_c
+            cpsi_xv <- cpsi_r + cpsi_xks %% cpsi_c
+            cpsi_xcore <- length(cpsi_xu)
+            if (cpsi_xa > 0) {
+              cpsi_xu <- c(cpsi_xu, seq_len(cpsi_r) - 1)
+              cpsi_xv <- c(cpsi_xv, rep(cpsi_r + cpsi_c + 1, cpsi_r))
+            }
+            if (cpsi_xb > 0) {
+              cpsi_xu <- c(cpsi_xu, rep(cpsi_r + cpsi_c, cpsi_c))
+              cpsi_xv <- c(cpsi_xv, cpsi_r + seq_len(cpsi_c) - 1)
+            }
+            cpsi_xids <- seq_along(cpsi_xu)
+            cpsi_xadj <- unname(split(c(cpsi_xids, cpsi_xids), factor(c(cpsi_xu, cpsi_xv) + 1, levels = seq_len(cpsi_xV))))
+            cpsi_xdisc <- numeric(cpsi_xV)
+            cpsi_xlow <- numeric(cpsi_xV)
+            cpsi_xsub <- cpsi_xw
+            cpsi_xtime <- 0
+            cpsi_xfe <- numeric(0)
+            cpsi_xfv <- numeric(0)
+            for (cpsi_xroot in seq_len(cpsi_xV)) {
+              if (cpsi_xdisc[cpsi_xroot] > 0 || length(cpsi_xadj[[cpsi_xroot]]) == 0) next
+              cpsi_xtime <- cpsi_xtime + 1
+              cpsi_xdisc[cpsi_xroot] <- cpsi_xtime
+              cpsi_xlow[cpsi_xroot] <- cpsi_xtime
+              # Stack frames: vertex, edge id it was reached by (-1 at the root), next
+              # adjacency position; a bridge's cut is its child's subtree sum.
+              cpsi_xsv <- cpsi_xroot
+              cpsi_xse <- -1
+              cpsi_xsi <- 1
+              while (length(cpsi_xsv) > 0) {
+                cpsi_xdepth <- length(cpsi_xsv)
+                cpsi_xvx <- cpsi_xsv[cpsi_xdepth]
+                if (cpsi_xsi[cpsi_xdepth] <= length(cpsi_xadj[[cpsi_xvx]])) {
+                  cpsi_xe <- cpsi_xadj[[cpsi_xvx]][cpsi_xsi[cpsi_xdepth]]
+                  cpsi_xsi[cpsi_xdepth] <- cpsi_xsi[cpsi_xdepth] + 1
+                  if (cpsi_xe == cpsi_xse[cpsi_xdepth]) next
+                  cpsi_xw2 <- if (cpsi_xu[cpsi_xe] + 1 == cpsi_xvx) cpsi_xv[cpsi_xe] + 1 else cpsi_xu[cpsi_xe] + 1
+                  if (cpsi_xdisc[cpsi_xw2] == 0) {
+                    cpsi_xtime <- cpsi_xtime + 1
+                    cpsi_xdisc[cpsi_xw2] <- cpsi_xtime
+                    cpsi_xlow[cpsi_xw2] <- cpsi_xtime
+                    cpsi_xsv <- c(cpsi_xsv, cpsi_xw2)
+                    cpsi_xse <- c(cpsi_xse, cpsi_xe)
+                    cpsi_xsi <- c(cpsi_xsi, 1)
+                  } else {
+                    cpsi_xlow[cpsi_xvx] <- min(cpsi_xlow[cpsi_xvx], cpsi_xdisc[cpsi_xw2])
+                  }
+                } else {
+                  cpsi_xpe <- cpsi_xse[cpsi_xdepth]
+                  cpsi_xsv <- cpsi_xsv[-cpsi_xdepth]
+                  cpsi_xse <- cpsi_xse[-cpsi_xdepth]
+                  cpsi_xsi <- cpsi_xsi[-cpsi_xdepth]
+                  if (cpsi_xdepth > 1) {
+                    cpsi_xpar <- cpsi_xsv[cpsi_xdepth - 1]
+                    cpsi_xlow[cpsi_xpar] <- min(cpsi_xlow[cpsi_xpar], cpsi_xlow[cpsi_xvx])
+                    cpsi_xsub[cpsi_xpar] <- cpsi_xsub[cpsi_xpar] + cpsi_xsub[cpsi_xvx]
+                    if (cpsi_xlow[cpsi_xvx] > cpsi_xdisc[cpsi_xpar] && cpsi_xpe > cpsi_xcore) {
+                      cpsi_xfe <- c(cpsi_xfe, cpsi_xpe)
+                      cpsi_xfv <- c(cpsi_xfv, if (cpsi_xu[cpsi_xpe] + 1 == cpsi_xvx) cpsi_xsub[cpsi_xvx] else -cpsi_xsub[cpsi_xvx])
+                    }
+                  }
+                }
+              }
+            }
+            cpsi_xungated <- FALSE
+            for (cpsi_xk in order(cpsi_xfe, method = "radix")) {
+              cpsi_xt <- cpsi_xfe[cpsi_xk] - cpsi_xcore - 1
+              if (cpsi_xa > 0 && cpsi_xt < cpsi_r) {
+                cpsi_xside <- "row"
+                cpsi_xpos <- cpsi_xt
+                cpsi_xexempt <- cpsi_r == 1
+              } else {
+                cpsi_xside <- "column"
+                cpsi_xpos <- cpsi_xt - (if (cpsi_xa > 0) cpsi_r else 0)
+                cpsi_xexempt <- cpsi_c == 1
+              }
+              if (cpsi_xexempt) next
+              cpsi_xval <- cpsi_xfv[cpsi_xk]
+              if (is.null(cpsi_xgate)) {
+                cpsi_xungated <- TRUE
+              } else if (cpsi_xval < 0 || (cpsi_xval > 0 && cpsi_xval < cpsi_xgate)) {
+                cpsi_bad <- c(cpsi_bad, sprintf("entry %s leaves the missing-partner cell at %s index %.0f recoverable from the released totals",
+                                                cpsi_pair, cpsi_xside, cpsi_xpos))
+              }
+            }
+            if (cpsi_xungated) {
+              cpsi_absent <- c(cpsi_absent, sprintf("entry %s cannot gate its missing-partner cells: expected_threshold or settings.suppression_threshold is unusable", cpsi_pair))
+            }
+          }
+        }
+      }
+    }
+  }
+  if (length(cpsi_bad) > 0) {
+    cat(sprintf("[FAIL] crosstab_schema_and_suppression: %s%s\n", cpsi_bad[1],
+                if (length(cpsi_bad) > 1) sprintf(" (+%d more)", length(cpsi_bad) - 1) else ""))
+    cps_intake["failed"] <- cps_intake["failed"] + 1L
+  } else if (length(cpsi_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] crosstab_schema_and_suppression: %s%s\n", cpsi_absent[1],
+                if (length(cpsi_absent) > 1) sprintf(" (+%d more)", length(cpsi_absent) - 1) else ""))
+    cps_intake["not_verified"] <- cps_intake["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] crosstab_schema_and_suppression: %d entries, %d cells examined, %d hidden as null, %d fully collapsed, no hidden cell recoverable from the row and column totals\n",
+                length(cpsi_crosstabs), cpsi_cells, cpsi_hidden, cpsi_collapsed))
+    cps_intake["passed"] <- cps_intake["passed"] + 1L
+  }
+}
+
+# Count line, then verdict derived from the counts
+cpsi_checks_run <- cps_intake[["passed"]] + cps_intake[["warning"]] + cps_intake[["failed"]]
+if (cps_intake[["failed"]] > 0 || cps_intake[["not_verified"]] > 0 || cpsi_checks_run == 0) {
+  cpsi_verdict <- "FAILED"
+} else if (cps_intake[["warning"]] > 0) {
+  cpsi_verdict <- "PASSED WITH WARNINGS"
+} else {
+  cpsi_verdict <- "PASSED"
+}
+
+cat(sprintf("\nChecks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cps_intake[["passed"]], cps_intake[["warning"]], cps_intake[["failed"]],
+            cps_intake[["not_verified"]], cps_intake[["skipped"]]))
+cat(sprintf("CPS-INTAKE VALIDATION: %s\n", cpsi_verdict))
+cat(strrep("=", 60), "\n")
+
+if (cpsi_verdict == "FAILED") {
+  stop("CPS-INTAKE FAILED - see details above")
+}
+```
+
+**`not_applicable` keys recognized by CPS-INTAKE:** `report_version`, `required_top_level_keys`, `row_count_positive`, `percentiles_monotone`, `category_counts_le_rowcount`, `missing_rate_in_unit_interval`, `correlation_matrix_wellformed`, `embedded_validation_complete`. The remaining four keys — `no_released_count_below_threshold`, `no_raw_value_shaped_fields`, `identifier_columns_value_free`, `crosstab_schema_and_suppression` — are **non-declarable**: declaring one is itself a `[FAIL]` and the check runs anyway.
+
+### CPS-GEN: Synthetic Generation Validation (DS-5)
+
+**When:** Immediately after the generation script writes the synthetic parquet to `data/synthetic/` and before any downstream code, notebook, or skill example reads it (DS-5). (T4: `scripts/synth_generate/01_import-synthetic.{py,R}`, at the end of the import — once the user's synthetic rows are in `data/synthetic/` as Parquet.)
+
+CPS-GEN compares the generated frame against the profile report it was built from. Its distinctive risk is the mirror image of CPS-INTAKE's: not that the report leaked something, but that generation *invented* something the report deliberately withheld — a rare level that suppression removed, an identifier carrying a real value, a distribution nobody targeted. Fidelity deviations are `[WARNING]` (a generator tuning question); fabrication and structural mismatch are `[FAIL]`.
+
+**Embedded in:** `scripts/synth_generate/01_generate-synthetic.py` (`.R` for R) — CPS-GEN is embedded at the **end of the generation script itself**, after the synthetic parquet has been written, not in a separate validation script. The frame it checks is the one the script just produced. (T4: `scripts/synth_generate/01_import-synthetic.{py,R}`, at the end of the import — the frame it checks is the one the import just wrote.)
+
+**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — assign your values there):**
+```python
+# --- Config ---
+synthetic_path = None      # the parquet the generation (T4: import) step wrote; None if it produced nothing
+report_path = None         # the profile report the generation targeted
+seed = None                # the integer seed the generator ran with (T4: from the user's generation log); None if never recorded
+seed_exception = None      # T4 only: non-empty pointer to the researcher-authorized missing-seed exception in STATE; never printed
+tier = None                # the tier the report was produced at (its settings.tier); 4 only for a T4 import
+numeric_tolerance = 0.10   # relative tolerance per reproduced percentile, floor 1.0 absolute
+proportion_tolerance = 0.02  # absolute tolerance on categorical level proportions
+correlation_tolerance = 0.10  # the one absolute tolerance applied to every reproduced correlation
+missingness_tolerance = 0.01  # absolute tolerance on per-column null rates
+not_applicable = {}        # e.g. {"correlations_within_tolerance": "tier 2 — no correlations released"}
+```
+
+`seed` and `seed_exception` are mutually exclusive: set `seed` whenever a seed exists; set `seed_exception` only at tier 4, only when the user's generation recorded no seed and the researcher authorized that exception at the gate (its value points into STATE and is never printed). R uses the same names with `NULL` in place of `None` (`seed_exception <- NULL`).
+
+```python
+# --- CPS-GEN Validation ---
+# INTENT: Verify the generated synthetic frame matches the profile it was built
+# from — shape, schema, marginals, missingness — and fabricates nothing the
+# report withheld.
+# REASONING: Fidelity gaps are a tuning question ([WARNING]); fabrication is a
+# disclosure-adjacent defect ([FAIL]), because a level the report suppressed and
+# the generator re-invented looks to a reader exactly like a released one. No input
+# stops the block early: a wrong-typed value in the synthetic frame under validation
+# is a [FAIL], wrong-typed report evidence a check needs is a [NOT VERIFIED], and
+# every check reaches its own outcome line before the count line and verdict.
+# ASSUMES: synthetic_path / report_path / seed / seed_exception / tier / the
+# tolerances / not_applicable are assigned in the `# --- Config ---` region below.
+import json
+import math
+import re
+from pathlib import Path
+
+import polars as pl
+import pyarrow.parquet as pq
+
+# --- Config ---
+synthetic_path = None      # the parquet the generation (T4: import) step wrote; None if it produced nothing
+report_path = None         # the profile report the generation targeted
+seed = None                # the integer seed the generator ran with (T4: from the user's generation log); None if never recorded
+seed_exception = None      # T4 only: non-empty pointer to the researcher-authorized missing-seed exception in STATE; never printed
+tier = None                # the tier the report was produced at (its settings.tier); 4 only for a T4 import
+numeric_tolerance = 0.10   # relative tolerance per reproduced percentile, floor 1.0 absolute
+proportion_tolerance = 0.02  # absolute tolerance on categorical level proportions
+correlation_tolerance = 0.10  # the one absolute tolerance applied to every reproduced correlation
+missingness_tolerance = 0.01  # absolute tolerance on per-column null rates
+not_applicable = {}        # e.g. {"correlations_within_tolerance": "tier 2 — no correlations released"}
+
+print("\n" + "=" * 60)
+print("CPS-GEN VALIDATION: SYNTHETIC GENERATION")
+print("=" * 60)
+
+cps_gen = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
+
+# INTENT: A declared skip without a reason is indistinguishable from a silent one, so
+# it is dropped — but the key stays visible to the two sweeps below, so an empty
+# reason cannot be used to smuggle a declaration past the non-declarable or
+# unrecognized-key gates.
+# REASONING: "Empty" means blank under Unicode whitespace — Python's str.strip() set,
+# which the R block reproduces code point for code point — so a reason made only of
+# no-break or ideographic spaces is blank in both languages.
+cpsg_declared_keys = sorted(not_applicable)
+not_applicable = {k: v for k, v in not_applicable.items() if isinstance(v, str) and v.strip()}
+# INTENT: Remember which declarable keys were dropped for an empty reason, so the
+# check they name reports [NOT VERIFIED] rather than silently running.
+# REASONING: The author declared the check inapplicable; running it anyway and
+# printing [PASS] would answer a question they explicitly withdrew. The reason is
+# the evidence, and there is none — so the outcome is "not verified", not "passed".
+cpsg_empty_reason = set(cpsg_declared_keys) - set(not_applicable)
+
+# INTENT: Disclosure-critical checks may never be declared not applicable.
+cpsg_non_declarable = ("suppressed_categories_absent", "synthetic_levels_within_released_levels",
+                       "identifier_columns_value_free", "seed_recorded")
+for cpsg_key in cpsg_non_declarable:
+    if cpsg_key in cpsg_declared_keys:
+        print(f"[FAIL] {cpsg_key}: non-declarable check declared not_applicable under key '{cpsg_key}'")
+        cps_gen["failed"] += 1
+        not_applicable.pop(cpsg_key, None)
+
+# INTENT: A not_applicable key that names no check of this block is a silent no-op.
+# REASONING: A typo'd or stale key would otherwise declare nothing and be ignored,
+# leaving the author believing a check was skipped when it in fact ran (or the
+# reverse). Naming it once is the only way the log can carry the discrepancy.
+cpsg_declarable = ("row_count_matches", "column_set_and_dtypes",
+                   "numeric_marginals_within_tolerance",
+                   "categorical_proportions_within_tolerance",
+                   "correlations_within_tolerance", "missingness_within_tolerance")
+for cpsg_key in cpsg_declared_keys:
+    if cpsg_key in cpsg_non_declarable or cpsg_key in cpsg_declarable:
+        continue
+    print(f"[FAIL] not_applicable: unrecognized key '{cpsg_key}' (declarable keys: {', '.join(cpsg_declarable)})")
+    cps_gen["failed"] += 1
+    not_applicable.pop(cpsg_key, None)
+
+# INTENT: Bind both inputs once so a missing one becomes a named [NOT VERIFIED].
+cpsg_parse_error = "report did not parse as JSON (parser message withheld: it can quote report content)"
+cpsg_report = None
+cpsg_report_error = None
+cpsg_report_strings = set()
+if report_path is None:
+    cpsg_report_error = "report_path is not set — the generation target is unknown"
+elif not Path(report_path).is_file():
+    cpsg_report_error = f"no file at report_path '{report_path}'"
+else:
+    # REASONING: Parsing is strict and identical to CPS-INTAKE and to the R block.
+    # `parse_constant=int` makes the non-JSON literals NaN / Infinity / -Infinity a
+    # parse error (int("NaN") raises ValueError), as they are in jsonlite. A
+    # duplicate object key at any depth is a parse error too: a Python dict keeps
+    # the last value while jsonlite keeps both, so the two languages would otherwise
+    # validate two different reports. The first pass keeps every object as its raw
+    # (key, value) list, so a repeat stays visible; the second builds the dicts the
+    # checks read. Nesting deeper than 64 levels is a parse error as well, with the
+    # same cap and level count as CPS-INTAKE (sweep below), and so is a number token
+    # longer than 64 characters (scan below). The parser's own message is withheld —
+    # it can quote report text, and the R parser words it differently.
+    cpsg_pairs = None
+    cpsg_text = None
+    # INTENT: Refuse, before either parser runs, every input the two parsers would read
+    # differently.
+    # REASONING: jsonlite accepts a leading UTF-8 byte-order mark with only a warning
+    # where json.loads refuses it; jsonlite silently cuts a string at an escaped NUL
+    # (\u0000) and replaces an unpaired surrogate escape, where Python keeps both. A raw
+    # NUL byte and invalid UTF-8 are refused by both parsers, but R's text reader would
+    # stop at the NUL first. All of these are therefore parse errors, decided on the
+    # bytes and on the escape sequences, the same way in both blocks.
+    try:
+        cpsg_bytes = Path(report_path).read_bytes()
+        if cpsg_bytes[:3] != b"\xef\xbb\xbf" and b"\x00" not in cpsg_bytes:
+            cpsg_text = cpsg_bytes.decode("utf-8")
+    except (ValueError, OSError):
+        cpsg_text = None
+    if cpsg_text is not None:
+        # INTENT: Walk the escape sequences left to right. An escaped backslash is one
+        # token, so the text `\\u0000` (a backslash, then u0000) is not an escape.
+        # ASSUMES: a \u escape is exactly six characters, so a surrogate pair is a high
+        # escape immediately followed by a low one.
+        cpsg_toks = [(cpsg_m.start(), cpsg_m.group(0)) for cpsg_m in re.finditer(r"\\(?:u[0-9a-fA-F]{4}|[^u])", cpsg_text)]
+        cpsg_cps = [int(cpsg_t[1][2:], 16) if cpsg_t[1][1] == "u" else -1 for cpsg_t in cpsg_toks]
+        for cpsg_i in range(len(cpsg_toks)):
+            cpsg_cp = cpsg_cps[cpsg_i]
+            cpsg_hi_ok = (cpsg_i + 1 < len(cpsg_toks) and cpsg_toks[cpsg_i + 1][0] == cpsg_toks[cpsg_i][0] + 6
+                          and 0xDC00 <= cpsg_cps[cpsg_i + 1] <= 0xDFFF)
+            cpsg_lo_ok = (cpsg_i > 0 and cpsg_toks[cpsg_i - 1][0] == cpsg_toks[cpsg_i][0] - 6
+                          and 0xD800 <= cpsg_cps[cpsg_i - 1] <= 0xDBFF)
+            if (cpsg_cp == 0 or (0xD800 <= cpsg_cp <= 0xDBFF and not cpsg_hi_ok)
+                    or (0xDC00 <= cpsg_cp <= 0xDFFF and not cpsg_lo_ok)):
+                cpsg_text = None
+                break
+    if cpsg_text is not None:
+        # INTENT: Refuse any JSON number token longer than 64 characters (sign, digits,
+        # fraction and exponent counted together) outside strings, the same decision as
+        # CPS-INTAKE and the R block.
+        # REASONING: Python refuses an integer past its 4300-digit conversion limit while
+        # jsonlite reads it as Inf and parses on, so the two languages would otherwise
+        # reach different verdicts on the same file. A profiler never writes a number
+        # anywhere near 64 characters (a double needs at most 24), so the cap refuses
+        # only text the two parsers read differently. Each string is matched whole first,
+        # so digits inside a string never count; the R block uses the same pattern.
+        for cpsg_nm in re.finditer(r'"[^"\\]*(?:\\.[^"\\]*)*"|[-+.0-9eE]+', cpsg_text, re.S):
+            if cpsg_nm.group(0)[0] != '"' and len(cpsg_nm.group(0)) > 64:
+                cpsg_text = None
+                break
+    if cpsg_text is None:
+        cpsg_report_error = cpsg_parse_error
+    else:
+        try:
+            cpsg_pairs = json.loads(cpsg_text, parse_constant=int, object_pairs_hook=list)
+            cpsg_report = json.loads(cpsg_text, parse_constant=int)
+        except (ValueError, RecursionError):
+            cpsg_report_error = cpsg_parse_error
+            cpsg_report = None
+    # INTENT: Iterative sweep over the pair-list tree (no recursion, so depth cannot
+    # raise) that refuses a duplicate key and any container nested deeper than 64
+    # levels, counting the top-level object as level 1. Under the list hook an object
+    # is a list of (key, value) tuples ({} is an empty list); a decoded array never
+    # holds a tuple, so every object and array is one list and one level. The sweep
+    # also collects every key and string value, so any report text a line prints can
+    # be escaped (see the escape table below).
+    # REASONING: The two parsers give up at different depths (Python's recursion limit,
+    # jsonlite's own), so between those limits one block judged a file the other refused.
+    # The cap is CPS-INTAKE's (far above any depth a well-formed report reaches), so the
+    # outcome depends on the file, not on the parser or the block.
+    cpsg_max_depth = 64
+    cpsg_stack = [] if cpsg_report is None else [(cpsg_pairs, 1)]
+    while len(cpsg_stack) > 0:
+        cpsg_node, cpsg_depth = cpsg_stack.pop()
+        if isinstance(cpsg_node, str):
+            cpsg_report_strings.add(cpsg_node)
+            continue
+        if not isinstance(cpsg_node, list):
+            continue
+        if cpsg_depth > cpsg_max_depth:
+            cpsg_report_error = cpsg_parse_error
+            cpsg_report = None
+            break
+        if len(cpsg_node) > 0 and all(isinstance(cpsg_e, tuple) for cpsg_e in cpsg_node):
+            if len(set(cpsg_e[0] for cpsg_e in cpsg_node)) != len(cpsg_node):
+                cpsg_report_error = cpsg_parse_error
+                cpsg_report = None
+                break
+            cpsg_report_strings.update(cpsg_e[0] for cpsg_e in cpsg_node)
+            cpsg_stack.extend((cpsg_e[1], cpsg_depth + 1) for cpsg_e in cpsg_node)
+        else:
+            cpsg_stack.extend((cpsg_e, cpsg_depth + 1) for cpsg_e in cpsg_node)
+if cpsg_report is not None and not isinstance(cpsg_report, dict):
+    cpsg_report_error = "report parsed, but its top level is not a JSON object"
+    cpsg_report = None
+
+cpsg_syn = None
+cpsg_syn_error = None
+if synthetic_path is None:
+    cpsg_syn_error = "synthetic_path is not set — generation produced no file"
+elif not Path(synthetic_path).is_file():
+    cpsg_syn_error = f"no file at synthetic_path '{synthetic_path}'"
+else:
+    # INTENT: A parquet that repeats a column name is refused as unreadable, before
+    # polars reads it.
+    # REASONING: polars keeps only one of the repeated columns and reads the file
+    # without complaint, while the R block (arrow) sees every column and refuses it —
+    # so the two languages would otherwise validate two different frames. The raw
+    # schema keeps every stored name, so a repeat is visible there.
+    try:
+        cpsg_raw_names = pq.read_schema(synthetic_path).names
+        if len(set(cpsg_raw_names)) == len(cpsg_raw_names):
+            cpsg_syn = pl.read_parquet(synthetic_path)
+    except Exception:
+        cpsg_syn = None
+    if cpsg_syn is None:
+        cpsg_syn_error = "the synthetic parquet did not read (reader message withheld: the two readers word it differently)"
+
+# INTENT: Classify every synthetic column once by its stored type, into the classes the
+# R block derives from the arrow schema, so both languages agree on which comparisons a
+# column can take part in.
+# REASONING: text = a string column; text_dict = a dictionary-encoded string column
+# (polars Categorical / Enum, an R factor); integer = 8- to 64-bit signed or unsigned;
+# float = 32- or 64-bit; boolean. Every other stored type (decimal, half float, date,
+# time, timestamp, duration, binary, nested, null) is "other": the two readers disagree
+# on its values — R reads a half float as its raw bits and a decimal as a double — so no
+# check compares the values of an "other" column, and a check that must is a [FAIL].
+cpsg_class = {}
+cpsg_int_types = (pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64)
+if cpsg_syn is not None:
+    for cpsg_c, cpsg_dt in cpsg_syn.schema.items():
+        if cpsg_dt == pl.String:
+            cpsg_class[cpsg_c] = "text"
+        elif cpsg_dt.base_type() in (pl.Categorical, pl.Enum):
+            cpsg_class[cpsg_c] = "text_dict"
+        elif cpsg_dt.base_type() in cpsg_int_types:
+            cpsg_class[cpsg_c] = "integer"
+        elif cpsg_dt.base_type() in (pl.Float32, pl.Float64):
+            cpsg_class[cpsg_c] = "float"
+        elif cpsg_dt == pl.Boolean:
+            cpsg_class[cpsg_c] = "boolean"
+        else:
+            cpsg_class[cpsg_c] = "other"
+# INTENT: The columns whose values cannot be compared with released labels as text: an
+# "other" column, and an integer column holding a magnitude of 2^53 or more (R reads a
+# large 64-bit integer as a double, so its text would no longer be exact).
+cpsg_untextable = set()
+for cpsg_c, cpsg_k in cpsg_class.items():
+    if cpsg_k == "other" or (cpsg_k == "integer" and (cpsg_syn[cpsg_c].cast(pl.Float64).abs() >= 2.0 ** 53).any() is True):
+        cpsg_untextable.add(cpsg_c)
+cpsg_untextable_msg = "holds values outside the text-comparable types (string, categorical, integer below 2^53, float, boolean)"
+
+# INTENT: Escape every report- or frame-derived string before it reaches an outcome line,
+# identically in both languages: a character outside printable ASCII (0x20-0x7E) prints
+# as \uXXXX in lowercase hex, and one above U+FFFF as its UTF-16 surrogate pair.
+# REASONING: A column name or key carrying a newline or control character could otherwise
+# forge an extra outcome line, and a non-ASCII one could fail the write on a console that
+# cannot encode it. The table covers every key and string value of the parsed report and
+# every synthetic column name, so each print site looks its text up in it.
+cpsg_esc_src = set(cpsg_report_strings)
+if cpsg_syn is not None:
+    cpsg_esc_src.update(cpsg_syn.columns)
+cpsg_esc = {cpsg_s: "".join(cpsg_ch if " " <= cpsg_ch <= "~" else (
+    "\\u%04x" % ord(cpsg_ch) if ord(cpsg_ch) < 0x10000 else "\\u%04x\\u%04x" % (
+        0xD800 + ((ord(cpsg_ch) - 0x10000) >> 10), 0xDC00 + ((ord(cpsg_ch) - 0x10000) & 0x3FF)))
+    for cpsg_ch in cpsg_s) for cpsg_s in cpsg_esc_src}
+
+# INTENT: One numeric model for both languages, shared with CPS-INTAKE. A JSON number
+# is usable only when it is finite and |v| < 2^53 — the profiler refuses larger
+# magnitudes, every such value is exact in a double, and a token within the 64-character
+# parse cap can still exceed 2^53, which jsonlite rounds where Python keeps an exact
+# int. Whole numbers are compared by value (40 and 40.0 agree), because JSON does not
+# type them apart.
+# ASSUMES: each test below puts the isinstance check first and the range check
+# before int(), so a string, a list, inf or NaN never reaches `<` or int().
+cpsg_max_exact = 2 ** 53
+
+cpsg_columns = None
+cpsg_columns_unusable = 0
+cpsg_row_count = None
+cpsg_relationships = None
+cpsg_report_tier = None
+if cpsg_report is not None:
+    if isinstance(cpsg_report.get("columns"), list):
+        cpsg_columns = [c for c in cpsg_report["columns"] if isinstance(c, dict)]
+        cpsg_columns_unusable = len(cpsg_report["columns"]) - len(cpsg_columns)
+    if isinstance(cpsg_report.get("dataset"), dict):
+        cpsg_row_count = cpsg_report["dataset"].get("row_count")
+    if isinstance(cpsg_report.get("relationships"), dict):
+        cpsg_relationships = cpsg_report["relationships"]
+    if isinstance(cpsg_report.get("settings"), dict):
+        cpsg_report_tier = cpsg_report["settings"].get("tier")
+# INTENT: A role counts only as the exact JSON string and an identifier flag only as
+# JSON true, so a list-valued role can never satisfy `==` (the R block tests the same).
+cpsg_cat_cols = [] if cpsg_columns is None else [c for c in cpsg_columns if c.get("role") == "categorical"]
+cpsg_num_cols = [] if cpsg_columns is None else [c for c in cpsg_columns if c.get("role") == "numeric"]
+cpsg_id_cols = [] if cpsg_columns is None else [c for c in cpsg_columns
+                                                if c.get("role") == "identifier" or c.get("is_identifier") is True]
+cpsg_inputs_error = cpsg_report_error if cpsg_report_error is not None else cpsg_syn_error
+
+# INTENT: Resolve the tier whose release rules apply. Config `tier` is the tier the
+# report was produced at (its settings.tier), so tiers 1-3 are the config value; at
+# tier 4 (local synthesis, imported here) the profile report's own settings.tier
+# governs which blocks were released, so a T4 import is held to exactly what crossed.
+# REASONING: A config tier copied from elsewhere (the approved tier CPS-INTAKE takes,
+# say) would change which blocks are expected: a tier 2 report checked at tier 3 reads
+# as a missing pearson block. So correlations_within_tolerance, the one check whose
+# outcome the tier decides, fails when a configured 1-3 differs from a whole-number
+# 1-3 the report declares.
+cpsg_tier_ok = not isinstance(tier, bool) and tier in (1, 2, 3, 4)
+cpsg_report_tier_ok = not isinstance(cpsg_report_tier, bool) and cpsg_report_tier in (1, 2, 3)
+cpsg_release_tier = None
+if cpsg_tier_ok and tier != 4:
+    cpsg_release_tier = int(tier)
+elif cpsg_tier_ok and cpsg_report_tier_ok:
+    cpsg_release_tier = int(cpsg_report_tier)
+if cpsg_release_tier is not None:
+    cpsg_tier_label = str(cpsg_release_tier)
+elif tier is None:
+    cpsg_tier_label = "unrecorded"
+elif cpsg_tier_ok:
+    cpsg_tier_label = "4 (report tier unrecorded)"
+else:
+    cpsg_tier_label = "invalid"
+
+# INTENT: Validate every categorical record's released level set once, so the four
+# checks that read it agree on what is usable and none can raise on a bad entry.
+# REASONING: A level entry is usable only as {value: <string>, count: <whole number
+# >= 0>} — the profiler's own shape. Anything else is wrong-typed evidence: the
+# entry is named by its index, never by its label or count, and every check that
+# needs it reports [NOT VERIFIED] instead of a TypeError (null count) or an
+# unhashable-key crash (list label).
+cpsg_cat_entries = []
+for cpsg_col in cpsg_cat_cols:
+    cpsg_name = cpsg_col.get("name")
+    cpsg_blk = cpsg_col.get("categorical")
+    cpsg_entry = {"name": cpsg_name if isinstance(cpsg_name, str) else None, "problem": None,
+                  "levels": [], "n": None, "binned": None}
+    if not isinstance(cpsg_name, str):
+        cpsg_entry["problem"] = "a categorical column record carries no string name"
+    elif not isinstance(cpsg_blk, dict) or not isinstance(cpsg_blk.get("levels"), list):
+        cpsg_entry["problem"] = f"column '{cpsg_esc[cpsg_name]}' declares role categorical but has no levels array to compare against"
+    if isinstance(cpsg_blk, dict) and isinstance(cpsg_blk.get("levels"), list):
+        for cpsg_i, cpsg_lv in enumerate(cpsg_blk["levels"]):
+            cpsg_cnt = cpsg_lv.get("count") if isinstance(cpsg_lv, dict) else None
+            if (isinstance(cpsg_lv, dict) and isinstance(cpsg_lv.get("value"), str)
+                    and isinstance(cpsg_cnt, (int, float)) and not isinstance(cpsg_cnt, bool)
+                    and 0 <= cpsg_cnt < cpsg_max_exact and cpsg_cnt == int(cpsg_cnt)):
+                cpsg_entry["levels"].append((cpsg_lv["value"], int(cpsg_cnt)))
+            elif cpsg_entry["problem"] is None:
+                cpsg_entry["problem"] = f"column '{cpsg_esc[cpsg_name]}' level index {cpsg_i} is not a string label with a whole-number count"
+        cpsg_x = cpsg_blk.get("n")
+        if (isinstance(cpsg_x, (int, float)) and not isinstance(cpsg_x, bool)
+                and 0 < cpsg_x < cpsg_max_exact and cpsg_x == int(cpsg_x)):
+            cpsg_entry["n"] = int(cpsg_x)
+        cpsg_x = cpsg_blk.get("n_levels_binned")
+        if (isinstance(cpsg_x, (int, float)) and not isinstance(cpsg_x, bool)
+                and 0 <= cpsg_x < cpsg_max_exact and cpsg_x == int(cpsg_x)):
+            cpsg_entry["binned"] = int(cpsg_x)
+    cpsg_cat_entries.append(cpsg_entry)
+
+# INTENT: Reduce every synthetic column a check compares with released labels to one
+# canonical text per value, with its count — identical in both languages and matching
+# the labels both profilers write.
+# REASONING: Both profiler templates write a level label as text (Python: pandas
+# astype(str); R: as.character()). A string or categorical value compares as written.
+# A whole-number value — integer or float — is integer text, so 1, 1.0 and the R
+# template's "1" agree and -0 is "0"; any other finite float is %.17g text and an
+# infinity is inf / -inf; NaN counts as missing, as in the missingness check and R's
+# is.na(). A boolean is true / false, and a released label is compared with it
+# case-insensitively, so the Python template's "True" and the R template's "TRUE" both
+# match. The R block builds the same text with sprintf(), which shares this printf
+# format, so the two blocks compare the same strings.
+cpsg_text_counts = {}
+cpsg_text_names = set(e["name"] for e in cpsg_cat_entries if e["name"] is not None)
+cpsg_text_names.update(c.get("name") for c in cpsg_id_cols if isinstance(c.get("name"), str))
+for cpsg_name in sorted(cpsg_text_names):
+    if cpsg_syn is None or cpsg_name not in cpsg_syn.columns or cpsg_name in cpsg_untextable:
+        continue
+    cpsg_k = cpsg_class[cpsg_name]
+    cpsg_series = cpsg_syn[cpsg_name].alias("cpsg_v")
+    if cpsg_k == "float":
+        cpsg_series = cpsg_series.cast(pl.Float64).drop_nulls().drop_nans()
+    elif cpsg_k == "text_dict":
+        cpsg_series = cpsg_series.cast(pl.String).drop_nulls()
+    else:
+        cpsg_series = cpsg_series.drop_nulls()
+    # ASSUMES: value_counts() row order is NOT stable across calls, so the value column
+    # and the count column come from the SAME frame.
+    cpsg_vc = cpsg_series.value_counts()
+    cpsg_raw = cpsg_vc["cpsg_v"].to_list()
+    if cpsg_k == "integer":
+        cpsg_canon = ["%d" % cpsg_v for cpsg_v in cpsg_raw]
+    elif cpsg_k == "float":
+        cpsg_canon = [("%.0f" % (cpsg_v + 0.0)) if math.isfinite(cpsg_v) and cpsg_v == math.floor(cpsg_v)
+                      else ("%.17g" % cpsg_v if math.isfinite(cpsg_v) else ("inf" if cpsg_v > 0 else "-inf"))
+                      for cpsg_v in cpsg_raw]
+    elif cpsg_k == "boolean":
+        cpsg_canon = ["true" if cpsg_v else "false" for cpsg_v in cpsg_raw]
+    else:
+        cpsg_canon = cpsg_raw
+    cpsg_counts = {}
+    for cpsg_t, cpsg_n in zip(cpsg_canon, cpsg_vc["count"].to_list()):
+        cpsg_counts[cpsg_t] = cpsg_counts.get(cpsg_t, 0) + cpsg_n
+    cpsg_text_counts[cpsg_name] = cpsg_counts
+
+# Check: the synthetic row count equals the count the report declares
+if "row_count_matches" in not_applicable:
+    print(f"[SKIPPED] row_count_matches: {not_applicable['row_count_matches']}")
+    cps_gen["skipped"] += 1
+elif "row_count_matches" in cpsg_empty_reason:
+    print("[NOT VERIFIED] row_count_matches: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] row_count_matches: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif not (isinstance(cpsg_row_count, (int, float)) and not isinstance(cpsg_row_count, bool)
+          and -cpsg_max_exact < cpsg_row_count < cpsg_max_exact and cpsg_row_count == int(cpsg_row_count)):
+    print("[NOT VERIFIED] row_count_matches: dataset.row_count is absent or not a whole number — no target to match")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn.height != int(cpsg_row_count):
+    print(f"[FAIL] row_count_matches: synthetic has {cpsg_syn.height:,} rows, the report declares {int(cpsg_row_count):,}")
+    cps_gen["failed"] += 1
+else:
+    print(f"[PASS] row_count_matches: {cpsg_syn.height:,} synthetic rows == declared row_count {int(cpsg_row_count):,}")
+    cps_gen["passed"] += 1
+
+# Check: column set and dtypes match the report's declared schema
+if "column_set_and_dtypes" in not_applicable:
+    print(f"[SKIPPED] column_set_and_dtypes: {not_applicable['column_set_and_dtypes']}")
+    cps_gen["skipped"] += 1
+elif "column_set_and_dtypes" in cpsg_empty_reason:
+    print("[NOT VERIFIED] column_set_and_dtypes: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] column_set_and_dtypes: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif cpsg_columns is None or len(cpsg_columns) == 0:
+    print("[NOT VERIFIED] column_set_and_dtypes: the report declares no columns to match against")
+    cps_gen["not_verified"] += 1
+elif cpsg_columns_unusable > 0 or any(not isinstance(c.get("name"), str) for c in cpsg_columns):
+    # REASONING: a record with no string name is report evidence of the wrong type —
+    # the declared schema it belongs to cannot be matched, so nothing is concluded.
+    cpsg_unnamed = cpsg_columns_unusable + sum(1 for c in cpsg_columns if not isinstance(c.get("name"), str))
+    print(f"[NOT VERIFIED] column_set_and_dtypes: {cpsg_unnamed} of {cpsg_columns_unusable + len(cpsg_columns)} column records carry no string name — the declared schema cannot be matched")
+    cps_gen["not_verified"] += 1
+else:
+    cpsg_declared_names = [c["name"] for c in cpsg_columns]
+    cpsg_missing = sorted(set(cpsg_declared_names) - set(cpsg_syn.columns))
+    cpsg_extra = sorted(set(cpsg_syn.columns) - set(cpsg_declared_names))
+    cpsg_bad = []
+    if len(cpsg_missing) > 0 or len(cpsg_extra) > 0:
+        cpsg_bad.append(f"column set differs — missing [{', '.join(cpsg_esc[c] for c in cpsg_missing)}], unexpected [{', '.join(cpsg_esc[c] for c in cpsg_extra)}]")
+    else:
+        # REASONING: the stored type is judged by its class, the one both languages
+        # derive. "string" needs a plain string column; "double" an integer or float
+        # column; "integer" an integer column, or a float column whose values are all
+        # whole — the claim the R block can make after arrow's round trip. A declared
+        # dtype is never echoed: it is free text from the report.
+        for cpsg_col in cpsg_columns:
+            cpsg_name = cpsg_col["name"]
+            cpsg_dtype = cpsg_col.get("dtype")
+            cpsg_k = cpsg_class[cpsg_name]
+            if not isinstance(cpsg_dtype, str) or cpsg_dtype not in ("integer", "double", "string"):
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' declares an unrecognized dtype")
+            elif cpsg_dtype == "integer":
+                cpsg_whole = cpsg_k == "integer"
+                if cpsg_k == "float":
+                    cpsg_vals = cpsg_syn[cpsg_name].cast(pl.Float64).drop_nulls().drop_nans()
+                    cpsg_whole = bool(((cpsg_vals == cpsg_vals.floor()) & cpsg_vals.is_finite()).all())
+                if not cpsg_whole:
+                    cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' is not whole-numeric, the report declares integer")
+            elif cpsg_dtype == "double" and cpsg_k not in ("integer", "float"):
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' is not numeric, the report declares double")
+            elif cpsg_dtype == "string" and cpsg_k != "text":
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' is not a string column, the report declares string")
+    if len(cpsg_bad) > 0:
+        print(f"[FAIL] column_set_and_dtypes: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+        cps_gen["failed"] += 1
+    else:
+        print(f"[PASS] column_set_and_dtypes: {len(cpsg_columns)} declared columns, names and dtypes all matched")
+        cps_gen["passed"] += 1
+
+# Check: reproduced numeric percentiles sit within tolerance of the released grid
+# REASONING: A withheld, all-missing or constant numeric block released no percentile
+# grid, so it is not a miss — it is nothing to compare. A numeric column with no
+# numeric block at all, or a grid value that is not a usable number, is missing
+# evidence and is counted, never silently passed over. Tolerance is relative with a
+# floor of 1.0 so a target near zero does not demand impossible precision.
+if "numeric_marginals_within_tolerance" in not_applicable:
+    print(f"[SKIPPED] numeric_marginals_within_tolerance: {not_applicable['numeric_marginals_within_tolerance']}")
+    cps_gen["skipped"] += 1
+elif "numeric_marginals_within_tolerance" in cpsg_empty_reason:
+    print("[NOT VERIFIED] numeric_marginals_within_tolerance: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] numeric_marginals_within_tolerance: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+else:
+    cpsg_targets = []
+    cpsg_absent = []
+    for cpsg_col in cpsg_num_cols:
+        cpsg_name = cpsg_col.get("name")
+        cpsg_blk = cpsg_col.get("numeric")
+        if not isinstance(cpsg_name, str):
+            cpsg_absent.append("a numeric column record carries no string name")
+        elif not isinstance(cpsg_blk, dict):
+            cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' declares role numeric but has no numeric block")
+        elif "percentiles" in cpsg_blk and not isinstance(cpsg_blk["percentiles"], dict):
+            cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' carries a percentiles field that is not an object")
+        elif "percentiles" in cpsg_blk:
+            cpsg_targets.append((cpsg_name, cpsg_blk["percentiles"]))
+    if len(cpsg_targets) == 0 and len(cpsg_absent) == 0:
+        print(f"[SKIPPED] numeric_marginals_within_tolerance: report declares 0 numeric distribution targets at tier {cpsg_tier_label}")
+        cps_gen["skipped"] += 1
+    else:
+        cpsg_compared = 0
+        cpsg_off = []
+        cpsg_bad = []
+        # INTENT: The grid's keys are a closed set fixed by the profiling spec; parse
+        # nothing that is not in it.
+        # REASONING: `float(key[1:])` on an unvetted key either raises (Python) or
+        # coerces to a silent NaN/NA (R) — both misreport a malformed report as a
+        # tooling failure. Naming the key is the finding.
+        # ASSUMES: the released grid is the spec's ordered percentile set (the small-n
+        # shape releases the p25/p50/p75 subset of it). Quantiles use linear
+        # interpolation over the non-null, non-NaN values — R's default type 7 — so
+        # both languages compute the same deviation and print the same line.
+        cpsg_pct_names = ("p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99")
+        for cpsg_name, cpsg_grid in cpsg_targets:
+            if cpsg_name not in cpsg_syn.columns:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' has a released grid but is absent from the synthetic frame")
+                continue
+            # REASONING: the synthetic column is the thing under validation, so one
+            # outside the integer and float classes is a [FAIL] — quantile() on it would
+            # raise, or (decimal, half float) the two readers would see different values.
+            if cpsg_class[cpsg_name] not in ("integer", "float"):
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' is not numeric in the synthetic frame — its released percentiles cannot be reproduced")
+                continue
+            cpsg_vals = cpsg_syn[cpsg_name].cast(pl.Float64).drop_nulls().drop_nans()
+            if cpsg_vals.len() == 0:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' has a released grid but is entirely null in the synthetic frame")
+                continue
+            for cpsg_k, cpsg_target in cpsg_grid.items():
+                if cpsg_k not in cpsg_pct_names:
+                    cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' percentile grid carries unrecognized key '{cpsg_esc[cpsg_k]}'")
+                    continue
+                if not (isinstance(cpsg_target, (int, float)) and not isinstance(cpsg_target, bool)
+                        and -cpsg_max_exact < cpsg_target < cpsg_max_exact):
+                    cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' percentile {cpsg_k} target is not a usable number")
+                    continue
+                cpsg_obs = cpsg_vals.quantile(float(cpsg_k[1:]) / 100.0, interpolation="linear")
+                if cpsg_obs is None or not math.isfinite(cpsg_obs):
+                    cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' quantile {cpsg_k} came back empty")
+                    continue
+                cpsg_compared += 1
+                if abs(cpsg_obs - cpsg_target) > numeric_tolerance * max(abs(cpsg_target), 1.0):
+                    cpsg_off.append(f"column '{cpsg_esc[cpsg_name]}' {cpsg_k} deviates by {abs(cpsg_obs - cpsg_target):.4g}")
+        if len(cpsg_bad) > 0:
+            print(f"[FAIL] numeric_marginals_within_tolerance: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+            cps_gen["failed"] += 1
+        elif len(cpsg_absent) > 0:
+            print(f"[NOT VERIFIED] numeric_marginals_within_tolerance: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+            cps_gen["not_verified"] += 1
+        elif cpsg_compared == 0:
+            # REASONING: a grid that yielded no comparison verified nothing; printing
+            # [PASS] over zero comparisons is the empty-evidence pass this block exists
+            # to refuse.
+            print(f"[NOT VERIFIED] numeric_marginals_within_tolerance: {len(cpsg_targets)} columns released a percentile grid but 0 percentile comparisons were made")
+            cps_gen["not_verified"] += 1
+        elif len(cpsg_off) > 0:
+            print(f"[WARNING] numeric_marginals_within_tolerance: {len(cpsg_off)} of {cpsg_compared} percentile comparisons outside the {numeric_tolerance * 100:.4g}% relative band — {cpsg_off[0]}")
+            cps_gen["warning"] += 1
+        else:
+            print(f"[PASS] numeric_marginals_within_tolerance: {len(cpsg_targets)} columns, {cpsg_compared} percentile comparisons, all within the {numeric_tolerance * 100:.4g}% relative band")
+            cps_gen["passed"] += 1
+
+# Check: reproduced categorical proportions sit within tolerance of the released levels
+if "categorical_proportions_within_tolerance" in not_applicable:
+    print(f"[SKIPPED] categorical_proportions_within_tolerance: {not_applicable['categorical_proportions_within_tolerance']}")
+    cps_gen["skipped"] += 1
+elif "categorical_proportions_within_tolerance" in cpsg_empty_reason:
+    print("[NOT VERIFIED] categorical_proportions_within_tolerance: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] categorical_proportions_within_tolerance: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+else:
+    # INTENT: A record whose level set is unusable is counted as missing evidence; a
+    # usable but empty level set (every level suppressed) released no target.
+    cpsg_targets = [e for e in cpsg_cat_entries if e["problem"] is None and len(e["levels"]) > 0]
+    cpsg_absent = [e["problem"] for e in cpsg_cat_entries if e["problem"] is not None]
+    if len(cpsg_targets) == 0 and len(cpsg_absent) == 0:
+        print(f"[SKIPPED] categorical_proportions_within_tolerance: report declares 0 categorical level targets at tier {cpsg_tier_label}")
+        cps_gen["skipped"] += 1
+    else:
+        cpsg_compared = 0
+        cpsg_off = []
+        cpsg_bad = []
+        for cpsg_entry in cpsg_targets:
+            cpsg_name = cpsg_entry["name"]
+            if cpsg_name not in cpsg_syn.columns:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' has released levels but is absent from the synthetic frame")
+                continue
+            if cpsg_name in cpsg_untextable:
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' {cpsg_untextable_msg} — its levels cannot be compared")
+                continue
+            cpsg_denom = cpsg_entry["n"]
+            if cpsg_denom is None:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' categorical block carries no positive n to form proportions from")
+                continue
+            # ASSUMES: levels are compared through the canonical text form above, which
+            # the R block builds identically, so the two blocks agree on what matches.
+            cpsg_counts = cpsg_text_counts[cpsg_name]
+            cpsg_obs_n = sum(cpsg_counts.values())
+            if cpsg_obs_n == 0:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' is entirely null in the synthetic frame")
+                continue
+            cpsg_bool = cpsg_class[cpsg_name] == "boolean"
+            for cpsg_value, cpsg_count in cpsg_entry["levels"]:
+                cpsg_key = cpsg_value.lower() if cpsg_bool and cpsg_value.lower() in ("true", "false") else cpsg_value
+                cpsg_target = cpsg_count / cpsg_denom
+                cpsg_obs = cpsg_counts.get(cpsg_key, 0) / cpsg_obs_n
+                cpsg_compared += 1
+                if abs(cpsg_obs - cpsg_target) > proportion_tolerance:
+                    cpsg_off.append(f"column '{cpsg_esc[cpsg_name]}' has a level proportion off by {abs(cpsg_obs - cpsg_target):.4f}")
+        if len(cpsg_bad) > 0:
+            print(f"[FAIL] categorical_proportions_within_tolerance: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+            cps_gen["failed"] += 1
+        elif len(cpsg_absent) > 0:
+            print(f"[NOT VERIFIED] categorical_proportions_within_tolerance: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+            cps_gen["not_verified"] += 1
+        elif cpsg_compared == 0:
+            print(f"[NOT VERIFIED] categorical_proportions_within_tolerance: {len(cpsg_targets)} columns released levels but 0 level proportions were compared")
+            cps_gen["not_verified"] += 1
+        elif len(cpsg_off) > 0:
+            print(f"[WARNING] categorical_proportions_within_tolerance: {len(cpsg_off)} of {cpsg_compared} level proportions outside +/-{proportion_tolerance:.4g} — {cpsg_off[0]}")
+            cps_gen["warning"] += 1
+        else:
+            print(f"[PASS] categorical_proportions_within_tolerance: {len(cpsg_targets)} columns, {cpsg_compared} level proportions, all within +/-{proportion_tolerance:.4g}")
+            cps_gen["passed"] += 1
+
+# Check: pooled/suppressed categories were not re-invented (NON-DECLARABLE)
+# REASONING: Suppression removed levels the generator never saw. If the synthetic
+# frame carries more distinct levels than the report released, or dropped the
+# __OTHER__ bucket the report released for the pooled ones, generation has filled the
+# gap with something — and a reader cannot tell invented from released. __OTHER__ is
+# required only where the report released it. Where every source level was pooled
+# away (levels: [] with n_levels_binned > 0, the profiler's shape when 0 < n < the
+# threshold), the literal __OTHER__ is the one level a generator may still emit: it
+# names the withheld pool and carries no source value, so the column's released
+# non-missing count can be reproduced without inventing a label.
+if cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] suppressed_categories_absent: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif len(cpsg_cat_cols) == 0:
+    print(f"[PASS] suppressed_categories_absent: 0 categorical columns declared at tier {cpsg_tier_label}, 0 pooled buckets to preserve")
+    cps_gen["passed"] += 1
+else:
+    cpsg_bad = []
+    cpsg_absent = []
+    cpsg_pools = 0
+    cpsg_checked = 0
+    for cpsg_entry in cpsg_cat_entries:
+        cpsg_name = cpsg_entry["name"]
+        if cpsg_entry["problem"] is not None:
+            cpsg_absent.append(cpsg_entry["problem"])
+            continue
+        if cpsg_name not in cpsg_syn.columns:
+            cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' has released levels but is absent from the synthetic frame")
+            continue
+        if cpsg_name in cpsg_untextable:
+            cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' {cpsg_untextable_msg} — its levels cannot be compared")
+            continue
+        # REASONING: whether the generator kept the pool is judged against the
+        # report's pool count, so an unusable count is missing evidence, not a pass.
+        if cpsg_entry["binned"] is None:
+            cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' categorical block carries no whole-number n_levels_binned")
+            continue
+        cpsg_checked += 1
+        cpsg_bool = cpsg_class[cpsg_name] == "boolean"
+        cpsg_released = set(cpsg_v.lower() if cpsg_bool and cpsg_v.lower() in ("true", "false") else cpsg_v
+                            for cpsg_v, _cpsg_c in cpsg_entry["levels"])
+        cpsg_observed = set(cpsg_text_counts[cpsg_name])
+        cpsg_pool_only = 1 if len(cpsg_entry["levels"]) == 0 and cpsg_entry["binned"] > 0 else 0
+        if len(cpsg_observed) > len(cpsg_released) + cpsg_pool_only:
+            cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' carries {len(cpsg_observed)} distinct synthetic levels against {len(cpsg_released)} released")
+        if any(cpsg_v == "__OTHER__" for cpsg_v, _cpsg_c in cpsg_entry["levels"]):
+            cpsg_pools += 1
+            if "__OTHER__" not in cpsg_observed:
+                cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' pooled {cpsg_entry['binned']} source levels but the synthetic frame has no __OTHER__ bucket")
+    if len(cpsg_bad) > 0:
+        print(f"[FAIL] suppressed_categories_absent: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+        cps_gen["failed"] += 1
+    elif len(cpsg_absent) > 0:
+        print(f"[NOT VERIFIED] suppressed_categories_absent: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+        cps_gen["not_verified"] += 1
+    else:
+        print(f"[PASS] suppressed_categories_absent: {cpsg_checked} categorical columns examined, {cpsg_pools} pooled buckets preserved, 0 levels added")
+        cps_gen["passed"] += 1
+
+# Check: reproduced correlations sit within tolerance of the released matrix
+# REASONING: CPS-GEN applies ONE absolute band, `correlation_tolerance`, to every
+# released pair. The wider +/-0.20 allowance for binary or low-cardinality pairs is a
+# QAS-C reviewer judgement, not a band this block applies or implies. Below tier 3
+# nothing is released, so the absence is structural ([SKIPPED]); at tier 3 the spec
+# always carries a pearson block, so its absence is missing evidence ([NOT VERIFIED]).
+if "correlations_within_tolerance" in not_applicable:
+    print(f"[SKIPPED] correlations_within_tolerance: {not_applicable['correlations_within_tolerance']}")
+    cps_gen["skipped"] += 1
+elif "correlations_within_tolerance" in cpsg_empty_reason:
+    print("[NOT VERIFIED] correlations_within_tolerance: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] correlations_within_tolerance: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif not cpsg_tier_ok:
+    print("[NOT VERIFIED] correlations_within_tolerance: tier is not a recorded 1/2/3/4")
+    cps_gen["not_verified"] += 1
+elif tier != 4 and cpsg_report_tier_ok and int(cpsg_report_tier) != cpsg_release_tier:
+    print(f"[FAIL] correlations_within_tolerance: configured tier {cpsg_release_tier} differs from the report's declared tier {int(cpsg_report_tier)}")
+    cps_gen["failed"] += 1
+elif cpsg_release_tier is None:
+    print("[NOT VERIFIED] correlations_within_tolerance: tier 4 import, but the report declares no settings.tier of 1/2/3 — which blocks were released is unknown")
+    cps_gen["not_verified"] += 1
+elif cpsg_release_tier < 3:
+    print(f"[SKIPPED] correlations_within_tolerance: no available correlation matrix at tier {cpsg_tier_label} — nothing was released to reproduce")
+    cps_gen["skipped"] += 1
+elif not isinstance(cpsg_relationships, dict) or not isinstance(cpsg_relationships.get("pearson"), dict):
+    print(f"[NOT VERIFIED] correlations_within_tolerance: the report at {'declared' if tier == 4 else 'configured'} tier {cpsg_tier_label} carries no pearson block — the released correlations cannot be compared")
+    cps_gen["not_verified"] += 1
+elif cpsg_relationships["pearson"].get("available") is False:
+    print(f"[SKIPPED] correlations_within_tolerance: no available correlation matrix at tier {cpsg_tier_label} — nothing was released to reproduce")
+    cps_gen["skipped"] += 1
+elif cpsg_relationships["pearson"].get("available") is not True:
+    print("[NOT VERIFIED] correlations_within_tolerance: the pearson block carries no boolean available flag")
+    cps_gen["not_verified"] += 1
+else:
+    cpsg_blk = cpsg_relationships["pearson"]
+    cpsg_names = cpsg_blk.get("columns")
+    cpsg_m = cpsg_blk.get("matrix")
+    cpsg_off = []
+    cpsg_absent = []
+    cpsg_bad = []
+    cpsg_compared = 0
+    if not isinstance(cpsg_names, list) or not all(isinstance(n, str) for n in cpsg_names) or not isinstance(cpsg_m, list):
+        cpsg_absent.append("the available pearson block carries no columns/matrix pair")
+    # INTENT: Confirm the released matrix is square with dimension == len(columns)
+    # before any positional indexing.
+    # REASONING: Indexing a short matrix by column position raises IndexError, which
+    # aborts the block before the remaining checks report — the single outcome this
+    # checkpoint exists to prevent. The shape discrepancy is itself the finding, so it
+    # is named (counts only, no coefficients) and the pair loop is skipped.
+    elif len(cpsg_m) != len(cpsg_names) or any(not isinstance(cpsg_r, list) or len(cpsg_r) != len(cpsg_names) for cpsg_r in cpsg_m):
+        cpsg_dim = max((len(cpsg_r) for cpsg_r in cpsg_m if isinstance(cpsg_r, list)), default=0)
+        cpsg_bad.append(f"released pearson block declares {len(cpsg_names)} columns but carries an {len(cpsg_m)}x{cpsg_dim} matrix")
+    elif any(n not in cpsg_syn.columns for n in cpsg_names):
+        cpsg_absent.append("a correlated column is absent from the synthetic frame")
+    elif any(cpsg_class[n] not in ("integer", "float") for n in cpsg_names):
+        # REASONING: the synthetic column is under validation, so one outside the
+        # integer and float classes is a [FAIL]; polars would silently coerce it and R's
+        # cor() would raise.
+        cpsg_bad.append(f"column '{cpsg_esc[[n for n in cpsg_names if cpsg_class[n] not in ('integer', 'float')][0]]}' is correlated in the report but not numeric in the synthetic frame")
+    else:
+        for cpsg_i in range(len(cpsg_names)):
+            for cpsg_j in range(cpsg_i + 1, len(cpsg_names)):
+                cpsg_target = cpsg_m[cpsg_i][cpsg_j]
+                # REASONING: a null or non-number coefficient is wrong-typed evidence.
+                if not (isinstance(cpsg_target, (int, float)) and not isinstance(cpsg_target, bool)
+                        and -cpsg_max_exact < cpsg_target < cpsg_max_exact):
+                    cpsg_absent.append(f"the released pearson matrix carries no usable coefficient for pair ({cpsg_esc[cpsg_names[cpsg_i]]}, {cpsg_esc[cpsg_names[cpsg_j]]})")
+                    continue
+                # ASSUMES: complete cases only (non-null, non-NaN on both sides), as R's
+                # cor(use = "complete.obs") — so the two blocks correlate the same rows.
+                cpsg_pair = cpsg_syn.select(pl.col(cpsg_names[cpsg_i]).cast(pl.Float64).alias("cpsg_x"),
+                                            pl.col(cpsg_names[cpsg_j]).cast(pl.Float64).alias("cpsg_y"))
+                cpsg_pair = cpsg_pair.filter(pl.col("cpsg_x").is_not_null() & pl.col("cpsg_y").is_not_null()
+                                             & pl.col("cpsg_x").is_not_nan() & pl.col("cpsg_y").is_not_nan())
+                cpsg_obs = None if cpsg_pair.height < 2 else cpsg_pair.select(pl.corr(pl.col("cpsg_x"), pl.col("cpsg_y"))).item()
+                if cpsg_obs is None or not math.isfinite(cpsg_obs):
+                    cpsg_absent.append(f"the synthetic pair ({cpsg_esc[cpsg_names[cpsg_i]]}, {cpsg_esc[cpsg_names[cpsg_j]]}) has no defined correlation")
+                    continue
+                cpsg_compared += 1
+                if abs(cpsg_obs - cpsg_target) > correlation_tolerance:
+                    cpsg_off.append(f"pair ({cpsg_esc[cpsg_names[cpsg_i]]}, {cpsg_esc[cpsg_names[cpsg_j]]}) deviates by {abs(cpsg_obs - cpsg_target):.4f}")
+    if len(cpsg_bad) > 0:
+        print(f"[FAIL] correlations_within_tolerance: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+        cps_gen["failed"] += 1
+    elif len(cpsg_absent) > 0:
+        print(f"[NOT VERIFIED] correlations_within_tolerance: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+        cps_gen["not_verified"] += 1
+    elif cpsg_compared == 0:
+        print(f"[NOT VERIFIED] correlations_within_tolerance: the available pearson block names {len(cpsg_names)} columns but 0 pairs were compared")
+        cps_gen["not_verified"] += 1
+    elif len(cpsg_off) > 0:
+        print(f"[WARNING] correlations_within_tolerance: {len(cpsg_off)} of {cpsg_compared} pairs outside the correlation_tolerance band +/-{correlation_tolerance:.4g} — {cpsg_off[0]}")
+        cps_gen["warning"] += 1
+    else:
+        print(f"[PASS] correlations_within_tolerance: {cpsg_compared} released pairs reproduced within the correlation_tolerance band +/-{correlation_tolerance:.4g}")
+        cps_gen["passed"] += 1
+
+# Check: every synthetic level lies inside the released level set (NON-DECLARABLE)
+# REASONING: compared through the canonical text form. The literal __OTHER__ is also
+# admissible where every source level was pooled away (levels: [] with n_levels_binned
+# > 0), for the reason given at suppressed_categories_absent.
+if cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] synthetic_levels_within_released_levels: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif len(cpsg_cat_cols) == 0:
+    print(f"[PASS] synthetic_levels_within_released_levels: 0 categorical columns declared at tier {cpsg_tier_label}, 0 level sets to police")
+    cps_gen["passed"] += 1
+else:
+    cpsg_bad = []
+    cpsg_absent = []
+    cpsg_checked = 0
+    cpsg_levels_seen = 0
+    for cpsg_entry in cpsg_cat_entries:
+        cpsg_name = cpsg_entry["name"]
+        if cpsg_entry["problem"] is not None:
+            cpsg_absent.append(cpsg_entry["problem"])
+            continue
+        if cpsg_name not in cpsg_syn.columns:
+            cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' is absent from the synthetic frame")
+            continue
+        if cpsg_name in cpsg_untextable:
+            cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' {cpsg_untextable_msg} — its levels cannot be compared")
+            continue
+        cpsg_checked += 1
+        cpsg_bool = cpsg_class[cpsg_name] == "boolean"
+        cpsg_released = set(cpsg_v.lower() if cpsg_bool and cpsg_v.lower() in ("true", "false") else cpsg_v
+                            for cpsg_v, _cpsg_c in cpsg_entry["levels"])
+        if len(cpsg_entry["levels"]) == 0 and cpsg_entry["binned"] is not None and cpsg_entry["binned"] > 0:
+            cpsg_released.add("__OTHER__")
+        cpsg_observed = list(cpsg_text_counts[cpsg_name])
+        cpsg_levels_seen += len(cpsg_observed)
+        cpsg_outside = [v for v in cpsg_observed if v not in cpsg_released]
+        if len(cpsg_outside) > 0:
+            cpsg_bad.append(f"column '{cpsg_esc[cpsg_name]}' carries {len(cpsg_outside)} synthetic levels outside the released set")
+    if len(cpsg_bad) > 0:
+        print(f"[FAIL] synthetic_levels_within_released_levels: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+        cps_gen["failed"] += 1
+    elif len(cpsg_absent) > 0:
+        print(f"[NOT VERIFIED] synthetic_levels_within_released_levels: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+        cps_gen["not_verified"] += 1
+    else:
+        print(f"[PASS] synthetic_levels_within_released_levels: {cpsg_checked} columns, {cpsg_levels_seen} distinct synthetic levels, all inside the released sets")
+        cps_gen["passed"] += 1
+
+# Check: synthetic identifiers are structurally shaped but value-free (NON-DECLARABLE)
+if cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] identifier_columns_value_free: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+elif len(cpsg_id_cols) == 0:
+    print(f"[PASS] identifier_columns_value_free: 0 identifier columns declared at tier {cpsg_tier_label}")
+    cps_gen["passed"] += 1
+else:
+    # ASSUMES: a released label is a string (the profiler's own shape); an entry that
+    # is not one cannot equal a synthetic identifier's canonical text, so it adds nothing.
+    # A boolean identifier column is compared with the labels case-insensitively, as
+    # the categorical checks compare a boolean column.
+    cpsg_released_values = set()
+    for cpsg_entry in cpsg_cat_entries:
+        for cpsg_v, _cpsg_c in cpsg_entry["levels"]:
+            cpsg_released_values.add(cpsg_v)
+    cpsg_released_bool = set(cpsg_v.lower() if cpsg_v.lower() in ("true", "false") else cpsg_v for cpsg_v in cpsg_released_values)
+    cpsg_bad = []
+    cpsg_absent = []
+    cpsg_checked = 0
+    for cpsg_col in cpsg_id_cols:
+        cpsg_name = cpsg_col.get("name")
+        if not isinstance(cpsg_name, str):
+            cpsg_absent.append("an identifier column record carries no string name")
+            continue
+        if cpsg_name not in cpsg_syn.columns:
+            cpsg_absent.append(f"identifier column '{cpsg_esc[cpsg_name]}' is absent from the synthetic frame")
+            continue
+        if cpsg_name in cpsg_untextable:
+            cpsg_bad.append(f"identifier column '{cpsg_esc[cpsg_name]}' {cpsg_untextable_msg}")
+            continue
+        cpsg_checked += 1
+        cpsg_counts = cpsg_text_counts[cpsg_name]
+        if any(cpsg_n > 1 for cpsg_n in cpsg_counts.values()):
+            cpsg_bad.append(f"identifier column '{cpsg_esc[cpsg_name]}' is not unique across rows")
+        cpsg_against = cpsg_released_bool if cpsg_class[cpsg_name] == "boolean" else cpsg_released_values
+        if len(set(cpsg_counts) & cpsg_against) > 0:
+            cpsg_bad.append(f"identifier column '{cpsg_esc[cpsg_name]}' reuses a value from a released level set")
+    if len(cpsg_bad) > 0:
+        print(f"[FAIL] identifier_columns_value_free: {cpsg_bad[0]}" + (f" (+{len(cpsg_bad) - 1} more)" if len(cpsg_bad) > 1 else ""))
+        cps_gen["failed"] += 1
+    elif len(cpsg_absent) > 0:
+        print(f"[NOT VERIFIED] identifier_columns_value_free: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+        cps_gen["not_verified"] += 1
+    else:
+        print(f"[PASS] identifier_columns_value_free: {cpsg_checked} identifier columns, all-unique scaffolds, 0 released values reused")
+        cps_gen["passed"] += 1
+
+# Check: per-column null rates reproduce the reported missingness
+if "missingness_within_tolerance" in not_applicable:
+    print(f"[SKIPPED] missingness_within_tolerance: {not_applicable['missingness_within_tolerance']}")
+    cps_gen["skipped"] += 1
+elif "missingness_within_tolerance" in cpsg_empty_reason:
+    print("[NOT VERIFIED] missingness_within_tolerance: declared not_applicable with an empty reason")
+    cps_gen["not_verified"] += 1
+elif cpsg_syn is None or cpsg_report is None:
+    print(f"[NOT VERIFIED] missingness_within_tolerance: {cpsg_inputs_error}")
+    cps_gen["not_verified"] += 1
+else:
+    cpsg_targets = [] if cpsg_columns is None else [c for c in cpsg_columns if "missing_rate" in c]
+    if len(cpsg_targets) == 0:
+        print(f"[SKIPPED] missingness_within_tolerance: report declares 0 missingness targets at tier {cpsg_tier_label}")
+        cps_gen["skipped"] += 1
+    else:
+        cpsg_off = []
+        cpsg_absent = []
+        cpsg_compared = 0
+        for cpsg_col in cpsg_targets:
+            cpsg_name = cpsg_col.get("name")
+            cpsg_target = cpsg_col.get("missing_rate")
+            if not isinstance(cpsg_name, str):
+                cpsg_absent.append("a column record with a missingness target carries no string name")
+                continue
+            if cpsg_name not in cpsg_syn.columns:
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' has a missingness target but is absent from the synthetic frame")
+                continue
+            if not (isinstance(cpsg_target, (int, float)) and not isinstance(cpsg_target, bool)
+                    and -cpsg_max_exact < cpsg_target < cpsg_max_exact):
+                cpsg_absent.append(f"column '{cpsg_esc[cpsg_name]}' carries a non-numeric missing_rate target")
+                continue
+            cpsg_compared += 1
+            # ASSUMES: NaN is missing in a float column, as in the profiling spec and in
+            # R's is.na(); the null count is the stored one, which the R block reads from
+            # arrow, so the two agree for every column class.
+            cpsg_n_missing = cpsg_syn[cpsg_name].null_count()
+            if cpsg_class[cpsg_name] == "float":
+                cpsg_n_missing += int(cpsg_syn[cpsg_name].is_nan().sum())
+            cpsg_obs = cpsg_n_missing / cpsg_syn.height if cpsg_syn.height > 0 else 0.0
+            if abs(cpsg_obs - cpsg_target) > missingness_tolerance:
+                cpsg_off.append(f"column '{cpsg_esc[cpsg_name]}' null rate is off by {abs(cpsg_obs - cpsg_target):.4f}")
+        if len(cpsg_absent) > 0:
+            print(f"[NOT VERIFIED] missingness_within_tolerance: {cpsg_absent[0]}" + (f" (+{len(cpsg_absent) - 1} more)" if len(cpsg_absent) > 1 else ""))
+            cps_gen["not_verified"] += 1
+        elif len(cpsg_off) > 0:
+            print(f"[WARNING] missingness_within_tolerance: {len(cpsg_off)} of {cpsg_compared} columns outside +/-{missingness_tolerance:.4g} — {cpsg_off[0]}")
+            cps_gen["warning"] += 1
+        else:
+            print(f"[PASS] missingness_within_tolerance: {cpsg_compared} columns, all null rates within +/-{missingness_tolerance:.4g} of the reported rate")
+            cps_gen["passed"] += 1
+
+# Check: the generation seed is recorded and printed (NON-DECLARABLE)
+# REASONING: Reproducibility is not a fidelity nicety here — without the seed the
+# synthetic frame cannot be regenerated, so nothing downstream can be re-derived.
+# The one exception is a tier 4 import whose seed the user's own generation never
+# recorded: the researcher may authorize it at the gate, `seed_exception` then
+# points at that authorization in STATE, and the outcome is a [WARNING] — never a
+# [PASS]. The pointer's value is never printed. With neither a seed nor an exception
+# the outcome is [FAIL]. The check reads only the config, so it runs whether or not
+# the report parsed.
+# ASSUMES: seed_exception counts as set only when it is a string with visible
+# content (blank under the same Unicode whitespace set as the not_applicable
+# reasons); anything else is no authorization and leaves the seed rule in force.
+cpsg_exception_set = isinstance(seed_exception, str) and seed_exception.strip() != ""
+cpsg_seed_ok = (isinstance(seed, (int, float)) and not isinstance(seed, bool)
+                and -cpsg_max_exact < seed < cpsg_max_exact and seed == int(seed))
+if cpsg_exception_set and seed is not None:
+    print("[FAIL] seed_recorded: seed and seed_exception are both set — record one")
+    cps_gen["failed"] += 1
+elif cpsg_exception_set and not (cpsg_tier_ok and tier == 4):
+    print("[FAIL] seed_recorded: seed_exception is honored only at tier 4")
+    cps_gen["failed"] += 1
+elif cpsg_exception_set:
+    print("[WARNING] seed_recorded: tier 4 import with no recorded seed — researcher-authorized non-reproducible T4 exception (authorization recorded in STATE)")
+    cps_gen["warning"] += 1
+elif not cpsg_seed_ok:
+    print("[FAIL] seed_recorded: the generation seed is not an integer recorded in this script's config")
+    cps_gen["failed"] += 1
+else:
+    print(f"[PASS] seed_recorded: generation seed {int(seed)} present in the script config and printed to the log")
+    cps_gen["passed"] += 1
+
+# Count line, then verdict derived from the counts
+cpsg_checks_run = cps_gen["passed"] + cps_gen["warning"] + cps_gen["failed"]
+if cps_gen["failed"] > 0 or cps_gen["not_verified"] > 0 or cpsg_checks_run == 0:
+    cpsg_verdict = "FAILED"
+elif cps_gen["warning"] > 0:
+    cpsg_verdict = "PASSED WITH WARNINGS"
+else:
+    cpsg_verdict = "PASSED"
+
+print(f"\nChecks: {cps_gen['passed']} passed, {cps_gen['warning']} warnings, {cps_gen['failed']} failed, {cps_gen['not_verified']} not verified, {cps_gen['skipped']} skipped")
+print(f"CPS-GEN VALIDATION: {cpsg_verdict}")
+print("=" * 60)
+
+if cpsg_verdict == "FAILED":
+    raise ValueError("CPS-GEN FAILED - see details above")
+```
+
+**R:**
+```r
+# --- CPS-GEN Validation ---
+# INTENT: Verify the generated synthetic frame matches the profile it was built
+# from and fabricates nothing the report withheld.
+# REASONING: Same contract as the Python block. The synthetic parquet is read as an
+# arrow Table and each column is classified from its arrow type, so both languages
+# agree on which comparisons a column can take part in; arrow's round trip widens the
+# stored integer types, so the dtype check tests "integer, or float and whole" for a
+# declared integer rather than an exact storage width — an honest weaker claim, stated
+# here rather than hidden in a passing line, which the Python block applies too. Every
+# outcome line is byte-identical to the Python block's on the same inputs, and no
+# input stops the block before its count line and verdict: every `if ()` below is
+# handed a single TRUE/FALSE, never NULL, NA or a length-0 value.
+# ASSUMES: synthetic_path / report_path / seed / seed_exception / tier / the
+# tolerances / not_applicable are assigned in the `# --- Config ---` region below.
+library(jsonlite)
+library(arrow)
+
+# --- Config ---
+synthetic_path <- NULL       # the parquet the generation (T4: import) step wrote; NULL if it produced nothing
+report_path <- NULL          # the profile report the generation targeted
+seed <- NULL                 # the integer seed the generator ran with (T4: from the user's generation log); NULL if never recorded
+seed_exception <- NULL       # T4 only: non-empty pointer to the researcher-authorized missing-seed exception in STATE; never printed
+tier <- NULL                 # the tier the report was produced at (its settings.tier); 4 only for a T4 import
+numeric_tolerance <- 0.10    # relative tolerance per reproduced percentile, floor 1.0 absolute
+proportion_tolerance <- 0.02 # absolute tolerance on categorical level proportions
+correlation_tolerance <- 0.10 # the one absolute tolerance applied to every reproduced correlation
+missingness_tolerance <- 0.01 # absolute tolerance on per-column null rates
+not_applicable <- list()     # e.g. list(correlations_within_tolerance = "tier 2 — no correlations released")
+
+cat("\n")
+cat(strrep("=", 60), "\n")
+cat("CPS-GEN VALIDATION: SYNTHETIC GENERATION\n")
+cat(strrep("=", 60), "\n")
+
+cps_gen <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
+
+# INTENT: "Blank" means Unicode whitespace only — exactly the 29 code points Python's
+# str.strip() removes, so a reason or pointer made only of no-break or ideographic
+# spaces is blank in both languages.
+# REASONING: trimws()'s default strips only [ \t\r\n], and the PCRE class [\h\v] differs
+# from Python's set (it adds U+180E and lacks U+001C-U+001F), so the class is spelled
+# out. It is assembled with intToUtf8() because an R string literal cannot mix \x and
+# \u escapes; the UTF-8 pattern puts PCRE in UTF mode.
+cpsg_ws <- paste0("[", intToUtf8(c(0x9, 0xa, 0xb, 0xc, 0xd, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x85, 0xa0, 0x1680, 0x2000)),
+                  "-", intToUtf8(c(0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000)), "]")
+
+# INTENT: A declared skip without a reason is indistinguishable from a silent one, so
+# it is dropped — but the key stays visible to the two sweeps below, so an empty
+# reason cannot be used to smuggle a declaration past the non-declarable or
+# unrecognized-key gates. Keys sort by code point (radix), as Python's sorted() does.
+cpsg_declared_keys <- names(not_applicable)
+if (is.null(cpsg_declared_keys)) cpsg_declared_keys <- character(0)
+cpsg_declared_keys <- sort(cpsg_declared_keys, method = "radix")
+na_keep <- character(0)
+for (k in cpsg_declared_keys) {
+  v <- not_applicable[[k]]
+  if (is.character(v) && length(v) == 1 && !is.na(v) && nzchar(trimws(v, whitespace = cpsg_ws))) na_keep <- c(na_keep, k)
+}
+not_applicable <- not_applicable[na_keep]
+# INTENT: Remember which declarable keys were dropped for an empty reason, so the
+# check they name reports [NOT VERIFIED] rather than silently running.
+# REASONING: The author declared the check inapplicable; running it anyway and
+# printing [PASS] would answer a question they explicitly withdrew. The reason is
+# the evidence, and there is none — so the outcome is "not verified", not "passed".
+cpsg_empty_reason <- setdiff(cpsg_declared_keys, na_keep)
+
+cpsg_non_declarable <- c("suppressed_categories_absent", "synthetic_levels_within_released_levels",
+                         "identifier_columns_value_free", "seed_recorded")
+for (cpsg_key in cpsg_non_declarable) {
+  if (cpsg_key %in% cpsg_declared_keys) {
+    cat(sprintf("[FAIL] %s: non-declarable check declared not_applicable under key '%s'\n",
+                cpsg_key, cpsg_key))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+    not_applicable[[cpsg_key]] <- NULL
+  }
+}
+
+# INTENT: A not_applicable key that names no check of this block is a silent no-op.
+# REASONING: A typo'd or stale key would otherwise declare nothing and be ignored,
+# leaving the author believing a check was skipped when it in fact ran (or the
+# reverse). Naming it once is the only way the log can carry the discrepancy.
+cpsg_declarable <- c("row_count_matches", "column_set_and_dtypes",
+                     "numeric_marginals_within_tolerance",
+                     "categorical_proportions_within_tolerance",
+                     "correlations_within_tolerance", "missingness_within_tolerance")
+for (cpsg_key in cpsg_declared_keys) {
+  if (cpsg_key %in% cpsg_non_declarable || cpsg_key %in% cpsg_declarable) next
+  cat(sprintf("[FAIL] not_applicable: unrecognized key '%s' (declarable keys: %s)\n",
+              cpsg_key, paste(cpsg_declarable, collapse = ", ")))
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+  not_applicable[[cpsg_key]] <- NULL
+}
+
+cpsg_parse_error <- "report did not parse as JSON (parser message withheld: it can quote report content)"
+cpsg_report <- NULL
+cpsg_report_error <- NULL
+cpsg_report_strings <- character(0)
+if (is.null(report_path)) {
+  cpsg_report_error <- "report_path is not set — the generation target is unknown"
+} else if (!(file.exists(report_path) && !dir.exists(report_path))) {
+  cpsg_report_error <- sprintf("no file at report_path '%s'", report_path)
+} else {
+  # REASONING: Parsing is strict and identical to CPS-INTAKE and to the Python block.
+  # jsonlite already rejects the non-JSON literals NaN / Infinity / -Infinity. It
+  # keeps every duplicate object key as a repeated name, at any depth, where Python's
+  # dict would keep only the last — so the sweep below makes a repeat a parse error in
+  # both languages. Nesting deeper than 64 levels is a parse error as well, with the
+  # same cap and level count as CPS-INTAKE, and so is a number token longer than 64
+  # characters (scan below). The parser's own message is withheld: it can quote
+  # report text.
+  # INTENT: Refuse, before the parser runs, every input the two parsers would read
+  # differently: a leading UTF-8 byte-order mark (jsonlite accepts it with a warning,
+  # json.loads refuses it), a NUL byte (R's text reader would stop at it), invalid
+  # UTF-8, an escaped NUL (jsonlite cuts the string there) and an unpaired surrogate
+  # escape (jsonlite replaces it). The bytes are read whole and parsed as text with
+  # parse_json(), which never treats its input as a path or URL.
+  cpsg_text <- NULL
+  cpsg_raw <- try(readBin(report_path, what = "raw", n = file.info(report_path)$size), silent = TRUE)
+  if (!inherits(cpsg_raw, "try-error") &&
+      !(length(cpsg_raw) >= 3 && identical(cpsg_raw[1:3], as.raw(c(0xef, 0xbb, 0xbf)))) &&
+      !any(cpsg_raw == as.raw(0))) {
+    cpsg_text <- rawToChar(cpsg_raw)
+    Encoding(cpsg_text) <- "UTF-8"
+    if (!validUTF8(cpsg_text)) cpsg_text <- NULL
+  }
+  if (!is.null(cpsg_text)) {
+    # INTENT: Walk the escape sequences left to right, as the Python block does. An
+    # escaped backslash is one token, so the text `\\u0000` is not an escape.
+    # ASSUMES: a \u escape is exactly six characters, so a surrogate pair is a high
+    # escape immediately followed by a low one.
+    cpsg_m <- gregexpr("\\\\(?:u[0-9a-fA-F]{4}|[^u])", cpsg_text, perl = TRUE)[[1]]
+    cpsg_pos <- if (cpsg_m[1] == -1L) integer(0) else as.integer(cpsg_m)
+    cpsg_toks <- if (cpsg_m[1] == -1L) character(0) else regmatches(cpsg_text, list(cpsg_m))[[1]]
+    cpsg_cps <- rep(-1, length(cpsg_toks))
+    cpsg_is_u <- substr(cpsg_toks, 2, 2) == "u"
+    cpsg_cps[cpsg_is_u] <- strtoi(substr(cpsg_toks[cpsg_is_u], 3, 6), 16L)
+    for (cpsg_i in seq_along(cpsg_toks)) {
+      cpsg_cp <- cpsg_cps[cpsg_i]
+      cpsg_hi_ok <- cpsg_i < length(cpsg_toks) && cpsg_pos[cpsg_i + 1L] == cpsg_pos[cpsg_i] + 6L &&
+        cpsg_cps[cpsg_i + 1L] >= 0xDC00 && cpsg_cps[cpsg_i + 1L] <= 0xDFFF
+      cpsg_lo_ok <- cpsg_i > 1L && cpsg_pos[cpsg_i - 1L] == cpsg_pos[cpsg_i] - 6L &&
+        cpsg_cps[cpsg_i - 1L] >= 0xD800 && cpsg_cps[cpsg_i - 1L] <= 0xDBFF
+      if (cpsg_cp == 0 || (cpsg_cp >= 0xD800 && cpsg_cp <= 0xDBFF && !cpsg_hi_ok) ||
+          (cpsg_cp >= 0xDC00 && cpsg_cp <= 0xDFFF && !cpsg_lo_ok)) {
+        cpsg_text <- NULL
+        break
+      }
+    }
+  }
+  if (!is.null(cpsg_text)) {
+    # INTENT: Refuse any JSON number token longer than 64 characters (sign, digits,
+    # fraction and exponent counted together) outside strings, as the Python block and
+    # CPS-INTAKE do.
+    # REASONING: jsonlite reads an integer past Python's 4300-digit conversion limit as
+    # Inf and parses on, where Python refuses it, so the verdicts would split. A
+    # profiler never writes a number near 64 characters. The pattern is the Python
+    # block's: each string is matched whole first, so digits inside one never count.
+    cpsg_nm <- gregexpr('(?s)"[^"\\\\]*(?:\\\\.[^"\\\\]*)*"|[-+.0-9eE]+', cpsg_text, perl = TRUE)[[1]]
+    cpsg_ntoks <- if (cpsg_nm[1] == -1L) character(0) else regmatches(cpsg_text, list(cpsg_nm))[[1]]
+    if (any(substr(cpsg_ntoks, 1, 1) != "\"" & nchar(cpsg_ntoks) > 64)) cpsg_text <- NULL
+  }
+  cpsg_parsed <- if (is.null(cpsg_text)) NULL else try(jsonlite::parse_json(cpsg_text, simplifyVector = FALSE), silent = TRUE)
+  if (is.null(cpsg_text) || inherits(cpsg_parsed, "try-error")) {
+    cpsg_report_error <- cpsg_parse_error
+  } else {
+    # INTENT: Breadth-first sweep over every container in the tree that refuses a
+    # duplicate object name and any container nested deeper than 64 levels, counting
+    # the top-level object as level 1; an array is an unnamed list, an object a named
+    # one (an empty object has names() of length 0, never NULL), and each is one level.
+    # The sweep also collects every key and string value, so any report text a line
+    # prints can be escaped (see the escape table below).
+    # REASONING: The two parsers give up at different depths (jsonlite's own limit,
+    # Python's recursion limit), so between those limits one block judged a file the
+    # other refused. The cap is CPS-INTAKE's, so the outcome depends on the file, not
+    # on the parser or the block.
+    cpsg_max_depth <- 64L
+    cpsg_queue <- list(cpsg_parsed)
+    cpsg_queue_depth <- 1L
+    cpsg_qi <- 1L
+    cpsg_refused <- FALSE
+    while (cpsg_qi <= length(cpsg_queue) && !cpsg_refused) {
+      cpsg_node <- cpsg_queue[[cpsg_qi]]
+      cpsg_d <- cpsg_queue_depth[cpsg_qi]
+      cpsg_qi <- cpsg_qi + 1L
+      if (is.list(cpsg_node)) {
+        if (cpsg_d > cpsg_max_depth || (!is.null(names(cpsg_node)) && anyDuplicated(names(cpsg_node)) > 0)) cpsg_refused <- TRUE
+        if (!is.null(names(cpsg_node))) cpsg_report_strings <- c(cpsg_report_strings, names(cpsg_node))
+        cpsg_queue <- c(cpsg_queue, unname(cpsg_node))
+        cpsg_queue_depth <- c(cpsg_queue_depth, rep(cpsg_d + 1L, length(cpsg_node)))
+      } else if (is.character(cpsg_node)) {
+        cpsg_report_strings <- c(cpsg_report_strings, cpsg_node)
+      }
+    }
+    if (cpsg_refused) {
+      cpsg_report_error <- cpsg_parse_error
+    } else if (!is.list(cpsg_parsed) || is.null(names(cpsg_parsed))) {
+      cpsg_report_error <- "report parsed, but its top level is not a JSON object"
+    } else {
+      cpsg_report <- cpsg_parsed
+    }
+  }
+}
+
+# INTENT: Read the synthetic parquet as an arrow Table and keep, per column, its name,
+# its class, its stored null count and (for the classes a check reads) its values.
+# REASONING: The classes are the Python block's: text = string; text_dict = a
+# dictionary-encoded string (polars Categorical / Enum); integer = 8- to 64-bit signed
+# or unsigned; float = 32- or 64-bit; boolean. Every other arrow type (decimal, half
+# float, date, time, timestamp, duration, binary, nested, null) is "other" — arrow
+# reads a half float as its raw bits and a decimal as a double, so the two readers
+# would disagree on its values — and no check compares an "other" column's values.
+# Columns are converted one at a time, never through as.data.frame(): a polars
+# Categorical (uint32 dictionary indices) does not convert to a factor, so a
+# dictionary-encoded string is cast to plain strings on the arrow side first. A
+# repeated column name is refused as unreadable, as the Python block refuses it from
+# the raw parquet schema (polars alone would keep one of the repeats).
+cpsg_syn <- NULL
+cpsg_syn_error <- NULL
+cpsg_syn_names <- character(0)
+cpsg_syn_class <- character(0)
+cpsg_syn_nulls <- numeric(0)
+cpsg_syn_nrow <- 0
+if (is.null(synthetic_path)) {
+  cpsg_syn_error <- "synthetic_path is not set — generation produced no file"
+} else if (!(file.exists(synthetic_path) && !dir.exists(synthetic_path))) {
+  cpsg_syn_error <- sprintf("no file at synthetic_path '%s'", synthetic_path)
+} else {
+  cpsg_read <- try({
+    cpsg_tbl <- arrow::read_parquet(synthetic_path, as_data_frame = FALSE)
+    cpsg_syn_names <- names(cpsg_tbl)
+    if (anyDuplicated(cpsg_syn_names) > 0) stop("repeated column name")
+    cpsg_syn_nrow <- as.numeric(cpsg_tbl$num_rows)
+    cpsg_syn_class <- character(length(cpsg_syn_names))
+    cpsg_syn_nulls <- numeric(length(cpsg_syn_names))
+    cpsg_vals_list <- vector("list", length(cpsg_syn_names))
+    for (cpsg_i in seq_along(cpsg_syn_names)) {
+      cpsg_arr <- cpsg_tbl$column(cpsg_i - 1L)
+      cpsg_ty <- cpsg_arr$type$ToString()
+      cpsg_k <- if (cpsg_ty %in% c("string", "large_string", "string_view")) {
+        "text"
+      } else if (startsWith(cpsg_ty, "dictionary<values=string,") || startsWith(cpsg_ty, "dictionary<values=large_string,") ||
+                 startsWith(cpsg_ty, "dictionary<values=string_view,")) {
+        "text_dict"
+      } else if (cpsg_ty %in% c("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")) {
+        "integer"
+      } else if (cpsg_ty %in% c("float", "double")) {
+        "float"
+      } else if (cpsg_ty == "bool") {
+        "boolean"
+      } else {
+        "other"
+      }
+      cpsg_syn_class[cpsg_i] <- cpsg_k
+      cpsg_syn_nulls[cpsg_i] <- as.numeric(cpsg_arr$null_count)
+      if (cpsg_k == "text_dict") {
+        cpsg_vals_list[[cpsg_i]] <- cpsg_arr$cast(arrow::utf8())$as_vector()
+      } else if (cpsg_k != "other") {
+        cpsg_vals_list[[cpsg_i]] <- suppressWarnings(cpsg_arr$as_vector())
+      }
+    }
+    cpsg_vals_list
+  }, silent = TRUE)
+  if (inherits(cpsg_read, "try-error")) {
+    cpsg_syn_error <- "the synthetic parquet did not read (reader message withheld: the two readers word it differently)"
+    cpsg_syn_names <- character(0)
+    cpsg_syn_class <- character(0)
+  } else {
+    cpsg_syn <- cpsg_read
+  }
+}
+# INTENT: The columns whose values cannot be compared with released labels as text: an
+# "other" column, and an integer column holding a magnitude of 2^53 or more (arrow
+# hands a large 64-bit integer to R as a double, so its text would no longer be exact).
+cpsg_untextable <- character(0)
+for (cpsg_i in seq_along(cpsg_syn_names)) {
+  if (cpsg_syn_class[cpsg_i] == "other" ||
+      (cpsg_syn_class[cpsg_i] == "integer" && isTRUE(any(abs(suppressWarnings(as.numeric(cpsg_syn[[cpsg_i]]))) >= 2^53, na.rm = TRUE)))) {
+    cpsg_untextable <- c(cpsg_untextable, cpsg_syn_names[cpsg_i])
+  }
+}
+cpsg_untextable_msg <- "holds values outside the text-comparable types (string, categorical, integer below 2^53, float, boolean)"
+
+# INTENT: Escape every report- or frame-derived string before it reaches an outcome line,
+# exactly as the Python block does: a character outside printable ASCII (0x20-0x7E)
+# prints as \uXXXX in lowercase hex, and one above U+FFFF as its UTF-16 surrogate pair.
+# REASONING: A column name or key carrying a newline or control character could otherwise
+# forge an extra outcome line, and a non-ASCII one could fail the write on a console that
+# cannot encode it. The table covers every key and string value of the parsed report and
+# every synthetic column name; each print site looks its text up with match(), which —
+# unlike [[ ]] — also finds an empty name.
+cpsg_esc_from <- unique(c(cpsg_report_strings, cpsg_syn_names))
+cpsg_esc_to <- character(length(cpsg_esc_from))
+for (cpsg_i in seq_along(cpsg_esc_from)) {
+  cpsg_cp <- utf8ToInt(enc2utf8(cpsg_esc_from[cpsg_i]))
+  if (length(cpsg_cp) == 0 || anyNA(cpsg_cp)) {
+    cpsg_esc_to[cpsg_i] <- if (length(cpsg_cp) == 0) "" else "\\ufffd"
+    next
+  }
+  cpsg_esc_to[cpsg_i] <- paste(ifelse(cpsg_cp >= 32L & cpsg_cp <= 126L, intToUtf8(cpsg_cp, multiple = TRUE),
+                                      ifelse(cpsg_cp < 65536L, sprintf("\\u%04x", cpsg_cp),
+                                             sprintf("\\u%04x\\u%04x", 55296L + (cpsg_cp - 65536L) %/% 1024L,
+                                                     56320L + (cpsg_cp - 65536L) %% 1024L))), collapse = "")
+}
+
+# INTENT: One numeric model for both languages, shared with CPS-INTAKE: a JSON number
+# is usable only when it is finite and |v| < 2^53. Whole numbers are tested as
+# v == floor(v), never via as.integer(), which turns 3e9 into NA and would hand
+# `if ()` an NA.
+cpsg_max_exact <- 2^53
+
+# INTENT: Bind the report's parts once. An object is a named list and an array an
+# unnamed one, tested exactly as the Python block tests dict / list.
+cpsg_columns <- NULL
+cpsg_columns_unusable <- 0L
+cpsg_row_count <- NULL
+cpsg_relationships <- NULL
+cpsg_report_tier <- NULL
+if (!is.null(cpsg_report)) {
+  cpsg_x <- cpsg_report[["columns"]]
+  if (is.list(cpsg_x) && is.null(names(cpsg_x))) {
+    cpsg_columns <- list()
+    for (cpsg_c in cpsg_x) {
+      if (is.list(cpsg_c) && !is.null(names(cpsg_c))) cpsg_columns <- c(cpsg_columns, list(cpsg_c))
+    }
+    cpsg_columns_unusable <- length(cpsg_x) - length(cpsg_columns)
+  }
+  cpsg_x <- cpsg_report[["dataset"]]
+  if (is.list(cpsg_x) && !is.null(names(cpsg_x))) cpsg_row_count <- cpsg_x[["row_count"]]
+  cpsg_x <- cpsg_report[["relationships"]]
+  if (is.list(cpsg_x) && !is.null(names(cpsg_x))) cpsg_relationships <- cpsg_x
+  cpsg_x <- cpsg_report[["settings"]]
+  if (is.list(cpsg_x) && !is.null(names(cpsg_x))) cpsg_report_tier <- cpsg_x[["tier"]]
+}
+# INTENT: A role counts only as a single string and an identifier flag only as a
+# single TRUE, as in Python (R's list("numeric") == "numeric" would coerce to TRUE).
+cpsg_cat_cols <- list()
+cpsg_num_cols <- list()
+cpsg_id_cols <- list()
+cpsg_rated <- list()
+for (cpsg_col in if (is.null(cpsg_columns)) list() else cpsg_columns) {
+  cpsg_role <- cpsg_col[["role"]]
+  if (!(is.character(cpsg_role) && length(cpsg_role) == 1 && !is.na(cpsg_role))) cpsg_role <- ""
+  if (cpsg_role == "numeric") cpsg_num_cols <- c(cpsg_num_cols, list(cpsg_col))
+  if (cpsg_role == "categorical") cpsg_cat_cols <- c(cpsg_cat_cols, list(cpsg_col))
+  if (cpsg_role == "identifier" || isTRUE(cpsg_col[["is_identifier"]])) {
+    cpsg_id_cols <- c(cpsg_id_cols, list(cpsg_col))
+  }
+  if ("missing_rate" %in% names(cpsg_col)) cpsg_rated <- c(cpsg_rated, list(cpsg_col))
+}
+cpsg_inputs_error <- if (!is.null(cpsg_report_error)) cpsg_report_error else cpsg_syn_error
+# INTENT: Column names count only as single strings; a record without one is counted.
+cpsg_declared_names <- character(0)
+cpsg_unnamed <- cpsg_columns_unusable
+for (cpsg_col in if (is.null(cpsg_columns)) list() else cpsg_columns) {
+  cpsg_name <- cpsg_col[["name"]]
+  if (is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name)) {
+    cpsg_declared_names <- c(cpsg_declared_names, cpsg_name)
+  } else {
+    cpsg_unnamed <- cpsg_unnamed + 1L
+  }
+}
+cpsg_row_count_ok <- is.numeric(cpsg_row_count) && length(cpsg_row_count) == 1 &&
+  !is.na(cpsg_row_count) && abs(cpsg_row_count) < cpsg_max_exact &&
+  cpsg_row_count == floor(cpsg_row_count)
+
+# INTENT: Resolve the tier whose release rules apply. Config `tier` is the tier the
+# report was produced at (its settings.tier), so tiers 1-3 come from the config; at
+# tier 4 (local synthesis, imported here) the report's own settings.tier governs.
+# REASONING: as in the Python block, correlations_within_tolerance (the one check whose
+# outcome the tier decides) fails when a configured 1-3 differs from a whole-number 1-3
+# the report declares, so a mis-copied tier is caught rather than misread.
+cpsg_tier_ok <- is.numeric(tier) && length(tier) == 1 && !is.na(tier) && tier %in% c(1, 2, 3, 4)
+cpsg_report_tier_ok <- is.numeric(cpsg_report_tier) && length(cpsg_report_tier) == 1 &&
+  !is.na(cpsg_report_tier) && cpsg_report_tier %in% c(1, 2, 3)
+cpsg_release_tier <- NULL
+if (cpsg_tier_ok && tier != 4) {
+  cpsg_release_tier <- as.integer(tier)
+} else if (cpsg_tier_ok && cpsg_report_tier_ok) {
+  cpsg_release_tier <- as.integer(cpsg_report_tier)
+}
+cpsg_tier_label <- if (!is.null(cpsg_release_tier)) {
+  as.character(cpsg_release_tier)
+} else if (is.null(tier)) {
+  "unrecorded"
+} else if (cpsg_tier_ok) {
+  "4 (report tier unrecorded)"
+} else {
+  "invalid"
+}
+
+# INTENT: Validate every categorical record's released level set once (same rules and
+# same 0-based level index as the Python block), so the checks that read it agree on
+# what is usable and none can hand `if ()` a NULL count or index a scalar entry.
+cpsg_cat_entries <- list()
+for (cpsg_col in cpsg_cat_cols) {
+  cpsg_name <- cpsg_col[["name"]]
+  cpsg_name_ok <- is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name)
+  cpsg_blk <- cpsg_col[["categorical"]]
+  cpsg_lvls <- if (is.list(cpsg_blk) && !is.null(names(cpsg_blk))) cpsg_blk[["levels"]] else NULL
+  cpsg_lvls_ok <- is.list(cpsg_lvls) && is.null(names(cpsg_lvls))
+  cpsg_entry <- list(name = if (cpsg_name_ok) cpsg_name else NA_character_, problem = NA_character_,
+                     values = character(0), counts = numeric(0), n = NA_real_, binned = NA_real_)
+  if (!cpsg_name_ok) {
+    cpsg_entry$problem <- "a categorical column record carries no string name"
+  } else if (!cpsg_lvls_ok) {
+    cpsg_entry$problem <- sprintf("column '%s' declares role categorical but has no levels array to compare against",
+                                  cpsg_esc_to[match(cpsg_name, cpsg_esc_from)])
+  }
+  if (cpsg_lvls_ok) {
+    for (cpsg_i in seq_along(cpsg_lvls)) {
+      cpsg_lv <- cpsg_lvls[[cpsg_i]]
+      cpsg_ok <- FALSE
+      if (is.list(cpsg_lv) && !is.null(names(cpsg_lv))) {
+        cpsg_v <- cpsg_lv[["value"]]
+        cpsg_cnt <- cpsg_lv[["count"]]
+        cpsg_ok <- is.character(cpsg_v) && length(cpsg_v) == 1 && !is.na(cpsg_v) &&
+          is.numeric(cpsg_cnt) && length(cpsg_cnt) == 1 && !is.na(cpsg_cnt) &&
+          cpsg_cnt >= 0 && cpsg_cnt < cpsg_max_exact && cpsg_cnt == floor(cpsg_cnt)
+      }
+      if (cpsg_ok) {
+        cpsg_entry$values <- c(cpsg_entry$values, cpsg_v)
+        cpsg_entry$counts <- c(cpsg_entry$counts, as.numeric(cpsg_cnt))
+      } else if (is.na(cpsg_entry$problem)) {
+        cpsg_entry$problem <- sprintf("column '%s' level index %d is not a string label with a whole-number count",
+                                      cpsg_esc_to[match(cpsg_name, cpsg_esc_from)], cpsg_i - 1L)
+      }
+    }
+    cpsg_x <- cpsg_blk[["n"]]
+    if (is.numeric(cpsg_x) && length(cpsg_x) == 1 && !is.na(cpsg_x) && cpsg_x > 0 &&
+        cpsg_x < cpsg_max_exact && cpsg_x == floor(cpsg_x)) cpsg_entry$n <- as.numeric(cpsg_x)
+    cpsg_x <- cpsg_blk[["n_levels_binned"]]
+    if (is.numeric(cpsg_x) && length(cpsg_x) == 1 && !is.na(cpsg_x) && cpsg_x >= 0 &&
+        cpsg_x < cpsg_max_exact && cpsg_x == floor(cpsg_x)) cpsg_entry$binned <- as.numeric(cpsg_x)
+  }
+  cpsg_cat_entries <- c(cpsg_cat_entries, list(cpsg_entry))
+}
+
+# INTENT: Reduce every synthetic column a check compares with released labels to one
+# canonical text per distinct value, with its count — the Python block's form, built
+# with the same printf formats.
+# REASONING: A string or categorical value compares as written; a whole-number value —
+# integer or float — is integer text (sprintf("%.0f", v + 0), so -0 is "0"); any other
+# finite float is %.17g text and an infinity inf / -inf; NaN is missing (is.na()); a
+# boolean is true / false. Counting by match() + tabulate() avoids table()'s name
+# lookup, which cannot address an empty-string label.
+cpsg_tc_names <- character(0)
+cpsg_tc_values <- list()
+cpsg_tc_counts <- list()
+cpsg_text_names <- character(0)
+for (cpsg_entry in cpsg_cat_entries) {
+  if (!is.na(cpsg_entry$name)) cpsg_text_names <- c(cpsg_text_names, cpsg_entry$name)
+}
+for (cpsg_col in cpsg_id_cols) {
+  cpsg_name <- cpsg_col[["name"]]
+  if (is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name)) cpsg_text_names <- c(cpsg_text_names, cpsg_name)
+}
+for (cpsg_name in sort(unique(cpsg_text_names), method = "radix")) {
+  cpsg_idx <- match(cpsg_name, cpsg_syn_names)
+  if (is.null(cpsg_syn) || is.na(cpsg_idx) || cpsg_name %in% cpsg_untextable) next
+  cpsg_k <- cpsg_syn_class[cpsg_idx]
+  cpsg_vec <- cpsg_syn[[cpsg_idx]]
+  cpsg_vec <- cpsg_vec[!is.na(cpsg_vec)]
+  cpsg_canon <- if (cpsg_k == "integer") {
+    sprintf("%.0f", suppressWarnings(as.numeric(cpsg_vec)) + 0)
+  } else if (cpsg_k == "float") {
+    ifelse(is.finite(cpsg_vec) & cpsg_vec == floor(cpsg_vec), sprintf("%.0f", cpsg_vec + 0),
+           ifelse(is.finite(cpsg_vec), sprintf("%.17g", cpsg_vec), ifelse(cpsg_vec > 0, "inf", "-inf")))
+  } else if (cpsg_k == "boolean") {
+    ifelse(cpsg_vec, "true", "false")
+  } else {
+    as.character(cpsg_vec)
+  }
+  cpsg_u <- unique(cpsg_canon)
+  cpsg_tc_names <- c(cpsg_tc_names, cpsg_name)
+  cpsg_tc_values <- c(cpsg_tc_values, list(cpsg_u))
+  cpsg_tc_counts <- c(cpsg_tc_counts, list(tabulate(match(cpsg_canon, cpsg_u), nbins = length(cpsg_u))))
+}
+
+# Check: the synthetic row count equals the count the report declares
+if ("row_count_matches" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] row_count_matches: %s\n", not_applicable[["row_count_matches"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("row_count_matches" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] row_count_matches: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] row_count_matches: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (!cpsg_row_count_ok) {
+  cat("[NOT VERIFIED] row_count_matches: dataset.row_count is absent or not a whole number — no target to match\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (cpsg_syn_nrow != cpsg_row_count) {
+  cat(sprintf("[FAIL] row_count_matches: synthetic has %s rows, the report declares %s\n",
+              format(cpsg_syn_nrow, big.mark = ",", scientific = FALSE, trim = TRUE),
+              format(cpsg_row_count, big.mark = ",", scientific = FALSE, trim = TRUE)))
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+} else {
+  cat(sprintf("[PASS] row_count_matches: %s synthetic rows == declared row_count %s\n",
+              format(cpsg_syn_nrow, big.mark = ",", scientific = FALSE, trim = TRUE),
+              format(cpsg_row_count, big.mark = ",", scientific = FALSE, trim = TRUE)))
+  cps_gen["passed"] <- cps_gen["passed"] + 1L
+}
+
+# Check: column set and dtypes match the report's declared schema
+if ("column_set_and_dtypes" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] column_set_and_dtypes: %s\n", not_applicable[["column_set_and_dtypes"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("column_set_and_dtypes" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] column_set_and_dtypes: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] column_set_and_dtypes: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_columns) || length(cpsg_columns) == 0) {
+  cat("[NOT VERIFIED] column_set_and_dtypes: the report declares no columns to match against\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (cpsg_unnamed > 0) {
+  # REASONING: a record with no string name is report evidence of the wrong type —
+  # the declared schema it belongs to cannot be matched, so nothing is concluded.
+  cat(sprintf("[NOT VERIFIED] column_set_and_dtypes: %d of %d column records carry no string name — the declared schema cannot be matched\n",
+              as.integer(cpsg_unnamed), as.integer(cpsg_columns_unusable + length(cpsg_columns))))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else {
+  cpsg_missing <- sort(unique(setdiff(cpsg_declared_names, cpsg_syn_names)), method = "radix")
+  cpsg_extra <- sort(unique(setdiff(cpsg_syn_names, cpsg_declared_names)), method = "radix")
+  cpsg_bad <- character(0)
+  if (length(cpsg_missing) > 0 || length(cpsg_extra) > 0) {
+    cpsg_bad <- c(cpsg_bad, sprintf("column set differs — missing [%s], unexpected [%s]",
+                                    paste(cpsg_esc_to[match(cpsg_missing, cpsg_esc_from)], collapse = ", "),
+                                    paste(cpsg_esc_to[match(cpsg_extra, cpsg_esc_from)], collapse = ", ")))
+  } else {
+    # REASONING: judged by the column class, as in the Python block: "string" needs a
+    # plain string column, "double" an integer or float column, "integer" an integer
+    # column or a float column whose values are all whole.
+    for (cpsg_col in cpsg_columns) {
+      cpsg_name <- cpsg_col[["name"]]
+      cpsg_dtype <- cpsg_col[["dtype"]]
+      cpsg_idx <- match(cpsg_name, cpsg_syn_names)
+      cpsg_k <- cpsg_syn_class[cpsg_idx]
+      cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+      cpsg_dtype_ok <- is.character(cpsg_dtype) && length(cpsg_dtype) == 1 && !is.na(cpsg_dtype) &&
+        cpsg_dtype %in% c("integer", "double", "string")
+      if (!cpsg_dtype_ok) {
+        cpsg_bad <- c(cpsg_bad, sprintf("column '%s' declares an unrecognized dtype", cpsg_ename))
+      } else if (cpsg_dtype == "integer") {
+        cpsg_whole <- cpsg_k == "integer"
+        if (cpsg_k == "float") {
+          cpsg_v <- cpsg_syn[[cpsg_idx]]
+          cpsg_v <- cpsg_v[!is.na(cpsg_v)]
+          cpsg_whole <- all(is.finite(cpsg_v) & cpsg_v == floor(cpsg_v))
+        }
+        if (!cpsg_whole) {
+          cpsg_bad <- c(cpsg_bad, sprintf("column '%s' is not whole-numeric, the report declares integer", cpsg_ename))
+        }
+      } else if (cpsg_dtype == "double") {
+        if (!(cpsg_k %in% c("integer", "float"))) {
+          cpsg_bad <- c(cpsg_bad, sprintf("column '%s' is not numeric, the report declares double", cpsg_ename))
+        }
+      } else if (cpsg_k != "text") {
+        cpsg_bad <- c(cpsg_bad, sprintf("column '%s' is not a string column, the report declares string", cpsg_ename))
+      }
+    }
+  }
+  if (length(cpsg_bad) > 0) {
+    cat(sprintf("[FAIL] column_set_and_dtypes: %s%s\n", cpsg_bad[1],
+                if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+  } else {
+    cat(sprintf("[PASS] column_set_and_dtypes: %d declared columns, names and dtypes all matched\n",
+                length(cpsg_columns)))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: reproduced numeric percentiles sit within tolerance of the released grid
+if ("numeric_marginals_within_tolerance" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] numeric_marginals_within_tolerance: %s\n", not_applicable[["numeric_marginals_within_tolerance"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("numeric_marginals_within_tolerance" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] numeric_marginals_within_tolerance: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] numeric_marginals_within_tolerance: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else {
+  # REASONING: same partition as the Python block — no-percentile shapes (withheld,
+  # all-missing, constant) are not targets; a record with no name or no numeric block,
+  # or a percentiles field that is not an object, is counted as missing evidence.
+  cpsg_targets <- list()
+  cpsg_absent <- character(0)
+  for (cpsg_col in cpsg_num_cols) {
+    cpsg_name <- cpsg_col[["name"]]
+    cpsg_blk <- cpsg_col[["numeric"]]
+    if (!(is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name))) {
+      cpsg_absent <- c(cpsg_absent, "a numeric column record carries no string name")
+    } else if (!(is.list(cpsg_blk) && !is.null(names(cpsg_blk)))) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' declares role numeric but has no numeric block",
+                                            cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]))
+    } else if ("percentiles" %in% names(cpsg_blk) &&
+               !(is.list(cpsg_blk[["percentiles"]]) && !is.null(names(cpsg_blk[["percentiles"]])))) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' carries a percentiles field that is not an object",
+                                            cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]))
+    } else if ("percentiles" %in% names(cpsg_blk)) {
+      cpsg_targets <- c(cpsg_targets, list(list(name = cpsg_name, grid = cpsg_blk[["percentiles"]])))
+    }
+  }
+  if (length(cpsg_targets) == 0 && length(cpsg_absent) == 0) {
+    cat(sprintf("[SKIPPED] numeric_marginals_within_tolerance: report declares 0 numeric distribution targets at tier %s\n",
+                cpsg_tier_label))
+    cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+  } else {
+    cpsg_compared <- 0L
+    cpsg_off <- character(0)
+    cpsg_bad <- character(0)
+    # INTENT: The grid's keys are a closed set fixed by the profiling spec; parse
+    # nothing that is not in it.
+    # REASONING: `as.numeric(sub("^p", "", key))` on an unvetted key coerces to NA with
+    # only a coercion warning, and the run then reports [NOT VERIFIED] "quantile came
+    # back NA" — blaming the quantile for a malformed report key. Naming the key is
+    # the finding.
+    # ASSUMES: the released grid is the spec's ordered percentile set (the small-n
+    # shape releases the p25/p50/p75 subset of it). quantile() type 7 over the non-NA
+    # values is the Python block's linear interpolation, so both print one line.
+    cpsg_pct_names <- c("p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99")
+    for (cpsg_t in cpsg_targets) {
+      cpsg_name <- cpsg_t[["name"]]
+      cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+      cpsg_idx <- match(cpsg_name, cpsg_syn_names)
+      if (is.na(cpsg_idx)) {
+        cpsg_absent <- c(cpsg_absent, sprintf("column '%s' has a released grid but is absent from the synthetic frame", cpsg_ename))
+        next
+      }
+      # REASONING: the synthetic column is under validation, so one outside the
+      # integer and float classes is a [FAIL] — quantile() on it would stop the block,
+      # or (decimal, half float) the two readers would see different values.
+      if (!(cpsg_syn_class[cpsg_idx] %in% c("integer", "float"))) {
+        cpsg_bad <- c(cpsg_bad, sprintf("column '%s' is not numeric in the synthetic frame — its released percentiles cannot be reproduced", cpsg_ename))
+        next
+      }
+      cpsg_vec <- suppressWarnings(as.numeric(cpsg_syn[[cpsg_idx]]))
+      cpsg_vals <- cpsg_vec[!is.na(cpsg_vec)]
+      if (length(cpsg_vals) == 0) {
+        cpsg_absent <- c(cpsg_absent, sprintf("column '%s' has a released grid but is entirely null in the synthetic frame", cpsg_ename))
+        next
+      }
+      cpsg_grid <- cpsg_t[["grid"]]
+      for (cpsg_k in names(cpsg_grid)) {
+        if (!(cpsg_k %in% cpsg_pct_names)) {
+          cpsg_bad <- c(cpsg_bad, sprintf("column '%s' percentile grid carries unrecognized key '%s'",
+                                          cpsg_ename, cpsg_esc_to[match(cpsg_k, cpsg_esc_from)]))
+          next
+        }
+        cpsg_target <- cpsg_grid[[cpsg_k]]
+        if (!(is.numeric(cpsg_target) && length(cpsg_target) == 1 && !is.na(cpsg_target) &&
+              abs(cpsg_target) < cpsg_max_exact)) {
+          cpsg_absent <- c(cpsg_absent, sprintf("column '%s' percentile %s target is not a usable number", cpsg_ename, cpsg_k))
+          next
+        }
+        cpsg_q <- as.numeric(sub("^p", "", cpsg_k)) / 100
+        cpsg_obs <- quantile(cpsg_vals, cpsg_q, names = FALSE, type = 7)
+        if (!is.finite(cpsg_obs)) {
+          cpsg_absent <- c(cpsg_absent, sprintf("column '%s' quantile %s came back empty", cpsg_ename, cpsg_k))
+          next
+        }
+        cpsg_compared <- cpsg_compared + 1L
+        if (abs(cpsg_obs - cpsg_target) > numeric_tolerance * max(abs(cpsg_target), 1)) {
+          cpsg_off <- c(cpsg_off, sprintf("column '%s' %s deviates by %.4g", cpsg_ename, cpsg_k,
+                                          abs(cpsg_obs - cpsg_target)))
+        }
+      }
+    }
+    if (length(cpsg_bad) > 0) {
+      cat(sprintf("[FAIL] numeric_marginals_within_tolerance: %s%s\n", cpsg_bad[1],
+                  if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+      cps_gen["failed"] <- cps_gen["failed"] + 1L
+    } else if (length(cpsg_absent) > 0) {
+      cat(sprintf("[NOT VERIFIED] numeric_marginals_within_tolerance: %s%s\n", cpsg_absent[1],
+                  if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+      cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+    } else if (cpsg_compared == 0) {
+      cat(sprintf("[NOT VERIFIED] numeric_marginals_within_tolerance: %d columns released a percentile grid but 0 percentile comparisons were made\n",
+                  length(cpsg_targets)))
+      cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+    } else if (length(cpsg_off) > 0) {
+      cat(sprintf("[WARNING] numeric_marginals_within_tolerance: %d of %d percentile comparisons outside the %.4g%% relative band — %s\n",
+                  length(cpsg_off), cpsg_compared, numeric_tolerance * 100, cpsg_off[1]))
+      cps_gen["warning"] <- cps_gen["warning"] + 1L
+    } else {
+      cat(sprintf("[PASS] numeric_marginals_within_tolerance: %d columns, %d percentile comparisons, all within the %.4g%% relative band\n",
+                  length(cpsg_targets), cpsg_compared, numeric_tolerance * 100))
+      cps_gen["passed"] <- cps_gen["passed"] + 1L
+    }
+  }
+}
+
+# Check: reproduced categorical proportions sit within tolerance of the released levels
+if ("categorical_proportions_within_tolerance" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] categorical_proportions_within_tolerance: %s\n", not_applicable[["categorical_proportions_within_tolerance"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("categorical_proportions_within_tolerance" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] categorical_proportions_within_tolerance: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] categorical_proportions_within_tolerance: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else {
+  # INTENT: An unusable level set is counted as missing evidence; a usable but empty
+  # one (every level suppressed) released no target.
+  cpsg_targets <- list()
+  cpsg_absent <- character(0)
+  for (cpsg_entry in cpsg_cat_entries) {
+    if (!is.na(cpsg_entry$problem)) {
+      cpsg_absent <- c(cpsg_absent, cpsg_entry$problem)
+    } else if (length(cpsg_entry$values) > 0) {
+      cpsg_targets <- c(cpsg_targets, list(cpsg_entry))
+    }
+  }
+  if (length(cpsg_targets) == 0 && length(cpsg_absent) == 0) {
+    cat(sprintf("[SKIPPED] categorical_proportions_within_tolerance: report declares 0 categorical level targets at tier %s\n",
+                cpsg_tier_label))
+    cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+  } else {
+    cpsg_compared <- 0L
+    cpsg_off <- character(0)
+    cpsg_bad <- character(0)
+    for (cpsg_entry in cpsg_targets) {
+      cpsg_name <- cpsg_entry$name
+      cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+      if (!(cpsg_name %in% cpsg_syn_names)) {
+        cpsg_absent <- c(cpsg_absent, sprintf("column '%s' has released levels but is absent from the synthetic frame", cpsg_ename))
+        next
+      }
+      if (cpsg_name %in% cpsg_untextable) {
+        cpsg_bad <- c(cpsg_bad, sprintf("column '%s' %s — its levels cannot be compared", cpsg_ename, cpsg_untextable_msg))
+        next
+      }
+      cpsg_denom <- cpsg_entry$n
+      if (is.na(cpsg_denom)) {
+        cpsg_absent <- c(cpsg_absent, sprintf("column '%s' categorical block carries no positive n to form proportions from", cpsg_ename))
+        next
+      }
+      # ASSUMES: levels are compared through the canonical text form above, which the
+      # Python block builds identically.
+      cpsg_ti <- match(cpsg_name, cpsg_tc_names)
+      cpsg_u <- cpsg_tc_values[[cpsg_ti]]
+      cpsg_n <- cpsg_tc_counts[[cpsg_ti]]
+      cpsg_obs_n <- sum(cpsg_n)
+      if (cpsg_obs_n == 0) {
+        cpsg_absent <- c(cpsg_absent, sprintf("column '%s' is entirely null in the synthetic frame", cpsg_ename))
+        next
+      }
+      cpsg_bool <- cpsg_syn_class[match(cpsg_name, cpsg_syn_names)] == "boolean"
+      for (cpsg_i in seq_along(cpsg_entry$values)) {
+        cpsg_key <- cpsg_entry$values[cpsg_i]
+        if (cpsg_bool && tolower(cpsg_key) %in% c("true", "false")) cpsg_key <- tolower(cpsg_key)
+        cpsg_hit <- match(cpsg_key, cpsg_u)
+        cpsg_target <- cpsg_entry$counts[cpsg_i] / cpsg_denom
+        cpsg_obs <- (if (is.na(cpsg_hit)) 0 else cpsg_n[cpsg_hit]) / cpsg_obs_n
+        cpsg_compared <- cpsg_compared + 1L
+        if (abs(cpsg_obs - cpsg_target) > proportion_tolerance) {
+          cpsg_off <- c(cpsg_off, sprintf("column '%s' has a level proportion off by %.4f", cpsg_ename,
+                                          abs(cpsg_obs - cpsg_target)))
+        }
+      }
+    }
+    if (length(cpsg_bad) > 0) {
+      cat(sprintf("[FAIL] categorical_proportions_within_tolerance: %s%s\n", cpsg_bad[1],
+                  if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+      cps_gen["failed"] <- cps_gen["failed"] + 1L
+    } else if (length(cpsg_absent) > 0) {
+      cat(sprintf("[NOT VERIFIED] categorical_proportions_within_tolerance: %s%s\n", cpsg_absent[1],
+                  if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+      cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+    } else if (cpsg_compared == 0) {
+      cat(sprintf("[NOT VERIFIED] categorical_proportions_within_tolerance: %d columns released levels but 0 level proportions were compared\n",
+                  length(cpsg_targets)))
+      cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+    } else if (length(cpsg_off) > 0) {
+      cat(sprintf("[WARNING] categorical_proportions_within_tolerance: %d of %d level proportions outside +/-%.4g — %s\n",
+                  length(cpsg_off), cpsg_compared, proportion_tolerance, cpsg_off[1]))
+      cps_gen["warning"] <- cps_gen["warning"] + 1L
+    } else {
+      cat(sprintf("[PASS] categorical_proportions_within_tolerance: %d columns, %d level proportions, all within +/-%.4g\n",
+                  length(cpsg_targets), cpsg_compared, proportion_tolerance))
+      cps_gen["passed"] <- cps_gen["passed"] + 1L
+    }
+  }
+}
+
+# Check: pooled/suppressed categories were not re-invented (NON-DECLARABLE)
+# REASONING: as in the Python block — __OTHER__ is required only where the report
+# released it, and where every source level was pooled away (levels: [] with
+# n_levels_binned > 0) the literal __OTHER__ is the one level a generator may emit.
+if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] suppressed_categories_absent: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (length(cpsg_cat_cols) == 0) {
+  cat(sprintf("[PASS] suppressed_categories_absent: 0 categorical columns declared at tier %s, 0 pooled buckets to preserve\n",
+              cpsg_tier_label))
+  cps_gen["passed"] <- cps_gen["passed"] + 1L
+} else {
+  cpsg_bad <- character(0)
+  cpsg_absent <- character(0)
+  cpsg_pools <- 0L
+  cpsg_checked <- 0L
+  for (cpsg_entry in cpsg_cat_entries) {
+    cpsg_name <- cpsg_entry$name
+    if (!is.na(cpsg_entry$problem)) {
+      cpsg_absent <- c(cpsg_absent, cpsg_entry$problem)
+      next
+    }
+    cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+    if (!(cpsg_name %in% cpsg_syn_names)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' has released levels but is absent from the synthetic frame", cpsg_ename))
+      next
+    }
+    if (cpsg_name %in% cpsg_untextable) {
+      cpsg_bad <- c(cpsg_bad, sprintf("column '%s' %s — its levels cannot be compared", cpsg_ename, cpsg_untextable_msg))
+      next
+    }
+    # REASONING: the pool is judged against the report's pool count, so an unusable
+    # count is missing evidence, not a pass.
+    if (is.na(cpsg_entry$binned)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' categorical block carries no whole-number n_levels_binned", cpsg_ename))
+      next
+    }
+    cpsg_checked <- cpsg_checked + 1L
+    cpsg_bool <- cpsg_syn_class[match(cpsg_name, cpsg_syn_names)] == "boolean"
+    cpsg_released <- cpsg_entry$values
+    if (cpsg_bool) cpsg_released <- ifelse(tolower(cpsg_released) %in% c("true", "false"), tolower(cpsg_released), cpsg_released)
+    cpsg_released <- unique(cpsg_released)
+    cpsg_observed <- cpsg_tc_values[[match(cpsg_name, cpsg_tc_names)]]
+    cpsg_pool_only <- if (length(cpsg_entry$values) == 0 && cpsg_entry$binned > 0) 1L else 0L
+    if (length(cpsg_observed) > length(cpsg_released) + cpsg_pool_only) {
+      cpsg_bad <- c(cpsg_bad, sprintf("column '%s' carries %d distinct synthetic levels against %d released",
+                                      cpsg_ename, length(cpsg_observed), length(cpsg_released)))
+    }
+    if ("__OTHER__" %in% cpsg_entry$values) {
+      cpsg_pools <- cpsg_pools + 1L
+      if (!("__OTHER__" %in% cpsg_observed)) {
+        cpsg_bad <- c(cpsg_bad, sprintf("column '%s' pooled %.0f source levels but the synthetic frame has no __OTHER__ bucket",
+                                        cpsg_ename, cpsg_entry$binned))
+      }
+    }
+  }
+  if (length(cpsg_bad) > 0) {
+    cat(sprintf("[FAIL] suppressed_categories_absent: %s%s\n", cpsg_bad[1],
+                if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+  } else if (length(cpsg_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] suppressed_categories_absent: %s%s\n", cpsg_absent[1],
+                if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] suppressed_categories_absent: %d categorical columns examined, %d pooled buckets preserved, 0 levels added\n",
+                cpsg_checked, cpsg_pools))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: reproduced correlations sit within tolerance of the released matrix
+# REASONING: ONE absolute band, `correlation_tolerance`, for every released pair; the
+# wider +/-0.20 binary/low-cardinality allowance is a QAS-C reviewer judgement, never
+# applied here. Below tier 3 nothing is released ([SKIPPED]); at tier 3 the spec always
+# carries a pearson block, so its absence is missing evidence ([NOT VERIFIED]).
+cpsg_pearson <- NULL
+if (is.list(cpsg_relationships) && is.list(cpsg_relationships[["pearson"]]) &&
+    !is.null(names(cpsg_relationships[["pearson"]]))) {
+  cpsg_pearson <- cpsg_relationships[["pearson"]]
+}
+if ("correlations_within_tolerance" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] correlations_within_tolerance: %s\n", not_applicable[["correlations_within_tolerance"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("correlations_within_tolerance" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] correlations_within_tolerance: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] correlations_within_tolerance: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (!cpsg_tier_ok) {
+  cat("[NOT VERIFIED] correlations_within_tolerance: tier is not a recorded 1/2/3/4\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (tier != 4 && cpsg_report_tier_ok && cpsg_report_tier != cpsg_release_tier) {
+  cat(sprintf("[FAIL] correlations_within_tolerance: configured tier %d differs from the report's declared tier %d\n",
+              cpsg_release_tier, as.integer(cpsg_report_tier)))
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+} else if (is.null(cpsg_release_tier)) {
+  cat("[NOT VERIFIED] correlations_within_tolerance: tier 4 import, but the report declares no settings.tier of 1/2/3 — which blocks were released is unknown\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (cpsg_release_tier < 3) {
+  cat(sprintf("[SKIPPED] correlations_within_tolerance: no available correlation matrix at tier %s — nothing was released to reproduce\n",
+              cpsg_tier_label))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if (is.null(cpsg_pearson)) {
+  cat(sprintf("[NOT VERIFIED] correlations_within_tolerance: the report at %s tier %s carries no pearson block — the released correlations cannot be compared\n",
+              if (tier == 4) "declared" else "configured", cpsg_tier_label))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (identical(cpsg_pearson[["available"]], FALSE)) {
+  cat(sprintf("[SKIPPED] correlations_within_tolerance: no available correlation matrix at tier %s — nothing was released to reproduce\n",
+              cpsg_tier_label))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if (!identical(cpsg_pearson[["available"]], TRUE)) {
+  cat("[NOT VERIFIED] correlations_within_tolerance: the pearson block carries no boolean available flag\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else {
+  cpsg_cols <- cpsg_pearson[["columns"]]
+  cpsg_rows <- cpsg_pearson[["matrix"]]
+  cpsg_off <- character(0)
+  cpsg_absent <- character(0)
+  cpsg_bad <- character(0)
+  cpsg_compared <- 0L
+  # INTENT: columns must be an array of single strings and matrix an array, exactly
+  # as the Python block requires (a list of str and a list).
+  cpsg_names_ok <- is.list(cpsg_cols) && is.null(names(cpsg_cols))
+  for (cpsg_c in if (cpsg_names_ok) cpsg_cols else list()) {
+    if (!(is.character(cpsg_c) && length(cpsg_c) == 1 && !is.na(cpsg_c))) cpsg_names_ok <- FALSE
+  }
+  cpsg_names <- if (cpsg_names_ok) as.character(unlist(cpsg_cols)) else character(0)
+  cpsg_enames <- cpsg_esc_to[match(cpsg_names, cpsg_esc_from)]
+  cpsg_rows_ok <- is.list(cpsg_rows) && is.null(names(cpsg_rows))
+  # INTENT: Confirm the released matrix is square with dimension == length(columns)
+  # before any positional indexing.
+  # REASONING: Indexing a short matrix by column position raises "subscript out of
+  # bounds", which aborts the block before the remaining checks report — the single
+  # outcome this checkpoint exists to prevent. The shape discrepancy is itself the
+  # finding, so it is named (counts only, no coefficients) and the pair loop skipped.
+  cpsg_shape_ok <- cpsg_rows_ok && length(cpsg_rows) == length(cpsg_names)
+  cpsg_dim <- 0L
+  for (cpsg_r in if (cpsg_rows_ok) cpsg_rows else list()) {
+    if (is.list(cpsg_r) && is.null(names(cpsg_r))) {
+      cpsg_dim <- max(cpsg_dim, length(cpsg_r))
+      if (length(cpsg_r) != length(cpsg_names)) cpsg_shape_ok <- FALSE
+    } else {
+      cpsg_shape_ok <- FALSE
+    }
+  }
+  cpsg_nonnum <- character(0)
+  for (cpsg_c in cpsg_names) {
+    cpsg_idx <- match(cpsg_c, cpsg_syn_names)
+    if (!is.na(cpsg_idx) && !(cpsg_syn_class[cpsg_idx] %in% c("integer", "float"))) cpsg_nonnum <- c(cpsg_nonnum, cpsg_c)
+  }
+  if (!cpsg_names_ok || !cpsg_rows_ok) {
+    cpsg_absent <- c(cpsg_absent, "the available pearson block carries no columns/matrix pair")
+  } else if (!cpsg_shape_ok) {
+    cpsg_bad <- c(cpsg_bad, sprintf("released pearson block declares %d columns but carries an %dx%d matrix",
+                                    length(cpsg_names), length(cpsg_rows), as.integer(cpsg_dim)))
+  } else if (!all(cpsg_names %in% cpsg_syn_names)) {
+    cpsg_absent <- c(cpsg_absent, "a correlated column is absent from the synthetic frame")
+  } else if (length(cpsg_nonnum) > 0) {
+    # REASONING: the synthetic column is under validation, so one outside the integer
+    # and float classes is a [FAIL]; cor() on it would stop the block.
+    cpsg_bad <- c(cpsg_bad, sprintf("column '%s' is correlated in the report but not numeric in the synthetic frame",
+                                    cpsg_esc_to[match(cpsg_nonnum[1], cpsg_esc_from)]))
+  } else {
+    for (cpsg_i in seq_along(cpsg_names)) {
+      if (cpsg_i == length(cpsg_names)) break
+      for (cpsg_j in seq(cpsg_i + 1, length(cpsg_names))) {
+        cpsg_target <- cpsg_rows[[cpsg_i]][[cpsg_j]]
+        # REASONING: a null or non-number coefficient is wrong-typed evidence.
+        if (!(is.numeric(cpsg_target) && length(cpsg_target) == 1 && !is.na(cpsg_target) &&
+              abs(cpsg_target) < cpsg_max_exact)) {
+          cpsg_absent <- c(cpsg_absent, sprintf("the released pearson matrix carries no usable coefficient for pair (%s, %s)",
+                                                cpsg_enames[cpsg_i], cpsg_enames[cpsg_j]))
+          next
+        }
+        # ASSUMES: complete cases only (non-NA, non-NaN on both sides), as the Python
+        # block filters; fewer than two pairs has no correlation (cor() would stop).
+        cpsg_x <- suppressWarnings(as.numeric(cpsg_syn[[match(cpsg_names[cpsg_i], cpsg_syn_names)]]))
+        cpsg_y <- suppressWarnings(as.numeric(cpsg_syn[[match(cpsg_names[cpsg_j], cpsg_syn_names)]]))
+        cpsg_cc <- !is.na(cpsg_x) & !is.na(cpsg_y)
+        cpsg_obs <- if (sum(cpsg_cc) < 2) NA_real_ else suppressWarnings(cor(cpsg_x[cpsg_cc], cpsg_y[cpsg_cc]))
+        if (!(is.numeric(cpsg_obs) && length(cpsg_obs) == 1 && is.finite(cpsg_obs))) {
+          cpsg_absent <- c(cpsg_absent, sprintf("the synthetic pair (%s, %s) has no defined correlation",
+                                                cpsg_enames[cpsg_i], cpsg_enames[cpsg_j]))
+          next
+        }
+        cpsg_compared <- cpsg_compared + 1L
+        if (abs(cpsg_obs - cpsg_target) > correlation_tolerance) {
+          cpsg_off <- c(cpsg_off, sprintf("pair (%s, %s) deviates by %.4f",
+                                          cpsg_enames[cpsg_i], cpsg_enames[cpsg_j], abs(cpsg_obs - cpsg_target)))
+        }
+      }
+    }
+  }
+  if (length(cpsg_bad) > 0) {
+    cat(sprintf("[FAIL] correlations_within_tolerance: %s%s\n", cpsg_bad[1],
+                if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+  } else if (length(cpsg_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] correlations_within_tolerance: %s%s\n", cpsg_absent[1],
+                if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else if (cpsg_compared == 0) {
+    cat(sprintf("[NOT VERIFIED] correlations_within_tolerance: the available pearson block names %d columns but 0 pairs were compared\n",
+                length(cpsg_names)))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else if (length(cpsg_off) > 0) {
+    cat(sprintf("[WARNING] correlations_within_tolerance: %d of %d pairs outside the correlation_tolerance band +/-%.4g — %s\n",
+                length(cpsg_off), cpsg_compared, correlation_tolerance, cpsg_off[1]))
+    cps_gen["warning"] <- cps_gen["warning"] + 1L
+  } else {
+    cat(sprintf("[PASS] correlations_within_tolerance: %d released pairs reproduced within the correlation_tolerance band +/-%.4g\n",
+                cpsg_compared, correlation_tolerance))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: every synthetic level lies inside the released level set (NON-DECLARABLE)
+# REASONING: compared through the canonical text form; the literal __OTHER__ is also
+# admissible where every source level was pooled away, as in the Python block.
+if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] synthetic_levels_within_released_levels: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (length(cpsg_cat_cols) == 0) {
+  cat(sprintf("[PASS] synthetic_levels_within_released_levels: 0 categorical columns declared at tier %s, 0 level sets to police\n",
+              cpsg_tier_label))
+  cps_gen["passed"] <- cps_gen["passed"] + 1L
+} else {
+  cpsg_bad <- character(0)
+  cpsg_absent <- character(0)
+  cpsg_checked <- 0L
+  cpsg_levels_seen <- 0L
+  for (cpsg_entry in cpsg_cat_entries) {
+    cpsg_name <- cpsg_entry$name
+    if (!is.na(cpsg_entry$problem)) {
+      cpsg_absent <- c(cpsg_absent, cpsg_entry$problem)
+      next
+    }
+    cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+    if (!(cpsg_name %in% cpsg_syn_names)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' is absent from the synthetic frame", cpsg_ename))
+      next
+    }
+    if (cpsg_name %in% cpsg_untextable) {
+      cpsg_bad <- c(cpsg_bad, sprintf("column '%s' %s — its levels cannot be compared", cpsg_ename, cpsg_untextable_msg))
+      next
+    }
+    cpsg_checked <- cpsg_checked + 1L
+    cpsg_bool <- cpsg_syn_class[match(cpsg_name, cpsg_syn_names)] == "boolean"
+    cpsg_released <- cpsg_entry$values
+    if (cpsg_bool) cpsg_released <- ifelse(tolower(cpsg_released) %in% c("true", "false"), tolower(cpsg_released), cpsg_released)
+    if (length(cpsg_entry$values) == 0 && !is.na(cpsg_entry$binned) && cpsg_entry$binned > 0) cpsg_released <- c(cpsg_released, "__OTHER__")
+    cpsg_observed <- cpsg_tc_values[[match(cpsg_name, cpsg_tc_names)]]
+    cpsg_levels_seen <- cpsg_levels_seen + length(cpsg_observed)
+    cpsg_outside <- cpsg_observed[!(cpsg_observed %in% cpsg_released)]
+    if (length(cpsg_outside) > 0) {
+      cpsg_bad <- c(cpsg_bad, sprintf("column '%s' carries %d synthetic levels outside the released set",
+                                      cpsg_ename, length(cpsg_outside)))
+    }
+  }
+  if (length(cpsg_bad) > 0) {
+    cat(sprintf("[FAIL] synthetic_levels_within_released_levels: %s%s\n", cpsg_bad[1],
+                if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+  } else if (length(cpsg_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] synthetic_levels_within_released_levels: %s%s\n", cpsg_absent[1],
+                if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] synthetic_levels_within_released_levels: %d columns, %d distinct synthetic levels, all inside the released sets\n",
+                cpsg_checked, cpsg_levels_seen))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: synthetic identifiers are structurally shaped but value-free (NON-DECLARABLE)
+if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] identifier_columns_value_free: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (length(cpsg_id_cols) == 0) {
+  cat(sprintf("[PASS] identifier_columns_value_free: 0 identifier columns declared at tier %s\n", cpsg_tier_label))
+  cps_gen["passed"] <- cps_gen["passed"] + 1L
+} else {
+  # ASSUMES: a released label is a string (the profiler's own shape), as in Python; a
+  # boolean identifier column is compared with the labels case-insensitively.
+  cpsg_released_values <- character(0)
+  for (cpsg_entry in cpsg_cat_entries) {
+    cpsg_released_values <- c(cpsg_released_values, cpsg_entry$values)
+  }
+  cpsg_released_bool <- ifelse(tolower(cpsg_released_values) %in% c("true", "false"), tolower(cpsg_released_values), cpsg_released_values)
+  cpsg_bad <- character(0)
+  cpsg_absent <- character(0)
+  cpsg_checked <- 0L
+  for (cpsg_col in cpsg_id_cols) {
+    cpsg_name <- cpsg_col[["name"]]
+    if (!(is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name))) {
+      cpsg_absent <- c(cpsg_absent, "an identifier column record carries no string name")
+      next
+    }
+    cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+    if (!(cpsg_name %in% cpsg_syn_names)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("identifier column '%s' is absent from the synthetic frame", cpsg_ename))
+      next
+    }
+    if (cpsg_name %in% cpsg_untextable) {
+      cpsg_bad <- c(cpsg_bad, sprintf("identifier column '%s' %s", cpsg_ename, cpsg_untextable_msg))
+      next
+    }
+    cpsg_checked <- cpsg_checked + 1L
+    cpsg_ti <- match(cpsg_name, cpsg_tc_names)
+    if (any(cpsg_tc_counts[[cpsg_ti]] > 1)) {
+      cpsg_bad <- c(cpsg_bad, sprintf("identifier column '%s' is not unique across rows", cpsg_ename))
+    }
+    cpsg_against <- if (cpsg_syn_class[match(cpsg_name, cpsg_syn_names)] == "boolean") cpsg_released_bool else cpsg_released_values
+    if (any(cpsg_tc_values[[cpsg_ti]] %in% cpsg_against)) {
+      cpsg_bad <- c(cpsg_bad, sprintf("identifier column '%s' reuses a value from a released level set", cpsg_ename))
+    }
+  }
+  if (length(cpsg_bad) > 0) {
+    cat(sprintf("[FAIL] identifier_columns_value_free: %s%s\n", cpsg_bad[1],
+                if (length(cpsg_bad) > 1) sprintf(" (+%d more)", length(cpsg_bad) - 1) else ""))
+    cps_gen["failed"] <- cps_gen["failed"] + 1L
+  } else if (length(cpsg_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] identifier_columns_value_free: %s%s\n", cpsg_absent[1],
+                if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else {
+    cat(sprintf("[PASS] identifier_columns_value_free: %d identifier columns, all-unique scaffolds, 0 released values reused\n",
+                cpsg_checked))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: per-column null rates reproduce the reported missingness
+if ("missingness_within_tolerance" %in% names(not_applicable)) {
+  cat(sprintf("[SKIPPED] missingness_within_tolerance: %s\n", not_applicable[["missingness_within_tolerance"]]))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else if ("missingness_within_tolerance" %in% cpsg_empty_reason) {
+  cat("[NOT VERIFIED] missingness_within_tolerance: declared not_applicable with an empty reason\n")
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (is.null(cpsg_syn) || is.null(cpsg_report)) {
+  cat(sprintf("[NOT VERIFIED] missingness_within_tolerance: %s\n", cpsg_inputs_error))
+  cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+} else if (length(cpsg_rated) == 0) {
+  cat(sprintf("[SKIPPED] missingness_within_tolerance: report declares 0 missingness targets at tier %s\n",
+              cpsg_tier_label))
+  cps_gen["skipped"] <- cps_gen["skipped"] + 1L
+} else {
+  cpsg_off <- character(0)
+  cpsg_absent <- character(0)
+  cpsg_compared <- 0L
+  for (cpsg_col in cpsg_rated) {
+    cpsg_name <- cpsg_col[["name"]]
+    cpsg_target <- cpsg_col[["missing_rate"]]
+    if (!(is.character(cpsg_name) && length(cpsg_name) == 1 && !is.na(cpsg_name))) {
+      cpsg_absent <- c(cpsg_absent, "a column record with a missingness target carries no string name")
+      next
+    }
+    cpsg_ename <- cpsg_esc_to[match(cpsg_name, cpsg_esc_from)]
+    cpsg_idx <- match(cpsg_name, cpsg_syn_names)
+    if (is.na(cpsg_idx)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' has a missingness target but is absent from the synthetic frame", cpsg_ename))
+      next
+    }
+    if (!(is.numeric(cpsg_target) && length(cpsg_target) == 1 && !is.na(cpsg_target) &&
+          abs(cpsg_target) < cpsg_max_exact)) {
+      cpsg_absent <- c(cpsg_absent, sprintf("column '%s' carries a non-numeric missing_rate target", cpsg_ename))
+      next
+    }
+    cpsg_compared <- cpsg_compared + 1L
+    # ASSUMES: the stored null count comes from arrow, as polars reports it; NaN adds
+    # to it in a float column (is.nan(), since a null converts to NA, never NaN).
+    cpsg_n_missing <- cpsg_syn_nulls[cpsg_idx]
+    if (cpsg_syn_class[cpsg_idx] == "float") cpsg_n_missing <- cpsg_n_missing + sum(is.nan(cpsg_syn[[cpsg_idx]]))
+    cpsg_obs <- if (cpsg_syn_nrow > 0) cpsg_n_missing / cpsg_syn_nrow else 0
+    if (abs(cpsg_obs - cpsg_target) > missingness_tolerance) {
+      cpsg_off <- c(cpsg_off, sprintf("column '%s' null rate is off by %.4f", cpsg_ename, abs(cpsg_obs - cpsg_target)))
+    }
+  }
+  if (length(cpsg_absent) > 0) {
+    cat(sprintf("[NOT VERIFIED] missingness_within_tolerance: %s%s\n", cpsg_absent[1],
+                if (length(cpsg_absent) > 1) sprintf(" (+%d more)", length(cpsg_absent) - 1) else ""))
+    cps_gen["not_verified"] <- cps_gen["not_verified"] + 1L
+  } else if (length(cpsg_off) > 0) {
+    cat(sprintf("[WARNING] missingness_within_tolerance: %d of %d columns outside +/-%.4g — %s\n",
+                length(cpsg_off), cpsg_compared, missingness_tolerance, cpsg_off[1]))
+    cps_gen["warning"] <- cps_gen["warning"] + 1L
+  } else {
+    cat(sprintf("[PASS] missingness_within_tolerance: %d columns, all null rates within +/-%.4g of the reported rate\n",
+                cpsg_compared, missingness_tolerance))
+    cps_gen["passed"] <- cps_gen["passed"] + 1L
+  }
+}
+
+# Check: the generation seed is recorded and printed (NON-DECLARABLE)
+# REASONING: same five outcomes as the Python block. seed_exception (a pointer to the
+# researcher's T4 missing-seed authorization in STATE) is honored only at tier 4 with
+# no seed, yields a [WARNING] — never a [PASS] — and its value is never printed; with
+# neither a seed nor an exception the outcome is [FAIL]. The check reads only the
+# config, so it runs whether or not the report parsed. A whole seed prints via %.0f of
+# seed + 0 — never as.integer(), which turns a seed above 2^31 into NA, and the + 0
+# turns a negative zero into 0, as Python's int() does. seed_exception is blank under
+# the same Unicode whitespace set as the not_applicable reasons.
+cpsg_exception_set <- is.character(seed_exception) && length(seed_exception) == 1 &&
+  !is.na(seed_exception) && nzchar(trimws(seed_exception, whitespace = cpsg_ws))
+cpsg_seed_ok <- is.numeric(seed) && length(seed) == 1 && !is.na(seed) &&
+  abs(seed) < cpsg_max_exact && seed == floor(seed)
+if (cpsg_exception_set && !is.null(seed)) {
+  cat("[FAIL] seed_recorded: seed and seed_exception are both set — record one\n")
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+} else if (cpsg_exception_set && !(cpsg_tier_ok && tier == 4)) {
+  cat("[FAIL] seed_recorded: seed_exception is honored only at tier 4\n")
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+} else if (cpsg_exception_set) {
+  cat("[WARNING] seed_recorded: tier 4 import with no recorded seed — researcher-authorized non-reproducible T4 exception (authorization recorded in STATE)\n")
+  cps_gen["warning"] <- cps_gen["warning"] + 1L
+} else if (!cpsg_seed_ok) {
+  cat("[FAIL] seed_recorded: the generation seed is not an integer recorded in this script's config\n")
+  cps_gen["failed"] <- cps_gen["failed"] + 1L
+} else {
+  cat(sprintf("[PASS] seed_recorded: generation seed %.0f present in the script config and printed to the log\n",
+              as.numeric(seed) + 0))
+  cps_gen["passed"] <- cps_gen["passed"] + 1L
+}
+
+# Count line, then verdict derived from the counts
+cpsg_checks_run <- cps_gen[["passed"]] + cps_gen[["warning"]] + cps_gen[["failed"]]
+if (cps_gen[["failed"]] > 0 || cps_gen[["not_verified"]] > 0 || cpsg_checks_run == 0) {
+  cpsg_verdict <- "FAILED"
+} else if (cps_gen[["warning"]] > 0) {
+  cpsg_verdict <- "PASSED WITH WARNINGS"
+} else {
+  cpsg_verdict <- "PASSED"
+}
+
+cat(sprintf("\nChecks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cps_gen[["passed"]], cps_gen[["warning"]], cps_gen[["failed"]],
+            cps_gen[["not_verified"]], cps_gen[["skipped"]]))
+cat(sprintf("CPS-GEN VALIDATION: %s\n", cpsg_verdict))
+cat(strrep("=", 60), "\n")
+
+if (cpsg_verdict == "FAILED") {
+  stop("CPS-GEN FAILED - see details above")
+}
+```
+
+**`not_applicable` keys recognized by CPS-GEN:** `row_count_matches`, `column_set_and_dtypes`, `numeric_marginals_within_tolerance`, `categorical_proportions_within_tolerance`, `correlations_within_tolerance`, `missingness_within_tolerance`. The remaining four keys — `suppressed_categories_absent`, `synthetic_levels_within_released_levels`, `identifier_columns_value_free`, `seed_recorded` — are **non-declarable**.
+
+### CPS Usage Notes
+
+**Applicability keys.** The declarable and non-declarable sets, in one place:
+
+| Checkpoint | Declarable `not_applicable` keys | Non-declarable keys |
+|------------|----------------------------------|---------------------|
+| CPS-INTAKE | `report_version`, `required_top_level_keys`, `row_count_positive`, `percentiles_monotone`, `category_counts_le_rowcount`, `missing_rate_in_unit_interval`, `correlation_matrix_wellformed`, `embedded_validation_complete` | `no_released_count_below_threshold`, `no_raw_value_shaped_fields`, `identifier_columns_value_free`, `crosstab_schema_and_suppression` |
+| CPS-GEN | `row_count_matches`, `column_set_and_dtypes`, `numeric_marginals_within_tolerance`, `categorical_proportions_within_tolerance`, `correlations_within_tolerance`, `missingness_within_tolerance` | `suppressed_categories_absent`, `synthetic_levels_within_released_levels`, `identifier_columns_value_free`, `seed_recorded` |
+
+Declaring a non-declarable key emits `[FAIL] <check>: non-declarable check declared not_applicable under key '<key>'`, counts one failure, **and runs the check anyway** on the un-declared path — so the log carries both the contract violation and the check's own finding.
+
+**An unrecognized `not_applicable` key is a failure, not a no-op.** After the non-declarable sweep, any remaining key that is not in the block's declarable set above emits `[FAIL] not_applicable: unrecognized key '<key>' (declarable keys: …)` exactly once and counts one failure. A typo'd or stale key would otherwise declare nothing at all, leaving the author believing a check was skipped when it in fact ran — the log has to carry that discrepancy. Both sweeps see the key whether or not its reason was non-empty, so dropping a reason cannot be used to slip a declaration past either gate. The reviewer applies the equivalent rule under the QAS key names with `[BLOCKER]` in place of `[FAIL]` (`QA_CHECKPOINTS.md` § QAS Applicability Declarations); the sets differ by construction — CPS-GEN additionally treats `seed_recorded` as non-declarable.
+
+**A declarable key with an empty reason is `[NOT VERIFIED]`, not a silent run.** A declaration whose reason is missing, empty, or whitespace is dropped from the applicability map, but the check it names does **not** then run: it reports `[NOT VERIFIED] <check>: declared not_applicable with an empty reason`, counts one not-verified, and fails the checkpoint. Running it anyway and printing `[PASS]` would answer a question the author explicitly withdrew; skipping it silently would lose the withdrawal. Non-declarable keys are unaffected — they keep their `[FAIL]` and still run, because no reason can make a disclosure-critical check optional.
+
+**What the tolerances actually compare (CPS-GEN).** `numeric_tolerance` is a **relative** tolerance applied per reproduced percentile, with a floor of 1.0 in absolute terms so a target near zero does not demand impossible precision — the live comparison is `abs(cpsg_obs - cpsg_target) > numeric_tolerance * max(abs(cpsg_target), 1.0)`. The other three (`proportion_tolerance`, `correlation_tolerance`, `missingness_tolerance`) are plain absolute bands on quantities already expressed in [0,1] or [-1,1]. All four comparisons are strict `>`: a deviation landing exactly on the tolerance passes. The `synthetic-data-workflow` skill's § Tolerances states the same rule; if the two ever disagree, this section is the code and therefore the fact. CPS-GEN applies **one** correlation band, `correlation_tolerance`, to every released pair. The wider ±0.20 band for binary or low-cardinality pairs is a QAS-C reviewer allowance only. The block never applies it, and its PASS/WARNING lines name `the correlation_tolerance band` so they cannot be read as implying it. Percentiles are recomputed with linear interpolation over non-null, non-NaN values (polars `interpolation="linear"`, R `quantile(type = 7)`), and correlations use complete cases only. Tolerances print with `%.4g`, so both languages compute and print the same numbers. Both blocks read the same frame. Python reads the parquet's raw schema first (`pyarrow.parquet.read_schema`), to refuse a repeated column name, and then the frame with polars. R reads it with arrow as a Table and converts one column at a time, never through `as.data.frame()`, because a polars `Categorical` column does not convert to a factor; a dictionary-encoded string column is cast to plain strings on the arrow side first. Null counts are the stored ones in both languages, and in a float column a NaN also counts as missing, for missingness, quantiles, correlations, and level text alike.
+
+**CPS-GEN never stops early, and both languages print the same lines (CPS-GEN).** Every check reaches its own outcome line on any input, followed by the count line and the verdict. A value of the wrong type follows one rule. If it sits in the synthetic frame, which is what is being validated, the outcome is `[FAIL]`: a non-numeric column with a released percentile grid or correlation, a column outside the text-comparable types compared with released labels (see **Synthetic column types and the canonical text form** below), or a declared dtype the frame does not hold. If it is report evidence a check needs, the outcome is `[NOT VERIFIED]`. Examples are a null percentile or correlation coefficient, a level entry that is not a `{value: <string>, count: <whole number>}` pair (named by its index, never its label or count), a column record with no string name, and a missing or non-whole `n` / `n_levels_binned`. The numeric model is the one CPS-INTAKE uses: finite, `|v| < 2^53`, and whole numbers compared by value. Every outcome line is byte-identical between the Python and R blocks on the same input, and declared dtypes and parser messages are never echoed.
+
+**Strict report parsing (CPS-GEN).** A `NaN`, `Infinity` or `-Infinity` literal, a duplicate object key at any depth, or nesting deeper than 64 levels (counting the top-level object as level 1; a well-formed report stays far below that) is a parse error in both languages — the same three rules and the same cap as CPS-INTAKE. Python uses `parse_constant` plus one iterative sweep over an `object_pairs_hook=list` parse that refuses both a duplicate key and a depth above 64, and it catches `RecursionError`. R uses one iterative sweep that refuses both a repeated name (`anyDuplicated(names())`) and a depth above 64, because jsonlite keeps every duplicate key while Python's dict keeps only the last, and the two parsers give up at different depths. Every check that reads the report then prints `[NOT VERIFIED] <check>: report did not parse as JSON (parser message withheld: it can quote report content)`. `seed_recorded` reads only the script config, so it still runs.
+
+Six more inputs are refused the same way, before either parser runs, because the two parsers would otherwise read them differently. Both blocks decide them on the file's bytes, its escape sequences, and its number tokens:
+- a leading UTF-8 byte-order mark (jsonlite accepts it with a warning, `json.loads` refuses it);
+- a raw NUL byte anywhere in the file (R's text reader would stop at it);
+- bytes that are not valid UTF-8;
+- an escaped NUL, `\u0000`, inside a string (jsonlite cuts the string there, Python keeps it);
+- an unpaired surrogate escape: a `\ud800`–`\udbff` not immediately followed by a `\udc00`–`\udfff`, or a low surrogate with no high one before it (jsonlite replaces it, Python keeps it). A correctly paired escape, such as `\ud83d\ude00`, is accepted;
+- a number token longer than 64 characters outside a string, with sign, digits, fraction and exponent counted together (Python refuses an integer past its 4300-digit conversion limit, while jsonlite reads it as `Inf` and parses on). No profiler writes a number anywhere near that long (a double needs at most 24 characters), and a token of 64 characters or fewer parses as before.
+
+The escape scan reads an escaped backslash as one token, so the six characters `\\u0000` (a literal backslash, then `u0000`) are text, not an escaped NUL, and parse normally. The number scan matches each string whole before it looks for numbers, so digits inside a string never count, and both blocks use the same pattern for it.
+
+**Synthetic column types and the canonical text form (CPS-GEN).** Each synthetic column is classified once by its stored type, and both languages derive the same class:
+
+| Class | Python (polars) | R (arrow type) |
+|---|---|---|
+| text | `String` | `string`, `large_string`, `string_view` |
+| text_dict | `Categorical`, `Enum` | a dictionary of string values (a factor) |
+| integer | `Int8`–`Int64`, `UInt8`–`UInt64` | `int8`–`int64`, `uint8`–`uint64` |
+| float | `Float32`, `Float64` | `float`, `double` |
+| boolean | `Boolean` | `bool` |
+| other | every other type: decimal, half float, date, time, timestamp, duration, binary, nested, null | the same |
+
+An "other" column's values are never compared, because the two readers disagree on them: arrow hands R a half float as its raw bits and a decimal as a double. An integer column holding any magnitude of 2^53 or more is treated the same way when its values must be compared with labels, because R receives such a column as doubles and its text would no longer be exact. A check that has to compare such a column with released labels is a `[FAIL]`. The categorical checks print `column '<c>' holds values outside the text-comparable types (string, categorical, integer below 2^53, float, boolean) — its levels cannot be compared`, and `identifier_columns_value_free` prints `identifier column '<c>' holds values outside the text-comparable types (string, categorical, integer below 2^53, float, boolean)`.
+
+`column_set_and_dtypes` judges a declared dtype by class. `string` needs a text column, so a categorical, Enum, or factor column fails with `column '<c>' is not a string column, the report declares string`. `double` needs an integer or float column. `integer` needs an integer column, or a float column whose non-missing values are all whole, which is what R can still claim after arrow's round trip.
+
+Where a synthetic value is compared with a released level label, which is always a string, both blocks first reduce it to one canonical text, built to match the labels both profilers write (pandas `astype(str)` in Python, `as.character()` in R):
+- text and text_dict values compare as written;
+- an integer, or a finite float with a whole value, is `%.0f` of `v + 0`, so `1`, `1.0`, and the label `"1"` agree and `-0` prints as `0`;
+- any other finite float is `%.17g` text, and an infinity is `inf` or `-inf`;
+- NaN counts as missing, as it does in the missingness check and in R's `is.na()`;
+- a boolean is `true` or `false`, and a released `true`/`false` label is then compared case-insensitively, so the Python profiler's `True` and the R profiler's `TRUE` both match.
+
+A column whose class does not match its declared dtype (an integer-coded column where the report declares `string`, say) still fails `column_set_and_dtypes`, but the level checks compare its values through this text form rather than giving up on it.
+
+**`__OTHER__` (CPS-GEN).** `suppressed_categories_absent` requires a synthetic `__OTHER__` bucket only where `__OTHER__` is among the column's released levels. A column whose every source level was pooled away (`levels: []` with `n_levels_binned > 0`, the profiler's shape when the non-missing count is below the threshold) may carry the literal `__OTHER__` as its one level: it names the withheld pool and carries no source value, so a generator can reproduce the column's non-missing count without inventing a label. Both `suppressed_categories_absent` and `synthetic_levels_within_released_levels` admit it for such a column, and any other value there is a level outside the released set. A column with `levels: []` and `n_levels_binned` of 0 admits no value at all, so it can only be entirely null.
+
+**Repeated column names (CPS-GEN).** A synthetic parquet that stores the same column name twice is unreadable in both languages. Every check that reads the frame prints `[NOT VERIFIED] <check>: the synthetic parquet did not read (reader message withheld: the two readers word it differently)`, so the verdict is `FAILED`. Polars on its own would keep one of the repeats and read the file without complaint, while arrow sees every column. Python therefore checks the raw parquet schema before reading the frame.
+
+**Escaping and blank strings (CPS-GEN).** Every report-derived or frame-derived string an outcome line prints (column names, keys, percentile keys) is escaped identically in both languages. A character outside printable ASCII (0x20–0x7E), including control characters, newlines, and all non-ASCII, prints as `\uXXXX` in lowercase hex, and a character above U+FFFF prints as its UTF-16 surrogate pair. A column named `café` prints as `caf\u00e9`, and a name carrying a newline cannot forge a second outcome line. Each run builds one escape table from every key and string value of the parsed report and every synthetic column name. Config strings (paths, `not_applicable` reasons) are the researcher's own and print as written. "Empty" or "blank", for a `not_applicable` reason or for `seed_exception`, means Unicode whitespace only: exactly the 29 code points Python's `str.strip()` removes (U+0009–U+000D, U+001C–U+001F, U+0020, U+0085, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000). R spells that class out, because `trimws()` strips only `[ \t\r\n]` by default and PCRE's `[\h\v]` lacks U+001C–U+001F and adds U+180E. So a reason made only of no-break or ideographic spaces is blank in both languages, and one made only of U+180E is not blank in either.
+
+**A fidelity check that compared nothing is `[NOT VERIFIED]` (CPS-GEN).** `numeric_marginals_within_tolerance`, `categorical_proportions_within_tolerance` and `correlations_within_tolerance` never print `[PASS]` over zero comparisons. Examples are a released grid of null or empty percentiles, or a one-column pearson block. A target that could not be used, because a value is not a number or a column is absent or entirely null, is counted in the outcome line (`… (+N more)`) instead of being silently skipped. A report that declares no target of the role at all (no numeric columns, or only withheld/constant/all-missing shapes) remains `[SKIPPED]`: a structural fact, not missing evidence.
+
+**Correlations at tier 3 (CPS-GEN).** CPS-GEN's config `tier` is the tier the report was produced at: its `settings.tier`, copied from the report the generation targeted, and `4` only for a T4 import (see below). It is not the approved tier that CPS-INTAKE's config `tier` carries, which a report may sit below. Below tier 3 nothing is released, so `correlations_within_tolerance` is `[SKIPPED]`. A tier 3 report always carries a pearson block, so one with no `relationships` object or no `pearson` block prints `[NOT VERIFIED] correlations_within_tolerance: the report at configured tier 3 carries no pearson block — the released correlations cannot be compared` (at tier 4 the line says `declared tier 3`, because the tier is then the report's own). A pearson block marked `available: false` is `[SKIPPED]` (nothing was released). One whose `available` is not a boolean is `[NOT VERIFIED]`. A configured tier of 1–3 that differs from a whole-number 1–3 in the report's `settings.tier` prints `[FAIL] correlations_within_tolerance: configured tier N differs from the report's declared tier M`. Without it, a mis-copied tier would pass unseen or mislead: a tier 2 report checked at tier 3 would read as a missing pearson block (`[NOT VERIFIED]`), and a tier 3 report checked at tier 2 would skip its released correlations. The comparison sits on `correlations_within_tolerance` because that is the one check whose outcome the tier decides; the other checks only print it. It therefore runs only when that check runs (not declared not applicable, and both inputs read). A report with no whole-number `settings.tier` of 1–3 is held to the configured tier.
+
+**Tier 4 and `seed_exception` (CPS-GEN).** Config `tier` is `4` only for a T4 import; otherwise it is the report's own `settings.tier` (see **Correlations at tier 3** above). At tier 4, DS-5 imports the user's locally synthesized data, and the profile report's own `settings.tier` decides which blocks were released. A tier 4 run whose report declares no `settings.tier` of 1–3 is `[NOT VERIFIED]` on correlations. With a profile report, CPS-GEN runs in full at tier 4, with `seed` set to the seed from the user's T4 generation log. Without a profile report, CPS-GEN is **not run**. STATE's CPS-GEN row records `EXEMPT (T4, no profile report)`. Running the block with `report_path` unset is not an exemption path: every report-reading check is `[NOT VERIFIED]` and the verdict is `FAILED`. `seed_recorded` stays non-declarable and has five outcomes:
+
+| Config | Outcome |
+|---|---|
+| valid whole-number `seed`, `seed_exception` unset | `[PASS] seed_recorded: generation seed <seed> present in the script config and printed to the log` |
+| `seed` unset, `seed_exception` set, tier 4 | `[WARNING] seed_recorded: tier 4 import with no recorded seed — researcher-authorized non-reproducible T4 exception (authorization recorded in STATE)`, so the verdict is at best `PASSED WITH WARNINGS` |
+| `seed_exception` set at tier 1–3 (or an unrecorded tier) | `[FAIL] seed_recorded: seed_exception is honored only at tier 4` |
+| both set | `[FAIL] seed_recorded: seed and seed_exception are both set — record one` |
+| neither | `[FAIL] seed_recorded: the generation seed is not an integer recorded in this script's config` |
+
+`seed_exception` counts as set only when it is a string with visible content. It is a pointer to the researcher's gate-time authorization in STATE, and its value is never printed.
+
+**What `identifier_columns_value_free` can and cannot show (CPS-GEN).** The CPS-GEN check tests exactly two things: that each synthetic identifier column is all-unique across rows, and that it reuses no value from any released categorical level set. It **cannot** detect a memorised real identifier, because the report never released identifier values to compare against — identifier columns cross the boundary as structure only (see CPS-INTAKE's own `identifier_columns_value_free`, which polices that). A `[PASS]` here means the scaffold is well-formed and collides with nothing the report disclosed; it is not evidence that the generator invented rather than remembered. The comparison runs through the canonical text form (see **Synthetic column types and the canonical text form** above), so a numeric synthetic identifier `1` or `1.0` collides with a released label `"1"`. A generator that numbers its identifiers from 0 or 1 will therefore fail against any integer-coded categorical; offset numeric identifiers past every released label instead.
+
+**What `identifier_columns_value_free` allows (CPS-INTAKE).** The intake check is an **allow-list**, not a deny-list: an identifier column record may carry only the schema's column keys (`name`, `dtype`, `role`, `missing_rate`, `nonmissing_n`, `n_distinct`, `uniqueness_ratio`, `is_identifier`, `string_structure` — `profiling-script-spec.md` § Column metadata), and its `string_structure` may carry only `{n, length_min, length_mean, length_max, pattern_flags}` (the `n >= k` shape) **or** `{n, withheld, reason}` with `withheld` literally `true` (the `n < k` shape). Anything else at either level is `[FAIL] identifier_columns_value_free: column '<c>' carries non-structural key '<key>'`, naming the key and never its value; the `[PASS]` line reports how many identifier columns were examined and how many were withheld. A deny-list only catches the leak shapes someone thought of — `string_structure.example` walked past one — whereas the schema already says exactly which keys are legitimate. **At tier 1** — the approved `tier` or the report's own `settings.tier` — the allow-list shrinks to `{name, dtype}`, because tier 1 releases the schema only (`profiling-script-spec.md`: T1 columns are exactly `{name,dtype}`). Any other key on an identifier record, `string_structure` included, is then `[FAIL] identifier_columns_value_free: column '<c>' carries non-structural key '<key>'`, and the `string_structure` is not inspected further. Rule 4 of `no_raw_value_shaped_fields` already holds every other tier-1 record to `{name, dtype}`; this closes the identifier records it skips.
+
+The allow-list reaches one level further and closes the type gap too. A `string_structure` that is present but not a JSON object — a bare string standing where the structure belongs — is `[FAIL] identifier_columns_value_free: column '<c>' carries a non-object 'string_structure'`. Inside the `n >= k` shape, `pattern_flags` is held to its five schema flags (`email`, `phone`, `date`, `id`, `free_text`): any other flag name is the same `carries non-structural key '<key>'` form, and a `pattern_flags` that is not a JSON object is `carries a non-object 'pattern_flags'`. A `withheld` key whose value is not literally `true` does not earn the withheld shape; it is reported as `carries non-structural key 'withheld'`. The typing and vocabulary rules of rule 4 (below) apply here as well. An allow-listed numeric key, or a `pattern_flags` entry, that holds anything other than a number, boolean, or `null` is `column '<c>' carries a non-numeric '<key>'`. A `dtype` or `role` outside its vocabulary is `column '<c>' carries a '<key>' outside the spec vocabulary`. A withheld `string_structure` whose `reason` is not `all_missing` or `insufficient_support` is `column '<c>' carries a 'reason' outside the spec vocabulary`. None of these forms echoes the offending value. Identifier columns are this check's alone — `no_raw_value_shaped_fields` rule 4 (below) applies the same allow-list pattern to every *other* column record and skips identifier records, so no column is held to two lists.
+
+**Value-shaped keys can be scalars too.** `no_raw_value_shaped_fields` additionally flags any **string-valued** key named `example`, `examples`, `sample`, `first_value`, `last_value`, `mode_value`, `min_value`, `max_value`, `values`, `head`, or `tail` (case-insensitive) anywhere in the report tree, emitting `[FAIL] no_raw_value_shaped_fields: value-shaped key '<key>' at <json path>` — path and key name only, never the value — because a single released value is the one-row version of the dump the list rules catch.
+
+**`collapsed: true` must actually collapse the table.** In `crosstab_schema_and_suppression` the collapsed flag bypasses the complementary-suppression scan (lone hidden cells and bridges, see **Complementary suppression** below) **only** when every cell in the entry is `null`. An entry flagged collapsed that still releases visible cells is `[FAIL] crosstab_schema_and_suppression: entry <index> is marked collapsed but still releases visible cells` (the positional index, nothing else) — otherwise the flag would switch off complementary-suppression detection while the recoverable cells stayed on the wire. The `[PASS]` line carries the count of fully collapsed entries alongside the cells examined and hidden.
+
+**Each cross-tab entry is held to the spec's key allow-list.** `crosstab_schema_and_suppression` owns `relationships.crosstabs` outright, and rule 5 of `no_raw_value_shaped_fields` (below) does not walk it. An entry whose `available` is `true` may carry only `pair`, `n`, `available`, `rows`, `cols`, `cells`, `cells_suppressed`, and `collapsed`. Any other entry may carry only `pair`, `n`, `available`, and `reason`. It may also carry `rows`, `cols`, or `cells`, but only so the `still carries` finding can name them. Within those keys, `pair` must be two declared column names, `available` a JSON boolean, `n` a number (or boolean or `null`, the same rule as rule 4's numeric keys), and `collapsed` literally `true`. An unavailable entry's `reason` must be `ineligible_roles` or `insufficient_support`. On an available entry, `rows` and `cols` must be positive whole numbers and `cells` an array. These are fields the check validates, so a malformed one is a `[FAIL]`. There is no `[NOT VERIFIED]` branch for them. Each `[FAIL]` names the key, the pair label (see **Pair labels and cross-language parity** below), or the entry index, and never a value:
+- `entry index <i> is not a JSON object`
+- `entry index <i> carries a 'pair' that is not two declared column names`
+- `entry index <i> names one column twice in its 'pair'`
+- `entry index <i> repeats the pair of entry index <k>`
+- `entry <label> carries a non-boolean 'available'`
+- `entry <label> carries non-structural key '<key>'`, which also covers a `collapsed` that is not literally `true`
+- `entry <label> carries a non-numeric 'n'`
+- `unavailable entry <label> carries no reason`
+- `unavailable entry <label> carries a reason outside the spec vocabulary`
+- `unavailable entry <label> still carries '<key>'`
+- `entry <label> has no positive integer rows/cols with a cells array — the grid cannot be reshaped`
+
+Here `<label>` is `cat_a x cat_b` or `index N`.
+
+**One cross-tab per unordered pair of two distinct columns.** Once an entry's `pair` is two declared column names, the entries must cover distinct unordered pairs, and no pair may name one column twice. This holds for every entry, whatever its `available` says, because the shipped profilers refuse both shapes before writing anything. Two cross-tabs of one pair (`[a, b]` and later `[b, a]`, or the same pair twice) can hide different cells, and the union of what they release recovers cells that neither hides alone. A pair such as `[a, a]` is no cross-tab at all. A self-pair is `entry index <i> names one column twice in its 'pair'`. A repeat is reported on the later entry and names the first entry on that pair: `entry index <i> repeats the pair of entry index <k>`, where `<k>` is the zero-based position of the first entry that covers the same two columns in either order. A self-pair entered twice gets both findings. Only entry indices print, never a column name. The rule compares names: two columns that hold one variable under different names (a code column and its label column) are different columns to it, so pairing each with one partner passes (see **Linked-release residuals** below).
+
+Once an available entry's grid can be reshaped, six more rules apply, each a `[FAIL]` that names the entry and never a cell value (the sixth can also be `[NOT VERIFIED]`, below):
+- **Released categories.** An available grid sits on the released categories of its two columns. Its rows are the released `levels` of the first pair column's categorical block, and its columns are those of the second, with `__OTHER__` as one level when the block releases it. So `rows` must equal the number of entries in the first column's `levels` array, and `cols` the number in the second's. The shipped profilers build every cross-tab this way (kept levels in code-point order, then `__OTHER__`), so a level the categorical block pools into `__OTHER__` never gets a row or column of its own. If it did, subtracting that fully visible row from the released `__OTHER__` count could isolate a rare level's count. Since a block releases at most `max_categorical_levels` levels, the rule also caps the grid's size. The forms are `entry <label> pair position <p> is not a categorical column with a released levels array`, `entry <label> has rows unequal to the released level count of pair position 0`, and `entry <label> has cols unequal to the released level count of pair position 1`. The first covers a pair column whose `role` is not `categorical`, that has no categorical block, or whose block has no `levels` array; `<p>` is `0` or `1`, and both positions are tested. The rule runs only when `pair` is two declared column names, reads the first column record carrying each name, and prints no count. It compares counts only: cells carry no labels, so it cannot see whether the rows follow the released order. An unavailable entry carries no grid and is not tested.
+- **Grid size.** The `cells` array must hold exactly `rows × cols` entries; otherwise `entry <label> has <m> cells, not rows x cols = <p>`. `<p>` is the exact integer product in both languages: Python multiplies exact ints, and R builds the product from exact base-10⁷ limbs, so a product above 2^53 prints the same digits rather than a rounded double.
+- **Structural zeros.** A visible `0` is a legitimate structural zero, and the profiler emits them. It is not a finding, and nothing tests it as a disguised hidden cell. A hidden cell must be `null`, and one mis-coded as `0` is still caught, because `cells_suppressed` then disagrees with the number of `null`s: `entry <label> reports a cells_suppressed that disagrees with the <k> nulls in the grid`.
+- **Differencing residual.** The entry's `n` must reconcile with its visible cells, mirroring the profiler's own assertion (`profiling-script-spec.md` § Relationships). Visible cells never sum past `n`, and when no cell is hidden they sum to exactly `n`. Otherwise `n` minus the visible sum is a released count that anyone can recover by subtraction. The test runs only when every visible cell is a whole number ≥ 0, because a malformed or negative cell is already the threshold sweep's finding. The three forms are `entry <label> carries no whole-number 'n' to reconcile its cells against`, `entry <label> releases visible cells that sum past its n`, and `entry <label> hides no cell but its visible cells do not sum to its n`.
+- **Complementary suppression.** Every row and column total of the entry is treated as released, because the categorical blocks release the margins. Read the entry's hidden (`null`) cells as the edges of a bipartite graph whose vertices are its rows and columns. A hidden cell is exactly recoverable from those totals when its edge is a **bridge**, meaning it lies on no cycle of hidden cells, so the row and column equations pin its value. Suppression is therefore safe only when no hidden cell is a bridge: each connected group of hidden cells must be 2-edge-connected. In particular every row and column holds zero or at least two hidden cells, and no single hidden cell is the only link between two groups. The simplest bridge is a lone hidden cell, the only one in its row or column. It keeps its own forms, reported once per entry for the first such row and the first such column: `entry <label> leaves a lone hidden cell in row index <i> — recoverable by differencing` and `entry <label> leaves a lone hidden cell in column index <j> — recoverable by differencing`. Any other bridge is one whose row and column both hold two or more hidden cells, for example a hidden cell joining two otherwise separate 2 × 2 blocks of hidden cells. Each such bridge is reported per cell, in row-major order after the lone-cell forms: `entry <label> leaves hidden cell at row index <i>, column index <j> recoverable from the released totals`. Indexes are zero-based positions, no cell value is printed, and further findings count into `(+N more)`. A fully collapsed entry is exempt, because it releases no visible cell. The scan is one iterative low-link walk per connected group of hidden cells that visits each hidden cell a bounded number of times, so its cost grows linearly with the size of the grid. The report-tree walk of `no_raw_value_shaped_fields` is linear as well, and both blocks hold that walk's stack in place rather than copying it on every step. The R block's low-link walks (this one and the missing-partner scan below) grow and shrink their stacks by copying short vectors; a stack never gets deeper than about twice the grid's smaller dimension, so the copying keeps the cost proportional to the grid size. A report with a 300 × 300 cross-tab of hidden cells runs through the R block in about a second and the Python block in a fraction of one. That timing is the bridge scan: with every cell hidden, the missing-partner scan skips the entry. The `[PASS]` line ends `… no hidden cell recoverable from the row and column totals`: no hidden cell is a bridge, lone or otherwise. Interval bounds that non-negativity puts on a hidden cell on a cycle are out of scope: the rule removes exact recovery only.
+- **Missing-partner cells.** The categorical blocks count every non-missing record of a column, while the grid counts only records where both columns are present. So a fully visible row leaves "released level count minus row sum" on the wire: the number of records in that category whose partner column is missing. The scan reads the entry as an extended table. It adds a missing-partner column (row category `i`, second pair column missing) and a missing-partner row (first pair column missing, column category `j`). The both-missing corner is `(row_count − nonmissing_n₀) + (row_count − nonmissing_n₁) − (row_count − n)`, fixed by released facts, so it is known rather than hidden. Every total of the extended table is released: the level counts, and each missing line's residual `nonmissing_n − n` of its own column. The extended graph's edges are the hidden cells plus every cell of each missing-partner line whose residual is non-zero. A line whose residual is 0 is a line of known zeros and adds no edge, so a pair with no missing value in either column adds nothing to the scan. As with hidden cells, a missing-partner cell is pinned exactly when its edge is a bridge. Its value is the cut: take the side of the graph, without that edge, that holds the cell's row-side end. The value is the sum, over that side's row-side vertices, of each total minus the known cells on it, less the same sum over the side's column-side vertices. A pinned cell whose value is negative or in `(0, gate)` fails as `entry <label> leaves the missing-partner cell at row index <i> recoverable from the released totals` (the missing-partner column, row category `i`) or `entry <label> leaves the missing-partner cell at column index <j> recoverable from the released totals` (the missing-partner row, column category `j`). Findings follow the hidden-cell findings, row positions first and then column positions, and never carry a value. The gate is the sweep's effective threshold `max(declared, approved)`. Three cases are not findings:
+  - **The baseline is exempt.** A cell that is a bridge even when *every* grid cell is hidden is pinned by the released `n` and missing counts alone, whatever the grid shows, and no cell suppression can protect it. That is exactly the missing-partner column cell of a one-row grid and the missing-partner row cell of a one-column grid. This is a documented residual of releasing `n` and the missing counts, not a profiler or intake failure.
+  - **An all-null grid is skipped**, collapsed or not. With every grid cell hidden, the graph is the baseline itself.
+  - **The corner is never printed.** When the derivable both-missing count lies in `(0, gate)`, it is a pre-existing consequence of releasing `n`, both `nonmissing_n` values and `row_count`. It is not suppressible within a cross-tab, and the outcome vocabulary has no informational token. The block reports nothing for it, and the reviewer weighs it (QAS-B).
+
+  The scan first reconciles the entry's `n` with both pair columns: `entry <label> has an n above the nonmissing_n of pair position <p>`. A pair-complete count above either column's non-missing count cannot be true, and the scan does not run on that entry. The scan reads the first column record carrying each name, every level count, both `nonmissing_n` values, the entry's `n`, and every visible cell. Each must be a whole number ≥ 0, their sum must be below 2^53 (so both languages add exactly), and each block's labels must be distinct, so the levels map onto grid rows (kept labels in code-point order, then `__OTHER__`). That mapping is checked by count only, under **Released categories** above. When a needed input fails these tests, the entry is evidence the check could not use, and the outcome is `[NOT VERIFIED] crosstab_schema_and_suppression: entry <label> lacks the released totals the missing-partner scan needs`. The scan has a pinned cell to gate, but `expected_threshold` or `settings.suppression_threshold` is unusable → `[NOT VERIFIED] crosstab_schema_and_suppression: entry <label> cannot gate its missing-partner cells: expected_threshold or settings.suppression_threshold is unusable`. A `[FAIL]` on the same check outranks either, and `(+N more)` counts further entries. The scan is one more iterative low-link walk over a graph two vertices larger than the hidden-cell graph, and its cut values come from subtree sums, so its cost stays proportional to the grid. In R its stack is copied on every push and pop (see **Complementary suppression** above), and the missing-partner scan on a 300 × 300 grid with missing values takes about 1.7 seconds. The `[PASS]` line is unchanged. On a report with missing values, it now also means no non-baseline missing-partner count below the gate is pinned by that entry's own cells and the released totals.
+
+**What the cross-tab guarantee covers, and the accepted residual risk.** `crosstab_schema_and_suppression` guarantees one thing about hidden cells and missing-partner counts, entry by entry: none is recoverable from one cross-tab together with the released row and column totals, apart from the baseline missing-partner cells and the both-missing corner described above, which the released `n` and missing counts fix on their own. The `[PASS]` line says exactly that and no more. It does not cover Cramér's V, and it does not cover several entries read together (see **Linked-release residuals** below). At tier 3 the report also releases a Cramér's V for every categorical pair with enough paired support, computed on the full table (before pooling into `__OTHER__` and before any cell suppression) and rounded to six decimals. V is a function of the table's cells, so a determined analyst who combines it with the released margins can sometimes reconstruct small cross-tab cells, including for a pair that has no released cross-tab. Because V is computed before pooling, it can also undo the `__OTHER__` pooling: the rare source levels' counts, and how they spread across the partner column, can sometimes be recovered, though their labels stay unknown. CPS-INTAKE does not detect this and cannot: the report holds no data to test such a reconstruction against, and V is a statistic the spec releases on purpose. This is an accepted, documented limitation of tier 3, not a defect (`synthetic-data-workflow` skill, `references/disclosure-tiers.md` § T3, *Residual risk (accepted)*). A researcher choosing tier 3 should weigh it. If small cells in a categorical pair are sensitive, stay at tier 2, which releases no Cramér's V, or leave one of the two columns out of the profiled data.
+
+**Linked-release residuals (accepted).** Every relationship protection CPS-INTAKE checks is stated for one release: no hidden cell or missing-partner count is recoverable from one cross-tab together with the released totals (`crosstab_schema_and_suppression`), no available named regression has a complement group below the gate, judged for one regression together with the released marginal summaries (the support gate of `no_released_count_below_threshold`), and the one-entry-per-pair rule compares column names. No check compares one release with another, so three combinations pass every check and can still disclose:
+- **Cross-tabs sharing a column.** Several cross-tabs that pair one column with partners missing on the same (or overlapping) records can jointly pin a small missing-partner count that each entry leaves unpinned on its own.
+- **Named regressions sharing a column.** Several regressions on one column whose pair-complete record sets differ by a few records reveal that column's mean over those records (one record's value when the sets differ by one), although each passes the complement-group gate.
+- **Two encodings of one variable.** A code column and its label column, each paired with the same partner, give two differently suppressed tables of what is one table. Their visible cells together can recover cells each hides, and the name-based pair rule cannot see it.
+
+CPS-INTAKE does not detect these. They are an accepted, documented limitation of tier 3, not a defect (`synthetic-data-workflow` skill, `references/disclosure-tiers.md` § T3, *Linked-release residuals (accepted)*). The researcher controls them through `RELATIONSHIP_SPEC`: list each column in as few pairs as possible, never profile two encodings of the same variable, and prefer tier 2 when many overlapping relationships are needed.
+
+**`[SKIPPED]` versus `[NOT VERIFIED]` on this path.** A report that declares **zero columns of a role** is a structural fact about the tier and the dataset — `[SKIPPED] percentiles_monotone: report declares 0 numeric columns at tier 2 (0 grids, 0 percentiles)`, counted as skipped, carrying its zeros as evidence. A column that **declares a role but carries no block** is missing evidence — `[NOT VERIFIED] category_counts_le_rowcount: column 'region' declares role categorical but has no categorical block` — which fails the checkpoint. The distinction is the whole point: the first is something the report told us, the second is something the report should have told us and did not.
+
+**`expected_threshold`: the gate is never the report's word alone.** A report could declare `settings.suppression_threshold: 1` and then release a count of 2; a sweep that trusted the declared value would pass it. `expected_threshold` is the suppression threshold the researcher approved at the tier-selection checkpoint (PSU-DS1) and recorded in STATE.md § Synthetic Path Tracking (**Suppression Threshold**); the DS-3 config stanza copies it from there (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § DS-3). It belongs to the non-declarable check `no_released_count_below_threshold`, so there is no way to opt out of it. The same check carries the other PSU-DS1 approval, the **tier**: the config `tier` is the tier the researcher approved (STATE.md § Synthetic Path Tracking, **Disclosure Tier**; at T4, the tier approved for the companion profiler run, and CPS-INTAKE still accepts only 1–3). A report could just as well be profiled at a higher tier than was approved, and a tier ceiling that trusted `settings.tier` alone would never notice. Once the report has loaded and carries a `columns` array, the check resolves in this order:
+- `expected_threshold` unset, or not a whole number ≥ 1 → `[NOT VERIFIED] no_released_count_below_threshold: expected_threshold not configured`, which fails the checkpoint. This is a config defect: fill the stanza from STATE.md and re-run under a new revision.
+- Config `tier` unset or not 1–3 → `[NOT VERIFIED] no_released_count_below_threshold: tier not configured — the approved release scope is unknown`. Also a config defect, fixed the same way.
+- `settings.suppression_threshold` absent or not a positive whole number → `[NOT VERIFIED] no_released_count_below_threshold: settings.suppression_threshold is absent or not a positive integer — the sweep has no gate to test against`.
+- The report declares less than the approved value → `[FAIL] no_released_count_below_threshold: report declares threshold d, below the approved threshold e`. The profiler ran with a weaker gate than the researcher approved, so cells between the two thresholds may already have crossed the boundary. Treat it as a disclosure event. The remedy is a corrected local re-run at the approved threshold. Never lower `expected_threshold` to match the report: that would turn the one external check on the report's threshold into an echo of it.
+- `settings.tier` absent or not a whole number 1–3 → `[FAIL] no_released_count_below_threshold: settings.tier is absent or not a whole number 1-3 — the report's release scope is unstated`. This is a `[FAIL]`, not `[NOT VERIFIED]`: the tier is a field the check validates, and a report that does not state its scope cannot be held to one.
+- The report declares a higher tier than was approved → `[FAIL] no_released_count_below_threshold: report declares tier R, above the approved tier T`. Blocks above the approved tier have already crossed the boundary without approval. Treat it as a disclosure event and request a corrected local re-run at the approved tier. Never raise the config `tier` to match the report.
+- Either tier is below 3 and the report carries `relationships` content (anything other than an absent key, `null`, or an empty object or array) → `[FAIL] no_released_count_below_threshold: the report releases a relationships block below tier 3 (approved tier T, declared tier R)`. Relationships are a tier-3 release, so this is the same disclosure event and the same remedy. In the same report, `correlation_matrix_wellformed` prints `[SKIPPED] correlation_matrix_wellformed: tier T releases no correlation matrices (N matrices declared)`. `N` counts the `available: true` pearson and spearman blocks the report actually carries, so a matrix released below tier 3 shows as a non-zero `N` on the skip line rather than being waved through as a structural fact.
+- Otherwise the sweep runs against the **effective threshold** `max(declared, approved)`. A report that declares more than was approved is honoured at its stricter value. A released categorical level is a whole-number count at or above the gate, so any visible level count below it breaches, **including 0 and negatives**: a level listed at 0 still names a category, and a negative count is a sub-threshold count wearing a sign. The form is `categorical block '<c>' level index <j> carries a visible count below the gate`. A cross-tab cell breaches when it is negative or in `(0, gate)`: `cross-tab block <a x b> cell index <i> carries a visible count below the gate`. A visible cross-tab `0` is a legitimate structural zero and does not breach.
+- In the same pass, each categorical block's **differencing residual** must reconcile, mirroring the profiler's own assertions (`profiling-script-spec.md` § Categorical and string structure). Otherwise `n` minus the visible sum, or `nonmissing_n` minus `n`, is a hidden count that anyone can recover by subtraction. In order: the block's `n` and its column's `nonmissing_n` must both be whole numbers (`categorical block '<c>' carries no whole-number n and nonmissing_n to reconcile its levels against`); they must be equal (`categorical block '<c>' n does not equal its column's nonmissing_n`); when `n` is below the gate, no level may be released (`categorical block '<c>' releases levels although its n is below the gate`); and when `n` is at or above the gate, the level counts, `__OTHER__` included, must sum to exactly `n` (`categorical block '<c>' level counts do not sum to its n`). The sum is tested only when every level count in the block has already passed the gate. All of these forms are `[FAIL]` breaches of the sweep. They name the block and an index, never a count.
+
+Both thresholds and both tiers are allowed facts on an outcome line — they are settings, not data.
+
+**Aggregate-only disclosure evidence.** The `[PASS]` line for `no_released_count_below_threshold` reports blocks scanned against blocks declared (split into categorical and cross-tab), visible cells examined, and the effective threshold together with the declared and approved values it came from — `[PASS] no_released_count_below_threshold: N of M declared blocks scanned (a categorical + b cross-tab), C visible cells examined, all >= effective threshold G (declared d, approved e)`. It never carries a count value, a minimum, or a level label with its count. A `[FAIL]` names the block and, for a cell finding, the cell position, and stops there (`categorical block 'cat_b' level index 2 carries a visible count below the gate`, or `categorical block 'cat_b' level counts do not sum to its n` for a residual). Further breaches are counted as `(+N more)`, never listed. Anyone reading the log learns that the sweep ran, what it covered, and which bar it applied, and learns nothing about the underlying data that the report did not already release in aggregate.
+
+**Scan completeness is part of the sweep.** The block counts the categorical and cross-tab blocks it actually enumerated and compares that to the number the report declares (categorical columns plus `available: true` cross-tab entries). A shortfall is `[FAIL] …: scanned N of M declared blocks — the sweep is incomplete`, because a block that was never visited cannot have been cleared. A report with zero categorical columns and zero cross-tabs yields `[PASS] no_released_count_below_threshold: 0 of 0 declared blocks scanned (0 categorical + 0 cross-tab), 0 visible cells examined, all >= effective threshold G (declared d, approved e)` — evidence-bearing, not N/A.
+
+**Support gate (CPS-INTAKE).** In the same pass, `no_released_count_below_threshold` holds every value summary to the shape its support admits, exactly as `profiling-script-spec.md` (§ Numeric shapes, § Categorical and string structure, § Relationships) and both profilers branch. Let `k` be the effective threshold and `f = max(k, 10)` the full-summary cutoff. The spec records `f` as `settings.full_summary_cutoff`; the block recomputes it from `k`, so a report cannot lower it.
+
+| Block | Shape (marker) | Support band |
+|-------|----------------|--------------|
+| `numeric` | `all_missing` | `n = 0` and the column's `nonmissing_n = 0` |
+| `numeric` | `withheld` | `n < k` |
+| `numeric` | `constant` | `n >= k` |
+| `numeric` | `small_n` | `k <= n < f` |
+| `numeric` | full summary (no marker; carries `mean`, `sd`, `percentiles` or `value`) | `n >= f` |
+| `string_structure` (identifier or string column) | `withheld` | `n < k` |
+| `string_structure` | full (`n, length_*, pattern_flags`) | `n >= k` |
+| `relationships.named[]`, `available: true` | — | `n >= f` |
+| `relationships.named[]`, `available: true`, each end | complement group `g = n_end - n` | `g = 0` or `g >= k` |
+| `relationships.cramers_v[]`, `available: true` | — | `n >= k` |
+
+A numeric block's shape is its first marker that is literally `true`, in the spec's branch order. A block with no true marker and none of the value keys releases no value; `percentiles_monotone` owns that finding. A numeric `n` may not exceed its column's `nonmissing_n`, and a `string_structure` `n` must equal it. Every finding is a `[FAIL]` breach of the sweep. Each names the column or entry and the shape, never `n`:
+- `numeric block '<c>' carries no non-negative whole-number n and nonmissing_n to gate its shape on`
+- `numeric block '<c>' n exceeds its column's nonmissing_n`
+- `numeric block '<c>' shape '<shape>' does not match the support band of its n` (`<shape>`: `all_missing`, `withheld`, `constant`, `small_n`, `full`)
+- `string_structure block '<c>' carries no non-negative whole-number n and nonmissing_n to gate its shape on`
+- `string_structure block '<c>' n does not equal its column's nonmissing_n`
+- `string_structure block '<c>' shape '<shape>' does not match the support band of its n` (`<shape>`: `withheld`, `full`)
+- `named entry <outcome> ~ <predictor> is available although its n is below the full-summary cutoff`
+- `cramers_v entry <a> x <b> is available although its n is below the gate`
+- `<kind> entry <label> carries no non-negative whole-number n to gate its availability on`
+- `named entry <outcome> ~ <predictor> is available although the complement group of its <outcome|predictor> is below the gate`
+- `named entry <label> has no whole-number numeric n for its <outcome|predictor> to gate the complement group on`
+
+**Complement groups of a named regression.** For an available `named` entry, each end's complement group is `g = n_end - n`: the end column's numeric-block `n` (the records its released mean describes) minus the entry's pair-complete `n`, so it counts the records that have that column but lack the other. It must be `0` or at least `k`, the same effective threshold the rest of the support gate uses (`max(declared, approved)`). The released mean covers `n_end` records and the fitted line pins the mean over the `n` pair-complete ones (through the other column's released mean, or through the reversed regression), so `n_end × mean − n × (that mean)` is the summed value of the `g` records lacking the partner, which is one record's value when `g = 1`. The shipped profilers then mark the entry `available: false` with reason `small_complement_group`. The outcome is tested first, then the predictor, with at most one finding per entry. A negative `g` (more pair-complete records than the column holds) breaches too, as a sub-threshold count wearing a sign. An end whose first column record carries no numeric block, or a numeric `n` that is not a whole number, is the second form. Pearson and Spearman matrices are not gated this way, because a correlation carries no mean. The gate judges each regression on its own; several regressions that share a column are not compared (see **Linked-release residuals** above).
+
+An entry is labelled by its column names only when both name declared columns; otherwise it is `index N`, as for cross-tabs. The band edges are exact both ways: a full summary at `n = f - 1` fails and at `n = f` passes, and a withheld block at `n = k` fails as over-suppressed, because no profiler writes it. The `[PASS]` line's counts are unchanged; a `[PASS]` now also means every value summary sat in its band.
+
+**The `no_raw_value_shaped_fields` heuristic, stated plainly.** Six rules, all intentionally conservative:
+1. **Value-shaped key names.** A key named `values`, `sample`, `rows`, `head`, or `examples` (case-insensitive, so `Sample` and `ROWS` count) whose value is a **list** is flagged as `<path>.<k> is a list under a value-shaped key name`, where `<path>` starts at `report` (for example `report.columns[0].values`). The type test matters: a cross-tab entry's `rows` is an integer dimension and is legitimate, while a `rows` array is a row dump.
+2. **Over-long scalar lists.** A list whose elements are all scalars (JSON `null` counts as a scalar) and whose length exceeds the report's own declared cap is flagged. The cap is the largest structure the report legitimately declares: `max(9 percentile grid points, number of columns, largest released level count, largest cross-tab cell grid)`.
+3. **String-valued value-shaped key names.** A key named `example`, `examples`, `sample`, `first_value`, `last_value`, `mode_value`, `min_value`, `max_value`, `values`, `head`, or `tail` (case-insensitive) whose value is a **string** is flagged wherever it appears. Rules 1 and 2 inspect lists only, so a single memorised value parked under such a name would otherwise pass.
+4. **Per-role key allow-list for column records.** Every column record that is not an identifier (identifier records belong to `identifier_columns_value_free`) may carry only the keys `profiling-script-spec.md` § Column metadata sanctions for its role. Rules 1-3 are deny-lists, and a deny-list only catches the names someone thought of: `top_values`, or a `Sample` key before rule 1 went case-insensitive, walked past them. The schema already says which keys are legitimate:
+   - **Tier 1:** the record is exactly `{name, dtype}`, with no role block.
+   - **Tier 2+:** the eight base keys (`name`, `dtype`, `role`, `missing_rate`, `nonmissing_n`, `n_distinct`, `uniqueness_ratio`, `is_identifier`) plus the one block for the record's role. `numeric` takes `numeric`, `categorical` takes `categorical`, and `string` takes `string_structure`.
+   - **`numeric` block:** the first shape marker present, in the spec's branch order, names the shape. `all_missing` allows `{n, all_missing}`. `withheld` allows `{n, withheld, reason}`. `constant` allows `{n, constant, value, mean, sd}`. `small_n` allows `{n, small_n, percentiles}`. A block with no marker is the full shape, `{n, mean, sd, percentiles}`. A marker whose value is not literally `true` is itself a non-structural key. The nested `percentiles` object is held to `p25`/`p50`/`p75` for `small_n` and to the nine grid keys `p1`…`p99` otherwise.
+   - **`categorical` block:** exactly `{n, n_levels_binned, levels}`, and each `levels[]` entry exactly `{value, count}`.
+   - **`string_structure`:** `{n, length_min, length_mean, length_max, pattern_flags}`, or the withheld shape `{n, withheld, reason}`. `pattern_flags` is held to its five flags (`email`, `phone`, `date`, `id`, `free_text`).
+   - **Typed values.** An allowed key name is not enough: the key must also hold the type the schema gives it. The numeric keys `missing_rate`, `nonmissing_n`, `n_distinct`, `uniqueness_ratio`, `is_identifier`, `n`, `mean`, `sd`, `value`, `n_levels_binned`, `length_min`, `length_mean`, and `length_max` must hold a number, a boolean, or `null`, and so must every percentile entry and every `pattern_flags` entry. The spec emits `sd: null` at n = 1, which is why `null` is accepted. A string, array, or object under one of these keys is a released value wearing a structural key's name. Shape markers (`all_missing`, `withheld`, `constant`, `small_n`) keep their literal-`true` test instead. A level's `value` label is the one string in the record: it must be a JSON string, because an array or object there is a value dump wearing the label's name, and it is not held to a vocabulary. A non-string label is `column '<c>' level index <j> carries a non-string 'value'`. The level's `count` is gated by the threshold sweep.
+   - **Distinct labels.** No profiler writes a label twice in one block, because each released level is one category. A string label repeated within a categorical block (`__OTHER__` and the empty string included) is `column '<c>' level index <j> repeats the 'value' of level index <i>`, naming the later level and the first one with that label, never the label. Two entries under one label would split a category's count in a way no other check reconciles, would make the cross-tab's category order ambiguous, and would hand generation two counts for one level. Non-string labels are the previous finding only, and are not compared.
+   - **Vocabularies.** Three column-record strings are held to the spec's closed sets. `dtype` must be one of `integer`, `double`, `string`, and `role` one of `numeric`, `categorical`, `identifier`, `string`. A withheld block's `reason` must be `no_finite_values` or `insufficient_support` in a `numeric` block, and `all_missing` or `insufficient_support` in a `string_structure`. A free string in any of these places is a released value, just as a string under `n` would be.
+   - **Categorical columns are string columns.** Both profilers give the `categorical` role only to dtype `string` (a numeric dtype is profiled as `numeric`), so a categorical record whose `dtype` is `integer` or `double` is `[FAIL] no_raw_value_shaped_fields: column '<c>' declares role 'categorical' with a dtype other than 'string'`. The dtype is not echoed. A `dtype` outside the vocabulary stays the Vocabularies finding above, with no second line.
+
+   Every rule-4 `[FAIL]` names a key, column, or index and never a value. The forms are: `column '<c>' carries non-structural key '<key>'`; `column '<c>' carries a non-numeric '<key>'`; `column '<c>' carries a '<key>' outside the spec vocabulary` (for `dtype` or `role`); `column '<c>' carries a 'reason' outside the spec vocabulary`; `column '<c>' carries a non-object '<block>'` (for a role block, `percentiles`, or `pattern_flags`); `column '<c>' carries a non-array 'levels'`; `column '<c>' level index <j> is not a JSON object`; `column '<c>' level index <j> carries a non-string 'value'`; `column '<c>' level index <j> repeats the 'value' of level index <i>`; `column index <i> is not a JSON object`; and `column index <i> has a name that is not a string`.
+5. **Spec key allow-lists and vocabularies outside `columns`.** Column records are not the only place a free string can sit. Rule 5 walks the `dataset`, `settings`, `generator`, `relationships`, and `validation` subtrees breadth-first, in that fixed order and in the same order in both languages. It holds every record to the spec's key allow-list and every field to the type or closed vocabulary the spec fixes for it (`profiling-script-spec.md` § Canonical JSON report schema, § Relationships, § Embedded validation checks). A subtree that is not a JSON object is skipped here, because rule 6 (below) and `required_top_level_keys` both report it. Cross-tab entries are skipped too: `crosstab_schema_and_suppression` owns them (see **Each cross-tab entry is held to the spec's key allow-list** above). The rule permits keys; it does not require them, so an absent key is never a rule-5 finding. "Number" below means a number, boolean, or `null`, the same rule as rule 4's numeric keys. "Boolean" means a JSON boolean only, and `null` does not qualify.
+
+   | Record | Allowed keys and what each must hold |
+   |---|---|
+   | `dataset` | `row_count`, `column_count`: number |
+   | `settings` | `tier`, `suppression_threshold`, `max_categorical_levels`, `full_summary_cutoff`: number. `support_unit`: `"record"`. `relationship_spec`: `null` or a list of pairs, each pair two declared column names |
+   | `generator` | `language`: `Python` or `R`. `template`: `profile_data_template.py` or `profile_data_template.R`, the two shipped profilers' constants. `template_version`: `"2.0"` |
+   | `relationships` | `pearson`, `spearman`: a correlation record. `cramers_v`, `named`: arrays of entry records. `crosstabs`: owned by `crosstab_schema_and_suppression` and not walked here |
+   | `relationships.pearson`, `relationships.spearman` | `available`: boolean. `columns`: an array of declared column names. `pair_n`, `matrix`: arrays of rows whose entries are numbers or `null`. `reason`: `fewer_than_two_eligible_columns`, `insufficient_pair_support`, `zero_pair_variance`, or `nonfinite_correlation` |
+   | `relationships.cramers_v[i]` | `pair`: two declared column names. `n`, `v`: number. `available`: boolean. `reason`: `insufficient_support` or `degenerate_table` |
+   | `relationships.named[i]` | `outcome`, `predictor`: a declared column name. `n`, `pearson`, `spearman`: number. `available`: boolean. `ols`: a record of `intercept`, `slope`, and `r_squared`, each a number. `reason`: `insufficient_support`, `ineligible_marginal`, `small_complement_group`, or `zero_pair_variance` |
+   | `validation` | `checks`: an array of check records. `all_passed`: boolean |
+   | `validation.checks[i]` | `name`: one of the seven required embedded check names. `status`: `PASS`, `FAIL`, `NOT_APPLICABLE`, or `NOT_VERIFIED`. `applicable`: boolean. `reason`: see below |
+
+   A check record's `reason` is judged by its `status`. A `PASS` record's reason must be exactly `candidate_fields_checked`. A `NOT_APPLICABLE` record's reason must fully match one of the forms the shipped profilers generate for that check name. `T` is a tier and `N` a count of one or more:
+
+   | Embedded check | Accepted `NOT_APPLICABLE` reasons |
+   |---|---|
+   | `percentiles_monotone` | `report declares 0 numeric columns at tier T` (T = 1–3); `0 of N numeric columns release a percentile grid` |
+   | `category_counts_le_rowcount` | `report declares 0 categorical columns at tier T` (T = 1–3) |
+   | `missing_rate_in_unit_interval` | `tier 1 releases name and dtype only` |
+   | `correlation_matrix_symmetric` | `tier T releases no correlations` (T = 1–2); `0 of 2 correlation blocks released (<r>)`, where `<r>` is one of the four correlation reasons above or `no reason stated` |
+   | `relationship_support_and_shape` | `tier T releases no relationships` (T = 1–2) |
+
+   The remaining two embedded checks, `column_shapes_and_support` and `no_subthreshold_cells_emitted`, have no accepted `NOT_APPLICABLE` reason. A `FAIL` or `NOT_VERIFIED` record has no shareable reason at all, so any reason it carries is outside the vocabulary. A record whose `status` is outside the wire enum is reported through that `status`, and its reason is not judged separately.
+
+   **A reason outside these forms.** The profilers take no researcher declarations: `profile_data_template.py` / `.R` have no `not_applicable` setting, and they mark every structural no-target case `NOT_APPLICABLE` themselves, using the forms above, so a genuine report always passes this rule. Any other reason therefore means a modified template or a hand-edited report. It fails this rule with `[FAIL] no_raw_value_shaped_fields: validation.checks[<i>].reason is outside the spec vocabulary`, and CPS-INTAKE returns `FAILED`. The rule does not judge how the reason got there.
+
+   Every rule-5 `[FAIL]` names a JSON path and a key, and never a value. A rule-5 path starts at the subtree name, for example `settings`, `relationships.cramers_v[0]`, or `validation.checks[2]`, with no `report.` prefix. The forms are:
+   - `<path> carries non-structural key '<k>'`
+   - `<path> carries a non-numeric '<k>'`
+   - `<path> carries a non-boolean '<k>'`
+   - `<path>.<k> is outside the spec vocabulary`
+   - `<path>.<k> is not built from declared column names`
+   - `<path>.<k> is not an array of numeric rows`
+   - `<path>.<k> is not a JSON object`
+   - `<path>.<k> is not a JSON array`
+   - `<path>.<k>[<e>] is not a JSON object`, for an array element that should be a record
+
+6. **Top-level key set, types, and formats.** The top level of the report is held to the spec's nine keys and the type of each. `generator`, `settings`, `dataset`, `validation`, and `relationships` must be JSON objects, and `columns` must be a JSON array. A present key holding `null` fails too, which matches the shipped profilers: they omit `relationships` below tier 3 rather than writing `null`. The three scalar keys must fully match the format both shipped profilers write: `report_version` matches `[0-9.]{1,16}` (a dotted version), `dataset_name` matches `[A-Za-z0-9_-]+` (the Config slug), and `generated_utc` matches `YYYY-MM-DDTHH:MM:SSZ`. The patterns use ASCII classes only in both languages, so a non-ASCII digit or letter fails them. `required_top_level_keys` checks the same key set, but it is declarable. Rule 6 repeats the check inside a non-declarable one, so declaring `required_top_level_keys` away cannot open a free-text channel at the top of the report. A missing key is not a channel, so it stays `required_top_level_keys`' finding: rule 6 judges only the keys that are present, in C-locale sorted order in both languages. No form echoes a value:
+   - `report carries non-structural key '<k>'`
+   - `report.<k> is not a JSON object`
+   - `report.<k> is not a JSON array`
+   - `report.<k> is outside the spec format`
+
+The `[PASS]` line carries the evidence for rules 1–5, and rule 6 adds no counter of its own: `[PASS] no_raw_value_shaped_fields: N JSON nodes walked, 0 value-shaped keys, longest scalar list L <= declared cap C, K column records within the per-role key allow-list, S subtree records within the spec key allow-lists and vocabularies`. `K` counts the non-identifier records rule 4 examined, and `S` counts the records rule 5 visited, nested entries included. No rule can prove the absence of a leak — they catch the shapes a value dump takes. They are a floor under the reviewer's QAS-B judgment, not a replacement for it. `no_raw_value_shaped_fields`, `identifier_columns_value_free`, and `crosstab_schema_and_suppression` are all non-declarable, so none of these rules can be switched off by a `not_applicable` entry.
+
+**Malformed types never stop the block.** Every check reaches its own outcome line on any input, and the block always reaches its count line and verdict line. A field of the wrong JSON type follows one rule. If it is the field a check *validates*, the outcome is `[FAIL]`. Examples: a top-level key of the wrong type (`required_top_level_keys … wrong JSON type [...]`), a non-whole `dataset.row_count`, a non-integer level count, a non-object `string_structure`, and an available cross-tab entry whose `rows` or `cols` is not a positive whole number or whose `cells` is not an array (`crosstab_schema_and_suppression … the grid cannot be reshaped`). If it is *evidence* a check needs in order to run, the outcome is `[NOT VERIFIED]`. Examples: a non-whole `nonmissing_n` behind a `missing_rate`, a non-numeric percentile value, a mistyped `settings.suppression_threshold`. Both languages use one numeric model. A JSON number counts only if it is finite and `|v| < 2^53`: the profiler refuses larger magnitudes, every whole number below the bound is exact in a double, and jsonlite would turn a 401-digit integer into `Inf` where Python keeps an exact int. Whole numbers are compared by value, so `40` and `40.0` agree, because JSON does not type them apart. A report that fails to parse is `[NOT VERIFIED]` on every check not declared `not_applicable`, with `report did not parse as JSON (parser message withheld: it can quote report content)`. The parser's own message is withheld because it can quote report text, and the two parsers word it differently anyway.
+
+**Strict report parsing (CPS-INTAKE).** Parsing is strict, and both languages reach the same outcome on every file — the same rules CPS-GEN applies. Things a lenient parser would accept, or that the two parsers read differently, are parse errors here:
+- a leading UTF-8 byte-order mark (jsonlite accepts it with a warning; `json.loads` refuses it);
+- a raw NUL byte, or bytes that are not valid UTF-8 (including a surrogate code point encoded directly as UTF-8 bytes);
+- an escaped NUL (`\u0000`), which jsonlite silently cuts the string at while Python keeps it;
+- an unpaired surrogate escape — a `\ud800`–`\udbff` not immediately followed by a `\udc00`–`\udfff`, or a low surrogate with no high one before it — which jsonlite replaces while Python keeps it. A correctly paired escape (an emoji written as `\ud83d\ude00`) is valid, and an escaped backslash followed by the text `u0000` is not an escape at all;
+- a `NaN`, `Infinity`, or `-Infinity` literal, which is not JSON;
+- a JSON number token longer than 64 characters, outside strings — sign, digits, fraction and exponent counted together. Python refuses an integer of more than 4300 digits while jsonlite reads any huge literal as `Inf`, so the two blocks used to reach different verdicts on the same file. No number a profiler writes comes near 64 characters, and a 64-character number parses as before;
+- a duplicate object key at any depth;
+- nesting deeper than 64 levels, counting the top-level object as level 1. A well-formed report reaches depth 6 (report > columns > column > categorical > levels > level).
+
+Both blocks read the file as bytes and refuse the first four before any parser runs: the BOM and NUL tests are byte tests, the UTF-8 test is a strict decode (Python) or `validUTF8()` (R), and the escape test walks the `\` sequences left to right so that an escaped backslash is one token. The number test runs on the same text, also before any parser: it blanks every string literal (an escaped quote stays inside its string, so digits in a label or key never count) and refuses any remaining run of 65 or more of the characters `-`, `+`, `0`–`9`, `.`, `e`, `E` — the same two patterns in both languages. Python then parses twice — once with `object_pairs_hook=list`, so a repeated key stays visible, and once into the dicts the checks read — passing `parse_constant` so the three literals raise and catching `RecursionError`. R parses the text with `jsonlite::parse_json()`, which already refuses the literals. One iterative sweep in each language then refuses a repeated name and a depth above 64. Each rule closes a cross-language gap: Python's default parser admits `NaN` while jsonlite refuses it; on a duplicate key Python's dict keeps the last value while jsonlite keeps both and `[[` reads the first, so one file would be judged on two different values; and the two parsers give up at different depths. A file that breaks any rule makes every check not declared `not_applicable` print `[NOT VERIFIED] <check>: report did not parse as JSON (parser message withheld: it can quote report content)`. That always includes the four non-declarable checks, so the verdict is `FAILED`. A file that parses but whose top level is not a JSON object prints `report parsed, but its top level is not a JSON object` on those same lines instead.
+
+The same sweep collects every key and string value of the report into one escape table per run. Any report-derived text an outcome line prints — a column name, a key, a cross-tab pair label — prints through that table: every character outside printable ASCII (0x20–0x7E) becomes `\uXXXX` in lowercase hex, and a character above U+FFFF becomes its UTF-16 surrogate pair (`\ud83d\ude00`). A newline, carriage return or other control character in a column name therefore cannot start a new line, so no report can forge a `Checks:` line or a verdict, and no non-ASCII name can fail the write on a console that cannot encode it. Config strings (`report_path`, `not_applicable` reasons) are the researcher's own text and print as written. Two further text rules keep the languages in step: value-shaped key names are matched case-insensitively over the 26 ASCII letters only (`str.translate` in Python, `chartr()` in R — the locale-aware `lower()`/`tolower()` fold different non-ASCII letters), and "blank" (an empty `not_applicable` or record reason) means only Unicode whitespace, the 29 code points Python's `str.strip()` removes, spelled out explicitly in R because PCRE's `[\h\v]` is a different set.
+
+**Pair labels and cross-language parity.** The Python and R blocks print identical outcome lines for the same report, and the R block is written to keep it that way: printed lists are sorted in C-locale byte order (`method = "radix"`, matching Python's `sorted()`), whole-number thresholds and counts print without scientific notation, and every index is zero-based. A cross-tab entry is labelled `cat_a x cat_b` only when every element of its `pair` is a string naming a declared column. Otherwise it is labelled `index N`, its zero-based position in `relationships.crosstabs`. A `pair` is report content, and only declared column names are schema facts, so arbitrary text in a `pair` never reaches the log. The rule applies to both `no_released_count_below_threshold` and `crosstab_schema_and_suppression`.
+
+**Verdict mapping.** As with CP1-CP4 and CPP1-CPP4, the log line `PASSED WITH WARNINGS` maps to the reported status **`WARNING`**; `PASSED` maps to `PASSED`, `FAILED` to `FAILED`. Report the mapped value in STATE.md and in the agent's return, never the raw log string.
+
+**STATE.md rows these blocks feed** (`agent_reference/STATE_TEMPLATE_ONBOARDING.md` § Synthetic QA Status):
+
+| Row | Enum | Count columns |
+|-----|------|---------------|
+| CPS-INTAKE (DS-3 script) | `[PENDING/PASSED/PASSED WITH WARNINGS/FAILED]` | passed / warnings / failed / not verified / skipped |
+| CPS-GEN (DS-5 script) | `[PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)]` | passed / warnings / failed / not verified / skipped — or, when EXEMPT, the reason |
+
+`PENDING` is the pre-run value; the five counts come straight from the block's count line. `EXEMPT (T4, no profile report)` is legal only on the CPS-GEN row, only at tier 4 when no profile report crossed: the block is not run, and the Counts cell records the reason in place of counts (see **Tier 4 and `seed_exception`** above).
+
+**Execution.** Both blocks run inside a script under the file-first protocol, never interactively:
+
+```
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/profile_report_intake/01_validate-report.py
+bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/synth_generate/01_generate-synthetic.py
+```
+
+(`.R` in place of `.py` for R projects. T4: the second command runs `scripts/synth_generate/01_import-synthetic.{py,R}` instead, with CPS-GEN at the end of the import.) A `FAILED` verdict raises/stops, so the wrapper records a non-zero exit alongside the complete check log — which is the intended outcome, not an error to retry around.
+
+**Comparator note.** `scripts/compare_execution_logs.py` matches `CP\d` verdict lines. `CPS-INTAKE` and `CPS-GEN` contain no `CP\d` substring and are therefore not machine-compared across runs; the count line is the primary machine-readable evidence, and QAS-B / QAS-C are the consumers that matter.

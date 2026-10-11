@@ -32,8 +32,10 @@ Only synthetic rows plus a generation log cross the boundary. **Parquet is the p
 The `assets/synthesize_local_template.R` template (the user runs this locally):
 - Reads the user's real data.
 - Fits `syn()` (CART) with a recorded seed.
-- Runs `compare.synds()` to produce a utility comparison the user can inspect (marginal overlap between real and synthetic) — this comparison summary is safe to share; the real-data side is aggregated.
-- Writes **only** `synthetic` rows (Parquet preferred; CSV fallback if `arrow` is unavailable) + a generation log (seed, synthpop version, row count, the utility summary).
+- Computes **one aggregate utility statistic** (overall `S_pMSE` via `utility.gen()`), length- and type-guarded, degrading to `unavailable` rather than to any fallback that would print a comparison.
+- Does **not** capture `compare.synds()` output. `compare()` renders **per-variable, per-level and per-bin summaries of the REAL data** (marginal tables, frequency counts, histograms); writing that into a file labelled "shareable" would release real marginals at T4. The user may run `compare(syn_obj, real)` **interactively on their own machine** to judge fidelity — that output is real-data disclosure and must never be written to the log or shared.
+- Writes **only** `synthetic` rows (Parquet preferred; CSV fallback if `arrow` is unavailable) + a generation log (seed, synthpop version, row count, and the single aggregate statistic).
+- Refuses to run when any output target already exists (exclusive-creation preflight), so a rerun cannot silently overwrite a previously shared export.
 - Loud header comments: the real data object and the fitted `syn` object must NOT be shared — only the synthetic output file.
 
 ```r
@@ -43,7 +45,9 @@ library(synthpop)
 set.seed(20260715L)
 real <- read.csv(INPUT_PATH)                 # real data — never leaves this machine
 syn_obj <- syn(real, seed = 20260715L)       # fitted model — never leaves this machine
-utility <- compare(syn_obj, real)            # aggregated utility comparison (safe to share)
+gen <- utility.gen(syn_obj, real)            # ONE aggregate statistic; gen$S_pMSE is shareable
+# NOT captured: compare(syn_obj, real) renders REAL-data per-level marginals. Run it
+# interactively here if you want to judge fidelity; never write it to the log or share it.
 write.csv(syn_obj$syn, OUTPUT_SYNTHETIC_PATH, row.names = FALSE)  # ONLY this file is shareable
 ```
 
@@ -52,7 +56,8 @@ write.csv(syn_obj$syn, OUTPUT_SYNTHETIC_PATH, row.names = FALSE)  # ONLY this fi
 SDV `GaussianCopulaSynthesizer` is the Python equivalent — fast, interpretable, robust on small data (`synthetic-data-research.md` §2). The `assets/synthesize_local_template.py` template:
 - Builds SDV `Metadata` from the real data, fits `GaussianCopulaSynthesizer`.
 - Samples synthetic rows.
-- Optionally runs SDV's `evaluate_quality` for a utility summary.
+- Optionally runs SDV's `evaluate_quality` for an **aggregate** quality score only; per-column quality breakdowns carry real-data marginals and must not be written to the shareable log.
+- Refuses to run under optimized Python (`-O`/`-OO`/`PYTHONOPTIMIZE`), because `assert`-based checks vanish there while the log would still report success.
 - Writes **only** synthetic rows + a generation log; loud comments that real data and the fitted synthesizer must not be shared.
 
 ```python
@@ -77,7 +82,8 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 | Artifact | Crosses the boundary? |
 |----------|------------------------|
 | Synthetic rows (Parquet preferred; CSV = audited-exception fallback, converted to Parquet + manifested on receipt) | Yes |
-| Generation log (seed, versions, row count, utility summary) | Yes |
+| Generation log (seed, versions, row count, ONE aggregate utility statistic) | Yes |
+| Per-variable / per-level utility or comparison output (`compare.synds()`, per-variable `utility.gen()`) | **Never** — it renders real-data marginals |
 | Real data | **Never** |
 | Fitted model object (`syn` object / fitted synthesizer) | **Never** |
 | Real min/max (if `enforce_min_max_values=True` leaks them via extremes) | User's choice — flag it |
@@ -86,8 +92,9 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 
 T4 synthetic rows arrive as an actual dataset (not a profile). DAAF treats them like any synthetic dataset:
 - **Boundary format (audited exception).** If the rows arrived as CSV (the fallback for a local environment without Arrow/PyArrow), the **first in-container action converts the CSV to Parquet and writes an exchange manifest** (a JSON sidecar named `{converted_filename}_exchange_manifest.json`) beside the converted file — original filename, source format, row/column counts, file hash, and conversion timestamp — after which all subsequent work uses only the converted Parquet. Parquet arrivals are imported directly. This is what keeps a boundary CSV consistent with the framework's in-container Parquet-only rule (Parquet-only, with one audited exception at the T4 local-exchange boundary).
-- They still carry synthetic provenance — the skill records `synthetic-local-t4` (vs. `synthetic-profile-tN`) and the same scaffold-not-substitute notice. If the user could not supply a synthesis seed and the researcher authorized the missing-seed exception at the gate, the artifact is labeled a **"non-reproducible T4 synthetic artifact"** in both its provenance and the skill's Synthetic Data Notice (see `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant).
-- The synthetic-vs-profile validation (`validation-checks.md` QA(c)) is lighter here (there is no suppressed profile to check against), but the disclosure-safety concern shifts to confirming the user shared only synthetic rows — spot-check for anything that looks like a memorized real record (exact-duplicate rows, implausibly unique identifier values) and flag if found.
+- They still carry synthetic provenance — the skill records `synthetic-local-t4` (vs. `synthetic-profile-tN`) and the same scaffold-not-substitute notice. If the user could not supply a synthesis seed and the researcher authorized the missing-seed exception at the gate, the artifact is labeled a **"non-reproducible T4 synthetic artifact"** in both its provenance and the skill's Synthetic Data Notice (see `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant). The authorization is recorded in STATE.md and reaches CPS-GEN as the `seed_exception` config key, which surfaces as `[WARNING] seed_recorded: tier 4 import with no recorded seed — researcher-authorized non-reproducible T4 exception (authorization recorded in STATE)` (verdict `PASSED WITH WARNINGS`), never as a silent pass.
+- **Synthetic-vs-profile validation depends on whether a profile report also crossed.** DS-5 at T4 is import plus validation, hosted by `scripts/synth_generate/01_import-synthetic.{py,R}`. **With a profile report** (the user also ran the profiler and the report cleared intake), the CPS-GEN block (routed from `validation-checks.md`) is embedded at the end of that script and runs in full — there is no lighter mode — with config `tier = 4` (the report's own `settings.tier` decides which blocks are expected) and `seed` taken from the user's generation log; QAS-C then reviews against the report. **Without a profile report**, CPS-GEN is not run: STATE records its row as `EXEMPT (T4, no profile report)`, and QAS-C validates against the user's declared metadata (row count, column set/types, declared marginals). Running CPS-GEN with no report path is not a way to get there — every report-dependent check is NOT VERIFIED and the verdict is FAILED.
+- Either way, the disclosure-safety concern shifts to confirming the user shared only synthetic rows — spot-check for anything that looks like a memorized real record (exact-duplicate rows, implausibly unique identifier values) and flag if found.
 - Findings are still never final on T4 data — re-run against real data inside the user's environment.
 
 ## Why not synthcity / CTGAN by default

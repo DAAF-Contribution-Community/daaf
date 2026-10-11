@@ -520,7 +520,7 @@ That path substitutes its own two checkpoint families for CPP/QAP, and a synthet
 | **CPS** (in-script validation; `CPS-INTAKE` at DS-3, `CPS-GEN` at DS-5) | `CPS-INTAKE VALIDATION: …` / `CPS-GEN VALIDATION: …` | `PASSED` / `PASSED WITH WARNINGS` / `FAILED` | `PASSED` and `PASSED WITH WARNINGS` both pass; `FAILED` raises in the script, so the stage cannot complete. `not_verified > 0` forces `FAILED` |
 | **QAS** (code-reviewer severity; `QAS-A`, `QAS-B`, `QAS-C`) | `QAS-{A\|B\|C} RESULT: …` | QAS-A: `PASSED` / `BLOCKER` only. QAS-B/C: `PASSED` / `WARNING` / `BLOCKER` | `PASSED` (and `WARNING` for QAS-B/C) pass; `BLOCKER` routes to the revision flow. For QAS-A, `not_verified > 0` is itself `BLOCKER` and `WARNING` is not a legal verdict |
 
-Definitions are canonical in `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) with § QAS Severity Overrides (Synthetic Path), and in `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. All five outcomes are recorded — verdict and counts — in STATE.md § Synthetic QA Status.
+Definitions are canonical in `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) with § QAS Severity Overrides (Synthetic Path), and in `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. All five outcomes are recorded — verdict and counts — in STATE.md § Synthetic QA Status. The one exception: at T4 with no profile report, CPS-GEN is not run and its row records `EXEMPT (T4, no profile report)` with the reason (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant).
 
 ---
 

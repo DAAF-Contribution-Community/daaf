@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-23"
-  skill-last-updated: "2026-02-24"
+  skill-last-updated: "2026-09-15"
 ---
 
 # County Presidential Data Source Reference
@@ -244,7 +244,8 @@ file_url = "https://dataverse.harvard.edu/api/access/datafile/{file_id}"
 r = requests.get(file_url, params={"key": api_key, "format": "original"})
 df = pl.read_csv(io.BytesIO(r.content), separator='\t')
 
-# Filter to California, 2020, TOTAL mode only
+# Filter to California, 2020 — CA is a TOTAL-present state, so a direct mode filter is safe here.
+# Do NOT generalize this to other states or years: see ./references/mode-reconstruction.md
 ca_2020 = df.filter(
     (pl.col("state_po") == "CA") &
     (pl.col("year") == 2020) &
@@ -268,7 +269,8 @@ tmp <- tempfile(fileext = ".tsv")
 writeBin(resp_body_raw(resp), tmp)
 df <- read_tsv(tmp)
 
-# Filter to California, 2020, TOTAL mode only
+# Filter to California, 2020 — CA is a TOTAL-present state, so a direct mode filter is safe here.
+# Do NOT generalize this to other states or years: see ./references/mode-reconstruction.md
 ca_2020 <- df |> filter(state_po == "CA", year == 2020, mode == "TOTAL")
 ```
 
@@ -324,7 +326,7 @@ joinable <- df |> filter(!is.na(county_fips))
 
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
-| Cross-year mode mismatch | 2000-2016 has only `TOTAL`; 2020/2024 have breakdowns. Mixing modes inflates counts | Always filter `mode == 'TOTAL'` for longitudinal analysis |
+| Cross-year mode mismatch | 2000-2016 has only `TOTAL`; 2020/2024 add breakdowns, and some states report breakdowns ONLY. Naive `mode == 'TOTAL'` silently drops ~1,000 counties; mixing modes inflates counts | Use 3-pattern mode reconstruction (`./references/mode-reconstruction.md`), never a bare `mode == 'TOTAL'` filter, for any cross-year or multi-state analysis |
 | Non-candidate rows | `UNDERVOTES`, `OVERVOTES`, `SPOILED`, `TOTAL VOTES CAST` appear as "candidates" | Filter out before computing candidate vote shares |
 | Alaska 2004 | District-level data with non-standard FIPS codes (2001-2099); vote counts overstated | Exclude AK 2004 or handle separately; do not join on county_fips |
 | Null FIPS for joins | CT, ME, RI have null `county_fips` in some years; breaks joins | Use `state_po` + `county_name` as fallback join key |

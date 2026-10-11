@@ -30,6 +30,12 @@ if (!requireNamespace("synthpop", quietly = TRUE))
   stop("This template needs synthpop: install.packages(\"synthpop\")")
 library(synthpop)
 set.seed(SEED)
+# INTENT: preserve prior exports; REASONING: a rerun must not silently overwrite a file
+# that was already shared, which would break the audit trail on the receiving side.
+# This mirrors the T1-T3 profiler's exclusive-creation refusal.
+csv_fallback_path <- sub("\\.parquet$", ".csv", OUTPUT_SYNTHETIC_PATH)
+if (any(file.exists(c(OUTPUT_SYNTHETIC_PATH, csv_fallback_path, OUTPUT_LOG_PATH))))
+  stop("Output exists; choose a fresh output folder. Nothing was written and nothing was overwritten.", call. = FALSE)
 
 # --- Load (REAL data -- never shared) ----------------------------------------
 # ASSUMES: runs in YOUR environment on real data; nothing here touches DAAF.
@@ -52,17 +58,75 @@ cat(sprintf("Loaded %d real rows x %d columns (LOCAL ONLY)\n", n_real, ncol(real
 k <- if (is.na(N_SYNTHETIC)) n_real else N_SYNTHETIC
 syn_obj <- syn(real, seed = SEED, k = k)   # <- fitted model object: DO NOT SHARE
 
-# --- Utility comparison (aggregated -- safe to share) ------------------------
-# INTENT: compare synthetic vs real marginals so you can judge fidelity locally, and
-#         record the comparison in the shareable generation log (below) so the fidelity
-#         picture travels with the synthetic rows.
-utility <- compare(syn_obj, real, print.flag = FALSE)
-util_txt <- tryCatch(capture.output(print(utility)),
-                     error = function(e) paste("utility comparison unavailable:", conditionMessage(e)))
+# --- Utility comparison (ONE aggregate statistic -- nothing else to disk) ----
+# INTENT: record a single overall fidelity number in the shareable log, and nothing else.
+# REASONING: synthpop's compare() renders PER-VARIABLE, PER-LEVEL and PER-BIN summaries of
+#   the REAL data (marginal tables / frequency plots). Writing that into a file labelled
+#   "shareable" would release real marginals at T4 -- precisely what T4 exists to avoid.
+#   Only an aggregate propensity-score utility statistic crosses the boundary.
+# ASSUMES: utility.gen() returns an overall S_pMSE; every extraction is length- and
+#   type-guarded, and ANY deviation degrades to "unavailable" rather than to a fallback
+#   that would print the comparison. A NOT-VERIFIED extraction never becomes a release.
+# To judge fidelity yourself, run `compare(syn_obj, real)` INTERACTIVELY on this machine.
+# Its output is real-data disclosure: read it locally, never paste or share it.
+utility_statistic <- "unavailable"
+utility_try <- try({
+  gen <- synthpop::utility.gen(syn_obj, real, print.flag = FALSE)
+  candidate <- gen[["S_pMSE"]]
+  if (is.numeric(candidate) && length(candidate) == 1 && is.finite(candidate))
+    utility_statistic <- format(round(candidate, 4), nsmall = 4)
+}, silent = TRUE)
 
 # --- Validate ----------------------------------------------------------------
-stopifnot(nrow(syn_obj$syn) == k, ncol(syn_obj$syn) == ncol(real))
-cat(sprintf("Generated %d synthetic rows.\n", nrow(syn_obj$syn)))
+# INTENT: every check prints one counted outcome line; the verdict is DERIVED from the
+# counters, never asserted. REASONING: a gate whose evidence is missing has not gated.
+synthesis <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
+syn_rows <- nrow(syn_obj[["syn"]])
+syn_cols <- ncol(syn_obj[["syn"]])
+if (identical(as.integer(syn_rows), as.integer(k))) {
+  synthesis["passed"] <- synthesis["passed"] + 1L
+  cat(sprintf("[PASS] synthetic_row_count: %d rows generated == %d requested\n", syn_rows, k))
+} else {
+  synthesis["failed"] <- synthesis["failed"] + 1L
+  cat(sprintf("[FAIL] synthetic_row_count: %d rows generated vs %d requested\n", syn_rows, k))
+}
+if (identical(names(syn_obj[["syn"]]), names(real))) {
+  synthesis["passed"] <- synthesis["passed"] + 1L
+  cat(sprintf("[PASS] column_set_and_order: %d columns match the real frame\n", syn_cols))
+} else {
+  synthesis["failed"] <- synthesis["failed"] + 1L
+  cat(sprintf("[FAIL] column_set_and_order: %d synthetic columns vs %d real columns, or order differs\n", syn_cols, ncol(real)))
+}
+if (length(SEED) == 1 && is.numeric(SEED) && is.finite(SEED)) {
+  synthesis["passed"] <- synthesis["passed"] + 1L
+  cat(sprintf("[PASS] seed_recorded: generation seed %s is set and will be written to the log\n", format(SEED)))
+} else {
+  synthesis["failed"] <- synthesis["failed"] + 1L
+  cat("[FAIL] seed_recorded: SEED is not a finite number; the run is not reproducible\n")
+}
+# INTENT: the disclosure check is that NO per-variable comparison output reaches the log.
+# REASONING: this always runs -- compare() output is never captured, so the claim is about
+# what the script does, not about whether a statistic happened to compute. Whether the
+# aggregate number is available is a log FIELD, not a gate (see the log lines below).
+synthesis["passed"] <- synthesis["passed"] + 1L
+cat("[PASS] no_per_variable_comparison_in_log: 0 per-variable/per-level comparison tables captured; at most 1 aggregate statistic is written\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            synthesis[["passed"]], synthesis[["warning"]], synthesis[["failed"]],
+            synthesis[["not_verified"]], synthesis[["skipped"]]))
+synthesis_verdict <- if (synthesis[["failed"]] > 0L ||
+                         (synthesis[["passed"]] + synthesis[["warning"]] + synthesis[["failed"]]) == 0L) {
+  "FAILED"
+} else if (synthesis[["not_verified"]] > 0L) {
+  "FAILED"
+} else if (synthesis[["warning"]] > 0L) {
+  "PASSED WITH WARNINGS"
+} else {
+  "PASSED"
+}
+cat("SYNTHESIS VALIDATION: ", synthesis_verdict, "\n", sep = "")
+if (identical(synthesis_verdict, "FAILED"))
+  stop("SYNTHESIS VALIDATION: FAILED -- nothing written; do not share any partial output.", call. = FALSE)
+cat(sprintf("Generated %d synthetic rows.\n", syn_rows))
 
 # --- Save (ONLY synthetic rows + log cross the boundary) ---------------------
 # OUTPUT FORMAT: Parquet is the PREFERRED exchange format. CSV is only a fallback for
@@ -85,8 +149,11 @@ log_lines <- c(
   paste0("real_rows: ", n_real, "  synthetic_rows: ", nrow(syn_obj$syn)),
   paste0("columns: ", ncol(real)),
   "",
-  "UTILITY COMPARISON (synthetic vs real marginals -- aggregated, safe to share):",
-  util_txt,
+  "AGGREGATE UTILITY (one overall statistic only -- no per-variable output):",
+  paste0("overall_S_pMSE: ", utility_statistic),
+  "NOTE: per-variable/per-level comparison output (synthpop compare()) is deliberately",
+  "NOT captured here -- it renders REAL-data marginals. Inspect it interactively on this",
+  "machine if you want it; never write it to this log and never share it.",
   "",
   "NOTE: real data and the fitted syn object were NOT written and must NOT be shared.")
 writeLines(log_lines, OUTPUT_LOG_PATH)

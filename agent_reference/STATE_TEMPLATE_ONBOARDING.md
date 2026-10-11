@@ -157,27 +157,33 @@ States
 | Field | Value |
 |-------|-------|
 | **Sensitivity Gate Outcome** | [Synthetic path chosen — reason: sensitive/PII/proprietary/enclave/"can't leave environment" / Conventional (this section omitted)] |
-| **Disclosure Tier** | [T1 Schema / T2 Marginals (default) / T3 Relationships / T4 Local high-fidelity synthesis] |
-| **Suppression Threshold** | [default 5 / user-set value — small cells below this are suppressed] |
+| **Disclosure Tier** | [T1 Schema / T2 Marginals (default) / T3 Relationships / T4 Local high-fidelity synthesis — confirmed at PSU-DS1; DS-3 copies the level number into CPS-INTAKE's `tier` — at T4, DS-3 copies the **T4 Companion Profile Tier** below instead, because CPS-INTAKE accepts only 1–3] |
+| **Suppression Threshold** | [default 5 / user-set value — small cells below this are suppressed; the value the researcher approved at PSU-DS1. DS-3 copies it into CPS-INTAKE's `expected_threshold`. A returned report must declare a threshold ≥ this value. Never lower it to match a report] |
 | **Relationship Spec (T3 only)** | [correlation matrices / named outcome~predictor summaries / cross-tabs requested — or "N/A (< T3)"] |
 | **Profiling Script Version Handed Off** | [asset configured for the user, e.g., `profile_data_template.R` → handed-off filename + tier config; or PENDING] |
 | **Wait-State Status** | [DS-1 in prep / Awaiting user local run (DS-2) / Report received (DS-3) / Past intake] |
 | **Report Path** | [path to returned JSON profile report once imported, e.g., `data/profile_report/[filename].json`; or PENDING] |
-| **Generation Seed** | [seed recorded for reproducibility once DS-5 runs; or PENDING] |
+| **Generation Seed** | [seed recorded for reproducibility once DS-5 runs (T4: the seed from the user's generation log); or PENDING] |
 | **T4 Local-Synthesis Variant?** | [No / Yes — user ran `synthesize_local_template.*` locally; only synthetic rows crossed the boundary] |
+| **T4 Companion Profile Tier** | [N/A (tier < 4, or no companion profile report) / T1 / T2 / T3 — the tier the researcher approved for the companion profiler run at T4. DS-3 copies this level number, not 4, into CPS-INTAKE's `tier` (CPS-INTAKE accepts only 1–3). A companion report whose `settings.tier` exceeds it fails CPS-INTAKE. Never raise it to match a report] |
+| **T4 Missing-Seed Exception** | [N/A (seed recorded, or tier < 4) / Authorized by the researcher on [date] — [their words, or a pointer to them]; artifact labeled "non-reproducible T4 synthetic artifact". Written before the DS-5 import script runs: CPS-GEN's `seed_exception` points here, and an authorization not recorded here does not exist. Never set by the orchestrator on its own initiative] |
 | **Synthetic Data Directory** | `data/synthetic/` (generated parquet; populated at DS-5) |
 
-### Synthetic QA Status (QAS-A/B/C)
+### Synthetic QA Status (QAS-A/B/C, CPS-INTAKE, CPS-GEN)
 
-*The synthetic-path QA model replaces the standard recompute-against-source QA (impossible here — the real data never enters the container) with three independent checks. See `synthetic-data-workflow` > `references/validation-checks.md`.*
+*The synthetic-path QA model replaces the standard recompute-against-source QA (impossible here — the real data never enters the container) with three review checkpoints (QAS-A/B/C) and two script-halting validators (CPS-INTAKE at DS-3, CPS-GEN at DS-5). Check definitions: `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) and `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. Record the verdict **and** the counts on every row — a verdict without counts cannot later be distinguished from a verdict over checks that never ran. `PENDING` is the pre-run value. The single exception is the CPS-GEN row's `EXEMPT (T4, no profile report)`, which records its reason in place of counts (see the note below the table).*
 
-| Check | What It Verifies | Stage | Status |
-|-------|------------------|-------|--------|
-| **QAS-A** | Disclosure-safety review of the OUTBOUND profiling script (does it emit anything the chosen tier forbids?) — highest-stakes; a leak is irreversible once the report is shared | DS-1 (before user runs it) | [PENDING/PASSED/BLOCKER] |
-| **QAS-B** | Internal-consistency validation of the RETURNED report (monotone percentiles, suppression-consistent counts, symmetric/PSD-tolerant correlation matrices, missingness in [0,1], embedded checks pass) | DS-3 | [PENDING/PASSED/ISSUES] |
-| **QAS-C** | Synthetic-vs-profile validation of GENERATED data (marginals & correlations within tolerance, suppressed categories absent, row count matched, identifier columns structurally shaped but value-free) | DS-5 | [PENDING/PASSED/ISSUES] |
+| Check | What It Verifies | Stage | Status | Counts |
+|-------|------------------|-------|--------|--------|
+| **QAS-A** | Disclosure-safety review of the OUTBOUND profiling script (does it emit anything the chosen tier forbids?) — highest-stakes; a leak is irreversible once the report is shared | DS-1 (before user runs it) | [PENDING/PASSED/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
+| **CPS-INTAKE** | In-script intake validation of the RETURNED report (parses, required keys, monotone percentiles, counts ≤ row count, missingness in [0,1], well-formed correlations, no released count below threshold, embedded validation complete, no raw-value-shaped fields, identifier columns value-free, cross-tab schema/suppression) | DS-3 (script) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] passed / [n] warnings / [n] failed / [n] not verified / [n] skipped |
+| **QAS-B** | Independent review of the RETURNED report and of the CPS-INTAKE script — re-derives the report's own numbers rather than trusting its embedded `all_passed` | DS-3 (review) | [PENDING/PASSED/WARNING/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
+| **CPS-GEN** | In-script validation of GENERATED data against the profile (row count, column set/dtypes, marginals & correlations within tolerance, suppressed categories absent, synthetic levels within released levels, identifier columns value-free, missingness within tolerance, seed recorded) | DS-5 (script) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)] | [n] passed / [n] warnings / [n] failed / [n] not verified / [n] skipped — or, when EXEMPT, the reason |
+| **QAS-C** | Independent synthetic-vs-profile review of the generated data and of the CPS-GEN script | DS-5 (review) | [PENDING/PASSED/WARNING/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
 
-> **QAS-A is a BLOCKER gate, never a WARNING** — do not hand the profiling script to the user until disclosure-safety review passes.
+> **QAS-A is a BLOCKER gate, never a WARNING** — do not hand the profiling script to the user until disclosure-safety review passes, and any NOT VERIFIED item in QAS-A is a BLOCKER (an emission path that could not be traced is an unproven-safe path).
+
+> **`EXEMPT (T4, no profile report)` is legal only on the CPS-GEN row, only at tier 4, and only when no profile report crossed the boundary** — CPS-GEN then has nothing to compare against and is not run, and QAS-C validates against the user's declared metadata instead. Record the reason in the Counts cell. GDS-5 accepts it under no other condition: a report present means CPS-GEN runs, and running the block with `report_path` unset is not an exemption (its NOT VERIFIED lines force FAILED). A CPS-GEN `PASSED WITH WARNINGS` whose warning is `seed_recorded` is the T4 missing-seed exception — it must match an authorization in Synthetic Path Tracking > T4 Missing-Seed Exception. See `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant.
 
 ---
 

@@ -9,6 +9,40 @@
 
 > Caveat: the `urban_csv` fallback mirror is unpinned; these facts are guaranteed for the pinned Hugging Face vintage only.
 
+> **HAND-ADDED CAVEAT (2026-09-15) — the `coded values` column below is Portal
+> varlist *metadata*, not observed file content.**
+>
+> INTENT: resolve a contradiction between this dictionary and
+> `education-data-source-saipe/SKILL.md` § Missing Data Codes, which states the
+> `districts_saipe` parquet uses `null` for all missing values and that no
+> negative integer codes were observed.
+> REASONING: the `-1` / `-2` / `-3` legend below is reproduced verbatim from the
+> Portal varlist, which declares that standard legend for *every* variable in
+> every source. A captured probe of the pinned mirror file itself found none of
+> those codes present. The probe (a captured maintenance run on 2026-09-15,
+> exit 0, capture COMPLETE) ran against
+> `saipe/districts_saipe.parquet` at revision `0ad00ce0e232c96b0642459e4e7326607a8d26aa`
+> — 382,099 rows. Observed across all three `_pct` / `_poverty` columns:
+> **0 values equal to -1, 0 to -2, 0 to -3, and 0 negative values of any kind.**
+> Missingness is carried as nulls: 280 nulls in
+> `est_population_5_17_poverty_pct`, 122 in `est_population_5_17_pct`, 0 in
+> `est_population_5_17_poverty`. The same probe recorded
+> `est_population_5_17_poverty_pct` min `0.0` / max `1.0`, confirming the 0-1
+> proportion scale.
+> ASSUMES: this holds for the pinned vintage only. Treat the legend below as
+> "codes the Portal may use", not "codes present in this file"; test for `null`,
+> and re-probe rather than trusting either document at a new vintage.
+>
+> This note is hand-added to a mechanically generated file and will be lost at
+> the next regeneration — and that is now the intended outcome. The durable
+> caveat already lives in the generator's current revision,
+> `scripts/mirror_maintenance/54_generate-variable-dictionaries_a.py`, which
+> emits a second `> Caveat:` line into every source's dictionary recording that
+> the sentinel legend is the Portal's declared convention rather than a
+> per-file guarantee. This hand block is the expendable long form: it carries
+> the probe evidence until the next regeneration replaces it with the
+> generator's shorter standing caveat.
+
 Source `saipe`: 1 dataset family, 10 unique variables.
 
 ## `saipe/districts_saipe`

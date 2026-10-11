@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-08-06"
+  skill-last-updated: "2026-09-15"
 ---
 
 # SAIPE Data Source Reference
@@ -123,7 +123,7 @@ All SAIPE estimate columns in the Education Data Portal use the `est_` prefix:
 | `est_population_total` | Total population in district | Not enrollment - residential population |
 | `est_population_5_17` | Children ages 5-17 | School-age population, all enrollment types |
 | `est_population_5_17_poverty` | Related children 5-17 in families in poverty | Numerator for poverty calculations |
-| `est_population_5_17_poverty_pct` | Percent of children 5-17 in poverty | **Not a true rate** - see notes |
+| `est_population_5_17_poverty_pct` | Share of children 5-17 in poverty, on a **0-1 proportion** scale despite the `_pct` name | **Not a true rate**, and **not 0-100** — see the scale trap in `./references/variable-definitions.md` |
 
 ### State/County Estimates (additional)
 
@@ -225,9 +225,11 @@ df_valid = df.filter(
 )
 
 # High-poverty districts (above 20%)
+# SCALE: est_population_5_17_poverty_pct is a 0-1 PROPORTION despite the _pct name.
+# 20% is 0.20 — a `>= 20` threshold selects zero rows. See references/variable-definitions.md.
 df_high = df.filter(
     pl.col("est_population_5_17_poverty_pct").is_not_null()
-    & (pl.col("est_population_5_17_poverty_pct") >= 20)
+    & (pl.col("est_population_5_17_poverty_pct") >= 0.20)
 )
 ```
 
@@ -242,8 +244,10 @@ df_state <- df |> filter(fips == 6, year == 2022)
 df_valid <- df |> filter(!is.na(est_population_5_17_poverty))
 
 # High-poverty districts (above 20%)
+# SCALE: est_population_5_17_poverty_pct is a 0-1 PROPORTION despite the _pct name.
+# 20% is 0.20 — a `>= 20` threshold selects zero rows. See references/variable-definitions.md.
 df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
-                         est_population_5_17_poverty_pct >= 20)
+                         est_population_5_17_poverty_pct >= 0.20)
 ```
 
 ## Common Pitfalls
@@ -257,6 +261,7 @@ df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
 | Boundary timing | May not reflect very recent district consolidations or splits | Check SDRP update cycle in `./references/historical-changes.md` |
 | County allocation | Districts inherit county model uncertainty plus allocation uncertainty | Larger CV for small districts; use CV table for reliability |
 | Missing `est_` prefix | Portal columns use `est_` prefix not shown in some documentation | Always use `est_`-prefixed column names when working with Portal data |
+| `_pct` scale trap | `est_population_5_17_poverty_pct` is a 0-1 proportion, not 0-100; MEPS `meps_poverty_pct` is 0-100 | Threshold on proportions (`>= 0.20`, not `>= 20`); verify `.max() <= 1`; scale by 100 at most once when comparing to MEPS |
 | Pre/post 2010 comparison | Methodology break at 2010 decennial update invalidates naive trends | Do not compare school district estimates across the 2010 boundary |
 
 ## Poverty Definition
