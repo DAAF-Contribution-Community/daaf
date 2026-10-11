@@ -220,3 +220,12 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     ' "${SETTINGS_FILE}"
     assert_success
 }
+
+@test "settings permissions: attribution is never the boolean form" {
+    # Claude Code 2.1.281 added "attribution": false, but older CLIs (including
+    # the rollback target) skip a settings file that holds the boolean form,
+    # silently dropping every hook registration and deny rule. Keep the object
+    # form. Absent key reads as null and passes. See FRAMEWORK_INTEGRATION_CHECKLIST.md CC9.
+    run jq -e '(.attribution | type) != "boolean"' "${SETTINGS_FILE}"
+    assert_success
+}

@@ -697,6 +697,11 @@ echo "Found ${TOTAL_FILES} files (${TOTAL_SIZE}) to restore."
 # finish instead.
 TEMP_CREATED=0
 CLAUDE_TEMP_CREATED=0
+# 1 from right BEFORE a temp volume's `docker volume create` until that attempt is
+# resolved (recorded in TEMP_CREATED / CLAUDE_TEMP_CREATED, or deliberately left alone
+# by _restore_check_new_temp's refusal). See _restore_adopt_attempted_temps (task #36).
+TEMP_CREATE_ATTEMPTED=0
+CLAUDE_TEMP_CREATE_ATTEMPTED=0
 SWAP_STARTED=0
 # 1 once every swap and its metadata check passed (the INT handler's wording).
 SWAPS_DONE=0
@@ -754,6 +759,23 @@ _restore_temp_is_ours() {
     return 1
 }
 
+# Task #36 (review 32q, I-3): a Ctrl+C during a temp volume's `docker volume create`, or
+# during _restore_check_new_temp's `docker run`, is deferred until that docker command
+# ends, and the INT handler then runs BEFORE TEMP_CREATED=1 (CLAUDE_TEMP_CREATED=1) is
+# set -- so the new, empty, labelled temp volume was left behind. For a create attempt
+# that was never resolved, count the temp as this run's (so the usual removal path --
+# holders, the kept-copy note -- applies) ONLY when it exists AND still carries THIS
+# run's identity label: `docker volume create` silently reuses an existing volume and
+# keeps its labels, so a reused leftover or another window's temp fails the test and is
+# left alone, and an inspect that fails is "not ours" (never read as "absent" or as
+# "ours"). No docker call is made when no attempt is open. Clears the attempt flags.
+_restore_adopt_attempted_temps() {
+    if [ "${TEMP_CREATE_ATTEMPTED}" -eq 1 ] && [ "${TEMP_CREATED}" -eq 0 ] && _restore_temp_is_ours "${TEMP_VOLUME_NAME}"; then TEMP_CREATED=1; fi
+    TEMP_CREATE_ATTEMPTED=0
+    if [ "${CLAUDE_TEMP_CREATE_ATTEMPTED}" -eq 1 ] && [ "${CLAUDE_TEMP_CREATED}" -eq 0 ] && _restore_temp_is_ours "${CLAUDE_TEMP_VOLUME_NAME}"; then CLAUDE_TEMP_CREATED=1; fi
+    CLAUDE_TEMP_CREATE_ATTEMPTED=0
+}
+
 # Best-effort removal of every prepare-phase helper container of this volume pair
 # (exact label match). A leftover helper -- even a never-started `docker create`
 # one -- keeps a temp volume "in use", and `docker volume rm` then fails.
@@ -774,13 +796,16 @@ _restore_reap_helpers() {
 # cannot be removed is not later reported as a restore that had "started replacing"
 # the data. With TEMP_CLEANUP_CAREFUL=1 the label reap is skipped and a temp that no
 # longer carries this run's identity label is left alone (and no longer counted as
-# this run's), consistency review round 2 (SF2).
+# this run's), consistency review round 2 (SF2). A temp whose create was attempted but
+# not yet recorded is removed only when it is provably this run's (task #36,
+# _restore_adopt_attempted_temps).
 _restore_remove_temps() {
     local unmark=0 rm_mode="" rm_status
     if [ "${SWAP_STARTED}" -eq 1 ] && [ "${1:-}" != "final" ]; then return 0; fi
     TEMP_CLEANUP_TRIED=1
     TEMP_REMOVE_FAILED=0
     TEMP_REMOVE_NOTE=""
+    _restore_adopt_attempted_temps
     if [ "${1:-}" = "final" ] || [ "${MARKERS_WRITTEN}" -eq 1 ]; then unmark=1; fi
     if [ "${TEMP_CLEANUP_CAREFUL}" -eq 1 ]; then
         rm_mode=careful
@@ -1103,9 +1128,12 @@ trap _restore_on_interrupt INT TERM
 # _restore_on_interrupt (whose text would be wrong here) nor changes the exit code.
 # (`trap - INT TERM` alone is not enough: a Ctrl+C at the pause then ends bash with
 # status 130 -- observed under a pty on 2026-10-01, scratch/engineer11 probe.)
+# Task #36: a temp whose create was attempted but never recorded counts as left behind
+# only when it is provably this run's (_restore_adopt_attempted_temps).
 _restore_on_exit() {
     RESTORE_EXIT_STATUS=$?
     trap '' INT TERM
+    if [ "${SWAP_STARTED}" -eq 0 ] && [ "${TEMP_CLEANUP_TRIED}" -eq 0 ]; then _restore_adopt_attempted_temps; fi
     if [ "${SWAP_STARTED}" -eq 0 ] && [ "${TEMP_CLEANUP_TRIED}" -eq 0 ] && [ -n "$(_restore_kept_temps)" ]; then
         _restore_remove_temps
         echo "" >&2
@@ -1395,7 +1423,10 @@ echo ""
 # the volume must carry THIS run's identity label (a reused existing volume keeps its
 # own labels) AND be empty (`find /dest -mindepth 1` lists nothing). Otherwise -- or if
 # the check itself fails -- it may hold another restore's copy: refuse and leave it
-# alone (it is NOT marked as created by this run, so nothing removes it).
+# alone (it is NOT marked as created by this run, and its create attempt is closed
+# first, so nothing removes it). A Ctrl+C DURING the check never reaches this verdict:
+# the INT handler then removes the temp only if it carries this run's identity label
+# (task #36, _restore_adopt_attempted_temps).
 _restore_check_new_temp() {
     local listing status=0
     # STDOUT only (review round 2): a stray stderr line (a Docker config WARNING) once
@@ -1403,6 +1434,9 @@ _restore_check_new_temp() {
     # nonzero, so a listing that could not be made still fails the check.
     listing="$(docker run --rm --label "${RESTORE_LABEL}=$2" -v "$1:/dest:ro" "${BUSYBOX_IMAGE}" find /dest -mindepth 1 2>/dev/null)" || status=$?
     if [ "${status}" -eq 0 ] && [ -z "${listing}" ] && _restore_temp_is_ours "$1"; then return 0; fi
+    # Task #36: close the create attempt BEFORE the refusal's cleanup runs, so a volume
+    # this check could not confirm is never removed as an "attempted" one.
+    if [ "$1" = "${TEMP_VOLUME_NAME}" ]; then TEMP_CREATE_ATTEMPTED=0; else CLAUDE_TEMP_CREATE_ATTEMPTED=0; fi
     # SF2 (review round 2): the volume under that name may be another restore's, so its
     # prepare helpers are not reaped either; this run's own other temps are removed only
     # if they still carry this run's identity label.
@@ -1413,11 +1447,15 @@ _restore_check_new_temp() {
         "       Close any other restore window, then run this restore again: it will show" \
         "       the leftover copy and ask whether to remove it."
 }
+# Task #36: the attempt is recorded BEFORE the create (a Ctrl+C there is handled by
+# _restore_adopt_attempted_temps) and closed only AFTER TEMP_CREATED=1.
+TEMP_CREATE_ATTEMPTED=1
 if ! docker volume create --label "${RESTORE_LABEL}=${VOLUME_NAME}" --label "${RESTORE_RUN_LABEL}=${RESTORE_RUN_ID}" "${TEMP_VOLUME_NAME}" > /dev/null 2>&1; then
     _restore_fail_before_swap "ERROR: Could not create a temporary Docker volume ('${TEMP_VOLUME_NAME}') for the restore."
 fi
 _restore_check_new_temp "${TEMP_VOLUME_NAME}" "${VOLUME_NAME}"
 TEMP_CREATED=1
+TEMP_CREATE_ATTEMPTED=0
 CID=""
 # Guarded: an unguarded `CID="$(docker create ...)"` under `set -e` would abort with
 # no message. A CID printed by a create that then failed is reaped by label.
@@ -1563,12 +1601,14 @@ echo "Verified: ${TEMP_COUNT} files in the temporary copy."
 # is replaced (user decision D2): the data and its login state stay consistent.
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     echo "Preparing the Claude Code state (credentials, session history, plugins)..."
+    CLAUDE_TEMP_CREATE_ATTEMPTED=1
     if ! docker volume create --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" --label "${RESTORE_RUN_LABEL}=${RESTORE_RUN_ID}" "${CLAUDE_TEMP_VOLUME_NAME}" > /dev/null 2>&1; then
         _restore_fail_before_swap "ERROR: Could not prepare the Claude Code state (login and session history)" \
             "       from this backup: a temporary Docker volume could not be created."
     fi
     _restore_check_new_temp "${CLAUDE_TEMP_VOLUME_NAME}" "${CLAUDE_VOLUME_NAME}"
     CLAUDE_TEMP_CREATED=1
+    CLAUDE_TEMP_CREATE_ATTEMPTED=0
     CLAUDE_CID=""
     CLAUDE_CREATE_OK=0
     if CLAUDE_CID="$(docker create --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}")"; then

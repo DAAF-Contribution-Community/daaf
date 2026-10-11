@@ -12,7 +12,7 @@
 #   prevents that in three layers: (1) the harness spawn-depth limit —
 #   settings.json env sets CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1, and on
 #   2.1.261/2.1.281 subagents were observed to receive no Agent/Task tool at
-#   all; (2) DAAF's 14 named agents each carry an explicit `tools:` list that
+#   all; (2) DAAF's named agents each carry an explicit `tools:` list that
 #   omits Agent/Task; (3) this hook, the backstop. Before the depth limit, the
 #   generic built-in types DAAF sanctions (`general-purpose` = "all tools",
 #   and `Plan`) inherited Agent/Task with no DAAF-authored `tools:` list, and a

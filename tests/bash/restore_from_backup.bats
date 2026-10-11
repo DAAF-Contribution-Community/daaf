@@ -133,6 +133,19 @@ teardown() {
 #   RM_SWAP_REMOVING_AT_RM swap container names whose plain `rm <name>` exits 1 with the
 #                         daemon's "removal of container <name> is already in progress"
 #                         (moby daemon/delete.go)
+#   (task #36, review 32q I-3: a temp whose create was attempted but not yet recorded)
+#   RM_INTERRUPT_AT       tmpcreate | claudetmpcreate: that temp's `volume create` sends
+#                         SIGINT to the script ($$) AFTER it recorded the labels (the volume
+#                         exists, TEMP_CREATED is not yet set); check | claudecheck: that
+#                         temp's new-temp emptiness check (`find /dest -mindepth 1`, inside
+#                         the script's $( )) sends it -- the check never reaches its verdict
+#   RM_FAIL               crashtmpcreate | crashclaudetmpcreate: that temp's `volume create`
+#                         EXITS the script (status 7) after recording the labels (an exit
+#                         other than INT/TERM while the attempt is open: the EXIT handler)
+#                         The *tmpcreate knobs need the script run with `7>&1 8>&2` (its
+#                         own stdout/stderr for the handlers; see the create arm)
+#   RM_IDENTITY / RM_CLAUDE_IDENTITY  inspecterr: the identity inspect fails with a daemon
+#                         error that is NOT "no such volume" (could not check = not ours)
 _mock_restore_docker() {
     unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
     : > "${TEST_DIR}/docker_calls.log"
@@ -171,6 +184,7 @@ _mock_restore_docker() {
                             case "${mode}" in
                                 vanished) echo "Error response from daemon: get ${v}: no such volume" >&2; return 1 ;;
                                 recreated) echo "map[org.daaf.restore-run:20260101000000-1-99 org.daaf.restore-tmp-for:x]"; return 0 ;;
+                                inspecterr) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; return 1 ;;
                             esac
                             if [ -f "${st}/labels.${v}" ]; then cat "${st}/labels.${v}"; return 0; fi
                             echo "Error response from daemon: get ${v}: no such volume" >&2
@@ -229,6 +243,15 @@ _mock_restore_docker() {
                             if [ "${v}" = "--label" ]; then mode=label; else mode=""; fi
                         done
                         printf 'map[%s]\n' "$(printf '%s\n' "${lbl}" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" > "${st}/labels.${v}"
+                        # Task #36: the volume now exists; the script has not recorded it yet.
+                        # The handlers run INSIDE this function, where the script's
+                        # `> /dev/null 2>&1` on the create is in effect (a real docker is a
+                        # child: its redirection never reaches the handler) -- so they run
+                        # with the script's own stdout/stderr, which the test passes as fds
+                        # 7 and 8 (probe: scratch/engineer37/probe_trap_redirect.sh).
+                        if [[ "${v}" == *claude-config-restore-tmp ]]; then mode=claudetmpcreate; else mode=tmpcreate; fi
+                        if [ "${RM_INTERRUPT_AT:-}" = "${mode}" ]; then { kill -INT "$$"; :; } >&7 2>&8; fi
+                        if [ "${RM_FAIL:-}" = "crash${mode}" ]; then { exit 7; } >&7 2>&8; fi
                         return 0
                         ;;
                     rm)
@@ -495,8 +518,12 @@ _mock_restore_docker() {
                         return 0
                         ;;
                     *"find /dest -mindepth 1"*)
-                        if [ "${RM_FAIL:-}" = emptycheck ]; then echo "find: simulated failure" >&2; return 1; fi
                         if [[ "${a}" == *claude-config-restore-tmp* ]]; then mode=claude; else mode=data; fi
+                        # Task #36: this runs in the script's $( ); $$ is still the script's
+                        # PID, and bash runs its INT trap once the substitution ends.
+                        if [ "${RM_INTERRUPT_AT:-}" = check ] && [ "${mode}" = data ]; then kill -INT "$$"; fi
+                        if [ "${RM_INTERRUPT_AT:-}" = claudecheck ] && [ "${mode}" = claude ]; then kill -INT "$$"; fi
+                        if [ "${RM_FAIL:-}" = emptycheck ]; then echo "find: simulated failure" >&2; return 1; fi
                         if [ "${RM_TEMP_NOT_EMPTY:-}" = "${mode}" ]; then echo "/dest/someone-elses-file"; fi
                         if [ "${RM_EMPTYCHECK_STDERR:-}" = 1 ]; then echo "WARNING: simulated docker notice on stderr" >&2; fi
                         return 0
@@ -4226,4 +4253,261 @@ _f1_restore_info_hint() {
     # The leftover scenario did run the leftover's marker probe (a busybox `run`).
     run grep -c 'test ! -e /src/.daaf-restore-swap-started' "${MOCK_DOCKER_ARGV_LOG}"
     assert_output "1"
+}
+
+# =========================================================================
+# --- Task #36 (review 32q, I-3): a temp created just before a Ctrl+C ---
+# =========================================================================
+# A Ctrl+C during a temp volume's `docker volume create`, or during the new-temp check
+# (_restore_check_new_temp), used to run the cleanup while TEMP_CREATED /
+# CLAUDE_TEMP_CREATED was still 0, so the new, empty, labelled temp was left behind. The
+# fix records the attempt (TEMP_CREATE_ATTEMPTED / CLAUDE_TEMP_CREATE_ATTEMPTED) BEFORE
+# the create and closes it only after the created flag; the cleanup (and the EXIT
+# handler) adopts an open attempt ONLY when the volume carries THIS run's identity label
+# (_restore_adopt_attempted_temps), so the usual removal path -- holders first, the
+# kept-temp text -- applies. A reused or foreign-labelled volume, or an identity inspect
+# that fails, is left alone; a temp the check REFUSED has its attempt closed first and is
+# never removed. Mock knobs: RM_INTERRUPT_AT=tmpcreate|claudetmpcreate|check|claudecheck,
+# RM_FAIL=crashtmpcreate|crashclaudetmpcreate, RM_IDENTITY / RM_CLAUDE_IDENTITY=inspecterr.
+
+# The temp-volume calls in log order ($1 = log; $2 = optional: only lines naming it):
+# creates (`volume create <name>`, labels dropped), new-temp checks (`check <name>`),
+# identity inspects, holder lists, every container `rm` (holder or reap) and volume
+# removals.
+_i3_calls() {
+    grep -E '^(volume create |volume inspect --format |ps -a --filter volume=|rm |volume rm )|find /dest -mindepth 1$' "$1" \
+    | sed -E -e 's/^volume create .* ([^ ]+)$/volume create \1/' \
+             -e 's/^run .* -v ([^ :]+):\/dest:ro .*find \/dest -mindepth 1$/check \1/' \
+    | grep -F -- "${2:-}"
+}
+
+# An identity-inspect call line for volume $1.
+_i3_inspect() { printf 'volume inspect --format {{.Labels}} %s' "$1"; }
+
+@test "32q I-3: Ctrl+C during the data temp's volume create removes it once its identity label proves it this run's, exit 130" {
+    _make_backup
+    export DAAF_NESTED=1 RM_INTERRUPT_AT=tmpcreate
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+    assert_failure 130
+    assert_output --partial "Restore interrupted. Your DAAF data has not been changed."
+    refute_output --partial "DESTRUCTIVE OPERATION"
+    refute_output --partial "The temporary copy could not be removed"
+    # The INT handler cleaned up; the EXIT handler does not repeat it.
+    refute_output --partial "The restore stopped before replacing anything"
+    # No check ran; the ONE identity inspect is the adoption's, then the usual removal
+    # path: the holder list, then the volume.
+    run _i3_calls "${TEST_DIR}/docker_calls.log"
+    assert_output "$(printf '%s\n' \
+        "volume create ${_D1_DATA_TMP}" \
+        "$(_i3_inspect "${_D1_DATA_TMP}")" \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        "volume rm ${_D1_DATA_TMP}")"
+    _assert_no_live_write
+}
+
+@test "32q I-3: Ctrl+C during the new data temp's emptiness check with a Created holder -> rm <id> BEFORE volume rm, removed, exit 130" {
+    _make_backup
+    export DAAF_NESTED=1 RM_INTERRUPT_AT=check RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created"
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+    assert_failure 130
+    assert_output --partial "Restore interrupted. Your DAAF data has not been changed."
+    refute_output --partial "The temporary copy could not be removed"
+    refute_output --partial "Could not confirm that the new temporary Docker volume"
+    # The check never reached its own identity call: the inspect after it is the
+    # adoption's. The holder goes with a PLAIN rm before the volume (D1 path).
+    run _i3_calls "${TEST_DIR}/docker_calls.log"
+    assert_output "$(printf '%s\n' \
+        "volume create ${_D1_DATA_TMP}" \
+        "check ${_D1_DATA_TMP}" \
+        "$(_i3_inspect "${_D1_DATA_TMP}")" \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        'rm c9be7425c57c' \
+        "volume rm ${_D1_DATA_TMP}")"
+    run cat "${TEST_DIR}/holders_removed"
+    assert_output "c9be7425c57c"
+    _assert_no_live_write
+}
+
+@test "32q I-3: Ctrl+C at the data temp's create or check with a BUSY holder keeps the adopted temp and prints the kept-temp block, exit 130" {
+    _make_backup
+    export DAAF_NESTED=1 RM_HOLDERS="${_D1_DATA_TMP}=r1:running"
+    local m
+    for m in tmpcreate check; do
+        export RM_INTERRUPT_AT="${m}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 busy case=${m}"
+        assert_failure 130
+        assert_output --partial "$(printf '%s\n' \
+            'Restore interrupted. Your DAAF data has not been changed.' \
+            'The temporary copy could not be removed.' \
+            'Something is still using it; another restore may still be running.' \
+            'To free the space it uses, run:' \
+            "  docker volume rm ${_D1_DATA_TMP}" \
+            'If Docker says it is in use, first run' \
+            "  docker ps -a --filter volume=${_D1_DATA_TMP}" \
+            'and remove each container it lists with docker rm <ID>, then try again.')"
+        refute_output --partial "Docker said:"
+        # Adopted (identity, then the holder list), but kept: no holder rm, no volume rm.
+        run grep -cxF "$(_i3_inspect "${_D1_DATA_TMP}")" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        run grep -cxF "$(_d1_list "${_D1_DATA_TMP}")" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        run grep -cE "^(rm r1|volume rm ${_D1_DATA_TMP})\$" "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        _assert_no_live_write
+    done
+}
+
+@test "32q I-3: Ctrl+C during the Claude temp's create or check removes BOTH temps (data recorded, Claude adopted), exit 130" {
+    _make_full_backup
+    export DAAF_NESTED=1
+    local m
+    for m in claudetmpcreate claudecheck; do
+        export RM_INTERRUPT_AT="${m}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 Claude case=${m}"
+        assert_failure 130
+        assert_output --partial "Restore interrupted. Your DAAF data has not been changed."
+        refute_output --partial "The temporary copy could not be removed"
+        run grep -cxF "volume rm ${_D1_DATA_TMP}" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        run grep -cxF "volume rm ${_D1_CLAUDE_TMP}" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        # The Claude temp was adopted by its ONE identity inspect (the check never reached
+        # its own), then removed through the holder list.
+        run _i3_calls "${TEST_DIR}/docker_calls.log" "${_D1_CLAUDE_TMP}"
+        if [ "${m}" = claudecheck ]; then
+            assert_output "$(printf '%s\n' "volume create ${_D1_CLAUDE_TMP}" "check ${_D1_CLAUDE_TMP}" \
+                "$(_i3_inspect "${_D1_CLAUDE_TMP}")" "$(_d1_list "${_D1_CLAUDE_TMP}")" "volume rm ${_D1_CLAUDE_TMP}")"
+        else
+            assert_output "$(printf '%s\n' "volume create ${_D1_CLAUDE_TMP}" \
+                "$(_i3_inspect "${_D1_CLAUDE_TMP}")" "$(_d1_list "${_D1_CLAUDE_TMP}")" "volume rm ${_D1_CLAUDE_TMP}")"
+        fi
+        run cat "${TEST_DIR}/helpers"
+        assert_output ""
+        _assert_no_live_write
+    done
+}
+
+@test "32q I-3: a Ctrl+C at create when the create REUSED a foreign-labelled volume leaves that volume alone (data, and Claude)" {
+    local m
+    for m in data claude; do
+        unset RM_IDENTITY RM_CLAUDE_IDENTITY
+        if [ "${m}" = data ]; then
+            _make_backup
+            export RM_IDENTITY=recreated RM_INTERRUPT_AT=tmpcreate
+        else
+            _make_full_backup
+            export RM_CLAUDE_IDENTITY=recreated RM_INTERRUPT_AT=claudetmpcreate
+        fi
+        export DAAF_NESTED=1
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 reused case=${m}"
+        assert_failure 130
+        assert_output --partial "Restore interrupted. Your DAAF data has not been changed."
+        refute_output --partial "The temporary copy could not be removed"
+        if [ "${m}" = data ]; then
+            # One identity inspect (another run's token): no holder list, no rm at all.
+            run _i3_calls "${TEST_DIR}/docker_calls.log"
+            assert_output "$(printf '%s\n' "volume create ${_D1_DATA_TMP}" "$(_i3_inspect "${_D1_DATA_TMP}")")"
+        else
+            # The data temp this run recorded is still removed; the Claude one is left.
+            run grep -cxF "volume rm ${_D1_DATA_TMP}" "${TEST_DIR}/docker_calls.log"
+            assert_output "1"
+            run _i3_calls "${TEST_DIR}/docker_calls.log" "${_D1_CLAUDE_TMP}"
+            assert_output "$(printf '%s\n' "volume create ${_D1_CLAUDE_TMP}" "$(_i3_inspect "${_D1_CLAUDE_TMP}")")"
+        fi
+        _assert_no_live_write
+    done
+}
+
+@test "32q I-3: a Ctrl+C at create or check whose identity inspect FAILS (daemon error) leaves the temp alone (could not check = not ours)" {
+    _make_backup
+    export DAAF_NESTED=1 RM_IDENTITY=inspecterr
+    local m
+    for m in tmpcreate check; do
+        export RM_INTERRUPT_AT="${m}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 inspect error case=${m}"
+        assert_failure 130
+        assert_output --partial "Restore interrupted. Your DAAF data has not been changed."
+        refute_output --partial "The temporary copy could not be removed"
+        run _i3_calls "${TEST_DIR}/docker_calls.log"
+        if [ "${m}" = check ]; then
+            assert_output "$(printf '%s\n' "volume create ${_D1_DATA_TMP}" "check ${_D1_DATA_TMP}" "$(_i3_inspect "${_D1_DATA_TMP}")")"
+        else
+            assert_output "$(printf '%s\n' "volume create ${_D1_DATA_TMP}" "$(_i3_inspect "${_D1_DATA_TMP}")")"
+        fi
+        _assert_no_live_write
+    done
+}
+
+@test "32q I-3: a new temp the check REFUSED (not empty, or the check failed) is never removed: its attempt is closed first, no identity inspect of it" {
+    # The mock records THIS run's labels on create, so the refused temp WOULD pass the
+    # identity test: only the closed attempt keeps it from being adopted and removed.
+    local m
+    for m in data_notempty data_checkfail claude_notempty; do
+        unset RM_TEMP_NOT_EMPTY RM_FAIL
+        case "${m}" in
+            data_notempty) _make_backup; export RM_TEMP_NOT_EMPTY=data ;;
+            data_checkfail) _make_backup; export RM_FAIL=emptycheck ;;
+            claude_notempty) _make_full_backup; export RM_TEMP_NOT_EMPTY=claude ;;
+        esac
+        export DAAF_NESTED=1
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 refusal case=${m}"
+        assert_failure 1
+        assert_output --partial "ERROR: Could not confirm that the new temporary Docker volume '"
+        assert_output --partial "and was created by this restore, so it was left as it is (it may belong to"
+        refute_output --partial "The temporary copy could not be removed"
+        if [ "${m}" = claude_notempty ]; then
+            # The Claude temp: created, checked, then nothing. The data temp (recorded,
+            # still this run's) goes through the careful cleanup.
+            run _i3_calls "${TEST_DIR}/docker_calls.log" "${_D1_CLAUDE_TMP}"
+            assert_output "$(printf '%s\n' "volume create ${_D1_CLAUDE_TMP}" "check ${_D1_CLAUDE_TMP}")"
+            run grep -cxF "volume rm ${_D1_DATA_TMP}" "${TEST_DIR}/docker_calls.log"
+            assert_output "1"
+        else
+            run _i3_calls "${TEST_DIR}/docker_calls.log"
+            assert_output "$(printf '%s\n' "volume create ${_D1_DATA_TMP}" "check ${_D1_DATA_TMP}")"
+        fi
+        _assert_no_live_write
+    done
+}
+
+@test "32q I-3: an exit other than INT/TERM while the data temp's create attempt is open (EXIT handler) removes the adopted temp" {
+    # RM_FAIL=crash*tmpcreate: the create EXITS the script (status 7) once the volume
+    # exists. For the data temp ONLY the EXIT handler's own adoption makes it count as
+    # left behind; for the Claude temp the recorded data temp already starts the cleanup
+    # (whose adoption then takes the Claude temp too).
+    local m t
+    for m in crashtmpcreate crashclaudetmpcreate; do
+        if [ "${m}" = crashtmpcreate ]; then _make_backup; t="${_D1_DATA_TMP}"; else _make_full_backup; t="${_D1_CLAUDE_TMP}"; fi
+        export DAAF_NESTED=1 RM_FAIL="${m}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 7>&1 8>&2'
+        echo "I-3 EXIT handler case=${m}"
+        assert_failure 7
+        assert_output --partial "$(printf '%s\n' \
+            'The restore stopped before replacing anything (see the message above).' \
+            'Your DAAF data has not been changed.' \
+            'Its temporary copy was removed.')"
+        refute_output --partial "Restore interrupted"
+        run grep -cxF "$(_i3_inspect "${t}")" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        run grep -cxF "volume rm ${_D1_DATA_TMP}" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        if [ "${m}" = crashclaudetmpcreate ]; then
+            run grep -cxF "volume rm ${_D1_CLAUDE_TMP}" "${TEST_DIR}/docker_calls.log"
+            assert_output "1"
+        fi
+        _assert_no_live_write
+    done
 }

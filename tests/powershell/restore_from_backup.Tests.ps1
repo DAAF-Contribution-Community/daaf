@@ -753,6 +753,101 @@ Describe "restore_from_backup.ps1 copy-then-swap structure" {
         $Content.IndexOf('Invoke-DaafRestoreTempCleanup -Final') | Should -BeGreaterThan $Content.IndexOf('$RestoredCount = Get-DaafCountMarker')
     }
 
+    It "task #36: the cleanup resolves an open create attempt FIRST (after the swap guard, before any identity check, reap or removal)" {
+        # The finally reaches it through its one Invoke-DaafRestoreTempCleanup call (pinned
+        # above). Behaviour: the "task #36" Ctrl+C cases in the end-to-end block.
+        $fn = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Invoke-DaafRestoreTempCleanup')
+        }, $true)
+        $st = @($fn.Body.EndBlock.Statements)
+        $resolveAt = [array]::FindIndex([object[]]$st, [Predicate[object]]{ param($s) $s.Extent.Text -ceq 'Resolve-DaafRestoreAttemptedTemp' })
+        $resolveAt | Should -BeGreaterThan 0 -Because 'the swap-started guard stays the first statement'
+        $st[0].Extent.Text | Should -BeExactly 'if ($script:SwapStarted -and -not $Final) { return }'
+        for ($i = 0; $i -lt $resolveAt; $i++) {
+            $st[$i].Extent.Text | Should -Not -Match 'TempCreated|Test-DaafRestoreTempIdentity|Invoke-DaafRestoreHelperReap|Invoke-DaafRestoreVolumeRemoval|unmark' -Because "statement $i runs before the attempt is resolved"
+        }
+        # Everything that reads the created flags or removes anything comes after it.
+        foreach ($pat in @('if ($script:TempCleanupCareful)', 'if ($script:TempCreated) {', 'if ($script:ClaudeTempCreated) {')) {
+            $at = [array]::FindIndex([object[]]$st, [Predicate[object]]{ param($s) $s.Extent.Text.StartsWith($pat) })
+            $at | Should -BeGreaterThan $resolveAt -Because "'$pat' must see the resolved attempt"
+        }
+        # The cleanup is its ONLY caller in the .ps1 (the .sh twin also calls its helper
+        # from the EXIT handler; here the finally covers every exit -- SYNC NOTE).
+        $calls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'Resolve-DaafRestoreAttemptedTemp')
+        }, $true))
+        $calls.Count | Should -Be 1
+        $calls[0].Extent.StartOffset | Should -BeGreaterThan $fn.Extent.StartOffset
+        $calls[0].Extent.EndOffset | Should -BeLessThan $fn.Extent.EndOffset
+    }
+
+    It "task #36: each temp's create attempt opens right BEFORE its volume create and closes right AFTER its created flag, and each refusal closes it first" {
+        foreach ($p in @(
+            @{ Attempt = 'TempCreateAttempted'; Created = 'TempCreated'; Temp = 'TempVolumeName' },
+            @{ Attempt = 'ClaudeTempCreateAttempted'; Created = 'ClaudeTempCreated'; Temp = 'ClaudeTempVolumeName' }
+        )) {
+            # Initialised (strict mode reads it in every cleanup) before the try.
+            @($Lines | Where-Object { $_ -match ('^\$' + $p.Attempt + ' = \$false\s*$') }).Count | Should -Be 1 -Because "`$$($p.Attempt) is initialised once at top level"
+            $create = [array]::FindIndex([string[]]$Lines, [Predicate[string]]{ param($l) $l -match ("'volume', 'create', .*, \`$" + $p.Temp + '\)\s*$') })
+            $create | Should -BeGreaterThan 0
+            $Lines[$create - 1] | Should -Match ('^\s*\$' + $p.Attempt + ' = \$true\s*$') -Because "the attempt must be open before the $($p.Temp) create"
+            # The refusal of the new-temp check closes the attempt as its FIRST action.
+            $refusal = @($Lines | Where-Object { $_ -match ('if \(-not \(Test-DaafRestoreNewTemp -Name \$' + $p.Temp + ' ') })
+            $refusal.Count | Should -Be 1
+            $refusal[0] | Should -Match ('\)\) \{ \$' + $p.Attempt + ' = \$false; \$PrepFail = ')
+            # Closed only once the temp is recorded as this run's.
+            $created = [array]::FindIndex([string[]]$Lines, [Predicate[string]]{ param($l) $l -match ('^\s*\$' + $p.Created + ' = \$true\s*$') })
+            $created | Should -BeGreaterThan $create
+            $Lines[$created + 1] | Should -Match ('^\s*\$' + $p.Attempt + ' = \$false\s*$') -Because "the attempt closes right after `$$($p.Created)"
+            # No other assignment of the attempt flag in the flow.
+            @($Lines | Where-Object { $_ -notmatch '^\s*#' -and $_ -match ('\$' + $p.Attempt + ' = ') }).Count | Should -Be 4
+        }
+    }
+
+    It "task #36: Resolve-DaafRestoreAttemptedTemp adopts an open attempt ONLY when the identity check passes, clears both flags, and calls no docker with no attempt open" {
+        $fn = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Resolve-DaafRestoreAttemptedTemp')
+        }, $true)
+        $fn | Should -Not -BeNullOrEmpty
+        . ([scriptblock]::Create($fn.Extent.Text))
+        # A function named docker shadows the native one (as in the identity test above).
+        $dockerCalls = [System.Collections.Generic.List[string]]::new()
+        $fakeLabels = ''
+        $fakeExit = 0
+        function docker { $dockerCalls.Add("$args"); $global:LASTEXITCODE = $fakeExit; if ($fakeLabels -ne '') { $fakeLabels } }
+        $ours = "map[$($RestoreLabel):daaf_daaf-data $($RestoreRunLabel):$($RestoreRunId)]"
+        $theirs = "map[$($RestoreLabel):daaf_daaf-data $($RestoreRunLabel):other-run-token]"
+        $cases = @(
+            # Data, Claude: attempt open?, already created?; labels, inspect exit;
+            # expected created flags after, expected docker call names.
+            @{ What = 'no attempt open'; DA = $false; DC = $false; CA = $false; CC = $false; Labels = $ours; Exit = 0; WantD = $false; WantC = $false; Calls = @() },
+            @{ What = 'data attempt, ours'; DA = $true; DC = $false; CA = $false; CC = $false; Labels = $ours; Exit = 0; WantD = $true; WantC = $false; Calls = @($TempVolumeName) },
+            @{ What = 'data attempt, another run''s label'; DA = $true; DC = $false; CA = $false; CC = $false; Labels = $theirs; Exit = 0; WantD = $false; WantC = $false; Calls = @($TempVolumeName) },
+            @{ What = 'data attempt, inspect fails (printing our label)'; DA = $true; DC = $false; CA = $false; CC = $false; Labels = $ours; Exit = 1; WantD = $false; WantC = $false; Calls = @($TempVolumeName) },
+            @{ What = 'data attempt, no labels'; DA = $true; DC = $false; CA = $false; CC = $false; Labels = 'map[]'; Exit = 0; WantD = $false; WantC = $false; Calls = @($TempVolumeName) },
+            @{ What = 'data attempt, already recorded'; DA = $true; DC = $true; CA = $false; CC = $false; Labels = $ours; Exit = 0; WantD = $true; WantC = $false; Calls = @() },
+            @{ What = 'Claude attempt, ours'; DA = $false; DC = $true; CA = $true; CC = $false; Labels = $ours; Exit = 0; WantD = $true; WantC = $true; Calls = @($ClaudeTempVolumeName) },
+            @{ What = 'Claude attempt, another run''s label'; DA = $false; DC = $true; CA = $true; CC = $false; Labels = $theirs; Exit = 0; WantD = $true; WantC = $false; Calls = @($ClaudeTempVolumeName) },
+            @{ What = 'Claude attempt, inspect fails'; DA = $false; DC = $true; CA = $true; CC = $false; Labels = $ours; Exit = 1; WantD = $true; WantC = $false; Calls = @($ClaudeTempVolumeName) }
+        )
+        foreach ($c in $cases) {
+            $dockerCalls.Clear()
+            $fakeLabels = $c.Labels
+            $fakeExit = $c.Exit
+            $script:TempCreateAttempted = $c.DA
+            $script:TempCreated = $c.DC
+            $script:ClaudeTempCreateAttempted = $c.CA
+            $script:ClaudeTempCreated = $c.CC
+            Resolve-DaafRestoreAttemptedTemp
+            $script:TempCreated | Should -Be $c.WantD -Because "$($c.What): data temp recorded"
+            $script:ClaudeTempCreated | Should -Be $c.WantC -Because "$($c.What): Claude temp recorded"
+            $script:TempCreateAttempted | Should -BeFalse -Because "$($c.What): the data attempt is closed"
+            $script:ClaudeTempCreateAttempted | Should -BeFalse -Because "$($c.What): the Claude attempt is closed"
+            $expected = @($c.Calls | ForEach-Object { "volume inspect --format {{.Labels}} $_" })
+            ($dockerCalls -join ' | ') | Should -BeExactly ($expected -join ' | ') -Because "$($c.What): docker calls"
+        }
+    }
+
     It "sets the swap-start flag immediately before the data swap call" {
         $i = [array]::FindIndex([string[]]$Lines, [Predicate[string]]{ param($l) $l -match '^\s*\$SwapStarted = \$true' })
         $i | Should -BeGreaterThan -1
@@ -1028,6 +1123,9 @@ st="${FAKE_STATE:-.}"
 img='@PINNED_IMAGE@'
 # FAKE_INTERRUPT_AT=cp|swap|claudeswap: send SIGINT to the calling pwsh (Ctrl+C
 # stand-in), then finish normally -- a real swap keeps running inside Docker after Ctrl+C.
+# Task #36: tmpcreate|claudetmpcreate (a temp's `volume create`, after the volume and its
+# labels exist) and check|claudecheck (that temp's new-temp emptiness check) -- both
+# before the script records the temp as this run's.
 interrupt_here() {
     if [ "${FAKE_INTERRUPT_AT:-}" = "$1" ]; then kill -INT "${PPID}" 2>/dev/null; sleep 2; fi
 }
@@ -1128,6 +1226,9 @@ case "${1:-}" in
                         #   vanished_after_create  -- removed before check 2
                         #   recreated_after_create -- re-made by another run before check 2
                         #   vanished_after_marker  -- removed before check 3
+                        #   inspecterr             -- every check fails with a daemon
+                        #                             error (task #36: "not ours", never
+                        #                             "ours" or "absent")
                         case "${name}" in
                             *claude-config-restore-tmp) mode="${FAKE_CLAUDE_IDENTITY:-}" ;;
                             *-restore-tmp) mode="${FAKE_IDENTITY:-}" ;;
@@ -1135,6 +1236,7 @@ case "${1:-}" in
                         esac
                         n=$(( $(cat "${st}/inspectn.${name}" 2>/dev/null || echo 0) + 1 ))
                         echo "${n}" > "${st}/inspectn.${name}"
+                        if [ "${mode}" = "inspecterr" ]; then daemon_down; fi
                         case "${mode}:${n}" in
                             vanished_after_create:2|vanished_after_marker:3) rm -f "${st}/vol.${name}" "${st}/marker.${name}" ;;
                             recreated_after_create:2)
@@ -1167,6 +1269,10 @@ case "${1:-}" in
                 if [ "${FAKE_IDENTITY:-}" = "reused" ] && [ "${name%-restore-tmp}" != "${name}" ] && [ "${name%claude-config-restore-tmp}" = "${name}" ]; then
                     printf '%s\n' "org.daaf.restore-run=other-run-token" "org.daaf.restore-tmp-for=other" > "${st}/vol.${name}"
                 fi
+                # FAKE_CLAUDE_IDENTITY=reused: the same, for the Claude temp (task #36).
+                if [ "${FAKE_CLAUDE_IDENTITY:-}" = "reused" ] && [ "${name%claude-config-restore-tmp}" != "${name}" ]; then
+                    printf '%s\n' "org.daaf.restore-run=other-run-token" "org.daaf.restore-tmp-for=other" > "${st}/vol.${name}"
+                fi
                 # An existing volume is reused unchanged (labels kept), like Docker.
                 if [ ! -e "${st}/vol.${name}" ]; then
                     : > "${st}/vol.${name}"
@@ -1176,6 +1282,7 @@ case "${1:-}" in
                         prev="${a}"
                     done
                 fi
+                case "${name}" in *claude-config-restore-tmp) interrupt_here claudetmpcreate ;; *) interrupt_here tmpcreate ;; esac
                 echo "${name}"; exit 0 ;;
             rm)
                 # FAKE_VOLUME_RM_ERR: Docker's text for a FAKE_VOLUME_RM_EXIT failure.
@@ -1543,6 +1650,7 @@ RUN3B
             # file in that temp; FAKE_EMPTY_CHECK_EXIT makes the check itself fail;
             # FAKE_FIND_STDERR=1 adds a stray stderr line to a successful, empty listing.
             *" ${img} find /dest -mindepth 1")
+                case "$*" in *"claude-config-restore-tmp:/dest:ro "*) interrupt_here claudecheck ;; *) interrupt_here check ;; esac
                 if [ "${FAKE_EMPTY_CHECK_EXIT:-0}" != "0" ]; then echo "fake docker: empty check failed" >&2; exit "${FAKE_EMPTY_CHECK_EXIT}"; fi
                 if [ "${FAKE_FIND_STDERR:-0}" = "1" ]; then stray_warning; fi
                 case "$*:${FAKE_TEMP_NOT_EMPTY:-}" in
@@ -2288,6 +2396,137 @@ esac
             $r.Output | Should -BeLike "*Int64*"
             Assert-LiveUntouched -Calls $r.Calls
             $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+        }
+    }
+
+    # Task #36 (review 32q, I-3): a Ctrl+C during a temp's `volume create`, or during its
+    # new-temp emptiness check, ends the try BEFORE $TempCreated / $ClaudeTempCreated is
+    # set. The finally's cleanup now resolves that open attempt
+    # (Resolve-DaafRestoreAttemptedTemp): the temp is removed through the usual path
+    # (holders, the kept-temp note) ONLY when it exists and carries THIS run's identity
+    # label; a reused foreign-labelled volume, or one whose identity inspect fails, is left
+    # alone. Before the fix every one of these runs left the empty labelled temp behind.
+    Context "task #36: a Ctrl+C before a new temp was recorded as this run's" -Skip:($IsMacOS) {
+        It "at the data temp's volume create: the temp (ours) is identity-checked, then removed; exit 130" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_INTERRUPT_AT = 'tmpcreate' }
+            $r.ExitCode | Should -Be 130
+            $r.Output | Should -BeLike "*Restore interrupted. Your DAAF data has not been changed.*"
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            # The interrupt landed at the create: the new-temp check never ran.
+            (Get-CallIndex $r.Calls '^volume create .* daaf_daaf-data-restore-tmp$') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls ' find /dest -mindepth 1$') | Should -Be -1
+            $id = Get-CallIndex $r.Calls '^volume inspect --format \{\{\.Labels\}\} daaf_daaf-data-restore-tmp$'
+            $list = Get-CallIndex $r.Calls '^ps -a --filter volume=daaf_daaf-data-restore-tmp --format \{\{\.ID\}\} \{\{\.State\}\}$'
+            $volRm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
+            $id | Should -BeGreaterThan -1
+            $list | Should -BeGreaterThan $id
+            $volRm | Should -BeGreaterThan $list
+            $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "at the data temp's emptiness check with a Created holder: 'docker rm' of the holder, then the temp; exit 130" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c created') -Fake @{ FAKE_INTERRUPT_AT = 'check' }
+            $r.ExitCode | Should -Be 130
+            $r.Output | Should -BeLike "*Restore interrupted. Your DAAF data has not been changed.*"
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            # The interrupt landed at the check: no copy was started.
+            (Get-CallIndex $r.Calls 'daaf_daaf-data-restore-tmp:/dest:ro {IMG} find /dest -mindepth 1$') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '^cp ') | Should -Be -1
+            $holderRm = Get-CallIndex $r.Calls '^rm c9be7425c57c$'
+            $volRm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
+            $holderRm | Should -BeGreaterThan -1
+            $volRm | Should -BeGreaterThan $holderRm
+            (Get-CallIndex $r.Calls '^rm -f c9be7425c57c$') | Should -Be -1
+            $r.Holders.Count | Should -Be 0
+            $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "at the data temp's emptiness check with a BUSY (running) holder: temp and holder kept, the kept-temp block; exit 130" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c running') -Fake @{ FAKE_INTERRUPT_AT = 'check' }
+            $r.ExitCode | Should -Be 130
+            $block = @(
+                'Restore interrupted. Your DAAF data has not been changed.',
+                'The temporary copy could not be removed.',
+                'Something is still using it; another restore may still be running.',
+                'To free the space it uses, run:',
+                '  docker volume rm daaf_daaf-data-restore-tmp',
+                'If Docker says it is in use, first run',
+                '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                'and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            (Get-CallIndex $r.Calls '^rm c9be7425c57c$') | Should -Be -1
+            (Get-CallIndex $r.Calls '^rm -f c9be7425c57c$') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+        }
+
+        It "at the Claude temp's <Where>: BOTH temps removed (data: recorded; Claude: identity-checked); exit 130" -ForEach @(
+            @{ Where = 'volume create'; At = 'claudetmpcreate'; CheckRan = $false },
+            @{ Where = 'emptiness check'; At = 'claudecheck'; CheckRan = $true }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Fake @{ FAKE_INTERRUPT_AT = $At }
+            $r.ExitCode | Should -Be 130
+            $r.Output | Should -BeLike "*Restore interrupted. Your DAAF data has not been changed.*"
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            $check = Get-CallIndex $r.Calls 'daaf_daaf-claude-config-restore-tmp:/dest:ro {IMG} find /dest -mindepth 1$'
+            if ($CheckRan) { $check | Should -BeGreaterThan -1 } else { $check | Should -Be -1 }
+            $id = Get-CallIndex $r.Calls '^volume inspect --format \{\{\.Labels\}\} daaf_daaf-claude-config-restore-tmp$'
+            $claudeRm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-claude-config-restore-tmp$'
+            $id | Should -BeGreaterThan -1
+            $claudeRm | Should -BeGreaterThan $id
+            (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -BeGreaterThan -1
+            $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+            $r.Volumes | Should -Not -Contain 'daaf_daaf-claude-config-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "at the <Which> temp's volume create when <Why>: that temp is LEFT ALONE (no holder list, no rm); exit 130" -ForEach @(
+            @{ Which = 'data'; Why = 'the create REUSED a volume carrying another run''s labels'; Claude = $false; At = 'tmpcreate'; Fake = @{ FAKE_IDENTITY = 'reused' }; Temp = 'daaf_daaf-data-restore-tmp' },
+            @{ Which = 'data'; Why = 'the identity inspect FAILS (a daemon error)'; Claude = $false; At = 'tmpcreate'; Fake = @{ FAKE_IDENTITY = 'inspecterr' }; Temp = 'daaf_daaf-data-restore-tmp' },
+            @{ Which = 'Claude'; Why = 'the create REUSED a volume carrying another run''s labels'; Claude = $true; At = 'claudetmpcreate'; Fake = @{ FAKE_CLAUDE_IDENTITY = 'reused' }; Temp = 'daaf_daaf-claude-config-restore-tmp' },
+            @{ Which = 'Claude'; Why = 'the identity inspect FAILS (a daemon error)'; Claude = $true; At = 'claudetmpcreate'; Fake = @{ FAKE_CLAUDE_IDENTITY = 'inspecterr' }; Temp = 'daaf_daaf-claude-config-restore-tmp' }
+        ) {
+            $fake = @{ FAKE_INTERRUPT_AT = $At } + $Fake
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude:$Claude -Fake $fake
+            $r.ExitCode | Should -Be 130
+            $r.Output | Should -BeLike "*Restore interrupted. Your DAAF data has not been changed.*"
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            $escTemp = [regex]::Escape($Temp)
+            # The identity was asked (and was not this run's, or could not be read) ...
+            (Get-CallIndex $r.Calls "^volume inspect --format \{\{\.Labels\}\} $escTemp$") | Should -BeGreaterThan -1
+            # ... so nothing touched the volume: no holder listing, no unmark, no rm.
+            (Get-CallIndex $r.Calls "^ps -a --filter volume=$escTemp ") | Should -Be -1
+            (Get-CallIndex $r.Calls "-v ${escTemp}:/dest {IMG} rm -f ") | Should -Be -1
+            (Get-CallIndex $r.Calls "^volume rm $escTemp$") | Should -Be -1
+            $r.Volumes | Should -Contain $Temp
+            if ($Claude) {
+                # The data temp WAS recorded as this run's before the Claude create: removed.
+                (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -BeGreaterThan -1
+                $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+            }
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "a <Which> temp REFUSED by the new-temp check (<Why>), though it carries this run's label, is never removed" -ForEach @(
+            @{ Which = 'data'; Why = 'not empty'; Claude = $false; Fake = @{ FAKE_TEMP_NOT_EMPTY = 'data' }; Temp = 'daaf_daaf-data-restore-tmp' },
+            @{ Which = 'data'; Why = 'the check fails'; Claude = $false; Fake = @{ FAKE_EMPTY_CHECK_EXIT = '1' }; Temp = 'daaf_daaf-data-restore-tmp' },
+            @{ Which = 'Claude'; Why = 'not empty'; Claude = $true; Fake = @{ FAKE_TEMP_NOT_EMPTY = 'claude' }; Temp = 'daaf_daaf-claude-config-restore-tmp' }
+        ) {
+            # The refusal closes the create attempt BEFORE its (careful) cleanup, so the
+            # attempt resolution never counts the refused temp as this run's -- although its
+            # label IS this run's (the fake records the create's labels).
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude:$Claude -Fake $Fake
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: Could not confirm that the new temporary Docker volume '$Temp' is empty*"
+            $escTemp = [regex]::Escape($Temp)
+            (Get-CallIndex $r.Calls "^volume create --label org\.daaf\.restore-tmp-for=\S+ --label org\.daaf\.restore-run=\S+ $escTemp$") | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls "^volume rm $escTemp$") | Should -Be -1
+            (Get-CallIndex $r.Calls "^ps -a --filter volume=$escTemp ") | Should -Be -1
+            $r.Volumes | Should -Contain $Temp
+            Assert-LiveUntouched -Calls $r.Calls
         }
     }
 

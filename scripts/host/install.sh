@@ -62,6 +62,9 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         case "$*" in
             "info") return 0 ;;
             *"volume inspect"*) return 1 ;;
+            # The exact-name volume list (daaf_volume_state below) succeeds and
+            # lists nothing: no DAAF volume exists, so dry-run walks a fresh install.
+            *"volume ls"*) return 0 ;;
             *"buildx inspect"*) return 1 ;;
             *"buildx create"*) return 0 ;;
             *" build --progress"*) return 0 ;;
@@ -86,6 +89,35 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         return 0
     }
 fi
+
+# --- Volume existence probe (used by the existing-install check below) ---
+# Prints one word for Docker volume $1: present | absent | unknown.
+# `docker volume inspect` exit 0 = present. A FAILED inspect is not read as
+# "absent" on its own: the exact-name list (`docker volume ls -q`, stdout only,
+# whole-line match) decides, and a list that fails too is "unknown" -- the
+# caller then refuses rather than risk installing over a live installation.
+# No Docker error text is matched: its wording varies by Docker version, and the
+# install.ps1 twin cannot read it reliably (Windows PowerShell 5.1 drops native
+# stderr under SilentlyContinue), so both twins classify by exit code and stdout
+# only. No pipe: under pipefail a SIGPIPE'd `printf | grep -q` can read as "no
+# match". Defined before the test-mode guard so tests can source and call it.
+daaf_volume_state() {
+    local names nl
+    if docker volume inspect "$1" >/dev/null 2>&1; then
+        echo "present"
+        return 0
+    fi
+    if ! names="$(docker volume ls -q 2>/dev/null </dev/null)"; then
+        echo "unknown"
+        return 0
+    fi
+    nl=$'\n'
+    case "${nl}${names}${nl}" in
+        *"${nl}$1${nl}"*) echo "present" ;;
+        *) echo "absent" ;;
+    esac
+    return 0
+}
 
 # --- Test Mode Guard ---
 # When sourced for testing, define functions but skip execution.
@@ -114,67 +146,280 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
-# --- Check for existing installation ---
-# Derive the project-prefixed data volume name so multi-instance installs
-# (DAAF_PROJECT_NAME set) are detected correctly. The value comes from the shell
-# environment first, else DAAF_PROJECT_NAME in the existing install's
-# environment_settings.txt, else the "daaf" default (byte-for-byte identical to
-# the former hardcoded "daaf_daaf-data"). DAAF_DATA_VOLUME_NAME, when set in the
-# shell environment, overrides the whole derivation with a verbatim full volume
-# name (the shared-workspace escape hatch; matches resolve_data_volume_name in
-# daaf_lib.sh). Parse only that one key (never `source`
-# -- the file holds API keys); shell env wins; CR stripped; Bash 3.2 safe.
-INSTALL_PROJECT_NAME="${DAAF_PROJECT_NAME:-}"
-if [ -z "${INSTALL_PROJECT_NAME}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
+# --- Bridge the install-time DAAF_* keys from environment_settings.txt ---
+# ONE project-name source for the whole run. Docker Compose interpolates
+# `name: ${DAAF_PROJECT_NAME:-daaf}`, the `${DAAF_PORT_*}` host ports and the
+# DAAF_DEV build arg from the shell environment (or a .env file beside the
+# compose file, which the installer never writes), never from
+# environment_settings.txt, which feeds only the container's env_file. The
+# launchers bridge these keys from the file with load_daaf_settings (daaf_lib.sh);
+# the installer does the same here, BEFORE the existing-install check and before
+# any compose call, so the volume the check examines, the project and ports
+# Compose builds and starts, and the project named by every printed re-install
+# or manual `docker compose` command are one value (see "Printed commands carry
+# the project" below). (Until 2026-10-11 the file's DAAF_PROJECT_NAME only named the volume the
+# check examined and was never exported, so a re-install from a named instance's
+# own folder with the shell project unset checked x_daaf-data but built and
+# started project 'daaf' on the default ports: reviews 42q I-2 and 43d ISSUE-1 in
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/reviews/.)
+# Same rules as load_daaf_settings for these five whitelisted keys (that library
+# is not available: this script runs standalone via `curl | bash`): never
+# `source` the file (it holds API keys); only lines starting at column 0 with a
+# known KEY= are read, so comments and every other line are ignored; CR stripped;
+# one layer of surrounding quotes stripped; a non-empty shell value wins (a
+# repeated key is adopted again only while the value is still empty); Bash 3.2
+# safe. The file is read whenever it exists, with or without a docker-compose.yml
+# here: the installer never overwrites an existing environment_settings.txt
+# (seeding below), so every later launch from this folder uses the file's
+# values, and the install must use the same ones.
+# Not bridged: DAAF_BRANCH (this run's ref is already fixed in RAW_BASE above)
+# and DAAF_DATA_VOLUME_NAME (see DATA_VOLUME_NAME below).
+# SYNC NOTE: the key match here is a `case` glob, so it is CASE-SENSITIVE, as in
+# load_daaf_settings (a lowercase "daaf_dev=1" line is ignored). The install.ps1
+# twin uses -notcontains, which is case-INSENSITIVE, as Import-DaafSettingsFile
+# is. Each twin matches its own platform's launcher loader; the twins differ
+# from each other on purpose (review 44c N-4 / 44q NIT-3; no behaviour change).
+# An existing file that cannot be opened stops the run with a plain ERROR before
+# anything is downloaded (review 44q NIT-1), even when the shell already supplies
+# every bridged key: the same file is the container's env_file, so the `up -d`
+# below could not read it either, and stopping here is simpler and fails safe.
+# The open check is daaf_lib.sh's (`true`, not `:`; see there). If the file
+# becomes unreadable between this check and the read loop, `set -e` still stops
+# the run there (bash's raw error line; nothing has been downloaded yet).
+# BRIDGE_ADOPTED lists each key taken from the file, for the NOTE printed below.
+BRIDGE_ADOPTED=""
+if [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
+    if ! { true < "${INSTALL_DIR}/environment_settings.txt"; } 2>/dev/null; then
+        echo "ERROR: Could not read daaf-docker/environment_settings.txt. Check its"
+        echo "       permissions, and close any program that has it open, then run the"
+        echo "       installer again. Nothing has been downloaded or changed."
+        exit 1
+    fi
     while IFS= read -r _line || [ -n "${_line}" ]; do
         _line="$(printf '%s' "${_line}" | tr -d '\r')"
         case "${_line}" in
-            DAAF_PROJECT_NAME=*)
-                INSTALL_PROJECT_NAME="${_line#*=}"
-                case "${INSTALL_PROJECT_NAME}" in
-                    \"*\") INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME#\"}"; INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME%\"}" ;;
-                    \'*\') INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME#\'}"; INSTALL_PROJECT_NAME="${INSTALL_PROJECT_NAME%\'}" ;;
-                esac
-                break
-                ;;
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*) ;;
+            *) continue ;;
         esac
-    done < "${INSTALL_DIR}/environment_settings.txt"
-fi
-DATA_VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${INSTALL_PROJECT_NAME:-daaf}_daaf-data}"
-
-# --- Bridge the DAAF_DEV build flag into the environment ---
-# Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
-# the compose project name comes from the file's `name:` key), the build flag
-# must be EXPORTED so `docker compose build` below sees it and forwards it as
-# `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. Parse only that one key from the
-# just-downloaded environment_settings.txt (never `source` -- the file holds API
-# keys); shell env wins; CR stripped; Bash 3.2 safe. Absent file / absent key =
-# the flag stays unset, so its build arg defaults to 0 (standard build).
-if [ -z "${DAAF_DEV:-}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
-    while IFS= read -r _line || [ -n "${_line}" ]; do
-        _line="$(printf '%s' "${_line}" | tr -d '\r')"
+        _val="${_line#*=}"
+        case "${_val}" in
+            \"*\") _val="${_val#\"}"; _val="${_val%\"}" ;;
+            \'*\') _val="${_val#\'}"; _val="${_val%\'}" ;;
+        esac
         case "${_line}" in
-            DAAF_DEV=*)
-                _dev_val="${_line#*=}"
-                case "${_dev_val}" in
-                    \"*\") _dev_val="${_dev_val#\"}"; _dev_val="${_dev_val%\"}" ;;
-                    \'*\') _dev_val="${_dev_val#\'}"; _dev_val="${_dev_val%\'}" ;;
-                esac
-                export DAAF_DEV="${_dev_val}"
-                break
-                ;;
+            DAAF_PROJECT_NAME=*)   if [ -z "${DAAF_PROJECT_NAME:-}" ];   then export DAAF_PROJECT_NAME="${_val}"; else continue; fi ;;
+            DAAF_PORT_MARIMO=*)    if [ -z "${DAAF_PORT_MARIMO:-}" ];    then export DAAF_PORT_MARIMO="${_val}"; else continue; fi ;;
+            DAAF_PORT_LOGVIEWER=*) if [ -z "${DAAF_PORT_LOGVIEWER:-}" ]; then export DAAF_PORT_LOGVIEWER="${_val}"; else continue; fi ;;
+            DAAF_PORT_VSCODE=*)    if [ -z "${DAAF_PORT_VSCODE:-}" ];    then export DAAF_PORT_VSCODE="${_val}"; else continue; fi ;;
+            DAAF_DEV=*)            if [ -z "${DAAF_DEV:-}" ];            then export DAAF_DEV="${_val}"; else continue; fi ;;
         esac
+        BRIDGE_ADOPTED="${BRIDGE_ADOPTED} ${_line%%=*}"
     done < "${INSTALL_DIR}/environment_settings.txt"
 fi
 
+# --- The target project, derived once, normalized as Docker Compose does ---
+# Shell value, else the settings file (bridged above), else "daaf". Everything
+# below (the volume checked, every compose call, every printed re-install or
+# manual `docker compose` command) uses this value.
+# Docker Compose does not use the top-level `name:` verbatim: compose-go's loader
+# (loader/loader.go, NormalizeProjectName) lowercases it, keeps only [a-z0-9_-],
+# and trims leading '_' and '-' (source quoted from compose-go main, fetched
+# 2026-10-11, in review 44q ISSUE-1:
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/reviews/44q_quality_review.md).
+# So `Work`, `work ` or `x # mine` name the project "work" / "work" / "xmine",
+# and the volume "work_daaf-data". The installer computes the same name here and
+# uses it for the check, for every printed command, and as the DAAF_PROJECT_NAME
+# exported to Compose (which then normalizes an already-normal name to itself,
+# so this is equivalent and keeps the environment consistent). That the Compose
+# versions DAAF supports (Docker 25+) normalize the same way is an inference
+# from that source, not verified per version. ASCII and locale-safe (LC_ALL=C;
+# Bash 3.2 has no ${v,,}). A non-ASCII letter is dropped here; Go's Unicode
+# lowercasing maps a few (e.g. the Kelvin sign) to ASCII letters it would keep.
+# A value that normalizes to nothing (e.g. "___" or "@@") is refused before
+# anything is downloaded: what Compose does then is not something to rely on.
+# The value is not otherwise validated (review F-b, deferred).
+# SYNC NOTE: same rule, messages and NOTE in install.ps1.
+PROJECT_NAME_GIVEN="${DAAF_PROJECT_NAME:-}"
+INSTALL_TARGET_PROJECT="daaf"
+if [ -n "${PROJECT_NAME_GIVEN}" ]; then
+    INSTALL_TARGET_PROJECT="$(printf '%s' "${PROJECT_NAME_GIVEN}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+    # Trim the leading run of '_' and '-' (the inner expansion is that run).
+    INSTALL_TARGET_PROJECT="${INSTALL_TARGET_PROJECT#"${INSTALL_TARGET_PROJECT%%[!_-]*}"}"
+    if [ -z "${INSTALL_TARGET_PROJECT}" ]; then
+        echo "ERROR: DAAF_PROJECT_NAME='${PROJECT_NAME_GIVEN}' cannot be used as a Docker Compose"
+        echo "       project name. A project name may use lowercase letters, digits, '-'"
+        echo "       and '_', and must start with a letter or digit."
+        case " ${BRIDGE_ADOPTED} " in
+            *" DAAF_PROJECT_NAME "*) echo "       (This value was read from daaf-docker/environment_settings.txt.)" ;;
+        esac
+        echo "       Nothing has been downloaded or changed."
+        exit 1
+    fi
+fi
+# One NOTE when anything was taken from the settings file (review 44q
+# SUGGESTION-3), listing each adopted key with a non-empty value, plus the
+# normalization sentence when the name changed. Nothing is printed when neither
+# applies (a fresh install, or a settings file with the bridged keys commented
+# out, as the template ships them), so the default output does not change.
+SETTINGS_NOTE_KEYS=""
+for _k in DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV; do
+    case " ${BRIDGE_ADOPTED} " in
+        *" ${_k} "*) ;;
+        *) continue ;;
+    esac
+    if [ -n "${!_k:-}" ]; then SETTINGS_NOTE_KEYS="${SETTINGS_NOTE_KEYS} ${_k}"; fi
+done
+PROJECT_NAME_NOTE=""
+if [ -n "${PROJECT_NAME_GIVEN}" ] && [ "${PROJECT_NAME_GIVEN}" != "${INSTALL_TARGET_PROJECT}" ]; then
+    PROJECT_NAME_NOTE="Docker Compose uses the project name '${INSTALL_TARGET_PROJECT}' for '${PROJECT_NAME_GIVEN}'."
+fi
+if [ -n "${SETTINGS_NOTE_KEYS}" ]; then
+    echo "NOTE: Using these settings from daaf-docker/environment_settings.txt:"
+    for _k in ${SETTINGS_NOTE_KEYS}; do
+        echo "        ${_k}=${!_k}"
+    done
+    if [ -n "${PROJECT_NAME_NOTE}" ]; then echo "      ${PROJECT_NAME_NOTE}"; fi
+    echo ""
+elif [ -n "${PROJECT_NAME_NOTE}" ]; then
+    echo "NOTE: ${PROJECT_NAME_NOTE}"
+    echo ""
+fi
+if [ -n "${PROJECT_NAME_GIVEN}" ]; then
+    export DAAF_PROJECT_NAME="${INSTALL_TARGET_PROJECT}"
+fi
+
+# --- Printed commands carry the project (review 44q ISSUE-2) ---
+# The manual `docker compose ...` commands and the "re-run this installer" texts
+# printed on failure run in the USER's shell, where a project taken from
+# environment_settings.txt (or given as a one-shot prefix) is not set: a bare
+# `docker compose` there resolves to project 'daaf' and could exec into, or
+# recreate, the default installation. So, for any project other than 'daaf':
+#   - every printed compose command carries `-p <project>` (it overrides `name:`);
+#   - the `up -d` retry, which (re)creates the container, also carries the ports
+#     this run used, as a same-line prefix. (Not `bash run_daaf.sh`: a first
+#     install that failed before seeding has no settings file to load.) The
+#     ports prefix is printed whenever a port is set, also for project 'daaf';
+#   - every "re-run this installer" text names DAAF_PROJECT_NAME=<project>, as
+#     the DAAF_FORCE_REINSTALL hints below do (FORCE_RERUN_ENV).
+# For project 'daaf' with no ports set, every line is byte-identical to before
+# (CI and scripts/host/test_migration.* grep this output).
+# SYNC NOTE: install.ps1 prints the same commands in PowerShell form.
+COMPOSE_P_FLAG=""
+RERUN_PROJECT_PREFIX=""
+RETRY_FORCE_TEXT="set DAAF_FORCE_REINSTALL=1 if prompted"
+if [ "${INSTALL_TARGET_PROJECT}" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${INSTALL_TARGET_PROJECT} "
+    RERUN_PROJECT_PREFIX="DAAF_PROJECT_NAME=${INSTALL_TARGET_PROJECT} "
+    RETRY_FORCE_TEXT="set DAAF_PROJECT_NAME=${INSTALL_TARGET_PROJECT}, and DAAF_FORCE_REINSTALL=1 if prompted"
+fi
+UP_PORTS_PREFIX=""
+for _k in DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE; do
+    if [ -n "${!_k:-}" ]; then UP_PORTS_PREFIX="${UP_PORTS_PREFIX}${_k}=${!_k} "; fi
+done
+# The data volume of THIS folder's install (checked when a docker-compose.yml is
+# here): "<project>_daaf-data", or DAAF_DATA_VOLUME_NAME from the SHELL
+# environment, a verbatim full volume name (the shared-workspace escape hatch,
+# unchanged). A DAAF_DATA_VOLUME_NAME in environment_settings.txt is deliberately
+# not read: step [2/4] re-downloads docker-compose.yml with its shared-volume
+# block commented out, so this run always mounts and writes "<project>_daaf-data",
+# and a file value could only point the check AWAY from that volume (a file
+# naming a missing volume would turn the case-1 WARNING into the case-3 NOTE and
+# re-install over "<project>_daaf-data" without a prompt). The shell override
+# keeps its earlier behaviour.
+DATA_VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${INSTALL_TARGET_PROJECT}_daaf-data}"
+
+# --- Existing-install decision (must not depend on the install folder) ---
+# The data volume this run would mount -- recreating its container (`up -d`) and
+# copying a fresh clone over its framework files and git history -- is named by
+# the Compose PROJECT, not by this folder. Before 2026-10-06 the check ran only
+# when THIS folder held a docker-compose.yml, so running the installer from a
+# different folder with the same project name silently took over the existing
+# install (review B-1, research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
+# reviews/32q_quality_safety_review.md). Four cases:
+#   1. volume present, compose file here  -> this folder's install: WARNING, exit 1
+#                                            unless DAAF_FORCE_REINSTALL=1 (unchanged)
+#   2. volume present, no compose file    -> an install made from ANOTHER folder:
+#                                            refuse, exit 1, before anything is
+#                                            downloaded or built (FORCE honoured)
+#   3. volume absent,  compose file here  -> earlier attempt incomplete: NOTE (unchanged)
+#   4. volume absent,  no compose file    -> fresh install (unchanged)
+# A volume that could not be checked ("unknown", see daaf_volume_state) is never
+# read as absent: refuse unless DAAF_FORCE_REINSTALL=1. (The preflight above only
+# proves the daemon answered `docker info` a moment ago; it does not make every
+# later inspect failure a "not found".)
+# Which volume is checked (INSTALL_TARGET_PROJECT is the one project derived
+# and normalized above, already exported for Compose whenever a project was given
+# in the shell or in environment_settings.txt):
+#   - compose file here: DATA_VOLUME_NAME (the project's volume, or the shell
+#     DAAF_DATA_VOLUME_NAME override, as before).
+#   - no compose file: the volume THIS run will create and write,
+#     "${INSTALL_TARGET_PROJECT}_daaf-data". (Compose also reads a .env file
+#     beside the compose file; a stray .env in a folder with no compose file is
+#     not considered; the installer never writes one.) DAAF_DATA_VOLUME_NAME is
+#     deliberately NOT used here: the downloaded compose file's shared-volume
+#     block is commented out, so a fresh install always writes its own project
+#     volume, and the documented shared-workspace setup (installation guide,
+#     "Sharing One Research Workspace Across Two Installs", Step 3) installs a
+#     second copy from a new folder with DAAF_DATA_VOLUME_NAME naming install #1's
+#     EXISTING volume -- that must not be refused.
+# FORCE escape in case 2: DAAF_FORCE_REINSTALL means "I accept that the
+# framework files and git history in the existing volume are overwritten", which
+# is the same consequence whichever folder runs the installer; and re-installing
+# from a NEW folder is the installer's only recovery path when the original
+# daaf-docker folder was deleted or lost (research/ is preserved either way).
 if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
-    if docker volume inspect "${DATA_VOLUME_NAME}" &>/dev/null; then
+    CHECK_VOLUME_NAME="${DATA_VOLUME_NAME}"
+else
+    CHECK_VOLUME_NAME="${INSTALL_TARGET_PROJECT}_daaf-data"
+fi
+CHECK_VOLUME_STATE="$(daaf_volume_state "${CHECK_VOLUME_NAME}")"
+# The DAAF_FORCE_REINSTALL re-run hints in the refusals below (case 1, case 2,
+# "could not check") must re-target the SAME project. For any project other than
+# the default, the hint names DAAF_PROJECT_NAME on the same line as the FORCE
+# flag: a re-run from a new terminal, or with a one-shot prefix instead of an
+# `export`, would otherwise fall back to project 'daaf' and could take over that
+# installation instead (review 42q I-1; the install.ps1 twin does the same). It
+# names INSTALL_TARGET_PROJECT, so a project taken from environment_settings.txt
+# is carried too (review 43d ISSUE-1).
+FORCE_RERUN_ENV="DAAF_FORCE_REINSTALL=1"
+if [ "${INSTALL_TARGET_PROJECT}" != "daaf" ]; then
+    FORCE_RERUN_ENV="DAAF_PROJECT_NAME=${INSTALL_TARGET_PROJECT} ${FORCE_RERUN_ENV}"
+fi
+
+if [ "${CHECK_VOLUME_STATE}" = "unknown" ]; then
+    if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
+        echo "NOTE: Could not check whether Docker volume '${CHECK_VOLUME_NAME}' already exists."
+        echo "      Proceeding anyway (DAAF_FORCE_REINSTALL=1)."
+        echo ""
+    else
+        echo "ERROR: Could not check whether a DAAF installation already exists (Docker"
+        echo "       could not inspect or list its volumes; looking for '${CHECK_VOLUME_NAME}')."
+        echo "       Nothing has been downloaded or changed. Make sure Docker Desktop is"
+        echo "       running, then run the installer again."
+        echo ""
+        echo "To skip this check and install anyway, set DAAF_FORCE_REINSTALL=1:"
+        echo "  ${FORCE_RERUN_ENV} bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
+        echo ""
+        exit 1
+    fi
+elif [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
+    if [ "${CHECK_VOLUME_STATE}" = "present" ]; then
         # Volume exists -- this is a completed or substantially completed installation
         if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
             echo "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
             echo ""
         else
             echo "WARNING: An existing DAAF installation was detected."
+            echo "         (Docker volume '${CHECK_VOLUME_NAME}', project '${INSTALL_TARGET_PROJECT}')"
+            # Review 44q SUGGESTION-2: a folder whose first install failed before
+            # seeding has a compose file but no settings file, so a retry from a
+            # new terminal falls back to the shell's project. Say so plainly.
+            # SYNC NOTE: same lines in install.ps1.
+            if [ ! -f "${INSTALL_DIR}/environment_settings.txt" ]; then
+                echo "         This folder has no environment_settings.txt, so the project name comes"
+                echo "         from your shell (default 'daaf'). If you meant to install a separate"
+                echo "         copy here, set DAAF_PROJECT_NAME (and its ports) again first."
+            fi
             echo ""
             echo "Re-running the installer will overwrite framework files (CLAUDE.md, skills,"
             echo "agents, templates) and local git history. Your research data will NOT be"
@@ -185,7 +430,7 @@ if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
             echo "  bash update_daaf.sh"
             echo ""
             echo "To force a fresh re-install, set DAAF_FORCE_REINSTALL=1:"
-            echo "  DAAF_FORCE_REINSTALL=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
+            echo "  ${FORCE_RERUN_ENV} bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
             echo ""
             exit 1
         fi
@@ -193,6 +438,75 @@ if [ -f "${INSTALL_DIR}/docker-compose.yml" ]; then
         echo "NOTE: A previous install attempt was detected but appears incomplete."
         echo "      Proceeding with a fresh install."
         echo ""
+    fi
+elif [ "${CHECK_VOLUME_STATE}" = "present" ]; then
+    # Case 2: the volume exists, but this folder has no docker-compose.yml.
+    if [ "${DAAF_FORCE_REINSTALL:-}" = "1" ]; then
+        echo "NOTE: An existing DAAF installation using Docker volume '${CHECK_VOLUME_NAME}' (project '${INSTALL_TARGET_PROJECT}')"
+        echo "      was detected, probably installed from another folder. Proceeding with"
+        echo "      re-install from this folder (DAAF_FORCE_REINSTALL=1)."
+        echo ""
+    else
+        # The second-copy example (reviews 42q I-4, 43d NIT-2) must never repeat
+        # the refused project's name, and must not reuse ports the refused install
+        # likely holds. The installation guide's own second-instance examples
+        # (daaf-personal, and daaf-gpt for a shared workspace) use 2818-2820, so
+        # any refused project other than 'daaf' gets other ports. Deterministic:
+        #   refused 'daaf'      -> daaf-personal 2818-2820 (the guide's example; the
+        #                          default install holds 2718-2720)
+        #   refused 'daaf-work' -> daaf-lab      3018-3020 (daaf-work likely holds
+        #                          2918-2920, taken from this very example)
+        #   any other project   -> daaf-work     2918-2920
+        # Each step is a further offset of 100, as in the guide, and neither
+        # 2918-2920 nor 3018-3020 is used as an example there. The refused
+        # project's own ports are not consulted: in case 2 that install lives in
+        # another folder, so they are not reliably known here.
+        # SYNC NOTE: same table in install.ps1.
+        EXAMPLE_PROJECT="daaf-work"
+        EXAMPLE_PORT_MARIMO=2918
+        EXAMPLE_PORT_LOGVIEWER=2919
+        EXAMPLE_PORT_VSCODE=2920
+        if [ "${INSTALL_TARGET_PROJECT}" = "daaf" ]; then
+            EXAMPLE_PROJECT="daaf-personal"
+            EXAMPLE_PORT_MARIMO=2818
+            EXAMPLE_PORT_LOGVIEWER=2819
+            EXAMPLE_PORT_VSCODE=2820
+        elif [ "${INSTALL_TARGET_PROJECT}" = "daaf-work" ]; then
+            EXAMPLE_PROJECT="daaf-lab"
+            EXAMPLE_PORT_MARIMO=3018
+            EXAMPLE_PORT_LOGVIEWER=3019
+            EXAMPLE_PORT_VSCODE=3020
+        fi
+        echo "WARNING: A DAAF installation using Docker volume '${CHECK_VOLUME_NAME}' (project '${INSTALL_TARGET_PROJECT}')"
+        echo "already exists, probably installed from another folder, or its daaf-docker"
+        echo "folder was moved or deleted. This folder has no docker-compose.yml, so it is"
+        echo "not (or is no longer) that installation's folder:"
+        echo "  ${INSTALL_DIR}"
+        echo ""
+        echo "Installing here would take over that installation: it would recreate its"
+        echo "container and overwrite its framework files (CLAUDE.md, skills, agents,"
+        echo "templates) and local git history. Its research data would NOT be deleted."
+        echo "Nothing has been downloaded or changed."
+        echo ""
+        echo "To update that installation instead (recommended -- preserves local changes),"
+        echo "go to the daaf-docker folder you installed it in and run:"
+        echo "  bash update_daaf.sh"
+        echo ""
+        echo "To install a SEPARATE second copy of DAAF here, choose a project name other"
+        echo "than '${INSTALL_TARGET_PROJECT}' and three free ports, then run the installer again, e.g.:"
+        echo "  export DAAF_PROJECT_NAME=${EXAMPLE_PROJECT}"
+        echo "  export DAAF_PORT_MARIMO=${EXAMPLE_PORT_MARIMO}"
+        echo "  export DAAF_PORT_LOGVIEWER=${EXAMPLE_PORT_LOGVIEWER}"
+        echo "  export DAAF_PORT_VSCODE=${EXAMPLE_PORT_VSCODE}"
+        echo "  curl -fsSL ${RAW_BASE}/scripts/host/install.sh | bash"
+        echo "See \"Running multiple DAAF instances\" in the installation guide:"
+        echo "  https://github.com/${REPO}/blob/${BRANCH}/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
+        echo ""
+        echo "To deliberately re-install over that installation from this folder, set"
+        echo "DAAF_FORCE_REINSTALL=1 (a backup is strongly recommended first):"
+        echo "  ${FORCE_RERUN_ENV} bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
+        echo ""
+        exit 1
     fi
 fi
 
@@ -334,8 +648,12 @@ fi
 
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
-# Project name is set declaratively via the top-level "name: daaf" key in
-# docker-compose.yml -- no need to set COMPOSE_PROJECT_NAME here.
+# Project name is set declaratively via the top-level
+# `name: ${DAAF_PROJECT_NAME:-daaf}` key in docker-compose.yml -- no need to set
+# COMPOSE_PROJECT_NAME here. DAAF_PROJECT_NAME (and the DAAF_PORT_* / DAAF_DEV
+# keys) are already in the environment: the user's own values, or the ones the
+# bridge above exported from environment_settings.txt (the project name in its
+# normalized form, see "The target project" above).
 # Build and start are split into two commands so that --progress plain can be
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
@@ -357,18 +675,18 @@ fi
 if [ "${BUILD_EXIT}" -ne 0 ]; then
     echo ""
     echo "ERROR: Docker image build failed. Check the output above for details."
-    echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    echo "You can safely re-run this installer to retry (${RETRY_FORCE_TEXT})."
     echo "If the output above contains a line like '[output clipped, log limit 2MiB reached]'"
     echo "(the exact limit varies by Docker version), re-run with DAAF_DIAG_BUILD=1 for"
     echo "unclipped build logs:"
-    echo "  DAAF_DIAG_BUILD=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
+    echo "  ${RERUN_PROJECT_PREFIX}DAAF_DIAG_BUILD=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
     exit 1
 fi
 echo "Starting container..."
 if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" up -d; then
     echo ""
     echo "ERROR: Failed to start the Docker container after build. Check the output above for details."
-    echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    echo "You can safely re-run this installer to retry (${RETRY_FORCE_TEXT})."
     exit 1
 fi
 
@@ -387,7 +705,7 @@ until docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker 
             echo "" >&2
         fi
         echo "Check Docker Desktop for errors, then retry with:" >&2
-        echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml up -d" >&2
+        echo "  ${UP_PORTS_PREFIX}docker compose ${COMPOSE_P_FLAG}-f ${INSTALL_DIR}/docker-compose.yml up -d" >&2
         rm -f "$READY_LOG"
         exit 1
     fi
@@ -411,11 +729,11 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "ERROR: Failed to clone the DAAF repository."
     echo "The Docker image was built successfully, but the repository could not be downloaded."
     echo "Check your internet connection and retry with:"
-    echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
+    echo "  docker compose ${COMPOSE_P_FLAG}-f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    git clone --depth 1 -b ${BRANCH} https://github.com/${REPO}.git /tmp/daaf-clone"
-    echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
+    echo "  docker compose ${COMPOSE_P_FLAG}-f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    echo "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    echo "You can also safely re-run this installer to retry from scratch (${RETRY_FORCE_TEXT})."
     exit 1
 fi
 
@@ -425,9 +743,9 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "ERROR: Failed to copy repository files into the container."
     echo "The clone succeeded, but copying to /daaf/ failed (possibly a permissions issue)."
     echo "You can retry manually with:"
-    echo "  docker compose -f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
+    echo "  docker compose ${COMPOSE_P_FLAG}-f ${INSTALL_DIR}/docker-compose.yml exec -T daaf-docker \\"
     echo "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    echo "You can also safely re-run this installer to retry from scratch (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    echo "You can also safely re-run this installer to retry from scratch (${RETRY_FORCE_TEXT})."
     exit 1
 fi
 
@@ -439,7 +757,7 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     echo "The Docker image was built, but the repository files may not have copied correctly."
     echo "You can try cloning manually inside the container:"
     echo "  cd ${INSTALL_DIR}"
-    echo "  docker compose exec daaf-docker bash"
+    echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker bash"
     echo "  git clone --depth 1 -b ${BRANCH} https://github.com/${REPO}.git /tmp/daaf-clone"
     echo "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
     exit 1
@@ -584,6 +902,14 @@ upsert_settings_key() {
 # the process environment. Binding rules:
 #   - Never overwrite an existing environment_settings.txt: a reinstall preserves
 #     the user's real API keys; env vars are then used for THIS install only.
+#     Values the bridge near the top adopted from that file are never written
+#     back: the bridge reads the file only when it exists, and then this step
+#     takes the "left untouched" branch.
+#   - DAAF_PROJECT_NAME is seeded in the normalized form the derivation near the
+#     top exported (e.g. "work" for "Work"), not as typed: backup_daaf.sh,
+#     restore_from_backup.sh and daaf_lib.sh derive volume names from the raw
+#     value ("${DAAF_PROJECT_NAME:-daaf}_daaf-data"), so a seeded "Work" would
+#     point them at "Work_daaf-data" while Compose created "work_daaf-data".
 #   - Never fail the install: every mutation is composed under `if` so a seeding
 #     failure (set -e is active) degrades to a printed manual-fallback note.
 #   - Never persist a DAAF_BRANCH that is a version tag: a persisted tag would
@@ -701,7 +1027,7 @@ else
             echo "      were written to environment_settings.txt but will not take effect"
             echo "      until you recreate the container. Close all DAAF sessions, then run:"
             echo "        cd ${INSTALL_DIR}"
-            echo "        docker compose down"
+            echo "        docker compose ${COMPOSE_P_FLAG}down"
             echo "        bash run_daaf.sh"
         fi
     else
@@ -753,7 +1079,7 @@ echo "  cp environment_settings_example.txt environment_settings.txt   Copy the 
 echo "  Edit environment_settings.txt with your keys, then restart with: bash run_daaf.sh"
 echo ""
 echo "Manual alternative (if you prefer individual commands):"
-echo "  docker compose exec daaf-docker bash   # enter the container"
+echo "  docker compose ${COMPOSE_P_FLAG}exec daaf-docker bash   # enter the container"
 echo "  claude                                  # launch Claude Code"
 echo ""
 echo "For day-to-day usage and more, see:"

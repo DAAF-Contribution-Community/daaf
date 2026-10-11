@@ -720,6 +720,12 @@ Write-Host "Found $TotalFilesLabel files ($TotalSizeStr) to restore."
 # on PS 5.1). Mirrors restore_from_backup.sh step for step.
 $TempCreated = $false
 $ClaudeTempCreated = $false
+# $true from right BEFORE a temp volume's `docker volume create` until that attempt is
+# resolved (recorded in $TempCreated / $ClaudeTempCreated, or deliberately left alone by
+# the Test-DaafRestoreNewTemp refusal). See Resolve-DaafRestoreAttemptedTemp (task #36;
+# the .sh twin's TEMP_CREATE_ATTEMPTED / CLAUDE_TEMP_CREATE_ATTEMPTED).
+$TempCreateAttempted = $false
+$ClaudeTempCreateAttempted = $false
 $SwapStarted = $false
 $TempRemoveFailed = $false
 # Why a temp volume was kept (message lines; field test 2026-10-05, D1/D2).
@@ -818,13 +824,16 @@ function Invoke-DaafRestoreHelperReap {
 # replacing" the data. With $TempCleanupCareful the label reap is skipped and a temp
 # that no longer carries this run's identity label is left alone (and no longer
 # counted as this run's) -- consistency review round 2 (SF2); the .sh twin's
-# TEMP_CLEANUP_CAREFUL.
+# TEMP_CLEANUP_CAREFUL. A temp whose create was attempted but not yet recorded is
+# removed only when it is provably this run's (task #36,
+# Resolve-DaafRestoreAttemptedTemp).
 function Invoke-DaafRestoreTempCleanup {
     [CmdletBinding()]
     param([switch]$Final)
     if ($script:SwapStarted -and -not $Final) { return }
     $script:TempRemoveFailed = $false
     $script:TempRemoveNote = @()
+    Resolve-DaafRestoreAttemptedTemp
     $unmark = ($Final -or $script:MarkersWritten)
     if ($script:TempCleanupCareful) {
         if ($script:TempCreated -and -not (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) { $script:TempCreated = $false }
@@ -1022,6 +1031,27 @@ function Test-DaafRestoreTempIdentity {
     $text = ((@($labelLines) | ForEach-Object { "$_" }) -join ' ').Trim()
     $text = ($text -replace '^map\[', '') -replace '\]$', ''
     return (@($text -split ' ') -ccontains "${RestoreRunLabel}:$RestoreRunId")
+}
+
+# Task #36 (review 32q, I-3): a Ctrl+C during a temp volume's `docker volume create`, or
+# during Test-DaafRestoreNewTemp's `docker run`, stops the try BEFORE $TempCreated
+# ($ClaudeTempCreated) is set, so the finally's cleanup skipped the new, empty, labelled
+# temp volume. For a create attempt that was never resolved, count the temp as this
+# run's (so the usual removal path -- holders, the kept-copy note -- applies) ONLY when
+# it exists AND still carries THIS run's identity label: `docker volume create` silently
+# reuses an existing volume and keeps its labels, so a reused leftover or another
+# window's temp fails the test and is left alone, and an inspect that fails is "not
+# ours" (never read as "absent" or as "ours"). No docker call is made when no attempt is
+# open. Clears the attempt flags. The .sh twin's _restore_adopt_attempted_temps.
+# SYNC NOTE: the .sh twin also calls it from its EXIT handler (any other exit); here the
+# finally's Invoke-DaafRestoreTempCleanup covers every exit from the try.
+function Resolve-DaafRestoreAttemptedTemp {
+    [CmdletBinding()]
+    param()
+    if ($script:TempCreateAttempted -and -not $script:TempCreated -and (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) { $script:TempCreated = $true }
+    $script:TempCreateAttempted = $false
+    if ($script:ClaudeTempCreateAttempted -and -not $script:ClaudeTempCreated -and (Test-DaafRestoreTempIdentity -Name $ClaudeTempVolumeName)) { $script:ClaudeTempCreated = $true }
+    $script:ClaudeTempCreateAttempted = $false
 }
 
 # $true when inspect (or leftover rm) output says the object does not exist
@@ -1336,7 +1366,10 @@ $Faulted = $false             # an unexpected error ended the try (set by its ca
 # -mindepth 1` prints nothing on STDOUT; review round 2: a merged stderr line, e.g. a
 # Docker config WARNING, once made every new temp look non-empty -- a `find` that hits
 # an error still exits nonzero, which fails the check). Otherwise it may hold another
-# restore's copy, and it is left alone.
+# restore's copy, and it is left alone (the caller closes its create attempt before
+# the cleanup runs). A Ctrl+C DURING the check never reaches this verdict: the finally
+# then removes the temp only if it carries this run's identity label (task #36,
+# Resolve-DaafRestoreAttemptedTemp).
 function Test-DaafRestoreNewTemp {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Live)
@@ -1375,12 +1408,19 @@ try {
         Write-Host "  Your current DAAF data is not touched until you confirm below."
         Write-Host "  This may take a few minutes for large backups."
         Write-Host ""
+        # Task #36: the attempt is recorded BEFORE the create (a Ctrl+C there is handled
+        # by Resolve-DaafRestoreAttemptedTemp) and closed only AFTER $TempCreated.
+        $TempCreateAttempted = $true
         $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'create', '--label', "$RestoreLabel=$VolumeName", '--label', "$RestoreRunLabel=$RestoreRunId", $TempVolumeName)
         if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Could not create a temporary Docker volume ('$TempVolumeName') for the restore."); break }
         # SF2 (review round 2): a refused new temp may be another restore's, so the
         # cleanup is careful (no label reap; only temps still this run's are removed).
-        if (-not (Test-DaafRestoreNewTemp -Name $TempVolumeName -Live $VolumeName)) { $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $TempVolumeName); $TempCleanupCareful = $true; break }
+        # Task #36: its create attempt is closed first, so the refused volume is never
+        # removed as an "attempted" one. (SYNC NOTE: the .sh twin closes it inside
+        # _restore_check_new_temp, whose refusal also runs the cleanup and exits.)
+        if (-not (Test-DaafRestoreNewTemp -Name $TempVolumeName -Live $VolumeName)) { $TempCreateAttempted = $false; $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $TempVolumeName); $TempCleanupCareful = $true; break }
         $TempCreated = $true
+        $TempCreateAttempted = $false
         # stdout ONLY for the CID (the old `(docker create ... 2>&1).Trim()` would have
         # folded a stderr warning line into it). A CID from a create that then failed is
         # reaped by label with the temp volume.
@@ -1493,13 +1533,15 @@ try {
         if ($HasClaudeBackup) {
             Write-Host "Preparing the Claude Code state (credentials, session history, plugins)..."
             $claudeFail = @("ERROR: Could not prepare the Claude Code state (login and session history)", "       from this backup: copying it into Docker failed.")
+            $ClaudeTempCreateAttempted = $true
             $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'create', '--label', "$RestoreLabel=$ClaudeVolumeName", '--label', "$RestoreRunLabel=$RestoreRunId", $ClaudeTempVolumeName)
             if ($LASTEXITCODE -ne 0) {
                 $PrepFail = @("ERROR: Could not prepare the Claude Code state (login and session history)", "       from this backup: a temporary Docker volume could not be created.")
                 break
             }
-            if (-not (Test-DaafRestoreNewTemp -Name $ClaudeTempVolumeName -Live $ClaudeVolumeName)) { $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $ClaudeTempVolumeName); $TempCleanupCareful = $true; break }
+            if (-not (Test-DaafRestoreNewTemp -Name $ClaudeTempVolumeName -Live $ClaudeVolumeName)) { $ClaudeTempCreateAttempted = $false; $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $ClaudeTempVolumeName); $TempCleanupCareful = $true; break }
             $ClaudeTempCreated = $true
+            $ClaudeTempCreateAttempted = $false
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
             $claudeCidLines = @(docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" $BusyboxImage 2>$null)
             $claudeCreateOk = ($LASTEXITCODE -eq 0)

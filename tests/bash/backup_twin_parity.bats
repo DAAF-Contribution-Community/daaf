@@ -1812,6 +1812,176 @@ _r5_swap_rm_plain() {
 }
 
 # ===========================================================================
+# 15. TASK #36 (review 32q, I-3): a temp created just before a Ctrl+C
+# ===========================================================================
+# Both twins record a temp's create ATTEMPT right before its `docker volume create` and
+# close it right after the created flag; the cleanup adopts a still-open attempt ONLY
+# when the volume carries this run's identity label (.sh _restore_adopt_attempted_temps
+# / .ps1 Resolve-DaafRestoreAttemptedTemp), and the new-temp check's refusal closes the
+# attempt first. Pinned here: the flag set/clear sites, the helper bodies and their
+# place in the cleanup, the refusal close, and the two .ps1 SYNC NOTEs -- by STRUCTURE
+# where the twins legitimately differ (the .sh closes the refused attempt inside
+# _restore_check_new_temp, the .ps1 at both call sites; the .sh also adopts from its
+# EXIT handler, the .ps1 finally covers every exit). Behaviour: restore_from_backup.bats
+# ("32q I-3:") and restore_from_backup.Tests.ps1.
+
+# The line BEFORE each code (non-comment) line of file $1 containing fixed string $2.
+_i3_line_before() {
+    awk -v s="$2" 'index($0, s) && $0 !~ /^[[:space:]]*#/ { print prev } { prev = $0 }' "$1"
+}
+
+# The line AFTER each line of file $1 that is exactly $2.
+_i3_line_after() {
+    awk -v s="$2" 'hit { print; hit = 0 } $0 == s { hit = 1 }' "$1"
+}
+
+# The comment lines directly above the first line of file $1 that is exactly $2.
+_i3_comment_above() {
+    awk -v s="$2" '$0 == s { printf "%s", buf; exit } /^[[:space:]]*#/ { buf = buf $0 "\n"; next } { buf = "" }' "$1"
+}
+
+# Exit 0 (no output) when both twins have the task #36 shape. ($1 = .sh, $2 = .ps1)
+_i3_attempt_guarded() {
+    local rc=0 b
+    # --- .sh: set right before each create, cleared right after each created flag ---
+    [ "$(_i3_line_before "$1" 'docker volume create')" = "$(printf '%s\n' 'TEMP_CREATE_ATTEMPTED=1' '    CLAUDE_TEMP_CREATE_ATTEMPTED=1')" ] || { echo "sh: each temp's attempt flag must be set on the line right before its docker volume create"; rc=1; }
+    [ "$(_i3_line_after "$1" 'TEMP_CREATED=1')" = 'TEMP_CREATE_ATTEMPTED=0' ] || { echo "sh: TEMP_CREATE_ATTEMPTED=0 must follow TEMP_CREATED=1"; rc=1; }
+    [ "$(_i3_line_after "$1" '    CLAUDE_TEMP_CREATED=1')" = '    CLAUDE_TEMP_CREATE_ATTEMPTED=0' ] || { echo "sh: CLAUDE_TEMP_CREATE_ATTEMPTED=0 must follow CLAUDE_TEMP_CREATED=1"; rc=1; }
+    [ "$(grep -cE '^[[:space:]]*(CLAUDE_)?TEMP_CREATE_ATTEMPTED=1$' "$1")" -eq 2 ] || { echo "sh: expected exactly two attempt-flag sets"; rc=1; }
+    # --- .sh: the helper (identity-gated, both temps, both flags cleared) ---
+    b="$(_fn_body_sh "$1" _restore_adopt_attempted_temps)"
+    [ "${b}" = "$(printf '%s\n' \
+        '_restore_adopt_attempted_temps() {' \
+        '    if [ "${TEMP_CREATE_ATTEMPTED}" -eq 1 ] && [ "${TEMP_CREATED}" -eq 0 ] && _restore_temp_is_ours "${TEMP_VOLUME_NAME}"; then TEMP_CREATED=1; fi' \
+        '    TEMP_CREATE_ATTEMPTED=0' \
+        '    if [ "${CLAUDE_TEMP_CREATE_ATTEMPTED}" -eq 1 ] && [ "${CLAUDE_TEMP_CREATED}" -eq 0 ] && _restore_temp_is_ours "${CLAUDE_TEMP_VOLUME_NAME}"; then CLAUDE_TEMP_CREATED=1; fi' \
+        '    CLAUDE_TEMP_CREATE_ATTEMPTED=0' \
+        '}')" ] || { echo "sh: _restore_adopt_attempted_temps must adopt each open attempt only through _restore_temp_is_ours and clear both flags"; rc=1; }
+    # --- .sh: called in the cleanup after the swap-started guard and the note reset,
+    # before the careful branch; and from the EXIT handler (no cleanup tried yet) ---
+    b="$(_fn_body_sh "$1" _restore_remove_temps | grep -nxF \
+        -e '    if [ "${SWAP_STARTED}" -eq 1 ] && [ "${1:-}" != "final" ]; then return 0; fi' \
+        -e '    TEMP_REMOVE_NOTE=""' \
+        -e '    _restore_adopt_attempted_temps' \
+        -e '    if [ "${TEMP_CLEANUP_CAREFUL}" -eq 1 ]; then' | cut -d: -f2-)"
+    [ "${b}" = "$(printf '%s\n' \
+        '    if [ "${SWAP_STARTED}" -eq 1 ] && [ "${1:-}" != "final" ]; then return 0; fi' \
+        '    TEMP_REMOVE_NOTE=""' \
+        '    _restore_adopt_attempted_temps' \
+        '    if [ "${TEMP_CLEANUP_CAREFUL}" -eq 1 ]; then')" ] || { echo "sh: _restore_remove_temps must call _restore_adopt_attempted_temps once, after its note reset and before the careful branch"; rc=1; }
+    _fn_body_sh "$1" _restore_on_exit | grep -A1 -xF '    if [ "${SWAP_STARTED}" -eq 0 ] && [ "${TEMP_CLEANUP_TRIED}" -eq 0 ]; then _restore_adopt_attempted_temps; fi' | tail -n 1 | grep -qF '&& [ -n "$(_restore_kept_temps)" ]; then' || { echo "sh: the EXIT handler must adopt open attempts right before it looks for kept temps"; rc=1; }
+    [ "$(grep -E '^[[:space:]]*[^#[:space:]]' "$1" | grep -cF '_restore_adopt_attempted_temps')" -eq 3 ] ||{ echo "sh: expected the helper definition plus exactly two calls (cleanup, EXIT handler)"; rc=1; }
+    # --- .sh: the refusal closes the attempt, after the verdict and before its cleanup ---
+    b="$(_fn_body_sh "$1" _restore_check_new_temp | grep -nxF \
+        -e '    if [ "${status}" -eq 0 ] && [ -z "${listing}" ] && _restore_temp_is_ours "$1"; then return 0; fi' \
+        -e '    if [ "$1" = "${TEMP_VOLUME_NAME}" ]; then TEMP_CREATE_ATTEMPTED=0; else CLAUDE_TEMP_CREATE_ATTEMPTED=0; fi' \
+        -e "    _restore_fail_before_swap \"ERROR: Could not confirm that the new temporary Docker volume '\$1' is empty\" \\" | cut -d: -f2-)"
+    [ "${b}" = "$(printf '%s\n' \
+        '    if [ "${status}" -eq 0 ] && [ -z "${listing}" ] && _restore_temp_is_ours "$1"; then return 0; fi' \
+        '    if [ "$1" = "${TEMP_VOLUME_NAME}" ]; then TEMP_CREATE_ATTEMPTED=0; else CLAUDE_TEMP_CREATE_ATTEMPTED=0; fi' \
+        "    _restore_fail_before_swap \"ERROR: Could not confirm that the new temporary Docker volume '\$1' is empty\" \\")" ] || { echo "sh: _restore_check_new_temp must close the attempt of the temp it refuses, after its verdict and before _restore_fail_before_swap"; rc=1; }
+    # --- .ps1: the same set/clear sites ---
+    [ "$(_i3_line_before "$2" "@('volume', 'create',")" = "$(printf '%s\n' '        $TempCreateAttempted = $true' '            $ClaudeTempCreateAttempted = $true')" ] || { echo "ps1: each temp's attempt flag must be set on the line right before its volume create"; rc=1; }
+    [ "$(_i3_line_after "$2" '        $TempCreated = $true')" = '        $TempCreateAttempted = $false' ] || { echo "ps1: \$TempCreateAttempted = \$false must follow \$TempCreated = \$true"; rc=1; }
+    [ "$(_i3_line_after "$2" '            $ClaudeTempCreated = $true')" = '            $ClaudeTempCreateAttempted = $false' ] || { echo "ps1: \$ClaudeTempCreateAttempted = \$false must follow \$ClaudeTempCreated = \$true"; rc=1; }
+    [ "$(grep -cE '^[[:space:]]*\$(Claude)?TempCreateAttempted = \$true$' "$2")" -eq 2 ] || { echo "ps1: expected exactly two attempt-flag sets"; rc=1; }
+    # --- .ps1: the helper and its ONE caller, the cleanup (which the finally runs) ---
+    b="$(_fn_body_ps1 "$2" Resolve-DaafRestoreAttemptedTemp)"
+    [ "${b}" = "$(printf '%s\n' \
+        'function Resolve-DaafRestoreAttemptedTemp {' \
+        '    [CmdletBinding()]' \
+        '    param()' \
+        '    if ($script:TempCreateAttempted -and -not $script:TempCreated -and (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) { $script:TempCreated = $true }' \
+        '    $script:TempCreateAttempted = $false' \
+        '    if ($script:ClaudeTempCreateAttempted -and -not $script:ClaudeTempCreated -and (Test-DaafRestoreTempIdentity -Name $ClaudeTempVolumeName)) { $script:ClaudeTempCreated = $true }' \
+        '    $script:ClaudeTempCreateAttempted = $false' \
+        '}')" ] || { echo "ps1: Resolve-DaafRestoreAttemptedTemp must adopt each open attempt only through Test-DaafRestoreTempIdentity and clear both flags"; rc=1; }
+    b="$(_fn_body_ps1 "$2" Invoke-DaafRestoreTempCleanup | grep -nxF \
+        -e '    if ($script:SwapStarted -and -not $Final) { return }' \
+        -e '    $script:TempRemoveNote = @()' \
+        -e '    Resolve-DaafRestoreAttemptedTemp' \
+        -e '    if ($script:TempCleanupCareful) {' | cut -d: -f2-)"
+    [ "${b}" = "$(printf '%s\n' \
+        '    if ($script:SwapStarted -and -not $Final) { return }' \
+        '    $script:TempRemoveNote = @()' \
+        '    Resolve-DaafRestoreAttemptedTemp' \
+        '    if ($script:TempCleanupCareful) {')" ] || { echo "ps1: Invoke-DaafRestoreTempCleanup must call Resolve-DaafRestoreAttemptedTemp once, after its note reset and before the careful branch"; rc=1; }
+    [ "$(grep -E '^[[:space:]]*[^#[:space:]]' "$2" | grep -cF 'Resolve-DaafRestoreAttemptedTemp')" -eq 2 ] ||{ echo "ps1: expected the helper definition plus exactly one call (the cleanup)"; rc=1; }
+    grep -qxF '    if (-not $SwapStarted -and $null -eq $ChangedTemp) { Invoke-DaafRestoreTempCleanup }' "$2" || { echo "ps1: the finally must run Invoke-DaafRestoreTempCleanup before any swap"; rc=1; }
+    # --- .ps1: both refusal sites close the attempt as their FIRST statement ---
+    [ "$(grep -cE '^[[:space:]]*if \(-not \(Test-DaafRestoreNewTemp ' "$2")" -eq 2 ] || { echo "ps1: expected exactly two new-temp check sites"; rc=1; }
+    grep -qF 'if (-not (Test-DaafRestoreNewTemp -Name $TempVolumeName -Live $VolumeName)) { $TempCreateAttempted = $false; $PrepFail = ' "$2" || { echo "ps1: the data refusal must close its attempt first"; rc=1; }
+    grep -qF 'if (-not (Test-DaafRestoreNewTemp -Name $ClaudeTempVolumeName -Live $ClaudeVolumeName)) { $ClaudeTempCreateAttempted = $false; $PrepFail = ' "$2" || { echo "ps1: the Claude refusal must close its attempt first"; rc=1; }
+    # --- the two .ps1 SYNC NOTEs: present, attached to their construct, naming the .sh
+    # counterpart (whose shape is pinned above) ---
+    b="$(_i3_comment_above "$2" 'function Resolve-DaafRestoreAttemptedTemp {')"
+    printf '%s\n' "${b}" | grep -q '^# SYNC NOTE: the \.sh twin also calls it from its EXIT handler' || { echo "ps1: the SYNC NOTE on the .sh EXIT-handler call must sit right above Resolve-DaafRestoreAttemptedTemp"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF "finally's Invoke-DaafRestoreTempCleanup covers every exit from the try." || { echo "ps1: that SYNC NOTE must say the finally's cleanup covers every exit"; rc=1; }
+    printf '%s\n' "${b}" | sed -E 's/^[[:space:]]*# ?//' | tr '\n' ' ' | grep -qF "The .sh twin's _restore_adopt_attempted_temps." || { echo "ps1: Resolve-DaafRestoreAttemptedTemp must name its .sh twin"; rc=1; }
+    b="$(_i3_comment_above "$2" "$(grep -F 'if (-not (Test-DaafRestoreNewTemp -Name $TempVolumeName ' "$2" | head -n 1)")"
+    printf '%s' "${b}" | sed -E 's/^[[:space:]]*# ?//' | tr '\n' ' ' | grep -qF '(SYNC NOTE: the .sh twin closes it inside _restore_check_new_temp, whose refusal also runs the cleanup and exits.)' || { echo "ps1: the SYNC NOTE on the .sh refusal close must sit right above the data refusal"; rc=1; }
+    return "${rc}"
+}
+
+@test "twin-parity 32q I-3: both twins open a temp's create attempt right before the create, close it after the created flag or on a refusal, and adopt it only by identity" {
+    run _i3_attempt_guarded "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity 32q I-3 SELF-TEST: the pin flags a moved set, a missing clear, a dropped adoption or identity gate, an open refusal, and a lost SYNC NOTE (or its .sh counterpart)" {
+    local f
+    # (a) .sh: the data set moved below the create (just before the check)
+    awk '$0 == "TEMP_CREATE_ATTEMPTED=1" { next } $0 == "_restore_check_new_temp \"${TEMP_VOLUME_NAME}\" \"${VOLUME_NAME}\"" { print "TEMP_CREATE_ATTEMPTED=1" } { print }' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/a.sh"
+    # (b) .ps1: the Claude clear removed
+    grep -vxF '            $ClaudeTempCreateAttempted = $false' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/b.ps1" || true
+    # (c) .sh: the adoption dropped from the cleanup
+    grep -vxF '    _restore_adopt_attempted_temps' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/c.sh" || true
+    # (d) .ps1: the Claude refusal no longer closes its attempt
+    sed 's/ { \$ClaudeTempCreateAttempted = \$false; \$PrepFail = / { $PrepFail = /' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/d.ps1"
+    # (e) .ps1: the EXIT-handler SYNC NOTE removed
+    grep -vF '# SYNC NOTE: the .sh twin also calls it from its EXIT handler' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/e.ps1" || true
+    # (f) .sh: the EXIT handler no longer adopts (that SYNC NOTE's counterpart is gone)
+    grep -vxF '    if [ "${SWAP_STARTED}" -eq 0 ] && [ "${TEMP_CLEANUP_TRIED}" -eq 0 ]; then _restore_adopt_attempted_temps; fi' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/f.sh" || true
+    # (g) .ps1: the data adoption without the identity gate
+    sed 's/ -and -not \$script:TempCreated -and (Test-DaafRestoreTempIdentity -Name \$TempVolumeName)) / -and -not $script:TempCreated) /' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/g.ps1"
+    # (h) .sh: the refusal close removed
+    grep -vxF '    if [ "$1" = "${TEMP_VOLUME_NAME}" ]; then TEMP_CREATE_ATTEMPTED=0; else CLAUDE_TEMP_CREATE_ATTEMPTED=0; fi' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/h.sh" || true
+    for f in a.sh c.sh f.sh h.sh; do
+        run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/${f}"
+        assert_failure
+    done
+    for f in b.ps1 d.ps1 e.ps1 g.ps1; do
+        run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/${f}"
+        assert_failure
+    done
+    run _i3_attempt_guarded "${TEST_DIR}/a.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output "sh: each temp's attempt flag must be set on the line right before its docker volume create"
+    run _i3_attempt_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/b.ps1"
+    assert_failure
+    assert_output "ps1: \$ClaudeTempCreateAttempted = \$false must follow \$ClaudeTempCreated = \$true"
+    run _i3_attempt_guarded "${TEST_DIR}/c.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: _restore_remove_temps must call _restore_adopt_attempted_temps once"
+    run _i3_attempt_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/d.ps1"
+    assert_failure
+    assert_output "ps1: the Claude refusal must close its attempt first"
+    run _i3_attempt_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/e.ps1"
+    assert_failure
+    assert_output --partial "ps1: the SYNC NOTE on the .sh EXIT-handler call must sit right above Resolve-DaafRestoreAttemptedTemp"
+    run _i3_attempt_guarded "${TEST_DIR}/f.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: the EXIT handler must adopt open attempts right before it looks for kept temps"
+    run _i3_attempt_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/g.ps1"
+    assert_failure
+    assert_output "ps1: Resolve-DaafRestoreAttemptedTemp must adopt each open attempt only through Test-DaafRestoreTempIdentity and clear both flags"
+    run _i3_attempt_guarded "${TEST_DIR}/h.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output "sh: _restore_check_new_temp must close the attempt of the temp it refuses, after its verdict and before _restore_fail_before_swap"
+}
+
+# ===========================================================================
 # F1 (fix pass #26): pinned helper image, version/image checks, PS hardening
 # ===========================================================================
 # research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md:

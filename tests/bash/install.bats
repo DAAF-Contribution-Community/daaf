@@ -5,12 +5,122 @@
 
 load 'test_helper'
 
+# install.sh's volume probe (daaf_volume_state) runs `docker volume inspect NAME`
+# and, only when that fails, the exact-name list `docker volume ls -q`. The shared
+# mock_docker answers EVERY `docker volume ...` call with MOCK_DOCKER_VOLUME_EXIT,
+# which would turn "absent" (inspect exits 1) into "the list failed too" (unknown,
+# a refusal). This wrapper gives this suite its own volume arms and hands every
+# other call to the shared mock, copied to _install_base_docker. Knobs:
+#   MOCK_INSTALL_VOLUMES        unset: inspect exits MOCK_DOCKER_VOLUME_EXIT and the
+#                               list prints nothing. Set (space-separated names, may
+#                               be empty): exactly these volumes exist -- inspect
+#                               exits 0 only for them, the list prints them.
+#   MOCK_DOCKER_VOLUME_LS_EXIT  exit code of `docker volume ls` (default 0).
+#   MOCK_INSTALL_CALL_LOG       a file: every `volume inspect` is logged as
+#                               "volume inspect <name>", and every `compose -f <file>
+#                               <args>` as "compose <args> | P=.. M=.. L=.. V=.. D=..",
+#                               the DAAF_PROJECT_NAME / DAAF_PORT_MARIMO /
+#                               _LOGVIEWER / _VSCODE / DAAF_DEV values in the
+#                               EXPORTED environment at that call (read with
+#                               printenv, so a set-but-unexported shell variable
+#                               reads as <unset>, as it would for the real Compose).
+#   MOCK_INSTALL_FAIL_ON        a literal substring: a `docker compose ...` call whose
+#                               argument string contains it exits 1 (after logging).
+#                               Use flag-anchored strings (" up -d", "git clone",
+#                               "cp -a /tmp/daaf-clone", "--force-recreate") so the
+#                               random temp path in "$*" cannot match.
+install_mock_volume_arms() {
+    eval "_install_base_docker() $(declare -f docker | tail -n +2)"
+    export -f _install_base_docker
+    docker() {
+        if [ -n "${MOCK_INSTALL_CALL_LOG:-}" ]; then
+            if [ "${1:-}" = "volume" ] && [ "${2:-}" = "inspect" ]; then
+                echo "volume inspect ${3:-}" >> "${MOCK_INSTALL_CALL_LOG}"
+            elif [ "${1:-}" = "compose" ]; then
+                local _env_p _env_m _env_l _env_v _env_d
+                _env_p="$(printenv DAAF_PROJECT_NAME)" || _env_p="<unset>"
+                _env_m="$(printenv DAAF_PORT_MARIMO)" || _env_m="<unset>"
+                _env_l="$(printenv DAAF_PORT_LOGVIEWER)" || _env_l="<unset>"
+                _env_v="$(printenv DAAF_PORT_VSCODE)" || _env_v="<unset>"
+                _env_d="$(printenv DAAF_DEV)" || _env_d="<unset>"
+                echo "compose ${*:4} | P=${_env_p} M=${_env_m} L=${_env_l} V=${_env_v} D=${_env_d}" >> "${MOCK_INSTALL_CALL_LOG}"
+            fi
+        fi
+        if [ -n "${MOCK_INSTALL_FAIL_ON:-}" ] && [ "${1:-}" = "compose" ]; then
+            case "$*" in
+                *"${MOCK_INSTALL_FAIL_ON}"*) return 1 ;;
+            esac
+        fi
+        if [ "${1:-}" = "volume" ]; then
+            case "${2:-}" in
+                inspect)
+                    if [ -n "${MOCK_INSTALL_VOLUMES+x}" ]; then
+                        case " ${MOCK_INSTALL_VOLUMES} " in
+                            *" ${3:-} "*) return 0 ;;
+                        esac
+                        echo "Error response from daemon: get ${3:-}: no such volume" >&2
+                        return 1
+                    fi
+                    return "${MOCK_DOCKER_VOLUME_EXIT:-0}"
+                    ;;
+                ls)
+                    if [ "${MOCK_DOCKER_VOLUME_LS_EXIT:-0}" != "0" ]; then
+                        echo "Cannot connect to the Docker daemon" >&2
+                        return "${MOCK_DOCKER_VOLUME_LS_EXIT}"
+                    fi
+                    if [ -n "${MOCK_INSTALL_VOLUMES:-}" ]; then
+                        # shellcheck disable=SC2086  # word-split the name list on purpose
+                        printf '%s\n' ${MOCK_INSTALL_VOLUMES}
+                    fi
+                    return 0
+                    ;;
+            esac
+        fi
+        _install_base_docker "$@"
+    }
+    export -f docker
+}
+
 setup() {
     common_setup
     mock_docker
+    install_mock_volume_arms
     mock_curl
+    # Baseline: a machine with NO DAAF data volume. (The shared mock's default,
+    # MOCK_DOCKER_VOLUME_EXIT=0, means "the volume exists"; since the existing-
+    # install check no longer depends on a docker-compose.yml in the install
+    # folder, that default would make every fresh-install test a case-2 refusal.)
+    # Tests that model an existing install set MOCK_DOCKER_VOLUME_EXIT=0 or
+    # MOCK_INSTALL_VOLUMES explicitly.
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    unset MOCK_INSTALL_VOLUMES MOCK_DOCKER_VOLUME_LS_EXIT
+    # Hermetic volume naming: a DAAF dev container exports its own DAAF_PROJECT_NAME
+    # and DAAF_DATA_VOLUME_NAME (observed 2026-10-06), which would otherwise steer
+    # which volume install.sh checks. Tests that need them set them explicitly.
+    unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME DAAF_FORCE_REINSTALL
+    # The installer also bridges these from an existing environment_settings.txt;
+    # start every test with none of them set.
+    unset DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV MOCK_INSTALL_CALL_LOG MOCK_INSTALL_FAIL_ON
     # install.sh does NOT require docker-compose.yml to exist beforehand
     # (it creates the install directory itself)
+}
+
+# Replace curl with one that records every URL it is asked for (and writes the
+# empty -o target like mock_curl), so a test can prove nothing was downloaded.
+install_log_curl() {
+    curl() {
+        local outfile="" url="" args=("$@") i
+        for (( i=0; i<${#args[@]}; i++ )); do
+            case "${args[$i]}" in
+                -o) outfile="${args[$((i+1))]}" ;;
+                http*) url="${args[$i]}" ;;
+            esac
+        done
+        echo "CURL_URL: ${url}" >> "${TEST_DIR}/curl_log.txt"
+        if [ -n "${outfile}" ]; then mkdir -p "$(dirname "${outfile}")"; touch "${outfile}"; fi
+        return 0
+    }
+    export -f curl
 }
 
 teardown() {
@@ -303,6 +413,952 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/install.sh"
     assert_failure
     assert_output --partial "update_daaf.sh"
+}
+
+# =========================================================================
+# Existing-install guard does not depend on the install folder (B-1)
+# =========================================================================
+# Before 2026-10-06 the data-volume check ran only when THIS folder held a
+# docker-compose.yml, so the installer run from another folder with the same
+# project name rebuilt and `up -d`'d that install's Compose project and copied a
+# fresh clone over its framework files and git history. Cases (see install.sh):
+#   1. volume + compose here -> WARNING, exit 1 (tests above)
+#   2. volume, no compose    -> refuse, exit 1, before any download/build (below)
+#   3. no volume + compose   -> "incomplete" NOTE, proceed (test above)
+#   4. no volume, no compose -> fresh install (tests above)
+# Case 2 checks the volume THIS run would write: "${DAAF_PROJECT_NAME:-daaf}_daaf-data".
+
+@test "install.sh: case 2 -- volume exists, no compose file here: refuses before any download or build" {
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/docker_argv.log"
+    install_log_curl
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "A DAAF installation using Docker volume 'daaf_daaf-data' (project 'daaf')"
+    assert_output --partial "already exists, probably installed from another folder, or its daaf-docker"
+    assert_output --partial "folder was moved or deleted."
+    assert_output --partial "Nothing has been downloaded or changed."
+    # Default project: the FORCE hint needs no DAAF_PROJECT_NAME.
+    # Whole-line match; the branch segment is whatever DAAF_BRANCH resolves to.
+    grep -Exq -- '  DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    refute_output --partial "DAAF_PROJECT_NAME=daaf DAAF_FORCE_REINSTALL"
+    # Stopped before step [1/4]: no folder, no download, no compose build/up.
+    refute_output --partial "[1/4]"
+    refute_output --partial "Downloading"
+    [ ! -e "${TEST_DIR}/daaf-docker" ]
+    [ ! -f "${TEST_DIR}/curl_log.txt" ]
+    run grep -c "compose" "${MOCK_DOCKER_ARGV_LOG}"
+    [ "${output}" = "0" ]
+}
+
+@test "install.sh: case 2 refusal names update, second-instance, and force escapes" {
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_INSTALL_VOLUMES="myproj_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "Docker volume 'myproj_daaf-data'"
+    assert_output --partial "(project 'myproj')"
+    assert_output --partial "bash update_daaf.sh"
+    # The second-instance variables, named as the installation guide names them.
+    assert_output --partial "export DAAF_PROJECT_NAME="
+    assert_output --partial "export DAAF_PORT_MARIMO="
+    assert_output --partial "export DAAF_PORT_LOGVIEWER="
+    assert_output --partial "export DAAF_PORT_VSCODE="
+    assert_output --partial "Running multiple DAAF instances"
+    assert_output --partial "01_installation_and_quickstart.md#running-multiple-daaf-instances"
+    assert_output --partial "DAAF_FORCE_REINSTALL=1 bash -c"
+    # It is NOT the case-1 text (that one says "cd <this folder>").
+    refute_output --partial "An existing DAAF installation was detected."
+}
+
+@test "install.sh: case 2 FORCE hint for a non-default project names DAAF_PROJECT_NAME on the same line (42q I-1)" {
+    # Without the project on the FORCE line, a re-run from a new terminal (or with
+    # a one-shot prefix) falls back to project 'daaf' and could take that over.
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_INSTALL_VOLUMES="myproj_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    # Whole-line match; the branch segment is whatever DAAF_BRANCH resolves to.
+    grep -Exq -- '  DAAF_PROJECT_NAME=myproj DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    # The second-copy example is a different project from the refused one, and
+    # (refused project not 'daaf') avoids the guide's example ports 2818-2820.
+    assert_output --partial "  export DAAF_PROJECT_NAME=daaf-work"
+    assert_output --partial "  export DAAF_PORT_MARIMO=2918"
+}
+
+@test "install.sh: following the printed case-2 FORCE hint in a fresh shell re-targets the same project" {
+    # Take the env prefix of the printed FORCE line and run the installer with
+    # ONLY that prefix (DAAF_PROJECT_NAME unset in the parent): the forced run must
+    # check and name myproj's volume, never fall back to daaf's (which also exists).
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_INSTALL_VOLUMES="myproj_daaf-data daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    hint="$(grep -F -- 'DAAF_FORCE_REINSTALL=1 bash -c' <<< "${output}")"
+    prefix="${hint%% bash -c*}"
+    [ -n "${prefix}" ]
+    unset DAAF_PROJECT_NAME
+    # shellcheck disable=SC2086  # the hint's env prefix is split into assignments on purpose
+    run env ${prefix} bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "NOTE: An existing DAAF installation using Docker volume 'myproj_daaf-data' (project 'myproj')"
+    refute_output --partial "'daaf_daaf-data'"
+    assert_output --partial "Downloading"
+}
+
+@test "install.sh: case 2 refusing project daaf-personal gives a different second-copy example (name and ports)" {
+    export DAAF_PROJECT_NAME="daaf-personal"
+    MOCK_INSTALL_VOLUMES="daaf-personal_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "(project 'daaf-personal')"
+    assert_output --partial "  export DAAF_PROJECT_NAME=daaf-work"
+    assert_output --partial "  export DAAF_PORT_MARIMO=2918"
+    assert_output --partial "  export DAAF_PORT_LOGVIEWER=2919"
+    assert_output --partial "  export DAAF_PORT_VSCODE=2920"
+    refute_output --partial "export DAAF_PROJECT_NAME=daaf-personal"
+    refute_output --partial "export DAAF_PORT_MARIMO=2818"
+    assert_output --partial "  DAAF_PROJECT_NAME=daaf-personal DAAF_FORCE_REINSTALL=1 bash -c"
+}
+
+@test "install.sh: case 2 with DAAF_FORCE_REINSTALL=1 proceeds with a NOTE" {
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "NOTE: An existing DAAF installation using Docker volume 'daaf_daaf-data'"
+    assert_output --partial "re-install from this folder (DAAF_FORCE_REINSTALL=1)."
+    assert_output --partial "Downloading"
+    refute_output --partial "Nothing has been downloaded or changed."
+}
+
+@test "install.sh: no compose file here -- a settings file's project is checked AND built (case 2 and 4 agree with Compose)" {
+    # A settings file without a compose file (a partial folder) names project
+    # 'other'. The installer adopts and exports it (F-a), so the volume it checks
+    # and the project Compose builds are both 'other' -- never 'daaf', whose
+    # volume exists. Later launches from this folder read the same file.
+    unset DAAF_PROJECT_NAME
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    printf 'DAAF_PROJECT_NAME=other\n' > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    refute_output --partial "already exists, probably installed from"
+    assert_output --partial "Downloading"
+    run grep -x "volume inspect other_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "daaf_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    run grep -x "compose build --progress plain | P=other M=<unset> L=<unset> V=<unset> D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    # Same folder (its downloaded compose file removed again), but 'other' already
+    # has a volume: refused, naming 'other', and the FORCE hint carries it.
+    rm -f "${MOCK_INSTALL_CALL_LOG}" "${TEST_DIR}/daaf-docker/docker-compose.yml"
+    MOCK_INSTALL_VOLUMES="other_daaf-data daaf_daaf-data"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "Docker volume 'other_daaf-data' (project 'other')"
+    grep -Exq -- '  DAAF_PROJECT_NAME=other DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    refute_output --partial "Downloading"
+}
+
+@test "install.sh: case 2 ignores DAAF_DATA_VOLUME_NAME (shared-workspace Step 3 still installs)" {
+    # Installation guide, "Sharing One Research Workspace Across Two Installs",
+    # Step 3: a second copy is installed from a new folder with a distinct project
+    # name and DAAF_DATA_VOLUME_NAME naming install #1's EXISTING volume. The run
+    # writes its own daaf-gpt_daaf-data (absent), so it must not be refused.
+    export DAAF_PROJECT_NAME="daaf-gpt"
+    export DAAF_DATA_VOLUME_NAME="daaf_daaf-data"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    refute_output --partial "already exists, probably installed from"
+    assert_output --partial "Downloading"
+}
+
+@test "install.sh: case 2 refuses when only DAAF_DATA_VOLUME_NAME is set (default project volume exists)" {
+    # Step 3 done wrong: no distinct project name, so this run would take over
+    # project 'daaf' and its existing daaf_daaf-data.
+    unset DAAF_PROJECT_NAME
+    export DAAF_DATA_VOLUME_NAME="daaf_daaf-data"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "Docker volume 'daaf_daaf-data'"
+}
+
+@test "install.sh: case 4 -- another project's volume does not block a fresh install" {
+    export DAAF_PROJECT_NAME="daaf-personal"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    refute_output --partial "already exists, probably installed from"
+    refute_output --partial "Could not check"
+    assert_output --partial "Downloading"
+}
+
+@test "install.sh: volume check that cannot run (inspect AND list fail) refuses, never reads as absent" {
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    export MOCK_DOCKER_VOLUME_LS_EXIT=1
+    install_log_curl
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "Could not check whether a DAAF installation already exists"
+    assert_output --partial "'daaf_daaf-data'"
+    refute_output --partial "Downloading"
+    [ ! -f "${TEST_DIR}/curl_log.txt" ]
+    # Default project: the FORCE hint needs no DAAF_PROJECT_NAME.
+    # Whole-line match; the branch segment is whatever DAAF_BRANCH resolves to.
+    grep -Exq -- '  DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    refute_output --partial "DAAF_PROJECT_NAME="
+}
+
+@test "install.sh: 'could not check' FORCE hint for a non-default project names DAAF_PROJECT_NAME on the same line (42q I-1)" {
+    export DAAF_PROJECT_NAME="myproj"
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    export MOCK_DOCKER_VOLUME_LS_EXIT=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "looking for 'myproj_daaf-data'"
+    # Whole-line match; the branch segment is whatever DAAF_BRANCH resolves to.
+    grep -Exq -- '  DAAF_PROJECT_NAME=myproj DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+}
+
+@test "install.sh: unknown volume state with compose here also refuses (not the 'incomplete' NOTE)" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    export MOCK_DOCKER_VOLUME_LS_EXIT=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "Could not check whether a DAAF installation already exists"
+    refute_output --partial "appears incomplete"
+}
+
+@test "install.sh: unknown volume state with DAAF_FORCE_REINSTALL=1 proceeds with a NOTE" {
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    export MOCK_DOCKER_VOLUME_LS_EXIT=1
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "NOTE: Could not check whether Docker volume 'daaf_daaf-data' already exists."
+    assert_output --partial "Downloading"
+}
+
+@test "install.sh: daaf_volume_state -- a failed inspect falls back to an exact-name list" {
+    # Sourced in test mode (the helper is defined before the guard). Custom docker:
+    # inspect always fails; the list prints a near-miss name and one exact name.
+    docker() {
+        case "$*" in
+            "volume inspect"*) return 1 ;;
+            "volume ls -q") printf '%s\n' "daaf_daaf-data-restore-tmp" "DAAF_DAAF-DATA" "listed_vol"; return 0 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    run bash -c 'DAAF_TEST_MODE=1 source "$1"; daaf_volume_state listed_vol; daaf_volume_state daaf_daaf-data' _ "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    [ "${lines[0]}" = "present" ]
+    # Neither a longer name nor a case variant matches.
+    [ "${lines[1]}" = "absent" ]
+}
+
+@test "install.sh: daaf_volume_state -- inspect success is present; a failed list is unknown" {
+    docker() {
+        case "$*" in
+            "volume inspect here") return 0 ;;
+            "volume inspect"*) return 1 ;;
+            "volume ls -q") return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    run bash -c 'DAAF_TEST_MODE=1 source "$1"; daaf_volume_state here; daaf_volume_state gone' _ "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    [ "${lines[0]}" = "present" ]
+    [ "${lines[1]}" = "unknown" ]
+}
+
+# =========================================================================
+# One project-name source (F-a) and the second-copy example (F-c)
+# =========================================================================
+# The installer bridges DAAF_PROJECT_NAME, the three DAAF_PORT_* keys and DAAF_DEV
+# from an existing environment_settings.txt into the EXPORTED environment, as the
+# launchers' load_daaf_settings does (shell value wins), and derives the target
+# project once. The volume checked, every compose call (logged by the mock with the
+# exported env, MOCK_INSTALL_CALL_LOG) and every printed hint must use that one
+# project. Before F-a the file's project only named the volume checked: Compose
+# built and started project 'daaf' on the default ports (reviews 42q I-2, 43d
+# ISSUE-1).
+
+# Write a named instance's folder: <TEST_DIR>/daaf-docker with a compose file and
+# a settings file holding project x and ports 3101-3103 (plus a comment line).
+install_named_folder() {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    printf '%s\n' "# my real API keys" "DAAF_PROJECT_NAME=x" "DAAF_PORT_MARIMO=3101" \
+        "DAAF_PORT_LOGVIEWER=3102" "DAAF_PORT_VSCODE=3103" > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+}
+
+@test "install.sh F-a: a re-install from a named instance's own folder builds, starts and execs the settings-file project and ports" {
+    install_named_folder
+    MOCK_INSTALL_VOLUMES="x_daaf-data daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "NOTE: Existing installation detected. Proceeding with re-install (DAAF_FORCE_REINSTALL=1)."
+    assert_output --partial "Installation complete"
+    # The check examined x's volume, never daaf's.
+    run grep -x "volume inspect x_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "daaf_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    # Build, start and every exec see project x and its ports in the exported env.
+    run grep -x "compose build --progress plain | P=x M=3101 L=3102 V=3103 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -x "compose up -d | P=x M=3101 L=3102 V=3103 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "^compose " "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" -ge 4 ]
+    [ "$(grep '^compose ' "${MOCK_INSTALL_CALL_LOG}" | grep -vc ' | P=x M=3101 L=3102 V=3103 D=<unset>$' || true)" = "0" ]
+}
+
+@test "install.sh F-a: a shell value wins over the settings file, key by key" {
+    install_named_folder
+    export DAAF_PROJECT_NAME="y"
+    export DAAF_PORT_MARIMO="4001"
+    MOCK_INSTALL_VOLUMES="y_daaf-data x_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    run grep -x "volume inspect y_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "x_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    # Project and Marimo port from the shell; the two ports the shell left unset
+    # come from the file.
+    run grep -x "compose build --progress plain | P=y M=4001 L=3102 V=3103 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+}
+
+@test "install.sh F-a: settings-file parsing follows load_daaf_settings (column 0, quotes, CR, comments, repeated empty key)" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    printf '%s\r\n' "# DAAF_PROJECT_NAME=commented" "  DAAF_PORT_MARIMO=9999" "DAAF_PROJECT_NAME=\"x\"" \
+        "DAAF_PORT_MARIMO='3101'" "DAAF_PORT_LOGVIEWER=" "DAAF_PORT_LOGVIEWER=3102" "DAAF_DEV=1" \
+        > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "previous install attempt was detected but appears incomplete"
+    run grep -x "volume inspect x_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -x "compose build --progress plain | P=x M=3101 L=3102 V=<unset> D=1" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+}
+
+@test "install.sh F-a: the case-1 WARNING names the settings-file project, and following its FORCE hint targets that project" {
+    install_named_folder
+    MOCK_INSTALL_VOLUMES="x_daaf-data daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "WARNING: An existing DAAF installation was detected."
+    assert_output --partial "         (Docker volume 'x_daaf-data', project 'x')"
+    # Whole-line match; the branch segment is whatever DAAF_BRANCH resolves to.
+    grep -Exq -- '  DAAF_PROJECT_NAME=x DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    hint="$(grep -F -- 'DAAF_FORCE_REINSTALL=1 bash -c' <<< "${output}")"
+    prefix="${hint%% bash -c*}"
+    [ -f "${MOCK_INSTALL_CALL_LOG}" ]
+    run grep -c "^compose " "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    # Follow the printed line with ONLY its env prefix, from a folder that has no
+    # settings file (the hint alone must carry the project): x is checked and
+    # built, never daaf.
+    mkdir -p "${TEST_DIR}/elsewhere"
+    cd "${TEST_DIR}/elsewhere"
+    rm -f "${MOCK_INSTALL_CALL_LOG}"
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    # shellcheck disable=SC2086  # the hint's env prefix is split into assignments on purpose
+    run env ${prefix} bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "NOTE: An existing DAAF installation using Docker volume 'x_daaf-data' (project 'x')"
+    refute_output --partial "'daaf_daaf-data'"
+    run grep -x "compose build --progress plain | P=x M=<unset> L=<unset> V=<unset> D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+}
+
+@test "install.sh F-a: the 'could not check' hint carries the settings-file project, and following it builds that project (43d ISSUE-1)" {
+    install_named_folder
+    export MOCK_DOCKER_VOLUME_EXIT=1
+    export MOCK_DOCKER_VOLUME_LS_EXIT=1
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "looking for 'x_daaf-data'"
+    grep -Exq -- '  DAAF_PROJECT_NAME=x DAAF_FORCE_REINSTALL=1 bash -c "\$\(curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh\)"' <<< "${output}"
+    hint="$(grep -F -- 'DAAF_FORCE_REINSTALL=1 bash -c' <<< "${output}")"
+    prefix="${hint%% bash -c*}"
+    # Follow it in the same folder, the shell project still unset (Docker still
+    # cannot answer): the forced run names and builds project x.
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    # shellcheck disable=SC2086  # the hint's env prefix is split into assignments on purpose
+    run env ${prefix} bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "NOTE: Could not check whether Docker volume 'x_daaf-data' already exists."
+    run grep -x "compose build --progress plain | P=x M=3101 L=3102 V=3103 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "P=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+}
+
+@test "install.sh F-a: a shared-workspace install's own folder -- the file's DAAF_DATA_VOLUME_NAME is not checked, and Compose never targets project daaf" {
+    # Install #2 of the guide's "Sharing One Research Workspace" (project daaf-gpt,
+    # DAAF_DATA_VOLUME_NAME=daaf_daaf-data in its settings file), re-run from its own
+    # folder with nothing exported. The re-downloaded compose file has the shared
+    # block commented out, so this run writes daaf-gpt_daaf-data: that is the volume
+    # checked. Before F-a, Compose built project 'daaf' here and its `up -d` + clone
+    # copy landed on install #1's daaf_daaf-data.
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    printf '%s\n' "DAAF_PROJECT_NAME=daaf-gpt" "DAAF_PORT_MARIMO=2818" "DAAF_PORT_LOGVIEWER=2819" \
+        "DAAF_PORT_VSCODE=2820" "DAAF_DATA_VOLUME_NAME=daaf_daaf-data" > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    # Step 4 deleted the transitional daaf-gpt_daaf-data: only the shared volume exists.
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_output --partial "previous install attempt was detected but appears incomplete"
+    run grep -x "volume inspect daaf-gpt_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "volume inspect daaf_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    run grep -x "compose build --progress plain | P=daaf-gpt M=2818 L=2819 V=2820 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    # With its own volume present, it is the case-1 WARNING for daaf-gpt.
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data daaf-gpt_daaf-data"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "(Docker volume 'daaf-gpt_daaf-data', project 'daaf-gpt')"
+}
+
+@test "install.sh F-a: shared-workspace Step 3 from a new folder still installs, as daaf-gpt on its own ports" {
+    export DAAF_PROJECT_NAME="daaf-gpt"
+    export DAAF_PORT_MARIMO="2818"
+    export DAAF_PORT_LOGVIEWER="2819"
+    export DAAF_PORT_VSCODE="2820"
+    export DAAF_DATA_VOLUME_NAME="daaf_daaf-data"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    refute_output --partial "already exists, probably installed from"
+    run grep -x "volume inspect daaf-gpt_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -x "compose up -d | P=daaf-gpt M=2818 L=2819 V=2820 D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run cat "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    assert_output --partial "DAAF_PROJECT_NAME=daaf-gpt"
+    assert_output --partial "DAAF_DATA_VOLUME_NAME=daaf_daaf-data"
+}
+
+@test "install.sh F-a: a fresh install is unchanged -- no settings file, nothing bridged, project left to Compose's default" {
+    # (A DAAF dev container exports DAAF_BRANCH, which the seeder would persist.)
+    unset DAAF_BRANCH
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "Created environment_settings.txt from the template"
+    run grep -x "volume inspect daaf_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c "^compose " "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" -ge 4 ]
+    [ "$(grep '^compose ' "${MOCK_INSTALL_CALL_LOG}" | grep -vc ' | P=<unset> M=<unset> L=<unset> V=<unset> D=<unset>$' || true)" = "0" ]
+}
+
+@test "install.sh F-a: values adopted from an existing settings file are never written back (seeding leaves the file byte-identical)" {
+    install_named_folder
+    printf '%s\n' "DAAF_DEV=1" >> "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    cp "${TEST_DIR}/daaf-docker/environment_settings.txt" "${TEST_DIR}/settings.before"
+    MOCK_INSTALL_VOLUMES="x_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "An existing environment_settings.txt was found and left untouched."
+    refute_output --partial "seeded these values"
+    refute_output --partial "Restarting the container"
+    cmp "${TEST_DIR}/settings.before" "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    # DAAF_DEV is bridged too; no post-seed --force-recreate happened.
+    run grep -x "compose build --progress plain | P=x M=3101 L=3102 V=3103 D=1" "${MOCK_INSTALL_CALL_LOG}"
+    assert_success
+    run grep -c -- "--force-recreate" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+}
+
+@test "install.sh F-c: the second-copy example never repeats the refused project and avoids 2818-2820 for any non-default project" {
+    # Deterministic table: daaf -> daaf-personal 2818-2820; daaf-work -> daaf-lab
+    # 3018-3020; any other project -> daaf-work 2918-2920. daaf-personal and
+    # daaf-gpt are the installation guide's examples on 2818-2820; daafmac is the
+    # Mac test doc's.
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    for refused in daaf daaf-personal daaf-gpt daafmac daaf-work daaf-lab myproj; do
+        case "${refused}" in
+            daaf) want="daaf-personal 2818 2819 2820" ;;
+            daaf-work) want="daaf-lab 3018 3019 3020" ;;
+            *) want="daaf-work 2918 2919 2920" ;;
+        esac
+        MOCK_INSTALL_VOLUMES="${refused}_daaf-data"
+        export MOCK_INSTALL_VOLUMES
+        if [ "${refused}" = "daaf" ]; then unset DAAF_PROJECT_NAME; else export DAAF_PROJECT_NAME="${refused}"; fi
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        [ "${status}" -eq 1 ]
+        name="$(sed -n 's/^  export DAAF_PROJECT_NAME=//p' <<< "${output}")"
+        marimo="$(sed -n 's/^  export DAAF_PORT_MARIMO=//p' <<< "${output}")"
+        logviewer="$(sed -n 's/^  export DAAF_PORT_LOGVIEWER=//p' <<< "${output}")"
+        vscode="$(sed -n 's/^  export DAAF_PORT_VSCODE=//p' <<< "${output}")"
+        echo "refused=${refused} example=${name} ${marimo} ${logviewer} ${vscode}"
+        [ "${name} ${marimo} ${logviewer} ${vscode}" = "${want}" ]
+        [ "${name}" != "${refused}" ]
+        if [ "${refused}" != "daaf" ]; then
+            case " ${marimo} ${logviewer} ${vscode} " in
+                *" 2818 "*|*" 2819 "*|*" 2820 "*) false ;;
+            esac
+        fi
+    done
+}
+
+# =========================================================================
+# Round #45: the project name as Compose uses it, printed commands that carry it
+# =========================================================================
+# Review 44q (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/reviews/):
+#   ISSUE-1  Compose normalizes `name:` (compose-go NormalizeProjectName: lowercase,
+#            keep [a-z0-9_-], trim leading '_'/'-'); the installer checked the raw
+#            value. Now the normalized name is checked, exported and printed; a name
+#            that normalizes to nothing is refused before anything is downloaded.
+#   ISSUE-2  manual `docker compose ...` commands and "re-run" texts printed on
+#            failure carry -p <project> (and, for `up -d`, the ports).
+#   SUGGESTION-1/2/3, NIT-1: all-five shell-wins, the case-1 no-settings-file
+#            lines, the adopted-settings NOTE, the unreadable-file ERROR.
+
+INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/install\.sh'
+
+@test "install.sh #45 ISSUE-1: a settings-file project name is normalized as Compose does -- check, Compose and NOTE (no compose file, and with one)" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    i=0
+    for pair in 'Work|work' 'work |work' 'x # mine|xmine' '"x|x' '_x|x'; do
+        raw="${pair%|*}"
+        norm="${pair##*|}"
+        for withcompose in no yes; do
+            i=$((i + 1))
+            mkdir -p "${TEST_DIR}/n${i}/daaf-docker"
+            if [ "${withcompose}" = "yes" ]; then create_fake_compose_file "${TEST_DIR}/n${i}/daaf-docker"; fi
+            printf 'DAAF_PROJECT_NAME=%s\n' "${raw}" > "${TEST_DIR}/n${i}/daaf-docker/environment_settings.txt"
+            export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/n${i}/calls.log"
+            cd "${TEST_DIR}/n${i}"
+            run bash "${REPO_ROOT}/scripts/host/install.sh"
+            echo "raw=[${raw}] norm=${norm} compose=${withcompose}"
+            grep -Fxq "NOTE: Using these settings from daaf-docker/environment_settings.txt:" <<< "${output}"
+            grep -Fxq "        DAAF_PROJECT_NAME=${raw}" <<< "${output}"
+            grep -Fxq "      Docker Compose uses the project name '${norm}' for '${raw}'." <<< "${output}"
+            assert_output --partial "Downloading"
+            # Exactly one volume checked: the normalized project's.
+            [ "$(grep -c '^volume inspect ' "${MOCK_INSTALL_CALL_LOG}")" = "1" ]
+            grep -Fxq "volume inspect ${norm}_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+            # Compose receives the normalized name (it would normalize the raw one the same way).
+            grep -Fxq "compose build --progress plain | P=${norm} M=<unset> L=<unset> V=<unset> D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+        done
+    done
+}
+
+@test "install.sh #45 ISSUE-1: the case-2 refusal holds again for 'x ', '\"x', 'x # mine' and 'Work' (review 44q rows 45/49/53), and case 1 warns for them" {
+    export DAAF_NESTED=1
+    install_log_curl
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data x_daaf-data xmine_daaf-data work_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    i=0
+    for pair in 'x |x' '"x|x' 'x # mine|xmine' 'Work|work'; do
+        raw="${pair%|*}"
+        norm="${pair##*|}"
+        i=$((i + 1))
+        mkdir -p "${TEST_DIR}/r${i}/daaf-docker"
+        printf 'DAAF_PROJECT_NAME=%s\n' "${raw}" > "${TEST_DIR}/r${i}/daaf-docker/environment_settings.txt"
+        cd "${TEST_DIR}/r${i}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "case 2: raw=[${raw}] norm=${norm}"
+        [ "${status}" -eq 1 ]
+        assert_output --partial "WARNING: A DAAF installation using Docker volume '${norm}_daaf-data' (project '${norm}')"
+        grep -Exq -- "  DAAF_PROJECT_NAME=${norm} DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}"
+        refute_output --partial "[1/4]"
+        [ ! -f "${TEST_DIR}/curl_log.txt" ]
+        # Same folder with its compose file: the case-1 WARNING names the same volume.
+        create_fake_compose_file "${TEST_DIR}/r${i}/daaf-docker"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "case 1: raw=[${raw}] norm=${norm}"
+        [ "${status}" -eq 1 ]
+        grep -Fxq "         (Docker volume '${norm}_daaf-data', project '${norm}')" <<< "${output}"
+        grep -Exq -- "  DAAF_PROJECT_NAME=${norm} DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}"
+        [ ! -f "${TEST_DIR}/curl_log.txt" ]
+    done
+    # The reviewer's exact volume set (no xmine_daaf-data): 'x # mine' is project
+    # xmine, whose volume is absent, so this is a fresh install of xmine -- Compose
+    # would create xmine_daaf-data and touch neither existing install.
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data x_daaf-data"
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    mkdir -p "${TEST_DIR}/r49/daaf-docker"
+    printf 'DAAF_PROJECT_NAME=x # mine\n' > "${TEST_DIR}/r49/daaf-docker/environment_settings.txt"
+    cd "${TEST_DIR}/r49"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    refute_output --partial "already exists, probably installed from"
+    grep -Fxq "volume inspect xmine_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    grep -Fxq "compose build --progress plain | P=xmine M=<unset> L=<unset> V=<unset> D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+}
+
+@test "install.sh #45 ISSUE-1: a shell project name is normalized too, the NOTE says so, and a new settings file is seeded with the normalized name" {
+    unset DAAF_BRANCH
+    export DAAF_PROJECT_NAME="Work"
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    grep -Fxq "NOTE: Docker Compose uses the project name 'work' for 'Work'." <<< "${output}"
+    refute_output --partial "Using these settings from"
+    grep -Fxq "volume inspect work_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "$(grep '^compose ' "${MOCK_INSTALL_CALL_LOG}" | grep -vc ' | P=work M=<unset> L=<unset> V=<unset> D=<unset>$' || true)" = "0" ]
+    # Seeded normalized: backup/restore derive the volume name from the raw value.
+    run grep -E '^DAAF_PROJECT_NAME=' "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    [ "${output}" = "DAAF_PROJECT_NAME=work" ]
+}
+
+@test "install.sh #45 ISSUE-1: a name that normalizes to nothing is refused before anything is downloaded (file and shell, with and without a compose file)" {
+    export DAAF_NESTED=1
+    install_log_curl
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    i=0
+    for src in file shell; do
+        for withcompose in no yes; do
+            i=$((i + 1))
+            mkdir -p "${TEST_DIR}/e${i}"
+            export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/e${i}/calls.log"
+            if [ "${withcompose}" = "yes" ]; then
+                mkdir -p "${TEST_DIR}/e${i}/daaf-docker"
+                create_fake_compose_file "${TEST_DIR}/e${i}/daaf-docker"
+            fi
+            if [ "${src}" = "file" ]; then
+                val="___"
+                unset DAAF_PROJECT_NAME
+                mkdir -p "${TEST_DIR}/e${i}/daaf-docker"
+                printf 'DAAF_PROJECT_NAME=%s\n' "${val}" > "${TEST_DIR}/e${i}/daaf-docker/environment_settings.txt"
+            else
+                val="@@"
+                export DAAF_PROJECT_NAME="${val}"
+            fi
+            cd "${TEST_DIR}/e${i}"
+            run bash "${REPO_ROOT}/scripts/host/install.sh"
+            echo "src=${src} compose=${withcompose} val=${val}"
+            [ "${status}" -eq 1 ]
+            grep -Fxq "ERROR: DAAF_PROJECT_NAME='${val}' cannot be used as a Docker Compose" <<< "${output}"
+            grep -Fxq "       project name. A project name may use lowercase letters, digits, '-'" <<< "${output}"
+            grep -Fxq "       and '_', and must start with a letter or digit." <<< "${output}"
+            grep -Fxq "       Nothing has been downloaded or changed." <<< "${output}"
+            if [ "${src}" = "file" ]; then
+                grep -Fxq "       (This value was read from daaf-docker/environment_settings.txt.)" <<< "${output}"
+            else
+                refute_output --partial "(This value was read from"
+            fi
+            refute_output --partial "[1/4]"
+            refute_output --partial "NOTE: Using these settings"
+            [ ! -f "${TEST_DIR}/curl_log.txt" ]
+            # Stopped before the volume check and before any compose call.
+            [ ! -f "${MOCK_INSTALL_CALL_LOG}" ]
+        done
+    done
+}
+
+@test "install.sh #45 ISSUE-2: with a settings-file project, every failure-path command carries -p and every re-run text names the project" {
+    export DAAF_NESTED=1
+    sleep() { true; }
+    export -f sleep
+    install_named_folder
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    cd "${TEST_DIR}"
+    compose_f="${TEST_DIR}/daaf-docker/docker-compose.yml"
+    retry="(set DAAF_PROJECT_NAME=x, and DAAF_FORCE_REINSTALL=1 if prompted)."
+    for fail in " build --progress" " up -d" "exec -T daaf-docker true" "git clone" "cp -a /tmp/daaf-clone" "test -f /daaf/CLAUDE.md"; do
+        export MOCK_INSTALL_FAIL_ON="${fail}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "fail=[${fail}]"
+        [ "${status}" -eq 1 ]
+        case "${fail}" in
+            " build --progress")
+                grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}"
+                grep -Exq -- "  DAAF_PROJECT_NAME=x DAAF_DIAG_BUILD=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}" ;;
+            " up -d")
+                grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}" ;;
+            "exec -T daaf-docker true")
+                grep -Fxq "  DAAF_PORT_MARIMO=3101 DAAF_PORT_LOGVIEWER=3102 DAAF_PORT_VSCODE=3103 docker compose -p x -f ${compose_f} up -d" <<< "${output}" ;;
+            "git clone")
+                [ "$(grep -Fxc "  docker compose -p x -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "2" ]
+                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+            "cp -a /tmp/daaf-clone")
+                [ "$(grep -Fxc "  docker compose -p x -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "1" ]
+                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+            "test -f /daaf/CLAUDE.md")
+                grep -Fxq "  docker compose -p x exec daaf-docker bash" <<< "${output}" ;;
+        esac
+        # No printed compose command without the project, no bare retry text.
+        refute_output --regexp 'docker compose (-f|exec|down|up)'
+        refute_output --partial "(set DAAF_FORCE_REINSTALL=1 if prompted)"
+    done
+}
+
+@test "install.sh #45 ISSUE-2: a shell project that is seeded -- the recreate-failure and final-summary commands carry -p" {
+    unset DAAF_BRANCH
+    export DAAF_PROJECT_NAME="x"
+    export MOCK_INSTALL_FAIL_ON="--force-recreate"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "Could not restart the container to apply the seeded settings"
+    grep -Fxq "        docker compose -p x down" <<< "${output}"
+    grep -Fxq "  docker compose -p x exec daaf-docker bash   # enter the container" <<< "${output}"
+    refute_output --regexp 'docker compose (-f|exec|down|up)'
+}
+
+@test "install.sh #45 ISSUE-2: for the default project every printed command and re-run text is unchanged (no -p)" {
+    unset DAAF_BRANCH
+    export DAAF_NESTED=1
+    sleep() { true; }
+    export -f sleep
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    cd "${TEST_DIR}"
+    compose_f="${TEST_DIR}/daaf-docker/docker-compose.yml"
+    retry="(set DAAF_FORCE_REINSTALL=1 if prompted)."
+    # --force-recreate last: only then is there still no settings file to seed.
+    for fail in " build --progress" " up -d" "exec -T daaf-docker true" "git clone" "cp -a /tmp/daaf-clone" "test -f /daaf/CLAUDE.md" "--force-recreate"; do
+        export MOCK_INSTALL_FAIL_ON="${fail}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "fail=[${fail}]"
+        case "${fail}" in
+            " build --progress")
+                grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}"
+                grep -Exq -- "  DAAF_DIAG_BUILD=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}" ;;
+            " up -d")
+                grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}" ;;
+            "exec -T daaf-docker true")
+                grep -Fxq "  docker compose -f ${compose_f} up -d" <<< "${output}" ;;
+            "git clone")
+                [ "$(grep -Fxc "  docker compose -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "2" ]
+                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+            "cp -a /tmp/daaf-clone")
+                [ "$(grep -Fxc "  docker compose -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "1" ]
+                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+            "test -f /daaf/CLAUDE.md")
+                grep -Fxq "  docker compose exec daaf-docker bash" <<< "${output}" ;;
+            "--force-recreate")
+                assert_success
+                grep -Fxq "        docker compose down" <<< "${output}"
+                grep -Fxq "  docker compose exec daaf-docker bash   # enter the container" <<< "${output}" ;;
+        esac
+        refute_output --partial "docker compose -p"
+        refute_output --partial "DAAF_PROJECT_NAME="
+        refute_output --partial "NOTE: Using these settings"
+    done
+}
+
+@test "install.sh #45 ISSUE-2: ports set for the default project ride on the printed up -d command (no -p)" {
+    export DAAF_PORT_MARIMO="3101"
+    export MOCK_INSTALL_FAIL_ON="exec -T daaf-docker true"
+    export DAAF_NESTED=1
+    sleep() { true; }
+    export -f sleep
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    grep -Fxq "  DAAF_PORT_MARIMO=3101 docker compose -f ${TEST_DIR}/daaf-docker/docker-compose.yml up -d" <<< "${output}"
+}
+
+@test "install.sh #45 SUGGESTION-1: a shell value wins over the settings file for ALL FIVE keys" {
+    install_named_folder
+    printf '%s\n' "DAAF_DEV=1" >> "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    export DAAF_PROJECT_NAME="y"
+    export DAAF_PORT_MARIMO="4001"
+    export DAAF_PORT_LOGVIEWER="4002"
+    export DAAF_PORT_VSCODE="4003"
+    export DAAF_DEV="0"
+    MOCK_INSTALL_VOLUMES="y_daaf-data x_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_FORCE_REINSTALL=1
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    # Nothing was adopted, so no NOTE.
+    refute_output --partial "NOTE: Using these settings"
+    grep -Fxq "volume inspect y_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    run grep -c "x_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+    [ "${output}" = "0" ]
+    grep -Fxq "compose build --progress plain | P=y M=4001 L=4002 V=4003 D=0" "${MOCK_INSTALL_CALL_LOG}"
+    [ "$(grep '^compose ' "${MOCK_INSTALL_CALL_LOG}" | grep -vc ' | P=y M=4001 L=4002 V=4003 D=0$' || true)" = "0" ]
+}
+
+@test "install.sh #45 SUGGESTION-2: the case-1 WARNING says when the folder has no environment_settings.txt (first line unchanged)" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    expected="$(printf '%s\n' "WARNING: An existing DAAF installation was detected." \
+        "         (Docker volume 'daaf_daaf-data', project 'daaf')" \
+        "         This folder has no environment_settings.txt, so the project name comes" \
+        "         from your shell (default 'daaf'). If you meant to install a separate" \
+        "         copy here, set DAAF_PROJECT_NAME (and its ports) again first.")"
+    [ "$(grep -A4 -Fx 'WARNING: An existing DAAF installation was detected.' <<< "${output}")" = "${expected}" ]
+    # With a settings file in the folder the lines are not printed.
+    printf '%s\n' "# my real API keys" > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "WARNING: An existing DAAF installation was detected."
+    refute_output --partial "This folder has no environment_settings.txt"
+}
+
+@test "install.sh #45 SUGGESTION-3: one NOTE lists the adopted settings before the decision; none for a template-seeded file or when nothing is adopted" {
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    # An empty adopted value changes nothing for Compose and is not listed.
+    printf '%s\n' "# keys" "DAAF_PROJECT_NAME=x" "DAAF_PORT_MARIMO=3101" "DAAF_PORT_LOGVIEWER=" "DAAF_DEV=1" \
+        > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    MOCK_INSTALL_VOLUMES="x_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    expected="$(printf '%s\n' "NOTE: Using these settings from daaf-docker/environment_settings.txt:" \
+        "        DAAF_PROJECT_NAME=x" "        DAAF_PORT_MARIMO=3101" "        DAAF_DEV=1" "")"
+    [ "$(grep -A4 -Fx 'NOTE: Using these settings from daaf-docker/environment_settings.txt:' <<< "${output}")" = "${expected}" ]
+    [ "$(grep -c '^NOTE: Using these settings' <<< "${output}")" = "1" ]
+    refute_output --partial "Docker Compose uses the project name"
+    # Printed before the existing-install decision.
+    note_line="$(grep -n '^NOTE: Using these settings' <<< "${output}" | cut -d: -f1)"
+    warn_line="$(grep -n '^WARNING: An existing DAAF installation was detected.' <<< "${output}" | cut -d: -f1)"
+    [ "${note_line}" -lt "${warn_line}" ]
+    # CI-shaped: the shipped template (bridged keys commented out) plus an active
+    # DAAF_BRANCH, as the seeder writes it: nothing adopted, no NOTE.
+    cp "${REPO_ROOT}/scripts/host/environment_settings_example.txt" "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    printf '%s\n' "DAAF_BRANCH=main" >> "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    MOCK_INSTALL_VOLUMES="daaf_daaf-data"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    refute_output --partial "NOTE: Using these settings"
+    refute_output --partial "This folder has no environment_settings.txt"
+    grep -Fxq "         (Docker volume 'daaf_daaf-data', project 'daaf')" <<< "${output}"
+}
+
+@test "install.sh #45 NIT-1: a settings file that cannot be read stops with a plain ERROR before anything is downloaded, even when the shell supplies every key" {
+    [ "$(id -u)" != "0" ] || skip "root can open a mode-000 file"
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    printf 'DAAF_PROJECT_NAME=x\n' > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    export DAAF_PROJECT_NAME="y"
+    export DAAF_PORT_MARIMO="4001"
+    export DAAF_PORT_LOGVIEWER="4002"
+    export DAAF_PORT_VSCODE="4003"
+    export DAAF_DEV="0"
+    install_log_curl
+    export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/calls.log"
+    export DAAF_NESTED=1
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    chmod 600 "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    [ "${status}" -eq 1 ]
+    expected="$(printf '%s\n' "ERROR: Could not read daaf-docker/environment_settings.txt. Check its" \
+        "       permissions, and close any program that has it open, then run the" \
+        "       installer again. Nothing has been downloaded or changed.")"
+    [ "$(grep -A2 -Fx 'ERROR: Could not read daaf-docker/environment_settings.txt. Check its' <<< "${output}")" = "${expected}" ]
+    refute_output --partial "Permission denied"
+    refute_output --partial "[1/4]"
+    [ ! -f "${TEST_DIR}/curl_log.txt" ]
+    [ ! -f "${MOCK_INSTALL_CALL_LOG}" ]
 }
 
 # =========================================================================
