@@ -999,6 +999,45 @@ docker ps -aq --filter "label=org.daaf.restore-tmp-for=${LIVE}"   # label=key=va
 
 ---
 
+### A "Created" Flag Set After the Create Misses a Ctrl+C That Lands During It
+
+**The problem:** An interrupt handler that removes only what a flag says this run created has a gap. The flag is set after the create call (and often after a check of the new resource), so a Ctrl+C during either one runs the cleanup while the flag still says "nothing created". In bash, a trapped SIGINT that arrives while a foreground command runs is handled when that command returns, before the next statement: the handler runs after `docker volume create` has already succeeded. In PowerShell, the `finally` runs instead (see the `try`/`finally` entry above). Either way the new resource is left behind and nothing reports it.
+
+```bash
+# BAD: a Ctrl+C during the create or the check runs the cleanup with CREATED=0
+docker volume create --label "org.example.run=${RUN_ID}" "${TEMP}"
+check_new_volume "${TEMP}"
+CREATED=1
+
+# GOOD: record the attempt BEFORE the call, close it only AFTER the created flag
+ATTEMPTED=1
+docker volume create --label "org.example.run=${RUN_ID}" "${TEMP}"
+check_new_volume "${TEMP}"          # its own refusal sets ATTEMPTED=0 before cleaning up
+CREATED=1
+ATTEMPTED=0
+# ...and at the start of the cleanup: adopt an open attempt only on proof of ownership
+if [ "${ATTEMPTED}" -eq 1 ] && [ "${CREATED}" -eq 0 ] && volume_has_run_label "${TEMP}" "${RUN_ID}"; then CREATED=1; fi
+ATTEMPTED=0
+```
+
+**Why ownership proof, not existence:** an open attempt does not show that this run created anything. The client may have been stopped before the create happened (inference: a real Ctrl+C also reaches the docker CLI), and `docker volume create` silently reuses a volume of the same name, perhaps another run's (see the entry above). Labels are fixed at creation, so a label whose value is unique to this run proves the volume is this run's own. A check that fails is "not ours", never "ours" or "absent". A refusal that has decided to leave a volume alone must close the attempt before its cleanup runs, or the cleanup adopts what the refusal just spared.
+
+**Field evidence:**
+- **Deferred handler, observed** (this dev container, bash 5.2.21, 2026-10-06; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/engineer40/probe_deferred_trap.sh`): with `trap '...' INT`, a `kill -INT $$` sent 0.3 s into a foreground `sleep 1.5` printed `HANDLER CREATED=0 elapsed_ms=1510`, and neither of the next two statements ran. Not run under bash 3.2.
+- **The DAAF restore gap, reproduced** (task #36, `.../engineer_reports/36_engineer36_COMPLETED.md`): a stand-in `docker` sent SIGINT to the script during `volume create` and then finished. The pre-fix `.sh` exited 130 with `Restore interrupted. Your DAAF data has not been changed.` and left `daaf_daaf-data-restore-tmp` behind; the fixed one ran the identity inspect, the holder list and `volume rm`. A reused volume with another run's label, and a failing identity inspect, were left alone. The `.ps1` twin was probed the same way through Pester under pwsh 7 on Linux. Not observed against a real Docker daemon.
+
+**Fix:**
+1. Set an "attempted" flag right before every call that creates something the cleanup should remove, and clear it only after the "created" flag is set.
+2. In the cleanup, before acting on the "created" flags, adopt an open attempt only when the resource exists and carries this run's unique identity (a per-run label for Docker volumes). Then remove it through the normal removal path, so its holder checks and messages still apply. Always clear the attempt flag afterwards, and make no call when no attempt is open.
+3. Close the attempt first in any path that deliberately leaves the resource alone.
+4. In bash, run the same adoption from the EXIT handler when no cleanup has run yet, which covers exits other than the trapped signals. A PowerShell `finally` already covers every exit from its `try`.
+
+**Where it lives in DAAF:** `TEMP_CREATE_ATTEMPTED` / `CLAUDE_TEMP_CREATE_ATTEMPTED` and `_restore_adopt_attempted_temps` in `scripts/host/restore_from_backup.sh`, `$TempCreateAttempted` / `$ClaudeTempCreateAttempted` and `Resolve-DaafRestoreAttemptedTemp` in the `.ps1` twin (task #36; review 32q, I-3). The identity test is `_restore_temp_is_ours` / `Test-DaafRestoreTempIdentity`.
+
+**Severity:** Low-Medium. Nothing is lost, but an empty resource is left behind with no message, and the next run has to ask about it.
+
+---
+
 ### An Interrupted `docker run --rm` Can Leave a Never-Started Container That Holds Its Volumes
 
 **The problem:** `docker run` creates a container and then starts it. If the client is interrupted between the two (a Ctrl+C, a killed process, a closed window), the container stays in the `Created` state. `--rm` never removes it: it acts when a container exits, and this one never ran. The container keeps referencing its volumes, so `docker volume rm` of any of them fails with `volume is in use`, every time, for as long as Docker keeps running. A label-based reap misses it if it carries no label. It also gets a random name (`bold_clarke` in the field), so a `--filter name=` search misses it too.
@@ -1239,6 +1278,7 @@ docker() {
 | busybox `find`: batched `-exec ... {} +` inside `\( \)` never runs its last batch | Cross-platform | High | — |
 | Forwarded Ctrl+C stops a container's `sh -c` between commands (`--sig-proxy=false` + `trap : INT TERM HUP`) | Cross-platform | High | — |
 | `docker volume create` reuses an existing name; `volume ls --filter name=` is an unanchored regex | Cross-platform | High | — |
+| A "created" flag set after the create misses a Ctrl+C during it (record the attempt first; adopt only with a per-run label) | Cross-platform | Low-Medium | — |
 | Interrupted `docker run --rm` leaves a never-started (Created) container holding its volumes (`docker ps -a --filter volume=` + plain `docker rm`) | Cross-platform | Medium | — |
 | `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (check identity before any mount) | Cross-platform | High | — |
 | In-container `df` on Docker Desktop reports the VM's virtual disk, not the host drive | Cross-platform | Medium | — |

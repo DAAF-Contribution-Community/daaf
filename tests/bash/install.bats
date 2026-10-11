@@ -1015,7 +1015,9 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     MOCK_INSTALL_VOLUMES=""
     export MOCK_INSTALL_VOLUMES
     i=0
-    for pair in 'Work|work' 'work |work' 'x # mine|xmine' '"x|x' '_x|x'; do
+    # One input per branch of the rule: lowercase, drop, trim '_', trim '-', and a
+    # mixed leading run (review 45q SUGGESTION-1: the '-' trim had no input).
+    for pair in 'Work|work' 'work |work' 'x # mine|xmine' '"x|x' '_x|x' '-x|x' '-_x|x'; do
         raw="${pair%|*}"
         norm="${pair##*|}"
         for withcompose in no yes; do
@@ -1099,6 +1101,33 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     # Seeded normalized: backup/restore derive the volume name from the raw value.
     run grep -E '^DAAF_PROJECT_NAME=' "${TEST_DIR}/daaf-docker/environment_settings.txt"
     [ "${output}" = "DAAF_PROJECT_NAME=work" ]
+}
+
+@test "install.sh #47 (45q NIT-1): a non-ASCII letter is dropped, not lowercased -- Kelvin sign + 'x' is project 'x' (file and shell; twin of Pester)" {
+    export DAAF_NESTED=1
+    MOCK_DOCKER_COMPOSE_EXIT=1
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    # U+212A (KELVIN SIGN) as its UTF-8 bytes, so this file stays ASCII. Lowercased
+    # with Unicode rules it would be 'k'; both twins drop it, so the project is 'x'.
+    raw="$(printf '\342\204\252x')"
+    for src in file shell; do
+        mkdir -p "${TEST_DIR}/k_${src}/daaf-docker"
+        export MOCK_INSTALL_CALL_LOG="${TEST_DIR}/k_${src}/calls.log"
+        if [ "${src}" = "file" ]; then
+            unset DAAF_PROJECT_NAME
+            printf 'DAAF_PROJECT_NAME=%s\n' "${raw}" > "${TEST_DIR}/k_${src}/daaf-docker/environment_settings.txt"
+        else
+            export DAAF_PROJECT_NAME="${raw}"
+        fi
+        cd "${TEST_DIR}/k_${src}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "src=${src}"
+        grep -Fq "Docker Compose uses the project name 'x' for '${raw}'." <<< "${output}"
+        [ "$(grep -c '^volume inspect ' "${MOCK_INSTALL_CALL_LOG}")" = "1" ]
+        grep -Fxq "volume inspect x_daaf-data" "${MOCK_INSTALL_CALL_LOG}"
+        grep -Fxq "compose build --progress plain | P=x M=<unset> L=<unset> V=<unset> D=<unset>" "${MOCK_INSTALL_CALL_LOG}"
+    done
 }
 
 @test "install.sh #45 ISSUE-1: a name that normalizes to nothing is refused before anything is downloaded (file and shell, with and without a compose file)" {

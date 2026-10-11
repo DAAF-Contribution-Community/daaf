@@ -107,6 +107,7 @@ Script behaving unexpectedly?
     ├─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
     ├─ Ctrl+C stopped a container's sh -c between commands → ./references/gotchas.md (--sig-proxy=false + trap : INT TERM HUP)
     ├─ docker volume create reused stale data / --filter name= matched too much → ./references/gotchas.md (exact-name inspect + labels)
+    ├─ A Ctrl+C left behind something the run had just created → ./references/gotchas.md ("created" flag set after the create)
     ├─ docker volume rm says "volume is in use" after an interrupted run → ./references/gotchas.md (never-started Created container)
     ├─ A volume removed mid-run came back empty / two empty trees "matched" → ./references/gotchas.md (docker run -v re-creates a vanished volume)
     ├─ Space check passed but the host drive filled up → ./references/gotchas.md (in-container df on Docker Desktop)
@@ -251,6 +252,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Container `sh -c` as PID 1 still catches a forwarded Ctrl+C (`--sig-proxy=false` + `trap : INT TERM HUP` for destructive programs) | `./references/gotchas.md` |
 | PowerShell Ctrl+C inside `try`/`finally` runs the `finally`, then exits 0 (`[Environment]::Exit` only in a child process) | `./references/gotchas.md` |
 | `docker volume create` silently reuses a name; `docker volume ls --filter name=` is an unanchored regex (exact `inspect` + labels) | `./references/gotchas.md` |
+| A "created" flag set after the create misses a Ctrl+C during it (record the attempt before the call; on cleanup, adopt it only when it carries this run's label) | `./references/gotchas.md` |
 | Interrupted `docker run --rm` leaves a never-started (Created) container that keeps its volumes "in use" (`docker ps -a --filter volume=`, plain `docker rm`, then `docker volume rm`) | `./references/gotchas.md` |
 | `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (per-run label checked before any mount; marker guard with its own exit code; nonzero entry counts) | `./references/gotchas.md` |
 | In-container `df` / `stat -f` on Docker Desktop measures the VM's virtual disk, not the host drive | `./references/gotchas.md` |

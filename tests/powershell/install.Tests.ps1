@@ -570,6 +570,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             $mockBuildOk = [bool]$BuildOk
             $mockFailOn = $FailOn
             function Start-Sleep {
+                [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
                 param([int]$Seconds)
                 $null = $Seconds
             }
@@ -933,7 +934,9 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
     # --- Round #45 (parity twin of the install.bats section of the same name) ---
 
     It "#45 ISSUE-1: a settings-file project name is normalized as Compose does -- check, Compose and NOTE (no compose file, and with one)" {
-        foreach ($pair in @(@('Work', 'work'), @('work ', 'work'), @('x # mine', 'xmine'), @('"x', 'x'), @('_x', 'x'))) {
+        # One input per branch of the rule: lowercase, drop, trim '_', trim '-', and a
+        # mixed leading run (review 45q SUGGESTION-1: the '-' trim had no input).
+        foreach ($pair in @(@('Work', 'work'), @('work ', 'work'), @('x # mine', 'xmine'), @('"x', 'x'), @('_x', 'x'), @('-x', 'x'), @('-_x', 'x'))) {
             $raw = $pair[0]; $norm = $pair[1]
             foreach ($withCompose in @($false, $true)) {
                 $r = Invoke-InstallUnderMock -WithCompose:$withCompose -SettingsText "DAAF_PROJECT_NAME=$raw`n"
@@ -983,6 +986,24 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
         @($r.ComposeLog | Where-Object { $_ -cnotlike '* | P=work M=<unset> L=<unset> V=<unset> D=<unset>' }).Count | Should -Be 0
         $seeded = @(Get-Content -LiteralPath (Join-Path $r.Dir 'daaf-docker/environment_settings.txt') | Where-Object { $_ -cmatch '^DAAF_PROJECT_NAME=' })
         $seeded | Should -BeExactly @('DAAF_PROJECT_NAME=work')
+    }
+
+    It "#47 (45q NIT-1): a non-ASCII letter is dropped, not lowercased -- Kelvin sign + 'x' is project 'x' (file and process; twin of bats)" {
+        # U+212A (KELVIN SIGN) built from its code point, so this file stays ASCII.
+        # ToLowerInvariant maps it to 'k'; install.ps1 drops non-ASCII first, as
+        # install.sh's byte-wise `LC_ALL=C tr` does, so the project is 'x'.
+        $raw = [string][char]0x212A + 'x'
+        foreach ($src in @('file', 'process')) {
+            $because = "src=$src"
+            if ($src -eq 'file') {
+                $r = Invoke-InstallUnderMock -SettingsText "DAAF_PROJECT_NAME=$raw`n"
+            } else {
+                $r = Invoke-InstallUnderMock -EnvVars @{ DAAF_PROJECT_NAME = $raw }
+            }
+            $r.Output | Should -BeLikeExactly "*Docker Compose uses the project name 'x' for '$raw'.*" -Because $because
+            @($r.DockerCalls | Where-Object { $_ -like 'volume inspect *' }) | Should -BeExactly @('volume inspect x_daaf-data') -Because $because
+            ($r.ComposeLog -ccontains 'compose build --progress plain | P=x M=<unset> L=<unset> V=<unset> D=<unset>') | Should -BeTrue -Because $because
+        }
     }
 
     It "#45 ISSUE-1: a name that normalizes to nothing is refused before anything is downloaded (file and process, with and without a compose file)" {

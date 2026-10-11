@@ -255,12 +255,18 @@ if (Test-Path -LiteralPath $SettingsPath) {
 # installer computes the same name for the check, every printed command, and the
 # DAAF_PROJECT_NAME handed to Compose. Same in the Compose versions DAAF supports
 # (Docker 25+): inference from that source, not verified per version.
-# ToLowerInvariant (culture-independent) plus a case-sensitive -creplace keep
-# this ASCII and locale-safe. A value that normalizes to nothing is refused
-# before anything is downloaded. SYNC NOTE: same rule, messages and NOTE in
-# install.sh.
+# Every character outside ASCII [A-Za-z0-9_-] is dropped BEFORE lowercasing, so
+# the result is ASCII and locale-safe: ToLowerInvariant would otherwise map a few
+# non-ASCII letters to ASCII ones it would then keep (the Kelvin sign U+212A
+# becomes 'k'), which install.sh (byte-wise `LC_ALL=C tr`) drops (review 45q
+# NIT-1). Go's Unicode lowercasing keeps such letters; neither twin follows it
+# there. A value that normalizes to nothing is refused before anything is
+# downloaded. SYNC NOTE: same rule (non-ASCII dropped, then ASCII lowercased,
+# then [a-z0-9_-] kept and leading '_'/'-' trimmed), messages and NOTE in
+# install.sh; the Kelvin-sign test in install.bats and install.Tests.ps1 pins
+# the twins together.
 $ProjectNameGiven = $env:DAAF_PROJECT_NAME
-$InstallTargetProject = if ([string]::IsNullOrEmpty($env:DAAF_PROJECT_NAME)) { "daaf" } else { ($env:DAAF_PROJECT_NAME.ToLowerInvariant() -creplace '[^a-z0-9_-]', '').TrimStart('_', '-') }
+$InstallTargetProject = if ([string]::IsNullOrEmpty($env:DAAF_PROJECT_NAME)) { "daaf" } else { ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
 if ([string]::IsNullOrEmpty($InstallTargetProject)) {
     Write-Host "ERROR: DAAF_PROJECT_NAME='$ProjectNameGiven' cannot be used as a Docker Compose" -ForegroundColor Red
     Write-Host "       project name. A project name may use lowercase letters, digits, '-'"

@@ -29,10 +29,11 @@
 # EXTRACTION DESIGN (verified against the live tree):
 #   * .sh copies: the whitelist is a pipe-joined case pattern
 #       `DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|...)`. We anchor on the REQUIRED
-#       `DAAF_PROJECT_NAME=*|` (note the trailing pipe): this deliberately
-#       EXCLUDES install.sh's lone `DAAF_PROJECT_NAME=*)` bespoke arm, which has
-#       no pipe (install.sh is a documented partial -- see the deviation test).
-#   * .ps1 copies: the whitelist is a `$known = @('DAAF_...', ...)` array.
+#       `DAAF_PROJECT_NAME=*|` (note the trailing pipe). install.sh has a
+#       pattern of the same shape, but it is never compared with the canonical
+#       set: it is a documented partial with its own pinned set (section (e)).
+#   * .ps1 copies: the whitelist is a `$known = @('DAAF_...', ...)` array
+#       (install.ps1's partial list is a `$bridgeKeys = @(...)` array instead).
 #   * The keys are compared as a sorted, de-duplicated newline list, so pattern
 #     ORDER never matters -- only set membership.
 #
@@ -102,17 +103,29 @@ extract_ps1_whitelist() {
         | LC_ALL=C sort -u
 }
 
-# install.sh bespoke arms: any `DAAF_...=*` case pattern (both the lone
-# DAAF_PROJECT_NAME=*) arm and the DAAF_DEV=*) arm).
+# The installer's bridged set (section (e)): the launcher whitelist minus
+# DAAF_BRANCH and DAAF_DATA_VOLUME_NAME, pinned as a literal sorted list.
+install_bridge_expected() {
+    LC_ALL=C sort -u <<'KEYS'
+DAAF_DEV
+DAAF_PORT_LOGVIEWER
+DAAF_PORT_MARIMO
+DAAF_PORT_VSCODE
+DAAF_PROJECT_NAME
+KEYS
+}
+
+# install.sh: EVERY `DAAF_...=*` case pattern in the file (the pipe-joined
+# filter arm and the per-key adopt arms), so a key added to any arm is seen.
 extract_install_sh_keys() {
     grep -oE 'DAAF_[A-Z_]+=\*' "$1" \
         | sed 's/=\*$//' \
         | LC_ALL=C sort -u
 }
 
-# install.ps1 bespoke arms: the `-match '^\s*DAAF_...'` regex arms.
+# install.ps1: the `$bridgeKeys = @(...)` array line (the -notcontains filter).
 extract_install_ps1_keys() {
-    grep -E "match .*DAAF_" "$1" \
+    grep -E '\$bridgeKeys = @\(' "$1" \
         | grep -oE 'DAAF_[A-Z_]+' \
         | LC_ALL=C sort -u
 }
@@ -235,39 +248,69 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
 # ===========================================================================
 # (e) DEVIATION ALLOWLIST: install.sh / install.ps1 are DELIBERATELY partial.
 # ===========================================================================
-# install.{sh,ps1} do not carry the full whitelist: at install time the settings
-# file is usually absent, and the installer only needs DAAF_PROJECT_NAME (to
-# derive the data-volume name) and DAAF_DEV (to forward the build flag). Their
-# parsing arms are therefore bespoke, NOT the shared pattern. This test pins that
-# deviation to exactly {DAAF_DEV, DAAF_PROJECT_NAME} so that a well-meaning
-# "let's make install consistent too" edit that silently converts them to the
-# full 7-key whitelist TRIPS here and forces a deliberate decision + a matching
-# update to this allowlist.
+# install.{sh,ps1} do not carry the full whitelist. Since the 2026-10-11 bridge
+# (F-a; reviews 42q I-2, 43d ISSUE-1, 44q), the installer reads the five keys
+# Docker Compose interpolates at build/up time from environment_settings.txt:
+# DAAF_PROJECT_NAME (project and data-volume name), the three DAAF_PORT_* (host
+# ports) and DAAF_DEV (build flag). It DELIBERATELY does not bridge:
+#   * DAAF_BRANCH: the ref of the running installer is already fixed (RAW_BASE /
+#     $Branch) before the file could be read;
+#   * DAAF_DATA_VOLUME_NAME: the run always mounts "<project>_daaf-data" (the
+#     re-downloaded compose file has its shared-volume block commented out), so a
+#     file value could only point the existing-install check AWAY from that volume
+#     (see DATA_VOLUME_NAME in install.sh). A SHELL value is still honoured.
+# Their parsing arms are bespoke (the .sh filter + adopt arms, the .ps1
+# $bridgeKeys array), NOT the shared pattern. These tests pin that deviation to
+# exactly the five keys, so that adding DAAF_BRANCH / DAAF_DATA_VOLUME_NAME (a
+# "let's make install consistent too" edit) or dropping a key TRIPS here and
+# forces a deliberate decision plus a matching update to this allowlist.
 
-@test "deviation: install.sh parses exactly {DAAF_DEV, DAAF_PROJECT_NAME}" {
-    local got want
+@test "deviation: install.sh bridges exactly the 5 install-time keys (no DAAF_BRANCH/DAAF_DATA_VOLUME_NAME)" {
+    local got arm want
     got="$(extract_install_sh_keys "${INSTALL_SH}")"
-    want="$(printf '%s\n' DAAF_DEV DAAF_PROJECT_NAME)"
+    arm="$(extract_sh_whitelist "${INSTALL_SH}")"
+    want="$(install_bridge_expected)"
     [ "${got}" = "${want}" ] || {
-        echo "install.sh deviation changed: expected only the 2 bespoke keys."
+        echo "install.sh deviation changed: expected exactly the 5 bridged keys in its case arms."
         echo "-- extracted:"; echo "${got}"
         echo "-- allowlist:"; echo "${want}"
         echo "If this was intentional, update this deviation test AND confirm the"
-        echo "installer really needs the added key at install time (file usually absent)."
+        echo "installer really needs the changed key at install time."
+        return 1
+    }
+    # The pipe-joined filter arm alone must also carry all five (an adopt arm
+    # whose key the filter drops would be dead code).
+    [ "${arm}" = "${want}" ] || {
+        echo "install.sh filter arm != the 5 bridged keys"
+        echo "-- filter arm:"; echo "${arm}"
+        echo "-- allowlist:";  echo "${want}"
         return 1
     }
 }
 
-@test "deviation: install.ps1 parses exactly {DAAF_DEV, DAAF_PROJECT_NAME}" {
+@test "deviation: install.ps1 bridges exactly the 5 install-time keys (no DAAF_BRANCH/DAAF_DATA_VOLUME_NAME)" {
     local got want
     got="$(extract_install_ps1_keys "${INSTALL_PS1}")"
-    want="$(printf '%s\n' DAAF_DEV DAAF_PROJECT_NAME)"
+    want="$(install_bridge_expected)"
     [ "${got}" = "${want}" ] || {
-        echo "install.ps1 deviation changed: expected only the 2 bespoke keys."
+        echo "install.ps1 deviation changed: expected exactly the 5 bridged keys in \$bridgeKeys."
         echo "-- extracted:"; echo "${got}"
         echo "-- allowlist:"; echo "${want}"
         return 1
     }
+}
+
+@test "deviation: the installer's bridged set is the canonical whitelist minus {DAAF_BRANCH, DAAF_DATA_VOLUME_NAME}" {
+    local missing extra
+    # Keys in the canonical set but not bridged: exactly the two documented ones.
+    missing="$(LC_ALL=C comm -23 <(canonical_expected) <(install_bridge_expected))"
+    [ "${missing}" = "$(printf '%s\n' DAAF_BRANCH DAAF_DATA_VOLUME_NAME)" ] || {
+        echo "UNEXPLAINED GAP: canonical keys not bridged by the installer:"; echo "${missing}"
+        return 1
+    }
+    # And the installer bridges nothing the launchers do not.
+    extra="$(LC_ALL=C comm -13 <(canonical_expected) <(install_bridge_expected))"
+    [ -z "${extra}" ] || { echo "installer bridges non-whitelisted keys:"; echo "${extra}"; return 1; }
 }
 
 # ===========================================================================

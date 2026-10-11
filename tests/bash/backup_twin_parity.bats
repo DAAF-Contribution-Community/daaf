@@ -426,7 +426,9 @@ extract_count_ps1() {
 # at a fixture folder ($2) and relocate its container /tmp/ writes (the count's
 # /tmp/count_err) under TEST_DIR, so a test run never writes to the real /tmp.
 # Reads the program on stdin. The /tmp/ rewrite runs FIRST, on the program text only:
-# TEST_DIR itself may sit under a directory named tmp (a project-scratch TMPDIR).
+# TEST_DIR itself may sit under /tmp/ (CI: a bare `bats` with TMPDIR unset) or under
+# a directory named tmp (a project-scratch TMPDIR), and the TEST_DIR paths that the
+# later rewrites insert must not be rewritten again.
 _localize_count_program() {
     mkdir -p "${TEST_DIR}/ctmp"
     sed -e "s#/tmp/#${TEST_DIR}/ctmp/#g" -e "s#^cd /b\$#cd \"$1\"#"
@@ -434,7 +436,14 @@ _localize_count_program() {
 
 # Count container-absolute /tmp/ paths left in a localized program (must be 0). A
 # container path follows a space or `>`; a relocated TEST_DIR path does not.
-_container_tmp_refs() { grep -cE '(^|[ >])/tmp/' "$1" || true; }
+# TEST_DIR is masked FIRST: with TMPDIR unset (GitHub ubuntu-latest), mktemp puts it
+# under /tmp/, so every RELOCATED path would itself read as a container /tmp/ path
+# (CI run 38159220942). The quoted pattern is literal; @ cannot match [ >].
+# _container_path_refs is the same count for the restore programs' /src, /dest and
+# /tmp. Both are pinned by the SELF-TEST at the end of this file.
+_mask_test_dir() { local t; t="$(cat "$1")"; printf '%s\n' "${t//"${TEST_DIR}"/@TEST_DIR@}"; }
+_container_tmp_refs() { _mask_test_dir "$1" | grep -cE '(^|[ >])/tmp/' || true; }
+_container_path_refs() { _mask_test_dir "$1" | grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' || true; }
 
 @test "twin-parity: backup-folder count program is byte-identical (backup .ps1 == restore .ps1)" {
     extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}"  > "${TEST_DIR}/c_backup.txt"
@@ -1078,7 +1087,8 @@ _swap_program_guarded() {
 
 # Point an extracted restore program at a fixture ($1): container /tmp/ -> $1/ctmp/,
 # /src and /dest -> $1/src and $1/dest, `cd /$t` -> `cd $1/$t`. The /tmp/ rewrite runs
-# first, on the program text only (TEST_DIR may sit under a folder named tmp).
+# first, on the program text only (TEST_DIR may sit under /tmp/ itself or under a
+# folder named tmp; leftover paths are counted with _container_path_refs, above).
 _localize_restore_prog() {
     mkdir -p "$1/ctmp"
     sed -e "s#/tmp/#$1/ctmp/#g" -e "s# /src# $1/src#g" -e "s# /dest# $1/dest#g" -e "s#cd /\\\$t#cd $1/\$t#"
@@ -1104,7 +1114,7 @@ _make_swap_fixture() {
     local f="${TEST_DIR}/sw"
     _make_swap_fixture "${f}"
     _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
-    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/swap_run.sh"
+    run _container_path_refs "${TEST_DIR}/swap_run.sh"
     assert_output "0"
     run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
     assert_success
@@ -1127,7 +1137,7 @@ _make_swap_fixture() {
     _make_swap_fixture "${f}"
     _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
     _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_VERIFY_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/verify_run.sh"
-    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/verify_run.sh"
+    run _container_path_refs "${TEST_DIR}/verify_run.sh"
     assert_output "0"
     run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
     assert_success
@@ -1171,7 +1181,7 @@ _make_swap_fixture() {
     live_kb="$(du -sk "${f}/dest" | awk '{print $1}')"
     src_kb="$(du -sk "${f}/src" | awk '{print $1}')"
     _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SPACE_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/space_run.sh"
-    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/space_run.sh"
+    run _container_path_refs "${TEST_DIR}/space_run.sh"
     assert_output "0"
     run "$(_run_shell)" "${TEST_DIR}/space_run.sh"
     assert_success
@@ -2311,4 +2321,28 @@ _ps1_guard_and_first_docker() {
     local gl dl
     read -r gl dl _ <<< "${output}"
     [ "${dl}" -lt "${gl}" ]
+}
+
+# ===========================================================================
+# SELF-TEST: the leftover-container-path counters (_container_tmp_refs,
+# _container_path_refs, section 7) under CI's TEST_DIR.
+# ===========================================================================
+# A bare `bats tests/bash/` with TMPDIR unset (the GitHub BATS job) creates TEST_DIR
+# under /tmp/, and the counters then counted the localized paths themselves (CI run
+# 38159220942: six "... under sh" tests failed). This reproduces that condition
+# wherever the suite runs: TEST_DIR is spoofed to a /tmp-based path for the COUNTER
+# only (the fixture files stay in the real TEST_DIR). A relocated program must count
+# 0; a real container path left in it must still be counted.
+@test "twin-parity SELF-TEST: leftover-path counters ignore a /tmp-based TEST_DIR and still flag a real container path" {
+    local fake="/tmp/tmp.FAKE0001" a="${TEST_DIR}/relocated.sh" b="${TEST_DIR}/leftover.sh"
+    printf ': > %s/ctmp/count_err\nfind . 2>%s/ctmp/count_err\ncd %s/sw/src\n' "${fake}" "${fake}" "${fake}" > "${a}"
+    { cat "${a}"; printf 'cat /tmp/count_err\nrm -f /dest/.marker\n'; } > "${b}"
+    TEST_DIR="${fake}" run _container_tmp_refs "${a}"
+    assert_output "0"
+    TEST_DIR="${fake}" run _container_path_refs "${a}"
+    assert_output "0"
+    TEST_DIR="${fake}" run _container_tmp_refs "${b}"
+    assert_output "1"
+    TEST_DIR="${fake}" run _container_path_refs "${b}"
+    assert_output "2"
 }
