@@ -130,6 +130,26 @@ extract_install_ps1_keys() {
         | LC_ALL=C sort -u
 }
 
+# The .ps1 filter line that applies $bridgeKeys. The array pin above reads only the
+# literal, so a filter widened in place (`($bridgeKeys + 'DAAF_BRANCH') -notcontains`)
+# would pass it (47d SUGGESTION-2); this exact line is pinned to occur once.
+INSTALL_PS1_FILTER_LINE='if ($bridgeKeys -notcontains $key) { continue }'
+
+# The settings NOTE key lists (review 44q SUGGESTION-3): which adopted keys the
+# installer echoes back. install.sh: the `for _k in ...; do` line right after
+# `SETTINGS_NOTE_KEYS=""` (other `for _k in` loops list other key sets, so the
+# anchor is the assignment). install.ps1: the `$SettingsNoteKeys = @(@(...)` line.
+extract_install_sh_note_keys() {
+    awk 'prev == "SETTINGS_NOTE_KEYS=\"\"" && /^for _k in / { print } { prev = $0 }' "$1" \
+        | grep -oE 'DAAF_[A-Z_]+' \
+        | LC_ALL=C sort -u
+}
+extract_install_ps1_note_keys() {
+    grep -E '^\$SettingsNoteKeys = @\(@\(' "$1" \
+        | grep -oE 'DAAF_[A-Z_]+' \
+        | LC_ALL=C sort -u
+}
+
 DAAF_LIB_SH="${REPO_ROOT}/scripts/host/daaf_lib.sh"
 DAAF_LIB_PS1="${REPO_ROOT}/scripts/host/daaf_lib.ps1"
 INSTALL_SH="${REPO_ROOT}/scripts/host/install.sh"
@@ -263,7 +283,9 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
 # $bridgeKeys array), NOT the shared pattern. These tests pin that deviation to
 # exactly the five keys, so that adding DAAF_BRANCH / DAAF_DATA_VOLUME_NAME (a
 # "let's make install consistent too" edit) or dropping a key TRIPS here and
-# forces a deliberate decision plus a matching update to this allowlist.
+# forces a deliberate decision plus a matching update to this allowlist. The same
+# five keys are also pinned in the .ps1 filter line that applies $bridgeKeys and in
+# both installers' settings NOTE lists (47d SUGGESTION-2).
 
 @test "deviation: install.sh bridges exactly the 5 install-time keys (no DAAF_BRANCH/DAAF_DATA_VOLUME_NAME)" {
     local got arm want
@@ -298,6 +320,34 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
         echo "-- allowlist:"; echo "${want}"
         return 1
     }
+    # The array is applied by exactly one unmodified filter line, and $bridgeKeys is
+    # used nowhere else (a widened filter or a `$bridgeKeys += ...` line would let a
+    # key the array pin cannot see through).
+    local n
+    n="$(grep -cF "${INSTALL_PS1_FILTER_LINE}" "${INSTALL_PS1}" || true)"
+    [ "${n}" -eq 1 ] || { echo "install.ps1: '${INSTALL_PS1_FILTER_LINE}' found ${n} time(s), expected 1"; return 1; }
+    n="$(grep -c 'bridgeKeys' "${INSTALL_PS1}" || true)"
+    [ "${n}" -eq 2 ] || {
+        echo "install.ps1: \$bridgeKeys on ${n} line(s), expected 2 (the array and its filter):"
+        grep -n 'bridgeKeys' "${INSTALL_PS1}"
+        return 1
+    }
+}
+
+@test "deviation: the installer's settings NOTE lists (install.sh and install.ps1) name exactly the 5 bridged keys" {
+    local f got want
+    want="$(install_bridge_expected)"
+    [ "$(grep -cxF 'SETTINGS_NOTE_KEYS=""' "${INSTALL_SH}")" -eq 1 ] || { echo "install.sh: SETTINGS_NOTE_KEYS=\"\" anchor not found exactly once"; return 1; }
+    [ "$(grep -cE '^\$SettingsNoteKeys = @\(@\(' "${INSTALL_PS1}")" -eq 1 ] || { echo "install.ps1: \$SettingsNoteKeys anchor not found exactly once"; return 1; }
+    for f in sh ps1; do
+        if [ "${f}" = sh ]; then got="$(extract_install_sh_note_keys "${INSTALL_SH}")"; else got="$(extract_install_ps1_note_keys "${INSTALL_PS1}")"; fi
+        [ "${got}" = "${want}" ] || {
+            echo "install.${f} NOTE key list != the 5 bridged keys"
+            echo "-- extracted:"; echo "${got}"
+            echo "-- allowlist:"; echo "${want}"
+            return 1
+        }
+    done
 }
 
 @test "deviation: the installer's bridged set is the canonical whitelist minus {DAAF_BRANCH, DAAF_DATA_VOLUME_NAME}" {

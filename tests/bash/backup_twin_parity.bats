@@ -438,12 +438,17 @@ _localize_count_program() {
 # container path follows a space or `>`; a relocated TEST_DIR path does not.
 # TEST_DIR is masked FIRST: with TMPDIR unset (GitHub ubuntu-latest), mktemp puts it
 # under /tmp/, so every RELOCATED path would itself read as a container /tmp/ path
-# (CI run 38159220942). The quoted pattern is literal; @ cannot match [ >].
+# (CI run 38159220942). The quoted pattern is literal; @ cannot match [ >]. The mask
+# includes TEST_DIR's trailing slash, so a path that merely STARTS with TEST_DIR's
+# text (/tmp/tmp.X1 next to TEST_DIR=/tmp/tmp.X) is not hidden (47d NIT-1); every
+# relocated path is TEST_DIR/<something>.
 # _container_path_refs is the same count for the restore programs' /src, /dest and
-# /tmp. Both are pinned by the SELF-TEST at the end of this file.
-_mask_test_dir() { local t; t="$(cat "$1")"; printf '%s\n' "${t//"${TEST_DIR}"/@TEST_DIR@}"; }
+# /tmp. A container path ends at any character that cannot continue a name, so
+# `$(du -sk /dest)` counts as well as `/dest/` and `/dest;` (47d SUGGESTION-1: the old
+# `[ ;]` end missed `/dest)`). Both are pinned by the SELF-TEST at the end of this file.
+_mask_test_dir() { local t; t="$(cat "$1")"; printf '%s\n' "${t//"${TEST_DIR}/"/@TEST_DIR@/}"; }
 _container_tmp_refs() { _mask_test_dir "$1" | grep -cE '(^|[ >])/tmp/' || true; }
-_container_path_refs() { _mask_test_dir "$1" | grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' || true; }
+_container_path_refs() { _mask_test_dir "$1" | LC_ALL=C grep -cE '(^|[ >])/(src|dest|tmp)([^A-Za-z0-9_.-]|$)' || true; }
 
 @test "twin-parity: backup-folder count program is byte-identical (backup .ps1 == restore .ps1)" {
     extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}"  > "${TEST_DIR}/c_backup.txt"
@@ -2332,11 +2337,14 @@ _ps1_guard_and_first_docker() {
 # 38159220942: six "... under sh" tests failed). This reproduces that condition
 # wherever the suite runs: TEST_DIR is spoofed to a /tmp-based path for the COUNTER
 # only (the fixture files stay in the real TEST_DIR). A relocated program must count
-# 0; a real container path left in it must still be counted.
+# 0; a real container path left in it must still be counted, including the `/dest)`
+# and `/src)` forms SPACE_PROGRAM uses (47d SUGGESTION-1) and a path that only starts
+# with TEST_DIR's text (47d NIT-1).
 @test "twin-parity SELF-TEST: leftover-path counters ignore a /tmp-based TEST_DIR and still flag a real container path" {
-    local fake="/tmp/tmp.FAKE0001" a="${TEST_DIR}/relocated.sh" b="${TEST_DIR}/leftover.sh"
-    printf ': > %s/ctmp/count_err\nfind . 2>%s/ctmp/count_err\ncd %s/sw/src\n' "${fake}" "${fake}" "${fake}" > "${a}"
+    local fake="/tmp/tmp.FAKE0001" a="${TEST_DIR}/relocated.sh" b="${TEST_DIR}/leftover.sh" c="${TEST_DIR}/leftover2.sh"
+    printf ': > %s/ctmp/count_err\nfind . 2>%s/ctmp/count_err\ncd %s/sw/src\nstat %s/sp/dest)\n' "${fake}" "${fake}" "${fake}" "${fake}" > "${a}"
     { cat "${a}"; printf 'cat /tmp/count_err\nrm -f /dest/.marker\n'; } > "${b}"
+    { cat "${a}"; printf 'stat /dest)\na /src)\ncat %sX/y\n' "${fake}"; } > "${c}"
     TEST_DIR="${fake}" run _container_tmp_refs "${a}"
     assert_output "0"
     TEST_DIR="${fake}" run _container_path_refs "${a}"
@@ -2345,4 +2353,9 @@ _ps1_guard_and_first_docker() {
     assert_output "1"
     TEST_DIR="${fake}" run _container_path_refs "${b}"
     assert_output "2"
+    # Must-flag: `stat /dest)`, `a /src)`, and /tmp/tmp.FAKE0001X/y (not TEST_DIR/...).
+    TEST_DIR="${fake}" run _container_tmp_refs "${c}"
+    assert_output "1"
+    TEST_DIR="${fake}" run _container_path_refs "${c}"
+    assert_output "3"
 }

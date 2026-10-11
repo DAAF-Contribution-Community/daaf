@@ -246,7 +246,7 @@ Describe "Host-script Start-Process structural guards" {
         # ArgumentList Position 1), whether -PassThru is present, and the binding
         # violations. Splatting and any positional value beyond FilePath are
         # violations outright: the guard cannot see what they bind.
-        function Get-StartProcessSites($Root, [string]$Label) {
+        function Get-StartProcessSite($Root, [string]$Label) {
             $calls = @($Root.FindAll({
                 param($n)
                 if (-not ($n -is [System.Management.Automation.Language.CommandAst])) { return $false }
@@ -314,7 +314,7 @@ Describe "Host-script Start-Process structural guards" {
         # ConvertTo-DaafNativeArg. An array (`@(...)` or `a, b`) is rejected
         # outright; a variable is accepted only if EVERY assignment to it in the
         # enclosing function (or script) contains a ConvertTo-DaafNativeArg call.
-        function Get-ArgumentListViolations($Site) {
+        function Get-ArgumentListViolation($Site) {
             $argAst = $Site.ArgumentList
             if ($null -eq $argAst) { return }
             $where = $Site.Where
@@ -348,7 +348,7 @@ Describe "Host-script Start-Process structural guards" {
         # that variable after the launch is a `.Handle` property read (bare or in a
         # try block) -- before any WaitForExit / HasExited / ExitCode access lets the
         # child's exit go unobserved.
-        function Get-HandleCacheViolations($Site) {
+        function Get-HandleCacheViolation($Site) {
             if (-not $Site.PassThru) { return }
             $where = $Site.Where
             $pipe = $Site.Call.Parent
@@ -384,12 +384,12 @@ Describe "Host-script Start-Process structural guards" {
 
         # All structural violations for one parsed source (parse errors included);
         # -SkipHandle leaves the .Handle rule to its own test.
-        function Get-SourceViolations($Parsed, [string]$Label, [switch]$SkipHandle) {
+        function Get-SourceViolation($Parsed, [string]$Label, [switch]$SkipHandle) {
             foreach ($err in $Parsed.Errors) { "${Label}:$($err.Extent.StartLineNumber) parse error: $($err.Message)" }
-            foreach ($site in @(Get-StartProcessSites $Parsed.Ast $Label)) {
+            foreach ($site in @(Get-StartProcessSite $Parsed.Ast $Label)) {
                 $site.Violations
-                Get-ArgumentListViolations $site
-                if (-not $SkipHandle) { Get-HandleCacheViolations $site }
+                Get-ArgumentListViolation $site
+                if (-not $SkipHandle) { Get-HandleCacheViolation $site }
             }
         }
 
@@ -417,9 +417,10 @@ Describe "Host-script Start-Process structural guards" {
         # `$v -and/-or/-xor ...` (either side), a bare `if ($v)` / loop condition,
         # and any cast (`[int]$v`, `[bool]$v`). Each reads $null (UNKNOWN) as 0 or
         # as "no error".
-        function Get-TruthinessViolations($Root, [string]$VarName) {
+        function Get-TruthinessViolation($Root, [string]$VarName) {
             $kind = [System.Management.Automation.Language.TokenKind]
-            foreach ($n in @($Root.FindAll({ param($x) $true }, $true))) {
+            # Every node: the predicate ignores its argument, so it declares none.
+            foreach ($n in @($Root.FindAll({ $true }, $true))) {
                 $line = $n.Extent.StartLineNumber
                 if ($n -is [System.Management.Automation.Language.UnaryExpressionAst] -and
                     ($n.TokenKind -eq $kind::Not -or $n.TokenKind -eq $kind::Exclaim) -and (Test-IsVariable $n.Child $VarName)) {
@@ -447,11 +448,11 @@ Describe "Host-script Start-Process structural guards" {
         $script:HostSources = @($script:HostFiles | ForEach-Object {
             [pscustomobject]@{ Name = $_.Name; Parsed = (Get-ParsedSource -Path $_.FullName) }
         })
-        $script:HostSites = @($script:HostSources | ForEach-Object { Get-StartProcessSites $_.Parsed.Ast $_.Name })
+        $script:HostSites = @($script:HostSources | ForEach-Object { Get-StartProcessSite $_.Parsed.Ast $_.Name })
     }
 
     It "every Start-Process / saps / start call in scripts/host parses, binds analysably, and quotes -ArgumentList through the helper" {
-        $violations = @($script:HostSources | ForEach-Object { Get-SourceViolations $_.Parsed $_.Name -SkipHandle })
+        $violations = @($script:HostSources | ForEach-Object { Get-SourceViolation $_.Parsed $_.Name -SkipHandle })
         $violations | Should -BeNullOrEmpty
     }
 
@@ -476,7 +477,7 @@ Describe "Host-script Start-Process structural guards" {
         # after the launch keeps the exit status readable.
         $passThru = @($script:HostSites | Where-Object { $_.PassThru })
         $passThru.Count | Should -Be 5
-        $violations = @($passThru | ForEach-Object { Get-HandleCacheViolations $_ })
+        $violations = @($passThru | ForEach-Object { Get-HandleCacheViolation $_ })
         $violations | Should -BeNullOrEmpty
     }
 
@@ -486,7 +487,7 @@ Describe "Host-script Start-Process structural guards" {
         # unreadable child exit. AST-based, so the explanatory comments that quote
         # the retired idioms do not count.
         $daaf = @($script:HostSources | Where-Object { $_.Name -eq 'daaf.ps1' })[0].Parsed.Ast
-        @(Get-TruthinessViolations $daaf 'ec') | Should -BeNullOrEmpty
+        @(Get-TruthinessViolation $daaf 'ec') | Should -BeNullOrEmpty
         $kind = [System.Management.Automation.Language.TokenKind]
         $nullChecks = @($daaf.FindAll({
             param($n)
@@ -521,7 +522,7 @@ Describe "Host-script Start-Process structural guards" {
             @{ Name = '-Pass prefix without a .Handle cache';    Code = '$p = Start-Process -FilePath docker -ArgumentList (ConvertTo-DaafNativeArg $x) -Pass<NL>$p.WaitForExit()' }
         ) {
             $parsed = Get-ParsedSource -Code ($Code -replace '<NL>', "`n")
-            @(Get-SourceViolations $parsed 'snippet').Count | Should -BeGreaterThan 0
+            @(Get-SourceViolation $parsed 'snippet').Count | Should -BeGreaterThan 0
         }
 
         It "Start-Process guard accepts: <Name>" -ForEach @(
@@ -530,7 +531,7 @@ Describe "Host-script Start-Process structural guards" {
             @{ Name = 'alias with inline helper';   Code = 'saps -FilePath docker -Args (ConvertTo-DaafNativeArg $x)' }
         ) {
             $parsed = Get-ParsedSource -Code ($Code -replace '<NL>', "`n")
-            @(Get-SourceViolations $parsed 'snippet') | Should -BeNullOrEmpty
+            @(Get-SourceViolation $parsed 'snippet') | Should -BeNullOrEmpty
         }
 
         It "truthiness guard rejects: <Code>" -ForEach @(
@@ -544,12 +545,12 @@ Describe "Host-script Start-Process structural guards" {
             @{ Code = 'while ($ec) { break }' }
         ) {
             $parsed = Get-ParsedSource -Code $Code
-            @(Get-TruthinessViolations $parsed.Ast 'ec').Count | Should -BeGreaterThan 0
+            @(Get-TruthinessViolation $parsed.Ast 'ec').Count | Should -BeGreaterThan 0
         }
 
         It "truthiness guard accepts the explicit three-outcome form" {
             $parsed = Get-ParsedSource -Code 'if ($null -eq $ec) { } elseif ($ec -ne 0) { } else { "code $ec" }'
-            @(Get-TruthinessViolations $parsed.Ast 'ec') | Should -BeNullOrEmpty
+            @(Get-TruthinessViolation $parsed.Ast 'ec') | Should -BeNullOrEmpty
         }
     }
 }

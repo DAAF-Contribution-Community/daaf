@@ -910,6 +910,90 @@ Describe "daaf.ps1 behavioral tests" {
             $out | Should -BeLike "*Container restarted*"
         }
 
+        # Review 51q SUGGESTION-1: the guard compares the names Docker Compose USES
+        # (Resolve-DaafProjectName). `My.Proj` -> `myproj` is the row a raw
+        # comparison refuses even with PowerShell's case-insensitive -ne.
+        It "the guard proceeds when the edit normalizes to the same project (<From> -> <To>)" -ForEach @(
+            @{ From = "Work"; To = "work" }
+            @{ From = "My.Proj"; To = "myproj" }
+        ) {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=$From"
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=$To"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $out | Should -Not -BeLike "*DIFFERENT*"
+            $script:DockerCalls | Should -Contain "compose down"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -BeExactly $To
+        }
+
+        It "the guard still refuses work -> play before any docker command" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=work"
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=play"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $flat = $out -replace '\s+', ' '
+            $flat | Should -BeLike "*Restart stopped -- nothing was changed.*"
+            $flat | Should -BeLike '*the project name "play" (the default is "daaf" when the file does not set one) instead of "work".*'
+            $flat | Should -BeLike "*start a DIFFERENT one in its place*"
+            $script:DockerCalls.Count | Should -Be 0
+            $env:DAAF_PROJECT_NAME | Should -BeExactly "work"
+        }
+
+        It "default path unchanged: no file, and the file adding daaf, pass with no refusal text" {
+            Start-TestPanel
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Restart stopped*"
+            $out | Should -Not -BeLike "*cannot use*"
+            $out | Should -BeLike "*Container restarted*"
+            $script:DockerCalls.Clear()
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=daaf"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $out2 | Should -Not -BeLike "*Restart stopped*"
+            $out2 | Should -Not -BeLike "*cannot use*"
+            $out2 | Should -BeLike "*Container restarted*"
+        }
+
+        It "a file name that normalizes to nothing is refused before any docker command" {
+            Start-TestPanel
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=___"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $flat = $out -replace '\s+', ' '
+            $flat | Should -BeLike "*Restart stopped -- nothing was changed.*"
+            $flat | Should -BeLike "*With your current environment_settings.txt, the project name would be `"___`", which Docker Compose cannot use. A project name may use lowercase letters, digits, '-' and '_', and must start with a letter or digit.*"
+            $flat | Should -BeLike '*make environment_settings.txt use the project name "daaf" again*'
+            $out | Should -Not -BeLike "*DIFFERENT*"
+            $script:DockerCalls.Count | Should -Be 0
+            $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
+        }
+
+        It "the post-down re-check also compares normalized names (Work -> WORK proceeds, -> ___ stops before up)" {
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=Work"
+            Start-TestPanel
+            $script:MockDownSettings = "DAAF_PROJECT_NAME=WORK"
+            $out = Invoke-DaafRestart 6>&1 | Out-String
+            $out | Should -Not -BeLike "*now names a different project*"
+            $script:DockerCalls | Should -Contain "compose up -d"
+            $out | Should -BeLike "*Container restarted*"
+
+            # A fresh panel on `Work` again (clear the env the first restart adopted).
+            foreach ($k in $script:RestartKeys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
+            Set-Content -Path "./environment_settings.txt" -Value "DAAF_PROJECT_NAME=Work"
+            Start-TestPanel
+            $script:DockerCalls.Clear()
+            $script:MockDownSettings = "DAAF_PROJECT_NAME=___"
+            $out2 = Invoke-DaafRestart 6>&1 | Out-String
+            $script:DockerCalls | Should -Contain "compose down"
+            @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
+            $flat2 = $out2 -replace '\s+', ' '
+            $flat2 | Should -BeLike "*environment_settings.txt now names a different project.*"
+            $flat2 | Should -BeLike '*now gives the project name "___", which Docker Compose cannot use.*'
+            $out2 | Should -Not -BeLike "*Container restarted*"
+            $env:DAAF_PROJECT_NAME | Should -BeExactly "Work"
+        }
+
         It "an unreadable settings file stops before any docker call and restores the environment" {
             Set-Content -Path "./environment_settings.txt" -Value "DAAF_PORT_MARIMO=3001"
             Start-TestPanel

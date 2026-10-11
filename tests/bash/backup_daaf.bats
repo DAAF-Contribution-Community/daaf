@@ -2760,3 +2760,117 @@ _f1_backup_info_hint() {
     run grep -c "^pull"$'\037'"${DAAF_BUSYBOX_PIN}"$'\037'"\$" "${MOCK_DOCKER_ARGV_LOG}"
     assert_output "1"
 }
+
+# --- Project name normalized as Docker Compose does (dispatch 48) ---
+# Compose normalizes the project name (lowercase, keep [a-z0-9_-], trim leading
+# '_'/'-'), so a settings file saying `Work` makes the volumes "work_daaf-data" and
+# "work_daaf-claude-config". The backup must look for THOSE names (before this fix it
+# looked for "Work_daaf-data", which does not exist). DAAF_DATA_VOLUME_NAME is a
+# literal volume name and is never normalized. A name that normalizes to nothing is
+# refused before any Docker call.
+
+@test "project name (backup): a settings-file 'Work' backs up work_daaf-data and work_daaf-claude-config" {
+    unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    _f1_backup_clean_env
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Backup complete!"
+    run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output --partial "[volume] [inspect] [work_daaf-data]"
+    assert_output --partial "[volume] [inspect] [work_daaf-claude-config]"
+    refute_output --partial "Work_"
+}
+
+@test "project name (backup): DAAF_DATA_VOLUME_NAME stays verbatim; the Claude volume follows the normalized project" {
+    export DAAF_PROJECT_NAME="-Work" DAAF_DATA_VOLUME_NAME="My.Shared_Vol"
+    _f1_backup_clean_env
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Source volume: My.Shared_Vol"
+    run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output --partial "[volume] [inspect] [My.Shared_Vol]"
+    assert_output --partial "[volume] [inspect] [work_daaf-claude-config]"
+    refute_output --partial "my.shared_vol"
+    refute_output --partial "myshared_vol"
+}
+
+@test "project name (backup): a name that normalizes to nothing is refused, exit 1, before any Docker call (also with the override set)" {
+    local v
+    for v in "___" "@@"; do
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="${v}"
+        _f1_backup_clean_env
+        run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+        assert_failure 1
+        assert_output --partial "$(printf '%s\n' \
+            "ERROR: DAAF_PROJECT_NAME='${v}' cannot be used as a Docker Compose" \
+            "       project name. A project name may use lowercase letters, digits, '-'" \
+            "       and '_', and must start with a letter or digit. Fix it in" \
+            "       environment_settings.txt (or your shell), then run the backup again." \
+            "       Nothing was changed.")"
+        [ ! -s "${MOCK_DOCKER_ARGV_LOG}" ] || { echo "docker was called:"; mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"; return 1; }
+        _f1_no_backup_folder
+    done
+    # The Claude Code volume name comes from the project even when the data volume is
+    # overridden, so the override does not lift the refusal.
+    export DAAF_PROJECT_NAME="___" DAAF_DATA_VOLUME_NAME="shared_vol"
+    _f1_backup_clean_env
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure 1
+    assert_output --partial "ERROR: DAAF_PROJECT_NAME='___' cannot be used as a Docker Compose"
+    [ ! -s "${MOCK_DOCKER_ARGV_LOG}" ]
+}
+
+@test "project name (backup): sourced in test mode, VOLUME_NAME and CLAUDE_VOLUME_NAME use the normalized name" {
+    run bash -c '
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="x # Mine"
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/backup_daaf.sh"
+        echo "VOL=[${VOLUME_NAME}] CLAUDE=[${CLAUDE_VOLUME_NAME}]"
+    '
+    assert_success
+    assert_output "VOL=[xmine_daaf-data] CLAUDE=[xmine_daaf-claude-config]"
+}
+
+# Review 51q SUGGESTION-2: when the volume name is derived from a project name that
+# Compose normalizes to something else, the run says which name it uses, once, with
+# the installer's NOTE wording, before the volume name is first shown.
+@test "project name NOTE (backup): printed once for 'Work', before the volume name is first shown (also when the volume is missing)" {
+    local note="NOTE: Docker Compose uses the project name 'work' for 'Work'."
+    unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    _f1_backup_clean_env
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    [ "$(printf '%s\n' "$output" | grep -cxF "${note}")" -eq 1 ]
+    local note_line vol_line
+    note_line=$(printf '%s\n' "$output" | grep -nxF "${note}" | cut -d: -f1)
+    vol_line=$(printf '%s\n' "$output" | grep -nxF "Source volume: work_daaf-data" | cut -d: -f1)
+    [ -n "${vol_line}" ]
+    [ "${note_line}" -lt "${vol_line}" ]
+    # The volume is missing (the shared mock again, with its volume-inspect knob):
+    # the NOTE still comes first and explains the name.
+    mock_docker
+    MOCK_DOCKER_VOLUME_EXIT=1
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure 1
+    assert_output --partial "$(printf '%s\n' "${note}" "" "ERROR: Docker volume 'work_daaf-data' not found.")"
+}
+
+@test "project name NOTE (backup): absent for 'work', for an unset name, and when DAAF_DATA_VOLUME_NAME is set" {
+    local v
+    for v in work __unset__ Work+override; do
+        unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
+        rm -f "${TEST_DIR}/environment_settings.txt"
+        case "${v}" in
+            work) printf 'DAAF_PROJECT_NAME=work\n' > "${TEST_DIR}/environment_settings.txt" ;;
+            Work+override) export DAAF_PROJECT_NAME=Work DAAF_DATA_VOLUME_NAME=Work_daaf-data ;;
+        esac
+        _f1_backup_clean_env
+        run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+        assert_success
+        refute_output --partial "Docker Compose uses the project name"
+        refute_output --partial "NOTE: Docker Compose"
+    done
+}

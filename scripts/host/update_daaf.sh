@@ -99,6 +99,27 @@ DAAF_BRANCH_FROM_ENV=0
 if [ -n "${DAAF_BRANCH:-}" ]; then DAAF_BRANCH_FROM_ENV=1; fi
 _daaf_load_settings
 
+# --- Compose project name (INLINE COPY of daaf_lib.sh resolve_project_name) ---
+# This standalone script does not source daaf_lib.sh, so the helper is carried
+# inline, BYTE-IDENTICAL to the library function and to the copies in
+# backup_daaf.sh and restore_from_backup.sh (tests/bash/daaf_lib.bats pins all of
+# them, and install.sh's inline lines, to the same results). It echoes
+# DAAF_PROJECT_NAME (default "daaf") normalized the way Docker Compose normalizes the
+# project name -- lowercased, only [a-z0-9_-] kept, leading '_'/'-' trimmed -- so the
+# printed `docker cp <project>-daaf-docker-1:` hints name the container Compose
+# created (`Work` -> "work-daaf-docker-1"). It is called at each hint, not once,
+# so a hint follows the current DAAF_PROJECT_NAME. An empty result means no usable
+# name; the run refuses it below. See daaf_lib.sh for the full notes.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
+}
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -465,7 +486,8 @@ handle_stash_conflict() {
 # ASSUMES: CONTAINER_ID points at the running container; docker cp is
 #   ID/name-sensitive (docker compose exec is not, but cp is). The manual-recovery
 #   hint prints the project-resolved `docker cp <project>-daaf-docker-1:...` form
-#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported.
+#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported;
+#   <project> is resolve_project_name (normalized as Compose does).
 _sync_copy_one() {
     local repo_path="$1"
     local script
@@ -491,7 +513,7 @@ _sync_copy_one() {
             || [ ! -f "./${script}.sync-staged" ]; then
             rm -f "./${script}.sync-staged" 2>/dev/null || true
             echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
             SYNC_COPY_FAILED=true
             return 1
         fi
@@ -503,7 +525,7 @@ _sync_copy_one() {
                 rm -f "./${script}.sync-staged" 2>/dev/null || true
                 echo "  Warning: could not back up ${script} before overwriting -- left unchanged."
                 echo "    To adopt the repository version manually, run:"
-                echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                 SYNC_COPY_FAILED=true
                 return 1
             fi
@@ -511,7 +533,7 @@ _sync_copy_one() {
         if ! mv -f "./${script}.sync-staged" "./${script}" 2>/dev/null; then
             rm -f "./${script}.sync-staged" 2>/dev/null || true
             echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
             SYNC_COPY_FAILED=true
             return 1
         fi
@@ -537,7 +559,7 @@ _sync_copy_one() {
         return 0
     else
         echo "  Warning: could not copy ${script}. You can copy it manually:"
-        echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+        echo "    docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
         SYNC_COPY_FAILED=true
         return 1
     fi
@@ -792,7 +814,7 @@ ${repo_path}
                         echo "  WARNING: ${script} is stale but could not be updated"
                         echo "    (write failed). Your file is unchanged. To adopt the"
                         echo "    repository version manually, run:"
-                        echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                        echo "      docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                     fi
                 else
                     # Could not create the backup -- do NOT overwrite (never
@@ -800,7 +822,7 @@ ${repo_path}
                     echo "  WARNING: ${script} is stale but could not be updated"
                     echo "    (backup step failed). Your file was left unchanged to"
                     echo "    avoid losing it. To adopt the repository version, run:"
-                    echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                    echo "      docker cp $(resolve_project_name)-daaf-docker-1:/daaf/${repo_path} ./${script}"
                 fi
             fi
         done <<< "${sync_list}"
@@ -894,7 +916,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker cp $(resolve_project_name)-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
@@ -1195,6 +1217,22 @@ resume_finalize() {
 # Usage: DAAF_TEST_MODE=1 source scripts/host/update_daaf.sh
 if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
+fi
+
+# --- Preflight: project name ---
+# A DAAF_PROJECT_NAME that normalizes to nothing (e.g. "___" or "@@") is not a name
+# Compose can be relied on to use, and the printed `docker cp` hints would name no
+# container. Refuse first, before the run lock and any Docker call, with the
+# installer's wording (install.sh refuses the same values). Same text in
+# backup_daaf.{sh,ps1}, restore_from_backup.{sh,ps1} and the .ps1 twin (script name
+# varied).
+if [ -z "$(resolve_project_name)" ]; then
+    echo "ERROR: DAAF_PROJECT_NAME='${DAAF_PROJECT_NAME:-}' cannot be used as a Docker Compose" >&2
+    echo "       project name. A project name may use lowercase letters, digits, '-'" >&2
+    echo "       and '_', and must start with a letter or digit. Fix it in" >&2
+    echo "       environment_settings.txt (or your shell), then run the update again." >&2
+    echo "       Nothing was changed." >&2
+    exit 1
 fi
 
 # =====================================================================

@@ -707,8 +707,11 @@ handle_rebuild() {
 #      which compose project `down` targets and which data volume the new
 #      container mounts. If the edited file would change it, `down` (run with the
 #      old name) would stop this install and `up` would start a DIFFERENT one in
-#      its place, so the research would appear to be missing. The edited file is
-#      evaluated in a subshell, so the panel's own environment is untouched.
+#      its place, so the research would appear to be missing. The names are
+#      compared as Docker Compose normalizes them (resolve_project_name), so a
+#      case-only edit such as `Work` -> `work` passes, and a name that normalizes
+#      to nothing is refused. The edited file is evaluated in a subshell, so the
+#      panel's own environment is untouched.
 #      The probe also catches a file that cannot be read: the loader returns
 #      non-zero, and the handler reports it with nothing changed. The probe runs
 #      the reload as the left side of `&&`, so the failure is a tested status:
@@ -722,8 +725,9 @@ handle_rebuild() {
 #      the handler stops WITHOUT `up` -- reported, not fatal.
 #   5. Project re-check: the guard ran before `down`, so if the file was edited or
 #      deleted meanwhile the reload may have adopted a different project, and
-#      `up` would start a DIFFERENT install. Then restore_panel_settings puts the
-#      pre-restart settings back and the handler stops WITHOUT `up`.
+#      `up` would start a DIFFERENT install (compared the same normalized way).
+#      Then restore_panel_settings puts the pre-restart settings back and the
+#      handler stops WITHOUT `up`.
 #   6. set_panel_ports, `docker compose up -d`, then wait for the container as
 #      rebuild_daaf.sh does (30 x 2s). The poll keeps no log file, so a dry run
 #      writes nothing to disk.
@@ -813,8 +817,14 @@ handle_restart() {
     esac
 
     # --- Project-name guard (no docker command has run yet) ---
-    local active_project file_project
+    # Compare the names Docker Compose USES, not the raw values: Compose normalizes
+    # the project name (resolve_project_name, daaf_lib.sh), so editing `Work` to
+    # `work` keeps the same install and must not be refused. The raw values are
+    # kept for the messages, so the user sees the name as they typed it. A name
+    # that normalizes to nothing is refused on the same path, with its own reason.
+    local active_project file_project active_norm file_norm
     active_project="${DAAF_PROJECT_NAME:-daaf}"
+    active_norm="$(resolve_project_name)"
     if ! file_project=$(reload_daaf_settings "${settings_file}" && printf '%s' "${DAAF_PROJECT_NAME:-daaf}"); then
         # The file exists but cannot be read (see step 2).
         echo ""
@@ -823,17 +833,25 @@ handle_restart() {
         echo "  Nothing was changed.${RESET}"
         return 0
     fi
-    if [ "${file_project}" != "${active_project}" ]; then
+    # Normalize the probed value in its own subshell (the assignment stays there).
+    file_norm="$(DAAF_PROJECT_NAME="${file_project}"; resolve_project_name)"
+    if [ -z "${file_norm}" ] || [ "${file_norm}" != "${active_norm}" ]; then
         echo ""
         echo "  ${YELLOW}Restart stopped -- nothing was changed.${RESET}"
         echo ""
-        echo "  With your current environment_settings.txt, this install would now use"
-        echo "  the project name \"${file_project}\" (the default is \"daaf\" when the"
-        echo "  file does not set one) instead of \"${active_project}\"."
-        echo "  The project name decides which install and which research data volume"
-        echo "  Docker uses. Restarting under a new name would stop this install and"
-        echo "  start a DIFFERENT one in its place, so your current research would"
-        echo "  appear to be missing."
+        if [ -z "${file_norm}" ]; then
+            echo "  With your current environment_settings.txt, the project name would be"
+            echo "  \"${file_project}\", which Docker Compose cannot use. A project name may use"
+            echo "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        else
+            echo "  With your current environment_settings.txt, this install would now use"
+            echo "  the project name \"${file_project}\" (the default is \"daaf\" when the"
+            echo "  file does not set one) instead of \"${active_project}\"."
+            echo "  The project name decides which install and which research data volume"
+            echo "  Docker uses. Restarting under a new name would stop this install and"
+            echo "  start a DIFFERENT one in its place, so your current research would"
+            echo "  appear to be missing."
+        fi
         echo ""
         echo "  To keep this install: make environment_settings.txt use the project"
         echo "  name \"${active_project}\" again, then choose Restart Container again."
@@ -872,19 +890,28 @@ handle_restart() {
     # --- Project re-check (the guard ran before `down`) ---
     # If the file was edited or deleted while `down` ran, the reload may have
     # adopted a different project name, and `up` would then start a DIFFERENT
-    # install. Restore the pre-restart settings and stop without `up`.
-    local reloaded_project="${DAAF_PROJECT_NAME:-daaf}"
-    if [ "${reloaded_project}" != "${active_project}" ]; then
+    # install. Restore the pre-restart settings and stop without `up`. Same
+    # normalized comparison as the guard above.
+    local reloaded_project reloaded_norm
+    reloaded_project="${DAAF_PROJECT_NAME:-daaf}"
+    reloaded_norm="$(resolve_project_name)"
+    if [ -z "${reloaded_norm}" ] || [ "${reloaded_norm}" != "${active_norm}" ]; then
         restore_panel_settings
         echo ""
         echo "  ${YELLOW}The container is stopped, but it was not started again --"
         echo "  environment_settings.txt now names a different project.${RESET}"
         echo ""
-        echo "  It changed while the container was stopping, and now gives the project"
-        echo "  name \"${reloaded_project}\" (the default is \"daaf\" when the file does not set one)"
-        echo "  instead of \"${active_project}\"."
-        echo "  Starting under the new name would start a DIFFERENT install, so your"
-        echo "  current research would appear to be missing."
+        if [ -z "${reloaded_norm}" ]; then
+            echo "  It changed while the container was stopping, and now gives the project"
+            echo "  name \"${reloaded_project}\", which Docker Compose cannot use. A project name may use"
+            echo "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        else
+            echo "  It changed while the container was stopping, and now gives the project"
+            echo "  name \"${reloaded_project}\" (the default is \"daaf\" when the file does not set one)"
+            echo "  instead of \"${active_project}\"."
+            echo "  Starting under the new name would start a DIFFERENT install, so your"
+            echo "  current research would appear to be missing."
+        fi
         echo ""
         echo "  To keep this install: make environment_settings.txt use the project"
         echo "  name \"${active_project}\" again, then choose Restart Container again."

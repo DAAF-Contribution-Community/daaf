@@ -2324,3 +2324,66 @@ STUB
     refute_output --partial "1) MERGE (recommended)"
     refute_output --partial "Choose [1/2/3]"
 }
+
+# =========================================================================
+# Project name normalized as Docker Compose does (dispatch 48)
+# =========================================================================
+# Compose names the container "<project>-daaf-docker-1" with the NORMALIZED project
+# name (lowercase, keep [a-z0-9_-], trim leading '_'/'-'), so a `Work` project runs
+# "work-daaf-docker-1". The printed `docker cp` recovery hints must name that
+# container. A name that normalizes to nothing is refused before the run lock and any
+# Docker call.
+
+@test "project name (update): the docker cp recovery hint names the normalized container (Work -> work-daaf-docker-1)" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        export DAAF_PROJECT_NAME="-Work"
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                cp*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+    '
+    assert_success
+    assert_output --partial "docker cp work-daaf-docker-1:/daaf/scripts/host/run_daaf.sh ./run_daaf.sh"
+    refute_output --partial "docker cp -Work"
+}
+
+@test "project name (update): every printed docker cp hint uses resolve_project_name, never the raw DAAF_PROJECT_NAME" {
+    # Static pin over all hint sites (tier A/B copy failures, tier C drift heal, the
+    # rebuild_daaf.sh hint): each `docker cp <project>-daaf-docker-1:` echo must take
+    # the project from resolve_project_name, so reverting any ONE site fails here.
+    local total good
+    total="$(grep -cE 'echo ".*docker cp .*-daaf-docker-1:' "${REPO_ROOT}/scripts/host/update_daaf.sh")"
+    good="$(grep -cF 'docker cp $(resolve_project_name)-daaf-docker-1:' "${REPO_ROOT}/scripts/host/update_daaf.sh")"
+    echo "total=${total} good=${good}"
+    [ "${total}" -eq 7 ]
+    [ "${good}" -eq "${total}" ]
+    run grep -c 'DAAF_PROJECT_NAME:-daaf' "${REPO_ROOT}/scripts/host/update_daaf.sh"
+    assert_output "0"
+}
+
+@test "project name (update): a name that normalizes to nothing is refused, exit 1, before the lock and any Docker call" {
+    local v
+    for v in "___" "@@"; do
+        export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        run env DAAF_PROJECT_NAME="${v}" DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/update_daaf.sh"
+        assert_failure 1
+        assert_output "$(printf '%s\n' \
+            "ERROR: DAAF_PROJECT_NAME='${v}' cannot be used as a Docker Compose" \
+            "       project name. A project name may use lowercase letters, digits, '-'" \
+            "       and '_', and must start with a letter or digit. Fix it in" \
+            "       environment_settings.txt (or your shell), then run the update again." \
+            "       Nothing was changed.")"
+        [ ! -s "${MOCK_DOCKER_ARGV_LOG}" ]
+    done
+}

@@ -1237,7 +1237,10 @@ esac
                 # fails) and -DockerVersionExit (the fake `version`'s exit code; nonzero
                 # also writes a server error on stderr).
                 [string]$DockerVersion = '', [switch]$ImageAbsent, [switch]$PullFail, [switch]$StageStderr,
-                [switch]$NoEditionBypass, [switch]$DryRun, [switch]$InfoFail, [int]$DockerVersionExit = 0)
+                [switch]$NoEditionBypass, [switch]$DryRun, [switch]$InfoFail, [int]$DockerVersionExit = 0,
+                # Dispatch 48: -Settings writes this text as environment_settings.txt into
+                # the working dir before the run ('' = no settings file).
+                [string]$Settings = '')
             if ($DockerVersion -ne '') { $env:FAKE_DOCKER_VERSION = $DockerVersion } else { Remove-Item Env:FAKE_DOCKER_VERSION -ErrorAction SilentlyContinue }
             if ($InfoFail) { $env:FAKE_INFO_FAIL = "1" } else { $env:FAKE_INFO_FAIL = "0" }
             $env:FAKE_DOCKER_VERSION_EXIT = "$DockerVersionExit"
@@ -1269,6 +1272,7 @@ esac
             # $WorkPrefix controls whether the backup destination path has a space.
             $work = Join-Path $TestDrive ($WorkPrefix + [guid]::NewGuid().ToString('N'))
             $null = New-Item -ItemType Directory -Path $work
+            if ($Settings -ne '') { [System.IO.File]::WriteAllText((Join-Path $work 'environment_settings.txt'), $Settings) }
             # The call log sits next to (not in) the working dir, which must stay empty
             # when a run refuses before creating the backup folder.
             $callLog = "$work.calls.log"
@@ -1843,6 +1847,86 @@ esac
             # The dry run's own docker stand-in answers: the fake on PATH is never called.
             $r.Calls.Count | Should -Be 0
             $r.ExitCode | Should -BeIn @(0, $null)
+        }
+    }
+
+    Context "dispatch 48: the project name is normalized as Docker Compose does" {
+        # Twin of the backup_daaf.bats "project name (backup)" tests. Compose normalizes
+        # the project name (lowercase, keep [a-z0-9_-], trim leading '_'/'-'), so `Work`
+        # makes the volumes "work_daaf-data" and "work_daaf-claude-config"; the backup
+        # must look for THOSE. DAAF_DATA_VOLUME_NAME is a literal name, never
+        # normalized. A name that normalizes to nothing is refused before any docker call.
+        BeforeEach {
+            Remove-Item Env:DAAF_PROJECT_NAME, Env:DAAF_DATA_VOLUME_NAME -ErrorAction SilentlyContinue
+        }
+        AfterEach {
+            Remove-Item Env:DAAF_PROJECT_NAME, Env:DAAF_DATA_VOLUME_NAME -ErrorAction SilentlyContinue
+        }
+
+        It "a settings-file 'Work' backs up work_daaf-data and looks for work_daaf-claude-config" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -Settings "DAAF_PROJECT_NAME=Work`n"
+            $r.Output | Should -BeLike "*Backup complete!*"
+            $r.Output | Should -BeLike "*Source volume: work_daaf-data*"
+            @($r.Calls | Where-Object { $_ -eq 'volume inspect work_daaf-data' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -eq 'volume inspect work_daaf-claude-config' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -clike '*Work_*' }).Count | Should -Be 0
+        }
+
+        It "DAAF_DATA_VOLUME_NAME stays verbatim; the Claude volume follows the normalized project" {
+            $env:DAAF_PROJECT_NAME = '-Work'
+            $env:DAAF_DATA_VOLUME_NAME = 'My.Shared_Vol'
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
+            $r.Output | Should -BeLike "*Source volume: My.Shared_Vol*"
+            @($r.Calls | Where-Object { $_ -ceq 'volume inspect My.Shared_Vol' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -ceq 'volume inspect work_daaf-claude-config' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -clike '*my.shared_vol*' -or $_ -clike '*myshared_vol*' }).Count | Should -Be 0
+        }
+
+        It "a name that normalizes to nothing ('<_>') is refused, exit 1, before any docker call" -ForEach @('___', '@@') {
+            $env:DAAF_PROJECT_NAME = $_
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                "ERROR: DAAF_PROJECT_NAME='$_' cannot be used as a Docker Compose",
+                "       project name. A project name may use lowercase letters, digits, '-'",
+                "       and '_', and must start with a letter or digit. Fix it in",
+                "       environment_settings.txt (or your shell), then run the backup again.",
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Calls.Count | Should -Be 0
+            @(Get-ChildItem -LiteralPath $r.Work -Force).Count | Should -Be 0
+        }
+
+        It "the DAAF_DATA_VOLUME_NAME override does not lift the refusal (the Claude volume name needs the project)" {
+            $env:DAAF_PROJECT_NAME = '___'
+            $env:DAAF_DATA_VOLUME_NAME = 'shared_vol'
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: DAAF_PROJECT_NAME='___' cannot be used as a Docker Compose*"
+            $r.Calls.Count | Should -Be 0
+        }
+
+        # Review 51q SUGGESTION-2 (twin of the backup_daaf.bats "project name NOTE" tests).
+        It "prints the installer's NOTE once for 'Work', before the volume name is first shown" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -Settings "DAAF_PROJECT_NAME=Work`n"
+            $r.Output | Should -BeLike "*Backup complete!*"
+            $lines = @($r.Output -split '\r?\n')
+            $note = "NOTE: Docker Compose uses the project name 'work' for 'Work'."
+            @($lines | Where-Object { $_ -ceq $note }).Count | Should -Be 1
+            [array]::IndexOf($lines, $note) | Should -BeLessThan ([array]::IndexOf($lines, 'Source volume: work_daaf-data'))
+            [array]::IndexOf($lines, 'Source volume: work_daaf-data') | Should -BeGreaterThan -1
+        }
+
+        It "prints no NOTE for <Label>" -ForEach @(
+            @{ Label = "'work'"; Settings = "DAAF_PROJECT_NAME=work`n"; Project = $null; Override = $null }
+            @{ Label = "an unset name"; Settings = ''; Project = $null; Override = $null }
+            @{ Label = "'Work' with DAAF_DATA_VOLUME_NAME set"; Settings = ''; Project = 'Work'; Override = 'Work_daaf-data' }
+        ) {
+            if ($Project) { $env:DAAF_PROJECT_NAME = $Project }
+            if ($Override) { $env:DAAF_DATA_VOLUME_NAME = $Override }
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -Settings $Settings
+            $r.Output | Should -BeLike "*Backup complete!*"
+            $r.Output | Should -Not -BeLike "*Docker Compose uses the project name*"
         }
     }
 }

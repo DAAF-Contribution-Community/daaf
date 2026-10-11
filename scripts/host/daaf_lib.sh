@@ -21,6 +21,9 @@
 #                         drop only the keys the loader adopted from the file, then
 #                         load again (user-exported values keep winning); returns
 #                         non-zero on an unreadable file, like the loader
+#   resolve_project_name -- echo the Compose project name: DAAF_PROJECT_NAME (default
+#                         "daaf") normalized the way Docker Compose normalizes it;
+#                         empty when nothing usable is left
 #   resolve_data_volume_name -- echo the resolved data-volume name, honoring the
 #                         optional DAAF_DATA_VOLUME_NAME full-name override
 #   upsert_settings_key -- insert/update a single KEY=value line in a settings
@@ -205,32 +208,84 @@ reload_daaf_settings() {
     load_daaf_settings "${settings_file}" || return 1
 }
 
+# --- Compose Project Name Resolver ---
+# Echo the project name Docker Compose actually uses, so every Docker name a host
+# script derives from the project ("<project>_daaf-data",
+# "<project>_daaf-claude-config", "<project>-daaf-docker-1") is the name Compose
+# created. Compose does not use the top-level `name: ${DAAF_PROJECT_NAME:-daaf}`
+# verbatim: compose-go's loader (loader/loader.go, NormalizeProjectName) lowercases
+# it, keeps only [a-z0-9_-] and trims leading '_' and '-'. So a settings file that
+# says `Work` gives the volume "work_daaf-data", not "Work_daaf-data". (Source
+# quoted from compose-go main in research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
+# reviews/44q_quality_review.md ISSUE-1; that the Compose versions DAAF supports,
+# Docker 25+, all normalize this way is an inference from that source.)
+#
+# Unset or empty DAAF_PROJECT_NAME => "daaf", unchanged. A value that normalizes to
+# nothing (e.g. "___" or "@@") prints an EMPTY line; the function still returns 0
+# (so `x="$(resolve_project_name)"` is safe under `set -e`) and the CALLER must
+# refuse an empty result -- what Compose does with such a name is not something to
+# rely on.
+#
+# Byte-wise and locale-safe (LC_ALL=C; Bash 3.2 has no ${v,,}): ASCII letters are
+# lowercased and every other byte outside [a-z0-9_-] is dropped, so a non-ASCII
+# letter is dropped. Go's Unicode lowercasing maps a few non-ASCII letters to ASCII
+# ones it would keep (the Kelvin sign U+212A becomes 'k'); neither this helper nor
+# its twins follow it there (review 45q NIT-1).
+#
+# SYNC NOTE: the same two normalization lines are in install.sh (inline, it runs
+# standalone), and this whole function is carried BYTE-IDENTICAL in
+# backup_daaf.sh, restore_from_backup.sh, update_daaf.sh and the maintainer harness
+# test_migration.sh (standalone scripts that do not source this library). The
+# PowerShell twin is Resolve-DaafProjectName in daaf_lib.ps1. tests/bash/daaf_lib.bats
+# pins the copies and the installer to the same results on a fixed input set.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
+}
+
 # --- Data Volume Name Resolver ---
 # Echo the Docker volume name that holds the DAAF research workspace (/daaf),
 # honoring the optional DAAF_DATA_VOLUME_NAME full-name override.
 #
 # PRECEDENCE (printed to stdout, captured by callers via `$(resolve_data_volume_name)`):
 #   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
-#      volume name (no project prefix is added). This is the escape hatch for
-#      pointing two installs at ONE shared workspace volume; it must match the
-#      `name:` under the external `daaf-data` block in docker-compose.yml.
-#   2. Otherwise "${DAAF_PROJECT_NAME:-daaf}_daaf-data" -- the Compose-prefixed
-#      default. So an UNSET DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the
-#      historical hardcoded derivation, and a second instance with
-#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data".
+#      volume name (no project prefix is added, and it is NOT normalized: it is a
+#      literal Docker volume name that must match the `name:` under the external
+#      `daaf-data` block in docker-compose.yml). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume.
+#   2. Otherwise "<project>_daaf-data", where <project> is resolve_project_name
+#      (DAAF_PROJECT_NAME normalized as Compose does, default "daaf"). So an UNSET
+#      DAAF_DATA_VOLUME_NAME with no project name is byte-for-byte identical to the
+#      historical hardcoded derivation, a second instance with
+#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data", and `Work` resolves to
+#      "work_daaf-data", the volume Compose created.
+#      When the project name normalizes to nothing, this prints NOTHING and returns
+#      1: there is no derived name to give.
 # A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default (the
-# `:-` test treats empty and unset alike), matching how load_daaf_settings adopts
+# `-n` test treats empty and unset alike), matching how load_daaf_settings adopts
 # a whitelisted key only when it is non-empty.
 #
 # The claude-config volume is deliberately NOT resolved here: per-install auth
-# isolation is by design, so it keeps its project-prefixed default everywhere and
-# has no analogous override.
+# isolation is by design, so it keeps its project-prefixed default everywhere
+# ("$(resolve_project_name)_daaf-claude-config") and has no analogous override.
 #
 # Callers that need a value persisted in environment_settings.txt to win should
 # `load_daaf_settings` first (which bridges DAAF_DATA_VOLUME_NAME into the shell
-# env), then call this. Bash 3.2 safe: pure parameter expansion, no arrays.
+# env), then call this. Bash 3.2 safe: no arrays.
 resolve_data_volume_name() {
-    printf '%s\n' "${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
+    if [ -n "${DAAF_DATA_VOLUME_NAME:-}" ]; then
+        printf '%s\n' "${DAAF_DATA_VOLUME_NAME}"
+        return 0
+    fi
+    local project
+    project="$(resolve_project_name)"
+    [ -n "${project}" ] || return 1
+    printf '%s\n' "${project}_daaf-data"
 }
 
 # --- Color Setup ---

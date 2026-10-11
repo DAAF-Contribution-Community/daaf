@@ -507,6 +507,144 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
     return info
 
 
+# --- Main-model projection (separate from ceiling-hook family posture) -----
+
+_MAIN_ALIASES = {name: f"ANTHROPIC_DEFAULT_{name.upper()}_MODEL"
+                 for name in ("opus", "sonnet", "haiku")}
+_MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*(?:\[1m\])?(?:#[A-Za-z0-9_-]+)?")
+
+
+def main_model_family(model):
+    """Classify one explicit selector, never aliases or subagent candidates."""
+    if not isinstance(model, str) or not _MODEL_ID_RE.fullmatch(model):
+        return "unknown"
+    slug = model.rsplit("/", 1)[-1]
+    if slug.startswith("claude-"):
+        return "claude"
+    if re.match(r"gpt-[0-9]", slug):
+        return "gpt"
+    if re.match(r"glm-[0-9]", slug):
+        return "glm"
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class MainModelResolution:
+    # selector/resolved_model are internal comparison inputs, not report fields.
+    selector: str = ""
+    resolved_model: str = ""
+    source: str = "unresolved"
+    overridden: bool = False
+    family: str = "unknown"
+    compatibility: str = "unknown"
+    uncertainty: tuple = ()
+    effective_route: str = "unknown"
+    endpoint_kind: str = "unknown"
+    expected_backend: str = ""
+    normal_execution_context: bool = True
+
+    def safe_metadata(self):
+        import hashlib
+        return {
+            "source": self.source, "explicit_override": self.overridden,
+            "family": self.family, "compatibility": self.compatibility,
+            "uncertainty": list(self.uncertainty),
+            "effective_route": self.effective_route, "endpoint_kind": self.endpoint_kind,
+            "expected_backend": self.expected_backend,
+            "normal_execution_context": self.normal_execution_context,
+            "selector_sha256": hashlib.sha256(self.selector.encode()).hexdigest() if self.selector else None,
+            "resolved_sha256": hashlib.sha256(self.resolved_model.encode()).hexdigest() if self.resolved_model else None,
+            "projection_only": True,
+        }
+
+
+def resolve_main_model(env, saved_model=None, explicit_model=None,
+                       env_source="environment", saved_source="saved_model",
+                       uncertainty=(), route=None):
+    """Pure bounded 2.1.281 projection: invocation > effective env > saved model.
+
+    Caller supplies already-projected settings env. No dynamic default or managed
+    policy emulation. Only short opus/sonnet/haiku aliases expand their OWN mapping;
+    explicit IDs are not rewritten by default aliases or subagent model pins.
+    Configuration-compatible does not establish provider availability/acceptance.
+    """
+    issues = list(uncertainty)
+    overridden = explicit_model is not None
+    if overridden:
+        selector, source = explicit_model, "invocation"
+    elif env.get("ANTHROPIC_MODEL"):
+        selector, source = env["ANTHROPIC_MODEL"], env_source
+    elif saved_model:
+        selector, source = saved_model, saved_source
+    else:
+        selector, source = "", "unresolved"
+        issues.append("dynamic_default_unresolved")
+    if not isinstance(selector, str):
+        selector = ""
+        issues.append("invalid_selector")
+    resolved = selector
+    if selector in _MAIN_ALIASES:
+        resolved = env.get(_MAIN_ALIASES[selector], "")
+        if not isinstance(resolved, str) or not resolved:
+            resolved = ""
+            issues.append("alias_default_unresolved")
+    family = main_model_family(resolved)
+    if family == "unknown":
+        issues.append("model_family_unresolved")
+    route = route or detect_route(env)
+    if _lane_control_issues(env):
+        issues.append("route_controls_uncertain")
+    if any(env.get(k) not in (None, "", "0", "false") for k in (
+            "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")):
+        issues.append("alternate_provider_unresolved")
+    # Auto eligibility is independent of main-route compatibility. In particular,
+    # benchmark smoke must still block a KNOWN Claude-on-GPT mismatch.
+    normal_context = not any(env.get(k) not in (None, "", "0", "false") for k in (
+        "DAAF_BENCHMARK_RUN", "CLAUDE_CODE_BYPASS_PERMISSIONS", "CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS"))
+    base = env.get("ANTHROPIC_BASE_URL")
+    endpoint = "unknown"
+    backend = ""
+    if route in SHIM_ROUTES:
+        backend = "chatgpt" if route == ROUTE_CHATGPT else "openai"
+        if base in ("http://127.0.0.1:4141", "http://127.0.0.1:4141/",
+                    "http://localhost:4141", "http://localhost:4141/"):
+            endpoint = "fixed_loopback_shim"
+    elif route == ROUTE_ANTHROPIC and base in (None, "", "https://api.anthropic.com", "https://api.anthropic.com/"):
+        endpoint = "native_anthropic"
+    elif route == ROUTE_OPENROUTER and base in ("https://openrouter.ai/api", "https://openrouter.ai/api/"):
+        endpoint = "openrouter_api"
+    if endpoint == "unknown":
+        issues.append("endpoint_provider_unresolved")
+    compatibility = "unknown"
+    if not issues:
+        if route in SHIM_ROUTES:
+            compatibility = "compatible" if family == "gpt" else "incompatible"
+        elif route == ROUTE_ANTHROPIC:
+            compatibility = "compatible" if family == "claude" else "incompatible"
+        elif route == ROUTE_OPENROUTER:
+            compatibility = "compatible"
+    return MainModelResolution(selector, resolved, source, overridden, family,
+                               compatibility, tuple(sorted(set(issues))),
+                               route if endpoint != "unknown" and not _lane_control_issues(env) else "unknown",
+                               endpoint, backend, normal_context)
+
+
+def probe_main_model(resolution, profile="", tier="0"):
+    """T0.14 safe metadata; preserve ordinary WARN/non-failing semantics."""
+    import json
+    r = ProbeResult("T0.14", "Main-model/route coherence", tier, profile=profile)
+    r.verdict = {"compatible": Verdict.PASS, "incompatible": Verdict.FAIL,
+                 "unknown": Verdict.WARN}[resolution.compatibility]
+    r.detail = {
+        "compatible": "Projected main model is configuration-compatible; provider acceptance is not established.",
+        "incompatible": "Projected main model is incompatible with the configured route; paid launch blocked. No configuration changed.",
+        "unknown": "Main model or settings precedence is unresolved; compatibility is unknown, not certified.",
+    }[resolution.compatibility]
+    r.add_evidence("bounded main-model settings projection",
+                   output=json.dumps(resolution.safe_metadata(), sort_keys=True))
+    return r
+
+
 # --- Tier 0 route/env coherence probes ------------------------------------
 
 def probe_daaf_dev(env) -> ProbeResult:

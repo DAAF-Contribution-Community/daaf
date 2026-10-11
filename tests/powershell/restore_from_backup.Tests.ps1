@@ -1708,11 +1708,17 @@ esac
                 # the child), so the Windows-only edition guard (pass #26) applies under
                 # pwsh on Linux/macOS. By default the child gets the bypass: these runs
                 # exercise the script past the guard with the fake docker.
-                [switch]$NoEditionBypass
+                [switch]$NoEditionBypass,
+                # Dispatch 48: -Settings writes this text as environment_settings.txt into
+                # the working dir before the run ('' = no settings file). The harness pins
+                # DAAF_PROJECT_NAME=daaf; pass -Fake @{ DAAF_PROJECT_NAME = '' } to let the
+                # file's value be adopted.
+                [string]$Settings = ''
             )
             $work = Join-Path $TestDrive ('restore-' + [guid]::NewGuid().ToString('N'))
             $bk = Join-Path $work '2026-01-01_daaf_backup'
             $null = New-Item -ItemType Directory -Path $bk
+            if ($Settings -ne '') { [IO.File]::WriteAllText((Join-Path $work 'environment_settings.txt'), $Settings) }
             for ($i = 0; $i -lt $DataFiles; $i++) { [IO.File]::WriteAllText((Join-Path $bk "f$i"), 'x') }
             [IO.File]::WriteAllText((Join-Path $bk '.daaf-symlinks'), '')
             $fileTotal = $DataFiles
@@ -3977,6 +3983,96 @@ esac
             # The dry run's own docker stand-in answers: the fake on PATH is never called.
             $r.Calls.Count | Should -Be 0
             $r.ExitCode | Should -Be 0
+        }
+    }
+
+    Context "the project name is normalized as Docker Compose does" {
+        # Twin of the restore_from_backup.bats "project name (restore)" tests. Compose
+        # normalizes the project name (lowercase, keep [a-z0-9_-], trim leading
+        # '_'/'-'), so a settings file saying `Work` makes the volumes "work_daaf-data"
+        # and "work_daaf-claude-config"; the restore must target THOSE. The harness pins
+        # DAAF_PROJECT_NAME=daaf; -Fake entries come after the pins, so an empty
+        # DAAF_PROJECT_NAME there lets the settings file's value be adopted.
+        # DAAF_DATA_VOLUME_NAME is a literal name, never normalized. A name that
+        # normalizes to nothing is refused before any docker call.
+        It "a settings-file 'Work' restores into work_daaf-data and work_daaf-claude-config" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Settings "DAAF_PROJECT_NAME=Work`n" -Fake @{ DAAF_PROJECT_NAME = '' } -SeedVolumes @('work_daaf-data', 'work_daaf-claude-config')
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Restore complete!*"
+            $c = $r.Calls
+            (Get-CallIndex $c '^volume create --label org\.daaf\.restore-tmp-for=work_daaf-data --label org\.daaf\.restore-run=\d{14}-\d+-[0-9a-f]{32} work_daaf-data-restore-tmp$') | Should -BeGreaterThan -1
+            (Get-CallIndex $c '^volume create --label org\.daaf\.restore-tmp-for=work_daaf-claude-config --label org\.daaf\.restore-run=\d{14}-\d+-[0-9a-f]{32} work_daaf-claude-config-restore-tmp$') | Should -BeGreaterThan -1
+            (Get-CallIndex $c '^run --rm --sig-proxy=false --name work_daaf-data-restore-swap -v work_daaf-data-restore-tmp:/src:ro -v work_daaf-data:/dest {IMG} sh -c trap : INT TERM HUP; ') | Should -BeGreaterThan -1
+            @($c | Where-Object { $_ -clike '*Work_*' }).Count | Should -Be 0
+            # The default install's volumes were never touched.
+            @($c | Where-Object { $_ -match '(^| |=)daaf_daaf-(data|claude-config)' }).Count | Should -Be 0
+        }
+
+        It "DAAF_DATA_VOLUME_NAME stays verbatim; the Claude volume follows the normalized project" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Fake @{ DAAF_PROJECT_NAME = '-Work'; DAAF_DATA_VOLUME_NAME = 'My.Shared_Vol' } -SeedVolumes @('My.Shared_Vol', 'work_daaf-claude-config')
+            $r.ExitCode | Should -Be 0
+            $c = $r.Calls
+            (Get-CallIndex $c '^volume create --label org\.daaf\.restore-tmp-for=My\.Shared_Vol --label org\.daaf\.restore-run=\d{14}-\d+-[0-9a-f]{32} My\.Shared_Vol-restore-tmp$') | Should -BeGreaterThan -1
+            (Get-CallIndex $c '^volume create --label org\.daaf\.restore-tmp-for=work_daaf-claude-config --label org\.daaf\.restore-run=\d{14}-\d+-[0-9a-f]{32} work_daaf-claude-config-restore-tmp$') | Should -BeGreaterThan -1
+            @($c | Where-Object { $_ -clike '*my.shared_vol*' -or $_ -clike '*myshared_vol*' }).Count | Should -Be 0
+        }
+
+        It "a name that normalizes to nothing ('<_>') is refused, exit 1, before any docker call" -ForEach @('___', '@@', '--') {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ DAAF_PROJECT_NAME = $_ }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                "ERROR: DAAF_PROJECT_NAME='$_' cannot be used as a Docker Compose",
+                "       project name. A project name may use lowercase letters, digits, '-'",
+                "       and '_', and must start with a letter or digit. Fix it in",
+                "       environment_settings.txt (or your shell), then run the restore again.",
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Calls.Count | Should -Be 0
+            (@($r.Volumes | Sort-Object) -join ' ') | Should -BeExactly 'daaf_daaf-claude-config daaf_daaf-data'
+        }
+
+        It "a settings-file name that normalizes to nothing is refused the same way" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Settings "DAAF_PROJECT_NAME=___`n" -Fake @{ DAAF_PROJECT_NAME = '' }
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: DAAF_PROJECT_NAME='___' cannot be used as a Docker Compose*"
+            $r.Calls.Count | Should -Be 0
+        }
+
+        It "the DAAF_DATA_VOLUME_NAME override does not lift the refusal (the Claude volume name needs the project)" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ DAAF_PROJECT_NAME = '___'; DAAF_DATA_VOLUME_NAME = 'shared-data' }
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: DAAF_PROJECT_NAME='___' cannot be used as a Docker Compose*"
+            $r.Calls.Count | Should -Be 0
+        }
+
+        # Review 51q SUGGESTION-2 (twin of the restore_from_backup.bats "project name NOTE" tests).
+        It "prints the installer's NOTE once for 'Work', before the volume name is first shown (also when the volume is missing)" {
+            $note = "NOTE: Docker Compose uses the project name 'work' for 'Work'."
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Settings "DAAF_PROJECT_NAME=Work`n" -Fake @{ DAAF_PROJECT_NAME = '' } -SeedVolumes @('work_daaf-data', 'work_daaf-claude-config')
+            $r.ExitCode | Should -Be 0
+            $lines = @($r.Output -split '\r?\n')
+            @($lines | Where-Object { $_ -ceq $note }).Count | Should -Be 1
+            $firstVol = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -clike '*work_daaf-data*') { $firstVol = $i; break } }
+            $firstVol | Should -BeGreaterThan -1
+            [array]::IndexOf($lines, $note) | Should -BeLessThan $firstVol
+            # work_daaf-data does not exist: the NOTE still comes first and explains the name.
+            $r2 = Invoke-FakeRestore -DataFiles 3 -Settings "DAAF_PROJECT_NAME=Work`n" -Fake @{ DAAF_PROJECT_NAME = '' }
+            $r2.ExitCode | Should -Be 1
+            $lines2 = @($r2.Output -split '\r?\n')
+            $noteAt = [array]::IndexOf($lines2, $note)
+            $noteAt | Should -BeGreaterThan -1
+            [array]::IndexOf($lines2, "ERROR: Docker volume 'work_daaf-data' not found.") | Should -BeGreaterThan $noteAt
+        }
+
+        It "prints no NOTE for <Label>" -ForEach @(
+            @{ Label = "'work'"; Settings = "DAAF_PROJECT_NAME=work`n"; Fake = @{ DAAF_PROJECT_NAME = '' }; Seed = @('work_daaf-data', 'work_daaf-claude-config') }
+            @{ Label = "an unset name"; Settings = ''; Fake = @{ DAAF_PROJECT_NAME = '' }; Seed = @() }
+            @{ Label = "'Work' with DAAF_DATA_VOLUME_NAME set"; Settings = ''; Fake = @{ DAAF_PROJECT_NAME = 'Work'; DAAF_DATA_VOLUME_NAME = 'Work_daaf-data' }; Seed = @('Work_daaf-data', 'work_daaf-claude-config') }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Settings $Settings -Fake $Fake -SeedVolumes $Seed
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -Not -BeLike "*Docker Compose uses the project name*"
         }
     }
 }

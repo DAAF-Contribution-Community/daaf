@@ -500,6 +500,30 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
+        It "the docker cp recovery hint names the normalized container (-Work -> work-daaf-docker-1)" {
+            # Twin of the update_daaf.bats "project name (update)" hint test. Compose
+            # names the container "<project>-daaf-docker-1" with the NORMALIZED project
+            # name, so the hint must name "work-daaf-docker-1", not "-Work-daaf-docker-1".
+            $savedProject = $env:DAAF_PROJECT_NAME
+            try {
+                $env:DAAF_PROJECT_NAME = '-Work'
+                Mock docker {
+                    $allArgs = $args -join " "
+                    if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                    if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
+                    # docker cp fails
+                    $global:LASTEXITCODE = 1
+                    return ""
+                }
+                $output = Sync-HostScript "samehash" 6>&1
+                ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
+                @($output | Where-Object { "$_" -clike "*docker cp work-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1*" }).Count | Should -Be 1
+                @($output | Where-Object { "$_" -clike "*docker cp -Work*" }).Count | Should -Be 0
+            } finally {
+                if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+            }
+        }
+
         It "existence-heals with an empty OldHead (up-to-date path)" {
             Mock docker {
                 $allArgs = $args -join " "
@@ -1612,6 +1636,73 @@ function docker {
         $content | Should -Match 'Mutex\.ReleaseMutex'
         # Wait-AndExit also releases mutex
         $content | Should -Match 'function Wait-AndExit'
+    }
+
+    It "a project name that normalizes to nothing ('<_>') is refused, exit 1, before the lock and any docker call" -ForEach @('___', '@@') {
+        # Twin of the update_daaf.bats refusal test. Compose cannot be relied on to use
+        # such a name, and the printed `docker cp` hints would name no container.
+        $env:DAAF_NESTED = "1"
+        $savedProject = $env:DAAF_PROJECT_NAME
+        $callLog = Join-Path $script:TestDir "docker-calls.log"
+        $env:UPDATE_TEST_CALL_LOG = $callLog
+        try {
+            $env:DAAF_PROJECT_NAME = $_
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    Add-Content -LiteralPath $env:UPDATE_TEST_CALL_LOG -Value ($args -join ' ')
+    $global:LASTEXITCODE = 0
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $exitCode = $LASTEXITCODE
+            $outputStr = $output | Out-String
+            $exitCode | Should -Be 1
+            $block = @(
+                "ERROR: DAAF_PROJECT_NAME='$_' cannot be used as a Docker Compose",
+                "       project name. A project name may use lowercase letters, digits, '-'",
+                "       and '_', and must start with a letter or digit. Fix it in",
+                "       environment_settings.txt (or your shell), then run the update again.",
+                '       Nothing was changed.')
+            $outputStr | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # Before the lock and the banner, and no docker call at all.
+            $outputStr | Should -Not -BeLike "*DAAF Updater*"
+            Test-Path -LiteralPath $callLog | Should -BeFalse
+        } finally {
+            Remove-Item Env:UPDATE_TEST_CALL_LOG -ErrorAction SilentlyContinue
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
+    }
+
+    It "control: a normal project name passes the check and reaches docker (the call log is written)" {
+        # Without this control, "no call log" above could pass because the fake never
+        # logs at all.
+        $env:DAAF_NESTED = "1"
+        $savedProject = $env:DAAF_PROJECT_NAME
+        $callLog = Join-Path $script:TestDir "docker-calls.log"
+        $env:UPDATE_TEST_CALL_LOG = $callLog
+        try {
+            $env:DAAF_PROJECT_NAME = 'Work'
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    Add-Content -LiteralPath $env:UPDATE_TEST_CALL_LOG -Value ($args -join ' ')
+    $global:LASTEXITCODE = 1
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $outputStr = $output | Out-String
+            $outputStr | Should -Not -BeLike "*cannot be used as a Docker Compose*"
+            $outputStr | Should -BeLike "*DAAF Updater*"
+            Test-Path -LiteralPath $callLog | Should -BeTrue
+        } finally {
+            Remove-Item Env:UPDATE_TEST_CALL_LOG -ErrorAction SilentlyContinue
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
     }
 }
 

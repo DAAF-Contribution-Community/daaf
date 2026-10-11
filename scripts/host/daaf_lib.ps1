@@ -20,6 +20,9 @@
 #                              drop only the keys the loader adopted from the file,
 #                              then import again (user-set values keep winning);
 #                              throws on an unreadable file, like the loader
+#   Resolve-DaafProjectName -- return the Compose project name: DAAF_PROJECT_NAME
+#                              (default "daaf") normalized the way Docker Compose
+#                              normalizes it; empty when nothing usable is left
 #   Resolve-DaafDataVolumeName -- echo the resolved data-volume name, honoring the
 #                              optional DAAF_DATA_VOLUME_NAME full-name override
 #   Set-DaafSettingsKey -- insert/update a single KEY=value line in a settings
@@ -217,6 +220,38 @@ function Sync-DaafSettingsFile {
     Import-DaafSettingsFile -SettingsFile $SettingsFile
 }
 
+# --- Compose Project Name Resolver ---
+# PowerShell counterpart to daaf_lib.sh resolve_project_name (see there for the
+# full rationale and source). Return the project name Docker Compose actually uses,
+# so every Docker name a host script derives from the project ("<project>_daaf-data",
+# "<project>_daaf-claude-config", "<project>-daaf-docker-1") is the name Compose
+# created: compose-go's NormalizeProjectName lowercases the top-level `name:`, keeps
+# only [a-z0-9_-] and trims leading '_' and '-', so `Work` gives "work".
+#
+# Unset or empty DAAF_PROJECT_NAME => "daaf", unchanged. A value that normalizes to
+# nothing (e.g. "___" or "@@") returns an EMPTY string; the CALLER must refuse it.
+#
+# Order matters: every character outside ASCII [A-Za-z0-9_-] is dropped BEFORE
+# lowercasing (-creplace, case-sensitive), so the result is ASCII and matches the
+# bash twin's byte-wise `LC_ALL=C tr`. ToLowerInvariant first would map a few
+# non-ASCII letters to ASCII ones it would then keep (the Kelvin sign U+212A becomes
+# 'k'; review 45q NIT-1).
+#
+# SYNC NOTE: the same expression is in install.ps1 (inline, it runs standalone), and
+# this whole function is carried BYTE-IDENTICAL in backup_daaf.ps1,
+# restore_from_backup.ps1, update_daaf.ps1 and the maintainer harness
+# test_migration.ps1 (standalone scripts that do not dot-source this library).
+# tests/powershell/daaf_lib.Tests.ps1 pins the copies and the installer to the same
+# results on a fixed input set. PS 5.1 safe; strict-clean (only $env: reads and
+# string ops).
+function Resolve-DaafProjectName {
+    [CmdletBinding()]
+    param()
+    $project = 'daaf'
+    if ($env:DAAF_PROJECT_NAME) { $project = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+    return $project
+}
+
 # --- Data Volume Name Resolver ---
 # PowerShell counterpart to daaf_lib.sh resolve_data_volume_name. Return the
 # Docker volume name that holds the DAAF research workspace (/daaf), honoring the
@@ -224,22 +259,26 @@ function Sync-DaafSettingsFile {
 #
 # PRECEDENCE (returned to the caller):
 #   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
-#      volume name (no project prefix is added). This is the escape hatch for
-#      pointing two installs at ONE shared workspace volume; it must match the
-#      `name:` under the external `daaf-data` block in docker-compose.yml.
-#   2. Otherwise "<project>_daaf-data", where <project> is DAAF_PROJECT_NAME or
-#      the "daaf" default -- the Compose-prefixed default. So an UNSET
-#      DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the historical
-#      hardcoded derivation, and a second instance with DAAF_PROJECT_NAME=daaf2
-#      still owns "daaf2_daaf-data".
+#      volume name (no project prefix is added, and it is NOT normalized: it is a
+#      literal Docker volume name that must match the `name:` under the external
+#      `daaf-data` block in docker-compose.yml). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume.
+#   2. Otherwise "<project>_daaf-data", where <project> is Resolve-DaafProjectName
+#      (DAAF_PROJECT_NAME normalized as Compose does, default "daaf"). So an UNSET
+#      DAAF_DATA_VOLUME_NAME with no project name is byte-for-byte identical to the
+#      historical hardcoded derivation, a second instance with
+#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data", and `Work` resolves
+#      to "work_daaf-data", the volume Compose created.
+#      When the project name normalizes to nothing, this returns an EMPTY string
+#      (the bash twin prints nothing and returns 1): there is no derived name.
 # A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default: an
 # empty string is falsy in PowerShell, so the `if ($env:DAAF_DATA_VOLUME_NAME)`
-# guard treats empty and unset alike, matching the bash `:-` semantics and the
+# guard treats empty and unset alike, matching the bash `-n` test and the
 # way Import-DaafSettingsFile adopts a whitelisted key only when it is non-empty.
 #
 # The claude-config volume is deliberately NOT resolved here: per-install auth
-# isolation is by design, so it keeps its project-prefixed default everywhere and
-# has no analogous override.
+# isolation is by design, so it keeps its project-prefixed default everywhere
+# ("<Resolve-DaafProjectName>_daaf-claude-config") and has no analogous override.
 #
 # Callers that need a value persisted in environment_settings.txt to win should
 # Import-DaafSettingsFile first (which bridges DAAF_DATA_VOLUME_NAME into the
@@ -250,8 +289,8 @@ function Resolve-DaafDataVolumeName {
     if ($env:DAAF_DATA_VOLUME_NAME) {
         return $env:DAAF_DATA_VOLUME_NAME
     }
-    $projectName = "daaf"
-    if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
+    $projectName = Resolve-DaafProjectName
+    if ([string]::IsNullOrEmpty($projectName)) { return '' }
     return "${projectName}_daaf-data"
 }
 

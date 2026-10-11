@@ -6,7 +6,8 @@ coupling) plus every tier's probe implementations:
 
   * Tier 0 (no-LLM system checks not already in route_detection): CLI liveness,
     hook registration across all .claude/hooks/*.sh, statusline rendering,
-    shim /health, chatgpt auth.json, workspace invariants.
+    shim /health, chatgpt auth.json, workspace invariants, R locale,
+    settings.local.json env shadowing, claude.ai synced skills/plugins (INFO).
   * Tier 1: one live claude -p round-trip and the evidence checks around it.
   * Tier 2: the six-probe capability-structural battery (T2.1-T2.6).
   * Tier D: the deterministic battery (bats, Pester, lint, safety-hook tests,
@@ -43,6 +44,8 @@ from route_detection import (
     ROUTE_CHATGPT,
     ROUTE_OPENAI_API,
     SHIM_ROUTES,
+    MODEL_SELECTOR_VARS,
+    redact_env_value,
     scrub_secret_values,
 )
 
@@ -55,6 +58,10 @@ from benchmarks.harness.executor import (
     _graceful_kill,
     KILL_GRACE_SECONDS,
 )
+# The CLI's placeholder-model rule ("<synthetic>" and other angle-bracketed
+# markers), shared with DAAFBench's purity accounting so both tools agree on
+# what counts as "no real model answered".
+from benchmarks.harness.artifacts import _is_non_model_marker
 
 
 # Derive the repo root from this module's own location rather than hardcoding
@@ -390,6 +397,273 @@ def read_transcript_lines(path: Path):
         return
 
 
+def load_transcript_records(path) -> list:
+    """Materialize a transcript's parsed records ([] when there is no path), so
+    one read can feed several evaluators."""
+    return list(read_transcript_lines(path)) if path else []
+
+
+# --- Live-run health: did a real model actually answer? --------------------
+#
+# A `claude -p` run can "succeed" at the process level while no model ever
+# answered: an unknown model slug, an exhausted spend cap, or an API error makes
+# the CLI fabricate a local assistant record (message.model "<synthetic>",
+# isApiErrorMessage true, error "model_not_found" observed 2026-09-24) whose text
+# still arrives as the response. Every live verdict is gated on this helper
+# first, so such a run reads FAIL with the reason rather than PASS or a vacuous
+# SKIP.
+#
+# Not every synthetic record is fatal. A transient provider error mid-response
+# is also written as a "<synthetic>" / isApiErrorMessage record (error
+# "server_error", text "API Error: Server error mid-response. The response above
+# may be incomplete."), and the CLI then retries: the observed pattern is real
+# assistant record -> synthetic error record -> real assistant record (seen in
+# ~20 headless transcripts on the GPT lanes, e.g. the 2026-09-22 0fec76e0
+# orchestrator transcript, twice). Such a run DID reach a real model, so the gate
+# FAILs only when no real-model assistant record follows the LAST error record;
+# a recovered error is reported as a WARN with its count and first error text.
+
+def _result_message(result):
+    """Return the CLI's terminal result object from result.raw_json, or None.
+
+    _parse_json_output stores list output as {"messages": [...]} and a single
+    result object as the dict itself (benchmarks/harness/executor.py)."""
+    raw = getattr(result, "raw_json", None)
+    if not isinstance(raw, dict) or not raw:
+        return None
+    messages = raw.get("messages")
+    if isinstance(messages, list):
+        for msg in reversed(messages):
+            if isinstance(msg, dict) and msg.get("type") == "result":
+                return msg
+        return None
+    return raw
+
+
+def _assistant_model_ids(records) -> list:
+    """Every assistant record's message.model, in transcript order."""
+    models = []
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "assistant":
+            continue
+        msg = rec.get("message")
+        model = msg.get("model") if isinstance(msg, dict) else None
+        if isinstance(model, str) and model:
+            models.append(model)
+    return models
+
+
+def _transcript_model(records):
+    """The last real model id in a transcript (placeholder markers skipped) —
+    the same rule context-reporter.sh's resolve_model_cache applies."""
+    real = [m for m in _assistant_model_ids(records) if not _is_non_model_marker(m)]
+    return real[-1] if real else None
+
+
+def _model_usage_ids(result) -> list:
+    """Real model ids from the CLI's modelUsage block (markers excluded)."""
+    identity = getattr(result, "model_identity", None)
+    ids = getattr(identity, "claude_cli_model_usage_ids", None) or []
+    return [i for i in ids if isinstance(i, str) and i and not _is_non_model_marker(i)]
+
+
+# CLI result subtype for a run that stopped at --max-turns. The value is the
+# documented Claude Code result subtype; whether is_error is also true on such a
+# result has not been observed in this repo (no stored example) — inferred, so
+# the gate tolerates either value.
+_MAX_TURNS_SUBTYPE = "error_max_turns"
+
+
+def _evaluate_transcript_api_errors(records):
+    """Pure verdict over a transcript's parsed records: did every API-error /
+    placeholder-model assistant record get followed by a real model's answer?
+
+    An "error record" is an assistant record with isApiErrorMessage true or an
+    angle-bracketed placeholder model ("<synthetic>" family). A "real record" is
+    an assistant record from a real model id that is not itself flagged as an
+    API error. Returns (unrecovered_reason, recovered_note, facts):
+      * unrecovered_reason — non-empty when an error record exists and NO real
+        record follows the last one (the run ended on the error). Names the
+        last error record's `error` and placeholder model.
+      * recovered_note — non-empty when every error record was followed by a
+        real record; carries the count and the first error's text, truncated.
+      * facts — {"error_records", "recovered", "first_error", "first_text"}.
+    Both strings are empty when the transcript holds no error record."""
+    errors = []           # (index, error_code, text, marker) per error record
+    last_real = -1
+    assistant_idx = 0
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "assistant":
+            continue
+        msg = rec.get("message")
+        model = msg.get("model") if isinstance(msg, dict) else None
+        marker = model if (isinstance(model, str) and _is_non_model_marker(model)) else None
+        if rec.get("isApiErrorMessage") is True or marker is not None:
+            text = ""
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if isinstance(content, list):
+                text = " ".join(str(b.get("text", "")) for b in content
+                                if isinstance(b, dict) and b.get("type") == "text")
+            elif isinstance(content, str):
+                text = content
+            code = str(rec.get("error") or "unspecified")[:60] if rec.get("isApiErrorMessage") is True else None
+            errors.append((assistant_idx, code, text, marker))
+        elif isinstance(model, str) and model:
+            last_real = assistant_idx
+        assistant_idx += 1
+    facts = {"error_records": len(errors), "recovered": None, "first_error": None, "first_text": None}
+    if not errors:
+        return "", "", facts
+    first_idx, first_code, first_text, first_marker = errors[0]
+    facts["first_error"] = first_code or first_marker
+    facts["first_text"] = scrub_secret_values(first_text.strip())[:120]
+    last_idx, last_code, _, last_marker = errors[-1]
+    facts["recovered"] = last_real > last_idx
+    if not facts["recovered"]:
+        parts = []
+        if last_code is not None:
+            parts.append(f"transcript API-error record (error={last_code!r})")
+        if last_marker is not None:
+            parts.append(f"assistant record from placeholder model {last_marker!r}")
+        if len(errors) > 1:
+            parts.append(f"{len(errors)} error records, no real-model answer after the last")
+        return "; ".join(parts), "", facts
+    note = (f"{len(errors)} transient API-error record(s) recovered — a real model answered after "
+            f"each (first: error={facts['first_error']!r}, text={facts['first_text']!r})")
+    return "", note, facts
+
+
+def _live_run_health(result, transcript_records):
+    """Return (failure, warning) for a live run.
+
+    failure (non-empty = the probe has no evidence to judge; FAIL) when any of:
+      * result.error is set (timeout, CLI exit without output, unparseable JSON);
+      * the CLI result object has is_error true or a subtype other than
+        "success" (only when the field is present), except the max-turns case
+        below; or a non-null api_error_status (always observed null so far; a
+        non-null value signalling an API failure is inference, labelled as such
+        in the reason);
+      * the transcript ENDS on an API-error / placeholder-model record, i.e. no
+        real-model assistant record follows the last one (see
+        _evaluate_transcript_api_errors);
+      * modelUsage names no real model — nothing was billed to a model.
+
+    warning (non-empty = the run reached a real model but is not clean; the
+    probe's own evidence still decides, and a PASS is downgraded to WARN):
+      * every API-error record in the transcript was followed by a real answer
+        (a recovered transient error, e.g. a mid-response server_error);
+      * the run stopped at --max-turns (subtype "error_max_turns"): a real model
+        was answering, it just ran out of turns before finishing.
+    """
+    reasons = []
+    warnings = []
+    err = getattr(result, "error", "") or ""
+    if err:
+        reasons.append(f"CLI error: {scrub_secret_values(err)[:200]}")
+    rm = _result_message(result)
+    if rm is not None:
+        max_turns = rm.get("subtype") == _MAX_TURNS_SUBTYPE
+        if rm.get("is_error") is True and not max_turns:
+            reasons.append("CLI result is_error=true")
+        if "subtype" in rm and rm.get("subtype") not in ("success", _MAX_TURNS_SUBTYPE):
+            reasons.append(f"CLI result subtype={rm.get('subtype')!r}")
+        if rm.get("api_error_status") not in (None, ""):
+            # Hard FAIL on inference: the 2026-09-24 live run recorded null, and
+            # the cycle-2 re-review reports 988/988 stored values null, so what a
+            # non-null value means has never been observed.
+            reasons.append(f"CLI result api_error_status={str(rm.get('api_error_status'))[:40]!r} "
+                           "(non-null; read as an API failure — inferred, never observed)")
+        if max_turns:
+            warnings.append(f"the run stopped at --max-turns (CLI result subtype={_MAX_TURNS_SUBTYPE!r}) "
+                            "before the model finished; judged on the evidence it left")
+    unrecovered, recovered, _ = _evaluate_transcript_api_errors(transcript_records)
+    if unrecovered:
+        reasons.append(unrecovered)
+    if recovered:
+        warnings.append(recovered)
+    if not _model_usage_ids(result):
+        reasons.append("no model named in the CLI modelUsage block")
+    return "; ".join(reasons), "; ".join(warnings)
+
+
+def _apply_live_failure(r: ProbeResult, failure: str, warning: str = "") -> bool:
+    """Record the live-run health check on a probe; on failure set FAIL with the
+    reason and return True so the caller skips its probe-specific verdict. A
+    non-failing warning is recorded here and applied by _apply_live_warning once
+    the caller has set its own verdict."""
+    r.add_evidence("live-run health (is_error/subtype, transcript API-error + placeholder-model "
+                   "records and recovery, modelUsage ids)",
+                   output=failure or (f"ok with warning: {warning}" if warning else "ok"))
+    if failure:
+        r.verdict = Verdict.FAIL
+        r.detail = f"Live run did not reach a real model, so this probe has no evidence to judge: {failure}"
+        return True
+    return False
+
+
+def _apply_live_warning(r: ProbeResult, warning: str) -> None:
+    """After the probe-specific verdict: downgrade a PASS to WARN and append the
+    live-run warning (recovered transient API error, or --max-turns stop) to the
+    detail. FAIL/SKIP/INFO keep their verdict and gain the note."""
+    if not warning:
+        return
+    if r.verdict == Verdict.PASS:
+        r.verdict = Verdict.WARN
+    r.detail = f"{r.detail} Live-run warning: {warning}."
+
+
+def _tool_input(value) -> dict:
+    """A tool_use `input` as a dict, or {} when it is anything else.
+
+    The transcript is untrusted input: a malformed or future-shaped record can
+    carry a non-empty string or list as `input`. `(x or {}).get(...)` raises
+    AttributeError on those, which would abort the whole run with no report; a
+    bare `"key" in x` would silently substring-match a string. Every consumer
+    therefore reads inputs through this one normalizer."""
+    return value if isinstance(value, dict) else {}
+
+
+def _tool_calls(records) -> list:
+    """Pair every tool_use with its tool_result: [(name, input, is_error)] in
+    call order, where is_error is None when no result was recorded. input is
+    always a dict (see _tool_input)."""
+    uses = []
+    results = {}
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if rec.get("type") == "assistant" and block.get("type") == "tool_use":
+                uses.append((block.get("id"), block.get("name", ""), _tool_input(block.get("input"))))
+            elif rec.get("type") == "user" and block.get("type") == "tool_result":
+                results[block.get("tool_use_id")] = bool(block.get("is_error"))
+    return [(name, inp, results.get(tid)) for tid, name, inp in uses]
+
+
+def _hook_attachment(rec):
+    """Return the attachment dict of a hook-emitted transcript record, else None.
+
+    Hook output lands as {"type": "attachment", "attachment": {"type":
+    "hook_success" | "hook_additional_context" | ..., "hookName", "hookEvent",
+    ...}} (observed 2.1.281). CLAUDE.md ("instructions") and skill bodies (isMeta
+    user records) are NOT hook attachments, so prose quoting a hook's text can
+    never satisfy a hook-evidence check."""
+    if not isinstance(rec, dict) or rec.get("type") != "attachment":
+        return None
+    att = rec.get("attachment")
+    if not isinstance(att, dict):
+        return None
+    if str(att.get("type", "")).startswith("hook_") or "hookEvent" in att or "hookName" in att:
+        return att
+    return None
+
+
 def snapshot_tmp_caches(session_id: str) -> dict:
     """Read the /tmp coordination caches for a session (READ ONLY — /tmp writes
     are blocked; reads of DAAF caches are the sanctioned pattern)."""
@@ -491,6 +765,43 @@ def probe_hook_registration(base_dir: str = BASE_DIR) -> ProbeResult:
     return r
 
 
+# Session id of T0.7's synthetic statusline payloads. Both renderers key their
+# session caches on it, so T0.7 points their cache seams at a report-local
+# directory (see probe_statuslines) and never lets them write /tmp.
+_SYNTHETIC_SESSION_ID = "smoke-synthetic"
+_SYNTHETIC_TASK_ID = "smoke-task-1"
+
+
+def _synthetic_tmp_cache_paths() -> list:
+    """Every /tmp path the two statusline renderers could write for the
+    synthetic session under their DEFAULT cache dir (read from context-bar.sh
+    and subagent-bar.sh): the model, ctx-window, and OpenRouter caches
+    (context-bar), and the session/subagent model caches plus their
+    transcript-signature sidecars (subagent-bar). Exact paths only — never a
+    glob, so no real session's cache can match."""
+    sid, tid = _SYNTHETIC_SESSION_ID, _SYNTHETIC_TASK_ID
+    return [
+        f"/tmp/claude-model-{sid}",
+        f"/tmp/claude-model-{sid}.transcript-signature",
+        f"/tmp/claude-ctx-window-{sid}",
+        f"/tmp/claude-or-models-{sid}",
+        f"/tmp/claude-subagent-model-{sid}-{tid}",
+        f"/tmp/claude-subagent-model-{sid}-{tid}.transcript-signature",
+    ]
+
+
+def _stat_paths(paths) -> dict:
+    """{path: (mtime_ns, size) or None} — a read-only stat, no writes."""
+    out = {}
+    for p in paths:
+        try:
+            st = os.stat(p)
+            out[p] = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            out[p] = None
+    return out
+
+
 def _synthetic_context_bar_payload() -> str:
     """A minimal but schema-valid statusLine payload (see context-bar.sh IFS/jq block)."""
     return json.dumps({
@@ -498,7 +809,7 @@ def _synthetic_context_bar_payload() -> str:
         "cwd": BASE_DIR,
         "transcript_path": "",
         "context_window": {"context_window_size": 200000},
-        "session_id": "smoke-synthetic",
+        "session_id": _SYNTHETIC_SESSION_ID,
         "effort": {"level": "high"},
         "rate_limits": {},
     })
@@ -508,12 +819,12 @@ def _synthetic_subagent_bar_payload() -> str:
     """A minimal but schema-valid subagentStatusLine payload (see subagent-bar.sh
     INPUT CONTRACT)."""
     return json.dumps({
-        "session_id": "smoke-synthetic",
+        "session_id": _SYNTHETIC_SESSION_ID,
         "transcript_path": "/nonexistent/transcript.jsonl",
         "cwd": BASE_DIR,
         "columns": 120,
         "tasks": [{
-            "id": "smoke-task-1",
+            "id": _SYNTHETIC_TASK_ID,
             "type": "local_agent",
             "status": "running",
             "description": "smoke synthetic task",
@@ -526,11 +837,32 @@ def _synthetic_subagent_bar_payload() -> str:
     })
 
 
-def probe_statuslines(base_dir: str = BASE_DIR) -> ProbeResult:
+def probe_statuslines(base_dir: str = BASE_DIR, cache_dir=None) -> ProbeResult:
     """Verify both statusline scripts execute cleanly against a synthetic payload
     (exit 0, non-empty output). These are fail-open scripts, so a crash still
-    exits 0 — we additionally require non-empty rendered output as the real signal."""
+    exits 0 — we additionally require non-empty rendered output as the real signal.
+
+    Both renderers write session-keyed caches (context-bar.sh: claude-model-<sid>
+    and claude-ctx-window-<sid>; subagent-bar.sh: model caches when a transcript
+    exists). By default those land in /tmp, outside the provenance boundary, so
+    the synthetic render points DAAF_CONTEXT_BAR_CACHE_DIR and
+    DAAF_SUBAGENT_BAR_CACHE_DIR (each script's own test seam) at one
+    report-local cache_dir — the same approach T1.6 takes. run_deploy_smoke
+    passes {report}/evidence/t07_statusline_cache; the default is project
+    scratch, never /tmp. A read-only before/after stat of the exact synthetic
+    /tmp paths is the positive evidence that /tmp was left alone; a changed path
+    means a renderer ignored its seam, and the probe WARNs."""
     r = ProbeResult(probe_id="T0.7", name="Statusline rendering (synthetic)", tier="0")
+    cache_dir = Path(cache_dir) if cache_dir else Path(base_dir) / "scripts" / "scratch" / "deploy_smoke_t07_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["DAAF_CONTEXT_BAR_CACHE_DIR"] = str(cache_dir)
+    env["DAAF_SUBAGENT_BAR_CACHE_DIR"] = str(cache_dir)
+    tmp_paths = _synthetic_tmp_cache_paths()
+    tmp_before = _stat_paths(tmp_paths)
+
+    # Order matters: context-bar writes the ctx-window cache that subagent-bar
+    # then reads from the same cache_dir.
     scripts = {
         "context-bar.sh": (Path(base_dir) / ".claude" / "scripts" / "context-bar.sh", _synthetic_context_bar_payload()),
         "subagent-bar.sh": (Path(base_dir) / ".claude" / "scripts" / "subagent-bar.sh", _synthetic_subagent_bar_payload()),
@@ -542,9 +874,12 @@ def probe_statuslines(base_dir: str = BASE_DIR) -> ProbeResult:
             r.add_evidence(f"test -f {path}", output="missing")
             continue
         try:
-            proc = subprocess.run(["bash", str(path)], input=payload, capture_output=True, text=True, timeout=20)
+            proc = subprocess.run(["bash", str(path)], input=payload, capture_output=True, text=True,
+                                  timeout=20, env=env)
             out = (proc.stdout or "").strip()
-            r.add_evidence(f"echo <synthetic> | bash {name}", output=(out[:300] or "<empty>"))
+            r.add_evidence(f"echo <synthetic> | DAAF_CONTEXT_BAR_CACHE_DIR={cache_dir} "
+                           f"DAAF_SUBAGENT_BAR_CACHE_DIR={cache_dir} bash {name}",
+                           output=(out[:300] or "<empty>"))
             if proc.returncode != 0:
                 failures.append(f"{name} exited {proc.returncode}")
             elif not out:
@@ -553,12 +888,27 @@ def probe_statuslines(base_dir: str = BASE_DIR) -> ProbeResult:
             failures.append(f"{name} timed out")
             r.add_evidence(f"bash {name}", note="timed out")
 
+    written = sorted(p.name for p in cache_dir.glob(f"*{_SYNTHETIC_SESSION_ID}*")) if cache_dir.is_dir() else []
+    r.add_evidence(f"ls {cache_dir}", output=", ".join(written) or "<nothing written>",
+                   note="report-local caches for the synthetic session")
+    tmp_after = _stat_paths(tmp_paths)
+    tmp_touched = [p for p in tmp_paths if tmp_after[p] is not None and tmp_after[p] != tmp_before[p]]
+    r.add_evidence("stat " + " ".join(tmp_paths) + " (before/after, read-only)",
+                   output=("created or modified: " + ", ".join(tmp_touched)) if tmp_touched
+                   else "no synthetic-session /tmp cache created or modified")
+
     if failures:
         r.verdict = Verdict.FAIL
         r.detail = "; ".join(failures)
+    elif tmp_touched:
+        r.verdict = Verdict.WARN
+        r.detail = ("Both statusline scripts render, but the synthetic render wrote /tmp despite the cache-dir "
+                    f"override ({', '.join(tmp_touched)}): a renderer no longer honours "
+                    "DAAF_CONTEXT_BAR_CACHE_DIR / DAAF_SUBAGENT_BAR_CACHE_DIR.")
     else:
         r.verdict = Verdict.PASS
-        r.detail = "Both statusline scripts render non-empty output against a synthetic payload."
+        r.detail = ("Both statusline scripts render non-empty output against a synthetic payload "
+                    "(caches in a report-local dir; no /tmp write).")
     return r
 
 
@@ -931,9 +1281,391 @@ def probe_r_locale() -> ProbeResult:
     return r
 
 
-def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR):
+def _read_settings_env(path: Path):
+    """Return (env_dict_or_None, problem_or_""): the `env` object of a settings
+    file. A missing `env` key is ({}, ""); a missing file is (None, "")."""
+    if not path.exists():
+        return None, ""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError) as e:
+        return None, f"unreadable: {type(e).__name__}"
+    except json.JSONDecodeError as e:
+        return None, f"invalid JSON (line {e.lineno}, column {e.colno})"
+    if not isinstance(data, dict):
+        return None, "top level is not a JSON object"
+    env = data.get("env", {})
+    if env is None:
+        env = {}
+    if not isinstance(env, dict):
+        return None, "`env` is not a JSON object"
+    return env, ""
+
+
+# Deliberately narrow: these fields suffice for main selection/route projection.
+# Never inspect an authentication store or serialize the settings object.
+_MAIN_ENV_KEYS = frozenset({
+    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "DAAF_PROVIDER_SHIM", "SHIM_BACKEND_MODE", "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+    "DAAF_BENCHMARK_RUN", "CLAUDE_CODE_BYPASS_PERMISSIONS", "CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS",
+})
+_SETTINGS_LIMIT = 262144
+
+
+def _read_main_settings(path):
+    """Bounded no-follow regular-file read; return projection + categorical state."""
+    import stat
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return {}, "unreadable"
+        with os.fdopen(fd, "rb") as stream:
+            fd = None
+            raw = stream.read(_SETTINGS_LIMIT + 1)
+        if len(raw) > _SETTINGS_LIMIT:
+            return {}, "oversized"
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_health_keys)
+        if not isinstance(data, dict) or not isinstance(data.get("env", {}), dict):
+            return {}, "malformed"
+        projected = {k: v for k, v in data.get("env", {}).items() if k in _MAIN_ENV_KEYS}
+        if any(not isinstance(v, str) for v in projected.values()):
+            return {}, "malformed"
+        if "model" in data and not isinstance(data["model"], str):
+            return {}, "malformed"
+        return {"env": projected, "model": data.get("model")}, "present"
+    except FileNotFoundError:
+        return {}, "absent"
+    except (ValueError, UnicodeError):
+        return {}, "malformed"
+    except OSError:
+        return {}, "unreadable"
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def collect_main_model(env, base_dir=BASE_DIR, explicit_model=None):
+    """Read only user/project/local settings, respecting CLAUDE_CONFIG_DIR.
+
+    Observed 2.1.281 settings env overlays process env, user < project < local.
+    Managed presence is uncertainty, not an attempted policy emulation. Platform
+    remote policy/startup/dynamic defaults are not fully modeled; initialization
+    must still be checked by live acceptance. Filesystem facts remain categorical.
+    The returned resolution carries bounded effective route/endpoint/backend and
+    normal-context metadata for Auto readiness; consumers must not recompute
+    those facts from ambient env after these settings overlays have been applied.
+    """
+    from route_detection import resolve_main_model
+    root = Path(base_dir)
+    config = Path(env.get("CLAUDE_CONFIG_DIR") or (Path(env.get("HOME") or Path.home()) / ".claude"))
+    if not config.is_absolute():
+        config = root / config
+    effective = {k: v for k, v in env.items() if k in _MAIN_ENV_KEYS}
+    source, saved_source, saved = "environment", "saved_model", None
+    states, uncertainty = {}, []
+    for label, path in (("user", config / "settings.json"),
+                        ("project", root / ".claude/settings.json"),
+                        ("local", root / ".claude/settings.local.json")):
+        projection, state = _read_main_settings(path)
+        states[label] = state
+        if state not in ("present", "absent"):
+            uncertainty.append(label + "_settings_" + state)
+        if "ANTHROPIC_MODEL" in projection.get("env", {}):
+            source = label + "_settings_env"
+        effective.update(projection.get("env", {}))
+        if projection.get("model") is not None:
+            saved, saved_source = projection["model"], label + "_settings_model"
+    # Presence-only probes: managed policy may override every ordinary layer.
+    # We neither read it nor infer its absence from a permission error.
+    for label, path in (("managed_system", Path("/etc/claude-code/managed-settings.json")),
+                        ("managed_user", config / "managed-settings.json"),
+                        ("managed_fragments", Path("/etc/claude-code/managed-settings.d"))):
+        try:
+            path.lstat()
+            states[label] = "present"
+            uncertainty.append("managed_policy_unresolved")
+        except FileNotFoundError:
+            states[label] = "absent"
+        except OSError:
+            states[label] = "unreadable"
+            uncertainty.append("managed_policy_unresolved")
+    resolution = resolve_main_model(effective, saved, explicit_model, source,
+                                    saved_source, uncertainty)
+    return resolution, states
+
+
+def probe_main_model_coherence(env, base_dir=BASE_DIR, explicit_model=None, profile="", tier="0"):
+    from route_detection import probe_main_model
+    resolution, states = collect_main_model(env, base_dir, explicit_model)
+    result = probe_main_model(resolution, profile, tier)
+    result.add_evidence("bounded settings file inspection", output=json.dumps(states, sort_keys=True))
+    return result
+
+
+def probe_local_settings_shadowing(base_dir: str = BASE_DIR) -> ProbeResult:
+    """T0.12 — does a personal .claude/settings.local.json `env` block shadow the
+    shipped settings.json `env`?
+
+    Claude Code applies the local file over the committed one, and an `env`
+    block follows that precedence, so a stale local ANTHROPIC_MODEL silently
+    re-points every session (observed during the 2.1.281 post-rebuild pass).
+    FAIL when a shadowed key is a model selector (MODEL_SELECTOR_VARS) whose
+    value differs; WARN for any other shadowed key (including a selector pinned
+    to the same value, which is harmless today but drifts on the next model
+    bump), and WARN for a model selector set only in the local file (it shadows
+    nothing in settings.json but still overrides the container environment);
+    PASS when nothing is shadowed and no local-only selector is set. Values are
+    printed only for model selectors, through redact_env_value; other keys are
+    named without values."""
+    r = ProbeResult(probe_id="T0.12", name="Local settings shadowing", tier="0")
+    local_path = Path(base_dir) / ".claude" / "settings.local.json"
+    shared_path = Path(base_dir) / ".claude" / "settings.json"
+
+    local_env, local_problem = _read_settings_env(local_path)
+    if local_env is None and not local_problem:
+        r.add_evidence(f"test -f {local_path}", output="absent")
+        r.verdict = Verdict.PASS
+        r.detail = f"No {local_path.name}; nothing can shadow settings.json env."
+        return r
+    if local_problem:
+        r.add_evidence(f"json.load({local_path})", output=local_problem)
+        r.verdict = Verdict.WARN
+        r.detail = (f"{local_path} is {local_problem} — Claude Code may ignore or reject it; "
+                    "shadowing could not be assessed. Fix or remove the file.")
+        return r
+
+    shared_env, shared_problem = _read_settings_env(shared_path)
+    if shared_env is None:
+        r.add_evidence(f"json.load({shared_path})", output=shared_problem or "absent")
+        r.verdict = Verdict.WARN
+        r.detail = (f"settings.json is {shared_problem or 'absent'} (see T0.6), so local env "
+                    f"keys cannot be compared. {local_path.name} env keys: "
+                    f"{', '.join(sorted(local_env)) or '<none>'}.")
+        return r
+
+    shadowed = sorted(set(local_env) & set(shared_env))
+    local_only = sorted(set(local_env) - set(shared_env))
+    r.add_evidence(f"jq '.env | keys' {local_path}", output=", ".join(sorted(local_env)) or "<no env keys>")
+    r.add_evidence(f"jq '.env | keys' {shared_path}", output=", ".join(sorted(shared_env)) or "<no env keys>")
+    if local_only:
+        r.add_evidence("", note=("local-only env keys (override the container environment, not "
+                                 f"settings.json): {', '.join(local_only)}"))
+
+    # A model selector set ONLY in the local file (e.g. CLAUDE_CODE_SUBAGENT_MODEL,
+    # which settings.json does not set) shadows nothing in settings.json, but it
+    # still re-points every session's model resolution over the container env.
+    local_only_selectors = [k for k in local_only if k in MODEL_SELECTOR_VARS]
+    for key in local_only_selectors:
+        r.add_evidence(f"env.{key}", output=(f"settings.local.json={redact_env_value(key, str(local_env.get(key)))}"
+                                             " | settings.json=<unset>"))
+    selector_note = ""
+    if local_only_selectors:
+        selector_note = (f" It also sets model selector(s) {', '.join(local_only_selectors)} that "
+                         "settings.json does not set; the local value overrides the container "
+                         "environment for every session.")
+
+    if not shadowed:
+        if local_only_selectors:
+            r.verdict = Verdict.WARN
+            r.detail = (f"{local_path} sets model selector(s) {', '.join(local_only_selectors)} that "
+                        "settings.json does not set — the local value overrides the container "
+                        "environment for every session. Remove the key(s) unless the pin is intended.")
+            return r
+        r.verdict = Verdict.PASS
+        r.detail = (f"{local_path.name} present but shadows no settings.json env key"
+                    + (" (it has no env block)." if not local_env else "."))
+        return r
+
+    selector_diffs = []
+    selector_same = []
+    for key in shadowed:
+        if key not in MODEL_SELECTOR_VARS:
+            continue
+        local_val = redact_env_value(key, str(local_env.get(key)))
+        shared_val = redact_env_value(key, str(shared_env.get(key)))
+        r.add_evidence(f"env.{key}", output=f"settings.local.json={local_val} | settings.json={shared_val}")
+        if str(local_env.get(key)) != str(shared_env.get(key)):
+            selector_diffs.append(key)
+        else:
+            selector_same.append(key)
+    others = [k for k in shadowed if k not in MODEL_SELECTOR_VARS]
+    if selector_diffs:
+        r.verdict = Verdict.FAIL
+        r.detail = (f"{local_path} overrides the shipped model selector(s) {', '.join(selector_diffs)} "
+                    "— every session resolves the local value, not settings.json. Remove the key(s) "
+                    "from the local file (or update it deliberately) and start a new session.")
+    else:
+        r.verdict = Verdict.WARN
+        r.detail = (f"{local_path} shadows settings.json env key(s) {', '.join(shadowed)}; the local "
+                    "value wins. Harmless only while the values agree — remove the keys unless the "
+                    "override is intended.")
+    if selector_diffs and others:
+        r.detail += f" Also shadowed (non-model): {', '.join(others)}."
+    r.detail += selector_note
+    return r
+
+
+def _synced_names(bucket_root: Path) -> list:
+    """Non-hidden child directory names across every non-hidden bucket under a
+    ~/.claude/{skills,plugins}/synced/ root (bucket = one synced account/org)."""
+    names = set()
+    if not bucket_root.is_dir():
+        return []
+    for bucket in bucket_root.iterdir():
+        if bucket.name.startswith(".") or not bucket.is_dir():
+            continue
+        for child in bucket.iterdir():
+            if not child.name.startswith(".") and child.is_dir():
+                names.add(child.name)
+    return sorted(names)
+
+
+def _plugin_hook_events(plugins_root: Path) -> dict:
+    """{plugin_name: sorted hook event names} from each synced plugin's
+    hooks/hooks.json and .claude-plugin/plugin.json `hooks` object. Unreadable
+    or malformed files are skipped (visibility probe, never a failure)."""
+    events = {}
+    if not plugins_root.is_dir():
+        return events
+    for bucket in plugins_root.iterdir():
+        if bucket.name.startswith(".") or not bucket.is_dir():
+            continue
+        for plugin in bucket.iterdir():
+            if plugin.name.startswith(".") or not plugin.is_dir():
+                continue
+            found = set()
+            for cfg in (plugin / "hooks" / "hooks.json", plugin / ".claude-plugin" / "plugin.json"):
+                try:
+                    data = json.loads(cfg.read_text())
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                hooks = data.get("hooks") if isinstance(data, dict) else None
+                if isinstance(hooks, dict):
+                    found.update(k for k in hooks if isinstance(k, str))
+            if found:
+                events.setdefault(plugin.name, set()).update(found)
+    return {name: sorted(evts) for name, evts in events.items()}
+
+
+def _plugin_enabled_states(settings_paths) -> dict:
+    """{plugin_key: (enabled_bool, source_path)} from the `enabledPlugins`
+    objects of the given settings files, applied lowest precedence first so a
+    later file overrides an earlier one per key. Keys look like
+    "<name>@<marketplace>"; a synced plugin disabled via /plugin was observed
+    as "<name>@synced": false in ~/.claude/settings.json (2026-09-24). The
+    per-key override across scopes follows Claude Code's settings precedence
+    (user < project < local) — inferred for this key, not separately tested.
+    Unreadable or malformed files are skipped."""
+    states = {}
+    for path in settings_paths:
+        try:
+            data = json.loads(Path(path).read_text())
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if not isinstance(enabled, dict):
+            continue
+        for key, value in enabled.items():
+            if isinstance(key, str) and isinstance(value, bool):
+                states[key] = (value, str(path))
+    return states
+
+
+def _plugin_state(name: str, states: dict):
+    """(label, source) for one synced plugin folder name: "disabled",
+    "enabled", or "enabled state not set". Prefers the observed
+    "<name>@synced" key, then any "<name>@<marketplace>" key."""
+    hit = states.get(f"{name}@synced")
+    if hit is None:
+        hit = next((v for k, v in sorted(states.items()) if k.split("@", 1)[0] == name), None)
+    if hit is None:
+        return "enabled state not set", None
+    return ("enabled" if hit[0] else "disabled"), hit[1]
+
+
+def probe_synced_surface(env, config_dir=None, base_dir: str = BASE_DIR) -> ProbeResult:
+    """T0.13 — which claude.ai account skills/plugins are synced into this
+    container? INFO only, never FAIL.
+
+    DAAF coexists with claude.ai sync (a repository cannot turn it off; the
+    opt-out lives at user/local scope), so this is visibility, not a gate. It
+    reports what is on disk under {config}/skills/synced/ and
+    {config}/plugins/synced/ and names any plugin hook events, because plugin
+    hooks run outside DAAF's audited hook set (synced plugins can register
+    hooks, agents, and MCP servers; hook events are the part named here). A
+    listing error is reported as INFO, never raised. On-disk presence is not
+    proof the session loads them (a user-scope syncClaudeAi*=false stops
+    loading), so each plugin is labelled with its `enabledPlugins` state from
+    the user, project and local settings files ("disabled", "enabled", or
+    "enabled state not set")."""
+    r = ProbeResult(probe_id="T0.13", name="claude.ai synced surface", tier="0")
+    r.verdict = Verdict.INFO
+    if config_dir is None:
+        config_dir = env.get("CLAUDE_CONFIG_DIR") or ""
+        if not config_dir:
+            home = env.get("HOME")
+            config_dir = str((Path(home) if home else Path.home()) / ".claude")
+    root = Path(config_dir)
+    skills_root = root / "skills" / "synced"
+    plugins_root = root / "plugins" / "synced"
+    # A listing error (e.g. PermissionError on a bucket, or a dir removed
+    # mid-scan) must not abort the whole run with no report: this probe is
+    # visibility only, so it stays INFO and names the error.
+    try:
+        skills = _synced_names(skills_root)
+        plugins = _synced_names(plugins_root)
+        hook_events = _plugin_hook_events(plugins_root)
+    except OSError as e:
+        r.add_evidence(f"ls {skills_root}/*/ {plugins_root}/*/", note=f"{type(e).__name__}: {str(e)[:200]}")
+        r.detail = (f"Could not list the claude.ai synced surface under {root} "
+                    f"({type(e).__name__}: {str(e)[:200]}); visibility only, not a failure.")
+        return r
+    r.add_evidence(f"ls {skills_root}/*/", output=", ".join(skills) or "<none>")
+    r.add_evidence(f"ls {plugins_root}/*/", output=", ".join(plugins) or "<none>")
+    r.add_evidence(f"parse {plugins_root}/*/*/hooks/hooks.json + .claude-plugin/plugin.json",
+                   output=json.dumps(hook_events) if hook_events else "<no plugin hooks>")
+    if not skills and not plugins:
+        r.detail = f"No claude.ai synced skills or plugins under {root}."
+        return r
+    settings_paths = [root / "settings.json",
+                      Path(base_dir) / ".claude" / "settings.json",
+                      Path(base_dir) / ".claude" / "settings.local.json"]
+    states = _plugin_enabled_states(settings_paths)
+    plugin_states = {name: _plugin_state(name, states) for name in plugins}
+    if plugins:
+        r.add_evidence("enabledPlugins in " + ", ".join(str(p) for p in settings_paths),
+                       output=", ".join(f"{n}: {s}" + (f" ({src})" if src else "")
+                                        for n, (s, src) in sorted(plugin_states.items())))
+    parts = []
+    if skills:
+        parts.append(f"{len(skills)} synced skill(s): {', '.join(skills)}")
+    if plugins:
+        parts.append(f"{len(plugins)} synced plugin(s) on disk: "
+                     + ", ".join(f"{n} ({plugin_states[n][0]})" for n in plugins))
+    r.detail = "claude.ai synced surface present — " + "; ".join(parts) + "."
+    for name, evts in sorted(hook_events.items()):
+        state, src = plugin_states.get(name, ("enabled state not set", None))
+        if state == "disabled":
+            r.detail += (f" Plugin {name} registers {', '.join(evts)} hook(s), but enabledPlugins "
+                         f"disables it ({src}), so they should not load.")
+        else:
+            r.detail += (f" Plugin {name} registers {', '.join(evts)} hook(s) — these run outside "
+                         "DAAF's audited hook set.")
+    r.detail += (" DAAF coexists with sync (visibility only); opt out with syncClaudeAiSkills/"
+                 "syncClaudeAiPlugins=false in ~/.claude/settings.json or .claude/settings.local.json.")
+    return r
+
+
+def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_cache_dir=None):
     """Assemble the full Tier 0 preflight (route_detection probes + system probes).
-    route_detection contributes T0.0-T0.4; this adds T0.5-T0.11."""
+    route_detection contributes T0.0-T0.4; this adds T0.5-T0.14.
+
+    statusline_cache_dir: report-local directory for T0.7's synthetic statusline
+    caches (run_deploy_smoke passes {report}/evidence/t07_statusline_cache);
+    defaults to project scratch, never /tmp."""
     from route_detection import (
         probe_daaf_dev,
         probe_route_detection,
@@ -949,61 +1681,234 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR):
         probe_context_window_coherence(route_info, env),
         probe_cli_available(),
         probe_hook_registration(base_dir),
-        probe_statuslines(base_dir),
+        probe_statuslines(base_dir, cache_dir=statusline_cache_dir),
         probe_shim_health(route_info),
         probe_auth_json(route_info, env),
         probe_workspace_invariants(base_dir),
         probe_r_locale(),
+        probe_local_settings_shadowing(base_dir),
+        probe_synced_surface(env, base_dir=base_dir),
+        probe_main_model_coherence(env, base_dir=base_dir),
     ]
     return results
 
 
 # --- Tier 1: one live round-trip ------------------------------------------
 
+TIER1_TOKEN = "SMOKE_TIER1_COMPLETE"
+
 TIER1_PROMPT = (
     "You are a deployment smoke test. Do exactly two things in order:\n"
     "1. Make exactly ONE Bash tool call that runs: echo daaf-smoke-ok\n"
-    "2. Then reply with exactly this text and nothing else: SMOKE_TIER1_COMPLETE\n"
+    f"2. Then reply with exactly this text and nothing else: {TIER1_TOKEN}\n"
     "Do not use any other tools. Do not dispatch subagents."
 )
 
 
-def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
+def _evaluate_t11(response_text):
+    """Pure T1.1 probe-specific check, run only once the live-run gate has not
+    failed: PASS when the completion token is in the response. Any response
+    text is not enough — a model-not-found run returns the CLI's own error
+    sentence as its "response" (the gate catches that run first)."""
+    if TIER1_TOKEN not in (response_text or ""):
+        return Verdict.FAIL, (f"A model answered but the response lacks the completion token "
+                              f"{TIER1_TOKEN} — the round-trip did not finish the scripted task.")
+    return Verdict.PASS, f"A real model completed the round-trip and returned {TIER1_TOKEN}."
+
+
+def _judge_t11(r: ProbeResult, response_text, failure: str, warning: str = ""):
+    """T1.1 verdict on the shared live-run helpers, exactly as the Tier 2 probes
+    apply them: _apply_live_failure (gate FAIL + health evidence), then the
+    token check, then _apply_live_warning (a recovered transient API error or a
+    --max-turns stop turns a PASS into WARN and is appended to the detail).
+    Sets r.verdict / r.detail and returns them."""
+    if not _apply_live_failure(r, failure, warning):
+        r.verdict, r.detail = _evaluate_t11(response_text)
+        _apply_live_warning(r, warning)
+    return r.verdict, r.detail
+
+
+# The literal context-reporter.sh prints (`Context utilization [SEVERITY]: ...`).
+# Matched only inside hook attachments: CLAUDE.md and skill bodies describe the
+# reporter in prose, and a bare "Context utilization" / "context-reporter" scan
+# matched those in every session (observed 2026-09-24: 0 real injections in
+# two Tier 1 transcripts that the old scan PASSed).
+_CTX_INJECTION_MARKER = "Context utilization ["
+
+
+def _count_context_injections(records) -> int:
+    """Number of distinct context-reporter injections in hook attachments.
+
+    One injection is recorded TWICE: a hook_success attachment (the hook's
+    stdout) and a hook_additional_context attachment (the injected text), both
+    carrying the same attachment.toolUseID (observed 2.1.281). Injections are
+    therefore deduplicated by toolUseID; an attachment without one counts on
+    its own."""
+    seen = set()
+    count = 0
+    for rec in records or []:
+        att = _hook_attachment(rec)
+        if att is None or _CTX_INJECTION_MARKER not in json.dumps(att, ensure_ascii=False):
+            continue
+        tool_use_id = att.get("toolUseID")
+        if isinstance(tool_use_id, str) and tool_use_id:
+            if tool_use_id in seen:
+                continue
+            seen.add(tool_use_id)
+        count += 1
+    return count
+
+
+def _evaluate_t15(final_snap: dict, transcript_model, failure: str):
+    """Pure T1.5 verdict over the post-backoff /tmp cache snapshot.
+
+    Judges the MODEL cache against the model the transcript actually ran:
+      * live-run failure -> SKIP (no real model session to judge against);
+      * model cache equals the transcript model -> PASS;
+      * model cache present but different -> WARN (a stale or foreign writer —
+        before T1.6 moved to a report-local cache dir, T1.6's own synthetic
+        payload wrote "<model>[1m]" here and made this probe read its output);
+      * model cache absent -> INFO (context-reporter writes it only once the
+        transcript already carries an assistant model when the hook fires; a
+        one-tool headless run can finish first — inference from the hook code).
+    The ctx-window cache never affects the verdict: its only writer is the
+    context-bar.sh statusline, which `claude -p` does not render, so absence is
+    expected and is reported as a note."""
+    model_val = (final_snap.get("model") or {}).get("value")
+    window_val = (final_snap.get("ctx_window") or {}).get("value")
+    if window_val:
+        window_note = (f" ctx-window cache={window_val} (unexpected under -p, which renders no "
+                       "statusline; the harness no longer writes session caches, so another "
+                       "writer produced it).")
+    else:
+        window_note = (" ctx-window cache absent — expected: its only writer is the statusline "
+                       "(context-bar.sh), and -p renders none.")
+    if failure:
+        return Verdict.SKIP, f"Live run did not reach a real model ({failure}); no session model to compare." + window_note
+    if not transcript_model:
+        return Verdict.INFO, "No real model found in the transcript, so the model cache cannot be judged." + window_note
+    if not model_val:
+        return Verdict.INFO, (f"Model cache absent after the bounded retry (transcript model "
+                              f"{transcript_model}); context-reporter.sh writes it only when a hook fires "
+                              "after the transcript records an assistant model, which a one-tool headless "
+                              "run can outpace." + window_note)
+    if model_val == transcript_model:
+        return Verdict.PASS, f"Model cache matches the transcript model ({model_val})." + window_note
+    return Verdict.WARN, (f"Model cache '{model_val}' does not match the transcript model "
+                          f"'{transcript_model}' — the cache was written by something other than this "
+                          "session's context-reporter pass." + window_note)
+
+
+def _t16_payload(observed_model: str, transcript, sid: str) -> str:
+    """Statusline payload for T1.6, built from the OBSERVED session model. The
+    200000 window is a synthetic payload value (a -p session has no statusline
+    payload to copy), so this probe proves the renderer handles the real
+    transcript, not the session's window."""
+    return json.dumps({
+        "model": {"display_name": observed_model, "id": observed_model},
+        "cwd": BASE_DIR,
+        "transcript_path": str(transcript),
+        "context_window": {"context_window_size": 200000},
+        "session_id": sid,
+        "effort": {"level": "high"},
+        "rate_limits": {},
+    })
+
+
+def _run_t16(r6: ProbeResult, transcript, sid: str, observed_model, cache_dir, failure: str) -> None:
+    """T1.6 — render context-bar.sh against the real session transcript with
+    DAAF_CONTEXT_BAR_CACHE_DIR pointed at a report-local directory, so the
+    render can never write (and T1.5 can never read back) the real session's
+    /tmp/claude-model-* or /tmp/claude-ctx-window-* caches."""
+    if failure:
+        r6.verdict = Verdict.SKIP
+        r6.detail = f"Live run did not reach a real model ({failure}); no real session to render."
+        return
+    if not transcript:
+        r6.verdict = Verdict.SKIP
+        r6.detail = "No transcript to render against."
+        return
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["DAAF_CONTEXT_BAR_CACHE_DIR"] = str(cache_dir)
+    try:
+        proc = subprocess.run(
+            ["bash", str(Path(BASE_DIR) / ".claude" / "scripts" / "context-bar.sh")],
+            input=_t16_payload(observed_model, transcript, sid),
+            capture_output=True, text=True, timeout=20, env=env,
+        )
+        out = (proc.stdout or "").strip()
+        r6.add_evidence(f"DAAF_CONTEXT_BAR_CACHE_DIR={cache_dir} context-bar.sh <payload model={observed_model}>",
+                        output=out[:300] or "<empty>")
+        written = sorted(p.name for p in cache_dir.glob(f"*{sid}*")) if cache_dir.is_dir() else []
+        r6.add_evidence(f"ls {cache_dir}", output=", ".join(written) or "<nothing written>",
+                        note="report-local caches; the real /tmp session caches are untouched")
+        r6.verdict = Verdict.PASS if (proc.returncode == 0 and out) else Verdict.WARN
+        r6.detail = ("context-bar renders against the real session transcript (report-local cache dir)."
+                     if r6.verdict == Verdict.PASS else "context-bar produced no output for the real session.")
+    except subprocess.TimeoutExpired:
+        r6.verdict = Verdict.WARN
+        r6.detail = "context-bar timed out on the real session."
+
+
+def _evaluate_t17(input_tokens, output_tokens, total_turns, failure: str):
+    """Pure T1.7 verdict. None-safe: a timeout or CLI-error run leaves token
+    fields None, which used to raise TypeError on `None > 0` and abort the whole
+    run with no report."""
+    has_tokens = any(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+                     for v in (input_tokens, output_tokens))
+    if failure:
+        return Verdict.FAIL, f"No model usage to parse — the live run did not reach a real model: {failure}"
+    if has_tokens:
+        return Verdict.PASS, "Token/turn/cost fields parsed from the JSON result."
+    if isinstance(total_turns, int) and total_turns > 0:
+        return Verdict.WARN, ("Turns parsed but token fields are zero/None (parse may have missed "
+                              "the modelUsage block).")
+    return Verdict.WARN, "Token/cost fields are zero (parse may have missed the result message)."
+
+
+def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache_dir=None) -> list:
     """One live claude -p round-trip plus the evidence checks around it.
 
-    Checks (each a capability-structural ProbeResult): response returned;
-    transcript located (archived-or-live); audit.jsonl entries exist for the
-    session; context-reporter injection visible; /tmp caches populated (with
-    headless 200k results interpreted against the narrow static model map);
-    statuslines render against the REAL session; token/cost fields parse from the
-    JSON result.
+    Checks (each a capability-structural ProbeResult): a real model answered
+    and completed the scripted task; transcript located (archived-or-live);
+    audit.jsonl entries exist for the session; a real context-reporter hook
+    injection is visible; the /tmp model cache matches the transcript model;
+    context-bar renders against the REAL transcript (into statusline_cache_dir,
+    never the real /tmp caches); token/cost fields parse from the JSON result.
+
+    statusline_cache_dir: report-local directory for T1.6's context-bar caches
+    (run_deploy_smoke passes {report}/evidence/t16_statusline_cache); defaults
+    to a scratch directory inside the project, never /tmp.
     """
     results = []
     result, meta = execute_smoke_run(
         prompt=TIER1_PROMPT, max_turns=6, timeout=timeout, extra_env=extra_env,
     )
     sid = meta["session_id"]
+    transcript = find_transcript(sid)
+    records = load_transcript_records(transcript)
+    # failure gates T1.1/T1.7 (FAIL) and T1.5/T1.6 (SKIP). warning (a recovered
+    # transient API error or a --max-turns stop) is applied to T1.1 only: it is
+    # the round-trip probe, and the other checks do not depend on a clean run.
+    failure, warning = _live_run_health(result, records)
+    transcript_model = _transcript_model(records)
 
-    # T1.1 — response returned
+    # T1.1 — a real model answered and finished the scripted task
     r1 = ProbeResult(probe_id="T1.1", name="Live round-trip response", tier="1", profile=profile_name)
     # result.error can carry up to 500 chars of raw CLI stderr — scrub any secret
     # env value out of it before it enters evidence.
     r1.add_evidence(f"claude -p (session {sid[:8]})", output=(result.response_text or "")[:300],
                     note=f"error={scrub_secret_values(result.error or '')}")
-    if result.error and "Timed out" in (result.error or ""):
-        r1.verdict = Verdict.FAIL
-        r1.detail = f"Round-trip timed out after {timeout}s."
-    elif result.response_text:
-        r1.verdict = Verdict.PASS
-        r1.detail = "Live round-trip returned a response."
-    else:
-        r1.verdict = Verdict.FAIL
-        r1.detail = f"No response text; error={result.error}"
+    r1.add_evidence("transcript model (last non-placeholder assistant message.model) / modelUsage ids",
+                    output=f"transcript model={transcript_model}; modelUsage ids={_model_usage_ids(result)}")
+    # Shared gate helpers (health evidence, FAIL, PASS->WARN), same as Tier 2.
+    _judge_t11(r1, result.response_text, failure, warning)
     results.append(r1)
 
     # T1.2 — transcript located
     r2 = ProbeResult(probe_id="T1.2", name="Transcript located", tier="1", profile=profile_name)
-    transcript = find_transcript(sid)
     r2.add_evidence(f"find_transcript({sid[:8]}...)", output=str(transcript) if transcript else "<not found>")
     if transcript:
         r2.verdict = Verdict.PASS
@@ -1030,123 +1935,66 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
         r3.detail = "No audit.jsonl entries for the session (audit-log hook may not have fired)."
     results.append(r3)
 
-    # T1.4 — context-reporter injection visible in transcript.
-    # context-reporter.sh injects at most once per INJECT_INTERVAL=60s. A
-    # cold-start headless probe completes in seconds — well under that cadence —
-    # so an absent injection is EXPECTED, not an install defect. The hook still
-    # fires and falls back to a 200k window when the ctx-window cache is
-    # unresolved, so silence here is cadence-driven, never a window-resolution
-    # failure. Verdict is INFO (not WARN) when absent so it does not read as a
-    # possible defect.
+    # T1.4 — a REAL context-reporter injection: "Context utilization [" inside a
+    # hook attachment (hook_additional_context / hook_success), never CLAUDE.md
+    # or skill prose that merely describes the reporter.
+    #
+    # Absent is INFO, not FAIL. The first hook call in a fresh session is not
+    # rate-limited (no prior timestamp), but context-reporter.sh emits nothing
+    # when it cannot yet measure the transcript, and this probe makes a single
+    # Bash call seconds into the session. Observed 2026-09-24: both Tier 1 runs
+    # had 0 injections while a Tier 2 dispatch run (a longer session) had one.
+    # So presence is positive evidence the hook fired; absence is not evidence
+    # it is broken (T0.6 covers registration, bats covers the hook itself).
     r4 = ProbeResult(probe_id="T1.4", name="Context-reporter injection", tier="1", profile=profile_name)
-    injection_seen = False
-    if transcript:
-        for rec in read_transcript_lines(transcript):
-            blob = json.dumps(rec)
-            if "Context utilization" in blob or "context-reporter" in blob:
-                injection_seen = True
-                break
+    injections = _count_context_injections(records)
     r4.add_evidence(
-        "scan transcript for 'Context utilization'", output=str(injection_seen),
-        note="context-reporter injects at most once per 60s (INJECT_INTERVAL)",
+        f"count hook attachments containing '{_CTX_INJECTION_MARKER}', deduplicated by toolUseID",
+        output=str(injections),
+        note=("only type=attachment hook records count; CLAUDE.md/skill text is excluded; the "
+              "hook_success + hook_additional_context pair for one tool call counts once"),
     )
-    if injection_seen:
+    if injections:
         r4.verdict = Verdict.PASS
-        r4.detail = "context-reporter injection visible in transcript (hook fired within the run)."
+        r4.detail = f"context-reporter injected {injections} time(s) via a hook attachment during the run."
     else:
         r4.verdict = Verdict.INFO
         r4.detail = (
-            "No context-reporter injection this run — EXPECTED for a short headless probe. "
-            "context-reporter injects at most once per 60s (INJECT_INTERVAL), and a cold-start probe "
-            "finishes in seconds. The hook still fires and falls back to a 200k window when the cache is "
-            "unresolved, so absence is cadence-driven, not a defect."
+            "No context-reporter hook injection in this short headless run. Not a defect signal: the "
+            "hook emits nothing until it can measure the transcript, and later calls are rate-limited "
+            "to one per 60s; a one-tool probe often ends first. T0.6 verifies the registration."
         )
     results.append(r4)
 
-    # T1.5 — /tmp coordination caches (bounded-retry read; headless-mode-aware).
+    # T1.5 — /tmp model cache vs the transcript model (bounded-retry read).
     #
-    # Writers (verified): context-bar.sh is the sole writer of the per-session
-    # ctx-window cache; context-reporter.sh cache_model() writes the model cache.
-    # Both fire during a headless run but ASYNC relative to CLI exit, so an earlier
-    # single-shot read raced the writes. Poll with a bounded ~5s backoff and quote
-    # BOTH the first and final read.
-    #
-    # A headless statusline payload may omit its real context-window size, so
-    # context-bar.sh begins from 200000. Its static map corrects supported GPT ids
-    # and exact z-ai/glm-5.2 or terminal -YYYYMMDD snapshots; Air and arbitrary
-    # future GLM suffixes do not inherit that constant. Dynamic OpenRouter metadata
-    # remains authoritative, including a resolved value of exactly 200000. Native
-    # Claude [1m] ids still depend on the supplied statusline window. Therefore the
-    # primary signal is whether both caches are POPULATED AT ALL; a populated cache
-    # is PASS, while a genuinely absent cache after retries is WARN. Physical GLM
-    # capacity does not alter its conservative context-quality threshold family.
+    # Writers (verified): context-reporter.sh resolve_model_cache() writes
+    # /tmp/claude-model-<sid> (the bare transcript model); the statusline
+    # (context-bar.sh) is the only writer of /tmp/claude-ctx-window-<sid>, and
+    # `claude -p` renders no statusline. T1.5 runs BEFORE T1.6 on purpose, and
+    # T1.6 now renders into a report-local cache dir, so the harness can no
+    # longer write the caches this probe reads (it used to: the "[1m]" model and
+    # 200000 window a 2026-09-24 run PASSed on were T1.6's own synthetic payload).
     r5 = ProbeResult(probe_id="T1.5", name="/tmp coordination caches", tier="1", profile=profile_name)
     first_snap = snapshot_tmp_caches(sid)
     final_snap = first_snap
     deadline = time.time() + 5.0
     while time.time() < deadline:
-        if (final_snap.get("ctx_window") or {}).get("value") and (final_snap.get("model") or {}).get("value"):
+        if (final_snap.get("model") or {}).get("value"):
             break
         time.sleep(0.5)
         final_snap = snapshot_tmp_caches(sid)
     r5.add_evidence(f"read /tmp/claude-{{model,ctx-window}}-{sid[:8]} (t=0, pre-backoff)", output=json.dumps(first_snap))
     r5.add_evidence(f"read /tmp/claude-{{model,ctx-window}}-{sid[:8]} (after <=5s backoff)", output=json.dumps(final_snap))
-    window_val = (final_snap.get("ctx_window") or {}).get("value")
-    model_val = (final_snap.get("model") or {}).get("value")
-    missing = []
-    if not model_val:
-        missing.append("model cache absent after retries (writer: context-reporter.sh cache_model)")
-    if not window_val:
-        missing.append("ctx-window cache absent after retries (writer: statusline context-bar.sh)")
-    if missing:
-        r5.verdict = Verdict.WARN
-        r5.detail = (
-            "; ".join(missing)
-            + " — an absent cache after the bounded retry can indicate the writer did not run for this "
-            "headless session."
-        )
-    else:
-        r5.verdict = Verdict.PASS
-        is_wide = _is_wide_context_model(result.model_id)
-        note = ""
-        if is_wide and str(window_val).strip() == "200000":
-            note = (
-                " Window value 200000 can be valid headless statusline behavior for a wide-window model: "
-                "context-bar.sh statically maps supported GPT ids plus exact/date-snapshot GLM-5.2, while "
-                "native Claude [1m] ids depend on the payload and authoritative dynamic OpenRouter metadata "
-                "may itself resolve to exactly 200000. Air and arbitrary GLM suffixes are intentionally not "
-                "classified as the exact GLM model. Cache population, not this one numeric value, is the probe."
-            )
-        r5.detail = f"/tmp caches populated (model={model_val}, window={window_val})." + note
+    r5.add_evidence("transcript model (last non-placeholder assistant message.model)", output=str(transcript_model))
+    r5.verdict, r5.detail = _evaluate_t15(final_snap, transcript_model, failure)
     results.append(r5)
 
-    # T1.6 — statuslines render against the REAL session
+    # T1.6 — context-bar against the REAL transcript, report-local caches.
     r6 = ProbeResult(probe_id="T1.6", name="Statusline against real session", tier="1", profile=profile_name)
-    if transcript:
-        payload = json.dumps({
-            "model": {"display_name": result.model_id, "id": result.model_id},
-            "cwd": BASE_DIR,
-            "transcript_path": str(transcript),
-            "context_window": {"context_window_size": 200000},
-            "session_id": sid,
-            "effort": {"level": "high"},
-            "rate_limits": {},
-        })
-        try:
-            proc = subprocess.run(
-                ["bash", str(Path(BASE_DIR) / ".claude" / "scripts" / "context-bar.sh")],
-                input=payload, capture_output=True, text=True, timeout=20,
-            )
-            out = (proc.stdout or "").strip()
-            r6.add_evidence("context-bar.sh <real-session payload>", output=out[:300] or "<empty>")
-            r6.verdict = Verdict.PASS if (proc.returncode == 0 and out) else Verdict.WARN
-            r6.detail = "context-bar renders against the real session." if r6.verdict == Verdict.PASS else "context-bar produced no output for the real session."
-        except subprocess.TimeoutExpired:
-            r6.verdict = Verdict.WARN
-            r6.detail = "context-bar timed out on the real session."
-    else:
-        r6.verdict = Verdict.SKIP
-        r6.detail = "No transcript to render against."
+    observed_model = transcript_model or next(iter(_model_usage_ids(result)), "") or result.model_id
+    cache_dir = statusline_cache_dir or (Path(BASE_DIR) / "scripts" / "scratch" / "deploy_smoke_t16_cache")
+    _run_t16(r6, transcript, sid, observed_model, cache_dir, failure)
     results.append(r6)
 
     # T1.7 — token / cost fields parse from the JSON result
@@ -1156,12 +2004,8 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
         output=(f"input_tokens={result.input_tokens} output_tokens={result.output_tokens} "
                 f"total_cost_usd={result.total_cost_usd} turns={result.total_turns}"),
     )
-    if result.total_turns > 0 or result.input_tokens > 0:
-        r7.verdict = Verdict.PASS
-        r7.detail = "Token/turn/cost fields parsed from the JSON result."
-    else:
-        r7.verdict = Verdict.WARN
-        r7.detail = "Token/cost fields are zero (parse may have missed the result message)."
+    r7.verdict, r7.detail = _evaluate_t17(result.input_tokens, result.output_tokens,
+                                          result.total_turns, failure)
     results.append(r7)
 
     return results
@@ -1301,15 +2145,432 @@ def _evaluate_t22(script_created: bool, body, nonce: str):
     return verdict, facts
 
 
-def _tool_uses_in_transcript(transcript: Path):
-    """Yield (tool_name, block) for every tool_use across a transcript (main +
-    any subagent transcripts are handled by the caller)."""
-    for rec in read_transcript_lines(transcript):
-        if rec.get("type") != "assistant":
+def _evaluate_t23(transcripts_records):
+    """Pure T2.3 verdict over the main + subagent transcripts' records.
+
+    PASS needs a web call whose tool_result came back without is_error: a
+    WebSearch, or a Bash call running DAAF's fetch protocol (web_fetch.sh). The
+    built-in WebFetch is not a pass signal — block-webfetch.sh denies it, so its
+    presence means the agent took a disabled path. Returns (verdict, facts)."""
+    facts = {"web_calls": 0, "succeeded": 0, "errored_or_no_result": 0, "tools": []}
+    for records in transcripts_records:
+        for name, inp, is_error in _tool_calls(records):
+            is_fetch = name == "Bash" and "web_fetch.sh" in str(_tool_input(inp).get("command", ""))
+            if name != "WebSearch" and not is_fetch:
+                continue
+            facts["web_calls"] += 1
+            facts["tools"].append("web_fetch.sh" if is_fetch else name)
+            if is_error is False:
+                facts["succeeded"] += 1
+            else:
+                facts["errored_or_no_result"] += 1
+    return (Verdict.PASS if facts["succeeded"] else Verdict.FAIL), facts
+
+
+def _evaluate_t24(records, expected_skill: str = "polars"):
+    """Pure T2.4 verdict: PASS needs a Skill call for expected_skill (bare or
+    plugin-qualified "x:polars") whose tool_result is not an error. Any Skill
+    call is not enough — the orchestrator skill loads first in most sessions.
+    Returns (verdict, facts)."""
+    facts = {"skills_called": [], "expected_loaded": False}
+    for name, inp, is_error in _tool_calls(records):
+        if name != "Skill":
             continue
-        for block in rec.get("message", {}).get("content", []):
-            if isinstance(block, dict) and block.get("type") == "tool_use":
-                yield block.get("name", ""), block
+        skill = str(_tool_input(inp).get("skill", "")).lstrip("/")
+        facts["skills_called"].append(skill)
+        if (skill == expected_skill or skill.endswith(":" + expected_skill)) and is_error is False:
+            facts["expected_loaded"] = True
+    return (Verdict.PASS if facts["expected_loaded"] else Verdict.FAIL), facts
+
+
+def _evaluate_t25(records):
+    """Pure T2.5 facts: did the model request isolation on an Agent/Task call,
+    and did block-remote-isolation.sh's own hook attachment rewrite the input
+    (its command names the hook and its output carries updatedInput)?"""
+    requested = any(name in ("Agent", "Task") and "isolation" in _tool_input(inp)
+                    for name, inp, _ in _tool_calls(records))
+    stripped = False
+    for rec in records or []:
+        att = _hook_attachment(rec)
+        if att is None:
+            continue
+        if ("block-remote-isolation.sh" in str(att.get("command", ""))
+                and "updatedInput" in json.dumps(att)):
+            stripped = True
+            break
+    if not requested:
+        verdict = Verdict.SKIP
+    elif stripped:
+        verdict = Verdict.PASS
+    else:
+        verdict = Verdict.WARN
+    return verdict, {"isolation_requested": requested, "strip_evidence": stripped}
+
+
+# The exact deny text block-nested-dispatch.sh returns as its
+# permissionDecisionReason. It surfaces as an is_error tool_result in the
+# SUBAGENT transcript (observed on earlier pins). The orchestrator skill's prose
+# ("subagents never launch nested subagents") does not contain this phrase, and
+# prose is excluded structurally anyway.
+_NESTED_DENY_PHRASE = "may not launch nested subagents"
+
+
+def _subagent_tool_names(records):
+    """The tool names a subagent was actually given, from its prompt_snapshot
+    attachment's `tools` list (observed 2.1.281), or None if not recorded."""
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "attachment":
+            continue
+        att = rec.get("attachment")
+        if not isinstance(att, dict) or att.get("type") != "prompt_snapshot":
+            continue
+        tools = att.get("tools")
+        if isinstance(tools, list):
+            return [t.get("name") if isinstance(t, dict) else str(t) for t in tools]
+    return None
+
+
+def _subagent_deferred_tool_names(records):
+    """The deferred tool names a subagent could load on demand (e.g. via
+    ToolSearch), from its deferred_tools_delta attachments, or None if it has
+    none. Observed shape (orchestrator transcripts, 2026-08):
+    {"type": "deferred_tools_delta", "addedNames": [...], "removedNames": [...],
+    "addedLines": ...}. On 2.1.281 it is sometimes present in subagent
+    transcripts (the 2026-09-24 17:29 live T2.6 subagent listed 22 deferred
+    names, including TaskStop but not Agent/Task) and sometimes absent (the
+    earlier 2026-09-24 transcripts checked), so both cases are handled. Deltas
+    are applied in transcript order (added, then removed)."""
+    names = None
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "attachment":
+            continue
+        att = rec.get("attachment")
+        if not isinstance(att, dict) or att.get("type") != "deferred_tools_delta":
+            continue
+        if names is None:
+            names = set()
+        added = att.get("addedNames")
+        removed = att.get("removedNames")
+        if isinstance(added, list):
+            names.update(str(n) for n in added)
+        if isinstance(removed, list):
+            names.difference_update(str(n) for n in removed)
+    return sorted(names) if names is not None else None
+
+
+# Exact tool names that dispatch a subagent. Matched by exact name, never by
+# substring: "TaskOutput" / "TaskStop" are unrelated deferred tools.
+_DISPATCH_TOOLS = frozenset({"Agent", "Task"})
+
+# The harness's own rejection text for a tool the session does not have
+# (observed 2.1.281, session b5524e7f: "<tool_use_error>Error: No such tool
+# available: Agent. Agent is disabled for this session, ...").
+_NO_SUCH_TOOL_PHRASE = "No such tool available"
+
+
+def _top_level_dispatches(records) -> list:
+    """Every Agent/Task tool_use in the MAIN (orchestrator) transcript, errored
+    or not, as [{"id", "prompt", "agent_id", "is_error"}] in call order.
+
+    An errored call can still have started a subagent: "Agent terminated early
+    due to an API error: ..." results leave a subagent transcript behind
+    (observed in stored transcripts, e.g. 2026-07-26 c6024f92: 1 call, 1
+    terminated early, 1 subagent file). So no call is dropped here; linkage
+    (_subagent_identity) decides which transcript belongs to which call.
+
+    agent_id comes from the tool_result record's toolUseResult.agentId, which a
+    completed dispatch carries (observed 2.1.281, session b5524e7f:
+    "ab44467f9110314f5", matching the subagent's own agentId). A terminated-early
+    result's toolUseResult is a plain error string with no agentId (observed,
+    c6024f92), so its subagent is linked by prompt instead."""
+    uses = []
+    results = {}
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        tur = rec.get("toolUseResult")
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if (rec.get("type") == "assistant" and block.get("type") == "tool_use"
+                    and block.get("name") in _DISPATCH_TOOLS):
+                prompt = _tool_input(block.get("input")).get("prompt")
+                uses.append((block.get("id"), prompt if isinstance(prompt, str) else None))
+            elif rec.get("type") == "user" and block.get("type") == "tool_result":
+                agent_id = tur.get("agentId") if isinstance(tur, dict) else None
+                results[block.get("tool_use_id")] = (bool(block.get("is_error")),
+                                                     agent_id if isinstance(agent_id, str) else None)
+    out = []
+    for tid, prompt in uses:
+        is_error, agent_id = results.get(tid, (None, None))
+        out.append({"id": tid, "prompt": prompt, "agent_id": agent_id, "is_error": is_error})
+    return out
+
+
+def _subagent_identity(records):
+    """(agent_id, opening_prompt) of a subagent transcript, either may be None.
+
+    agent_id is the `agentId` field its records carry (observed 2.1.281). The
+    opening prompt is the text of its first user record, which equals the
+    parent Agent/Task tool_use's input.prompt: verified by exact match for 10/10
+    subagents of 2026-07-16 6f6e5381 (1 of them terminated early), the
+    terminated-early subagent of 2026-07-26 c6024f92, and the live 2.1.281
+    subagent of b5524e7f."""
+    agent_id = None
+    prompt = None
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        if agent_id is None and isinstance(rec.get("agentId"), str) and rec.get("agentId"):
+            agent_id = rec["agentId"]
+        if prompt is None and rec.get("type") == "user":
+            msg = rec.get("message")
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                text = "".join(str(b.get("text", "")) for b in content
+                               if isinstance(b, dict) and b.get("type") == "text")
+            else:
+                text = ""
+            if text:
+                prompt = text
+        if agent_id is not None and prompt is not None:
+            break
+    return agent_id, prompt
+
+
+def _dispatch_call_results(records) -> list:
+    """[(is_error, result_text)] for every Agent/Task tool_use in a transcript,
+    in call order. is_error is None when no tool_result was recorded;
+    result_text is the tool_result content flattened to text (truncated).
+
+    Observed 2.1.281 shape of a harness rejection at spawn depth 1 (subagent
+    transcript of session b5524e7f): tool_result is_error true, content
+    "<tool_use_error>Error: No such tool available: Agent. Agent is disabled for
+    this session, in subagents as well as here.</tool_use_error>"."""
+    uses = []
+    results = {}
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if (rec.get("type") == "assistant" and block.get("type") == "tool_use"
+                    and block.get("name") in _DISPATCH_TOOLS):
+                uses.append(block.get("id"))
+            elif rec.get("type") == "user" and block.get("type") == "tool_result":
+                body = block.get("content", "")
+                if isinstance(body, list):
+                    body = " ".join(str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in body)
+                results[block.get("tool_use_id")] = (bool(block.get("is_error")), str(body)[:200])
+    return [results.get(tid, (None, "")) for tid in uses]
+
+
+def _nested_deny_seen(records) -> bool:
+    """A real deny record: an is_error tool_result carrying the hook's deny
+    text, or a hook attachment whose output is permissionDecision deny with it.
+    The is_error tool_result form was observed on earlier pins; the
+    hook-attachment form is inferred (not yet observed live), so the check
+    looks for the deny text and a "deny" token anywhere in the attachment."""
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        att = _hook_attachment(rec)
+        if att is not None:
+            blob = json.dumps(att, ensure_ascii=False)
+            if _NESTED_DENY_PHRASE in blob and '"deny"' in blob.replace('\\"', '"'):
+                return True
+            continue
+        if rec.get("type") != "user":
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (isinstance(block, dict) and block.get("type") == "tool_result"
+                    and block.get("is_error")
+                    and _NESTED_DENY_PHRASE in json.dumps(block.get("content", ""), ensure_ascii=False)):
+                return True
+    return False
+
+
+def _evaluate_t26(subagent_records, main_records=None):
+    """Pure T2.6 verdict. The nested-dispatch evidence comes from the
+    dispatched subagents' transcripts (the main transcript carries skill prose,
+    never the child's deny); main_records is used ONLY to identify the
+    top-level Agent/Task calls each subagent transcript belongs to.
+
+    Linkage (_top_level_dispatches / _subagent_identity): a subagent transcript
+    belongs to a top-level call when its agentId equals that call's
+    toolUseResult.agentId, or its opening prompt equals that call's
+    input.prompt. Errored top-level calls are kept — a call that "terminated
+    early due to an API error" did start a subagent — so a retry after such a
+    failure (two calls, two transcripts) links cleanly and is not nesting. A
+    transcript that has an identity but links to NO top-level call was started
+    by something else: a nested dispatch. A transcript with neither agentId nor
+    prompt is "unlinkable" and is only judged by the count backstop: more
+    transcripts than top-level calls (all of them, errored or not; each starts
+    at most one subagent). If the main transcript yields no top-level call
+    (missing or unparsed), linkage is impossible and the backstop assumes the
+    one outer dispatch the probe requests.
+
+    Caveat for future probes: linkage knows only the main transcript's
+    Agent/Task tool_use calls. A subagent started any other way inside the T2.6
+    session (a slash-command review such as /code-review, a forked skill, or
+    any other harness-launched subagent) leaves a subagent transcript whose
+    agentId and opening prompt match no top-level call. It therefore reads as
+    unlinked, and so as a nested dispatch (FAIL), even though no subagent
+    nested. The T2.6 session must launch no subagent other than its one
+    orchestrator Agent/Task dispatch.
+
+    Order:
+      * no subagent transcript -> SKIP (nothing was dispatched to test);
+      * a subagent's OWN Agent/Task call got a non-error tool_result -> FAIL (a
+        nested dispatch ran, wherever its transcript landed);
+      * a subagent transcript that links to no top-level call -> FAIL;
+      * more subagent transcripts than top-level calls -> FAIL (backstop);
+      * a nested Agent/Task attempt with a real deny record -> PASS (hook layer);
+      * a nested attempt while Agent/Task was absent from every subagent's
+        recorded tool list and deferred names, and EVERY such attempt got an
+        error tool_result -> PASS (harness layer). The detail says the tool was
+        absent only when every error text is the harness's "No such tool
+        available" (observed 2.1.281, session b5524e7f); otherwise it says
+        neutrally that every attempt errored while the tool was absent. The
+        hook backstop was not exercised;
+      * any other nested attempt without a deny record -> WARN (no spawn, but
+        no proof — e.g. the tool was available, or a result is missing);
+      * no attempt, and the subagent's recorded tool list AND its deferred tool
+        names (deferred_tools_delta, when present) lack Agent and Task
+        -> PASS: nesting is impossible at the harness layer
+        (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 withholds the tools, observed
+        2.1.261 and 2.1.281); block-nested-dispatch.sh is the backstop and is
+        not exercised — its deterministic coverage is tests/bash/block_nested_dispatch.bats;
+      * no attempt, tool list not recorded -> INFO (only the model's own
+        report, which is not evidence of tool absence);
+      * no attempt although Agent/Task WAS available (in the tool list or as a
+        deferred tool) -> SKIP (the model did not follow the probe; nothing was
+        tested).
+    Returns (verdict, facts, detail)."""
+    tool_lists = [_subagent_tool_names(recs) for recs in subagent_records]
+    deferred_lists = [_subagent_deferred_tool_names(recs) for recs in subagent_records]
+    recorded = [t for t in tool_lists if t is not None]
+    deferred = sorted({n for d in deferred_lists if d for n in d})
+    available_in_tools = any(_DISPATCH_TOOLS & set(t) for t in recorded)
+    available_deferred = bool(_DISPATCH_TOOLS & set(deferred))
+    if available_in_tools or available_deferred:
+        dispatch_available = True
+    elif recorded and len(recorded) == len(tool_lists):
+        # Absence is claimed only when EVERY subagent transcript recorded its
+        # tool list; one unrecorded list leaves it unknown.
+        dispatch_available = False
+    else:
+        dispatch_available = None
+
+    tops = _top_level_dispatches(main_records)
+    top_agent_ids = {t["agent_id"] for t in tops if t["agent_id"]}
+    top_prompts = {t["prompt"] for t in tops if t["prompt"]}
+    linked = unlinked = unlinkable = 0
+    for recs in subagent_records:
+        agent_id, prompt = _subagent_identity(recs)
+        if (agent_id and agent_id in top_agent_ids) or (prompt and prompt in top_prompts):
+            linked += 1
+        elif agent_id or prompt:
+            unlinked += 1
+        else:
+            unlinkable += 1
+    if not tops:
+        # No top-level call recorded: nothing to link against, so identity
+        # cannot prove nesting; only the one-outer-dispatch backstop applies.
+        unlinked = 0
+    expected = max(len(tops), 1)
+
+    nested = [res for recs in subagent_records for res in _dispatch_call_results(recs)]
+    errored = [text for is_error, text in nested if is_error is True]
+    succeeded = sum(1 for is_error, _ in nested if is_error is False)
+    facts = {
+        "subagent_transcripts": len(subagent_records),
+        "top_level_dispatches": len(tops),
+        "top_level_errored": sum(1 for t in tops if t["is_error"] is True),
+        "linked_subagents": linked,
+        "unlinked_subagents": unlinked,
+        "unlinkable_subagents": unlinkable,
+        "retried_dispatch": len(tops) > 1 and 1 < len(subagent_records) <= len(tops),
+        "nested_attempted": bool(nested),
+        "nested_calls": len(nested),
+        "nested_errored": len(errored),
+        "nested_succeeded": succeeded,
+        "nested_error_text": scrub_secret_values(errored[0])[:160] if errored else None,
+        "denial_seen": any(_nested_deny_seen(recs) for recs in subagent_records),
+        "dispatch_tool_available": dispatch_available,
+        "subagent_tools": recorded[0] if recorded else None,
+        "subagent_deferred_tools": deferred if any(d is not None for d in deferred_lists) else None,
+    }
+    if not subagent_records:
+        return Verdict.SKIP, facts, ("No subagent transcript — the outer dispatch did not happen, so "
+                                     "nested dispatch was not tested (see T2.1).")
+    if succeeded:
+        return Verdict.FAIL, facts, (
+            f"A nested dispatch RAN: {succeeded} of a subagent's own Agent/Task call(s) returned a "
+            "non-error result. Check that CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 is still in "
+            "settings.json env and that block-nested-dispatch.sh sits first in both the Task and "
+            "Agent matcher chains; cross-check with tests/bash/block_nested_dispatch.bats.")
+    if unlinked:
+        return Verdict.FAIL, facts, (
+            f"A nested dispatch RAN: {unlinked} subagent transcript(s) match no top-level Agent/Task "
+            "call in the main transcript (neither its toolUseResult agentId nor its prompt), so "
+            "something other than the orchestrator started them. Check that "
+            "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 is still in settings.json env and that "
+            "block-nested-dispatch.sh sits first in both the Task and Agent matcher chains; "
+            "cross-check with tests/bash/block_nested_dispatch.bats.")
+    if len(subagent_records) > expected:
+        return Verdict.FAIL, facts, (
+            f"A nested dispatch appears to have actually RUN ({len(subagent_records)} subagent transcripts, "
+            f"more than the {expected} top-level Agent/Task dispatch call(s) in the main transcript, "
+            "errored calls included). "
+            "Check that CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 is still in settings.json env and that "
+            "block-nested-dispatch.sh sits first in both the Task and Agent matcher chains; "
+            "cross-check with tests/bash/block_nested_dispatch.bats.")
+    if facts["nested_attempted"]:
+        if facts["denial_seen"]:
+            return Verdict.PASS, facts, ("block-nested-dispatch.sh denied the subagent's nested dispatch "
+                                         "(deny record in the subagent transcript; no second-level "
+                                         "subagent spawned).")
+        if facts["dispatch_tool_available"] is False and len(errored) == len(nested):
+            if all(_NO_SUCH_TOOL_PHRASE in text for text in errored):
+                return Verdict.PASS, facts, ("Nested dispatch rejected at spawn depth 1 (harness layer): the "
+                                             "subagent's tool list (including any deferred tool names) has no "
+                                             "Agent or Task tool, and each nested Agent/Task attempt got an "
+                                             "error result because the tool was absent. Hook backstop "
+                                             "(block-nested-dispatch.sh) not exercised.")
+            return Verdict.PASS, facts, ("Nested dispatch rejected at spawn depth 1 (harness layer): every "
+                                         "nested Agent/Task attempt returned an error while Agent/Task was "
+                                         "absent from the subagent's tool list (including any deferred tool "
+                                         "names). Hook backstop (block-nested-dispatch.sh) not exercised.")
+        return Verdict.WARN, facts, ("A nested dispatch was attempted and no second-level subagent spawned, "
+                                     "but the subagent transcript holds no deny record from "
+                                     "block-nested-dispatch.sh — inconclusive.")
+    if facts["dispatch_tool_available"] is False:
+        return Verdict.PASS, facts, ("Nested dispatch unavailable at spawn depth 1 (harness layer): the "
+                                     "subagent's tool list (including any deferred tool names) has no "
+                                     "Agent or Task tool, so it could not attempt one. Hook backstop "
+                                     "(block-nested-dispatch.sh) not exercised.")
+    if facts["dispatch_tool_available"] is None:
+        return Verdict.INFO, facts, ("The subagent attempted no nested dispatch and its tool list was not "
+                                     "recorded, so tool absence cannot be confirmed from the transcript.")
+    return Verdict.SKIP, facts, ("The subagent had an Agent/Task tool (in its tool list or as a deferred "
+                                 "tool) but did not attempt the nested dispatch as instructed; nothing "
+                                 "for block-nested-dispatch.sh to deny.")
 
 
 def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
@@ -1357,12 +2618,9 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     r21 = ProbeResult(probe_id="T2.1", name="Subagent dispatch + search", tier="2", profile=profile_name)
     tr21 = find_transcript(meta21["session_id"])
     subs21 = find_subagent_transcripts(meta21["session_id"])
-    dispatched = False
-    if tr21:
-        for name, _ in _tool_uses_in_transcript(tr21):
-            if name in ("Agent", "Task"):
-                dispatched = True
-                break
+    recs21 = load_transcript_records(tr21)
+    failure21, warning21 = _live_run_health(res21, recs21)
+    dispatched = any(name in ("Agent", "Task") for name, _, _ in _tool_calls(recs21))
     marker_returned = marker_token in (res21.response_text or "")
     r21.add_evidence(f"claude -p (session {meta21['session_id'][:8]})", output=(res21.response_text or "")[:200])
     r21.add_evidence("scan transcript for Agent/Task tool_use", output=f"dispatched={dispatched}")
@@ -1375,16 +2633,20 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     # existing) proves the Agent tool fired but NOT that the search result flowed
     # back through the orchestrator. A dispatch with no round-trip is a distinct
     # WARN (dispatch machinery works, result relay did not), not a silent PASS.
-    if dispatched and marker_returned:
-        r21.verdict = Verdict.PASS
-        r21.detail = "search-agent dispatched and the marker token round-tripped back to the orchestrator."
-    elif dispatched and subs21:
-        r21.verdict = Verdict.WARN
-        r21.detail = ("search-agent dispatched (subagent transcript present) but the marker token did "
-                      "not round-trip to the orchestrator response — dispatch worked, result relay did not.")
+    if _apply_live_failure(r21, failure21, warning21):
+        pass
     else:
-        r21.verdict = Verdict.FAIL
-        r21.detail = "No subagent dispatch and/or marker token not returned."
+        if dispatched and marker_returned:
+            r21.verdict = Verdict.PASS
+            r21.detail = "search-agent dispatched and the marker token round-tripped back to the orchestrator."
+        elif dispatched and subs21:
+            r21.verdict = Verdict.WARN
+            r21.detail = ("search-agent dispatched (subagent transcript present) but the marker token did "
+                          "not round-trip to the orchestrator response — dispatch worked, result relay did not.")
+        else:
+            r21.verdict = Verdict.FAIL
+            r21.detail = "No subagent dispatch and/or marker token not returned."
+        _apply_live_warning(r21, warning21)
     results.append(r21)
 
     # T2.2 — coding agent: research-executor writes + runs a tiny script via
@@ -1411,6 +2673,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         except OSError:
             body = None
     verdict22, facts22 = _evaluate_t22(script_created, body, exec_nonce)
+    failure22, warning22 = _live_run_health(res22, load_transcript_records(find_transcript(meta22["session_id"])))
     r22.add_evidence(f"claude -p (session {meta22['session_id'][:8]})", output=(res22.response_text or "")[:200])
     r22.add_evidence(f"test -f {probe_script}", output=str(script_created))
     r22.add_evidence("evaluate freshness: exactly one framed execution-log banner + '# Exit code: 0' "
@@ -1422,21 +2685,25 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
                              f"frame_records={facts22['frame_records']} "
                              f"nonce_in_stdout={facts22['nonce_in_stdout']}"))
     r22.verdict = verdict22
-    if verdict22 == Verdict.PASS:
-        r22.detail = ("research-executor wrote the script and executed it via run_with_capture: "
-                      "exactly one framed '# EXECUTION LOG' banner present, '# Exit code: 0' and "
-                      "'# Capture: COMPLETE' recorded, the wrapper's '# Command:' / "
-                      "'# --- STDOUT ---' / '# --- STDERR ---' records present in order, and this "
-                      "run's nonce appears between the STDOUT and STDERR markers — i.e. in captured "
-                      "output, not source text.")
+    if _apply_live_failure(r22, failure22, warning22):
+        pass
     else:
-        r22.detail = ("T2.2 freshness/success check failed — required ALL of: script created, "
-                      "exactly ONE three-line execution-log banner frame (a bare marker line, or one "
-                      "wrapped in a token '# =' rule, is not a banner; two frames means a forged or "
-                      "duplicated log), recorded '# Exit code: 0', recorded '# Capture: COMPLETE', "
-                      "the wrapper's '# Command:' / '# --- STDOUT ---' / '# --- STDERR ---' records "
-                      "in order, and this run's nonce between the STDOUT and STDERR markers. "
-                      f"Observed: {facts22}.")
+        if verdict22 == Verdict.PASS:
+            r22.detail = ("research-executor wrote the script and executed it via run_with_capture: "
+                          "exactly one framed '# EXECUTION LOG' banner present, '# Exit code: 0' and "
+                          "'# Capture: COMPLETE' recorded, the wrapper's '# Command:' / "
+                          "'# --- STDOUT ---' / '# --- STDERR ---' records present in order, and this "
+                          "run's nonce appears between the STDOUT and STDERR markers — i.e. in captured "
+                          "output, not source text.")
+        else:
+            r22.detail = ("T2.2 freshness/success check failed — required ALL of: script created, "
+                          "exactly ONE three-line execution-log banner frame (a bare marker line, or one "
+                          "wrapped in a token '# =' rule, is not a banner; two frames means a forged or "
+                          "duplicated log), recorded '# Exit code: 0', recorded '# Capture: COMPLETE', "
+                          "the wrapper's '# Command:' / '# --- STDOUT ---' / '# --- STDERR ---' records "
+                          "in order, and this run's nonce between the STDOUT and STDERR markers. "
+                          f"Observed: {facts22}.")
+        _apply_live_warning(r22, warning22)
     results.append(r22)
 
     # T2.3 — web access: search-agent performs one minimal WebSearch.
@@ -1446,26 +2713,27 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "(e.g. the capital of France) and report the fact. Then relay the fact."
     )
     res23, meta23 = execute_smoke_run(prompt=p23, max_turns=12, timeout=timeout, extra_env=extra_env)
-    r23 = ProbeResult(probe_id="T2.3", name="Web access (WebSearch)", tier="2", profile=profile_name)
-    web_ok = False
-    scanned = [find_transcript(meta23["session_id"])] + find_subagent_transcripts(meta23["session_id"])
-    for tr in scanned:
-        if not tr:
-            continue
-        for name, _ in _tool_uses_in_transcript(tr):
-            if name in ("WebSearch", "WebFetch"):
-                web_ok = True
-                break
-        if web_ok:
-            break
+    r23 = ProbeResult(probe_id="T2.3", name="Web access (WebSearch + fetch protocol)", tier="2",
+                      profile=profile_name)
+    recs23 = load_transcript_records(find_transcript(meta23["session_id"]))
+    failure23, warning23 = _live_run_health(res23, recs23)
+    scanned23 = [recs23] + [load_transcript_records(p) for p in find_subagent_transcripts(meta23["session_id"])]
+    verdict23, facts23 = _evaluate_t23(scanned23)
     r23.add_evidence(f"claude -p (session {meta23['session_id'][:8]})", output=(res23.response_text or "")[:200])
-    r23.add_evidence("scan transcripts for WebSearch/WebFetch tool_use", output=f"web_tool_used={web_ok}")
-    if web_ok:
-        r23.verdict = Verdict.PASS
-        r23.detail = "A WebSearch/WebFetch tool_use occurred in the subagent transcript."
-    else:
-        r23.verdict = Verdict.FAIL
-        r23.detail = "No successful WebSearch/WebFetch tool_use observed."
+    r23.add_evidence("pair WebSearch / Bash web_fetch.sh tool_use with its tool_result (main + subagent transcripts)",
+                     output=json.dumps(facts23))
+    if not _apply_live_failure(r23, failure23, warning23):
+        r23.verdict = verdict23
+        if verdict23 == Verdict.PASS:
+            r23.detail = (f"{facts23['succeeded']} web call(s) (WebSearch or web_fetch.sh) returned a "
+                          "non-error tool_result.")
+        elif facts23["web_calls"]:
+            r23.detail = (f"{facts23['web_calls']} web call(s) attempted but none returned a non-error "
+                          "result — web access is reachable from the agent but failing.")
+        else:
+            r23.detail = ("No WebSearch or web_fetch.sh call observed (built-in WebFetch is blocked by "
+                          "block-webfetch.sh and does not count).")
+        _apply_live_warning(r23, warning23)
     results.append(r23)
 
     # T2.4 — skill loading: load the polars skill and confirm one fact.
@@ -1476,21 +2744,19 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     )
     res24, meta24 = execute_smoke_run(prompt=p24, max_turns=8, timeout=timeout, extra_env=extra_env)
     r24 = ProbeResult(probe_id="T2.4", name="Skill loading", tier="2", profile=profile_name)
-    skill_used = False
-    tr24 = find_transcript(meta24["session_id"])
-    if tr24:
-        for name, block in _tool_uses_in_transcript(tr24):
-            if name == "Skill":
-                skill_used = True
-                break
+    recs24 = load_transcript_records(find_transcript(meta24["session_id"]))
+    failure24, warning24 = _live_run_health(res24, recs24)
+    verdict24, facts24 = _evaluate_t24(recs24, "polars")
     r24.add_evidence(f"claude -p (session {meta24['session_id'][:8]})", output=(res24.response_text or "")[:200])
-    r24.add_evidence("scan transcript for Skill tool_use", output=f"skill_loaded={skill_used}")
-    if skill_used:
-        r24.verdict = Verdict.PASS
-        r24.detail = "Skill tool_use present (a Skill call fired; progressive disclosure engaged)."
-    else:
-        r24.verdict = Verdict.FAIL
-        r24.detail = "No Skill tool_use observed."
+    r24.add_evidence("pair Skill tool_use calls with their tool_result", output=json.dumps(facts24))
+    if not _apply_live_failure(r24, failure24, warning24):
+        r24.verdict = verdict24
+        if verdict24 == Verdict.PASS:
+            r24.detail = "The polars skill loaded via a Skill call whose tool_result was not an error."
+        else:
+            r24.detail = (f"No successful Skill call for polars (skills called: "
+                          f"{', '.join(facts24['skills_called']) or 'none'}).")
+        _apply_live_warning(r24, warning24)
     results.append(r24)
 
     # T2.5 — isolation-strip (SKIP-tolerant): a dispatch that includes isolation:"worktree".
@@ -1502,34 +2768,34 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     )
     res25, meta25 = execute_smoke_run(prompt=p25, max_turns=10, timeout=timeout, extra_env=extra_env)
     r25 = ProbeResult(probe_id="T2.5", name="Isolation-strip hook", tier="2", profile=profile_name)
-    tr25 = find_transcript(meta25["session_id"])
-    isolation_requested = False
-    strip_evidence = False
-    if tr25:
-        for rec in read_transcript_lines(tr25):
-            blob = json.dumps(rec)
-            if '"isolation"' in blob:
-                isolation_requested = True
-            if "block-remote-isolation" in blob or "updatedInput" in blob:
-                strip_evidence = True
+    recs25 = load_transcript_records(find_transcript(meta25["session_id"]))
+    failure25, warning25 = _live_run_health(res25, recs25)
+    verdict25, facts25 = _evaluate_t25(recs25)
     r25.add_evidence(f"claude -p (session {meta25['session_id'][:8]})", output=(res25.response_text or "")[:200])
-    r25.add_evidence("scan transcript for isolation param + strip evidence",
-                     output=f"isolation_requested={isolation_requested} strip_evidence={strip_evidence}")
-    if not isolation_requested:
-        r25.verdict = Verdict.SKIP
-        r25.detail = "Model omitted/refused the isolation parameter; nothing to strip (SKIP, not FAIL)."
-    elif strip_evidence:
-        r25.verdict = Verdict.PASS
-        r25.detail = "block-remote-isolation.sh stripped the isolation parameter (hook evidence in transcript)."
-    else:
-        r25.verdict = Verdict.WARN
-        r25.detail = "isolation requested but no explicit strip evidence found; dispatch did not hang."
+    r25.add_evidence("Agent/Task tool_use input has 'isolation'; block-remote-isolation.sh hook attachment "
+                     "carries updatedInput",
+                     output=(f"isolation_requested={facts25['isolation_requested']} "
+                             f"strip_evidence={facts25['strip_evidence']}"))
+    if not _apply_live_failure(r25, failure25, warning25):
+        r25.verdict = verdict25
+        if verdict25 == Verdict.SKIP:
+            r25.detail = "Model omitted/refused the isolation parameter; nothing to strip (SKIP, not FAIL)."
+        elif verdict25 == Verdict.PASS:
+            r25.detail = ("block-remote-isolation.sh rewrote the dispatch input (its hook attachment "
+                          "carries updatedInput).")
+        else:
+            r25.detail = ("isolation requested but no block-remote-isolation.sh updatedInput attachment "
+                          "found; dispatch did not hang.")
+        _apply_live_warning(r25, warning25)
     results.append(r25)
 
-    # T2.6 — nested-dispatch deny (SKIP-tolerant): dispatch a general-purpose
-    # subagent and instruct IT to attempt exactly one nested Agent dispatch,
-    # which block-nested-dispatch.sh must deny (subagents may not dispatch
-    # their own subagents — all dispatch authority belongs to the orchestrator).
+    # T2.6 — nested-dispatch prevention: dispatch a general-purpose subagent and
+    # instruct IT to attempt exactly one nested Agent dispatch (subagents may
+    # not dispatch their own subagents — all dispatch authority belongs to the
+    # orchestrator). At CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 the harness
+    # withholds Agent/Task from the subagent, so the positive evidence is its
+    # recorded tool list; if the limit is lifted, block-nested-dispatch.sh must
+    # deny the attempt. See _evaluate_t26 for the verdict order.
     p26 = (
         "You are a deployment smoke test verifying a safety hook. Dispatch a "
         "'general-purpose' subagent via the Agent tool. Instruct that subagent to: "
@@ -1542,75 +2808,26 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "report back to me verbatim."
     )
     res26, meta26 = execute_smoke_run(prompt=p26, max_turns=12, timeout=timeout, extra_env=extra_env)
-    r26 = ProbeResult(probe_id="T2.6", name="Nested-dispatch deny hook", tier="2", profile=profile_name)
-    tr26 = find_transcript(meta26["session_id"])
-    subs26 = find_subagent_transcripts(meta26["session_id"])
-
-    # nested_attempted: did the OUTER (dispatched) subagent itself try to call
-    # Agent/Task — i.e. is there anything here for block-nested-dispatch.sh to
-    # deny at all? Scanned from the outer subagent's own transcript, mirroring
-    # how T2.5 scans for the isolation parameter before judging the strip.
-    nested_attempted = False
-    for tr in subs26:
-        for name, _ in _tool_uses_in_transcript(tr):
-            if name in ("Agent", "Task"):
-                nested_attempted = True
-                break
-        if nested_attempted:
-            break
-
-    # denial_seen: the hook's permissionDecisionReason text ("...nested
-    # subagents...") surfaced somewhere in the record — main transcript, the
-    # outer subagent's transcript, or the relayed final response.
-    denial_seen = False
-    for tr in ([tr26] if tr26 else []) + subs26:
-        for rec in read_transcript_lines(tr):
-            if "nested subagents" in json.dumps(rec).lower():
-                denial_seen = True
-                break
-        if denial_seen:
-            break
-    if not denial_seen and "nested subagents" in (res26.response_text or "").lower():
-        denial_seen = True
-
-    # nested_ran: a nested dispatch that actually EXECUTED would spawn its own
-    # subagent transcript sidecar beyond the one outer dispatch this probe's
-    # top-level prompt itself requests — more than one subagent transcript is
-    # therefore the load-bearing signal that the deny path did NOT fire, and is
-    # stronger evidence than a keyword scan alone (a model could paraphrase or
-    # omit the denial text even though the hook correctly blocked the call).
-    nested_ran = len(subs26) > 1
-
+    r26 = ProbeResult(probe_id="T2.6", name="Nested-dispatch prevention", tier="2", profile=profile_name)
+    recs26 = load_transcript_records(find_transcript(meta26["session_id"]))
+    failure26, warning26 = _live_run_health(res26, recs26)
+    # Judged from the dispatched SUBAGENT transcripts only: the main transcript
+    # carries the orchestrator skill's prose about nested subagents, which the
+    # old substring scan mistook for a hook denial in every session. The main
+    # transcript is used only to link each subagent transcript to its
+    # top-level Agent/Task call (agentId or prompt), so a retried outer
+    # dispatch, including one after a terminated-early call, is not nesting.
+    sub_recs26 = [load_transcript_records(p) for p in find_subagent_transcripts(meta26["session_id"])]
+    verdict26, facts26, detail26 = _evaluate_t26(sub_recs26, recs26)
     r26.add_evidence(f"claude -p (session {meta26['session_id'][:8]})", output=(res26.response_text or "")[:300])
-    r26.add_evidence("scan outer subagent transcript for an attempted Agent/Task tool_use",
-                     output=f"nested_attempted={nested_attempted}")
-    r26.add_evidence("scan transcripts + relayed response for 'nested subagents' denial text",
-                     output=f"denial_seen={denial_seen}")
-    r26.add_evidence("count subagent transcripts (>1 implies a nested dispatch actually spawned/ran)",
-                     output=f"subagent_transcripts={len(subs26)} nested_ran={nested_ran}")
-    if not nested_attempted:
-        r26.verdict = Verdict.SKIP
-        r26.detail = ("The dispatched subagent did not attempt a nested Agent/Task dispatch as instructed; "
-                      "nothing for block-nested-dispatch.sh to deny (SKIP, not FAIL).")
-    elif nested_ran:
-        r26.verdict = Verdict.FAIL
-        r26.detail = (
-            f"A nested dispatch appears to have actually RUN ({len(subs26)} subagent transcripts found, "
-            "more than the one outer dispatch this probe requests) — block-nested-dispatch.sh did not deny "
-            "it. Most likely the hook is unregistered/misregistered in settings.json (it must sit first in "
-            "both the Task and Agent matcher chains) or the harness stopped sending the agent_id/agent_type "
-            "caller-identifying fields the hook keys on. Cross-check with tests/bash/block_nested_dispatch.bats."
-        )
-    elif denial_seen:
-        r26.verdict = Verdict.PASS
-        r26.detail = ("block-nested-dispatch.sh denied the nested dispatch attempt (denial text mentioning "
-                      "'nested subagents' observed; no second-level subagent transcript was spawned).")
-    else:
-        r26.verdict = Verdict.WARN
-        r26.detail = ("A nested dispatch was attempted and no second-level subagent transcript spawned "
-                      "(consistent with a deny), but no explicit 'nested subagents' denial text was found in "
-                      "the transcripts or relayed response — the deny path likely fired but the evidence is "
-                      "inconclusive.")
+    r26.add_evidence("subagent transcripts linked to top-level Agent/Task calls (agentId / prompt), nested Agent/Task "
+                     "attempts and their results, deny records (is_error tool_result / hook "
+                     "attachment with the hook's deny text), "
+                     "prompt_snapshot tool list + deferred_tools_delta names",
+                     output=json.dumps(facts26))
+    if not _apply_live_failure(r26, failure26, warning26):
+        r26.verdict, r26.detail = verdict26, detail26
+        _apply_live_warning(r26, warning26)
     results.append(r26)
 
     return results
@@ -1728,7 +2945,7 @@ def _run_tier_d_unit_tests(timeout: int, env: dict, evidence_dir) -> ProbeResult
     return _run_battery_cmd(
         "TD.0", "deploy-smoke harness unit tests",
         ["python3", "-m", "unittest", "discover", "-s", f"{BASE_DIR}/tests/python",
-         "-p", "test_deploy_smoke.py", "-v"],
+         "-p", "test_deploy_smoke*.py", "-v"],
         timeout, env=env, evidence_dir=evidence_dir)
 
 

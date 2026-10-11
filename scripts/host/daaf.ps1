@@ -969,8 +969,10 @@ function Invoke-DaafRebuild { Invoke-DaafDelegate "rebuild_daaf.ps1" }
 # `docker compose down` + `docker compose up -d`; `docker compose restart` would
 # keep the old environment. Same order as the bash twin:
 #   1. confirm (default No);
-#   2. project-name guard before any docker command -- an unreadable settings
-#      file is caught by the guard's probe and reported, nothing changed;
+#   2. project-name guard before any docker command -- names compared as Docker
+#      Compose normalizes them (Resolve-DaafProjectName), so `Work` -> `work`
+#      passes and a name that normalizes to nothing is refused; an unreadable
+#      settings file is caught by the guard's probe and reported, nothing changed;
 #   3. down with the CURRENT settings (never -v);
 #   4. Sync-DaafSettingsFile -- if the file can no longer be read, restore the
 #      pre-restart settings snapshot and stop (the container stays stopped);
@@ -1083,12 +1085,19 @@ function Invoke-DaafRestart {
     $preRestart = Get-DaafSettingsSnapshot
 
     # --- Project-name guard (no docker command has run yet) ---
+    # Compare the names Docker Compose USES (Resolve-DaafProjectName, daaf_lib.ps1),
+    # case-sensitively with -cne, not the raw values; the raw values are kept for
+    # the messages. Same rule as daaf.sh: `Work` -> `work` passes, and a name that
+    # normalizes to nothing is refused on the same path, with its own reason.
     $activeProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
+    $activeNorm = Resolve-DaafProjectName
     $fileProject = $activeProject
+    $fileNorm = $activeNorm
     $readFailed = $false
     try {
         Sync-DaafSettingsFile -SettingsFile $settingsFile
         $fileProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
+        $fileNorm = Resolve-DaafProjectName
     } catch {
         # Unreadable file (permissions, locked by an editor): report it here
         # instead of letting it reach the main loop's "This is a bug" catch. The
@@ -1104,17 +1113,23 @@ function Invoke-DaafRestart {
         Write-Host "  Nothing was changed." -ForegroundColor Yellow
         return
     }
-    if ($fileProject -ne $activeProject) {
+    if ([string]::IsNullOrEmpty($fileNorm) -or $fileNorm -cne $activeNorm) {
         Write-Host ""
         Write-Host "  Restart stopped -- nothing was changed." -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  With your current environment_settings.txt, this install would now use"
-        Write-Host "  the project name `"$fileProject`" (the default is `"daaf`" when the"
-        Write-Host "  file does not set one) instead of `"$activeProject`"."
-        Write-Host "  The project name decides which install and which research data volume"
-        Write-Host "  Docker uses. Restarting under a new name would stop this install and"
-        Write-Host "  start a DIFFERENT one in its place, so your current research would"
-        Write-Host "  appear to be missing."
+        if ([string]::IsNullOrEmpty($fileNorm)) {
+            Write-Host "  With your current environment_settings.txt, the project name would be"
+            Write-Host "  `"$fileProject`", which Docker Compose cannot use. A project name may use"
+            Write-Host "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        } else {
+            Write-Host "  With your current environment_settings.txt, this install would now use"
+            Write-Host "  the project name `"$fileProject`" (the default is `"daaf`" when the"
+            Write-Host "  file does not set one) instead of `"$activeProject`"."
+            Write-Host "  The project name decides which install and which research data volume"
+            Write-Host "  Docker uses. Restarting under a new name would stop this install and"
+            Write-Host "  start a DIFFERENT one in its place, so your current research would"
+            Write-Host "  appear to be missing."
+        }
         Write-Host ""
         Write-Host "  To keep this install: make environment_settings.txt use the project"
         Write-Host "  name `"$activeProject`" again, then choose Restart Container again."
@@ -1163,19 +1178,27 @@ function Invoke-DaafRestart {
     # --- Project re-check (the guard ran before `down`) ---
     # If the file was edited or deleted while `down` ran, the reload may have
     # adopted a different project name, and `up` would then start a DIFFERENT
-    # install. Restore the pre-restart settings and stop without `up`.
+    # install. Restore the pre-restart settings and stop without `up`. Same
+    # normalized comparison as the guard above.
     $reloadedProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
-    if ($reloadedProject -ne $activeProject) {
+    $reloadedNorm = Resolve-DaafProjectName
+    if ([string]::IsNullOrEmpty($reloadedNorm) -or $reloadedNorm -cne $activeNorm) {
         Restore-DaafSettingsSnapshot -Snapshot $preRestart
         Write-Host ""
         Write-Host "  The container is stopped, but it was not started again --" -ForegroundColor Yellow
         Write-Host "  environment_settings.txt now names a different project." -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  It changed while the container was stopping, and now gives the project"
-        Write-Host "  name `"$reloadedProject`" (the default is `"daaf`" when the file does not set one)"
-        Write-Host "  instead of `"$activeProject`"."
-        Write-Host "  Starting under the new name would start a DIFFERENT install, so your"
-        Write-Host "  current research would appear to be missing."
+        if ([string]::IsNullOrEmpty($reloadedNorm)) {
+            Write-Host "  It changed while the container was stopping, and now gives the project"
+            Write-Host "  name `"$reloadedProject`", which Docker Compose cannot use. A project name may use"
+            Write-Host "  lowercase letters, digits, '-' and '_', and must start with a letter or digit."
+        } else {
+            Write-Host "  It changed while the container was stopping, and now gives the project"
+            Write-Host "  name `"$reloadedProject`" (the default is `"daaf`" when the file does not set one)"
+            Write-Host "  instead of `"$activeProject`"."
+            Write-Host "  Starting under the new name would start a DIFFERENT install, so your"
+            Write-Host "  current research would appear to be missing."
+        }
         Write-Host ""
         Write-Host "  To keep this install: make environment_settings.txt use the project"
         Write-Host "  name `"$activeProject`" again, then choose Restart Container again."

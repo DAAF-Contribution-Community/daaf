@@ -1326,6 +1326,91 @@ skip_unless_chmod_blocks_reads() {
     assert_output --partial "AFTER_PROJECT=daaf"
 }
 
+# Review 51q SUGGESTION-1: the guard compares the names Docker Compose USES
+# (resolve_project_name), so an edit that normalizes to the same project is
+# not a different install.
+@test "handle_restart: guard proceeds when the edit normalizes to the same project (Work -> work, My.Proj -> myproj)" {
+    local pair from to
+    for pair in "Work:work" "My.Proj:myproj"; do
+        from="${pair%%:*}"
+        to="${pair#*:}"
+        printf 'DAAF_PROJECT_NAME=%s\n' "${from}" > "${TEST_DIR}/environment_settings.txt"
+        run_restart "y" "DAAF_PROJECT_NAME=${to}\n"
+        assert_success
+        refute_output --partial "Restart stopped"
+        refute_output --partial "DIFFERENT"
+        assert_output --partial "DOCKER: compose down"
+        assert_output --partial "DOCKER: compose up -d"
+        assert_output --partial "Container restarted"
+        assert_output --partial "AFTER_PROJECT=${to}"
+    done
+}
+
+@test "handle_restart: guard still refuses work -> play before any docker command" {
+    printf 'DAAF_PROJECT_NAME=work\n' > "${TEST_DIR}/environment_settings.txt"
+    run_restart "y" 'DAAF_PROJECT_NAME=play\n'
+    assert_success
+    assert_output --partial "Restart stopped -- nothing was changed."
+    assert_output --partial 'the project name "play" (the default is "daaf" when the'
+    assert_output --partial 'file does not set one) instead of "work".'
+    assert_output --partial "start a DIFFERENT one in its place"
+    refute_output --partial "DOCKER:"
+    assert_output --partial "AFTER_PROJECT=work"
+}
+
+@test "handle_restart: default path unchanged -- no file, and the file adding daaf, pass with no refusal text" {
+    run_restart "y"
+    assert_success
+    refute_output --partial "Restart stopped"
+    refute_output --partial "cannot use"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=daaf"
+    run_restart "y" 'DAAF_PROJECT_NAME=daaf\n'
+    assert_success
+    refute_output --partial "Restart stopped"
+    refute_output --partial "cannot use"
+    assert_output --partial "Container restarted"
+}
+
+@test "handle_restart: a file name that normalizes to nothing is refused before any docker command" {
+    run_restart "y" 'DAAF_PROJECT_NAME=___\n'
+    assert_success
+    assert_output --partial "Restart stopped -- nothing was changed."
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *"With your current environment_settings.txt, the project name would be \"___\", which Docker Compose cannot use. A project name may use lowercase letters, digits, '-' and '_', and must start with a letter or digit."* ]]
+    [[ "${flat}" == *'make environment_settings.txt use the project name "daaf" again'* ]]
+    refute_output --partial "DIFFERENT"
+    refute_output --partial "DOCKER:"
+    assert_output --partial "AFTER_PROJECT=daaf"
+}
+
+@test "handle_restart: the post-down re-check also compares normalized names (Work -> WORK proceeds, -> ___ stops before up)" {
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_SETTINGS='DAAF_PROJECT_NAME=WORK\n'
+    run_restart "y"
+    assert_success
+    refute_output --partial "now names a different project"
+    assert_output --partial "DOCKER: compose up -d"
+    assert_output --partial "Container restarted"
+    assert_output --partial "AFTER_PROJECT=WORK"
+
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    export MOCK_DOWN_SETTINGS='DAAF_PROJECT_NAME=___\n'
+    run_restart "y"
+    unset MOCK_DOWN_SETTINGS
+    assert_success
+    assert_output --partial "DOCKER: compose down"
+    refute_output --partial "DOCKER: compose up"
+    assert_output --partial "environment_settings.txt now names a different project."
+    local flat
+    flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *'now gives the project name "___", which Docker Compose cannot use.'* ]]
+    refute_output --partial "Container restarted"
+    refute_output --partial "PANEL_ERR_TRAP"
+    assert_output --partial "AFTER_PROJECT=Work"
+}
+
 @test "handle_restart: an unreadable settings file stops before any docker command" {
     printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
     skip_unless_chmod_blocks_reads "${TEST_DIR}/environment_settings.txt"

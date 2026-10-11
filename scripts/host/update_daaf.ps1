@@ -171,6 +171,26 @@ function Import-DaafSettingsInline {
 $DaafBranchFromEnv = -not [string]::IsNullOrEmpty($env:DAAF_BRANCH)
 Import-DaafSettingsInline
 
+# --- Compose project name (INLINE COPY of daaf_lib.ps1 Resolve-DaafProjectName) ---
+# This standalone script does not dot-source daaf_lib.ps1, so the helper is carried
+# inline, BYTE-IDENTICAL to the library function and to the copies in
+# backup_daaf.ps1 and restore_from_backup.ps1 (tests/powershell/daaf_lib.Tests.ps1
+# pins all of them, and install.ps1's inline expression, to the same results). It
+# returns DAAF_PROJECT_NAME (default "daaf") normalized the way Docker Compose
+# normalizes the project name -- non-ASCII-safe: characters outside [A-Za-z0-9_-]
+# dropped first, then lowercased, then leading '_'/'-' trimmed -- so the printed
+# `docker cp <project>-daaf-docker-1:` hints name the container Compose created
+# (`Work` -> "work-daaf-docker-1"). Called at each hint, so a hint follows the
+# current DAAF_PROJECT_NAME. An empty result means no usable name; the run refuses
+# it below. See daaf_lib.ps1 for the full notes.
+function Resolve-DaafProjectName {
+    [CmdletBinding()]
+    param()
+    $project = 'daaf'
+    if ($env:DAAF_PROJECT_NAME) { $project = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+    return $project
+}
+
 # --- Trap handler for unexpected failures ---
 trap {
     Write-Host "" -ForegroundColor Red
@@ -601,7 +621,7 @@ function Resolve-StashConflict {
 function Copy-HostScript {
     param([string]$RepoPath)
     $scriptName = Split-Path $RepoPath -Leaf
-    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+    $daafProj = Resolve-DaafProjectName
     if (Test-Path "./$scriptName") {
         $staged = "./$scriptName.sync-staged"
         # $null = : docker cp's output stream must not leak into this function's
@@ -868,7 +888,7 @@ function Sync-HostScript {
                         Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
                         Write-Host "    (write failed). Your file is unchanged. To adopt the" -ForegroundColor Yellow
                         Write-Host "    repository version manually, run:" -ForegroundColor Yellow
-                        $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                        $daafProj = Resolve-DaafProjectName
                         Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
                     }
                 } else {
@@ -877,7 +897,7 @@ function Sync-HostScript {
                     Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
                     Write-Host "    (backup step failed). Your file was left unchanged to" -ForegroundColor Yellow
                     Write-Host "    avoid losing it. To adopt the repository version, run:" -ForegroundColor Yellow
-                    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                    $daafProj = Resolve-DaafProjectName
                     Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
                 }
             }
@@ -1015,7 +1035,7 @@ function Test-BuildChange {
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
-            $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+            $daafProj = Resolve-DaafProjectName
             Write-Host "  docker cp ${daafProj}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
             Write-Host "  .\rebuild_daaf.ps1"
         }
@@ -1305,6 +1325,21 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # from leaking strict mode into the whole test session, while real executions
 # run fully protected from this point on.
 Set-StrictMode -Version 3.0
+
+# --- Preflight: project name ---
+# Twin of the .sh check: a DAAF_PROJECT_NAME that normalizes to nothing (e.g. "___"
+# or "@@") is not a name Compose can be relied on to use, and the printed
+# `docker cp` hints would name no container. Refuse first, before the run lock and
+# any Docker call, with the installer's wording. Same text in backup_daaf and
+# restore_from_backup (script name varied).
+if ([string]::IsNullOrEmpty((Resolve-DaafProjectName))) {
+    Write-Host "ERROR: DAAF_PROJECT_NAME='$env:DAAF_PROJECT_NAME' cannot be used as a Docker Compose" -ForegroundColor Red
+    Write-Host "       project name. A project name may use lowercase letters, digits, '-'"
+    Write-Host "       and '_', and must start with a letter or digit. Fix it in"
+    Write-Host "       environment_settings.txt (or your shell), then run the update again."
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
 
 # =====================================================================
 # Concurrent-run lock (named mutex)

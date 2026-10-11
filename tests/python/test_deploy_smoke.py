@@ -57,6 +57,152 @@ def _scratch_dir(prefix):
     return d
 
 
+class MainModelLaunchGateTests(unittest.TestCase):
+    def test_per_profile_gating_with_or_without_tier_zero(self):
+        from contextlib import ExitStack
+        import io
+        for tiers in ('1,2', '0,1,2'):
+            with self.subTest(tiers=tiers), ExitStack() as stack:
+                stack.enter_context(mock.patch.dict(os.environ, {'ANTHROPIC_MODEL': 'claude-opus-4-8'}, clear=True))
+                stack.enter_context(mock.patch.object(sys, 'argv', ['smoke', '--tiers', tiers, '--yes']))
+                stack.enter_context(mock.patch.object(sys, 'stdout', io.StringIO()))
+                stack.enter_context(mock.patch.object(sys, 'stderr', io.StringIO()))
+                stack.enter_context(mock.patch.object(run_deploy_smoke, 'load_profiles', return_value=[('bad', {}), ('good', {'ANTHROPIC_MODEL': 'gpt-6-astra'})]))
+                stack.enter_context(mock.patch.object(smoke_probes, 'run_tier0', return_value=[]))
+                def gate(env, base, **kwargs):
+                    result = route_detection.ProbeResult('T0.14', 'coherence', kwargs['tier'], profile=kwargs['profile'])
+                    result.verdict = Verdict.FAIL if env['ANTHROPIC_MODEL'].startswith('claude') else Verdict.PASS
+                    return result
+                check = stack.enter_context(mock.patch.object(smoke_probes, 'probe_main_model_coherence', side_effect=gate))
+                t1 = stack.enter_context(mock.patch.object(smoke_probes, 'run_tier1', return_value=[]))
+                t2 = stack.enter_context(mock.patch.object(smoke_probes, 'run_tier2', return_value=[]))
+                stack.enter_context(mock.patch.object(run_deploy_smoke, 'write_reports', return_value=True))
+                self.assertEqual(run_deploy_smoke.main(), 1)
+                self.assertEqual(check.call_count, 2)
+                self.assertEqual(t1.call_count, 1)
+                self.assertEqual(t2.call_count, 1)
+                self.assertEqual(t1.call_args.args[0], 'good')
+                self.assertEqual(t2.call_args.args[0], 'good')
+                self.assertEqual(os.environ['ANTHROPIC_MODEL'], 'claude-opus-4-8')
+
+    def test_tier_d_discovers_both_modules(self):
+        with mock.patch.object(smoke_probes, '_run_battery_cmd') as run:
+            smoke_probes._run_tier_d_unit_tests(5, {}, _SCRATCH)
+        self.assertIn('test_deploy_smoke*.py', run.call_args.args[2])
+
+
+class MainModelProjectionTests(unittest.TestCase):
+    def test_unknown_endpoint_is_not_detector_fallback_certification(self):
+        for model in ('gpt-6-astra','claude-opus-4-8'):
+            for url in ('https://custom.invalid/api','https://openrouter.ai.attacker.invalid/api',
+                        'https://api.anthropic.com.attacker.invalid'):
+                env = {'ANTHROPIC_MODEL':model,'ANTHROPIC_BASE_URL':url}
+                result = route_detection.resolve_main_model(env)
+                self.assertEqual(result.compatibility, 'unknown')
+                self.assertEqual(result.endpoint_kind, 'unknown')
+        self.assertEqual(route_detection.detect_route({'ANTHROPIC_BASE_URL':'https://custom.invalid'}),
+                         route_detection.ROUTE_ANTHROPIC)  # old broad detector unchanged
+        for url in (None, ''):
+            result = route_detection.resolve_main_model({'DAAF_PROVIDER_SHIM':'openai',
+                'SHIM_BACKEND_MODE':'chatgpt','ANTHROPIC_BASE_URL':url,'ANTHROPIC_MODEL':'gpt-6-astra'})
+            self.assertEqual(result.compatibility, 'unknown')
+        for env in ({'ANTHROPIC_MODEL':'claude-opus-4-8'},
+                    {'ANTHROPIC_MODEL':'gpt-6-astra','ANTHROPIC_BASE_URL':'https://openrouter.ai/api'}):
+            self.assertEqual(route_detection.resolve_main_model(env).compatibility, 'compatible')
+
+    def test_ordinary_real_resolver_keeps_mismatch_with_benchmark_profile(self):
+        import io
+        import shutil
+        from contextlib import ExitStack
+        root = _scratch_dir('real_gate')
+        self.addCleanup(shutil.rmtree, root)
+        (root/'user').mkdir()
+        for tiers in ('1,2','0,1,2'):
+            for flag_source in ('ambient','profile'):
+                env = {'DAAF_DEV':'1','CLAUDE_CONFIG_DIR':str(root/'user'),
+                       'ANTHROPIC_MODEL':'claude-opus-4-8','DAAF_PROVIDER_SHIM':'openai',
+                       'SHIM_BACKEND_MODE':'chatgpt','ANTHROPIC_BASE_URL':'http://127.0.0.1:4141'}
+                overlay = {'DAAF_BENCHMARK_RUN':'1'} if flag_source == 'profile' else {}
+                if flag_source == 'ambient':
+                    env['DAAF_BENCHMARK_RUN'] = '1'
+                with self.subTest(tiers=tiers, source=flag_source), ExitStack() as stack:
+                    stack.enter_context(mock.patch.dict(os.environ, env, clear=True))
+                    stack.enter_context(mock.patch.object(run_deploy_smoke,'BASE_DIR',str(root)))
+                    stack.enter_context(mock.patch.object(sys,'argv',['smoke','--tiers',tiers,'--yes']))
+                    stack.enter_context(mock.patch.object(sys,'stdout',io.StringIO()))
+                    stack.enter_context(mock.patch.object(sys,'stderr',io.StringIO()))
+                    stack.enter_context(mock.patch.object(run_deploy_smoke,'load_profiles',return_value=[('bad',overlay)]))
+                    stack.enter_context(mock.patch.object(smoke_probes,'run_tier0',return_value=[]))
+                    t1 = stack.enter_context(mock.patch.object(smoke_probes,'run_tier1'))
+                    t2 = stack.enter_context(mock.patch.object(smoke_probes,'run_tier2'))
+                    writer = stack.enter_context(mock.patch.object(run_deploy_smoke,'write_reports',return_value=True))
+                    self.assertEqual(run_deploy_smoke.main(),1)
+                    t1.assert_not_called()
+                    t2.assert_not_called()
+                    self.assertEqual(writer.call_args.args[3][0].verdict,Verdict.FAIL)
+                resolution = route_detection.resolve_main_model(dict(env, **overlay))
+                self.assertEqual(resolution.compatibility,'incompatible')
+                self.assertFalse(resolution.normal_execution_context)
+
+    def test_explicit_claude_is_not_rewritten_by_gpt_alias_or_subagent(self):
+        env = {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt",
+               "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
+               "ANTHROPIC_MODEL": "claude-opus-4-8",
+               "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-astra",
+               "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-6-astra"}
+        self.assertEqual(route_detection.classify_model_family(env), ("gpt", True))
+        result = route_detection.resolve_main_model(env)
+        self.assertEqual((result.family, result.compatibility), ("claude", "incompatible"))
+        self.assertNotIn("claude-opus", json.dumps(result.safe_metadata()))
+        result = route_detection.resolve_main_model(env, explicit_model="gpt-6-astra")
+        self.assertEqual((result.source, result.overridden, result.compatibility),
+                         ("invocation", True, "compatible"))
+
+    def test_alias_uses_own_mapping_and_precedence(self):
+        env = {"ANTHROPIC_MODEL": "sonnet", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-astra",
+               "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-6"}
+        result = route_detection.resolve_main_model(env, saved_model="gpt-6-astra")
+        self.assertEqual(result.resolved_model, "claude-sonnet-4-6")
+        self.assertEqual(result.compatibility, "compatible")
+        del env["ANTHROPIC_DEFAULT_SONNET_MODEL"]
+        self.assertEqual(route_detection.resolve_main_model(env).compatibility, "unknown")
+        self.assertEqual(route_detection.resolve_main_model({}, saved_model="claude-opus-4-8").source, "saved_model")
+        self.assertEqual(route_detection.resolve_main_model({}).compatibility, "unknown")
+        self.assertEqual(route_detection.resolve_main_model(env, uncertainty=("managed_policy_unresolved",)).compatibility, "unknown")
+
+    def test_bounded_settings_projection_and_custom_config(self):
+        import shutil
+        root = _scratch_dir("main_projection")
+        self.addCleanup(shutil.rmtree, root)
+        config = root / "user"
+        config.mkdir()
+        (root / ".claude").mkdir()
+        (config / "settings.json").write_text(json.dumps({"model": "claude-opus-4-8"}))
+        (root / ".claude/settings.json").write_text(json.dumps({"env": {"ANTHROPIC_MODEL": "gpt-6-astra"}}))
+        env = {"CLAUDE_CONFIG_DIR": str(config), "ANTHROPIC_MODEL": "claude-opus-4-8",
+               "DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt",
+               "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141"}
+        result, states = smoke_probes.collect_main_model(env, str(root))
+        self.assertEqual(result.compatibility, "compatible")
+        self.assertEqual(result.source, "project_settings_env")
+        self.assertEqual(states["local"], "absent")
+        local = root / ".claude/settings.local.json"
+        local.write_text('{broken')
+        result, states = smoke_probes.collect_main_model(env, str(root))
+        self.assertEqual(states["local"], "malformed")
+        self.assertEqual(result.compatibility, "unknown")
+        local.write_text('{"env":{"ANTHROPIC_MODEL":"x","ANTHROPIC_MODEL":"y"}}')
+        self.assertEqual(smoke_probes._read_main_settings(local)[1], "malformed")
+        local.write_text('x' * (smoke_probes._SETTINGS_LIMIT + 1))
+        self.assertEqual(smoke_probes._read_main_settings(local)[1], "oversized")
+        with mock.patch.object(smoke_probes.os, "open", side_effect=PermissionError):
+            self.assertEqual(smoke_probes._read_main_settings(local)[1], "unreadable")
+        local.unlink()
+        (config / "managed-settings.json").write_text('{}')
+        result, _ = smoke_probes.collect_main_model(env, str(root))
+        self.assertEqual(result.compatibility, "unknown")
+
+
 class _HealthResponse:
     status = 200
 

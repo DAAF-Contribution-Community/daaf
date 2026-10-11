@@ -371,3 +371,38 @@ Describe "test_migration.ps1 field-run 6 ownership-window pins" {
         ([regex]::Matches($script:HarnessText, [regex]::Escape('git -C /daaf commit -m')).Count) | Should -Be 2
     }
 }
+
+# Review 51q NIT-2: the Era 1/2 project-name guard runs before any docker call or
+# file write, so the harness is run for real here. The message shows
+# DAAF_PROJECT_NAME as typed, plus the normalized name when the two differ. The
+# harness runs with ErrorActionPreference Stop, so its Write-Error is a terminating
+# error that its own trap re-throws; catching it in-process reads the exact message
+# (a child process would render it through the console's wrapped error view).
+Describe "test_migration.ps1 Era 1/2 project-name guard message" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:GuardKeys = @('DAAF_TEST_MODE', 'DAAF_TEST_MATRIX', 'DAAF_TEST_ERA', 'DAAF_TEST_VERSION', 'DAAF_PROJECT_NAME', 'DAAF_NESTED', 'DAAF_DATA_VOLUME_NAME')
+        $script:SavedGuardEnv = @{}
+        foreach ($k in $script:GuardKeys) { $script:SavedGuardEnv[$k] = [Environment]::GetEnvironmentVariable($k, "Process") }
+    }
+    AfterAll {
+        foreach ($k in $script:GuardKeys) { [Environment]::SetEnvironmentVariable($k, $script:SavedGuardEnv[$k], "Process") }
+    }
+    BeforeEach {
+        foreach ($k in $script:GuardKeys) { Remove-Item -Path ("Env:" + $k) -ErrorAction SilentlyContinue }
+        $env:DAAF_NESTED = "1"
+    }
+
+    It "refuses '<Raw>' on <Version> with '<Got>'" -ForEach @(
+        @{ Raw = 'Work'; Version = 'v2.0.1'; Era = '2'; Got = "(got: 'Work', which Docker Compose uses as 'work')." }
+        @{ Raw = 'daaf2'; Version = 'v1.0.0'; Era = '1'; Got = "(got: 'daaf2')." }
+    ) {
+        $env:DAAF_PROJECT_NAME = $Raw
+        $env:DAAF_TEST_VERSION = $Version
+        $caught = $null
+        $out = $null
+        try { $out = & "$RepoRoot/scripts/host/test_migration.ps1" *>&1 | Out-String } catch { $caught = $_ }
+        $caught | Should -Not -BeNullOrEmpty -Because "the guard must refuse (output: $out)"
+        $caught.Exception.Message | Should -BeExactly "Era $Era replays a pathway that predates DAAF_PROJECT_NAME; only the default 'daaf' project is supported $Got"
+    }
+}

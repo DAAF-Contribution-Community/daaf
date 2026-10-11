@@ -576,14 +576,42 @@ if [ "${TEST_ERA}" = "3" ] && [[ "${TEST_VERSION}" =~ ^v([0-9]+)\.([0-9]+)\.([0-
     fi
 fi
 
+# --- Compose project name (INLINE COPY of daaf_lib.sh resolve_project_name) ---
+# This standalone harness does not source daaf_lib.sh for its own names, so the
+# helper is carried inline, BYTE-IDENTICAL to the library function and to the
+# copies in backup_daaf.sh, restore_from_backup.sh and update_daaf.sh
+# (tests/bash/daaf_lib.bats pins all of them, and install.sh's inline lines, to the
+# same results). It echoes DAAF_PROJECT_NAME (default "daaf") normalized the way
+# Docker Compose normalizes the project name -- lowercased, only [a-z0-9_-] kept,
+# leading '_'/'-' trimmed -- so a run with `Work` checks the names Compose created
+# ("work_daaf-data", "work-daaf-docker-1"). An empty result means no usable name;
+# the run refuses it below. See daaf_lib.sh for the full notes.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
+}
+
 # --- Docker identifier derivation (default "daaf" instance) ---
 # All identifiers are derived from DAAF_PROJECT_NAME rather than hardcoded, so a
 # non-default install is testable and so this mirrors how nuke_daaf.sh /
 # backup_daaf.sh derive their names. Docker joins the compose project name to the
 # service with a DASH (containers/image) and to declared volumes with an
 # UNDERSCORE (verified against docker-compose.yml). Default project name "daaf"
-# reproduces the original hardcoded values byte-for-byte.
-readonly PROJECT_NAME="${DAAF_PROJECT_NAME:-daaf}"
+# reproduces the original hardcoded values byte-for-byte. The project is the
+# NORMALIZED name (resolve_project_name above), the one Compose uses.
+PROJECT_NAME="$(resolve_project_name)"
+readonly PROJECT_NAME
+if [ -z "${PROJECT_NAME}" ]; then
+    error "DAAF_PROJECT_NAME='${DAAF_PROJECT_NAME:-}' cannot be used as a Docker Compose project name."
+    error "A project name may use lowercase letters, digits, '-' and '_', and must start"
+    error "with a letter or digit. Nothing was changed."
+    exit 1
+fi
 readonly VOLUME_NAME="${PROJECT_NAME}_daaf-data"
 readonly CLAUDE_VOLUME_NAME="${PROJECT_NAME}_daaf-claude-config"
 readonly CONTAINER_MAIN="${PROJECT_NAME}-daaf-docker-1"
@@ -611,10 +639,16 @@ readonly SECOND_PORT_VSCODE="12720"
 # The historical pathways predate DAAF_PROJECT_NAME entirely: v1.0.0's compose
 # file has no `name:` key (project name = directory name, which the documented
 # flow fixes as "daaf"), and v2.0.x hardcodes `name: daaf`. A non-default
-# project name is only meaningful for Era 3.
+# project name is only meaningful for Era 3. The check uses the normalized name
+# (so `DAAF` passes), but the message shows the value as the user typed it, plus the
+# normalized name when the two differ (review 51q NIT-2; same text in the .ps1 twin).
 if [ "${TEST_ERA}" != "3" ] && [ "${PROJECT_NAME}" != "daaf" ]; then
     error "Era ${TEST_ERA} replays a pathway that predates DAAF_PROJECT_NAME;"
-    error "only the default 'daaf' project is supported (got: '${PROJECT_NAME}')."
+    if [ "${DAAF_PROJECT_NAME:-}" != "${PROJECT_NAME}" ]; then
+        error "only the default 'daaf' project is supported (got: '${DAAF_PROJECT_NAME:-}', which Docker Compose uses as '${PROJECT_NAME}')."
+    else
+        error "only the default 'daaf' project is supported (got: '${DAAF_PROJECT_NAME:-}')."
+    fi
     exit 1
 fi
 

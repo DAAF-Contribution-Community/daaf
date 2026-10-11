@@ -10,15 +10,18 @@ The suite runs IN SITU inside a real installation, auto-detects the active route
 from the live environment, and runs route-appropriate probes across tiers:
 
   Tier 0  preflight, no LLM      route detection + env coherence + hooks/statusline/shim/invariants + R locale
+                                 + local-settings shadowing + claude.ai synced surface (INFO)
   Tier 1  one live round-trip    one claude -p call + the plumbing evidence around it
-  Tier 2  functional battery     six capability-structural probes (dispatch, coding, web, skill, isolation, nested-dispatch deny)
+  Tier 2  functional battery     six capability-structural probes (dispatch, coding, web, skill, isolation, nested-dispatch prevention)
   Tier D  deterministic battery  bats / Pester / lint / hook tests (opt-in, zero API cost)
 
 Reports land under scripts/deploy_smoke/reports/{YYYYMMDD_HHMMSS}_{route}/ with a
 human report.md (per-probe verdict + quoted evidence), a machine report.json
 (git SHA, route, family, redacted env fingerprint, per-probe results), and an
 evidence/ dir (shim_health.json, env_fingerprint.json, plus tier_d/ full failure
-logs and Pester testResults.xml; /tmp cache reads are embedded in per-probe
+logs and Pester testResults.xml, t07_statusline_cache/ holding T0.7's synthetic-
+session statusline caches, and t16_statusline_cache/ holding T1.6's
+report-local context-bar caches; /tmp cache reads are embedded in per-probe
 evidence, not separate files). Overall exit is nonzero on any FAIL, matching the
 run_all_smoke_tests.sh contract.
 
@@ -316,7 +319,10 @@ def main() -> int:
 
     # Tier 0 — run once (route-scoped, not profile-scoped).
     if "0" in tiers:
-        t0 = smoke_probes.run_tier0(route_info, env, BASE_DIR)
+        # T0.7 renders both statuslines for a synthetic session into a
+        # report-local cache dir, so it never writes /tmp.
+        t0 = smoke_probes.run_tier0(route_info, env, BASE_DIR,
+                                    statusline_cache_dir=report_dir / "evidence" / "t07_statusline_cache")
         results.extend(t0)
         # Capture the shim /health JSON for evidence/, if present.
         for r in t0:
@@ -356,8 +362,26 @@ def main() -> int:
     # Tier 1 / Tier 2 — run once PER PROFILE (skipped if the DAAF_DEV gate tripped).
     if run_live_tiers:
         for prof_name, overlay in profiles:
+            if any(t in ("1", "2") for t in tiers):
+                # Check the ACTUAL child's ambient+profile environment, not the
+                # ambient T0 family aggregate. Settings projection then models
+                # the same ordinary startup layers; no --model is injected.
+                child_env = dict(env)
+                child_env.update(overlay)
+                coherence = smoke_probes.probe_main_model_coherence(
+                    child_env, BASE_DIR, profile=prof_name,
+                    tier="1" if "1" in tiers else "2")
+                results.append(coherence)
+                if coherence.verdict == Verdict.FAIL:
+                    print("ABORT: incompatible main model for this profile; paid tiers skipped.",
+                          file=sys.stderr)
+                    continue
             if "1" in tiers:
-                results.extend(smoke_probes.run_tier1(prof_name, overlay, t1_timeout))
+                # T1.6 renders the statusline into a report-local cache dir so it
+                # can never write the real session's /tmp coordination caches.
+                results.extend(smoke_probes.run_tier1(
+                    prof_name, overlay, t1_timeout,
+                    statusline_cache_dir=report_dir / "evidence" / "t16_statusline_cache"))
             if "2" in tiers:
                 results.extend(smoke_probes.run_tier2(prof_name, overlay, t2_timeout))
 

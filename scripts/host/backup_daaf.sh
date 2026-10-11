@@ -59,22 +59,44 @@ _daaf_load_settings() {
 }
 _daaf_load_settings
 
+# --- Compose project name (INLINE COPY of daaf_lib.sh resolve_project_name) ---
+# This standalone script does not source daaf_lib.sh, so the helper is carried
+# inline, BYTE-IDENTICAL to the library function and to the copies in
+# restore_from_backup.sh and update_daaf.sh (tests/bash/daaf_lib.bats pins all of
+# them, and install.sh's inline lines, to the same results). It echoes
+# DAAF_PROJECT_NAME (default "daaf") normalized the way Docker Compose normalizes the
+# project name -- lowercased, only [a-z0-9_-] kept, leading '_'/'-' trimmed -- so
+# `Work` names the volume "work_daaf-data", the one Compose created. An empty result
+# means no usable name; the run refuses it below. See daaf_lib.sh for the full notes.
+resolve_project_name() {
+    local project="daaf"
+    if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
+        project="$(printf '%s' "${DAAF_PROJECT_NAME}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr -cd 'a-z0-9_-')"
+        # Trim the leading run of '_' and '-' (the inner expansion is that run).
+        project="${project#"${project%%[!_-]*}"}"
+    fi
+    printf '%s\n' "${project}"
+}
+
 # --- Configuration ---
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
 # derives the prefix from the project name (default "daaf"), so a second instance
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# <project> is PROJECT_NAME, the normalized name above (empty => refused before any
+# Docker call; see "Project-name check" below).
 # DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
-# full volume name (the shared-workspace escape hatch); unset => the derived
-# default. Matches resolve_data_volume_name in daaf_lib.sh (inlined here because
-# this standalone script does not source the library).
-VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
+# full volume name (the shared-workspace escape hatch; never normalized); unset =>
+# the derived default. Matches resolve_data_volume_name in daaf_lib.sh (inlined here
+# because this standalone script does not source the library).
+PROJECT_NAME="$(resolve_project_name)"
+VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${PROJECT_NAME}_daaf-data}"
 # Second volume: Claude Code state (auth/credentials, session history and
 # transcripts, plugins, ~/.claude.json). Backed up into a dedicated hidden
 # subfolder of the backup so it does not contaminate the data-volume file
 # counts (which scan the backup root). May not exist on very old installs that
 # predate the volume -- handled gracefully below.
-CLAUDE_VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-claude-config"
+CLAUDE_VOLUME_NAME="${PROJECT_NAME}_daaf-claude-config"
 CLAUDE_SUBDIR=".daaf-claude-config"
 # Where that volume is mounted INSIDE the DAAF container (docker-compose.yml:
 # `daaf-claude-config:/home/appuser/.claude`). Used only in a warning's next step
@@ -284,6 +306,22 @@ echo "  DAAF Backup"
 echo "=========================================="
 echo ""
 
+# --- Project-name check ---
+# A DAAF_PROJECT_NAME that normalizes to nothing (e.g. "___" or "@@") names no
+# volume Compose could have created, and the Claude Code volume name is derived from
+# it even when DAAF_DATA_VOLUME_NAME is set. Refuse before any Docker call, with the
+# installer's wording (install.sh refuses the same values). Same text in
+# restore_from_backup.{sh,ps1}, update_daaf.{sh,ps1} and the .ps1 twin (script name
+# varied).
+if [ -z "${PROJECT_NAME}" ]; then
+    echo "ERROR: DAAF_PROJECT_NAME='${DAAF_PROJECT_NAME:-}' cannot be used as a Docker Compose" >&2
+    echo "       project name. A project name may use lowercase letters, digits, '-'" >&2
+    echo "       and '_', and must start with a letter or digit. Fix it in" >&2
+    echo "       environment_settings.txt (or your shell), then run the backup again." >&2
+    echo "       Nothing was changed." >&2
+    exit 1
+fi
+
 # --- Preflight ---
 if ! command -v docker &> /dev/null; then
     echo "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from Terminal."
@@ -319,6 +357,19 @@ if ! docker info &> /dev/null; then
             ;;
     esac
     exit 1
+fi
+
+# --- Project-name NOTE (review 51q SUGGESTION-2) ---
+# When the data volume name is derived (DAAF_DATA_VOLUME_NAME unset) from a project
+# name that Compose normalizes to something else (`Work` -> `work`), say so once,
+# with the installer's NOTE wording, before the volume name is first shown (the
+# volume check below, or "Source volume:"). Never printed when the name is unset or
+# already normalized, so the default output is unchanged. Placed above the Docker
+# version check, whose messages tests/bash/backup_twin_parity.bats extracts up to the
+# volume check. Same text in the .ps1 twin and restore_from_backup.{sh,ps1}.
+if [ -z "${DAAF_DATA_VOLUME_NAME:-}" ] && [ -n "${DAAF_PROJECT_NAME:-}" ] && [ "${DAAF_PROJECT_NAME}" != "${PROJECT_NAME}" ]; then
+    echo "NOTE: Docker Compose uses the project name '${PROJECT_NAME}' for '${DAAF_PROJECT_NAME}'."
+    echo ""
 fi
 
 # --- Docker version check (F1 compatibility; audit 04, section 3) ---

@@ -840,6 +840,208 @@ teardown() {
 }
 
 # =========================================================================
+# Compose project-name normalization (resolve_project_name) and its copies
+# =========================================================================
+# Docker Compose normalizes the project name (compose-go NormalizeProjectName:
+# lowercase, keep [a-z0-9_-], trim leading '_'/'-'), so `Work` in the settings file
+# makes the volume "work_daaf-data". Every host script that derives a Docker name
+# from the project must use that same name. The helper lives in daaf_lib.sh; the
+# standalone scripts (backup_daaf.sh, restore_from_backup.sh, update_daaf.sh, and the
+# maintainer harness test_migration.sh) carry a byte-identical copy, and install.sh
+# carries its own two inline lines. The tests below pin all of them to one fixed
+# input set.
+#
+# The scripts that carry an inline copy (word-split on purpose: plain file names).
+_PROJECT_NAME_COPIES="backup_daaf.sh restore_from_backup.sh update_daaf.sh test_migration.sh"
+#
+# The fixed input set: "<printf format of the input><TAB><expected>". Non-ASCII
+# inputs are octal escapes so this file stays ASCII: \303\204 is A-umlaut, \342\204\252
+# the Kelvin sign U+212A (Go's Unicode lowercasing would keep it as 'k'; every DAAF
+# copy drops it, review 45q NIT-1), \304\260 a dotted capital I. An empty expected
+# value means the name is refused.
+_project_name_cases() {
+    printf '%s\t%s\n' \
+        'Work' 'work' \
+        'work ' 'work' \
+        'x # mine' 'xmine' \
+        '"x' 'x' \
+        '_x' 'x' \
+        '-x' 'x' \
+        '-_x' 'x' \
+        'x.y' 'xy' \
+        '\303\204BC' 'bc' \
+        '\342\204\252x' 'x' \
+        '\304\260x' 'x' \
+        '___' '' \
+        '@@' '' \
+        'daaf' 'daaf' \
+        'daaf2' 'daaf2' \
+        'My_Proj-1' 'my_proj-1' \
+        '--a-b_' 'a-b_'
+}
+
+# Run the normalizer defined in the file $1 (which must define resolve_project_name)
+# over the fixed input set, printing "OK" or "MISMATCH" per case, then the two
+# default cases (unset and empty DAAF_PROJECT_NAME => "daaf").
+_run_project_name_cases() {
+    local def="$1" fmt want got
+    while IFS="$(printf '\t')" read -r fmt want; do
+        # `--` so inputs such as "-x" are not read as printf options.
+        # shellcheck disable=SC2059  # the case column IS a printf format (octal escapes)
+        got="$(DAAF_PROJECT_NAME="$(printf -- "${fmt}")" bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+        if [ "${got}" = "${want}" ]; then echo "OK [${fmt}]"; else echo "MISMATCH [${fmt}] want=[${want}] got=[${got}]"; fi
+    done <<EOF
+$(_project_name_cases)
+EOF
+    got="$(env -u DAAF_PROJECT_NAME bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+    echo "UNSET=[${got}]"
+    got="$(DAAF_PROJECT_NAME= bash -c 'source "$1"; resolve_project_name' _ "${def}")"
+    echo "EMPTY=[${got}]"
+}
+
+@test "resolve_project_name normalizes DAAF_PROJECT_NAME as Docker Compose does (fixed input set)" {
+    run _run_project_name_cases "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    refute_output --partial "MISMATCH"
+    # 17 table cases, plus the two defaults.
+    [ "$(printf '%s\n' "${output}" | grep -c '^OK ')" -eq 17 ]
+    assert_output --partial "UNSET=[daaf]"
+    assert_output --partial "EMPTY=[daaf]"
+}
+
+@test "resolve_data_volume_name uses the normalized project name (Work -> work_daaf-data)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="-Work.1"
+        resolve_data_volume_name
+    '
+    assert_success
+    # Compose created "work1_daaf-data" for this name, not "-Work.1_daaf-data".
+    assert_output "work1_daaf-data"
+}
+
+@test "resolve_data_volume_name never normalizes the DAAF_DATA_VOLUME_NAME override" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DATA_VOLUME_NAME="My.Shared_Vol"
+        export DAAF_PROJECT_NAME="Work"
+        resolve_data_volume_name
+    '
+    assert_success
+    # The override is a literal Docker volume name: upper case and '.' are kept.
+    assert_output "My.Shared_Vol"
+}
+
+@test "resolve_data_volume_name prints nothing and fails when the project name normalizes to nothing" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME="___"
+        resolve_data_volume_name
+    '
+    assert_failure
+    assert_output ""
+}
+
+@test "resolve_project_name copies in backup/restore/update/test_migration are byte-identical to daaf_lib.sh" {
+    # The standalone scripts do not source daaf_lib.sh, so each carries the function
+    # inline. Extract each definition (from the `resolve_project_name() {` line to
+    # the first column-0 `}`) and compare bytes with the library's.
+    local lib f extracted
+    lib="$(sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/daaf_lib.sh")"
+    # Guard against an empty or wrong extraction making every copy "equal".
+    [ "$(printf '%s\n' "${lib}" | grep -c 'LC_ALL=C tr -cd')" -eq 1 ]
+    for f in ${_PROJECT_NAME_COPIES}; do
+        extracted="$(sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/${f}")"
+        if [ "${extracted}" != "${lib}" ]; then
+            echo "DIFFERS: ${f}"
+            diff <(printf '%s\n' "${lib}") <(printf '%s\n' "${extracted}") || true
+            return 1
+        fi
+    done
+}
+
+@test "resolve_project_name: each inline copy and install.sh give the library's results on the fixed input set" {
+    local f n
+    # The library is the reference (pinned to the expected column above); every copy
+    # is run over the same cases and must give the same per-case lines.
+    run _run_project_name_cases "${REPO_ROOT}/scripts/host/daaf_lib.sh"
+    assert_success
+    local want="${output}"
+    for f in ${_PROJECT_NAME_COPIES}; do
+        sed -n '/^resolve_project_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/${f}" > "${TEST_DIR}/copy_${f}"
+        run _run_project_name_cases "${TEST_DIR}/copy_${f}"
+        assert_success
+        [ "${output}" = "${want}" ] || { echo "COPY ${f} differs:"; echo "${output}"; return 1; }
+    done
+    # install.sh runs standalone (curl | bash) and keeps its own two lines: the
+    # lowercase-and-filter line and the leading-'_'/'-' trim. Wrap exactly those
+    # lines (each must occur once) in a resolve_project_name with the installer's
+    # own default and empty handling, then run the same cases.
+    n="$(grep -cF 'INSTALL_TARGET_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/install.sh")"
+    [ "${n}" -eq 1 ]
+    n="$(grep -cF 'INSTALL_TARGET_PROJECT="${INSTALL_TARGET_PROJECT#' "${REPO_ROOT}/scripts/host/install.sh")"
+    [ "${n}" -eq 1 ]
+    {
+        echo 'resolve_project_name() {'
+        echo '    PROJECT_NAME_GIVEN="${DAAF_PROJECT_NAME:-}"'
+        echo '    INSTALL_TARGET_PROJECT="daaf"'
+        echo '    if [ -n "${PROJECT_NAME_GIVEN}" ]; then'
+        grep -F 'INSTALL_TARGET_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/install.sh"
+        grep -F 'INSTALL_TARGET_PROJECT="${INSTALL_TARGET_PROJECT#' "${REPO_ROOT}/scripts/host/install.sh"
+        echo '    fi'
+        echo '    printf "%s\n" "${INSTALL_TARGET_PROJECT}"'
+        echo '}'
+    } > "${TEST_DIR}/copy_install.sh"
+    run _run_project_name_cases "${TEST_DIR}/copy_install.sh"
+    assert_success
+    [ "${output}" = "${want}" ] || { echo "install.sh differs:"; echo "${output}"; return 1; }
+}
+
+@test "resolve_project_name: no host script derives a Docker name from the RAW DAAF_PROJECT_NAME" {
+    # The copies above are only useful if the scripts call them. Every code line (not
+    # a comment) that once read "${DAAF_PROJECT_NAME:-daaf}" for a volume or container
+    # name must now go through resolve_project_name, so a revert of any one site fails
+    # here. (The backup/restore/update suites check the names behaviourally; this pin
+    # also covers test_migration.sh, which needs Docker and a network to run.)
+    local f n
+    for f in daaf_lib.sh ${_PROJECT_NAME_COPIES}; do
+        n="$(grep -v '^[[:space:]]*#' "${REPO_ROOT}/scripts/host/${f}" | grep -c 'DAAF_PROJECT_NAME:-daaf' || true)"
+        [ "${n}" -eq 0 ] || { echo "${f}: ${n} raw DAAF_PROJECT_NAME:-daaf code line(s)"; return 1; }
+    done
+    for f in backup_daaf.sh restore_from_backup.sh test_migration.sh; do
+        n="$(grep -cxF 'PROJECT_NAME="$(resolve_project_name)"' "${REPO_ROOT}/scripts/host/${f}" || true)"
+        [ "${n}" -eq 1 ] || { echo "${f}: PROJECT_NAME is not taken from resolve_project_name (${n})"; return 1; }
+    done
+    # test_migration.sh: every identifier it checks is built from that PROJECT_NAME.
+    n="$(grep -cE '^readonly (VOLUME_NAME|CLAUDE_VOLUME_NAME|CONTAINER_MAIN|CONTAINER_INIT|IMAGE_NAME)="\$\{PROJECT_NAME\}[-_]' "${REPO_ROOT}/scripts/host/test_migration.sh" || true)"
+    [ "${n}" -eq 5 ]
+    # daaf_lib.sh's own data-volume resolver calls the helper.
+    n="$(sed -n '/^resolve_data_volume_name() {$/,/^}$/p' "${REPO_ROOT}/scripts/host/daaf_lib.sh" | grep -cF 'project="$(resolve_project_name)"' || true)"
+    [ "${n}" -eq 1 ]
+}
+
+@test "resolve_project_name: test_migration.sh refuses a project name that normalizes to nothing" {
+    # Static: the harness needs Docker and a network to run. Its empty-name refusal
+    # must follow the derivation and exit before any identifier is used.
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh" derive refuse first_use
+    derive="$(grep -nxF 'PROJECT_NAME="$(resolve_project_name)"' "${sh}" | cut -d: -f1)"
+    refuse="$(grep -nxF 'if [ -z "${PROJECT_NAME}" ]; then' "${sh}" | head -n 1 | cut -d: -f1)"
+    first_use="$(grep -nE '^readonly VOLUME_NAME=' "${sh}" | cut -d: -f1)"
+    echo "derive=${derive} refuse=${refuse} first_use=${first_use}"
+    [ -n "${derive}" ] && [ -n "${refuse}" ] && [ -n "${first_use}" ]
+    [ "${derive}" -lt "${refuse}" ]
+    [ "${refuse}" -lt "${first_use}" ]
+    run sed -n "${refuse},$((refuse + 5))p" "${sh}"
+    assert_output --partial "cannot be used as a Docker Compose project name."
+    assert_output --partial "exit 1"
+}
+
+# =========================================================================
 # docker-compose.yml multi-instance interpolation defaults
 # =========================================================================
 

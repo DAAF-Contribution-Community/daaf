@@ -109,28 +109,74 @@ teardown() {
     assert_output --partial "rogue_link"
 }
 
-@test "allowlisted symlink: passes (allowlist prefix exempts it)" {
-    # The ALLOWLIST is a hardcoded ABSOLUTE /daaf/... prefix, and find emits paths
-    # rooted at DAAF_INVARIANT_ROOT — so a TEST_DIR fixture path can never begin
-    # with the /daaf allowlist string, and the exemption can't be exercised via
-    # the root override. The faithful check is the LIVE repo: it contains real
-    # symlinks under the allowlisted syslibs_glpk subtree, and the checker must
-    # not flag any of them. (This reads /daaf but writes nothing there — no
-    # fixture escapes TEST_DIR.)
+# The checker's ALLOWLIST entries, one per line, read from the script under test
+# (the readonly ALLOWLIST=( ... ) block), so neither test below hardcodes a path.
+_allowlist_entries() {
+    sed -n '/^readonly ALLOWLIST=(/,/^)/p' "$1" | sed -nE 's/^[[:space:]]*"([^"]+)".*$/\1/p'
+}
+
+@test "allowlisted symlink (hermetic): a symlink under an allowlist prefix passes; a sibling outside it is flagged" {
+    # The ALLOWLIST is a hardcoded ABSOLUTE /daaf/... prefix with no override, and
+    # find emits paths rooted at DAAF_INVARIANT_ROOT, so a TEST_DIR fixture can never
+    # begin with the real allowlist string. This test therefore runs a COPY of the
+    # checker (in TEST_DIR; the real script is never modified) whose ALLOWLIST block
+    # is rewritten to a TEST_DIR prefix, which exercises the prefix-exemption code on
+    # every runner, CI included. The live-entry check is the next test.
+    local copy="${TEST_DIR}/checker_copy.sh" root="${TEST_DIR}/root"
+    local prefix="${root}/allowed/"
+    [ -n "$(_allowlist_entries "$CHECKER")" ] || { echo "no ALLOWLIST entry found in ${CHECKER}"; return 1; }
+    awk -v p="$prefix" '
+        /^readonly ALLOWLIST=\(/ { print; print "    \"" p "\""; skip = 1; next }
+        skip && /^\)/ { skip = 0 }
+        !skip { print }
+    ' "$CHECKER" > "$copy"
+    # The rewrite must have landed (guard against a vacuous copy).
+    [ "$(_allowlist_entries "$copy")" = "$prefix" ] || { echo "ALLOWLIST rewrite did not land:"; _allowlist_entries "$copy"; return 1; }
+    mkdir -p "${root}/allowed/lib" "${root}/allowed_not"
+    printf 'x\n' > "${root}/allowed/lib/libglpk.so.40.3.1"
+    ln -s libglpk.so.40.3.1 "${root}/allowed/lib/libglpk.so.40"
+    run env DAAF_INVARIANT_ROOT="$root" bash "$copy"
+    assert_success
+    assert_output --partial "OK: workspace invariants satisfied (1 symlink(s) checked"
+    # A sibling whose name merely STARTS with the prefix text, minus its slash, is
+    # not exempt; the exempt link still is not reported.
+    ln -s /some/target "${root}/allowed_not/rogue_link"
+    run env DAAF_INVARIANT_ROOT="$root" bash "$copy"
+    assert_failure
+    assert_output --partial "(1 of 2 symlink(s) are not on the allowlist)"
+    assert_output --partial "${root}/allowed_not/rogue_link"
+    refute_output --partial "libglpk.so.40"
+}
+
+@test "allowlisted symlink (live): the real allowlist entries exempt the live symlinks under them" {
+    # The real entries are absolute /daaf/... paths that exist only in the DAAF
+    # development container (CI's checkout has none of them, and the root override
+    # cannot make a fixture match them), so this test SKIPS when no entry exists on
+    # this machine. Making it hermetic would need a script change (an allowlist
+    # override); the hermetic test above covers the exemption code meanwhile.
+    # (This reads /daaf but writes nothing there -- no fixture escapes TEST_DIR.)
     # Scoped to the allowlist claim only. The overall exit code of a live-/daaf
     # run also depends on things this test must not couple to: Invariants 2-3
-    # (e.g. a user's field-test fixture), and — when TMPDIR points inside /daaf,
-    # as testing.md requires — the bats run directory's own per-file symlink
+    # (e.g. a user's field-test fixture), and -- when TMPDIR points inside /daaf,
+    # as testing.md requires -- the bats run directory's own per-file symlink
     # (`bats-exec-file`), which Invariant 1 correctly reports while the run is live.
-    local prefix="/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/"
-    # Non-vacuous: at least one live symlink must exist under the allowlisted prefix.
-    [ -n "$(find "$prefix" -type l -print -quit)" ]
+    local prefix live=() with_links=()
+    while IFS= read -r prefix; do
+        [ -d "$prefix" ] || continue
+        live+=("$prefix")
+        if [ -n "$(find "$prefix" -type l -print -quit)" ]; then with_links+=("$prefix"); fi
+    done < <(_allowlist_entries "$CHECKER")
+    [ "${#live[@]}" -gt 0 ] || skip "no ALLOWLIST entry of ${CHECKER} exists here (they are DAAF dev-container paths; the hermetic test covers the exemption)"
+    # Non-vacuous: at least one live symlink must exist under an allowlisted prefix.
+    [ "${#with_links[@]}" -gt 0 ] || skip "the ALLOWLIST entries exist here but hold no symlink, so there is nothing to exempt"
     run bash "$CHECKER"
     # The run must have completed (OK line or a violation report, exit 0/1)...
     [ "$status" -le 1 ]
     [[ "$output" == *"workspace invariants satisfied"* || "$output" == *"WORKSPACE INVARIANT VIOLATION"* ]]
-    # ...and no path under the allowlisted prefix may be reported.
-    refute_output --partial "$prefix"
+    # ...and no path under an allowlisted prefix may be reported.
+    for prefix in "${with_links[@]}"; do
+        refute_output --partial "$prefix"
+    done
 }
 
 # =========================================================================

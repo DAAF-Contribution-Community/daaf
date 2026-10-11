@@ -77,15 +77,34 @@ function Import-DaafSettingsInline {
 }
 Import-DaafSettingsInline
 
+# --- Compose project name (INLINE COPY of daaf_lib.ps1 Resolve-DaafProjectName) ---
+# This standalone script does not dot-source daaf_lib.ps1, so the helper is carried
+# inline, BYTE-IDENTICAL to the library function and to the copies in
+# backup_daaf.ps1 and update_daaf.ps1 (tests/powershell/daaf_lib.Tests.ps1 pins all
+# of them, and install.ps1's inline expression, to the same results). It returns
+# DAAF_PROJECT_NAME (default "daaf") normalized the way Docker Compose normalizes the
+# project name -- non-ASCII-safe: characters outside [A-Za-z0-9_-] dropped first,
+# then lowercased, then leading '_'/'-' trimmed -- so `Work` names the volume
+# "work_daaf-data", the one Compose created. An empty result means no usable name;
+# the run refuses it below. See daaf_lib.ps1 for the full notes.
+function Resolve-DaafProjectName {
+    [CmdletBinding()]
+    param()
+    $project = 'daaf'
+    if ($env:DAAF_PROJECT_NAME) { $project = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+    return $project
+}
+
 # --- Configuration ---
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Default
 # unset => "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# <project> is $projectName, the normalized name from Resolve-DaafProjectName above
+# (empty => refused before any Docker call; see "Project-name check" below).
 # DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
-# full volume name (the shared-workspace escape hatch); unset => the derived
-# default. Matches Resolve-DaafDataVolumeName in daaf_lib.ps1 (inlined here because
-# this standalone script does not dot-source the library).
-$projectName = "daaf"
-if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
+# full volume name (the shared-workspace escape hatch; never normalized); unset =>
+# the derived default. Matches Resolve-DaafDataVolumeName in daaf_lib.ps1 (inlined
+# here because this standalone script does not dot-source the library).
+$projectName = Resolve-DaafProjectName
 $VolumeName = "${projectName}_daaf-data"
 if ($env:DAAF_DATA_VOLUME_NAME) { $VolumeName = $env:DAAF_DATA_VOLUME_NAME }
 # Second volume: Claude Code state. Restored only when the selected backup
@@ -293,6 +312,21 @@ Write-Host "  DAAF Restore from Backup"
 Write-Host "=========================================="
 Write-Host ""
 
+# --- Project-name check ---
+# Twin of the .sh check: a DAAF_PROJECT_NAME that normalizes to nothing (e.g. "___"
+# or "@@") names no volume Compose could have created, and the Claude Code volume
+# name is derived from it even when DAAF_DATA_VOLUME_NAME is set. Refuse before any
+# Docker call, with the installer's wording. Same text in backup_daaf and
+# update_daaf (script name varied).
+if ([string]::IsNullOrEmpty($projectName)) {
+    Write-Host "ERROR: DAAF_PROJECT_NAME='$env:DAAF_PROJECT_NAME' cannot be used as a Docker Compose" -ForegroundColor Red
+    Write-Host "       project name. A project name may use lowercase letters, digits, '-'"
+    Write-Host "       and '_', and must start with a letter or digit. Fix it in"
+    Write-Host "       environment_settings.txt (or your shell), then run the restore again."
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
+
 # --- Preflight ---
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is either not installed or not configured properly in your system PATH to allow it to be used from PowerShell." -ForegroundColor Red
@@ -325,6 +359,17 @@ if ($LASTEXITCODE -ne 0) {
         Write-Host "       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer)."
     }
     Wait-AndExit 1
+}
+
+# --- Project-name NOTE (review 51q SUGGESTION-2) ---
+# Twin of the .sh NOTE (see there): with DAAF_DATA_VOLUME_NAME unset and a project
+# name Compose normalizes to something else (`Work` -> `work`), say so once, before
+# the volume name is first shown. -cne: a case-only difference counts. Never printed
+# when the name is unset or already normalized. Kept above the Docker version check
+# (tests/bash/backup_twin_parity.bats extracts that block's messages).
+if (-not $env:DAAF_DATA_VOLUME_NAME -and $env:DAAF_PROJECT_NAME -and $env:DAAF_PROJECT_NAME -cne $projectName) {
+    Write-Host "NOTE: Docker Compose uses the project name '$projectName' for '$env:DAAF_PROJECT_NAME'."
+    Write-Host ""
 }
 
 # --- Docker version check (F1 compatibility; audit 04, section 3) ---

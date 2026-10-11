@@ -533,3 +533,40 @@ teardown() {
     assert_success
     [ "${output}" -eq 2 ]
 }
+
+# --- Era 1/2 project-name guard (review 51q NIT-2) ---
+# The guard runs before any Docker call or file write (mktemp comes after it), so the
+# harness is run for real here. The message shows the value as typed, plus the
+# normalized name when the two differ; the comparison itself uses the normalized name.
+
+@test "era guard: the refusal shows DAAF_PROJECT_NAME as typed, plus the normalized name when they differ" {
+    # setup() runs `set +eu` for the sourced harness, which would leave every
+    # assertion but the last inert here: turn errexit back on for this test.
+    set -e
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_DATA_VOLUME_NAME \
+        NO_COLOR=1 DAAF_TEST_VERSION=v2.0.1 DAAF_PROJECT_NAME=Work \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_failure 1
+    assert_output --partial "ERROR: Era 2 replays a pathway that predates DAAF_PROJECT_NAME;"
+    assert_output --partial "ERROR: only the default 'daaf' project is supported (got: 'Work', which Docker Compose uses as 'work')."
+
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_DATA_VOLUME_NAME \
+        NO_COLOR=1 DAAF_TEST_VERSION=v1.0.0 DAAF_PROJECT_NAME=daaf2 \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_failure 1
+    assert_output --partial "ERROR: Era 1 replays a pathway that predates DAAF_PROJECT_NAME;"
+    assert_output --partial "ERROR: only the default 'daaf' project is supported (got: 'daaf2')."
+    refute_output --partial "which Docker Compose uses as"
+}
+
+@test "era guard (.sh/.ps1): both twins carry the as-typed wording" {
+    set -e  # see the test above: setup()'s `set +eu` would make the assertions inert
+    run grep -cF "only the default 'daaf' project is supported (got: '\${DAAF_PROJECT_NAME:-}', which Docker Compose uses as '\${PROJECT_NAME}')." "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_output "1"
+    run grep -cF "(got: '\${PROJECT_NAME}')" "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_output "0"
+    run grep -cF "\$eraGot += \", which Docker Compose uses as '\$ProjectName'\"" "${REPO_ROOT}/scripts/host/test_migration.ps1"
+    assert_output "1"
+    run grep -cF "(got: '\$ProjectName')" "${REPO_ROOT}/scripts/host/test_migration.ps1"
+    assert_output "0"
+}
