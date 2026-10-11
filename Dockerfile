@@ -1006,6 +1006,22 @@ RUN Rscript -e 'pkgs <- c( \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
+# Replication-package environments (Manuscript Preparation mode, MP-4)
+# renv: writes the renv.lock / .Rprofile / renv/activate.R set (plus
+# renv/.gitignore; DAAF's snapshot sequence writes no renv/settings.json) that
+# the AEA Data Editor requests for R code in replication packages (exact
+# package versions; replicators restore with renv::restore()). DAAF uses it only
+# to SNAPSHOT the packages a package's R scripts import into a lockfile — never
+# to install or restore packages inside the container (runtime installs are
+# blocked; see CLAUDE.md § Runtime Package Installation). Rationale:
+# research/2026-10-02_FrameworkDev_ManuscriptPrepMode/preliminary_notes/17_research_t8_aea_data_editor.md §4.
+RUN Rscript -e 'pkgs <- c( \
+        "renv" \
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
+
 # Presence gate: the FINAL identity check that the installed package set matches the
 # union of the install.packages() blocks above. Its role changed with the per-block
 # fail-fast pattern: the per-block requireNamespace() checks now catch a failed package
@@ -1032,15 +1048,21 @@ RUN Rscript -e 'pkgs <- c( \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
         "iml", "uwot", "fairmodels", "vip", \
         "igraph", "tidygraph", "ggraph", \
-        "simstudy", "fabricatr" \
+        "simstudy", "fabricatr", \
+        "renv" \
         ); \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \
         cat("All", length(pkgs), "R packages present.\n")'
 
-# Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9).
+# Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9 and
+# for Manuscript Preparation's no-code-at-render Typst/DOCX manuscript builds).
 # Pin the version; update when intentionally upgrading.
-ARG QUARTO_VERSION=1.7.29
+# 1.7.29 -> 1.10.18 (2026-10-03): Typst linestretch/abstract-title, list tables,
+# multi-bib Typst fix, manuscript-project fixes, apaquarto (>=1.9), PDF/UA alt text.
+# Bundles pandoc 3.10 + typst 0.15.1. Plan + regression notes:
+# research/2026-10-02_FrameworkDev_ManuscriptPrepMode/preliminary_notes/18_research_t9_quarto_bump_plan.md
+ARG QUARTO_VERSION=1.10.18
 RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${ARCH}.deb" \
         -o /tmp/quarto.deb \
@@ -1183,16 +1205,31 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
     fi
 
 # Install Claude Code as appuser (pinned version)
-# Pinned to 2.1.261 (npm `latest`; changelog head) on 2026-09-05 — first version
-# where Claude Fable 5.1 (`claude-fable-5-1`, added 2.1.257) works without the
-# `[1m]`->silent-200K window bug (fixed 2.1.260), plus Opus 5 (added 2.1.219).
-# Delta review 2.1.203-2.1.261 + regression checklist (two contributing reviews):
+# Pinned to 2.1.281 (npm `latest` = `next`; changelog head) on 2026-09-24. The
+# previous pin, 2.1.280 (2026-09-23), is the first version that ships Claude
+# Opus 5.5 (`claude-opus-5-5`, added 2.1.280; 1M context, now the default `opus`
+# alias), which DAAF adopts as its shipped `ANTHROPIC_MODEL`; no earlier pin
+# runs that default. 2.1.276 is the HARD MINIMUM for any shim-lane install:
+# three separate `ANTHROPIC_BASE_URL` gateway/proxy regressions landed in
+# 2.1.265 (Artifact-tool input-schema regex -> HTTP 400, fixed 2.1.268;
+# `CLAUDE_CODE_USE_GATEWAY` forcing Cloud sign-in, fixed 2.1.266) and 2.1.275
+# (`Input tag 'advisor_20260301'` -> 400, fixed 2.1.276), so any pin in
+# 2.1.265-2.1.275 is a known-broken shim lane. 2.1.280 additionally adds
+# symlinked-write permission judging, two subagent-report-loss fixes, and the
+# generalized advisor-header retry for gateways. 2.1.281 makes the dangerous-rm
+# check prompt for command-substitution targets (`rm -r "$(pwd)"`) even in
+# bypass mode (2-minute wait, then deny), and fixes proxy/gateway stream
+# handling (clean-close truncation, dropped or duplicated events).
+# Delta review 2.1.203-2.1.281 + regression checklist (four contributing reviews):
 #   research/2026-07-29_FrameworkDev_ClaudeCode_Upgrade_2.1.212/  (2.1.203-2.1.212)
 #   research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261/  (2.1.213-2.1.261)
+#   research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/  (2.1.262-2.1.280)
+#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/  (2.1.281)
 # Prior review (2.1.188-2.1.202):
 #   research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202/
-# Rollback target: 2.1.202
-ARG CLAUDE_CODE_VERSION=2.1.261
+# Rollback target: 2.1.280 (the only earlier pin that runs the shipped default
+# `claude-opus-5-5[1m]`; 2.1.261 predates Opus 5.5)
+ARG CLAUDE_CODE_VERSION=2.1.281
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
