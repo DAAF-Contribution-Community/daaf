@@ -33,7 +33,7 @@ Principles" and the Method Selection Guide.
 - [How SDID Differs from Classic SCM](#how-sdid-differs-from-classic-scm)
 - [Gotchas and Pitfalls](#gotchas-and-pitfalls)
 - [Decision Tree: Which Approach?](#decision-tree-which-approach)
-- [References](#references)
+- [References and Further Reading](#references-and-further-reading)
 
 ## When to Use Synthetic Control
 
@@ -41,7 +41,7 @@ Synthetic control is designed for a specific research setting:
 
 | Condition | Requirement |
 |-----------|-------------|
-| Number of treated units | Small (often 1, sometimes 2-5) |
+| Number of treated units | Small (often 1, sometimes 2-5; rule of thumb) |
 | Pre-treatment periods | Many (long pre-treatment panel) |
 | Donor pool | Sufficient untreated units to construct a credible match |
 | Treatment effect size | Large enough to distinguish from noise in placebo distribution |
@@ -144,8 +144,10 @@ print(f"Post-treatment periods: {len(post_periods)}")
 Classic SCM solves a nested optimization problem:
 
 - **Outer problem:** Find diagonal weight matrix V (predictor importance weights)
-  that minimizes the post-treatment prediction error on a hold-out portion of the
-  pre-treatment period, or more commonly minimizes the pre-treatment RMSPE
+  that minimizes the outcome's pre-treatment MSPE (the Abadie and Gardeazabal
+  2003 choice, as described by Abadie, Diamond, and Hainmueller 2010) or, with
+  enough pre-periods, the prediction error in a validation period after a
+  training period
 - **Inner problem:** Given V, find unit weights W that minimize the V-weighted
   distance between treated and synthetic control pre-treatment predictors,
   subject to W >= 0 and sum(W) = 1
@@ -426,31 +428,40 @@ placebo.fit(dataprep=dataprep, synth=synth)
 placebo.gaps_plot(
     time_period=[1980, 2010],
     treatment_time=2000,
-    mspe_threshold=5,             # Exclude placebos with pre-RMSPE > 5x treated
+    mspe_threshold=5,             # Exclude placebos whose pre-treatment MSPE > 5x the treated unit's
 )
 
 # p-value from placebo distribution
-print(f"Placebo p-value: {placebo.pvalue():.4f}")
+print(f"Placebo p-value: {placebo.pvalue(treatment_time=2000):.4f}")
 ```
 
-The `mspe_threshold` parameter filters out placebos with poor pre-treatment fit
-(pre-RMSPE more than N times the treated unit's). This prevents units that
-cannot be well-matched from inflating the placebo distribution. Common values:
-2-5 (Abadie et al. 2010 used 2; 5 is more conservative/inclusive).
+`mspe_threshold` drops placebos whose pre-treatment MSPE exceeds N times the
+treated unit's. This prevents units that cannot be well-matched from inflating
+the placebo distribution. Abadie, Diamond, and Hainmueller (2010) showed
+successively stricter cutoffs of 20, 5 and 2 times California's pre-treatment
+MSPE. An MSPE cutoff of k equals an RMSPE cutoff of √k.
 
 ### Conformal Inference
 
-Chernozhukov, Wuthrich, and Zhu (2021) conformal inference provides
-finite-sample valid confidence intervals without distributional assumptions.
+Chernozhukov, Wüthrich, and Zhu (2021) conformal inference gives permutation
+p-values and pointwise confidence intervals (by test inversion). They are exact
+in finite samples when residuals are exchangeable, and approximately valid under
+stationary, weakly dependent errors.
 
 ```python
 # Conformal confidence intervals
 ci = synth.confidence_interval(
-    alpha=0.05,                    # 95% CI
+    alpha=0.05,                    # 95% CI; pysyncon requires 1/len(pre_periods) <= alpha
     time_periods=[2000, 2001, 2002, 2003, 2004, 2005],
+    tol=0.01,                      # required (no default): CI end-point search tolerance; illustrative value
+    pre_periods=list(range(1980, 2000)),  # 20 pre-periods; default is dataprep.time_optimize_ssr
 )
 print(ci)
 ```
+
+pysyncon raises a `ValueError` when 1/T0 > `alpha`, where T0 is the number of
+pre-periods used for the refits (upstream `synth.py`; package not installed). At
+`alpha=0.05` that means at least 20 pre-periods.
 
 ## synthdid (Synthetic Difference-in-Differences)
 
@@ -477,7 +488,7 @@ result = sdid(
 
 # Fit the model, then compute variance
 result.fit(cov_method="optimized")
-result.vcov(method="placebo", n_reps=50)
+result.vcov(method="placebo", n_reps=50)  # n_reps: illustrative value, not a recommendation
 
 # Access results via summary table
 summary = result.summary().summary2
@@ -494,11 +505,12 @@ SDID supports multiple variance estimation methods via `.vcov()`:
 
 ```python
 # Placebo-based variance (recommended for few treated units)
-result.vcov(method="placebo", n_reps=50)
+result.vcov(method="placebo", n_reps=50)  # n_reps: illustrative value, not a recommendation
 print(result.summary().summary2)
 
 # Bootstrap variance
-result.vcov(method="bootstrap", n_reps=200)
+# designed for many treated units (Arkhangelsky et al. 2021)
+result.vcov(method="bootstrap", n_reps=200)  # n_reps: illustrative value, not a recommendation
 print(result.summary().summary2)
 
 # Jackknife variance
@@ -534,8 +546,8 @@ result.plot_weights()           # Unit and time weight distributions
 
 **Install:** `pip install scpi`
 
-scpi-pkg (Cattaneo, Feng, Palomba, and Titiunik 2025) is the only package that
-provides rigorous prediction intervals that account for both in-sample
+scpi-pkg (Cattaneo, Feng, Palomba, and Titiunik 2025) was the first package to
+provide rigorous prediction intervals that account for both in-sample
 uncertainty (estimation of weights) and out-of-sample uncertainty (prediction of
 future outcomes).
 
@@ -572,7 +584,7 @@ print(est.effect)
 # Step 3: Prediction intervals
 pi_result = scpi(
     data,
-    sims=200,                    # Bootstrap replications
+    sims=200,                    # Bootstrap replications (illustrative value, not a recommendation)
     w_constr={"name": "simplex"},
     u_alpha=0.05,                # Significance for PI
 )
@@ -596,16 +608,12 @@ scpi-pkg natively supports multiple treated units and staggered adoption, unlike
 most other SC packages:
 
 ```python
-data_multi = scdata(
-    df=df,
-    id_var="unit",
-    time_var="year",
-    outcome_var="outcome",
-    period_pre=[1980, 1999],
-    period_post=[2000, 2010],
-    unit_tr=["California", "New York"],  # Multiple treated units
-    unit_co=donor_list,
-)
+from scpi_pkg.scdataMulti import scdataMulti
+
+# scdata() is for a single treated unit; scdataMulti() handles multiple treated
+# units and staggered adoption (scpi JSS 2025). The JSS paper shows no
+# scdataMulti() call, so no argument list is given here -- read
+# help(scdataMulti) in the installed package before writing the call.
 ```
 
 ## CausalPy (Bayesian Approach)
@@ -656,10 +664,12 @@ print(f"95% HDI: [{np.percentile(posterior_att, 2.5):.4f}, "
 
 **Key differences from frequentist SC:**
 - Produces full posterior distribution of weights and treatment effects
-- Natural uncertainty quantification through HDI (no need for placebo heuristics)
+- Natural uncertainty quantification through HDI (no need for placebo
+  heuristics; DAAF inference)
 - MCMC sampling is slower than optimization-based methods
 - Results depend on prior specification (WeightedSumFitter uses a Dirichlet prior
-  on weights by default, enforcing the simplex constraint probabilistically)
+  on weights by default, enforcing the simplex constraint probabilistically;
+  package default as documented upstream; not verified against installed code)
 
 ## Inference for Synthetic Controls
 
@@ -761,25 +771,27 @@ print(f"p-value: {p_value:.4f}")
 
 **Interpretation:** The p-value is rank(treated_ratio) / (J + 1). With J = 19
 donors (20 total units including treated), the minimum achievable p-value is
-1/20 = 0.05. For p < 0.05, you need J >= 19 control units.
+1/20 = 0.05. Reaching p ≤ 0.05 requires J ≥ 19; p < 0.05 requires J ≥ 20.
 
-### 3. Pre-RMSPE Filtering
+### 3. Pre-Treatment MSPE Filtering
 
 Not all placebos deserve equal standing. Units with poor pre-treatment fit
 generate noisy post-treatment gaps that dilute the placebo distribution.
 
 ```python
-# Filter: exclude placebos with pre-RMSPE > threshold * treated pre-RMSPE
-MSPE_THRESHOLD = 5  # Abadie et al. (2010) used 2; 5 is more inclusive
+# Filter: exclude placebos with pre-MSPE > threshold * treated pre-MSPE
+# (MSPE scale; an MSPE cutoff of k equals an RMSPE cutoff of sqrt(k))
+MSPE_THRESHOLD = 5  # ADH (2010) showed MSPE cutoffs of 20, 5, 2
 
+# pre_rmspe values are RMSPEs; square both sides so the comparison is on the MSPE scale
 filtered_ratios = {
     unit: r for unit, r in ratios.items()
     if unit == TREATED_UNIT
-    or placebo_gaps.get(unit, {}).get("pre_rmspe", float("inf")) <= MSPE_THRESHOLD * pre_rmspe
+    or placebo_gaps.get(unit, {}).get("pre_rmspe", float("inf")) ** 2 <= MSPE_THRESHOLD * pre_rmspe ** 2
 }
 
 n_excluded = len(ratios) - len(filtered_ratios)
-print(f"Excluded {n_excluded} placebos with pre-RMSPE > {MSPE_THRESHOLD}x treated")
+print(f"Excluded {n_excluded} placebos with pre-MSPE > {MSPE_THRESHOLD}x treated")
 
 # Recalculate p-value with filtered set
 filtered_sorted = sorted(filtered_ratios.values(), reverse=True)
@@ -807,19 +819,26 @@ placebo_post = [y for y in pre_periods if y >= PLACEBO_TREATMENT_YEAR]
 # even before real treatment, suggesting the counterfactual is unreliable
 ```
 
-### 5. Conformal Inference (Chernozhukov, Wuthrich, and Zhu 2021)
+### 5. Conformal Inference (Chernozhukov, Wüthrich, and Zhu 2021)
 
-Conformal inference provides finite-sample valid p-values and confidence
-intervals without distributional assumptions. It permutes the treatment
-assignment across time periods to construct a reference distribution.
+Conformal inference gives p-values and pointwise confidence intervals for
+per-period effects. It permutes residuals, estimated under the null hypothesis,
+across time periods to build a reference distribution. It does not permute
+treatment across units.
 
 Available in pysyncon via `synth.confidence_interval()` (see pysyncon section
-above). Also available in scpi-pkg via `scpi()`.
+above). The scpi JSS paper documents no conformal option: its uncertainty
+quantification uses the Cattaneo et al. prediction-interval methods (R
+`e.method`, Python `e_method`: "gaussian", "ls", or "qreg"), covered in §6
+below.
 
 **Advantages over placebo tests:**
-- Finite-sample exact coverage (not approximate)
-- Does not require a large donor pool for valid inference
-- Provides confidence intervals, not just p-values
+- Exact in finite samples when residuals are i.i.d. or exchangeable. Under
+  stationary, weakly dependent errors it is approximately valid, with
+  non-asymptotic size bounds (exact as T0 → ∞).
+- Validity comes from the time dimension: it needs enough pre-treatment periods,
+  not a large donor pool.
+- Gives pointwise confidence intervals by test inversion, not just p-values.
 
 ### 6. Prediction Intervals (Cattaneo, Feng, and Titiunik 2021)
 
@@ -837,10 +856,10 @@ understating total uncertainty. Prediction intervals are wider but more honest.
 
 | Method | Source of Validity | Requires | Produces | Package |
 |--------|-------------------|----------|----------|---------|
-| In-space placebos | Permutation analogy | J >= 19 for p < 0.05 | Rank-based p-value | pysyncon, manual |
+| In-space placebos | Permutation analogy | J ≥ 19 for p ≤ 0.05 | Rank-based p-value | pysyncon, manual |
 | RMSPE ratio | Permutation | Same as above | p-value | pysyncon, manual |
 | In-time placebos | Falsification check | Sufficient pre-periods | Visual diagnostic | Any / manual |
-| Conformal inference | Finite-sample exactness | Exchangeability across time | CI + p-value | pysyncon, scpi-pkg |
+| Conformal inference | Residual permutation over time (exact if exchangeable) | Exchangeability across time | CI + p-value | pysyncon |
 | Prediction intervals | In- and out-of-sample uncertainty | Regularity conditions | Prediction interval | scpi-pkg only |
 | Bayesian HDI | Posterior distribution | Prior specification | HDI + posterior | CausalPy |
 
@@ -872,8 +891,11 @@ estimator that combines elements of SCM and DiD.
 
 2. **Valid large-panel inference:** Classic SCM inference relies on permutation
    with J + 1 units -- with few donors, minimum p-values are large (1/(J+1)).
-   SDID has standard asymptotic properties as both N and T grow, enabling
-   conventional inference even with moderate panel sizes.
+   SDID is asymptotically normal as N and T grow with the number of treated
+   cells (one of N_tr or T_post may stay fixed, not both). With one treated
+   unit, the jackknife is undefined and the bootstrap may be less reliable; the
+   placebo variance estimator applies, but it assumes homoskedasticity across
+   units.
 
 3. **Time weights improve robustness:** By down-weighting pre-treatment periods
    that are less relevant to the treatment-period comparison, SDID is less
@@ -888,7 +910,7 @@ estimator that combines elements of SCM and DiD.
 | 1 treated unit, permanent level differences | SDID | FE absorbs level shifts |
 | Few treated units, many controls | SDID | Better inference properties |
 | Many treated units, staggered adoption | DiD estimators (pyfixest) | Designed for this; see `difference-in-differences.md` |
-| Need formal prediction intervals | scpi-pkg (SCM) | Only package with rigorous PI |
+| Need formal prediction intervals | scpi-pkg (SCM) | First package with rigorous PI |
 | Need Bayesian uncertainty | CausalPy | Full posterior distribution |
 
 ### Reporting Both
@@ -908,9 +930,11 @@ These are the most common mistakes and subtle issues in applied SC work.
 time points) relative to the number of pre-treatment periods causes the SC to
 match noise rather than signal.
 
-**Diagnostic:** The danger zone is T0/J <= 0.8 (pre-treatment periods divided by
-number of donors). If you have 10 pre-periods and 15 donors, be cautious about
-matching on more than a few predictors.
+**Diagnostic:** Abadie (2021) gives no T0/J cutoff and treats the issue
+qualitatively: over-fitting risk is higher when T0 is small, and "may also
+increase with the size of the donor pool, especially when T0 is small." Also,
+using every pre-treatment outcome lag as a separate predictor renders all other
+covariates irrelevant (Kaul et al. 2015).
 
 **Solution:** Use outcome means over sub-periods rather than individual years.
 Cross-validate by holding out some pre-treatment periods and checking
@@ -920,13 +944,14 @@ out-of-sample fit.
 
 **Problem:** If the relationship between the outcome and predictors is nonlinear,
 a weighted average of donor units (which is a linear operation) may poorly
-approximate the treated unit even with perfect predictor balance.
+approximate the treated unit even with perfect predictor balance (Abadie 2021).
 
 **Example:** Averaging a very rich and a very poor country to approximate a
 middle-income country fails when growth dynamics are nonlinear in income level.
 
 **Solution:** Restrict the donor pool to units that are individually similar to the
 treated unit. Do not rely on averaging dissimilar units to "meet in the middle."
+Abadie (2021) calls including unsuitable donors "a recipe for bias."
 
 ### 3. Extrapolation Bias
 
@@ -936,7 +961,10 @@ SC is forced to extrapolate.
 
 **Diagnostic:** Check whether the treated unit's predictor values fall within the
 range spanned by the donor units. If the treated unit has the highest GDP, the
-lowest poverty rate, etc., no convex combination of donors can match it.
+lowest poverty rate, etc., no convex combination of donors can match it. Abadie
+(2021) frames this as a convex hull condition: after constructing the synthetic
+control, check that its characteristics differ only slightly from the treated
+unit's.
 
 **Solution:** Accept that SC may not be appropriate for this treated unit, or relax
 the simplex constraint (allow negative weights via scpi-pkg's `ols` constraint),
@@ -948,8 +976,7 @@ understanding that this sacrifices interpretability.
 only 10 control units, the best p-value is 1/11 = 0.09 -- you cannot achieve
 conventional significance regardless of effect size.
 
-**Rule of thumb:** For p < 0.05, need J >= 19 control units. For p < 0.01, need
-J >= 99.
+**Arithmetic:** p ≤ 0.05 needs J ≥ 19; p ≤ 0.01 needs J ≥ 99.
 
 **Solution:** Use conformal inference (which does not depend on donor pool size for
 validity) or prediction intervals (scpi-pkg) as alternatives when the donor pool
@@ -990,10 +1017,13 @@ question.
 
 ### 8. No Formal Standard Errors
 
-**Problem:** Bootstrap standard errors are **invalid** for SCM because the
-estimator is not smooth (it involves a constrained optimization with binding
-inequality constraints). Researchers sometimes report bootstrap SEs out of habit
--- these have no theoretical justification for SC.
+**Problem:** Single-treated-unit SCM has no standard bootstrap or jackknife
+justification. Arkhangelsky et al. (2021) design bootstrap and jackknife
+variance for large panels with many treated units. They note these "may be less
+reliable when the number of treated units N tr is small," that the jackknife is
+undefined when N_tr = 1, and that a jackknife analogue for SC "would be severely
+biased upwards." (The "non-smooth estimator" rationale sometimes given for this
+is DAAF inference.)
 
 **Solution:** Use placebo-based inference, conformal inference, or prediction
 intervals. Never report bootstrap standard errors for SC weights or treatment
@@ -1015,16 +1045,22 @@ transparent that the counterfactual is weakly identified.
 
 ### 10. Non-Uniqueness of V Weights
 
-**Problem:** The outer optimization over V (predictor importance weights) is
-non-convex and may have multiple local optima. Different starting values or
-optimization algorithms can produce different V weights and therefore different
-W weights and treatment effect estimates. Klosner and Kaul (2018) documented
-this sensitivity systematically.
+**Problem:** The predictor weights V are often not unique: different V can
+produce the same donor weights W. In standard one-step SCM this is harmless,
+because only W enters the estimate. Under the two-step cross-validation
+technique (training and validation periods), introduced by Abadie, Diamond, and
+Hainmueller (2015) as described by Klößner et al. (2018), non-unique V can
+change W and the estimate. Klößner et al. (2018) showed
+that ADH (2015)'s cross-validated results changed with the software package and
+the ordering of donor units. Abadie (2021, fn. 7) notes that cross-validation
+weights are not always unique. Separately, the outer problem is a nonconvex
+numerical optimization, so a solver may stop at a local optimum (DAAF
+inference).
 
-**Solution:** Run the optimization from multiple starting points and check
-sensitivity. Report the range of estimates across starting points. If results
-vary substantially, this is a signal that the SC is not robustly identified for
-this application.
+**Solution:** Run the optimization from multiple starting points and solvers,
+and check whether **W** changes (not just V). Report the range of estimates
+across starting points. If results vary substantially, this is a signal that
+the SC is not robustly identified for this application.
 
 ## Decision Tree: Which Approach?
 
@@ -1060,7 +1096,7 @@ Do you have a synthetic control package installed?
 │   └─ Robustness: run SCM + SDID and compare
 ```
 
-## References
+## References and Further Reading
 
 ### Foundational SCM Papers
 
@@ -1075,7 +1111,9 @@ Control Program." *Journal of the American Statistical Association*,
 
 Abadie, A., Diamond, A., and Hainmueller, J. (2015). "Comparative Politics and
 the Synthetic Control Method." *American Journal of Political Science*,
-59(2), 495-510. https://doi.org/10.1111/ajps.12116
+59(2), 495-510. https://doi.org/10.1111/ajps.12116 Crossref records a
+correction notice (2026; https://doi.org/10.1111/ajps.70083); its content was
+not reviewed for this file.
 
 Abadie, A. (2021). "Using Synthetic Controls: Feasibility, Data Requirements,
 and Methodological Aspects." *Journal of Economic Literature*, 59(2),
@@ -1094,7 +1132,7 @@ Synthetic Control Methods." *Journal of the American Statistical
 Association*, 116(536), 1865-1880.
 https://doi.org/10.1080/01621459.2021.1979561
 
-Chernozhukov, V., Wuthrich, K., and Zhu, Y. (2021). "An Exact and Robust
+Chernozhukov, V., Wüthrich, K., and Zhu, Y. (2021). "An Exact and Robust
 Conformal Inference Method for Counterfactual and Synthetic Controls."
 *Journal of the American Statistical Association*, 116(536), 1849-1864.
 https://doi.org/10.1080/01621459.2021.1920957
@@ -1107,20 +1145,28 @@ Control Method." *Journal of the American Statistical Association*,
 
 Doudchenko, N. and Imbens, G.W. (2016). "Balancing, Regression,
 Difference-in-Differences and Synthetic Control Methods: A Synthesis." NBER
-Working Paper No. 22791.
+Working Paper No. 22791. https://doi.org/10.3386/w22791
 
 ### Software
 
 Cattaneo, M.D., Feng, Y., Palomba, F., and Titiunik, R. (2025). "scpi:
 Uncertainty Quantification for Synthetic Control Methods." *Journal of
-Statistical Software*, 113(1), 1-38.
+Statistical Software*, 113(1), 1-38. https://doi.org/10.18637/jss.v113.i01
 
 ### Textbooks
 
 Cunningham, S. (2021). *Causal Inference: The Mixtape*. Yale University Press.
-Ch. 10: Synthetic Control. https://mixtape.scunning.com/
+Ch. 10: Synthetic Control (chapter number not re-verified).
+https://mixtape-1ed.netlify.app/ (1st edition; mixtape.scunning.com now serves
+the 2nd edition, *Causal Inference: The Remix*)
 
 ### Methodological Caveats
 
 Kaul, A., Klößner, S., Pfeifer, G., and Schieler, M. (2015). "Synthetic Control Methods: Never Use All
-Pre-Intervention Outcomes Together with Covariates." Working Paper.
+Pre-Intervention Outcomes Together with Covariates." Working paper (RePEc
+record; series and number not identified).
+
+Klößner, S., Kaul, A., Pfeifer, G., and Schieler, M. (2018). "Comparative
+Politics and the Synthetic Control Method Revisited: A Note on Abadie et al.
+(2015)." *Swiss Journal of Economics and Statistics*, 154, Article 11.
+https://doi.org/10.1186/s41937-017-0004-9

@@ -62,7 +62,7 @@ Does my research question involve space?
     └─ Standard methods suffice — no spatial tools needed
 ```
 
-**Reference:** Rey et al. (2023) Ch. 1
+**Reference:** DAAF synthesis; for Conley spatial-HAC standard errors see Conley (1999).
 
 ---
 
@@ -74,7 +74,7 @@ Results can change dramatically depending on how geographic boundaries are drawn
 
 1. **Scale effect (aggregation level):** The same data produces different statistical relationships at different levels of aggregation. A regression of income on education yields different coefficients at census tract vs. county vs. state level.
 
-2. **Zoning effect (boundary placement):** Even at the same scale, different boundary configurations produce different results. Redrawing county lines while keeping the same number of counties changes the correlation between variables.
+2. **Zoning effect (boundary placement; Openshaw's "aggregation problem"):** Even at the same scale, different boundary configurations produce different results. Redrawing county lines while keeping the same number of counties changes the correlation between variables.
 
 ### Practical Implications
 
@@ -86,9 +86,9 @@ Results can change dramatically depending on how geographic boundaries are drawn
 
 ### Example
 
-A study finds a strong positive correlation between percentage of residents with college degrees and median household income at the county level (r = 0.72). The same analysis at the census tract level yields r = 0.45 — weaker because within-county variation reveals a more complex relationship. Neither result is "wrong"; they answer different questions at different scales.
+*Hypothetical illustration:* suppose the correlation between percentage of residents with college degrees and median household income is r = 0.72 at the county level and r = 0.45 at the census tract level — weaker because within-county variation reveals a more complex relationship. Neither result is "wrong"; they answer different questions at different scales.
 
-**Reference:** Openshaw (1984); Rey et al. (2023) Ch. 1
+**Reference:** Openshaw (1984); see also Rey et al. (2023) Ch. 8.
 
 ---
 
@@ -125,7 +125,7 @@ Every spatial dataset exists within a Coordinate Reference System (CRS) that def
 | Distance units | Decimal degrees (not constant!) | Meters (constant) |
 | Area calculation | **Unreliable** — 1° varies by latitude | Reliable (in the projection's valid region) |
 
-**Critical rule:** Geometric calculations (distance, area, buffer, centroid) in a geographic CRS produce wrong results. One degree of longitude is ~111 km at the equator but ~0 km at the poles. Always project before computing.
+**Critical rule (DAAF convention):** Geometric calculations (distance, area, buffer, centroid) in a geographic CRS produce wrong results. One degree of longitude is ~111 km at the equator but ~0 km at the poles (Dorman et al. 2025, Ch. 6). Always project before computing.
 
 ### Choosing a Projection
 
@@ -134,12 +134,12 @@ No projection preserves area, direction, shape, and distance simultaneously. Cho
 | Analysis Need | Projection Property | Recommended Projections |
 |---------------|-------------------|----------------------|
 | Thematic/choropleth mapping | **Equal-area** (preserves area) | Albers Equal-Area Conic (US), LAEA centered on study area |
-| Local-scale analysis (<500 km) | Distance accuracy | UTM zone for study area |
+| Local-scale analysis within one UTM zone | **Conformal** (angles); distance/area error grows away from the zone's central meridian | UTM zone for study area; for accurate distances use Azimuthal Equidistant |
 | Navigation, bearing calculations | **Conformal** (preserves angles) | Mercator, Lambert Conformal Conic |
 | Distance from a point | **Equidistant** | Azimuthal Equidistant centered on point of interest |
 | Continental-scale mapping | Area + shape balance | Lambert Conformal Conic |
 | Polar regions | Minimal polar distortion | Stereographic |
-| Web mapping display | Web compatibility | Web Mercator (EPSG:3857) — display only, never for analysis |
+| Web mapping display | Web compatibility | Web Mercator (EPSG:3857) — display only, never for analysis (DAAF convention) |
 
 ### Common US Projections
 
@@ -161,7 +161,7 @@ Confusing these produces data that plots in the wrong hemisphere or at the wrong
 
 ### Coordinate Precision and Significant Digits
 
-Latitude/longitude coordinates carry implicit precision claims. Excessive or insufficient precision misleads about data quality:
+Latitude/longitude coordinates carry implicit precision claims. Excessive or insufficient precision misleads about data quality. The table below is DAAF arithmetic (1° ≈ 111 km, divided by 10 per decimal place; longitude spacing shrinks further away from the equator), not a table from the cited sources:
 
 | Decimal Places | Approximate Precision | Typical Source |
 |----------------|----------------------|----------------|
@@ -174,7 +174,7 @@ Latitude/longitude coordinates carry implicit precision claims. Excessive or ins
 | 6+ | Sub-meter | Survey-grade GPS; rarely needed for social science |
 
 **Practical implications:**
-- Geocoded addresses typically warrant 4-5 decimal places at most. Storing 14 decimal places (as some geocoding APIs return) implies sub-atomic precision — misleading and wastes storage.
+- Geocoded addresses typically warrant 4-5 decimal places at most. Storing 14 decimal places (as some geocoding APIs return) implies nanometre-scale precision (1e-14° ≈ 1.1 nm) — misleading and wastes storage.
 - Census tract or block group centroids are accurate to ~3-4 decimal places.
 - When precision exceeds the actual positional accuracy of the source data, truncate to an honest level and document.
 - Point-in-polygon joins may produce different results at different precisions if points fall near polygon boundaries.
@@ -187,7 +187,7 @@ Latitude/longitude coordinates carry implicit precision claims. Excessive or ins
 
 ### Vector Data: Points, Lines, Polygons
 
-The **Simple Features** standard defines seven geometry types:
+The **Simple Features** standard defines about 20 geometry types; the seven most commonly used (Dorman et al. 2025, Ch. 1) are:
 
 | Type | Dimension | Use When |
 |------|-----------|----------|
@@ -241,7 +241,7 @@ What spatial question are you asking?
 │   └─ Global spatial autocorrelation
 │      ├─ Continuous variable → Moran's I, Geary's C
 │      ├─ Binary variable → Join count statistics
-│      └─ High-value clustering only → Getis-Ord G
+│      └─ Concentration of high or low values (positive autocorrelation only) → Getis-Ord G
 │
 ├─ "Where specifically are the clusters?"
 │   └─ Local indicators of spatial association (LISA)
@@ -305,12 +305,12 @@ The most widely used measure. Summarizes the correlation between a variable and 
 
 Uses squared differences between neighboring pairs rather than cross-products.
 
-- **Range:** 0 to roughly 2
+- **Range:** 0 to roughly 2 (commonly cited; DAAF summary)
 - **Interpretation (inverse of Moran's I):**
   - C < 1 → positive autocorrelation
   - C ≈ 1 → spatial randomness
   - C > 1 → negative autocorrelation
-- May diverge from Moran's I because it is more sensitive to local variation
+- May diverge from Moran's I because it is more sensitive to local variation (commonly noted; DAAF summary)
 
 #### Getis-Ord G
 
@@ -328,13 +328,13 @@ For dichotomous variables (e.g., urban/rural, above/below threshold):
 
 ### Inference: Permutation Testing
 
-All global measures use **computational inference** rather than parametric assumptions. The observed values are randomly shuffled across locations (typically 999 permutations) to generate a reference distribution. The pseudo p-value is the proportion of random permutations producing a more extreme statistic than observed.
+In PySAL/esda, global measures are typically tested by **computational (permutation) inference** (analytical normal-approximation tests also exist). The observed values are randomly shuffled across locations (esda's default is 999 permutations; Rey et al. 2023, Ch. 6) to generate a reference distribution. The pseudo p-value is the proportion of random permutations producing a more extreme statistic than observed.
 
 ### Sensitivity to Weights Matrix
 
-The choice of spatial weights matrix substantially affects results. Denser connectivity (e.g., k=8 nearest neighbors vs. k=4) produces smoother lag values and may alter both the magnitude and significance of the statistic. Always report which weights specification was used and consider testing sensitivity across alternatives.
+The choice of spatial weights matrix substantially affects results. Denser connectivity (illustratively, k=8 nearest neighbors vs. k=4) produces smoother lag values and may alter both the magnitude and significance of the statistic. Always report which weights specification was used and consider testing sensitivity across alternatives.
 
-**Reference:** Rey et al. (2023) Chs. 4, 6
+**Reference:** Rey et al. (2023) Ch. 6 (its exercises compare KNN weights with k = 4, 8, and 12)
 
 ---
 
@@ -374,11 +374,11 @@ A single choropleth of raw local I values is insufficient. Proper analysis requi
 
 ### Caveats
 
-- **Rate data problem:** Local Moran's I assumes distributional properties violated by rate data (events/population) when the denominator varies. Use rate-corrected versions (Empirical Bayes smoothing) for rate variables.
-- **Multiple testing:** Testing hundreds of locations simultaneously inflates false positives. Apply Bonferroni correction or False Discovery Rate (FDR) adjustment, or interpret cautiously.
+- **Rate data problem:** Local Moran's I assumes distributional properties violated by rate data (events/population) when the denominator varies. Use rate-adjusted statistics such as esda's `Moran_Rate` / `Moran_Local_Rate`, which by default (`adjusted=True`) standardize rates with Empirical Bayes estimates via `esda.smoothing.assuncao_rate` (per its docstring).
+- **Multiple testing:** Testing hundreds of locations simultaneously inflates false positives. Apply Bonferroni/Šidák bounds (Anselin 1995, who notes they may be too conservative) or False Discovery Rate (FDR) adjustment, or interpret cautiously.
 - **Boundary effects:** Observations at the edge of the study area have fewer neighbors, potentially affecting their local statistics.
 
-**Reference:** Rey et al. (2023) Chs. 7; Anselin (1995)
+**Reference:** Rey et al. (2023) Ch. 7; Anselin (1995)
 
 ---
 
@@ -395,9 +395,9 @@ Point pattern analysis examines the spatial distribution of discrete events. Unl
 ### Visualization Methods
 
 **Kernel Density Estimation (KDE):** Approximates a continuous density surface by applying a kernel function (typically Gaussian) centered on each point. The **bandwidth** parameter controls smoothing — too small overfits to noise, too large obscures real structure. Common bandwidth selection approaches:
-- **Silverman's rule of thumb:** Automated, based on data variance and sample size. Good starting point but tends to over-smooth multimodal distributions.
-- **Cross-validation:** Data-driven optimization that minimizes integrated squared error. More computationally expensive but adapts to data structure.
-- **Domain-informed:** Choose bandwidth based on the spatial scale of the phenomenon (e.g., 1 km for neighborhood-level patterns, 10 km for regional patterns).
+- **Silverman's rule of thumb:** Automated, based on data variance and sample size. Good starting point but tends to over-smooth multimodal distributions (commonly noted caution; DAAF summary).
+- **Cross-validation:** Data-driven optimization that minimizes integrated squared error (DAAF summary). More computationally expensive but adapts to data structure.
+- **Domain-informed:** Choose bandwidth based on the spatial scale of the phenomenon (DAAF examples: 1 km for neighborhood-level patterns, 10 km for regional patterns).
 
 **Hexagonal binning:** A spatial histogram using hexagonal cells. Hexagons have better connectivity properties and less shape distortion than square grids. Finer bins reveal local detail but obscure broad structure; coarser bins simplify but lose nuance.
 
@@ -414,7 +414,7 @@ When mean and median centers diverge substantially, the pattern is asymmetric or
 
 ### Extent Measures (Tightest to Loosest)
 
-1. **Alpha shape** — tightest boundary (concave, using variable-radius rolling ball)
+1. **Alpha shape** — tightest boundary (concave hull traced by rolling a ball of a single radius α; libpysal's `alpha_shape_auto` finds the smallest α that still yields one shape)
 2. **Convex hull** — smallest convex polygon enclosing all points
 3. **Minimum rotated rectangle** — smallest rectangle (possibly diagonal)
 4. **Minimum bounding circle** — smallest enclosing circle
@@ -434,14 +434,14 @@ The choice of extent measure affects density calculations — always report whic
 - Rapid increase → even/dispersed distribution
 - Complements G by characterizing void structure
 
-**Interpreting G/F against CSR envelopes:** Both functions are evaluated by comparing the empirical function against a **simulation envelope** — the range of function values produced by many random point patterns (typically 99 or 999 simulations) under CSR. The envelope represents a confidence band:
+**Interpreting G/F against CSR envelopes:** Both functions are evaluated by comparing the empirical function against a **simulation envelope** — the range of function values produced by many random point patterns under CSR (e.g., 99 or 999 simulations, a DAAF convention; Rey et al. 2023, Ch. 8 plot the middle 95% of simulations). The envelope represents a confidence band:
 - If the empirical curve falls **above** the envelope for G → points are closer together than expected (clustering)
 - If the empirical curve falls **below** the envelope for G → points are farther apart (regularity/dispersal)
 - For F, the interpretation reverses: **below** the envelope indicates clustering (empty-space distances are larger than expected because points are clumped together with voids between)
 - The **distance at which the empirical curve departs from the envelope** indicates the spatial scale of the pattern — critical for choosing DBSCAN parameters or interpreting the phenomenon
 - If the empirical curve stays within the envelope across all distances → cannot reject CSR at that confidence level
 
-**DBSCAN clustering:** Identifies clusters requiring at least *m* points within distance *r*. Deterministic, not inferential — identifies clusters but provides no statistical test. Parameter selection should reflect the scale of the phenomenon (Ripley's G/F can inform this — use the distance at which departure from CSR is strongest as a starting point for *r*).
+**DBSCAN clustering:** Identifies clusters requiring at least *m* points within distance *r*. Deterministic, not inferential — identifies clusters but provides no statistical test. Parameter selection should reflect the scale of the phenomenon (Ripley's G/F can inform this — use the distance at which departure from CSR is strongest as a starting point for *r*; DAAF heuristic, not from the source).
 
 **Reference:** Rey et al. (2023) Ch. 8
 
@@ -468,7 +468,7 @@ Systematic geographic patterns in residuals indicate at least one of: omitted sp
 - Create explanatory variables from geographic relationships (distance to nearest city, count of schools within 10 km, average neighbor income)
 - Addresses omitted spatial covariates without changing the model structure
 - Estimated with OLS — no special estimator needed
-- Try this first before more complex approaches
+- Try this first before more complex approaches (DAAF convention)
 
 **2. Spatial Fixed Effects**
 - Binary dummies for spatial groupings (county, state, region) that absorb all unobserved factors varying across those units
@@ -490,9 +490,9 @@ Systematic geographic patterns in residuals indicate at least one of: omitted sp
 
 **5. Spatial Error Model (SEM)**
 - Spatial dependence in the error term — errors are correlated across neighbors through autoregressive parameter λ
-- OLS coefficient estimates remain asymptotically unbiased, but standard errors are wrong — inference (CIs, p-values) is unreliable without proper estimation
+- OLS coefficient estimates remain asymptotically unbiased (standard econometrics result, not from Rey et al.), but standard errors are wrong — inference (CIs, p-values) is unreliable without proper estimation
 - Requires GMM or ML estimation
-- Appropriate when the spatial pattern is a nuisance to correct for, not a substantive interest
+- Appropriate when the spatial pattern is a nuisance to correct for, not a substantive interest (DAAF convention)
 
 **6. Spatial Lag Model (SAR)**
 - Includes a spatial lag of the **dependent variable** (neighbors' average Y) as a predictor
@@ -522,14 +522,14 @@ Spatial patterns in residuals?
 
 GWR fits a separate regression at each observation using distance-weighted subsets of the data, producing a surface of locally-varying coefficients. It is conceptually powerful for exploring spatial heterogeneity but carries significant methodological complexity:
 
-- **Not a confirmatory tool:** GWR is best understood as an exploratory technique for discovering *where* relationships vary, not for hypothesis testing. The local coefficient estimates are highly correlated with each other and with the local intercept.
-- **Bandwidth selection is critical:** The kernel bandwidth determines how "local" each regression is. Too small overfits to noise; too large approximates global OLS. Cross-validation (AICc-based) is standard practice.
-- **Multicollinearity amplification:** Variables that are mildly collinear globally can become severely collinear locally (smaller effective sample size per regression). Check local condition numbers.
+- **Treat GWR as primarily exploratory:** use it to discover *where* relationships vary rather than for hypothesis testing. Local coefficient estimates can be strongly correlated with each other, especially under collinearity (commonly noted caution; DAAF summary).
+- **Bandwidth selection is critical:** The kernel bandwidth determines how "local" each regression is. Too small overfits to noise; too large approximates global OLS. Bandwidth is typically chosen by cross-validation or by minimizing AICc.
+- **Multicollinearity amplification:** Variables that are mildly collinear globally can become severely collinear locally (smaller effective sample size per regression). Check local condition numbers (DAAF convention).
 - **Interpretation:** Map local coefficients and their local t-statistics side by side. A coefficient that is large but non-significant locally should not be interpreted.
 
 **When to use:** As an exploratory step when spatial regimes (Method 3) suggest relationships vary but you do not know the regime boundaries in advance. Follow up with spatial regimes using GWR-informed groupings for confirmatory analysis.
 
-**Reference:** Fotheringham, Brunsdon, and Charlton (2002). *Geographically Weighted Regression*.
+**Reference:** Fotheringham, Brunsdon, and Charlton (2002). *Geographically Weighted Regression* — the book-length treatment, including a chapter on statistical inference for GWR. The bullets above are DAAF summaries, not checked against the book's text.
 
 ### Lagrange Multiplier Tests for Model Discrimination
 
@@ -546,10 +546,10 @@ The model selection tree above requires distinguishing spatial lag from spatial 
 1. Run all four tests on OLS residuals
 2. If only LM-lag is significant → SAR (spatial lag model)
 3. If only LM-error is significant → SEM (spatial error model)
-4. If both are significant → compare robust versions: prefer the model whose **robust** test has the larger test statistic
-5. If neither is significant → OLS is adequate; no spatial model needed (even if Moran's I was significant — the LM tests are more specific)
+4. If both are significant → use the robust versions: estimate the model whose robust test is significant (or far more significant); if both robust tests are highly significant, prefer the larger statistic cautiously and revisit weights/specification; if neither robust test is significant, suspect other misspecification first (Anselin 2005, pp. 198-200)
+5. If neither is significant → OLS is adequate; no spatial model needed (a significant Moran's I alongside non-significant LM tests may reflect heteroskedasticity or non-normality; Anselin 2005, p. 198 fn. 8)
 
-This protocol is standard in spatial econometrics (Anselin 2005) and is the primary tool for the "What is the likely source?" fork in the model selection tree above.
+This protocol follows the spatial regression model selection decision rule in Anselin (2005, pp. 198-200) and is the primary tool for the "What is the likely source?" fork in the model selection tree above.
 
 ### Key Caveats
 
@@ -580,7 +580,7 @@ Raster operations follow a four-category **map algebra** taxonomy organized by s
 | Distance raster | Buffer |
 | Reclassification | Dissolve |
 | Raster overlay | Vector clip/intersection |
-| Zonal statistics | Spatial join + group_by aggregation |
+| Zonal statistics | Spatial join + group_by aggregation (DAAF analogy) |
 
 ### Raster-Vector Interactions
 
@@ -596,7 +596,7 @@ Three primary interaction types:
 
 ## Map Design Principles
 
-Maps are both analytical tools and communication devices. Poor design undermines the presentation of professional analysis — amateur-looking maps weaken credibility regardless of methodological rigor (Dorman et al. 2025, Ch. 8).
+Maps are both analytical tools and communication devices. Poor design undermines the presentation of professional analysis — amateur-looking maps weaken credibility regardless of methodological rigor (Brewer 2015, quoted in Dorman et al. 2025, Ch. 8).
 
 ### Map Types
 
@@ -611,7 +611,7 @@ Maps are both analytical tools and communication devices. Poor design undermines
 
 ### Choropleth Normalization Rule
 
-**Choropleth maps must display rates, densities, or normalized values — never raw counts.** A choropleth of "total students by county" is essentially a population map: large counties visually dominate regardless of the phenomenon of interest. This is among the most common cartographic errors in data science.
+**Choropleth maps must display rates, densities, or normalized values — never raw counts** (cartographic convention; not stated in the cited chapters). A choropleth of "total students by county" is essentially a population map: large counties visually dominate regardless of the phenomenon of interest. This is among the most common cartographic errors in data science.
 
 - **Raw counts** (total enrollment, number of events, population) → use proportional symbol or dot density maps
 - **Rates/proportions** (poverty rate, graduation rate, percent change) → choropleth is appropriate
@@ -627,21 +627,21 @@ How continuous values are binned into color classes dramatically affects the vis
 |--------|-------|----------|---------|
 | **Equal interval** | Constant bin width | Uniformly distributed data | Poor for skewed distributions — most observations in one class |
 | **Quantiles** | Equal count per bin | Skewed data, ensuring visual variation | Hides the actual distribution shape; bins may span very different ranges |
-| **Natural breaks (Jenks)** | Minimize within-class variance | Data with natural groupings | Opaque — hard for readers to understand bin boundaries |
-| **Fisher-Jenks** | Optimized natural breaks | Same as Jenks, larger datasets | Same opacity concern |
-| **Standard deviation** | Distance from mean | Highlighting anomalies | Requires normally distributed data |
+| **Natural breaks (Jenks)** | Heuristic minimizing within-class deviation | Data with natural groupings | Opaque — hard for readers to understand bin boundaries |
+| **Fisher-Jenks** | Optimal (dynamic-programming) natural breaks | Same as Jenks when an optimal solution is wanted | Same opacity concern |
+| **Standard deviation** | Distance from mean | Highlighting anomalies | Best for roughly symmetric data where the mean is meaningful |
 | **Manual** | Domain-defined thresholds | Policy-relevant breakpoints (poverty line, AQI levels) | Requires domain knowledge |
 
-**Number of classes:** 4-7 classes is the practical range. Fewer than 4 obscures meaningful variation; more than 7 exceeds most readers' ability to distinguish colors reliably. **5 classes** is a robust default. Use fewer classes for simple communication, more for expert audiences.
+**Number of classes (rule of thumb):** 4-7 classes is the practical range. Fewer than 4 obscures meaningful variation; more than 7 exceeds most readers' ability to distinguish colors reliably. **5 classes** is a robust default. Use fewer classes for simple communication, more for expert audiences.
 
 **Quantile perceptual risk:** Quantile classification forces equal counts per bin, which means bins may span wildly different value ranges. A map can show dramatic spatial contrast between adjacent areas that differ by trivially small amounts if a class boundary happens to fall between them. Always inspect the actual bin edges — if a class boundary splits a cluster of very similar values, consider natural breaks or manual thresholds instead.
 
 **Sequential vs. diverging palettes for choropleth:**
-- **Sequential** (light→dark): when data has a natural "low to high" interpretation with no meaningful midpoint (population density, income levels, enrollment counts)
+- **Sequential** (light→dark): when data has a natural "low to high" interpretation with no meaningful midpoint (population density, income levels, enrollment rates)
 - **Diverging** (two hues meeting at neutral center): when data has a meaningful center or threshold and you want to emphasize deviation in both directions (change from baseline, residuals, above/below average, partisan vote share)
 - Using diverging palettes for data without a meaningful center misleads — the neutral midpoint implies a "break" that doesn't exist
 
-**General guidance:** Quantiles for exploratory work (ensures visual variation), natural breaks for presentation (captures data structure), manual for policy contexts (meaningful thresholds). Always include the classification scheme in the legend or caption.
+**General guidance (DAAF convention):** Quantiles for exploratory work (ensures visual variation), natural breaks for presentation (captures data structure), manual for policy contexts (meaningful thresholds). Always include the classification scheme in the legend or caption.
 
 ### Color Considerations
 
@@ -669,7 +669,7 @@ Every publication-quality map should include:
 
 ### Primary Textbooks (Open Access)
 
-Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with Python*. CRC Press. https://geographicdata.science/book/
+Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with Python*. CRC Press. https://geographicdata.science/book/ (In-text chapter numbers follow the book's notebook numbering; the online edition displays these chapters offset, e.g., notebook Chs. 1, 5, 6, 7, 8, and 11 appear online as Chs. 3, 7, 8, 9, 10, and 13.)
 
 Dorman, M., Graser, A., Nowosad, J., and Lovelace, R. (2025). *Geocomputation with Python*. CRC Press. https://py.geocompx.org/
 

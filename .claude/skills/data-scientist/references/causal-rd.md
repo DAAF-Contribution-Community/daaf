@@ -25,7 +25,7 @@ Discontinuity: Design Essentials."
 - [Donut RD](#donut-rd)
 - [Complete RD Analysis Template](#complete-rd-analysis-template)
 - [Gotchas](#gotchas)
-- [References](#references)
+- [References and Further Reading](#references-and-further-reading)
 
 ## Package Overview
 
@@ -82,7 +82,7 @@ print(result)
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `p` | 1 | Local linear regression (strongly recommended; see Gelman and Imbens 2019) |
+| `p` | 1 | Local linear regression (the default in most applications; Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.2) |
 | `kernel` | `"tri"` | Triangular kernel (assigns highest weight to observations closest to cutoff) |
 | `bwselect` | `"mserd"` | MSE-optimal bandwidth, common (same) for both sides |
 | `vce` | `"nn"` | Nearest-neighbor variance estimator |
@@ -108,13 +108,19 @@ print(result.ci)     # Confidence intervals
 
 | Row (index) | Label | What It Is | When to Use |
 |-------------|-------|------------|-------------|
-| 0 | Conventional | Local polynomial estimate with conventional SE | Rarely -- ignores bias |
+| **0** | **Conventional** | **Local polynomial estimate with conventional SE** | **Report the point estimate from this row (MSE-optimal); do not use its SE/CI/p-value** |
 | 1 | Bias-Corrected | Bias-corrected estimate with conventional SE | Rarely -- SE not adjusted for bias correction |
-| **2** | **Robust** | **Bias-corrected estimate with robust SE** | **Always -- this is the recommended inference** (Calonico, Cattaneo, and Titiunik 2014) |
+| **2** | **Robust** | **Bias-corrected center with robust SE** | **Use for inference (SE, CI, p-value)** (Calonico, Cattaneo, and Titiunik 2014; Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.3). Note the robust CI is not centered on the conventional estimate. |
 
-The Robust row uses the bias-corrected point estimate AND adjusts the standard
-errors to account for the bias correction procedure. Reporting the Conventional
-row ignores the entire methodological contribution of the CCT framework.
+In rdrobust v1.3.0, rows 1 and 2 of `result.coef` both hold the bias-corrected
+estimate; only the SE differs (`rdrobust.py:693`, `tau = np.array([tau_cl, tau_bc,
+tau_bc])`). The Robust row's SE accounts for the bias-correction step, so its CI
+and p-value are the valid inference. Its coefficient is not the estimate to
+report: when the MSE-optimal bandwidth is used, the bias-corrected estimator is
+suboptimal in terms of MSE, and "it is usually desirable to report an MSE-optimal
+point estimator and then form valid confidence intervals" (Cattaneo, Idrobo, and
+Titiunik 2020, Sec. 4.3). Report the Conventional point estimate together with
+the Robust SE, CI, and p-value.
 
 ### Extracting Results Programmatically
 
@@ -122,8 +128,11 @@ row ignores the entire methodological contribution of the CCT framework.
 result = rdrobust(y, x, c=50)
 
 # --- Extract key results ---
-# INTENT: Extract the Robust row (index 2) for reporting
-tau = result.coef.iloc[2, 0]          # Bias-corrected point estimate
+# INTENT: Point estimate from the Conventional row (index 0); inference
+#   (SE, p-value, CI) from the Robust row (index 2)
+# REASONING: Cattaneo, Idrobo, and Titiunik (2020, Sec. 4.3) recommend an
+#   MSE-optimal point estimate with robust bias-corrected inference
+tau = result.coef.iloc[0, 0]          # Conventional (MSE-optimal) point estimate; inference from row 2
 se = result.se.iloc[2, 0]            # Robust standard error
 pval = result.pv.iloc[2, 0]          # Robust p-value
 ci_lower = result.ci.iloc[2, 0]      # Robust CI lower bound
@@ -135,10 +144,10 @@ h_right = result.bws.iloc[0, 1]      # Bandwidth, right of cutoff
 n_left = result.N_h[0]               # Observations within bandwidth, left
 n_right = result.N_h[1]              # Observations within bandwidth, right
 
-print(f"RD Estimate (robust): {tau:.3f}")
+print(f"RD point estimate (conventional): {tau:.3f}")
 print(f"Robust SE: {se:.3f}")
 print(f"Robust 95% CI: [{ci_lower:.3f}, {ci_upper:.3f}]")
-print(f"p-value: {pval:.4f}")
+print(f"Robust p-value: {pval:.4f}")
 print(f"Bandwidth (h): {h_left:.3f} (left), {h_right:.3f} (right)")
 print(f"Effective N: {n_left} (left) + {n_right} (right) = {n_left + n_right}")
 ```
@@ -149,7 +158,8 @@ print(f"Effective N: {n_left} (left) + {n_right} (right) = {n_left + n_right}")
 # The Estimate attribute gives a compact summary
 print(result.Estimate)
 # Columns: tau.us (conventional), tau.bc (bias-corrected), se.us, se.rb
-# tau.bc is the bias-corrected estimate; se.rb is the robust SE
+# tau.us is the point estimate to report; tau.bc is the bias-corrected center
+# of the robust CI; se.rb is the robust SE
 ```
 
 ### Bandwidth DataFrame
@@ -262,15 +272,18 @@ result = rdrobust(y, x, c=50, deriv=1)
 print(result)
 ```
 
-Kink RD requires `p >= 2` (at minimum local quadratic) because estimating a
-derivative requires a higher-order polynomial. If you set `deriv=1` with the
-default `p=1`, rdrobust will automatically adjust.
+For kink RD a local quadratic fit (p=2) is recommended because of boundary bias,
+although local linear can still be used (Calonico, Cattaneo, and Titiunik 2014,
+Sec. 3.1). In rdrobust v1.3.0, leaving `p` unset with `deriv=1` sets `p = 2`; an
+explicit `p < deriv` raises an error (`rdrobust.py:236`, `:246`).
 
 ## Covariates
 
-Including pre-determined covariates can improve precision without affecting
-consistency (the RD estimate is consistent without covariates if the continuity
-assumption holds).
+Including pre-determined covariates can improve precision without affecting the
+validity of the point estimator, provided they are balanced at the cutoff and
+enter as described below (Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.4). The RD
+estimate does not need covariates for consistency if the continuity assumption
+holds.
 
 ```python
 # --- With covariates ---
@@ -290,9 +303,10 @@ print(result)
 | `covs` | None | Pre-determined covariates (DataFrame or 2D array) |
 | `covs_drop` | True | Drop collinear covariates automatically |
 
-Covariates enter the local polynomial regression as additional regressors.
-They do NOT change the target parameter -- the RD estimate is still the
-discontinuity in the conditional expectation of Y at the cutoff.
+Covariates enter linearly and additively (not interacted with treatment). If
+they are predetermined and balanced at the cutoff, the estimand is unchanged;
+post-treatment or imbalanced covariates change the parameter being estimated
+(Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.4).
 
 ## Clustering and Weights
 
@@ -351,7 +365,7 @@ import polars as pl
 
 # --- Config ---
 CUTOFF = 50
-BIN_COUNT = 40  # Number of bins for the scatter (20 per side is typical)
+BIN_COUNT = 40  # Number of bins for the scatter (20 per side; DAAF convention -- rdplot's own default is data-driven)
 
 # --- Prepare binned means ---
 # INTENT: Create binned scatter plot data (evenly spaced bins on each side)
@@ -464,13 +478,16 @@ adequate for a first look.
 
 ## Manipulation Testing
 
-If agents can manipulate the running variable to sort above or below the cutoff,
-the RD design is invalid. The McCrary (2008) density test checks for a discontinuity
-in the density of the running variable at the cutoff.
+If agents can precisely manipulate the running variable to sort above or below
+the cutoff, the continuity assumptions behind RD may fail. The McCrary (2008)
+density test checks for a discontinuity in the density of the running variable at
+the cutoff; it is most informative when manipulation runs in one direction
+(McCrary 2008).
 
 ### Without rddensity (Manual Approach)
 
-Since `rddensity` is not installed, use a visual histogram approach:
+Since `rddensity` is not installed, use a visual histogram check, optionally
+paired with the exact binomial test described after the code block:
 
 ```python
 import matplotlib.pyplot as plt
@@ -494,8 +511,16 @@ fig.savefig(f"{OUTPUT_DIR}/density_check.png", dpi=150, bbox_inches="tight")
 plt.close(fig)
 print(f"[SAVED] {OUTPUT_DIR}/density_check.png")
 # REASONING: A visible jump in density at the cutoff suggests manipulation.
-# This is a visual check only -- for formal inference, install rddensity.
+# This is a visual check only -- for formal inference, use the binomial test
+# below or install rddensity.
 ```
+
+**Formal alternative without rddensity.** Cattaneo, Idrobo, and Titiunik (2020,
+Sec. 5.2) describe a finite-sample exact binomial (Bernoulli) test: keep only the
+observations in a small window around the cutoff and test whether the count above
+the cutoff is compatible with a success probability of 1/2. It can be computed
+with standard functions (e.g., `scipy.stats.binomtest`, available in the installed
+SciPy). The window width is an analyst choice and should be reported.
 
 ### Formal Density Test (If rddensity Is Installed)
 
@@ -508,15 +533,19 @@ from rddensity import rddensity
 # Formal manipulation test
 density_test = rddensity(x_arr, c=CUTOFF)
 print(density_test.summary())
-# REASONING: Null hypothesis is no discontinuity in density.
-# Rejection (p < 0.05) indicates manipulation -- the RD design is compromised.
+# REASONING: Null is continuity of the density at the cutoff. Rejection
+# (p < 0.05; DAAF convention) is evidence consistent with sorting and lowers the
+# design's credibility; it is not proof that identification fails (McCrary 2008:
+# a continuous density is "neither necessary nor sufficient" for identification).
+# Investigate before proceeding.
 ```
 
 ## Covariate Balance at the Cutoff
 
 Pre-determined covariates should be continuous through the cutoff. A discontinuity
-in covariates suggests either manipulation or confounding that invalidates the RD
-design.
+in a predetermined covariate calls the required continuity assumptions into
+question and may signal sorting or confounding; adding the imbalanced covariate as
+a control does not "fix" the design (Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.4).
 
 ```python
 # --- Covariate balance test ---
@@ -530,19 +559,21 @@ balance_results = []
 for cov in covariates:
     cov_y = df[cov].to_numpy()
     cov_result = rdrobust(cov_y, x, c=CUTOFF)
-    tau = cov_result.coef.iloc[2, 0]
-    pval = cov_result.pv.iloc[2, 0]
+    tau = cov_result.coef.iloc[0, 0]   # Conventional point estimate
+    pval = cov_result.pv.iloc[2, 0]    # Robust p-value
     balance_results.append({
         "covariate": cov,
-        "rd_estimate": round(tau, 4),
+        "rd_estimate_conventional": round(tau, 4),
         "robust_pval": round(pval, 4),
-        "balanced": "Yes" if pval > 0.05 else "NO -- IMBALANCE",
+        "balanced": "Yes" if pval > 0.05 else "NO -- IMBALANCE",  # 0.05: DAAF convention
     })
 
 balance_df = pl.DataFrame(balance_results)
 print(balance_df)
 # ASSUMES: All covariates are pre-determined (measured before treatment).
-# If any p-value < 0.05, investigate -- the discontinuity is suspicious.
+# If any p-value < 0.05 (DAAF convention), investigate -- the discontinuity is
+# suspicious. With several covariates, some rejections are expected by chance
+# alone (multiple testing; DAAF inference).
 ```
 
 ## Bandwidth Sensitivity Analysis
@@ -553,32 +584,35 @@ showing that results hold across a range of bandwidths.
 ```python
 # --- Bandwidth sensitivity ---
 # INTENT: Verify results are robust to bandwidth choice
-# REASONING: Standard practice per Cattaneo, Idrobo, and Titiunik (2020)
+# REASONING: Imbens and Lemieux (2008, Sec. 7.5) recommend checking half and
+# twice the chosen bandwidth; Cattaneo, Idrobo, and Titiunik (2020, Sec. 5.5)
+# caution this is informative only near h_MSE (or h_CER for inference). The
+# intermediate multipliers are a DAAF convention.
 
 # Get the optimal bandwidth first
 base_result = rdrobust(y, x, c=CUTOFF)
 h_opt = base_result.bws.iloc[0, 0]  # Left-side optimal bandwidth
 
-multipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+multipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]  # 0.5/2.0: Imbens-Lemieux; others: DAAF convention
 sensitivity_results = []
 
 for mult in multipliers:
     h = h_opt * mult
     res = rdrobust(y, x, c=CUTOFF, h=h)
-    tau = res.coef.iloc[2, 0]
-    se = res.se.iloc[2, 0]
-    pval = res.pv.iloc[2, 0]
-    ci_lo = res.ci.iloc[2, 0]
+    tau = res.coef.iloc[0, 0]    # Conventional point estimate
+    se = res.se.iloc[2, 0]       # Robust SE
+    pval = res.pv.iloc[2, 0]     # Robust p-value
+    ci_lo = res.ci.iloc[2, 0]    # Robust CI
     ci_hi = res.ci.iloc[2, 1]
     n_eff = res.N_h[0] + res.N_h[1]
     sensitivity_results.append({
         "bandwidth_mult": mult,
         "bandwidth": round(h, 2),
-        "estimate": round(tau, 4),
+        "estimate_conventional": round(tau, 4),
         "robust_se": round(se, 4),
         "robust_pval": round(pval, 4),
-        "ci_lower": round(ci_lo, 4),
-        "ci_upper": round(ci_hi, 4),
+        "robust_ci_lower": round(ci_lo, 4),
+        "robust_ci_upper": round(ci_hi, 4),
         "n_effective": n_eff,
     })
 
@@ -597,8 +631,9 @@ relationship rather than a true discontinuity.
 ```python
 # --- Placebo cutoff tests ---
 # INTENT: Verify no spurious effects at cutoffs away from the true threshold
-# REASONING: Standard practice to rule out smooth functional form as an
-# alternative explanation for the observed discontinuity
+# REASONING: Median-of-each-side placebo cutoffs follow Imbens and Lemieux
+# (2008, Sec. 7.3); restricting to one side of the true cutoff follows
+# Cattaneo, Idrobo, and Titiunik (2020, Sec. 5.3).
 
 # Use median of each side as placebo cutoffs
 x_arr = df["running_var"].to_numpy()
@@ -615,14 +650,14 @@ for pc in placebo_cutoffs:
     else:
         mask = x_arr >= CUTOFF
     res = rdrobust(y[mask], x_arr[mask], c=pc)
-    tau = res.coef.iloc[2, 0]
-    pval = res.pv.iloc[2, 0]
+    tau = res.coef.iloc[0, 0]    # Conventional point estimate
+    pval = res.pv.iloc[2, 0]     # Robust p-value
     placebo_results.append({
         "placebo_cutoff": round(pc, 2),
         "side": "left" if pc < CUTOFF else "right",
-        "estimate": round(tau, 4),
+        "estimate_conventional": round(tau, 4),
         "robust_pval": round(pval, 4),
-        "significant": "Yes -- CONCERN" if pval < 0.05 else "No (expected)",
+        "significant": "Yes -- CONCERN" if pval < 0.05 else "No (expected)",  # 0.05: DAAF convention
     })
 
 placebo_df = pl.DataFrame(placebo_results)
@@ -643,7 +678,9 @@ A donut RD drops observations very close to the cutoff, which can be useful when
 # INTENT: Exclude observations within a donut hole around the cutoff
 # ASSUMES: Observations very close to cutoff may be problematic
 
-donut_width = 1  # Exclude observations within 1 unit of cutoff
+donut_width = 1  # DAAF placeholder (running-variable units); exclude obs within 1 unit of cutoff
+# REASONING: Cattaneo, Idrobo, and Titiunik (2020, Sec. 5.4) suggest repeating
+# this "a few times ... for different amounts of excluded units"
 subset_mask = np.abs(x - CUTOFF) > donut_width
 
 result_donut = rdrobust(y, x, c=CUTOFF, subset=subset_mask)
@@ -682,33 +719,38 @@ x = df[RUNNING].to_numpy()
 for cov in COVARIATES:
     cov_y = df[cov].to_numpy()
     res = rdrobust(cov_y, x, c=CUTOFF)
-    pval = res.pv.iloc[2, 0]
-    print(f"  {cov}: RD estimate = {res.coef.iloc[2, 0]:.4f}, p = {pval:.4f}")
+    pval = res.pv.iloc[2, 0]   # Robust p-value
+    print(f"  {cov}: RD estimate (conventional) = {res.coef.iloc[0, 0]:.4f}, "
+          f"robust p = {pval:.4f}")
+    # ASSUMES: hard stop at p <= 0.01 is a DAAF convention, not from a cited source
     assert pval > 0.01, f"CRITICAL: {cov} shows large imbalance (p={pval:.4f})"
 
 # --- Step 3: Main estimation ---
 result = rdrobust(y, x, c=CUTOFF)
 print(result)
 
-tau = result.coef.iloc[2, 0]
+# INTENT: Point estimate from the Conventional row (index 0); inference from
+#   the Robust row (index 2) (Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.3)
+tau = result.coef.iloc[0, 0]
 se = result.se.iloc[2, 0]
 pval = result.pv.iloc[2, 0]
 ci_lo, ci_hi = result.ci.iloc[2, 0], result.ci.iloc[2, 1]
 h = result.bws.iloc[0, 0]
 n_eff = result.N_h[0] + result.N_h[1]
 
-print(f"\n=== Main Result (Robust) ===")
-print(f"RD Estimate: {tau:.4f} (SE: {se:.4f})")
-print(f"95% CI: [{ci_lo:.4f}, {ci_hi:.4f}]")
-print(f"p-value: {pval:.4f}")
+print(f"\n=== Main Result ===")
+print(f"Point estimate (conventional): {tau:.4f} (robust SE: {se:.4f})")
+print(f"Robust 95% CI: [{ci_lo:.4f}, {ci_hi:.4f}]")
+print(f"Robust p-value: {pval:.4f}")
 print(f"Bandwidth: {h:.2f} | Effective N: {n_eff}")
 
 # --- Step 4: Bandwidth sensitivity ---
+# 0.5x/2x per Imbens and Lemieux (2008, Sec. 7.5); intermediate multipliers: DAAF convention
 h_opt = result.bws.iloc[0, 0]
 for mult in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]:
     res = rdrobust(y, x, c=CUTOFF, h=h_opt * mult)
     print(f"  h={h_opt * mult:.1f} ({mult}x): "
-          f"tau={res.coef.iloc[2, 0]:.4f}, p={res.pv.iloc[2, 0]:.4f}")
+          f"tau_conv={res.coef.iloc[0, 0]:.4f}, robust p={res.pv.iloc[2, 0]:.4f}")
 
 # --- Step 5: Placebo cutoffs ---
 x_below = x[x < CUTOFF]
@@ -719,7 +761,7 @@ for label, pc, mask in [
 ]:
     res = rdrobust(y[mask], x[mask], c=pc)
     print(f"  Placebo ({label}, c={pc:.1f}): "
-          f"tau={res.coef.iloc[2, 0]:.4f}, p={res.pv.iloc[2, 0]:.4f}")
+          f"tau_conv={res.coef.iloc[0, 0]:.4f}, robust p={res.pv.iloc[2, 0]:.4f}")
 
 # --- Step 6: RD plot ---
 # [Insert manual RD plot code from RD Visualization section]
@@ -730,7 +772,7 @@ print(f"Total N: {len(y)}")
 print(f"N below cutoff: {np.sum(x < CUTOFF)}")
 print(f"N above cutoff: {np.sum(x >= CUTOFF)}")
 print(f"Running variable range: [{x.min():.2f}, {x.max():.2f}]")
-assert n_eff > 20, f"Effective sample size too small: {n_eff}"
+assert n_eff > 20, f"Effective sample size too small: {n_eff}"  # DAAF convention (arbitrary floor)
 ```
 
 ## Gotchas
@@ -747,7 +789,8 @@ The `covs` parameter in `rdrobust()` may crash with `TypeError: only 0-dimension
 arrays can be converted to Python scalars` due to the same NumPy/pandas compatibility
 bug that affects `rdplot()`. This is fixed in v2.0.0. If you encounter this error,
 estimate without covariates -- the RD estimate is consistent without covariates if the
-continuity assumption holds (covariates only improve precision).
+continuity assumption holds (predetermined, balanced covariates only improve
+precision; see the Covariates section).
 
 ### 3. cr3 VCE Not Available
 
@@ -761,12 +804,13 @@ The old selectors `"IK"` (Imbens-Kalyanaraman), `"CCT"` (Calonico-Cattaneo-Titiu
 2014), and `"CV"` (cross-validation) are deprecated and raise errors. Use the
 MSE/CER family: `"mserd"`, `"msetwo"`, `"cerrd"`, etc.
 
-### 5. Report the Robust Row, Not Conventional
+### 5. Robust Row for Inference, Conventional Row for the Point Estimate
 
-The Robust row (index 2) of `result.coef`, `result.se`, `result.pv`, and `result.ci`
-is the recommended inference. The Conventional row (index 0) ignores bias correction
-and understates uncertainty. This is the most common reporting error in applied RD
-work. Source: Calonico, Cattaneo, and Titiunik (2014).
+Use the Robust row (index 2) of `result.se`, `result.pv`, and `result.ci` for
+inference; conventional confidence intervals built with an MSE-optimal bandwidth
+can have "empirical coverage well below their nominal target" (Calonico, Cattaneo,
+and Titiunik 2014). Report the point estimate from the Conventional row (index 0)
+(Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.3).
 
 ### 6. rdplot Defaults Differ from rdrobust
 
@@ -811,25 +855,30 @@ covs = df[["age", "female"]].to_pandas()
 
 ### 10. Do NOT Use High-Order Polynomials
 
-Gelman and Imbens (2019) demonstrated that high-order polynomial RD estimators
-(p > 2) are noisy, sensitive to the degree of the polynomial, and lead to
-unreliable confidence intervals. Local linear (p=1) or local quadratic (p=2) are
-strongly preferred. The default p=1 is almost always the right choice.
+Gelman and Imbens (2019) showed that controlling for global high-order (third or
+higher) polynomials of the running variable produces noisy implicit weights,
+estimates sensitive to the degree, and poorly covering confidence intervals; they
+recommend local linear or local quadratic fits. rdrobust already fits local
+polynomials within a bandwidth; local linear (p=1, the default) is the standard
+choice (Cattaneo, Idrobo, and Titiunik 2020, Sec. 4.2), with p=2 as a robustness
+check. Raising p above 2 is not recommended (DAAF inference from the above).
 
 ### 11. Do NOT Cluster on the Running Variable
 
-Kolesar and Rothe (2018) showed that clustering standard errors on the running
-variable is invalid in RD designs. If clustering is needed, cluster on a
-substantive grouping variable (school, district, etc.), not the running variable
-itself.
+Kolesár and Rothe (2018) showed that, with a discrete running variable, confidence
+intervals clustered by the running variable (a common practice) do not guard
+against misspecification and have poor coverage; they recommend against them. If
+clustering is needed, cluster on a substantive grouping variable (school,
+district, etc.), not the running variable itself.
 
 ### 12. Discrete Running Variables Break Standard RD
 
 When the running variable takes only a few distinct values (e.g., class size
 thresholds with integer enrollment counts), the standard continuity-based RD
-framework does not apply directly. See Kolesar and Rothe (2018) for alternative
+framework does not apply directly. See Kolesár and Rothe (2018) for alternative
 inference methods. With many distinct values (e.g., test scores with fine
-granularity), the standard approach with `masspoints="adjust"` is appropriate.
+granularity), the continuity-based approach can still be used (Cattaneo, Idrobo,
+and Titiunik 2024, Sec. 4.3), here with rdrobust's default `masspoints="adjust"`.
 
 ### 13. Fuzzy RD Has Weak Instrument Problems
 
@@ -847,16 +896,25 @@ the full population is not justified by the design. This is a feature, not a bug
 the local estimate has strong internal validity precisely because it exploits only
 local variation.
 
-### 15. McCrary/rddensity Rejection Compromises the Design
+### 15. A McCrary/rddensity Rejection Is a Serious Red Flag
 
-If a manipulation test rejects the null of continuity in the running variable's
-density at the cutoff, the RD design is compromised. This is not a caveat to
-note in passing -- it undermines the entire identification strategy. If rejection
-occurs, investigate the source of manipulation and consider whether a donut RD
-or alternative design is more appropriate. See McCrary (2008) and Cattaneo,
-Jansson, and Ma (2020).
+If a manipulation test rejects continuity of the running variable's density at
+the cutoff, treat it as serious evidence of sorting: applications with an abrupt
+change in the number of observations at the cutoff "will tend to be less
+credible" (Cattaneo, Idrobo, and Titiunik 2020, Sec. 5.2). It is not by itself
+proof that identification fails: McCrary (2008) notes a continuous density is
+"neither necessary nor sufficient for identification except under auxiliary
+assumptions." Equally, non-rejection does not rule out manipulation, because the
+test is informative mainly when manipulation is monotonic. If rejection occurs,
+investigate the source, report it prominently, and consider a donut RD or an
+alternative design. See McCrary (2008) and Cattaneo, Jansson, and Ma (2020).
 
-## References
+## References and Further Reading
+
+Section numbers cited in the text follow the versions read for this file:
+arXiv:1911.09511 for Cattaneo, Idrobo, and Titiunik (2020); the 2023
+working-paper version for Cattaneo, Idrobo, and Titiunik (2024); and the 2007
+NBER working paper for Imbens and Lemieux (2008). Published numbering may differ.
 
 ### Core rdrobust Papers
 
@@ -881,7 +939,8 @@ and Computational Methods for the Social Sciences. Cambridge University Press.
 https://doi.org/10.1017/9781009441896
 
 Cunningham, S. (2021). *Causal Inference: The Mixtape.* Yale University Press.
-Ch. 6: Regression Discontinuity. https://mixtape.scunning.com/
+Ch. 6: Regression Discontinuity. https://mixtape-1ed.netlify.app/ (1st edition;
+mixtape.scunning.com now serves the 2nd edition, *Causal Inference: The Remix*)
 
 ### Methodology Papers
 
@@ -907,6 +966,6 @@ Cattaneo, M.D., Jansson, M., and Ma, X. (2020). "Simple Local Polynomial Density
 Estimators." *Journal of the American Statistical Association*, 115(531), 1449-1455.
 https://doi.org/10.1080/01621459.2019.1635480
 
-Kolesar, M. and Rothe, C. (2018). "Inference in Regression Discontinuity Designs
+Kolesár, M. and Rothe, C. (2018). "Inference in Regression Discontinuity Designs
 with a Discrete Running Variable." *American Economic Review*, 108(8), 2277-2304.
 https://doi.org/10.1257/aer.20160945

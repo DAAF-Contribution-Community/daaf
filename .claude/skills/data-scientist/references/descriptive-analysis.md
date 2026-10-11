@@ -66,7 +66,7 @@ In each case, the research contribution is *documenting what is* — carefully, 
 
 ### When Description Precedes Causal Investigation
 
-Even when the ultimate goal is causal, rigorous descriptive analysis is an essential precursor. As Huntington-Klein (2022) emphasizes, you cannot design a credible identification strategy if you do not first understand what is in the data: what variables are available, how they are distributed, how they relate to each other, and where there is meaningful variation. Descriptive work helps you:
+Even when the ultimate goal is causal, rigorous descriptive analysis is an essential precursor. Huntington-Klein (2022) places describing variables and relationships (Chs. 3–4) before identification, and frames identification as "the task of figuring out where your variation is" (Ch. 5). Descriptive work helps you:
 
 - Identify which relationships are large enough to be worth explaining causally
 - Detect potential confounders and selection patterns
@@ -100,7 +100,7 @@ The default instinct — report the mean, maybe the median and standard deviatio
 | **Trimmed mean** | When you want robustness to outliers but still need additive properties | When outliers are substantively important (you'd be discarding real information) |
 | **Geometric mean** | Growth rates, ratios, multiplicative processes | Data with zeros or negative values |
 
-**Decision rule:** If the mean and median diverge substantially (ratio > 1.2 or < 0.8), the distribution is skewed and the median is usually more informative for characterizing "typical" values. Report both, and consider reporting percentiles instead of either.
+**Decision rule (DAAF convention):** If the mean and median diverge substantially (ratio > 1.2 or < 0.8), the distribution is skewed and the median is usually more informative for characterizing "typical" values. Report both, and consider reporting percentiles instead of either.
 
 ### Dispersion
 
@@ -123,7 +123,7 @@ The default instinct — report the mean, maybe the median and standard deviatio
 When data are right-skewed and strictly positive (income, expenditure, enrollment, school spending), log transformation is often the appropriate descriptive tool:
 
 - **When to log**: Right-skewed positive data where ratios are more meaningful than differences. If "a district spending $20K vs. $10K" is similar in importance to "a district spending $40K vs. $20K," the comparison is multiplicative and logs are appropriate.
-- **Interpretation**: Differences in log values approximate percentage differences. A 0.10 log-point difference ≈ 10% difference; a 0.50 log-point difference ≈ 65% difference (exact: exp(0.50) - 1). The approximation works well for differences under ~0.20.
+- **Interpretation**: Differences in log values approximate percentage differences. A 0.10 log-point difference ≈ 10% difference; a 0.50 log-point difference ≈ 65% difference (exact: exp(0.50) - 1). As a rule of thumb, the approximation works well for differences under ~0.20.
 - **Zeros**: Log(0) is undefined. Common approaches: log(x + 1) for count data (acceptable when values are large relative to 1), inverse hyperbolic sine transformation IHS(x) = ln(x + √(x² + 1)) for data with zeros or negative values.
 - **When NOT to log**: Variables that are already rates or percentages; variables where additive differences are the natural comparison (temperature, test scores on a designed scale).
 
@@ -142,7 +142,7 @@ When presenting summary statistics:
 
 1. **Group related variables** — demographics together, outcomes together, controls together
 2. **Order meaningfully** — by importance, by variable type, or by the narrative structure
-3. **Round consistently** — use the same number of decimal places within a column; typically 1-2 decimals for percentages, 0 for counts, 2 for standard deviations
+3. **Round consistently** — use the same number of decimal places within a column; typically 1-2 decimals for percentages, 0 for counts, 2 for standard deviations (DAAF convention)
 4. **Label clearly** — full variable names, units, and sample restrictions in notes
 5. **Report N** — always show the sample size, especially if it varies across rows (due to missing data)
 6. **Consider stratified columns** — show summary statistics by group (e.g., treatment/control, male/female) side by side, with a "difference" or "overall" column
@@ -174,8 +174,8 @@ Common stratification dimensions and their analytical value:
 
 When comparing continuous outcomes across groups, report standardized effect sizes alongside raw differences. Raw differences depend on the variable's scale and are hard to compare across studies; standardized effect sizes are scale-free:
 
-- **Cohen's d**: (mean_A - mean_B) / pooled_SD. Conventions: ~0.2 small, ~0.5 medium, ~0.8 large (Cohen 1988). These are rough guidelines — substantive significance depends on context.
-- **Hedges' g**: Like Cohen's d but with a small-sample correction. Preferred when group sizes are unequal or small.
+- **Cohen's d**: (mean_A - mean_B) / pooled_SD. Conventions commonly attributed to Cohen (1988): ~0.2 small, ~0.5 medium, ~0.8 large. These are rough guidelines — substantive significance depends on context.
+- **Hedges' g**: Like Cohen's d but with a small-sample bias correction. Preferred when samples are small.
 - **Glass's delta**: Uses only the control group's SD as the denominator. Preferred when group variances differ substantially.
 
 Always report both the raw difference (in the variable's natural units) and a standardized measure. Confidence intervals on effect sizes communicate precision.
@@ -210,26 +210,26 @@ When working with data aggregated to the school, district, county, or state leve
 
 ### Education Data Caveat: FRPL as a Poverty Proxy
 
-Free or Reduced-Price Lunch (FRPL) eligibility is the most common school-level poverty measure in U.S. education research, but the **Community Eligibility Provision (CEP)** has made FRPL rates unreliable since 2014-15. Under CEP, schools with ≥ 40% directly certified students can offer free meals to all students, making their reported FRPL rate 100% regardless of actual poverty levels. When stratifying by poverty or constructing poverty indices, consider using SAIPE estimates, MEPS estimates, or direct certification rates instead of FRPL in CEP-era data. See the `education-data-source-meps` and `education-data-source-saipe` skills for alternatives.
+Free or Reduced-Price Lunch (FRPL) eligibility is the most common school-level poverty measure in U.S. education research, but the **Community Eligibility Provision (CEP)** has made FRPL rates unreliable since 2014-15. Under CEP, schools or groups of schools whose identified student percentage (ISP) meets the federal minimum can offer free meals to all students. The minimum was 40% until a final rule lowered it to 25%, effective October 26, 2023 ("Child Nutrition Programs: Community Eligibility Provision-Increasing Options for Schools," Federal Register doc. 2023-20294). CEP schools' reported FRPL rates no longer track individual eligibility (often reported as 100%). When stratifying by poverty or constructing poverty indices, consider using SAIPE estimates, MEPS estimates, or direct certification rates instead of FRPL in CEP-era data. See the `education-data-source-meps` and `education-data-source-saipe` skills for alternatives.
 
 ### Multiple Comparison Concerns
 
 When conducting many subgroup comparisons, some "significant" differences will appear by chance. This matters more for exploratory analysis than for a priori comparisons. Approaches:
 
 - **Bonferroni correction**: Divide the significance threshold by the number of comparisons. Conservative but simple — and overly conservative when comparisons are correlated (as subgroup comparisons often are, since subgroups share a common complement).
-- **Benjamini-Hochberg**: Controls the false discovery rate — less conservative, more appropriate for exploratory work with many comparisons.
+- **Benjamini-Hochberg**: Controls the false discovery rate (Benjamini and Hochberg 1995) — less conservative, more appropriate for exploratory work with many comparisons.
 - **Reframing**: Instead of testing significance for each subgroup, estimate the magnitude of variation *across* subgroups and report it as a single measure of heterogeneity.
 - **Transparency**: Report all comparisons attempted, not just the "significant" ones. Selective reporting of subgroup findings is a form of p-hacking.
 
 ### Sample Size Requirements
 
-Subgroup estimates become unreliable when cells get too small. Rules of thumb:
+Subgroup estimates become unreliable when cells get too small. Rules of thumb (not sourced thresholds):
 
 - **Minimum cell size of 30** for means and proportions (CLT-based approximate normality)
 - **Minimum cell size of ~100** for percentile estimates (more data needed for distributional tails)
 - **Consider collapsing categories** when cells are sparse — combine adjacent groups or use broader categories
 - **Report cell sizes** alongside estimates so readers can judge precision
-- **Suppress or flag** estimates from very small cells rather than presenting them as comparable to large-cell estimates. Note that federal education data (NCES) has specific suppression rules requiring cells with fewer than 3 (sometimes 5 or 10) students be suppressed to protect privacy — this is a compliance requirement, not just a precision concern.
+- **Suppress or flag** estimates from very small cells rather than presenting them as comparable to large-cell estimates. Note that federal education data (NCES) has specific suppression rules for small cells to protect privacy (thresholds such as fewer than 3, 5, or 10 students are illustrative; check the current NCES statistical standards) — this is a compliance requirement, not just a precision concern.
 
 ## Distributional Analysis
 
@@ -292,15 +292,15 @@ The chi-squared test of independence tests whether two categorical variables are
 
 - **Large N makes everything "significant"**: With tens of thousands of observations (common in administrative education data), even trivially small associations produce tiny p-values. The test tells you the association is *non-zero*, not that it is *meaningful*. This warning applies to all hypothesis tests with large administrative datasets — always prioritize effect sizes and substantive interpretation over p-values.
 - **The test is omnibus**: It detects *any* departure from independence, without telling you *where* the departure is.
-- **Small expected cell counts**: The chi-squared approximation breaks down when expected counts are below 5. Use Fisher's exact test for small samples or sparse tables.
+- **Small expected cell counts**: The chi-squared approximation breaks down when expected counts are small (below 5 is the usual rule of thumb). Use Fisher's exact test for small samples or sparse tables.
 
-**Recommendation:** Always supplement chi-squared tests with effect size measures and substantive interpretation. A "significant" chi-squared result with Cramer's V < 0.1 is rarely meaningful.
+**Recommendation:** Always supplement chi-squared tests with effect size measures and substantive interpretation. A "significant" chi-squared result whose Cramér's V falls below the small-effect benchmark for its degrees of freedom (0.10 for df = 1; ≈0.07 for df = 2; ≈0.06 for df = 3; see table below) is rarely meaningful.
 
 ### Effect Size Measures for Categorical Associations
 
 | Measure | Range | Interpretation |
 |---------|-------|---------------|
-| **Cramer's V** | 0 to 1 | 0 = no association. Conventions depend on degrees of freedom (df = min(rows-1, cols-1)): for df=1 (2×2 tables), 0.1/0.3/0.5 = small/medium/large; for df=2, 0.07/0.21/0.35; for df=3, 0.06/0.17/0.29 (Cohen 1988). Using 2×2 thresholds on larger tables overstates effect sizes. |
+| **Cramér's V** | 0 to 1 | 0 = no association. Conventions depend on degrees of freedom (df = min(rows-1, cols-1)): for df=1 (2×2 tables), 0.1/0.3/0.5 = small/medium/large; for df=2, 0.07/0.21/0.35; for df=3, 0.06/0.17/0.29. Bands derived from Cohen's (1988) w benchmarks via V = w/√df, with df as defined above. Using 2×2 thresholds on larger tables overstates effect sizes. |
 | **Phi coefficient (φ)** | -1 to 1 | Only for 2×2 tables; equivalent to Pearson r for two binary variables |
 | **Odds ratio** | 0 to ∞ | For 2×2 tables; 1 = no association; interpretable as the multiplicative change in odds |
 
@@ -409,13 +409,13 @@ Decomposition methods partition an observed difference or change into interpreta
 - **Explained (composition) component**: How much of the gap is due to group differences in observable characteristics (X). "If group A had the same characteristics as group B, how much of the gap would close?"
 - **Unexplained (structure/coefficients) component**: How much is due to group differences in the returns to those characteristics (β). Often loosely interpreted as "discrimination" in wage gap studies, but this is an overstatement — it captures *everything* not explained by the included covariates.
 
-**Originally developed by:** Oaxaca (1973) and Blinder (1973), independently, for studying male-female wage differentials.
+**Originally developed by:** Oaxaca (1973), for male-female differentials, and Blinder (1973), for white-black and male-female differentials, independently.
 
 **Applications:** Wage gaps (gender, race), achievement gaps in education, health outcome disparities, any setting where you want to understand *why* two groups have different average outcomes.
 
-**Key caveat:** The decomposition depends on which group's coefficients are used as the reference (the "index number problem"). Neumark (1988) and Cotton (1988) proposed pooled-coefficient approaches, but the choice remains consequential. Always report results using both groups' coefficients as the reference, or use a pooled specification, and discuss the sensitivity.
+**Key caveat:** The decomposition depends on which group's coefficients are used as the reference (the "index number problem"). Cotton (1988) proposed weighting the two groups' coefficients (e.g., by group shares), and Neumark (1988) proposed pooled-regression coefficients. If pooling, include the group indicator; omitting it biases the coefficients (Fortin, Lemieux, and Firpo 2011). Either way, the choice remains consequential. Always report results using both groups' coefficients as the reference, or use a pooled specification, and discuss the sensitivity.
 
-**Detailed decomposition pitfall:** When breaking the unexplained component into individual variable contributions, the results for categorical variables depend on which category is omitted as the reference group. This is a well-known identification problem — individual contributions in the "detailed" unexplained decomposition are not invariant to the choice of omitted category. Report the aggregate unexplained component (which is invariant) and interpret detailed contributions with caution.
+**Detailed decomposition pitfall:** When breaking the unexplained component into individual variable contributions, the results for categorical variables depend on which category is omitted as the reference group. This is a well-known identification problem — individual contributions in the "detailed" unexplained decomposition are not invariant to the choice of omitted category (Fortin, Lemieux, and Firpo 2011). Report the aggregate unexplained component (which is invariant) and interpret detailed contributions with caution.
 
 ### Kitagawa Decomposition
 
@@ -489,19 +489,19 @@ Composite indices require weights for each component. This is often the most con
 
 ### Principal Component Analysis (PCA) for Index Construction
 
-> **Cross-reference:** This section covers PCA as a tool for constructing index weights — a specific application within descriptive analysis. For PCA as a general-purpose dimension reduction and exploratory tool (including how many components to retain, parallel analysis, and the PCA vs. factor analysis distinction), see `exploratory-unsupervised.md`.
+> **Cross-reference:** This section covers PCA as a tool for constructing index weights — a specific application within descriptive analysis. For PCA as a general-purpose dimension reduction and exploratory tool, including how many components to retain and parallel analysis, see `exploratory-unsupervised.md` > "Dimension Reduction: PCA as an Exploratory Tool" > "How Many Components to Retain." Neither file covers the PCA vs. factor analysis distinction beyond a brief note on rotation (`exploratory-unsupervised.md` > "Interpreting Components"). If the index is meant to measure a latent construct, consult a factor-analysis reference before relying on PCA weights.
 
 PCA identifies linear combinations of variables that capture the most variance. When used for index construction:
 
 - The **first principal component** is often used as the index. It captures the dimension of maximum variation across the input variables.
-- **Factor loadings** show how much each input variable contributes to the index. Report these for transparency.
-- **Variance explained**: Report the fraction of total variance captured by the first component. If it is low (< 40%), a single index may not adequately represent the underlying construct.
-- **Rotation**: For indices, unrotated PCA is standard. Rotation (varimax, promax) is more relevant for factor analysis with multiple latent constructs.
+- **Component loadings** show how much each input variable contributes to the index. Report these for transparency.
+- **Variance explained**: Report the fraction of total variance captured by the first component. If it is low (< 40%; DAAF convention), a single index may not adequately represent the underlying construct.
+- **Rotation**: For indices, unrotated PCA is standard (DAAF convention). Rotation (varimax, promax) is more relevant for factor analysis with multiple latent constructs.
 
 ### Reliability and Validity
 
-- **Cronbach's alpha**: Measures internal consistency — do the components tend to agree? Values above 0.7 are conventionally acceptable. However, alpha increases mechanically with the number of components, so it is a necessary but not sufficient indicator of a good index.
-- **Factor loadings**: Components should load reasonably strongly (> 0.3) on the common factor. Weak loadings suggest a component does not measure the same construct.
+- **Cronbach's alpha**: Measures internal consistency — do the components tend to agree? Values above 0.7 are conventionally acceptable. However, alpha depends on the number of components as well as on how strongly they intercorrelate (Cortina 1993), so it is a necessary but not sufficient indicator of a good index.
+- **Component loadings**: Index inputs should load reasonably strongly (> 0.3; rule of thumb) on the first principal component. Weak loadings suggest a component does not measure the same construct.
 - **Face validity**: Does the index rank observations in a way that makes intuitive sense? Examine specific cases at the top, middle, and bottom.
 - **Convergent validity**: Does the index correlate as expected with known related measures?
 
@@ -533,7 +533,7 @@ Not all weights serve the same purpose. Using the wrong type of weight is a comm
 
 - **Ignoring weights in survey data**: Produces biased estimates of population parameters when the survey design involves oversampling (as most federal surveys do)
 - **Applying weights to census data**: CCD and IPEDS universe files are censuses, not samples — applying survey weights to them produces incorrect standard errors. Use unweighted analysis for census data.
-- **Using weights when not needed**: If the analysis conditions on the same variables that determine sampling probability, weights may be unnecessary and even harmful (Solon, Haider, and Wooldridge 2015)
+- **Using weights when not needed (regression only)**: When estimating regression coefficients, not population descriptive statistics, and sampling probabilities vary only with the model's explanatory variables, weighting is unnecessary for consistency and may reduce precision. Report weighted and unweighted estimates; a large divergence is a diagnostic for misspecification or endogenous sampling (Solon, Haider, and Wooldridge 2015). For population means, shares and percentiles, weights are needed whenever the sample is not otherwise representative.
 - **Normalizing weights incorrectly**: Survey packages typically handle this, but manual weight application requires ensuring weights sum to the target population (or to N, depending on the analysis)
 - **Forgetting weighted standard errors**: Weighting affects not just point estimates but also standard errors. Using weighted means with unweighted standard errors understates uncertainty
 
@@ -558,7 +558,7 @@ This rule applies to all survey-weighted analyses: descriptive statistics, cross
 
 ### Replicate Weights
 
-Many federal surveys provide **replicate weight columns** alongside the main analysis weight (e.g., ACS PUMS provides 80, CPS ASEC provides 160, MEPS provides 128). Replicate weights are constructed from the true (internal) survey design before disclosure avoidance masking, so they produce more accurate variance estimates than Taylor linearization with the (possibly perturbed) public-use design variables.
+Many federal surveys provide **replicate weight columns** alongside the main analysis weight (e.g., ACS PUMS provides 80, CPS ASEC provides 160, MEPS provides 128; illustrative counts, confirm in each survey's documentation). Replicate weights are constructed from the true (internal) survey design before disclosure avoidance masking, so they produce more accurate variance estimates than Taylor linearization with the (possibly perturbed) public-use design variables.
 
 **Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Whenever replicate-weight estimation comes up — advising or coding — load the `svy` skill (Python) or the `survey-r` skill (R). For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
 
@@ -579,7 +579,7 @@ The Gini coefficient is the most widely reported inequality measure:
 - **Range**: 0 (perfect equality — everyone has the same value) to 1 (perfect inequality — one unit has everything)
 - **Interpretation**: Can be understood as the expected absolute difference between two randomly chosen observations, divided by twice the mean
 - **Lorenz curve visualization**: The Gini equals twice the area between the Lorenz curve and the 45-degree line of perfect equality
-- **Limitations**: The Gini is more sensitive to changes in the middle of the distribution than in the tails. Two very different distributions can have the same Gini. It also does not decompose cleanly by population subgroups.
+- **Limitations**: The Gini is more sensitive to changes in the middle of the distribution than in the tails. Two very different distributions can have the same Gini. It also does not decompose cleanly by population subgroups (Cowell 2011).
 
 ### Theil Index
 
@@ -592,7 +592,7 @@ The Theil index (specifically, Theil's T) has a crucial property the Gini lacks 
 
 ### Coefficient of Variation as an Inequality Measure
 
-The CV (SD/mean) also belongs to the Generalized Entropy family: GE(2) = CV²/2. It is more sensitive to upper-tail changes than either Theil T or Theil L, making it appropriate when top-end inequality is the focus. Its advantage over other GE measures is intuitive interpretability — it expresses dispersion as a fraction of the mean.
+The CV (SD/mean) also belongs to the Generalized Entropy family: GE(2) = CV²/2. It is particularly sensitive to the top end of the distribution (Cowell 2011) — more so than either Theil T or Theil L — making it appropriate when top-end inequality is the focus. Its advantage over other GE measures is intuitive interpretability — it expresses dispersion as a fraction of the mean.
 
 ### Percentile Ratios
 
@@ -610,9 +610,10 @@ Percentile ratios are the simplest and most interpretable inequality measures:
 
 Following Rey, Arribas-Bel, and Wolf (2023), spatial inequality adds a geographic dimension:
 
-- **Spatial Gini**: Computes the Gini coefficient across geographic units (counties, states, regions)
+- **Inequality across geographic units**: Standard measures (Gini, Theil, percentile ratios) computed on area-level values (e.g., county per-capita income) describe interregional inequality
 - **Regional decomposition**: Using the Theil index's decomposability, partition national inequality into between-region and within-region components
-- **Spatial autocorrelation of inequality**: Do high-inequality areas cluster together? Moran's I applied to inequality measures reveals spatial patterning
+- **Spatial autocorrelation**: Moran's I on the area-level outcome (e.g., county incomes) tests whether high and low values cluster geographically
+- **Spatial Gini**: As presented by Rey et al. (2023), the Gini's pairwise absolute differences can be split into differences between neighboring and non-neighboring units (neighbors defined by a spatial weights matrix); the spatial Gini is the neighbor component
 
 > For spatial analysis methodology, see `geospatial-analysis.md`.
 
@@ -633,7 +634,7 @@ Measures the strength of the **linear** association between two continuous varia
 - **Range**: -1 (perfect negative linear relationship) to +1 (perfect positive linear relationship); 0 = no linear association
 - **Assumptions**: Both variables are continuous; the relationship is linear; both are approximately normally distributed (for inference)
 - **Confidence intervals**: Always report. A correlation of r = 0.3 with a 95% CI of [0.05, 0.52] tells a very different story than r = 0.3 with CI [0.28, 0.32].
-- **Common conventions**: |r| < 0.3 weak, 0.3-0.7 moderate, > 0.7 strong. But these are rough guidelines — substantive significance depends on context.
+- **Common conventions** (rule of thumb): |r| < 0.3 weak, 0.3-0.7 moderate, > 0.7 strong. But these are rough guidelines — substantive significance depends on context.
 
 ### Spearman Rank Correlation
 
@@ -673,7 +674,7 @@ Correlation is not causation. This is stated so often it risks becoming a platit
 
 - A correlation between X and Y could reflect X→Y, Y→X, Z→X and Z→Y (confounding), or coincidence
 - **Language matters**: Use "associated with," "correlated with," "corresponds to" — not "affects," "impacts," or "leads to." See `research-questions.md` > "Causal vs. Correlational Language" for the full language guide.
-- Even strong correlations (r > 0.8) do not imply causation. The correlation between per-capita cheese consumption and deaths by bedsheet tangling is famously high.
+- Even strong correlations (r > 0.8) do not imply causation. For example (illustrative), the correlation between per-capita cheese consumption and deaths by bedsheet tangling is famously high.
 
 > For guidance on when and how to make causal claims, see `causal-inference.md`.
 
@@ -693,14 +694,16 @@ Understanding *why* data are missing determines how (and whether) the missingnes
 
 No statistical test can definitively distinguish MAR from MNAR (because by definition you cannot observe the missing values). However, you can gather evidence:
 
-- **Little's MCAR test**: Tests whether the pattern of missingness depends on observed values. Rejection suggests not MCAR, but does not distinguish MAR from MNAR.
+- **Little's MCAR test** (Little 1988): Tests whether the pattern of missingness depends on observed values. Rejection suggests not MCAR, but does not distinguish MAR from MNAR.
 - **Pattern analysis**: Examine which variables tend to be missing together. Correlated missingness suggests a common cause.
 - **Comparing complete vs. incomplete cases**: If observations with missing values differ systematically on *observed* characteristics, the data are at minimum not MCAR. Compare means, distributions, and proportions.
 - **Domain knowledge**: Understanding the data collection process is the most powerful diagnostic. Why might values be missing? Does the reason plausibly depend on the missing value itself?
 
-As Huntington-Klein (2022, Ch. 23) emphasizes, the missingness mechanism is ultimately an assumption about the world, not something the data can prove. The goal of the diagnostic exercise is to make your assumption as informed as possible and to be transparent about it.
+Huntington-Klein (2022, Ch. 23) urges analysts to "think about why data might be missing and ask how likely MCAR really is," and notes that MNAR data require explicitly modeling the missing-data process. Because MAR and MNAR cannot be distinguished from observed data alone (DAAF inference), the goal of the diagnostic exercise is to make your assumption as informed as possible and to be transparent about it.
 
 ### Missingness Severity Thresholds
+
+The bands below are a DAAF convention, not sourced thresholds.
 
 | Missingness Level | Concern | Recommended Action |
 |-------------------|---------|--------------------|
@@ -716,7 +719,7 @@ These are guidelines, not rigid rules. A 20% missingness rate in a variable that
 | Mechanism | Listwise Deletion | Simple Imputation (mean/median) | Multiple Imputation | Sensitivity Analysis |
 |-----------|-------------------|-------------------------------|--------------------|--------------------|
 | **MCAR** | Unbiased but less efficient | Biases variance downward | Works well | Unnecessary if N is large |
-| **MAR** | Biased if missingness correlates with outcome | Biased | Appropriate — the gold standard | Recommended to assess robustness |
+| **MAR** | Biased if missingness correlates with outcome | Biased | Appropriate — often the preferred approach (DAAF inference) | Recommended to assess robustness |
 | **MNAR** | Biased | Biased | Biased (assumptions violated) | Essential — bound the bias under alternative assumptions |
 
 ### Reporting Requirements
@@ -815,6 +818,14 @@ Huntington-Klein, N. (2022). *The Effect: An Introduction to Research Design and
 
 Cohen, J. (1988). *Statistical Power Analysis for the Behavioral Sciences*. 2nd edition. Lawrence Erlbaum Associates.
 
+### Multiple Comparisons
+
+Benjamini, Y. and Hochberg, Y. (1995). "Controlling the False Discovery Rate: A Practical and Powerful Approach to Multiple Testing." *Journal of the Royal Statistical Society: Series B*. https://doi.org/10.1111/j.2517-6161.1995.tb02031.x
+
+### Index Reliability
+
+Cortina, J.M. (1993). "What Is Coefficient Alpha? An Examination of Theory and Applications." *Journal of Applied Psychology*, 78(1), 98-104. https://doi.org/10.1037/0021-9010.78.1.98
+
 ### Decomposition Methods
 
 Blinder, A.S. (1973). "Wage Discrimination: Reduced Form and Structural Estimates." *Journal of Human Resources*, 8(4), 436-455.
@@ -833,7 +844,7 @@ Oaxaca, R. (1973). "Male-Female Wage Differentials in Urban Labor Markets." *Int
 
 ### Inequality and Spatial Analysis
 
-Cowell, F.A. (2011). *Measuring Inequality*. 3rd edition. Oxford University Press.
+Cowell, F.A. (2011). *Measuring Inequality*. 3rd edition. Oxford University Press. In-text claims were checked against the author's May 2000 draft of the third edition (a web copy), not the printed 2011 edition.
 
 Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with Python*. CRC Press. https://geographicdata.science/book/
 
@@ -842,6 +853,8 @@ Rey, S.J., Arribas-Bel, D., and Wolf, L.J. (2023). *Geographic Data Science with
 Solon, G., Haider, S.J., and Wooldridge, J.M. (2015). "What Are We Weighting For?" *Journal of Human Resources*, 50(2), 301-316.
 
 ### Missing Data
+
+Little, R.J.A. (1988). "A Test of Missing Completely at Random for Multivariate Data with Missing Values." *Journal of the American Statistical Association*, 83(404), 1198-1202. https://doi.org/10.1080/01621459.1988.10478722
 
 Little, R.J.A. and Rubin, D.B. (2019). *Statistical Analysis with Missing Data*. 3rd edition. Wiley.
 
