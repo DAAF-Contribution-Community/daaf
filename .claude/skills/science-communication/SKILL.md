@@ -15,6 +15,8 @@ Guidance for translating rigorous data science work into clear, compelling commu
 
 **Boundary with data-scientist:** The data-scientist skill handles chart construction, encoding, color palettes, and export standards. This skill handles audience adaptation, narrative structure, plain-language translation, deliverable formatting, and communication quality review.
 
+**Boundary with academic-manuscript:** Journal articles, working papers, and reviewer responses for an academic audience belong to the `academic-manuscript` skill, which also sets the design-earned claim tiers that a manuscript's causal language must follow. This skill covers the lay and stakeholder translation of those findings.
+
 ## How to Use This Skill
 
 ### Reference File Structure

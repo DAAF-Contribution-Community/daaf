@@ -4,6 +4,8 @@ Structural outlines, rules, and example skeletons for four core communication de
 
 For audience-specific strategy, see `audience-analysis.md`. For narrative structure choices, see `narrative-frameworks.md`.
 
+**Note on examples:** Every example in this file is invented. The Example Skeleton blocks share one scenario (structured literacy programs compared with class-size reduction for improving reading), and the sample titles and quoted sentences elsewhere in the file are made up too. Their numbers, districts, dates and findings are illustrative, not research findings.
+
 ## 1. Executive Summary
 
 **Audience:** Executives, board members, senior decision makers
@@ -81,7 +83,7 @@ For audience-specific strategy, see `audience-analysis.md`. For narrative struct
 4. **Lead each paragraph with the finding in plain language.** Follow IES Strategy 2: the first sentence of each evidence paragraph states the insight without numbers. Numbers come in the supporting sentences.
 5. **Include only the most essential caveats** — those "too important to exclude" (IES Strategy 4). Over-caveating undermines confidence without serving the reader.
 6. **Every figure must be self-interpreting.** Declarative title, clear labels, source note. A policymaker should understand the chart without reading surrounding text.
-7. **Summarize, don't extrapolate.** Per IES Strategy 6: present what the evidence shows and its implications, not explicit policy recommendations.
+7. **Conclude by summarizing, not extrapolating.** Per IES Strategy 6: present what the evidence shows and its implications, not explicit policy recommendations.
 
 ### Example Skeleton
 
@@ -93,7 +95,7 @@ For audience-specific strategy, see `audience-analysis.md`. For narrative struct
 > - Benefits were largest for students entering below grade level
 > - Evidence is based on 200 districts over 6 years; results were consistent across diverse contexts
 >
-> **Context:** Since 2005, states have invested heavily in reducing class sizes as a strategy for improving student outcomes. [Situation.] However, recent evidence suggests that *how* instructional time is used may matter more than *how many* students share the classroom. [Complication.]
+> **Context:** Since 2005, our state has invested heavily in reducing class sizes as a strategy for improving student outcomes. [Situation.] However, our analysis suggests that *how* instructional time is used may matter more than *how many* students share the classroom. [Complication.]
 >
 > **What the evidence shows:**
 > Schools using structured literacy programs saw substantially larger reading gains than those relying on class-size reduction alone. [Headline — no numbers.] Specifically, literacy program schools improved proficiency rates by 14 percentage points compared to 5 points for class-size reduction schools, after accounting for student demographics and baseline performance. [Supporting evidence.]
@@ -182,7 +184,7 @@ For audience-specific strategy, see `audience-analysis.md`. For narrative struct
 3. **Provide the headline.** If you don't give the journalist a clear headline, they'll write their own — and it may not be the most accurate version of your finding.
 4. **Prepare three tiers of depth.** (1) The headline in one sentence. (2) Supporting context in 2-3 sentences. (3) Full methodology on request. Let the journalist choose their depth.
 5. **Proactively state limitations.** If you don't provide the caveat, it likely won't appear. But frame it constructively: "This study focused on elementary schools — we're now extending to middle schools" rather than "A limitation of this study is..."
-6. **Analogies travel further than numbers.** "That's the equivalent of losing one full year of learning" is more quotable than "0.8 standard deviations below the mean."
+6. **Analogies travel further than numbers.** A plain comparison ("roughly the gap between fourth and fifth grade") is more quotable than an effect in standard deviations. Use such a conversion only when your own data or a cited benchmark supports it for the grade and test involved.
 7. **Never say "no comment."** If you can't answer, explain why and offer to follow up.
 
 ### Example Skeleton
@@ -253,9 +255,9 @@ When a single analysis produces multiple deliverable types (e.g., a full report,
 
 ## References and Further Reading
 
-IES. "Six Strategies for Effectively Communicating Research Findings to Decision Makers." https://ies.ed.gov/blogs/research/post/six-strategies-for-effectively-communicating-research-findings-to-decision-makers
+Miller, L. C., & Piver-Renna, J. (2022, October 27). "Six Strategies for Effectively Communicating Research Findings to Decision Makers." Institute of Education Sciences. https://ies.ed.gov/learn/blog/six-strategies-effectively-communicating-research-findings-decision-makers
 
-Minto, B. (2010). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
+Minto, B. (2009). *The Pyramid Principle: Logic in Writing and Thinking* (3rd ed.). Financial Times Prentice Hall.
 
 Nussbaumer Knaflic, C. (2015). *Storytelling with Data: A Data Visualization Guide for Business Professionals*. Wiley.
 

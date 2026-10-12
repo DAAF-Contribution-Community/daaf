@@ -17,7 +17,7 @@ Apply to every deliverable — executive summary, policy brief, presentation, re
 | 5 | **Uncertainty communicated honestly** | Are findings hedged appropriately — not overconfident, not buried in caveats? | Hedging level matches evidence strength (see `plain-language.md` hedging scale). No "prove" language. Key limitations stated but not over-stated. |
 | 6 | **Numbers are interpretable** | Are statistics presented in a way the audience can understand? Are comparisons meaningful? | Percentages have denominators. Differences have baselines. Large numbers have context. "1 in 5" preferred over "20%" for general audiences. |
 | 7 | **Visuals match narrative** | Do charts tell the same story as the text? Are chart titles declarative (explanatory) for non-technical audiences? | No chart contradicts the narrative. Every chart has a title that states its message. Source notes present. |
-| 8 | **Equity-aware framing** | Is language people-first? Are demographic groups presented respectfully? Are default comparison groups considered? | No dehumanizing labels. No white/male-as-default without justification. See `accessibility-equity.md`. |
+| 8 | **Equity-aware framing** | Is language people-first? Are demographic groups presented respectfully? Are default comparison groups considered? | No dehumanizing labels. No White/male-as-default without justification. See `accessibility-equity.md`. |
 | 9 | **Self-contained** | Could someone read only this deliverable (not the full report, not the appendix) and understand the findings? | Key findings, methodology summary, and caveats are all present within the deliverable itself. |
 | 10 | **Actionable conclusion** | Does the deliverable end with clear next steps, recommendations, or specific open questions — not just "more research is needed"? | The reader knows what to do (or what to decide) after reading. |
 
@@ -118,7 +118,7 @@ Beyond statistical misinterpretation, these pitfalls are specific to the act of 
 
 **Examples:** Three paragraphs of limitations after two paragraphs of findings. "However, it should be noted that... Furthermore, it is important to caveat that... Additionally, one must consider that..."
 
-**Prevention:** Apply the IES "too important to exclude" filter: include only the limitations that could meaningfully change the interpretation. Frame limitations as open questions: "We don't yet know whether..." rather than "A limitation of this study is..."
+**Prevention:** Apply the "too important to exclude" filter from an IES blog post (Miller & Piver-Renna, 2022): include only the limitations "most vital to helping the reader make the correct interpretation." Frame limitations as open questions: "We don't yet know whether..." rather than "A limitation of this study is..."
 
 ### Under-Caveating
 
@@ -130,7 +130,7 @@ Beyond statistical misinterpretation, these pitfalls are specific to the act of 
 
 ### Schrödinger's Causal Inference
 
-**The problem:** Using cautious associational language in findings but implying causation in recommendations. Per Haber et al. (2022), 44.5% of published papers with action recommendations implied stronger causality in recommendations than in findings.
+**The problem:** Using cautious associational language in findings but implying causation in recommendations. Per Haber et al. (2022), among observational studies in 18 high-profile health journals whose abstracts made an action recommendation, 44.5% made a recommendation that implied causality more strongly than the abstract's linking sentence.
 
 **Examples:** Findings: "X is associated with Y." Conclusion: "Policymakers should adopt X to improve Y." The causal claim exists and doesn't exist depending on which section you read.
 
@@ -138,7 +138,7 @@ Beyond statistical misinterpretation, these pitfalls are specific to the act of 
 
 ### Numerical Overload
 
-**The problem:** Presenting too many numbers too quickly, overwhelming the reader's working memory. Research shows most people can hold 3-4 items in working memory simultaneously.
+**The problem:** Presenting too many numbers too quickly, overwhelming the reader's working memory. Working memory holds only a few items at once.
 
 **Examples:** "The coefficient was 0.34 (SE = 0.08, p < 0.001, 95% CI [0.18, 0.50]), indicating that a one-standard-deviation increase in X is associated with a 0.34-standard-deviation increase in Y, which corresponds to roughly 12 percentile points (N = 4,523)."
 
@@ -154,7 +154,7 @@ Beyond statistical misinterpretation, these pitfalls are specific to the act of 
 
 ### Confusing Verbal Probability
 
-**The problem:** Using probability words that mean different things to different people. "Likely" means ~70% to most laypeople but 66-100% in the IPCC framework. "Rare" could mean 1% or 10% depending on context.
+**The problem:** Using probability words that mean different things to different people. Laypeople's sense of "likely" need not match its calibrated IPCC meaning (66-100%). "Rare" could mean 1% or 10% depending on context.
 
 **Examples:** "Adverse effects are unlikely" — does this mean 5%? 20%? 33%?
 
@@ -172,7 +172,7 @@ Beyond statistical misinterpretation, these pitfalls are specific to the act of 
 
 **The problem:** Presenting data about people without considering how the framing, language, and defaults affect those people. Using demographic groups as decoration rather than treating them as audiences who will encounter the work.
 
-**Examples:** Using "minorities" when you mean "communities of color." Defaulting to white/male as the comparison group. Framing achievement gaps as deficits of one group rather than as systemic inequities.
+**Examples:** Using "minorities" when you mean "communities of color." Defaulting to White/male as the comparison group. Framing achievement gaps as deficits of one group rather than as systemic inequities.
 
 **Prevention:** See `accessibility-equity.md` for comprehensive guidance on people-first language, equity-aware framing, and the Urban Institute Do No Harm principles.
 
@@ -192,11 +192,11 @@ Before sharing any deliverable, spend 10 minutes on this rapid review:
 
 ## References and Further Reading
 
-Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2084-2097.
+Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research: A Systematic Evaluation." *American Journal of Epidemiology*, 191(12), 2084-2097. https://doi.org/10.1093/aje/kwac137
 
 Louis, W. and Chapman, C. (2017). "The Seven Deadly Sins of Statistical Misinterpretation, and How to Avoid Them." *The Conversation*. https://theconversation.com/the-seven-deadly-sins-of-statistical-misinterpretation-and-how-to-avoid-them-74306
 
-IES. "Six Strategies for Effectively Communicating Research Findings to Decision Makers." https://ies.ed.gov/blogs/research/post/six-strategies-for-effectively-communicating-research-findings-to-decision-makers
+Miller, L.C. and Piver-Renna, J. (2022, October 27). "Six Strategies for Effectively Communicating Research Findings to Decision Makers." Institute of Education Sciences. https://ies.ed.gov/learn/blog/six-strategies-effectively-communicating-research-findings-decision-makers
 
 Cairo, A. (2016). *The Truthful Art: Data, Charts, and Maps for Communication*. New Riders.
 

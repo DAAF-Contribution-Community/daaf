@@ -2,6 +2,8 @@
 
 Six proven structures for organizing data-driven communication. Each framework serves a different purpose — the right choice depends on your audience, your goal, and the nature of your finding.
 
+All examples in this file are invented for illustration. Most follow one hypothetical school district weighing early literacy programs against class-size reduction; the "So What?" example concerns access to AP courses. Their numbers, studies, districts, and dates are illustrative, not research findings.
+
 The key insight behind all of these: data alone does not persuade. As Brent Dykes argues, data, narrative, and visuals form a triad where all three must work together. Data provides the evidence, narrative provides the meaning, and visuals provide the intuition.
 
 ## Framework Selection Guide
@@ -37,7 +39,7 @@ What is your primary goal?
 
 ## 1. Pyramid Principle (Minto)
 
-**Origin:** Barbara Minto at McKinsey & Company. The gold standard for business and consulting communication.
+**Origin:** Barbara Minto, *The Pyramid Principle*.
 
 **Core idea:** Start with the answer. Then provide supporting arguments. Then provide evidence for each argument. The reader should be able to stop at any level and have a complete (if less detailed) understanding.
 
@@ -59,7 +61,7 @@ Level 1: ANSWER (one sentence)
 ### Rules
 
 1. **Start with the answer.** The very first sentence of the deliverable states the conclusion or recommendation. Not the background, not the methodology, not the context — the answer.
-2. **Group supporting arguments logically.** Three arguments is ideal (human working memory). Each argument must independently support the answer.
+2. **Group supporting arguments logically.** Keep groups small (three is a common practitioner choice, a DAAF heuristic). Each argument must independently support the answer.
 3. **Arguments before evidence.** A busy reader reads Level 1 and Level 2. Only interested readers drill into Level 3.
 4. **MECE at each level.** Arguments should be Mutually Exclusive and Collectively Exhaustive — no gaps, no overlaps.
 5. **Use vertical and horizontal logic.** Read top-to-bottom (each level supports the one above) and left-to-right (arguments at the same level are parallel in structure).
@@ -97,7 +99,7 @@ Level 1: ANSWER (one sentence)
 
 ## 2. SCQA (Situation-Complication-Question-Answer)
 
-**Origin:** Also from Barbara Minto, as a setup technique for the Pyramid Principle. Widely used in consulting and policy communication.
+**Origin:** Barbara Minto, who teaches it as the "Situation, Complication, Question Framework (SCQ Framework™)" for introducing a pyramid; the Answer is the pyramid's top point. Widely used in consulting and policy communication.
 
 **Core idea:** Before giving the answer, establish *why the audience should care* by framing a problem. SCQA creates the cognitive "itch" that the answer then "scratches."
 
@@ -133,9 +135,9 @@ Level 1: ANSWER (one sentence)
 
 ## 3. Three-Act Data Story
 
-**Origin:** Classical dramatic structure (Aristotle's Poetics) applied to data communication. Championed by Brent Dykes and Cole Nussbaumer Knaflic.
+**Origin:** A beginning-middle-end structure (setup, confrontation, resolution), often attributed to Aristotle, though Brent Dykes notes that Aristotle identified only two acts and that screenwriting expert Syd Field is credited with popularizing the three-act model in the late 1970s. Cole Nussbaumer Knaflic introduces story this way in *Storytelling with Data* (2015). Dykes considers the three-act model too simple for data stories and instead uses a four-part Data Storytelling Arc based on Freytag's Pyramid (Setting and Hook, Rising Points, Aha Moment, and Solution and Next Steps).
 
-**Core idea:** Treat your analysis as a narrative with setup, conflict, and resolution. This structure works because human brains are wired for stories — narrative activates more brain regions than data alone.
+**Core idea:** Treat your analysis as a narrative with setup, conflict, and resolution. This structure works because a narrative gives findings an order and a point that a list of results lacks; Dykes (2019) sets out to explain how the brain processes facts and narrative differently.
 
 ### Structure
 
@@ -253,7 +255,7 @@ Finding → Implication → Action
 
 ## 6. AIDA (Attention-Interest-Desire-Action)
 
-**Origin:** Marketing and persuasion framework, attributed to E. St. Elmo Lewis (1898). Adapted for data communication in contexts requiring stakeholder buy-in.
+**Origin:** Marketing and persuasion framework, commonly attributed to E. St. Elmo Lewis. Adapted for data communication in contexts requiring stakeholder buy-in.
 
 **Core idea:** Move the audience through four psychological stages — from noticing, to caring, to wanting, to committing.
 
@@ -322,9 +324,9 @@ These frameworks are not mutually exclusive. Common combinations:
 
 ## References and Further Reading
 
-Dykes, B. (2019). *Effective Data Storytelling: How to Drive Change with Data, Narrative, and Visuals*. Wiley. https://www.effectivedatastorytelling.com/
+Dykes, B. (2019). *Effective Data Storytelling: How to Drive Change with Data, Narrative and Visuals*. Wiley. https://www.effectivedatastorytelling.com/
 
-Minto, B. (2010). *The Pyramid Principle: Logic in Writing and Thinking*. 3rd Edition. Pearson.
+Minto, B. (2009). *The Pyramid Principle: Logic in Writing and Thinking* (3rd ed.). Financial Times Prentice Hall.
 
 Nussbaumer Knaflic, C. (2015). *Storytelling with Data: A Data Visualization Guide for Business Professionals*. Wiley. https://www.storytellingwithdata.com/
 
