@@ -563,7 +563,7 @@ handle_logs() {
             bash /daaf/scripts/generate_log_viewer.sh --archive --no-serve \
             </dev/null 2>&1) || {
             echo "  ${YELLOW}Manifest generation failed for the full archive.${RESET}"
-            echo "  ${YELLOW}The specific error is in the output above.${RESET}"
+            echo "  ${YELLOW}The error was:${RESET}"
             echo "  ${manifest_err}"
             echo "  ${YELLOW}A specific project source may still work -- try selecting"
             echo "  one project instead of the full archive.${RESET}"
@@ -899,7 +899,11 @@ handle_restart() {
         restore_panel_settings
         echo ""
         echo "  ${YELLOW}The container is stopped, but it was not started again --"
-        echo "  environment_settings.txt now names a different project.${RESET}"
+        if [ -z "${reloaded_norm}" ]; then
+            echo "  environment_settings.txt now has a project name that cannot be used.${RESET}"
+        else
+            echo "  environment_settings.txt now names a different project.${RESET}"
+        fi
         echo ""
         if [ -z "${reloaded_norm}" ]; then
             echo "  It changed while the container was stopping, and now gives the project"

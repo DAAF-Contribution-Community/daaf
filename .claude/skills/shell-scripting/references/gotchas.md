@@ -332,14 +332,50 @@ $ErrorActionPreference = $saved
 
 **Why it happens (sourced, 2026-10-06):** PowerShell 7.2 changed how redirected native stderr is handled. Microsoft's [about_Preference_Variables](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables) says: "Beginning in PowerShell 7.2, error records redirected from native commands, like when using redirection operators (2>&1), aren't written to the $Error variable and the preference variable $ErrorActionPreference doesn't affect the redirected output." (fetched to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/compat/2026-10-06T153036Z_learn-microsoft-com_about-preference-variables-powershell-microsoft-learn_0309d393.md`, lines 212-215). So on Windows PowerShell 5.1 the preference still applies to each redirected stderr record, and `SilentlyContinue` suppresses it before it reaches the capture; from 7.2 on it does not, which is why pwsh 7 keeps the line. The page states the 7.2 change; that 5.1 drops the record *because* the preference applies there is inference from "Beginning in PowerShell 7.2" plus the field probe above. The same page goes on: "PowerShell 7.4 added a feature that allows you to control how messages written to stderr are handled", which is the next entry.
 
-**Fix:**
-1. Use `'Continue'`, not `'SilentlyContinue'`, in any bracket whose merged capture you read for stderr text, and restore the previous value right after. Under `Continue`, with `2>&1` into a variable, nothing reached the console and nothing was terminating under a top-level `'Stop'` (observed on pwsh 7.6; on 5.1, inferred from the field probe).
-2. A bracket around a capture that reads stdout only (`2>$null`), or whose output is discarded, can keep `SilentlyContinue`: it reads no stderr text.
-3. pwsh 7 cannot reproduce the drop, so a behavioral test on Linux cannot guard against it. Guard it structurally instead (a test that reads the script text), and confirm on a real Windows PowerShell 5.1 host when you can.
+**Fix (choose by what the capture is for; the two fixes are not interchangeable):**
+1. **Its text is shown to the user** (`Docker said:`, `Git reported:`, a details block): use `'Continue'`, not `'SilentlyContinue'`, in the bracket, and restore the previous value right after. Under `Continue`, with `2>&1` into a variable, nothing reached the console and nothing was terminating under a top-level `'Stop'` (observed on pwsh 7.6; on 5.1, inferred from the field probe).
+2. **It is only tested for emptiness, or parsed for stdout** (a container ID from `docker compose ps -q`, a `NAME=<n>` marker): use `2>$null` and keep `'SilentlyContinue'`. Do **not** switch these to `'Continue'`: here the polarity is inverted. On 5.1 the drop is what made such a check correct, and `Continue` would let a stderr-only line (a Compose warning, say) make the capture non-empty, so a stopped container reads as running. pwsh 7 already had that misread, because 7.2+ keeps the line under any preference. Observed on pwsh 7.6.3: a stderr-only native call captured with `2>&1` under `SilentlyContinue` gave `captured_count=1`, `isNullOrWhiteSpace=False`, and with `2>$null` gave `isNullOrWhiteSpace=True` (scoping audit `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/05_ps1_stderr_audit.md`, section 2). That a Compose warning occurs in practice is inference. A capture whose output is discarded (`$null =`, `| Out-Null`, `[void]`) can keep `SilentlyContinue` with any redirect: it reads nothing.
+3. **A stderr file read back for display** (`... 2>> $log`, then `Get-Content -Tail 5`): keep the lines in memory instead, under `'Continue'`:
 
-**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1`: `Invoke-DaafRestoreDocker`, `Invoke-DaafRestoreDockerSplit`, and the inline `$ScanCountOutput`, `$cpOut`, `$TempVerifyOutput` and `$VerifyOutput` captures use `Continue` (fix pass #18, D2). Since follow-up pass #26, the helper-image download in `restore_from_backup.ps1` and `backup_daaf.ps1` does too (`$pullAll`, read for its `Docker said:` line). The structural pin that guards these brackets also constrains their form: the first shape of that capture, `docker pull ... 2>&1 | ForEach-Object` with no assignment, was rejected by the pin, so the pull was reshaped as a `$pullAll = @(...)` capture the pin recognises.
+   ```powershell
+   $errLines = New-Object System.Collections.Generic.List[string]
+   $saved = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+   $out = @(docker compose exec -T daaf-docker true 2>&1)
+   $exit = $LASTEXITCODE
+   $ErrorActionPreference = $saved
+   foreach ($item in $out) {
+       if ($item -is [System.Management.Automation.ErrorRecord]) { $errLines.Add("$item") } else { $item }
+   }
+   ```
 
-**Severity:** Medium. Data is not at risk, but every diagnostic built from Docker's text is lost on the PowerShell most Windows users run, and logic that matches error text quietly takes its fallback path.
+   Whether 5.1 also empties a `2>` / `2>>` FILE redirect under `SilentlyContinue` is **not yet observed**. It is inference that it does (a file redirect is also a redirection operator the preference governs); pwsh 7.6 was observed to keep the line in the file. The in-memory form avoids the question: it relies on the `2>&1`-under-`Continue` behavior that *is* field-observed, and needs no temp file. That 5.1 hands each merged stderr line over as an `ErrorRecord` whose `"$_"` is the plain message is also inference, from the field probe's `ForEach-Object { "$_" }` output. The CI probe below reports both the file result and the record type.
+4. **A capture scanned only for anchored stdout markers and never shown** loses nothing that matters, so it can stay as it is. DAAF keeps four of these under `SilentlyContinue` and names them, with reasons, in the guard's allowlist.
+5. pwsh 7 cannot reproduce the drop, so a behavioral test on Linux cannot guard against it. Guard it structurally (a test that parses the script), and confirm on a real Windows PowerShell 5.1 host when you can.
+
+**Guards in DAAF:**
+- `tests/powershell/native_stderr_capture.Tests.ps1` (dispatch #64) parses every `scripts/host/*.ps1`. It flags a site when all four of these hold:
+  - it is a `docker` call, or a call to an in-file wrapper whose body runs docker with stderr not redirected;
+  - its effective `$ErrorActionPreference` is not an explicit literal `'Continue'` in the same scope. The guard tracks this in source order within each function. `SilentlyContinue` and `Ignore` are flagged, and so is `Stop`. So is "inherited": no assignment yet in that function, or a `= $saved` restore. That catches a function with no bracket of its own that a `SilentlyContinue` caller calls (dispatch #65);
+  - its stderr is merged or sent to a file;
+  - its output is kept.
+
+  The failure message carries the fix chooser above. Its self-tests cover known-bad and known-good snippets, plus in-memory reverts of four dispatch #63 fixes (one G1, two G2, one G3), each of which must be flagged. Run against the pre-#63 scripts, it flagged all 24 sites the audit had listed (observed, dispatch #64). Its header lists what it still misses, among them: a `| Tee-Object -Variable t | Out-Null` tail reads as discarded, and a `Set-Variable -Name ErrorActionPreference` after a literal `'Continue'` is not seen.
+- `.github/workflows/ci-scripts.yml`, job `validate-ps-windows`, step "Probe native stderr capture (Windows PS 5.1)". Under `shell: powershell` it runs `cmd.exe`, writing one stdout and one stderr line.
+  - It **asserts** the two `2>&1` facts: `SilentlyContinue` drops the stderr line and `Continue` keeps it. The step fails if 5.1 stops behaving that way.
+  - It **reports** the `2>> file` results and the record type. Until its first run on the hosted runner, both remain inference.
+- `tests/powershell/stream_capture_idiom.Tests.ps1` runs the `Continue` idiom against a real native command and checks that both lines are kept and nothing is thrown under `'Stop'`. A version-conditional check also asserts that `SilentlyContinue` keeps the line on 7.2+, and drops it on 5.1 if the file is ever run there.
+- The per-site pins: the restore suite's D2 pin, and the dispatch #63 pins in the backup, daaf, install, rebuild, update, run_daaf, view_* and run_vscode suites.
+
+**Where it lives in DAAF:**
+- **`'Continue'` around captures shown to the user.**
+  - `restore_from_backup.ps1`, since fix pass #18 (D2): `Invoke-DaafRestoreDocker`, `Invoke-DaafRestoreDockerSplit`, and `$ScanCountOutput`, `$cpOut`, `$TempVerifyOutput` and `$VerifyOutput`.
+  - The helper-image pull `$pullAll` there and in `backup_daaf.ps1`, since follow-up pass #26. The pin also constrains this capture's form: its first shape, `docker pull ... 2>&1 | ForEach-Object` with no assignment, was rejected by the pin, so the pull was reshaped as a `$pullAll = @(...)` capture the pin recognises.
+  - Since dispatch #63: `daaf.ps1` (`$launchErr` x2, `$manifestErr` x2, `$serveErr`, `$readyErr`), `update_daaf.ps1` (`$fetchOutput`) and `backup_daaf.ps1` (`$StageLog`, `$ClaudeStageLog`).
+- **Readiness lines kept in memory under `'Continue'`, no temp file** (dispatch #63): `$readyOut` / `$readyErrLines` in `install.ps1`, `rebuild_daaf.ps1` and `update_daaf.ps1`. Their `.sh` twins still use a temp file with `2>>` plus `tail -5`; Bash does not have this problem.
+- **`2>$null` under `SilentlyContinue` for emptiness and ID checks.** Since dispatch #63: `run_daaf.ps1` (`$CidOutput`, `$_cid`, `$_created`) and `$CidOutput` in `view_notebooks.ps1`, `run_vscode.ps1`, `view_quarto.ps1` and `view_logs.ps1`. This matches the existing checks in `daaf_lib.ps1` (`Confirm-DaafContainer`), `daaf.ps1` and `update_daaf.ps1`.
+- **Allowlisted marker-only reads:** `backup_daaf.ps1` (`$StageDoneLog`, `$HostCountOutput`, `$ClaudeStageDoneLog`) and `migrate_daaf.ps1` (`$SearchResultRaw`).
+
+**Severity:** Medium. Data is not at risk, but every diagnostic built from Docker's text is lost on the PowerShell most Windows users run, and logic that matches error text quietly takes its fallback path. The obvious fix, applied to an emptiness check, brings in a different misread (fix 2).
 
 ---
 
@@ -370,7 +406,7 @@ $PSNativeCommandUseErrorActionPreference = $false   # an ordinary, unused variab
 2. Keep reading `$LASTEXITCODE` immediately after each native call; the preference variable only stops PowerShell from adding its own error on top.
 3. Where a single command needs the feature on, set it inside a script block (`& { ... }`): the change is local to that block, as the documentation's robocopy example shows.
 
-**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1` and `backup_daaf.ps1` (follow-up pass #26), and `migrate_daaf.ps1` (review fix round 9), right after the `$ErrorActionPreference` line.
+**Where it lives in DAAF:** every `scripts/host/*.ps1` that runs native commands, right after the `$ErrorActionPreference` line: `restore_from_backup.ps1` and `backup_daaf.ps1` (follow-up pass #26), `migrate_daaf.ps1` (review fix round 9), and since dispatch #63 `install.ps1`, `update_daaf.ps1`, `rebuild_daaf.ps1`, `daaf.ps1`, `run_daaf.ps1`, `view_notebooks.ps1`, `view_quarto.ps1`, `view_logs.ps1`, `run_vscode.ps1` and `test_migration.ps1`. The dot-sourced `daaf_lib.ps1` carries no assignment of its own and inherits `daaf.ps1`'s.
 
 **Severity:** Low-Medium. Low in DAAF (every docker call there sits in a preference bracket, so it could not throw; only the extra line could leak into a `Docker said:` text). Higher for a script that calls native commands under a bare `'Stop'`.
 
@@ -1257,7 +1293,7 @@ docker() {
 | `$?` for native commands | PowerShell | High | — |
 | Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
-| PS 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; 7.2+ no longer applies the preference to redirected native stderr) | PowerShell | Medium | — |
+| PS 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (text shown to the user: bracket with `Continue`; emptiness or ID check: `2>$null`, not `Continue`; 7.2+ no longer applies the preference to redirected native stderr; guard: `native_stderr_capture.Tests.ps1`) | PowerShell | Medium | — |
 | `$PSNativeCommandUseErrorActionPreference` (7.4+) adds an error line or throws on a native nonzero exit (set it to `$false`) | PowerShell | Low-Medium | — |
 | Embedded `"` in native args | PowerShell | High | — |
 | `Start-Process -ArgumentList` array joined unquoted | PowerShell | High | — |

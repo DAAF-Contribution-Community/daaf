@@ -123,6 +123,7 @@ Testing shell scripts?
 ├─ Bash testing
 │   ├─ BATS setup → ./references/testing.md
 │   ├─ Mocking Docker → ./references/testing.md
+│   ├─ A test passes despite a failing early assertion / wrong line reported after sourcing a script → ./references/testing.md (sourcing in test mode)
 │   └─ What to test → ./references/testing.md
 ├─ PowerShell testing
 │   ├─ Pester setup → ./references/testing.md
@@ -220,6 +221,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Dependency validation | `./references/error-handling.md` |
 | NO_COLOR and TTY detection | `./references/error-handling.md` |
 | BATS test framework | `./references/testing.md` |
+| Sourcing a script in test mode (`DAAF_TEST_MODE=1 source`) inside a bats test: keep errexit (`set -e +u`; pipefail stays on unless a test needs it off) and reinstall bats's saved ERR trap with `eval`; a `VAR=x source` prefix does not persist; `run bash -c` children keep strict mode | `./references/testing.md` |
 | Pester test framework | `./references/testing.md` |
 | CI workflow setup | `./references/testing.md` |
 | Docker mocking strategies | `./references/testing.md` |
@@ -233,7 +235,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash `$(fn 2>&1 > /dev/null)` waits for a subshell `fn` left in the background (exec'd children drop the saved pipe) | `./references/gotchas.md` |
 | PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
-| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; pwsh 7 cannot reproduce it: from 7.2 the preference no longer applies to redirected native stderr) | `./references/gotchas.md` |
+| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (text shown to the user: bracket with `Continue`; emptiness or ID check: `2>$null`, not `Continue`; pwsh 7 cannot reproduce it: from 7.2 the preference no longer applies to redirected native stderr; AST guard `native_stderr_capture.Tests.ps1` plus a 5.1 CI probe) | `./references/gotchas.md` |
 | `$PSNativeCommandUseErrorActionPreference` (pwsh 7.4+): a native nonzero exit adds an error line or throws; set it to `$false` in scripts that read `$LASTEXITCODE` | `./references/gotchas.md` |
 | PowerShell `$null` exit code read as success (unknown is not success) | `./references/gotchas.md` |
 | PowerShell `Start-Process -ArgumentList` array joined without quoting | `./references/gotchas.md` |

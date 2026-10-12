@@ -20,6 +20,12 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
+# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# daaf_lib.ps1, dot-sourced below, runs in this script's scope and so inherits it.
+$PSNativeCommandUseErrorActionPreference = $false
 
 # --- Source shared library ---
 # Resolve this script's directory from MyInvocation so the library resolves
@@ -597,9 +603,11 @@ function Invoke-DaafNotebookBrowser {
     } else {
         # Capture stderr (do NOT discard) so a container-side launch failure is
         # distinguishable from a slow start. A non-zero exit returns to the menu.
+        # 'Continue', not 'SilentlyContinue': Windows PowerShell 5.1 drops native
+        # stderr from a 2>&1 capture under SilentlyContinue (shell-scripting gotchas).
         $savedEAP = $ErrorActionPreference
         try {
-            $ErrorActionPreference = "SilentlyContinue"
+            $ErrorActionPreference = "Continue"
             $launchErr = docker compose exec -d daaf-docker bash /daaf/scripts/launch_marimo.sh --background 2>&1
             $launchExit = $LASTEXITCODE
         } finally {
@@ -657,9 +665,10 @@ function Invoke-DaafVSCode {
         # Capture stderr (do NOT discard) so a container-side launch failure --
         # e.g., a stale image without code-server -- is visible rather than
         # masquerading as "still starting". Non-zero exit returns to the menu.
+        # 'Continue' keeps that stderr text on Windows PowerShell 5.1 (see above).
         $savedEAP = $ErrorActionPreference
         try {
-            $ErrorActionPreference = "SilentlyContinue"
+            $ErrorActionPreference = "Continue"
             $launchErr = docker compose exec -d daaf-docker bash /daaf/scripts/launch_code_server.sh --background 2>&1
             $launchExit = $LASTEXITCODE
         } finally {
@@ -773,10 +782,13 @@ function Invoke-DaafLogViewer {
     # accurate message instead of a dead URL. A failure here returns to the menu.
     Write-Host ""
     Write-Host "  Generating session manifest..."
+    # 'Continue', not 'SilentlyContinue', in both brackets below: Windows PowerShell
+    # 5.1 drops native stderr from a 2>&1 capture under SilentlyContinue, and the
+    # generator's Python errors go to stderr.
     if ($selected -eq "ARCHIVE") {
         $savedEAP = $ErrorActionPreference
         try {
-            $ErrorActionPreference = "SilentlyContinue"
+            $ErrorActionPreference = "Continue"
             $manifestErr = docker compose exec -T daaf-docker bash /daaf/scripts/generate_log_viewer.sh --archive --no-serve 2>&1
             $manifestExit = $LASTEXITCODE
         } finally {
@@ -784,7 +796,7 @@ function Invoke-DaafLogViewer {
         }
         if ($manifestExit -and $manifestExit -ne 0) {
             Write-Host "  Manifest generation failed for the full archive." -ForegroundColor Yellow
-            Write-Host "  The specific error is in the output above." -ForegroundColor Yellow
+            Write-Host "  The error was:" -ForegroundColor Yellow
             Write-Host "  $manifestErr"
             Write-Host "  A specific project source may still work -- try selecting" -ForegroundColor Yellow
             Write-Host "  one project instead of the full archive." -ForegroundColor Yellow
@@ -794,7 +806,7 @@ function Invoke-DaafLogViewer {
     } else {
         $savedEAP = $ErrorActionPreference
         try {
-            $ErrorActionPreference = "SilentlyContinue"
+            $ErrorActionPreference = "Continue"
             $manifestErr = docker compose exec -T daaf-docker bash /daaf/scripts/generate_log_viewer.sh $selected --no-serve 2>&1
             $manifestExit = $LASTEXITCODE
         } finally {
@@ -820,9 +832,10 @@ function Invoke-DaafLogViewer {
         } else {
             $serveArgs = @($selected, "--background")
         }
+        # 'Continue' keeps Docker's stderr text on Windows PowerShell 5.1 (see above).
         $savedEAP = $ErrorActionPreference
         try {
-            $ErrorActionPreference = "SilentlyContinue"
+            $ErrorActionPreference = "Continue"
             $serveErr = docker compose exec -d daaf-docker bash /daaf/scripts/generate_log_viewer.sh @serveArgs 2>&1
             $serveExit = $LASTEXITCODE
         } finally {
@@ -1186,7 +1199,11 @@ function Invoke-DaafRestart {
         Restore-DaafSettingsSnapshot -Snapshot $preRestart
         Write-Host ""
         Write-Host "  The container is stopped, but it was not started again --" -ForegroundColor Yellow
-        Write-Host "  environment_settings.txt now names a different project." -ForegroundColor Yellow
+        if ([string]::IsNullOrEmpty($reloadedNorm)) {
+            Write-Host "  environment_settings.txt now has a project name that cannot be used." -ForegroundColor Yellow
+        } else {
+            Write-Host "  environment_settings.txt now names a different project." -ForegroundColor Yellow
+        }
         Write-Host ""
         if ([string]::IsNullOrEmpty($reloadedNorm)) {
             Write-Host "  It changed while the container was stopping, and now gives the project"
@@ -1250,10 +1267,12 @@ function Invoke-DaafRestart {
         if ($retries -ge $maxRetries) {
             # One more attempt to capture Docker's message for the user (held in
             # memory, not a temp file). "$_" renders a PS 5.1 stderr ErrorRecord
-            # as its plain message text.
+            # as its plain message text. 'Continue', not 'SilentlyContinue': Windows
+            # PowerShell 5.1 drops native stderr from a 2>&1 capture under
+            # SilentlyContinue, which would leave "Docker reported:" with no lines.
             $savedEAP = $ErrorActionPreference
             try {
-                $ErrorActionPreference = "SilentlyContinue"
+                $ErrorActionPreference = "Continue"
                 $readyErr = @(docker compose exec -T daaf-docker true 2>&1 | ForEach-Object { "$_" })
             } finally {
                 $ErrorActionPreference = $savedEAP

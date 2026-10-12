@@ -1402,9 +1402,11 @@ skip_unless_chmod_blocks_reads() {
     assert_success
     assert_output --partial "DOCKER: compose down"
     refute_output --partial "DOCKER: compose up"
-    assert_output --partial "environment_settings.txt now names a different project."
+    # An unusable name gets its own header; "a different project" would be wrong.
+    refute_output --partial "now names a different project"
     local flat
     flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
+    [[ "${flat}" == *"The container is stopped, but it was not started again -- environment_settings.txt now has a project name that cannot be used."* ]]
     [[ "${flat}" == *'now gives the project name "___", which Docker Compose cannot use.'* ]]
     refute_output --partial "Container restarted"
     refute_output --partial "PANEL_ERR_TRAP"
@@ -1530,6 +1532,8 @@ skip_unless_chmod_blocks_reads() {
     [ "${ups}" -eq 0 ]
     [[ "${first}" == *"The container is stopped, but it was not started again --"* ]]
     [[ "${first}" == *"environment_settings.txt now names a different project."* ]]
+    # A different but usable name keeps that header, not the unusable-name one.
+    [[ "${first}" != *"now has a project name that cannot be used"* ]]
     [[ "${first}" == *'name "other" (the default is "daaf"'* ]]
     [[ "${first}" == *'name "myproj" again, then choose Restart Container again.'* ]]
     [[ "${first}" != *"Container restarted"* ]]

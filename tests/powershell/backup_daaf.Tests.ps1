@@ -1123,13 +1123,17 @@ case "${1:-}" in
         echo "Status: Downloaded newer image for ${!#}"
         exit 0 ;;
     volume)
-        # Data volume exists; the Claude-config volume does not (skip that block).
-        case "$*" in *claude-config*) exit 1 ;; esac
+        # Data volume exists; the Claude-config volume does not (skip that block)
+        # unless FAKE_CLAUDE_VOLUME=1 (dispatch #63).
+        case "$*" in *claude-config*) [ "${FAKE_CLAUDE_VOLUME:-0}" = "1" ] && exit 0; exit 1 ;; esac
         exit 0 ;;
     run)
         if [ "${2:-}" = "-d" ]; then
             # FAKE_RUN_D_LOG records the staging launch's arguments (the name switch).
             if [ -n "${FAKE_RUN_D_LOG:-}" ]; then printf '%s\n' "$*" >> "${FAKE_RUN_D_LOG}"; fi
+            # The Claude volume's staging container gets its own ID (dispatch #63).
+            # Matched on its mount: the staging program text names .daaf-claude-config.
+            case "$*" in *"_daaf-claude-config:/source:ro"*) echo claudecid0000; exit 0 ;; esac
             # FAKE_STAGE_STDERR=1: a stray stderr line before AND after the ID (the pauses
             # keep that order when a caller merges the streams): the CID must come from
             # stdout only (pass #26).
@@ -1175,6 +1179,9 @@ case "${1:-}" in
         if [ -n "${FAKE_LONG:-}" ]; then printf '%s\n' "${FAKE_LONG}"; fi
         exit 0 ;;
     wait)
+        # Dispatch #63: FAKE_CLAUDE_WAIT_STATUS / FAKE_WAIT_STATUS (default 0) are the
+        # staging exit statuses of the Claude and the data volume.
+        if [ "${2:-}" = "claudecid0000" ]; then echo "${FAKE_CLAUDE_WAIT_STATUS:-0}"; exit 0; fi
         # FAKE_STAGE_STDERR=1: stray stderr lines around the status, as for `run -d`.
         if [ "${FAKE_STAGE_STDERR:-0}" = "1" ]; then
             echo "WARNING: fake docker notice before the status" >&2; sleep 0.3
@@ -1182,11 +1189,18 @@ case "${1:-}" in
             echo "WARNING: fake docker notice after the status" >&2
             exit 0
         fi
-        echo 0; exit 0 ;;
+        echo "${FAKE_WAIT_STATUS:-0}"; exit 0 ;;
     logs)
+        # Dispatch #63: FAKE_CLAUDE_LOGS_STDERR / FAKE_LOGS_STDERR, a line the Claude /
+        # data staging container's log writes to stderr (a failed staging's cause).
+        if [ "${2:-}" = "claudecid0000" ]; then
+            if [ -n "${FAKE_CLAUDE_LOGS_STDERR:-}" ]; then printf '%s\n' "${FAKE_CLAUDE_LOGS_STDERR}" >&2; fi
+            exit 0
+        fi
         # Snapshot markers from the (detached) staging container's log.
         [ "${FAKE_LOGS_FAIL:-0}" = "1" ] && exit 1
         printf '%b' "${FAKE_STAGE_LOG:-}"
+        if [ -n "${FAKE_LOGS_STDERR:-}" ]; then printf '%s\n' "${FAKE_LOGS_STDERR}" >&2; fi
         exit 0 ;;
     cp)
         # `docker cp SRC DEST` is exactly three argv entries. More means the caller
@@ -1240,7 +1254,17 @@ esac
                 [switch]$NoEditionBypass, [switch]$DryRun, [switch]$InfoFail, [int]$DockerVersionExit = 0,
                 # Dispatch 48: -Settings writes this text as environment_settings.txt into
                 # the working dir before the run ('' = no settings file).
-                [string]$Settings = '')
+                [string]$Settings = '',
+                # Dispatch #63: -WaitStatus (the data staging's exit status), -LogsStderr
+                # (a stderr line in its log), -ClaudeVolume (the Claude volume exists),
+                # -ClaudeWaitStatus and -ClaudeLogsStderr (the same for its staging).
+                [int]$WaitStatus = 0, [string]$LogsStderr = '', [switch]$ClaudeVolume,
+                [int]$ClaudeWaitStatus = 0, [string]$ClaudeLogsStderr = '')
+            $env:FAKE_WAIT_STATUS = "$WaitStatus"
+            $env:FAKE_LOGS_STDERR = $LogsStderr
+            if ($ClaudeVolume) { $env:FAKE_CLAUDE_VOLUME = "1" } else { $env:FAKE_CLAUDE_VOLUME = "0" }
+            $env:FAKE_CLAUDE_WAIT_STATUS = "$ClaudeWaitStatus"
+            $env:FAKE_CLAUDE_LOGS_STDERR = $ClaudeLogsStderr
             if ($DockerVersion -ne '') { $env:FAKE_DOCKER_VERSION = $DockerVersion } else { Remove-Item Env:FAKE_DOCKER_VERSION -ErrorAction SilentlyContinue }
             if ($InfoFail) { $env:FAKE_INFO_FAIL = "1" } else { $env:FAKE_INFO_FAIL = "0" }
             $env:FAKE_DOCKER_VERSION_EXIT = "$DockerVersionExit"
@@ -1306,6 +1330,7 @@ esac
         Remove-Item Env:FAKE_SCAN_COUNT, Env:FAKE_CP_FILES, Env:FAKE_CP_EXIT, Env:FAKE_SPECIAL, Env:FAKE_LONG, Env:FAKE_STAGE_LOG, Env:FAKE_COUNT_FAIL, Env:FAKE_LOGS_FAIL, Env:FAKE_EMPTY_MOUNT, Env:FAKE_CP_NO_MANIFEST, Env:FAKE_CP_LOCKED, Env:FAKE_CP_SLEEP -ErrorAction SilentlyContinue
         Remove-Item Env:FAKE_DOCKER_VERSION, Env:FAKE_IMAGE_ABSENT, Env:FAKE_PULL_FAIL, Env:FAKE_STAGE_STDERR, Env:FAKE_CALL_LOG -ErrorAction SilentlyContinue
         Remove-Item Env:FAKE_INFO_FAIL, Env:FAKE_DOCKER_VERSION_EXIT -ErrorAction SilentlyContinue
+        Remove-Item Env:FAKE_WAIT_STATUS, Env:FAKE_LOGS_STDERR, Env:FAKE_CLAUDE_VOLUME, Env:FAKE_CLAUDE_WAIT_STATUS, Env:FAKE_CLAUDE_LOGS_STDERR -ErrorAction SilentlyContinue
     }
 
     # --- Review round 1 fixes (B1 empty bind mount, I2 wording, I3 lower bound) ---
@@ -1326,6 +1351,28 @@ esac
         $r.ExitCode | Should -Be 0
         $r.Output | Should -BeLike "*missing its .daaf-symlinks file*"
         $r.Output | Should -BeLike "*Backup completed WITH WARNINGS*"
+    }
+
+    # --- Dispatch #63 (G1): a failed staging's stderr line is shown ---
+
+    It "G1: a failed data-volume staging shows its log's stderr line under 'Details from the staging scan:'" {
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -WaitStatus 1 -LogsStderr 'cp: write error: No space left on device'
+        $r.ExitCode | Should -Be 1
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, 'Details from the staging scan:')
+        $i | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[$i + 1] | Should -BeExactly '       cp: write error: No space left on device'
+        $r.Output | Should -Not -BeLike "*no details could be retrieved*"
+    }
+
+    It "G1: a failed Claude-volume staging shows its log's stderr line under 'Details from the staging scan:'" {
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -ClaudeVolume -ClaudeWaitStatus 1 -ClaudeLogsStderr 'cp: write error: No space left on device'
+        $r.ExitCode | Should -Be 0
+        $lines = @($r.Output -split '\r?\n')
+        $w = [array]::IndexOf($lines, 'WARNING: Failed to back up the Claude Code state volume.')
+        $w | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[$w + 1] | Should -BeExactly '         Details from the staging scan:'
+        $lines[$w + 2] | Should -BeExactly '         cp: write error: No space left on device'
     }
 
     It "I2: a shortfall against the snapshot is reported as missing files, not 'may be incomplete'" {
@@ -2183,5 +2230,44 @@ Describe "backup/restore .ps1 docker programs under PowerShell's own expansion (
         $prog.Contains('echo RESTORED_FILES=$((n))') | Should -BeTrue
         $prog.Contains('"') | Should -BeFalse
         $prog.EndsWith('\') | Should -BeFalse
+    }
+}
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G1 staging-log captures)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas). The two
+# failed-staging log captures are shown under "Details from the staging scan:", so
+# they run under 'Continue'. pwsh 7 keeps the lines either way, so the end-to-end
+# tests above cannot catch a revert on their own: this pin can. (The marker-only
+# reads $StageDoneLog and $ClaudeStageDoneLog read stdout markers only and are out
+# of scope here.)
+
+Describe "backup_daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile("$RepoRoot/scripts/host/backup_daaf.ps1", [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+    }
+
+    It "G1: `$StageLog and `$ClaudeStageLog merge stderr (2>&1) inside a 'Continue' bracket that restores `$savedEAP" {
+        $ParseErrorCount | Should -Be 0
+        $eap = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        foreach ($var in @('$StageLog', '$ClaudeStageLog')) {
+            $caps = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq $var) -and ($n.Right.Extent.Text -match '\bdocker\s')
+            }, $true))
+            $caps.Count | Should -Be 1 -Because "$var is captured once from docker"
+            $caps[0].Right.Extent.Text | Should -Match '^\(docker logs \$\w+ 2>&1 \| Out-String\)$'
+            $open = @($eap | Where-Object { $_.Extent.EndOffset -le $caps[0].Extent.StartOffset }) | Select-Object -Last 1
+            $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $caps[0].Extent.EndOffset }) | Select-Object -First 1
+            $open.Right.Extent.Text | Should -BeExactly '"Continue"' -Because "$var is shown to the user"
+            $close.Right.Extent.Text | Should -BeExactly '$savedEAP' -Because "$var restores the caller's EAP"
+        }
     }
 }

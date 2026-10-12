@@ -105,6 +105,21 @@ A Ctrl+C while the restore was creating its temporary Docker volume, or checking
 
 Docker Compose lowercases a project name and drops characters it cannot use, so `DAAF_PROJECT_NAME=Work` gives the data volume `work_daaf-data`. The installer already followed that rule, but backup, restore and update used the name as written: with `Work` they looked for `Work_daaf-data`, a volume Compose never created, and update's manual `docker cp` hints named a container Compose never created either. All of them now use the same name as Compose, and backup and restore print `NOTE: Docker Compose uses the project name 'work' for 'Work'.` when the two differ. A name with nothing usable left, such as `___`, is refused before any Docker command, with nothing changed. The Control Panel's Restart Container option compares names the same way, so changing `Work` to `work` (on macOS and Linux) or `My.Proj` to `myproj` (on every system) in `environment_settings.txt` is no longer refused as a switch to a different install. For the default name `daaf` nothing changes. The installation guide ("Running multiple DAAF instances" and the restore steps) and the technical FAQ now give the by-hand stop command for a second install as `docker compose -p <project-name> down`, because a plain `docker compose down` typed by hand would stop the first install.
 
+### Windows PowerShell 5.1: Docker and Git Error Text Now Reaches You
+
+On Windows PowerShell 5.1, several host scripts captured a failing command's error text in a way that 5.1 silently empties. So the detail line could come out blank after these messages:
+- "Failed to start the notebook server:" and "Could not start the log viewer server:" (Control Panel);
+- "Git reported:" (update);
+- "Details from the staging scan:" (backup);
+- "Docker reported:" (Restart Container). For the install, rebuild and update readiness checks this is expected but not yet observed.
+
+Those captures now keep the error text on every PowerShell version. The install, rebuild and update readiness checks also keep it in memory instead of in a temporary file. The launchers (`run_daaf`, `view_notebooks`, `run_vscode`, `view_quarto`, `view_logs`) now read only Docker's normal output when checking whether the container is running (and, in `run_daaf`, when it was created), so on PowerShell 7 a Docker warning can no longer make a stopped container look running. Other changes:
+- All host scripts that check exit codes now switch off PowerShell 7.4's `$PSNativeCommandUseErrorActionPreference`.
+- An unused helper was removed from `migrate_daaf.ps1`.
+- The Control Panel's log viewer, on both Windows and macOS/Linux, no longer says the archive error is "in the output above" when it is printed below.
+
+A new test now fails if any host script brings back an error capture that 5.1 would empty. A new CI step runs under Windows PowerShell 5.1 itself and fails if 5.1 stops behaving the way these fixes assume.
+
 ### Detailed Notes
 
 Disclosure: These notes were AI-drafted from the verified change-set and then reviewed by hand.
@@ -547,6 +562,36 @@ The `.ps1` bridge also adopts the loader's stricter line rules: a key indented w
 The default `daaf` path is unchanged: probes comparing the scripts before and after gave `IDENTICAL` on 59 and then 79 cases (unset, empty, `daaf`, `work`, `Work` with the override, the override, and `daaf2`). The container programs are unchanged.
 
 **Tests.** bats: `daaf_lib` 45->53, backup 107->113, restore 178->184, update 89->92, `daaf` 104->109, `test_migration` 49->51. Pester `It` blocks: `daaf_lib` 6->16, backup 176->182, restore 232->239, update 106->109, `daaf` 108->113, `test_migration` 56->57. A fixed set of 17 inputs pins every copy and the installer to the same results, and further pins check byte identity and that no code line builds a name from the raw value. Every mutant was killed, in both rounds.
+
+#### Host PowerShell: Native stderr Under Windows PowerShell 5.1
+
+**Why.** The restore field test (D2 above) showed that Windows PowerShell 5.1 drops a native command's stderr from a `2>&1` capture under `$ErrorActionPreference = 'SilentlyContinue'`; pwsh 7.2+ keeps it. An audit of every `scripts/host/*.ps1` (`research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/05_ps1_stderr_audit.md`) found no branch that depends on Docker's error text. It did find:
+- 12 captures shown to the user that 5.1 empties, 3 of them `2>> $readyLog` file redirects, whose 5.1 behavior is not yet observed;
+- 7 "inverted polarity" stdout-only reads: six container-ID checks (`$x = docker compose ps -q daaf-docker 2>&1`, then is-it-empty) and one creation-date parse (`$_created` in `run_daaf.ps1`). Here the 5.1 drop is what made each read correct, and pwsh 7 misreads a stderr-only warning as a running container;
+- an unused helper;
+- 11 scripts without the `$PSNativeCommandUseErrorActionPreference` guard.
+
+**What changed (dispatch #63; `.ps1` only, since Bash does not have this problem).**
+- **Captures shown to the user** now run under `'Continue'`: `daaf.ps1` (`$launchErr` x2, `$manifestErr` x2, `$serveErr`, `$readyErr`), `update_daaf.ps1` (`$fetchOutput`) and `backup_daaf.ps1` (`$StageLog`, `$ClaudeStageLog`).
+- **Readiness lines kept in memory.** The `install`, `rebuild` and `update` readiness loops keep stderr lines in memory under `'Continue'` instead of in a `2>> $readyLog` file, and print the last five, as before.
+- **Stdout-only reads take stdout only.** The six ID checks and the date parse now use `2>$null`, never `'Continue'`, which would carry pwsh 7's misread over to 5.1.
+- **Dead code removed:** `Invoke-ContainerShellVerbose` in `migrate_daaf.ps1`.
+- **`$PSNativeCommandUseErrorActionPreference = $false`** is set in the ten remaining scripts that read `$LASTEXITCODE` (`daaf_lib.ps1` inherits `daaf.ps1`'s).
+- **Twin wording.** The archive-manifest failure in both `daaf.ps1` and `daaf.sh` now says `The error was:` above the captured text, instead of "The specific error is in the output above."
+
+**Guard and CI probe (dispatch #64).**
+- **The guard.** A new `tests/powershell/native_stderr_capture.Tests.ps1` (51 cases) parses every host script. It flags any `docker` call, or call to an in-file docker wrapper, whose stderr is merged or sent to a file, whose output is kept, and whose effective preference is not an explicit `'Continue'` in the same scope (tracked in source order per function). `SilentlyContinue`, `Ignore`, `Stop` and an inherited preference all count, so a function with no bracket of its own, called from a `SilentlyContinue` caller, is flagged too.
+  - Its failure message says which fix applies: `2>$null` for an emptiness or stdout-only check, `'Continue'` for text that is shown.
+  - Four marker-only reads are allowlisted, with reasons: backup `$StageDoneLog`, `$HostCountOutput` and `$ClaudeStageDoneLog`, and migrate `$SearchResultRaw`.
+  - On the pre-#63 scripts the guard flagged all 24 sites the audit had found. It also flagged single reverts of a G1, a G2 and a G3 fix on scratch copies, and left known-good insertions alone. The suite reverts four fixes in memory as permanent self-tests.
+- **`stream_capture_idiom.Tests.ps1`** used to assert that `SilentlyContinue` keeps stderr and claimed to run on 5.1 in CI. Both claims were wrong. It now tests the `'Continue'` idiom, plus a version-conditional `SilentlyContinue` case.
+- **The CI probe.** The `validate-ps-windows` CI job gains the step "Probe native stderr capture (Windows PS 5.1)", which runs with `shell: powershell` and no Pester.
+  - It asserts the two field-observed `2>&1` facts: `SilentlyContinue` drops the stderr line and `'Continue'` keeps it.
+  - It only reports the `2>> file` results and the merged record type.
+
+**Docs.** `shell-scripting`'s `gotchas.md` entry for the 5.1 drop now chooses the fix by the capture's purpose, and records the inverted-polarity lesson, the in-memory readiness form, the guard, the CI probe, and where each form lives. Its `$PSNativeCommandUseErrorActionPreference` entry lists the scripts that now set it.
+
+**Tests.** Pester 1294 -> 1384 cases across the `tests/powershell` suites (dispatch #63 to 1332, then the guard's 51 and one more idiom case). Mutations caught: every dispatch #63 group (G1, G2, G3, G4, G6), and every guard revert.
 
 #### Install Guide and Deploy-Smoke CI
 

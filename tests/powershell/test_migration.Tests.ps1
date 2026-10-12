@@ -15,6 +15,28 @@ Describe "test_migration.ps1 syntax" {
         $errors = Test-ScriptSyntax -Path "$RepoRoot/scripts/host/test_migration.ps1"
         $errors | Should -BeNullOrEmpty
     }
+
+    It "G6 (dispatch #63): sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        # pwsh 7.4+ only: a native nonzero exit must never become an error record or a
+        # throw (the harness reads $LASTEXITCODE itself); unused on Windows PowerShell 5.1.
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile("$RepoRoot/scripts/host/test_migration.ps1", [ref]$tokens, [ref]$parseErrors)
+        @($parseErrors).Count | Should -Be 0
+        $assign = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $ast.EndBlock
+        $stmts = @($ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
 }
 
 Describe "test_migration.ps1 pure helper functions (tm_*)" {

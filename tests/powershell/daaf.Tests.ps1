@@ -680,6 +680,7 @@ Describe "daaf.ps1 behavioral tests" {
             $script:MockUpExit = 0
             $script:MockReadyExit = 0
             $script:MockReadyErrLines = @("Error response from daemon: container mock123 is restarting")
+            $script:MockReadyNative = $null
             $script:MockVerifyExit = 0
             $script:SyncCalls = 0
             $script:MockAnswer = "y"
@@ -702,8 +703,14 @@ Describe "daaf.ps1 behavioral tests" {
                 if ($call -like "compose up*") { $global:LASTEXITCODE = $script:MockUpExit }
                 if ($call -eq "compose exec -T daaf-docker true") {
                     if ($script:MockReadyExit -ne 0) {
-                        foreach ($errText in @($script:MockReadyErrLines)) {
-                            Write-Error -Message $errText -ErrorAction Continue
+                        # $script:MockReadyNative (dispatch #63): a native fake that
+                        # writes the error to stderr, instead of the Write-Error lines.
+                        if ($script:MockReadyNative) {
+                            & $script:MockReadyNative
+                        } else {
+                            foreach ($errText in @($script:MockReadyErrLines)) {
+                                Write-Error -Message $errText -ErrorAction Continue
+                            }
                         }
                     }
                     $global:LASTEXITCODE = $script:MockReadyExit
@@ -876,6 +883,22 @@ Describe "daaf.ps1 behavioral tests" {
             $out | Should -BeLike "*Check Docker Desktop for errors.*"
         }
 
+        It "G1 (dispatch #63): a native docker's stderr line is the 'Docker reported:' line on a readiness timeout" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+            # A bash fake (not Write-Error) so the line crosses the real native-command
+            # 2>&1 path of the $readyErr capture.
+            $fake = Join-Path $TestDrive 'ready-native-fake'
+            [System.IO.File]::WriteAllText($fake, "#!/usr/bin/env bash`necho 'Error response from daemon: native fake is restarting' >&2`nexit 1`n")
+            & chmod +x $fake
+            Start-TestPanel
+            $script:MockReadyExit = 1
+            $script:MockReadyNative = $fake
+            $lines = @((Invoke-DaafRestart 6>&1 | Out-String) -split '\r?\n')
+            $head = [array]::IndexOf($lines, "  Docker reported:")
+            $head | Should -BeGreaterThan -1
+            $lines[$head + 1] | Should -BeExactly "    Error response from daemon: native fake is restarting"
+            $lines[$head + 2] | Should -BeExactly "  Check Docker Desktop for errors."
+        }
+
         It "a failed DAAF-files check warns 'may not be intact' and returns" {
             Start-TestPanel
             $script:MockVerifyExit = 1
@@ -988,7 +1011,9 @@ Describe "daaf.ps1 behavioral tests" {
             $script:DockerCalls | Should -Contain "compose down"
             @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
             $flat2 = $out2 -replace '\s+', ' '
-            $flat2 | Should -BeLike "*environment_settings.txt now names a different project.*"
+            # An unusable name gets its own header; "a different project" would be wrong.
+            $flat2 | Should -Not -BeLike "*now names a different project*"
+            $flat2 | Should -BeLike "*The container is stopped, but it was not started again -- environment_settings.txt now has a project name that cannot be used.*"
             $flat2 | Should -BeLike '*now gives the project name "___", which Docker Compose cannot use.*'
             $out2 | Should -Not -BeLike "*Container restarted*"
             $env:DAAF_PROJECT_NAME | Should -BeExactly "Work"
@@ -1080,6 +1105,8 @@ Describe "daaf.ps1 behavioral tests" {
             @($script:DockerCalls | Where-Object { $_ -like "compose up*" }).Count | Should -Be 0
             $flat = $out -replace '\s+', ' '
             $flat | Should -BeLike "*The container is stopped, but it was not started again -- environment_settings.txt now names a different project.*"
+            # A different but usable name keeps that header, not the unusable-name one.
+            $flat | Should -Not -BeLike "*now has a project name that cannot be used*"
             $flat | Should -BeLike '*name "other" (the default is "daaf"*'
             $flat | Should -BeLike '*name "myproj" again, then choose Restart Container again.*'
             $out | Should -Not -BeLike "*Container restarted*"
@@ -1456,5 +1483,156 @@ Describe "daaf.ps1 dry-run mode" {
     It "daaf_lib.ps1 defines Read-DaafLine" {
         $libContent = Get-Content "$RepoRoot/scripts/host/daaf_lib.ps1" -Raw
         $libContent | Should -Match 'function Read-DaafLine'
+    }
+}
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G1 captures, G6 preference)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas). Each
+# capture below is shown to the user as the error detail, so it runs under
+# 'Continue'. pwsh 7 keeps the line either way, so the behavioral tests cannot
+# catch a revert on their own: the structural pin can.
+
+Describe "daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+
+        # For each docker capture into $Var: the value of the nearest
+        # $ErrorActionPreference assignment before it (the bracket's mode) and after
+        # it (the restore).
+        function Get-TestEapBracket {
+            param($Ast, [string]$Var)
+            $capName = $Var
+            $eap = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+            }, $true) | Sort-Object { $_.Extent.StartOffset })
+            $caps = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq $capName) -and ($n.Right.Extent.Text -match '\bdocker\s')
+            }, $true))
+            foreach ($c in $caps) {
+                $open = @($eap | Where-Object { $_.Extent.EndOffset -le $c.Extent.StartOffset }) | Select-Object -Last 1
+                $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $c.Extent.EndOffset }) | Select-Object -First 1
+                [pscustomobject]@{ Text = $c.Right.Extent.Text; Open = $open.Right.Extent.Text; Close = $close.Right.Extent.Text; Line = $c.Extent.StartLineNumber }
+            }
+        }
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        # daaf_lib.ps1 is dot-sourced into this script's scope, so it inherits the value.
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G1: each capture shown as an error detail merges stderr (2>&1) inside a 'Continue' bracket that restores `$savedEAP" {
+        $expected = @{ '$launchErr' = 2; '$manifestErr' = 2; '$serveErr' = 1; '$readyErr' = 1 }
+        foreach ($var in $expected.Keys) {
+            $sites = @(Get-TestEapBracket -Ast $Ast -Var $var)
+            $sites.Count | Should -Be $expected[$var] -Because "$var captures"
+            foreach ($s in $sites) {
+                $s.Text | Should -Match '2>&1' -Because "$var (line $($s.Line)) merges stderr"
+                $s.Open | Should -BeExactly '"Continue"' -Because "$var (line $($s.Line)) is shown to the user"
+                $s.Close | Should -BeExactly '$savedEAP' -Because "$var (line $($s.Line)) restores the caller's EAP"
+            }
+        }
+    }
+
+    It "G1: the archive-manifest failure no longer says the error is 'in the output above' (it was captured, not printed)" {
+        $content = Get-Content -LiteralPath $ScriptPath -Raw
+        $content | Should -Not -Match 'The specific error is in the output above'
+        $content | Should -Match ([regex]::Escape('Write-Host "  The error was:" -ForegroundColor Yellow'))
+    }
+
+    Context "a native fake docker's stderr line is the detail line (G1)" {
+        BeforeAll {
+            $script:SavedG1Env = @{}
+            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE')) { $script:SavedG1Env[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+            $env:DAAF_TEST_MODE = "1"
+            . $script:ScriptPath
+            # A bash fake on PATH (not a PowerShell function): the stderr line crosses
+            # the real native-command 2>&1 path. FAKE_SOURCES is the log-source list;
+            # FAKE_MANIFEST_FAIL=1 fails manifest generation.
+            $script:G1Bin = Join-Path $TestDrive 'g1bin'
+            $null = New-Item -ItemType Directory -Force -Path $script:G1Bin
+            $fake = @'
+#!/usr/bin/env bash
+case "$*" in
+    'compose exec -d daaf-docker bash /daaf/scripts/launch_marimo.sh --background')
+        echo 'OCI runtime exec failed: fake marimo launch error' >&2; exit 126 ;;
+    'compose exec -d daaf-docker bash /daaf/scripts/launch_code_server.sh --background')
+        echo 'OCI runtime exec failed: fake code-server launch error' >&2; exit 126 ;;
+    'compose exec -T daaf-docker bash /daaf/scripts/discover_log_sources.sh')
+        printf '%s\n' "${FAKE_SOURCES}"; exit 0 ;;
+    'compose exec -T daaf-docker bash /daaf/scripts/generate_log_viewer.sh '*' --no-serve')
+        if [ "${FAKE_MANIFEST_FAIL:-0}" = "1" ]; then echo 'Traceback: fake manifest error' >&2; exit 1; fi
+        exit 0 ;;
+    'compose exec -d daaf-docker bash /daaf/scripts/generate_log_viewer.sh '*' --background')
+        echo 'Error response from daemon: fake log viewer start error' >&2; exit 1 ;;
+    *) exit 0 ;;
+esac
+'@
+            [System.IO.File]::WriteAllText((Join-Path $script:G1Bin 'docker'), ($fake -replace "`r", ""))
+            if (-not $IsWindows) { & chmod +x (Join-Path $script:G1Bin 'docker') }
+            $env:PATH = $script:G1Bin + [System.IO.Path]::PathSeparator + $script:SavedG1Env['PATH']
+        }
+        AfterAll {
+            foreach ($k in $script:SavedG1Env.Keys) { [Environment]::SetEnvironmentVariable($k, $script:SavedG1Env[$k], 'Process') }
+            Remove-Item Env:FAKE_SOURCES, Env:FAKE_MANIFEST_FAIL -ErrorAction SilentlyContinue
+        }
+        BeforeEach {
+            Mock Confirm-DaafContainer { $true }
+            Mock Test-DaafPort { $false }
+            Mock Open-DaafUrl { }
+            Mock Start-Sleep { }
+            Mock Read-DaafLine { "1" }
+            $env:FAKE_MANIFEST_FAIL = "0"
+            $env:FAKE_SOURCES = "ARCHIVE|3"
+        }
+
+        It "<Name>: the line after '<Header>' is Docker's stderr text" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) -ForEach @(
+            @{ Name = 'marimo launch'; Header = '  Failed to start the notebook server:'; Detail = '  OCI runtime exec failed: fake marimo launch error' }
+            @{ Name = 'code-server launch'; Header = '  Failed to start VS Code (code-server):'; Detail = '  OCI runtime exec failed: fake code-server launch error' }
+            @{ Name = 'archive manifest'; Header = '  The error was:'; Detail = '  Traceback: fake manifest error' }
+            @{ Name = 'project manifest'; Header = '  Could not generate the session manifest:'; Detail = '  Traceback: fake manifest error' }
+            @{ Name = 'log viewer server'; Header = '  Could not start the log viewer server:'; Detail = '  Error response from daemon: fake log viewer start error' }
+        ) {
+            switch ($Name) {
+                'marimo launch' { $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String }
+                'code-server launch' { $out = Invoke-DaafVSCode 6>&1 | Out-String }
+                'archive manifest' {
+                    $env:FAKE_MANIFEST_FAIL = "1"
+                    $out = Invoke-DaafLogViewer 6>&1 | Out-String
+                }
+                'project manifest' {
+                    $env:FAKE_MANIFEST_FAIL = "1"
+                    $env:FAKE_SOURCES = "/daaf/research/2026-10-01_Proj|2"
+                    $out = Invoke-DaafLogViewer 6>&1 | Out-String
+                }
+                'log viewer server' { $out = Invoke-DaafLogViewer 6>&1 | Out-String }
+            }
+            $lines = @($out -split '\r?\n')
+            $i = [array]::IndexOf($lines, $Header)
+            $i | Should -BeGreaterThan -1 -Because "the output was: $out"
+            $lines[$i + 1] | Should -BeExactly $Detail
+        }
     }
 }

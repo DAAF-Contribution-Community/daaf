@@ -275,6 +275,11 @@ param(
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
+# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+$PSNativeCommandUseErrorActionPreference = $false
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12

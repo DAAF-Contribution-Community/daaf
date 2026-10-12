@@ -25,6 +25,11 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
+# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -338,27 +343,35 @@ Write-Host ""
 Write-Host "      Waiting for container to be ready..."
 $retries = 0
 $maxRetries = 30
-$readyLog = [System.IO.Path]::GetTempFileName()
+# Docker's stderr from every attempt, kept in memory (not a temp file) for the
+# "Docker reported:" lines below. 'Continue', not 'SilentlyContinue': Windows
+# PowerShell 5.1 drops native stderr from a 2>&1 capture under SilentlyContinue
+# (and, by inference, from the old `2>> file` redirect too). Only the stderr
+# records are kept ("$_" renders one as its plain message text); stdout passes
+# through as before.
+$readyErrLines = New-Object System.Collections.Generic.List[string]
 while ($retries -lt $maxRetries) {
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    docker compose exec -T daaf-docker true 2>> $readyLog
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $readyOut = @(docker compose exec -T daaf-docker true 2>&1)
+    $readyExit = $LASTEXITCODE
     $ErrorActionPreference = $savedEAP
-    if ($LASTEXITCODE -eq 0) { break }
+    foreach ($readyItem in $readyOut) {
+        if ($readyItem -is [System.Management.Automation.ErrorRecord]) { $readyErrLines.Add("$readyItem") } else { $readyItem }
+    }
+    if ($readyExit -eq 0) { break }
     $retries++
     Start-Sleep -Seconds 2
 }
 if ($retries -ge $maxRetries) {
     Write-Host "ERROR: Container did not become ready within 60 seconds." -ForegroundColor Red
-    if ((Test-Path $readyLog) -and (Get-Item $readyLog).Length -gt 0) {
+    if ($readyErrLines.Count -gt 0) {
         Write-Host "  Docker reported:" -ForegroundColor Red
-        Get-Content $readyLog -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        $readyErrLines | Select-Object -Last 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
         Write-Host ""
     }
     Write-Host "Check Docker Desktop for errors."
-    Remove-Item $readyLog -ErrorAction SilentlyContinue
     Wait-AndExit 1
 }
-Remove-Item $readyLog -ErrorAction SilentlyContinue
 
 # --- Verify ---
 Write-Host ""

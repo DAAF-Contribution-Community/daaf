@@ -24,9 +24,9 @@ setup() {
     # returns at the DAAF_TEST_MODE guard before any execution. The harness
     # preamble's `set -euo pipefail` leaks into this shell, so put back the
     # options bats runs tests with (`set -eET`, no nounset, no pipefail):
-    #   -e         KEEP errexit. Bats fails a test only through it, so without it
-    #              every assertion but the last one in a test is ignored (this
-    #              setup() used to run `set +eu`, which did exactly that).
+    #   -e         KEEP errexit. Bats fails a test only through it, so with errexit
+    #              off, no assertion in a test could fail it, not even the last
+    #              one (this setup() used to run `set +eu`, which did exactly that).
     #   +u         bats does not run tests under nounset; keep its default.
     #   +o pipefail  the pins' `grep ... | head -1 | cut` pipelines must not fail
     #              when head closes the pipe early.
@@ -157,6 +157,14 @@ teardown() {
 
 @test "tm_classify_status: not-reached wins even with zero failures" {
     run tm_classify_status false 0
+    assert_output "INFRA"
+}
+
+@test "tm_classify_status: not-reached wins over failures => INFRA, not FAIL" {
+    # The not-reached check runs before the fail count is read, so failures from
+    # a run that never reached the work still classify as INFRA.
+    run tm_classify_status false 2
+    assert_success
     assert_output "INFRA"
 }
 

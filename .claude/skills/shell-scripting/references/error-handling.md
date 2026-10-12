@@ -289,6 +289,8 @@ echo "STAGING ERROR: source path not found: ${src}" >&2
 
 > This is the deliberate inverse of the normal "diagnostics → stderr" rule (see § User-Facing Output Conventions). That rule is for scripts whose stderr the caller can actually see. A **detached** container's stderr is captured second-hand through `docker logs` and is not reliable across hosts, so its user-facing output belongs on stdout.
 
+> **Host side of the same drop:** Windows PowerShell 5.1 empties the merged stderr when the host captures it under `$ErrorActionPreference = 'SilentlyContinue'`. See `gotchas.md` > "Windows PowerShell 5.1 Drops Native stderr Under `SilentlyContinue`, Even With `2>&1`" for the cause and its fix chooser (`'Continue'` for text shown to the user, `2>$null` for emptiness or stdout-only checks).
+
 **2. Fetch `docker logs` BEFORE removing the container, and always emit a labeled fallback.** On any failure path, the driver must capture the container's logs *before* `docker rm -f` (removal destroys them), and if the captured log is empty it must print an explicit labeled line rather than silently showing nothing:
 
 ```bash

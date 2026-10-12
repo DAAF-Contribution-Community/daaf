@@ -2089,3 +2089,174 @@ function docker {
         $outputStr | Should -Not -BeLike "*local commit(s) on*"
     }
 }
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G1 fetch, G2 readiness, G6)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas). The fetch
+# capture ("Git reported:") and the readiness capture ("Docker reported:") are shown
+# to the user, so they run under 'Continue'; the readiness errors are kept in memory
+# (no temp file). pwsh 7 keeps the lines either way, so the behavioral tests cannot
+# catch a revert on their own: the structural pin can.
+
+Describe "update_daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/update_daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+
+        # For each docker capture into $Var: the value of the nearest
+        # $ErrorActionPreference assignment before it (the bracket's mode) and after
+        # it (the restore).
+        function Get-TestEapBracket {
+            param($Ast, [string]$Var)
+            $capName = $Var
+            $eap = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+            }, $true) | Sort-Object { $_.Extent.StartOffset })
+            $caps = @($Ast.FindAll({
+                param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq $capName) -and ($n.Right.Extent.Text -match '\bdocker\s')
+            }, $true))
+            foreach ($c in $caps) {
+                $open = @($eap | Where-Object { $_.Extent.EndOffset -le $c.Extent.StartOffset }) | Select-Object -Last 1
+                $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $c.Extent.EndOffset }) | Select-Object -First 1
+                [pscustomobject]@{ Text = $c.Right.Extent.Text; Open = $open.Right.Extent.Text; Close = $close.Right.Extent.Text; Line = $c.Extent.StartLineNumber }
+            }
+        }
+
+        # Run the real script in a child pwsh through a wrapper whose `docker`
+        # function answers like the state-machine tests above; $Arms are extra
+        # switch arms placed first. __DIR__ in an arm becomes the test folder.
+        function Invoke-UpdateUnderWrapper {
+            param([string]$Arms)
+            $dir = Join-Path $TestDrive ("upd-" + [guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $dir
+            New-FakeComposeFile -Directory $dir
+            $wrapper = @'
+$ErrorActionPreference = "Stop"
+function Start-Sleep { param([int]$Seconds) $null = $Seconds }
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+__ARMS__
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "compose ps -q daaf-docker" { Write-Output "abc123" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+            $wrapper = $wrapper.Replace('__ARMS__', $Arms.Replace('__DIR__', $dir))
+            $wrapperPath = Join-Path $dir 'test_wrapper.ps1'
+            Set-Content -Path $wrapperPath -Value $wrapper
+            Add-Content -Path $wrapperPath -Value ". '$script:ScriptPath'"
+            $savedNested = $env:DAAF_NESTED
+            $savedBranch = $env:DAAF_BRANCH
+            Push-Location -LiteralPath $dir
+            try {
+                $env:DAAF_NESTED = "1"
+                Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+                $output = & pwsh -NoProfile -File $wrapperPath *>&1
+                $code = $LASTEXITCODE
+            } finally {
+                Pop-Location
+                $env:DAAF_NESTED = $savedNested
+                $env:DAAF_BRANCH = $savedBranch
+            }
+            [pscustomobject]@{ Output = ($output | Out-String); ExitCode = $code; Dir = $dir }
+        }
+
+        # A native fake that writes "<prefix> (attempt N)" to stderr and exits
+        # with $Exit; N counts its calls (in <folder>/count).
+        function New-TestStderrFake {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+            param([string]$Dir, [string]$Prefix, [int]$Exit)
+            $null = New-Item -ItemType Directory -Force -Path $Dir
+            $path = Join-Path $Dir 'errfake'
+            $count = Join-Path $Dir 'count'
+            $body = "#!/usr/bin/env bash`nn=`$(( `$(cat '$count' 2>/dev/null || echo 0) + 1 ))`necho `"`$n`" > '$count'`necho `"$Prefix (attempt `$n)`" >&2`nexit $Exit`n"
+            [System.IO.File]::WriteAllText($path, $body)
+            & chmod +x $path
+            $path
+        }
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G1/G2: the fetch and readiness captures merge stderr (2>&1) inside a 'Continue' bracket that restores `$savedEAP" {
+        $expected = @{ '$fetchOutput' = 1; '$readyOut' = 1 }
+        foreach ($var in $expected.Keys) {
+            $sites = @(Get-TestEapBracket -Ast $Ast -Var $var)
+            $sites.Count | Should -Be $expected[$var] -Because "$var captures"
+            foreach ($s in $sites) {
+                $s.Text | Should -Match '2>&1' -Because "$var (line $($s.Line)) merges stderr"
+                $s.Open | Should -BeExactly '"Continue"' -Because "$var (line $($s.Line)) is shown to the user"
+                $s.Close | Should -BeExactly '$savedEAP' -Because "$var (line $($s.Line)) restores the caller's EAP"
+            }
+        }
+        # G2: no stderr-to-file redirect and no temp file for the readiness errors.
+        $code = @((Get-Content -LiteralPath $ScriptPath) | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '2>>' -or $_ -match 'readyLog' }).Count | Should -Be 0
+    }
+
+    It "G1: a failed fetch shows git's stderr line under 'Git reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $fake = New-TestStderrFake -Dir (Join-Path $TestDrive 'fetchfake') -Prefix "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com" -Exit 128
+        $r = Invoke-UpdateUnderWrapper -Arms "        `"*compose exec*git -C /daaf fetch*`" { & '$fake'; return }"
+        $r.ExitCode | Should -Be 1
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Git reported:')
+        $i | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[$i + 1] | Should -BeExactly "    fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host: github.com (attempt 1)"
+    }
+
+    It "G2: a readiness timeout shows the last five of Docker's stderr lines under 'Docker reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # The container is not running (empty `ps -q`), so the update starts it and
+        # polls 30 times; every poll fails with a numbered stderr line.
+        $fake = New-TestStderrFake -Dir (Join-Path $TestDrive 'readyfake') -Prefix 'Error response from daemon: container fake is restarting' -Exit 1
+        $arms = "        `"compose ps -q daaf-docker`" { return }`n        `"compose exec -T daaf-docker true`" { & '$fake'; return }"
+        $r = Invoke-UpdateUnderWrapper -Arms $arms
+        $r.ExitCode | Should -Be 1
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Docker reported:')
+        $i | Should -BeGreaterThan -1 -Because "the output was: $($r.Output)"
+        $lines[($i + 1)..($i + 6)] | Should -Be @(
+            '    Error response from daemon: container fake is restarting (attempt 26)'
+            '    Error response from daemon: container fake is restarting (attempt 27)'
+            '    Error response from daemon: container fake is restarting (attempt 28)'
+            '    Error response from daemon: container fake is restarting (attempt 29)'
+            '    Error response from daemon: container fake is restarting (attempt 30)'
+            '')
+        $r.Output | Should -BeLike "*ERROR: The DAAF container started but is not responding after 60 seconds.*"
+    }
+}

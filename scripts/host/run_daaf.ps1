@@ -14,6 +14,11 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
+# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -123,8 +128,10 @@ if ($LASTEXITCODE -ne 0) {
 # --- Start container if not running ---
 # `docker compose ps -q daaf-docker` prints the running container's ID (empty
 # when stopped), derived from the compose project rather than a hardcoded name.
+# Stdout only (2>$null): a stderr line, such as a Compose warning, is not a container
+# ID and must not make a stopped container look running.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$CidOutput = docker compose ps -q daaf-docker 2>&1
+$CidOutput = docker compose ps -q daaf-docker 2>$null
 $ErrorActionPreference = $savedEAP
 $Running = if ([string]::IsNullOrWhiteSpace(($CidOutput | Out-String))) { 0 } else { 1 }
 
@@ -142,12 +149,15 @@ if ($Running -eq 0) {
     Write-Host "DAAF container is already running."
     # Check if environment_settings.txt has been modified since the container was created
     if (Test-Path "environment_settings.txt") {
+        # Stdout only (2>$null), as above: the ID is passed to `docker inspect`, and
+        # the inspect output is parsed as a date, so a stderr line in either would
+        # only break them.
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $_cid = docker compose ps -q daaf-docker 2>&1
+        $_cid = docker compose ps -q daaf-docker 2>$null
         $ErrorActionPreference = $savedEAP
         if ($_cid) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $_created = docker inspect --format '{{.Created}}' $_cid 2>&1
+            $_created = docker inspect --format '{{.Created}}' $_cid 2>$null
             $ErrorActionPreference = $savedEAP
             try {
                 # Truncate to 7 fractional digits -- .NET DateTimeOffset.Parse() rejects Docker's 9-digit nanoseconds

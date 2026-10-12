@@ -42,8 +42,9 @@
 # violation in the real /daaf. Many fixtures here are deliberately HOSTILE
 # (newline/control-char names, reserved device names, case pairs) -- exactly
 # what breaks a Windows backup if left behind -- so teardown deletes the whole
-# tree depth-first and then asserts it is gone. Run with TMPDIR pointed at a project scratch dir (never /tmp);
-# see the shell-scripting skill's testing.md > TMPDIR section.
+# tree depth-first and then asserts it is gone. Run with TMPDIR pointed at a
+# project scratch dir (never /tmp); see the shell-scripting skill's testing.md >
+# TMPDIR section.
 # ============================================================================
 
 load 'test_helper'

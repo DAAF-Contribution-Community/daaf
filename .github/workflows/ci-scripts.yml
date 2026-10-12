@@ -7,7 +7,7 @@
 #   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
 #   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
 #   3. hygiene-checks      - Executable bits, LF endings, script pair parity
-#   4. validate-ps-windows - PSScriptAnalyzer on Windows PowerShell 5.1
+#   4. validate-ps-windows - PSScriptAnalyzer + native-stderr probe on Windows PowerShell 5.1
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
@@ -186,6 +186,93 @@ jobs:
           Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 | Format-Table -AutoSize
           $failCount = (Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1).Count
           if ($failCount -gt 0) { exit 1 }
+
+      # Native-stderr probe under Windows PowerShell 5.1 (shell: powershell).
+      # Pester runs under pwsh 7 only, and pwsh 7.2+ keeps redirected native
+      # stderr under any $ErrorActionPreference, so 5.1's drop under
+      # 'SilentlyContinue' (shell-scripting skill > gotchas.md) is invisible to
+      # every test suite. This step turns it into evidence on each run:
+      #   - `2>&1` into a variable: ASSERTED -- 'SilentlyContinue' drops the stderr
+      #     line and 'Continue' keeps it (field-observed 2026-10-05 on 5.1.26100).
+      #     If 5.1 behaves otherwise, the step fails, and its ::error:: names the
+      #     direction: SilentlyContinue KEPT the line (the fixes still hold; the
+      #     docs and guard rationale need correcting) or Continue DROPPED it
+      #     (the G1/G2 fixes do not work on 5.1; escalate).
+      #   - `2>> file` under both preferences, and whether the kept line is an
+      #     ErrorRecord whose "$_" is the plain text (the install/rebuild/update
+      #     readiness loops rely on both): REPORTED only (not yet observed on 5.1).
+      # Plain PowerShell, no Pester: whether Pester 5 imports under 5.1 on this
+      # runner is unverified. `if: !cancelled()` so a PSScriptAnalyzer failure
+      # above does not hide the probe's result.
+      # WATCH THE FIRST RUN: the probe's shape is not the field probe's. Here
+      # cmd.exe writes the lines and the capture is a direct `@(... 2>&1)`
+      # assignment; the 2026-10-05 field probe used `docker ... 2>&1 |
+      # ForEach-Object`. The drop is expected to come from PowerShell's handling
+      # of redirected stderr, not from the program (inference), but a red first
+      # run may be that shape difference alone -- read which direction failed
+      # before acting on it.
+      - name: Probe native stderr capture (Windows PS 5.1)
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: |
+          Write-Host "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
+          if ($PSVersionTable.PSEdition -ne 'Desktop') {
+            Write-Host "::error::This probe must run under Windows PowerShell 5.1 (shell: powershell)."
+            exit 1
+          }
+          $failed = 0
+          # One stdout line (proves the capture works) and one stderr line.
+          $native = 'echo PROBE_OUT& echo PROBE_ERR 1>&2'
+          $expectErr = @{ 'SilentlyContinue' = 0; 'Continue' = 1 }
+
+          Write-Host "--- 2>&1 into a variable (asserted) ---"
+          foreach ($pref in @('SilentlyContinue', 'Continue')) {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = $pref
+            $items = @(cmd.exe /c $native 2>&1)
+            $ErrorActionPreference = $savedEAP
+            $text = @($items | ForEach-Object { "$_".Trim() })
+            $outLines = @($text | Where-Object { $_ -eq 'PROBE_OUT' }).Count
+            $errLines = @($text | Where-Object { $_ -match 'PROBE_ERR' }).Count
+            $records = @($items | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] }).Count
+            Write-Host "2>&1 under ${pref}: items=$($items.Count) stdout_lines=$outLines stderr_lines=$errLines error_records=$records"
+            if ($outLines -ne 1) {
+              Write-Host "::error::2>&1 under ${pref}: the stdout line is missing (stdout_lines=$outLines), so the probe itself is broken."
+              $failed = 1
+            } elseif ($errLines -ne $expectErr[$pref]) {
+              # The two directions mean different things, so each says what to do.
+              if ($pref -eq 'SilentlyContinue') {
+                Write-Host "::error::2>&1 under SilentlyContinue KEPT the line (expected stderr_lines=0, got $errLines): the host fixes are still correct and harmless; correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry), this probe, and the guard rationale in tests/powershell/native_stderr_capture.Tests.ps1."
+              } else {
+                Write-Host "::error::2>&1 under Continue DROPPED the line (expected stderr_lines=1, got $errLines): the G1/G2 fixes do not work on Windows PowerShell 5.1; escalate (see .claude/skills/shell-scripting/references/gotchas.md and tests/powershell/native_stderr_capture.Tests.ps1)."
+              }
+              $failed = 1
+            }
+            if ($pref -eq 'Continue' -and $errLines -eq 1 -and $records -ne 1) {
+              Write-Host "::warning::2>&1 under Continue: the stderr line is not an ErrorRecord (error_records=$records). The readiness loops in install.ps1, rebuild_daaf.ps1 and update_daaf.ps1 sort stderr by that type."
+            }
+          }
+
+          Write-Host "--- 2>> file (reported, not asserted) ---"
+          foreach ($pref in @('SilentlyContinue', 'Continue')) {
+            $log = Join-Path $env:RUNNER_TEMP "daaf-stderr-probe-$pref.log"
+            if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = $pref
+            $items = @(cmd.exe /c $native 2>> $log)
+            $ErrorActionPreference = $savedEAP
+            $fileLines = @()
+            if (Test-Path -LiteralPath $log) { $fileLines = @(Get-Content -LiteralPath $log) }
+            $errLines = @($fileLines | Where-Object { $_ -match 'PROBE_ERR' }).Count
+            Write-Host "2>> file under ${pref}: captured_stdout_items=$($items.Count) file_exists=$(Test-Path -LiteralPath $log) file_lines=$($fileLines.Count) lines_naming_PROBE_ERR=$errLines"
+            foreach ($line in $fileLines) { Write-Host "    | $line" }
+            Write-Host "::notice::Windows PowerShell 5.1, 2>> file under ${pref}: file_lines=$($fileLines.Count), lines_naming_PROBE_ERR=$errLines"
+          }
+
+          if ($failed) {
+            Write-Host "Native stderr probe FAILED (see the errors above)."
+            exit 1
+          }
+          Write-Host "Native stderr probe: Windows PowerShell 5.1 behaved as field-observed."
+          exit 0
 
   # ---------------------------------------------------------------------------
   # Job 5: Run BATS tests for Bash scripts

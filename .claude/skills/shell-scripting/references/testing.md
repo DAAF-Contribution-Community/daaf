@@ -125,6 +125,58 @@ teardown() {
 ./test/libs/bats/bin/bats --tap tests/bash/
 ```
 
+### Sourcing a Script in Test Mode: Keep bats's Errexit and ERR Trap
+
+DAAF host scripts are unit-tested by sourcing them with `DAAF_TEST_MODE=1`, which defines their functions and returns before the main body. Whatever the script runs before that return happens in the sourcing shell. When that shell is the bats test itself, two things leak in:
+
+- `set -euo pipefail`. bats runs a test under `set -eET` (`/usr/libexec/bats-core/bats-exec-test`, line 2) with no nounset and no pipefail, and it fails a test only through errexit.
+- The script's own ERR trap (`trap cleanup_on_error ERR`). It **replaces** bats's `trap 'bats_error_trap' ERR` (`/usr/lib/bats-core/tracing.bash`, line 366), which is what records the failing line.
+
+The quick ways to undo this go wrong. `trap - ERR; set +eu` turns errexit off, so no assertion in the test can fail it, not even the last one: the test passes whatever its assertions say. `trap - ERR` alone, with errexit kept, fails the test but reports the wrong line. Keeping the script's trap reports the right line but also runs the script's handler, which prints its error banner into the failure output (`update_daaf.sh`'s handler also makes a `docker compose exec` call).
+
+```bash
+# BAD: the test passes whatever any of its assertions says, the last one included
+DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/x.sh"
+trap - ERR
+set +eu
+
+# GOOD: save bats's ERR trap, keep errexit, drop nounset, reinstall the trap
+saved="$(trap -p ERR)"                     # trap -- 'bats_error_trap' ERR
+DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/x.sh"
+set -e +u                                  # pipefail stays on, as in production
+if [ -n "${saved}" ]; then
+    eval "${saved}"                        # trap -p prints a re-runnable command
+else
+    trap - ERR                             # fails the test, but may name the wrong line
+fi
+```
+
+`trap -p ERR` prints a command that can be run again as it is, with any quotes in the handler already escaped, so `eval` reinstalls the handler verbatim. Stripping the `trap -- '` prefix and `' ERR` suffix instead breaks on a handler that contains a `'`. The `else` branch only runs if no ERR trap was set before sourcing; bats 1.2.1, 1.10.0 and 1.13.0 all set `trap 'bats_error_trap' ERR`, so it is not reached on them.
+
+Keep `pipefail` on unless a specific test needs it off, and say why in a comment where you turn it off. The functions under test run with it in production, and without it a pipeline reports its last command's status: `migrate_daaf.sh`'s `container_git` is `docker ... | tr -d '\r'`, so with pipefail off a failing `docker` looks like success. `tests/bash/test_migration.bats` does turn it off (`set -e +u +o pipefail`), because its pins run `grep ... | head -1 | cut` pipelines in which `head` may exit before `grep` has finished writing.
+
+A script that sets no ERR trap before its test-mode return needs only the `set -e +u` line. Do not add `trap - ERR` there: it would remove bats's own trap.
+
+Two related rules:
+- **A `VAR=x source file` prefix does not outlive the `source`.** Afterwards `DAAF_TEST_MODE` is unset again, in the test and in any child it starts. A later `run bash -c '...'` child that sources the script must set `DAAF_TEST_MODE=1` itself, or it runs the script's whole main body first.
+- **`run bash -c '...'` children are a different case.** There the script's preamble changes only the child; the test body keeps bats's options, so its own assertions always counted. Keep the script's `set -euo pipefail` in the child. Those are the options the functions run under in production, and a failing setup step, or a failing call with more commands after it, then ends the child with that failure, which `assert_success` sees (under `set +eu` only the child's last command counted). Keep `trap - ERR` in the child, so a failure does not also print the script's banner (and, for `update_daaf.sh`, run its docker call) into the output under test. A step placed before the `source` line runs before the strict preamble, so give it its own `|| exit 1`. Errexit does not apply inside a function called in an `||`, `&&` or `if` context, so `f || true` runs `f` without it. And because any failing step now ends the child non-zero, a test that expects failure must not rely on `assert_failure` alone: pin the exit code (`assert_failure 1`) and a line the function prints last.
+
+**Probe (this dev container, bash 5.2.21, Bats 1.10.0, 2026-10-12; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/engineer60/probe_source_test_mode.sh`, self-cleaning).** A stand-in script with `set -euo pipefail`, `trap cleanup_on_error ERR` and a test-mode `return`, sourced in tests whose first assertion is a failing `[ a = b ]`, followed by `true`:
+- `trap - ERR; set +eu`: `ok 1`, so the test passed.
+- `trap - ERR`, then `set -e +u +o pipefail`: `not ok 2`, reported at line 15 as `` `set -e +u +o pipefail' failed ``. The assertion is on line 16.
+- Script trap kept: `not ok 3` at line 23, `` `[ a = b ]' failed ``, followed by `SCRIPT BANNER: Something went wrong`.
+- Saved and reinstalled: `not ok 4` at line 34, `` `[ a = b ]' failed ``, and nothing else.
+- `trap -p ERR` before sourcing printed `trap -- 'bats_error_trap' ERR`. After the prefixed `source`, `DAAF_TEST_MODE` read as unset in the test, and a `bash -c` child that sourced the script printed `child sees [unset]` and then `MAIN BODY RAN`.
+- `run bash -c` children: with `set +eu`, `false; echo last` gave `status=0` and `last`; with strict mode kept, `status=1`. A `cd` into a missing folder before the `source` line gave `status=0` and `last` even in strict mode; with `|| exit 1`, `status=1`.
+
+**Second probe (same container, 2026-10-12; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/engineer61/probe_61.sh` and `mutants_61.sh`, self-cleaning).**
+- `trap - ERR; set +eu` in `setup()` (the old `test_migration.bats` setup), with a test whose only, and so last, assertion fails: `ok 1` for `[ "last" = "mismatch" ]` and `ok 2` for `assert_output "WRONG"`. With `set -e +u +o pipefail` the same tests gave `not ok` at the assertion's line.
+- Handler `echo 'handler ran'`: `trap -p ERR` printed `trap -- 'echo '\''handler ran'\''' ERR`. After `eval`, `trap -p ERR` printed the identical text and the handler printed `handler ran`. The stripped text, reinstalled with `trap`, failed with `unexpected EOF while looking for matching` when the trap fired.
+- After `source_migrate_test_mode`: `before=[trap -- 'bats_error_trap' ERR] after=[trap -- 'bats_error_trap' ERR] opts=[ehBET] pipefail=on`.
+- With the `docker` stub in `container_git executes git in container` changed to `return 1`, the test passed with `+o pipefail` and failed (`assert_success failed: status=1`) without it.
+
+**Where it lives in DAAF:** `source_migrate_test_mode` in `tests/bash/migrate_daaf.bats` (10 call sites). `setup()` in `tests/bash/test_migration.bats` restores only the options, because `test_migration.sh` sets no ERR trap before its return (commit 8679605). The header comment above the behavioral tests in `tests/bash/update_daaf.bats` documents the child rules; its two persistence tests that `cd` before sourcing carry `|| exit 1`, and its expected-failure test `handle_conflict returns 1 when conflicts remain` pins `assert_failure 1` plus two lines of the function's output. The `container_git_verbose` test in `migrate_daaf.bats` is the prefix case: its child used to source without `DAAF_TEST_MODE=1` and ran the whole mocked migration before its one call.
+
 ---
 
 ## Docker Mocking (Bash)

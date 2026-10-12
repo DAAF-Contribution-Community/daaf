@@ -154,10 +154,25 @@ teardown() {
 # Source the script in test mode so all helper functions are available
 # without executing the main state-machine logic.
 #
-# The sourcing pattern:
+# The sourcing pattern (inside each test's `run bash -c '...'` child process):
 #   DAAF_TEST_MODE=1 source update_daaf.sh   (defines functions, then returns)
-#   trap - ERR                                (remove ERR trap from sourced script)
-#   set +eu                                   (disable strict mode for test flexibility)
+#   trap - ERR                                (remove the script's cleanup_on_error trap)
+#
+# The child keeps the script's own `set -euo pipefail`, the options these
+# functions run under in production. A step that fails inside the child (a
+# setup command, or the function under test when more commands follow it) then
+# ends the child with that failure, and `assert_success` sees it. Errexit does
+# not apply inside a function called in an `||`, `&&` or `if` context, so the
+# tests that run `handle_conflict ... || true` run it without errexit. Because
+# any failing step ends a strict child non-zero, a test that expects failure
+# pins the exit code and the function's own output, not `assert_failure`
+# alone. The children used to run `set +eu` after sourcing, so only the
+# child's LAST command counted and a failing earlier step was ignored. A step
+# placed BEFORE the `source` line runs before the script's `set -euo pipefail`
+# takes effect, so it carries its own `|| exit 1`.
+# `trap - ERR` stays: without it a failing step would also print the script's
+# "Something went wrong" banner (and make its docker call) into the output the
+# test asserts on.
 #
 # After sourcing, these functions are callable:
 #   prompt_choice, handle_conflict, sync_host_scripts,
@@ -185,7 +200,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         # ls-files returns nothing -> function returns early, no output.
         docker() {
@@ -208,7 +222,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() {
             case "$*" in
@@ -233,7 +246,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         touch ./run_daaf.sh
 
@@ -259,7 +271,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         touch ./run_daaf.sh ./backup_daaf.sh ./daaf.sh
 
@@ -295,7 +306,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "drifted local content\n" > ./run_daaf.sh
 
@@ -326,7 +336,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "repo version\n" > ./run_daaf.sh
 
@@ -358,7 +367,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         touch ./run_daaf.sh ./daaf.sh
 
@@ -386,7 +394,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() {
             case "$*" in
@@ -411,7 +418,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         uname() { echo "Darwin"; }
 
@@ -438,7 +444,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         uname() { echo "Linux"; }
 
@@ -464,7 +469,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() {
             case "$*" in
@@ -490,7 +494,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() {
             case "$*" in
@@ -514,7 +517,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         touch ./update_daaf.sh
 
@@ -539,7 +541,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         touch ./run_daaf.sh
 
@@ -563,7 +564,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         # Unset DAAF_PROJECT_NAME so the hint resolves deterministically to the
         # fallback "daaf", independent of the host/container environment (this
@@ -598,7 +598,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() {
             case "$*" in
@@ -632,7 +631,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "host-customized\n" > ./run_daaf.sh
 
@@ -676,7 +674,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "identical\n" > ./run_daaf.sh
 
@@ -706,7 +703,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "host-customized\n" > ./run_daaf.sh
 
@@ -748,7 +744,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         unset DAAF_PROJECT_NAME
         printf "host-customized\n" > ./run_daaf.sh
@@ -806,7 +801,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         unset DAAF_PROJECT_NAME
         printf "host-customized\n" > ./run_daaf.sh
@@ -858,7 +852,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         # update_daaf.sh present on host and DRIFTED; run_daaf.sh present + identical
         # (so the run has no other drift and prints no heal output).
@@ -898,7 +891,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         # daaf.sh absent (tier A will copy it); run_daaf.sh present + identical.
         printf "identical\n" > ./run_daaf.sh
@@ -933,7 +925,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         printf "host-customized\n" > ./run_daaf.sh
 
@@ -961,7 +952,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
@@ -979,7 +969,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
@@ -997,7 +986,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         docker() {
             case "$1" in
                 compose)
@@ -1020,7 +1008,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         # Override downstream functions to track calls
@@ -1039,7 +1026,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         sync_host_scripts() { :; }
@@ -1061,7 +1047,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         echo "ignored" | prompt_choice "Continue? [y/n]: " "y n"
     '
     assert_success
@@ -1072,7 +1057,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         echo "ignored" | prompt_choice "Choose [1/2/3]: " "1 2 3"
     '
     assert_success
@@ -1084,7 +1068,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         prompt_choice() {
             local prompt_text="$1"
             local valid_choices="$2"
@@ -1105,7 +1088,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         prompt_choice() {
             local prompt_text="$1"
             local valid_choices="$2"
@@ -1128,7 +1110,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         docker() {
@@ -1153,7 +1134,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         docker() {
@@ -1179,7 +1159,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         docker() {
@@ -1207,7 +1186,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         docker() {
@@ -1233,7 +1211,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test-branch"
 
         docker() {
@@ -1251,7 +1228,12 @@ teardown() {
 
         echo "2" | handle_conflict "merge" "merge --abort"
     '
-    assert_failure
+    # The child is strict, so ANY failing step before the call would also exit
+    # non-zero. Pin handle_conflict's own `return 1` and its output: the manual-
+    # resolution text, and its last line (the reset to the backup branch).
+    assert_failure 1
+    assert_output --partial "resolve the conflicts manually"
+    assert_output --partial "reset --hard backup/test-branch"
 }
 
 # --- Safety tests ---
@@ -1260,7 +1242,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         # Do NOT clear the trap -- we want to verify it exists
-        set +eu
         trap -p ERR
     '
     assert_success
@@ -1281,7 +1262,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         # Mock docker to prevent actual docker calls in cleanup
         docker() { return 1; }
@@ -1297,7 +1277,6 @@ teardown() {
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
 
         docker() { return 1; }
         STASHED=true
@@ -1808,10 +1787,9 @@ STUB
     printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
     before="$(cat "${TEST_DIR}/environment_settings.txt")"
     run bash -c '
-        cd "'"${TEST_DIR}"'"
+        cd "'"${TEST_DIR}"'" || exit 1
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         # Export AFTER sourcing so the gate is live when upsert runs inside
         # finish_update (a source-time prefix would not survive to the call).
         export DAAF_DRY_RUN=1
@@ -1878,10 +1856,9 @@ STUB
     printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
     before="$(cat "${TEST_DIR}/environment_settings.txt")"
     run bash -c '
-        cd "'"${TEST_DIR}"'"
+        cd "'"${TEST_DIR}"'" || exit 1
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         # Export AFTER sourcing so the gate is live when upsert runs inside
         # persist_branch_choice (a source-time prefix would not survive the call).
         export DAAF_DRY_RUN=1
@@ -1941,7 +1918,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         OLD_HEAD="oldsha123"; TIMESTAMP="2026-01-01-000000"
         docker() {
             case "$*" in
@@ -1959,7 +1935,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         export DAAF_DRY_RUN=1
         OLD_HEAD="oldsha123"; TIMESTAMP="t"
         docker() {
@@ -1980,7 +1955,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test"
         sync_host_scripts() { :; }
         check_build_changes() { :; }
@@ -2004,7 +1978,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         docker() {
             case "$*" in
                 *"stash list"*) printf "stash@{0}: On main: WIP unrelated edit\nstash@{1}: On main: DAAF update backup 2026-01-01\n" ;;
@@ -2021,7 +1994,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         docker() {
             case "$*" in
                 *"stash list"*) printf "stash@{0}: On main: WIP unrelated edit\n" ;;
@@ -2040,7 +2012,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test"
         OLD_HEAD="recordedsha"
         sync_host_scripts() { echo "SYNC:$1"; }
@@ -2067,7 +2038,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         BACKUP_BRANCH="backup/test"
         OLD_HEAD="recordedsha"
         sync_host_scripts() { :; }
@@ -2338,7 +2308,6 @@ STUB
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
-        set +eu
         export DAAF_PROJECT_NAME="-Work"
 
         docker() {

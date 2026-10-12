@@ -310,25 +310,6 @@ function Invoke-ContainerShell {
     }
 }
 
-# Run a shell command inside the container, capturing stdout+stderr as a string.
-# Strips carriage returns. Returns trimmed string.
-# Uses SilentlyContinue to prevent PS 5.1 from promoting stderr to a terminating
-# error when $ErrorActionPreference is "Stop" in the caller's scope.
-function Invoke-ContainerShellVerbose {
-    param([string]$ShellCommand)
-    $savedEAP = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "SilentlyContinue"
-        $raw = @(docker exec $script:ContainerName sh -c $ShellCommand 2>&1)
-        $exitCode = $LASTEXITCODE
-        $result = ($raw | Out-String)
-        $global:LASTEXITCODE = $exitCode
-        return ($result -replace "`r","").Trim()
-    } finally {
-        $ErrorActionPreference = $savedEAP
-    }
-}
-
 # --- Test Mode Guard ---
 # When dot-sourced for testing, define functions but skip execution.
 # Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/migrate_daaf.ps1
@@ -1193,7 +1174,9 @@ if ($DetectedEra -eq "1") {
 
             # Run the full search inside the container in one exec call.
             # Output format: "EXACT:<sha>" or "BEST:<sha>:<overlap>:<local_count>"
-            # Progress lines go to stderr (prefixed with PROGRESS:)
+            # Progress lines ("  Searching commit N/M...", no prefix) go to stderr,
+            # as does any docker exec or git error text; only the EXACT/BEST
+            # stdout lines are parsed below, so none of the stderr is ever shown.
             # Temporarily lower ErrorActionPreference so PS 5.1 does not promote
             # stderr progress output to a terminating error.
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"

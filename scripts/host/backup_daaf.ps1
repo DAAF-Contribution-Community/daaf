@@ -1031,8 +1031,10 @@ try {
         # prints offenders to STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped
         # the container's stderr in the field 2026-07-14, so the offender list never
         # reached the user; stdout is version-agnostic. The `2>&1` here still merges
-        # both streams into the log.)
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        # both streams into the log, under 'Continue': Windows PowerShell 5.1 drops
+        # native stderr from a 2>&1 capture under SilentlyContinue, which lost a stderr
+        # cause such as "No space left on device".)
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $StageLog = (docker logs $StageCid 2>&1 | Out-String)
         $ErrorActionPreference = $savedEAP
         $StageFailed = $true
@@ -1648,8 +1650,9 @@ if ($claudeVolumeExists) {
                 # Staging gate tripped: the offender list went to the DETACHED
                 # container's log. Capture it now, before the finally below removes
                 # the container. Best-effort; kept a WARNING (never fatal), asymmetric
-                # with the data volume.
-                $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+                # with the data volume. 'Continue' keeps the log's stderr lines on
+                # Windows PowerShell 5.1 (see the data volume's $StageLog above).
+                $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
                 $ClaudeStageLog = (docker logs $ClaudeStageCid 2>&1 | Out-String)
                 $ErrorActionPreference = $savedEAP
             }

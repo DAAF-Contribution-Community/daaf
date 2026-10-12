@@ -540,7 +540,12 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
                 [switch]$BuildOk,
                 [hashtable]$EnvVars = @{},
                 [string]$FailOn = $null,
-                [switch]$WithTemplate
+                [switch]$WithTemplate,
+                # Dispatch #63: a `docker compose ...` call whose argument string
+                # contains -NativeOn runs the native program -NativeFake instead (its
+                # stderr and exit code are real native ones).
+                [string]$NativeOn = $null,
+                [string]$NativeFake = $null
             )
             if ([string]::IsNullOrEmpty($InDir)) {
                 $runDir = Join-Path $script:TestDir ("run-" + [guid]::NewGuid().ToString('N'))
@@ -569,6 +574,8 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             $mockVolumeLsExit = $VolumeLsExit
             $mockBuildOk = [bool]$BuildOk
             $mockFailOn = $FailOn
+            $mockNativeOn = $NativeOn
+            $mockNativeFake = $NativeFake
             function Start-Sleep {
                 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
                 param([int]$Seconds)
@@ -597,6 +604,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
                     foreach ($v in $mockVolumes) { $v }
                     return
                 }
+                if (-not [string]::IsNullOrEmpty($mockNativeOn) -and [string]$args[0] -eq 'compose' -and $argStr.Contains($mockNativeOn)) { & $mockNativeFake; return }
                 if ($argStr -like '* build --progress*' -and -not $mockBuildOk) { $global:LASTEXITCODE = 1 }
                 if (-not [string]::IsNullOrEmpty($mockFailOn) -and [string]$args[0] -eq 'compose' -and $argStr.Contains($mockFailOn)) { $global:LASTEXITCODE = 1 }
             }
@@ -1130,6 +1138,30 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
         $lines[$i - 1] | Should -Be '  $env:DAAF_PORT_MARIMO = "3101"'
     }
 
+    It "G2 (dispatch #63): a readiness timeout shows the last five of a native docker's stderr lines under 'Docker reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # Every readiness poll runs a bash fake that writes a numbered stderr line and
+        # exits 1, so the lines cross the real native-command 2>&1 path.
+        $fakeDir = Join-Path $script:TestDir ("readyfake-" + [guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $fakeDir
+        $fake = Join-Path $fakeDir 'errfake'
+        $count = Join-Path $fakeDir 'count'
+        [System.IO.File]::WriteAllText($fake, "#!/usr/bin/env bash`nn=`$(( `$(cat '$count' 2>/dev/null || echo 0) + 1 ))`necho `"`$n`" > '$count'`necho `"Error response from daemon: container fake is restarting (attempt `$n)`" >&2`nexit 1`n")
+        & chmod +x $fake
+        $r = Invoke-InstallUnderMock -BuildOk -NativeOn 'exec -T daaf-docker true' -NativeFake $fake
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Docker reported:')
+        $i | Should -BeGreaterThan 0 -Because "the output was: $($r.Output)"
+        $lines[$i - 1] | Should -Be 'ERROR: Container did not become ready within 60 seconds.'
+        $lines[($i + 1)..($i + 6)] | Should -Be @(
+            '    Error response from daemon: container fake is restarting (attempt 26)'
+            '    Error response from daemon: container fake is restarting (attempt 27)'
+            '    Error response from daemon: container fake is restarting (attempt 28)'
+            '    Error response from daemon: container fake is restarting (attempt 29)'
+            '    Error response from daemon: container fake is restarting (attempt 30)'
+            '')
+        $lines[$i + 7] | Should -Be 'Check Docker Desktop for errors, then retry with:'
+    }
+
     It "#45 SUGGESTION-1: a process value wins over the settings file for ALL FIVE keys" {
         $text = $script:NamedSettings + "DAAF_DEV=1`n"
         $r = Invoke-InstallUnderMock -Volumes @('y_daaf-data', 'x_daaf-data') -WithCompose -SettingsText $text -EnvVars @{ DAAF_FORCE_REINSTALL = '1'; DAAF_PROJECT_NAME = 'y'; DAAF_PORT_MARIMO = '4001'; DAAF_PORT_LOGVIEWER = '4002'; DAAF_PORT_VSCODE = '4003'; DAAF_DEV = '0' }
@@ -1240,5 +1272,59 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             Get-DaafVolumeState -Name 'here' | Should -BeExactly 'present'
             Get-DaafVolumeState -Name 'gone' | Should -BeExactly 'unknown'
         }
+    }
+}
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G2 readiness, G6 preference)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas), and by
+# inference from a `2>> file` redirect too. The readiness errors ("Docker
+# reported:") are kept in memory under 'Continue' instead. pwsh 7 keeps the lines
+# either way, so the behavioral test above cannot catch a revert on its own.
+
+Describe "install.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/install.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G2: the readiness capture merges stderr (2>&1) inside a 'Continue' bracket, with no temp file or 2>> redirect" {
+        $eap = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $caps = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$readyOut')
+        }, $true))
+        $caps.Count | Should -Be 1
+        $caps[0].Right.Extent.Text | Should -Match '^@\(docker compose .* exec -T daaf-docker true 2>&1\)$'
+        $open = @($eap | Where-Object { $_.Extent.EndOffset -le $caps[0].Extent.StartOffset }) | Select-Object -Last 1
+        $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $caps[0].Extent.EndOffset }) | Select-Object -First 1
+        $open.Right.Extent.Text | Should -BeExactly '"Continue"'
+        $close.Right.Extent.Text | Should -BeExactly '$savedEAP'
+        $code = @((Get-Content -LiteralPath $ScriptPath) | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '2>>' -or $_ -match 'readyLog' }).Count | Should -Be 0
     }
 }

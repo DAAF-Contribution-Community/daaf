@@ -68,8 +68,10 @@ Describe "migrate_daaf.ps1" {
             $Content | Should -Match 'function Invoke-ContainerShell\b'
         }
 
-        It "defines Invoke-ContainerShellVerbose helper function" {
-            $Content | Should -Match 'function Invoke-ContainerShellVerbose'
+        It "no longer carries the unused Invoke-ContainerShellVerbose helper (dispatch #63, G4)" {
+            # It had no callers, and its SilentlyContinue `2>&1` capture would have lost
+            # stderr on Windows PowerShell 5.1. migrate_daaf.sh never had a twin of it.
+            $Content | Should -Not -Match 'Invoke-ContainerShellVerbose'
         }
 
         It "has a trap handler for unexpected failures" {
@@ -218,7 +220,7 @@ Describe "migrate_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
-    # Invoke-ContainerShell / Invoke-ContainerShellVerbose
+    # Invoke-ContainerShell
     # -----------------------------------------------------------------
     Context "Invoke-ContainerShell" {
         It "runs shell command and returns string" {
@@ -231,14 +233,6 @@ Describe "migrate_daaf.ps1 behavioral tests" {
             Mock docker { return "line1`r`nline2`r`n" }
             $result = Invoke-ContainerShell "ls /daaf"
             $result | Should -Not -Match "`r"
-        }
-    }
-
-    Context "Invoke-ContainerShellVerbose" {
-        It "returns output including stderr content" {
-            Mock docker { return "verbose-shell-output" }
-            $result = Invoke-ContainerShellVerbose "ls -la /daaf"
-            $result | Should -BeLike "*verbose-shell*"
         }
     }
 

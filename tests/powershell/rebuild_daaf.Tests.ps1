@@ -324,3 +324,112 @@ Describe "rebuild_daaf.ps1 error paths" {
         }
     }
 }
+
+# ============================================================================
+# Native stderr reaches the user (dispatch #63: G2 readiness, G6 preference)
+# ============================================================================
+# Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas), and by
+# inference from a `2>> file` redirect too. The readiness errors ("Docker
+# reported:") are kept in memory under 'Continue' instead. pwsh 7 keeps the lines
+# either way, so the behavioral test cannot catch a revert on its own.
+
+Describe "rebuild_daaf.ps1 native stderr reaches the user (dispatch #63)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/rebuild_daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:ScriptPath, [ref]$tokens, [ref]$parseErrors)
+        $script:ParseErrorCount = @($parseErrors).Count
+    }
+
+    It "G6: sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call" {
+        $ParseErrorCount | Should -Be 0
+        $assign = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $Ast.EndBlock
+        $stmts = @($Ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
+    }
+
+    It "G2: the readiness capture merges stderr (2>&1) inside a 'Continue' bracket, with no temp file or 2>> redirect" {
+        $eap = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$ErrorActionPreference')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $caps = @($Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$readyOut')
+        }, $true))
+        $caps.Count | Should -Be 1
+        $caps[0].Right.Extent.Text | Should -BeExactly '@(docker compose exec -T daaf-docker true 2>&1)'
+        $open = @($eap | Where-Object { $_.Extent.EndOffset -le $caps[0].Extent.StartOffset }) | Select-Object -Last 1
+        $close = @($eap | Where-Object { $_.Extent.StartOffset -ge $caps[0].Extent.EndOffset }) | Select-Object -First 1
+        $open.Right.Extent.Text | Should -BeExactly '"Continue"'
+        $close.Right.Extent.Text | Should -BeExactly '$savedEAP'
+        $code = @((Get-Content -LiteralPath $ScriptPath) | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '2>>' -or $_ -match 'readyLog' }).Count | Should -Be 0
+    }
+
+    It "G2: a readiness timeout shows the last five of a native docker's stderr lines under 'Docker reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # The real script against a bash fake docker on PATH. Every readiness poll
+        # writes a numbered stderr line and exits 1; Start-Sleep is shadowed below
+        # (dynamic scoping) so the 30 polls do not take a minute.
+        $work = Join-Path $TestDrive ("g2-" + [guid]::NewGuid().ToString('N'))
+        $bin = Join-Path $work 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $bin
+        New-FakeComposeFile -Directory $work
+        $count = Join-Path $TestDrive 'g2-count'
+        $fake = @(
+            '#!/usr/bin/env bash'
+            'case "$*" in'
+            '    info) exit 0 ;;'
+            "    'compose ps -aq daaf-docker') echo cid123; exit 0 ;;"
+            "    'compose exec -T daaf-docker true')"
+            "        n=`$(( `$(cat '$count' 2>/dev/null || echo 0) + 1 )); echo `"`$n`" > '$count'"
+            '        echo "Error response from daemon: container fake is restarting (attempt $n)" >&2; exit 1 ;;'
+            '    *) exit 0 ;;'
+            'esac'
+        ) -join "`n"
+        [System.IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake + "`n")
+        & chmod +x (Join-Path $bin 'docker')
+        function Start-Sleep {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
+            param([int]$Seconds)
+            $null = $Seconds
+        }
+        $saved = @{}
+        foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED', 'DAAF_DIAG_BUILD')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+        Push-Location -LiteralPath $work
+        try {
+            $env:PATH = $bin + [System.IO.Path]::PathSeparator + $saved['PATH']
+            Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE, Env:DAAF_DIAG_BUILD -ErrorAction SilentlyContinue
+            $env:DAAF_NESTED = "1"
+            $out = & $ScriptPath *>&1 | Out-String
+            $code = $LASTEXITCODE
+        } finally {
+            Pop-Location
+            foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+        }
+        $code | Should -Be 1
+        $lines = @($out -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  Docker reported:')
+        $i | Should -BeGreaterThan 0 -Because "the output was: $out"
+        $lines[$i - 1] | Should -Be 'ERROR: Container did not become ready within 60 seconds.'
+        $lines[($i + 1)..($i + 7)] | Should -Be @(
+            '    Error response from daemon: container fake is restarting (attempt 26)'
+            '    Error response from daemon: container fake is restarting (attempt 27)'
+            '    Error response from daemon: container fake is restarting (attempt 28)'
+            '    Error response from daemon: container fake is restarting (attempt 29)'
+            '    Error response from daemon: container fake is restarting (attempt 30)'
+            ''
+            'Check Docker Desktop for errors.')
+    }
+}
