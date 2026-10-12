@@ -101,9 +101,10 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         expected_kinds: list[str],
         expected_requests: int = 1,
         expected_error_type: str = "api_error",
+        env_overrides: dict[str, str] | None = None,
     ) -> list[object]:
         with MockResponsesServer(scenario) as backend:
-            with RealShim(backend, "chatgpt") as shim:
+            with RealShim(backend, "chatgpt", env_overrides=env_overrides) as shim:
                 result = shim.post_messages(stream=True, tools=[READ_TOOL])
                 self.assertEqual(
                     result.status,
@@ -742,10 +743,19 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         )
         target["delta"] = {"not": "a string"}
         scenario = events_scenario("malformed-tool-argument-delta", events)
+        # v1.4.8: in sanitize mode (default) the tool_use header waits for complete
+        # arguments, so a failure on the first argument delta sends no tool block.
         self._assert_stream_failure(
             scenario=scenario,
             marker="MALFORMED_TOOL_ARGUMENT_DELTA_STREAM",
+            expected_kinds=["thinking", "text"],
+        )
+        # SHIM_SANITIZE_TOOLS=0 keeps the pre-1.4.8 shape: header at output_item.added.
+        self._assert_stream_failure(
+            scenario=scenario,
+            marker="MALFORMED_TOOL_ARGUMENT_DELTA_STREAM_SANITIZE_OFF",
             expected_kinds=["thinking", "text", "tool_use"],
+            env_overrides={"SHIM_SANITIZE_TOOLS": "0"},
         )
         self._assert_nonstream_api_error(
             scenario=scenario,
@@ -1143,12 +1153,23 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
 
         conflicting = json.loads(json.dumps(events))
         conflicting[index]["name"] = "Edit"
+        # v1.4.8: the conflicting .done is rejected before the deferred sanitize-mode
+        # tool_use header is emitted, so the failure stream carries no tool block.
         self._assert_stream_failure(
             scenario=events_scenario(
                 "arguments-done-with-conflicting-name", conflicting
             ),
             marker="ARGUMENTS_DONE_CONFLICTING_NAME",
+            expected_kinds=["thinking", "text"],
+        )
+        # SHIM_SANITIZE_TOOLS=0: the header was sent at output_item.added (pre-1.4.8).
+        self._assert_stream_failure(
+            scenario=events_scenario(
+                "arguments-done-with-conflicting-name-sanitize-off", conflicting
+            ),
+            marker="ARGUMENTS_DONE_CONFLICTING_NAME_SANITIZE_OFF",
             expected_kinds=["thinking", "text", "tool_use"],
+            env_overrides={"SHIM_SANITIZE_TOOLS": "0"},
         )
 
     def test_arguments_done_after_closed_tool_identical_is_ignored(self) -> None:
@@ -1261,10 +1282,29 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             and (event.get("item") or {}).get("type") == "function_call"
         )
         events.insert(index + 1, json.loads(json.dumps(events[index])))
+        # v1.4.8: the sanitize-mode (default) tool_use header waits for complete
+        # arguments, so the replayed added event fails before ANY tool header is sent
+        # (previously exactly one, the first, was on the wire).
         frames = self._assert_stream_failure(
             scenario=events_scenario("duplicate-output-item-added", events),
             marker="DUPLICATE_OUTPUT_ITEM_ADDED",
+            expected_kinds=["thinking", "text"],
+        )
+        tool_starts = [
+            frame.data
+            for frame in frames
+            if isinstance(frame.data, dict)
+            and frame.data.get("type") == "content_block_start"
+            and (frame.data.get("content_block") or {}).get("type") == "tool_use"
+        ]
+        self.assertEqual(len(tool_starts), 0)
+        # SHIM_SANITIZE_TOOLS=0 keeps the pre-1.4.8 shape: exactly one header (the
+        # first added event's) is on the wire, and the replay adds no second start.
+        frames = self._assert_stream_failure(
+            scenario=events_scenario("duplicate-output-item-added-sanitize-off", events),
+            marker="DUPLICATE_OUTPUT_ITEM_ADDED_SANITIZE_OFF",
             expected_kinds=["thinking", "text", "tool_use"],
+            env_overrides={"SHIM_SANITIZE_TOOLS": "0"},
         )
         tool_starts = [
             frame.data
@@ -1676,7 +1716,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.4.7 starting" in line
+                    if "req_id=- phase=process shim v1.4.8 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

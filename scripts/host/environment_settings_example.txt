@@ -768,6 +768,11 @@
 # --- To activate, remove the leading '#': ---
 #SHIM_TEXT_VERBOSITY=
 #
+# SHIM_PDF_MODE (shim v1.4.8+): PDFs are sent to the model as file inputs. If your
+# backend rejects them, set omit (the PDF is replaced by a short note); recreate the container.
+# --- To activate, remove the leading '#': ---
+#SHIM_PDF_MODE=omit
+#
 # ----------------------------------------------------------------------------
 # 4.5 Preset: institutional / university OpenAI-compatible gateway
 # ----------------------------------------------------------------------------

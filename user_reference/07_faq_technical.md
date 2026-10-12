@@ -441,6 +441,10 @@ For the direct OpenAI API lane, the shim supports images in **user messages** an
 
 This was verified with a privacy-safe probe on 2026-07-18 (a synthetic one-pixel PNG round-tripped successfully) — that's evidence that shape worked on that date, not an official OpenAI guarantee, and the URL variants weren't part of that test.
 
+### Q: Can DAAF read PDFs on the GPT route?
+
+Yes. Since shim 1.4.8, PDFs are sent to the model as file inputs. If your backend rejects them, set `SHIM_PDF_MODE=omit` in `environment_settings.txt` and recreate the container; each PDF is then replaced by a short note. PDFs are re-sent on every turn, so large PDFs use more quota.
+
 ### Q: How do I diagnose a provider-shim server error mid-response?
 
 **Optional reading — you almost certainly don't need this entry.** It's a deep-dive for the rare case where a GPT request fails partway through a response and you want to file a precise bug report or trace exactly what the shim did. If that's not you, feel free to skip it — the shim keeps its own logs, and the earlier troubleshooting entries cover the common failures. If you *do* want to trace a specific failed request, here's how.

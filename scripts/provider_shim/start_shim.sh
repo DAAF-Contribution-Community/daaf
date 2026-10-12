@@ -66,6 +66,9 @@
 #   SHIM_REASONING_EFFORT   tier 3 of the effort precedence chain (per-request
 #                           signal > "#<effort>" slug suffix > env > high)
 #   SHIM_TEXT_VERBOSITY     low|medium|high; default medium
+#   SHIM_PDF_MODE           file|omit; default file (PDFs sent as Responses
+#                           input_file parts). omit replaces each PDF with a short
+#                           note; an unrecognized value WARNs and uses file. v1.4.8.
 #
 # Codex config.toml: --auto, --start and --restart first run
 # render_codex_config.py, which writes $CODEX_HOME/config.toml from the
