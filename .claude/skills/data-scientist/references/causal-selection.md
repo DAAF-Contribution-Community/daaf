@@ -21,7 +21,7 @@ implement** once you have determined that sample selection bias is the relevant 
 - [Diagnostics](#diagnostics)
 - [Complete Heckman Analysis Template](#complete-heckman-analysis-template)
 - [Gotchas](#gotchas)
-- [References](#references)
+- [References and Further Reading](#references-and-further-reading)
 
 ## When to Use Heckman Selection Models
 
@@ -30,7 +30,8 @@ observed only for a non-random subset of the population. The classic example is
 estimating a wage equation when wages are observed only for people who choose to work
 -- the working population is not a random draw from all adults.
 
-**Use Heckman when all three conditions hold:**
+**Use Heckman when all three conditions hold (requiring condition 3 is a DAAF
+convention; see Gotcha #1):**
 1. The outcome is observed only for a selected (non-random) subset
 2. The selection process is correlated with unobservables that also affect the outcome
 3. You have at least one variable (an "exclusion restriction") that predicts selection
@@ -70,8 +71,8 @@ y_i = X_i * beta + epsilon_i
 
 Where:
 - D_i is the binary selection indicator (1 = observed, 0 = not observed)
-- Z_i is the vector of selection equation covariates (must include X_i plus at
-  least one excluded instrument)
+- Z_i is the vector of selection equation covariates (DAAF convention: X_i plus
+  at least one excluded instrument; see Gotcha #1)
 - X_i is the vector of outcome equation covariates
 - (u_i, epsilon_i) are jointly bivariate normal with correlation rho
 
@@ -163,6 +164,7 @@ for col in excl_cols:
     coef = probit_result.params[col]
     pval = probit_result.pvalues[col]
     print(f"Exclusion restriction '{col}': coef={coef:.4f}, p={pval:.4f}")
+    # ASSUMES: p < 0.10 cutoff is a DAAF convention, not a published threshold
     assert pval < 0.10, (
         f"Exclusion restriction '{col}' is not significant (p={pval:.4f}). "
         "Weak exclusion restriction makes Heckman correction unreliable."
@@ -196,8 +198,10 @@ print(f"IMR std (selected):   {imr_selected.std():.4f}")
 ```python
 # --- Step 3: OLS outcome regression with IMR ---
 # INTENT: Estimate outcome equation on selected sample, including IMR
-# REASONING: If rho != 0 (selection bias exists), IMR coefficient will be
-# significant and the beta estimates will be corrected for selection
+# REASONING: If rho != 0 (selection bias exists), the IMR coefficient is nonzero
+# and the beta estimates are corrected for selection. The t-test on it loses
+# power when the IMR is collinear with X (Puhani 2000, reporting Leung and
+# Yu 1996)
 
 X_selected = X.loc[selected_mask].copy()
 X_selected["imr"] = imr_selected
@@ -217,8 +221,12 @@ print(f"IMR p-value: {imr_pval:.4f}")
 if imr_pval < 0.05:
     print("Selection bias IS significant -- Heckman correction is warranted")
 else:
-    print("Selection bias NOT significant -- OLS without correction may suffice")
-    print("(Heckman correction can increase MSE when selection is weak; see Puhani 2000)")
+    # INTENT: Recommendation only -- no automatic switch to naive OLS
+    # REASONING: A non-significant IMR is evidence of no selection only if the IMR
+    # is not collinear with X (see Diagnostics 2-3 and Gotcha #4)
+    print("IMR NOT significant -- check IMR collinearity (Diagnostics 2-3) first.")
+    print("Only if collinearity is low, report naive OLS as primary (DAAF convention).")
+    print("(If the IMR is collinear with X, the correction can be less accurate than subsample OLS; see Puhani 2000)")
 ```
 
 ### Step 4: Compare with Naive OLS
@@ -242,11 +250,13 @@ for col in x_cols + ["const"]:
 
 ## Bootstrap Inference
 
-**The two-step Heckman standard errors from OLS are inconsistent.** They understate
-uncertainty because they ignore that the IMR is a generated regressor (its sampling
-variability is not accounted for in the second-stage OLS standard errors). Murphy
-and Topel (1985) provide an analytical correction, but bootstrap is simpler and
-more widely applicable.
+**The two-step Heckman standard errors from OLS are inconsistent when selection
+bias is present** (they are valid under H0: no selection; Heckman 1979, p. 158).
+They understate uncertainty because they ignore that the IMR is a generated
+regressor (its sampling variability is not accounted for in the second-stage OLS
+standard errors). Heckman (1979) derived the correct asymptotic covariance matrix
+for this estimator, and Murphy and Topel (1985) give a general correction for
+two-step estimators. Bootstrap is simpler to implement here.
 
 Bootstrap over **both stages** -- re-estimate the Probit, recompute the IMR, and
 re-estimate the OLS on each bootstrap resample.
@@ -258,7 +268,7 @@ re-estimate the OLS on each bootstrap resample.
 # as fixed, ignoring estimation error from the Probit step
 
 n = len(D)
-n_boot = 1000
+n_boot = 1000  # DAAF convention, not a published requirement
 boot_betas = []
 
 np.random.seed(42)
@@ -270,7 +280,8 @@ for b in range(n_boot):
     Z_b = Z.iloc[idx]
     X_b = X.iloc[idx]
 
-    # Skip resamples with no variation in selection
+    # Skip resamples with little variation in selection
+    # (>= 10 per group: DAAF convention)
     if D_b.sum() < 10 or (1 - D_b).sum() < 10:
         continue
 
@@ -296,7 +307,7 @@ for b in range(n_boot):
     X_b_sel["imr"] = imr_b[sel_b]
 
     if len(y_b) < X_b_sel.shape[1] + 5:
-        continue  # Too few observations
+        continue  # Too few observations (k + 5 floor: DAAF convention)
 
     try:
         ols_b = sm.OLS(y_b, X_b_sel).fit()
@@ -324,8 +335,9 @@ for i, col in enumerate(col_names):
 ## Full Information Maximum Likelihood (FIML)
 
 FIML estimates all parameters jointly by maximizing the full log-likelihood of the
-bivariate selection model. It is more efficient than two-step when the normality
-assumption holds, but harder to implement and more sensitive to misspecification.
+bivariate selection model. It is usually more efficient than two-step when the
+normality assumption holds (Puhani 2000), but harder to implement and, as DAAF
+inference, more sensitive to misspecification.
 
 ### Log-Likelihood
 
@@ -470,7 +482,10 @@ except np.linalg.LinAlgError:
 ```python
 # --- LR test: rho = 0 ---
 # INTENT: Test whether selection bias exists (rho = 0 vs rho != 0)
-# REASONING: More powerful than the two-step t-test on the IMR coefficient
+# REASONING: Likelihood-based alternative to the two-step t-test on the IMR
+# coefficient. That t-statistic is the Lagrange multiplier statistic
+# (Melino 1982, as reported by Puhani 2000); no claim is made here about
+# which test is more powerful
 
 # Restricted model: rho = 0 (equivalent to separate Probit + OLS)
 x0_restricted = x0.copy()
@@ -519,8 +534,11 @@ The most important diagnostic: is the selection correction actually needed?
 | FIML: Wald test on rho | Test atanh(rho) = 0 using FIML SE | z-test on transformed rho |
 | Compare OLS vs Heckman | Large coefficient differences suggest bias | Informal but informative |
 
-If the test fails to reject H0 (no selection bias), **prefer naive OLS**. Heckman
-correction adds noise when selection bias is absent (Puhani 2000).
+If the test fails to reject H0 and the IMR is not collinear with X (Diagnostics
+2-3), naive OLS is a reasonable primary specification (DAAF convention).
+Collinearity reduces the power of the IMR t-test (Puhani 2000, reporting Leung
+and Yu 1996), so check it before reading a non-significant IMR as evidence of no
+selection.
 
 ### 2. Check Exclusion Restriction Strength
 
@@ -541,6 +559,7 @@ lr_excl = -2 * (probit_restricted.llf - probit_result.llf)
 excl_pval = 1 - chi2.cdf(lr_excl, df=len(excl_cols))
 
 print(f"LR test for exclusion restriction: {lr_excl:.4f} (p={excl_pval:.4f})")
+# ASSUMES: p > 0.10 cutoff is a DAAF convention, not a published threshold
 if excl_pval > 0.10:
     print("WARNING: Exclusion restriction is weak -- Heckman identification is fragile")
 ```
@@ -565,6 +584,10 @@ vif_df = pl.DataFrame(vif_data)
 print(vif_df)
 
 imr_vif = [v for v in vif_data if v["variable"] == "imr"][0]["VIF"]
+# ASSUMES: VIF cutoffs of 10 and 5 are general regression rules of thumb, not
+# thresholds from the selection literature. Puhani (2000) suggests the R-squared
+# of the IMR regressed on X, or the condition number of X plus the IMR (above 20
+# signals a problem, per Leung and Yu 1996 as reported by Puhani 2000)
 if imr_vif > 10:
     print(f"WARNING: IMR VIF = {imr_vif:.1f} -- severe collinearity")
     print("Heckman correction is unreliable. Consider:")
@@ -626,7 +649,7 @@ SELECTION_COL = "employed"
 Z_COLS = ["age", "education", "married", "num_children", "region"]
 X_COLS = ["age", "education", "married", "region"]
 EXCL_COLS = ["num_children"]
-N_BOOT = 1000
+N_BOOT = 1000  # DAAF convention, not a published requirement
 
 # --- Load ---
 df = pl.read_parquet(f"{DATA_DIR}/analysis_data.parquet")
@@ -707,39 +730,46 @@ print(f"\n=== Validation ===")
 print(f"Total N: {len(D)}")
 print(f"Selected N: {D.sum()}")
 print(f"Selection rate: {D.mean()*100:.1f}%")
+# ASSUMES: > 50 per group is a DAAF convention, not a published minimum
 assert D.sum() > 50, f"Too few selected observations: {D.sum()}"
 assert (1-D).sum() > 50, f"Too few non-selected observations: {(1-D).sum()}"
 ```
 
 ## Gotchas
 
-### 1. The Exclusion Restriction Is Not Optional
+### 1. Treat the Exclusion Restriction as Required in Practice
 
 Without at least one variable that appears in the selection equation but not the
 outcome equation, the Heckman model is identified solely through the nonlinearity
 of the inverse Mills ratio. This is a dangerous form of identification because:
 
-- The IMR is nearly linear over the range (-1, 2), which covers most of the data
-  for typical selection probabilities
+- The IMR is approximately linear over a wide range of its argument (Puhani
+  2000). In Puhani's illustration the selection index exceeds 2 only when the
+  selection probability is above about 97.5%, so unless most observations have
+  such extreme probabilities, most fall in the quasi-linear range
 - Near-linearity makes the IMR collinear with X, inflating standard errors and
   making the correction unstable
 - Small specification changes (adding a covariate, changing functional form) can
   dramatically alter results
 
-**Always use an exclusion restriction.** If you cannot find a credible one, the
-Heckman model is likely not the right approach. Consider bounds analysis (Manski
-1990) or sensitivity analysis instead.
+**Use an exclusion restriction (DAAF convention).** Formally, Heckman (1979)
+needs only nontrivial regressors in the selection equation. In practice,
+identification from the IMR's nonlinearity alone is fragile (Puhani 2000). If you
+cannot find a credible exclusion restriction, the Heckman model is likely not the
+right approach. Consider bounds analysis (Manski 1989, 1990) or sensitivity
+analysis instead.
 
-### 2. Two-Step Standard Errors Are Wrong
+### 2. Two-Step OLS Standard Errors Are Wrong Under Selection Bias
 
-The OLS standard errors from Step 3 of the Heckit procedure are **inconsistent**.
-They treat the inverse Mills ratio as a known regressor rather than an estimated
-quantity, ignoring the sampling variability from the first-stage Probit. This
-underestimates uncertainty, sometimes substantially.
+The OLS standard errors from Step 3 of the Heckit procedure are **not valid when
+selection bias is present** (they are valid under H0: no selection; Heckman 1979,
+p. 158). They treat the inverse Mills ratio as a known regressor rather than an
+estimated quantity, ignoring the sampling variability from the first-stage
+Probit. This underestimates uncertainty, sometimes substantially.
 
 **Use bootstrap** (re-estimating both stages on each resample) as the default
-inference approach. The Murphy-Topel (1985) analytical correction is an alternative
-but harder to implement and less commonly used.
+inference approach. The analytical corrections (Heckman 1979; Murphy and Topel
+1985) are alternatives but must be coded by hand.
 
 ### 3. The Collinearity Trap
 
@@ -747,28 +777,36 @@ Even with a valid exclusion restriction, if the excluded variable has weak predi
 power in the selection equation, the IMR will be nearly collinear with the outcome
 covariates X. Symptoms:
 
-- Very large VIF for the IMR (> 10)
+- Very large VIF for the IMR (> 10, a general rule of thumb)
 - Heckman standard errors much larger than OLS standard errors
 - Estimates change dramatically with minor specification changes
 
-Check VIF after estimation. If IMR VIF > 10, the correction is unreliable
-regardless of whether the IMR coefficient is "significant."
+Check VIF after estimation. If IMR VIF > 10 (rule of thumb), the correction is
+unreliable regardless of whether the IMR coefficient is "significant." Puhani
+(2000) suggests two other collinearity checks: the R-squared of the IMR regressed
+on X, or the condition number of the outcome regressors including the IMR (above
+20 signals a problem, per Leung and Yu 1996 as reported by Puhani 2000).
 
-### 4. Heckman Correction Can Increase MSE When Selection Is Weak
+### 4. The Heckman Correction Can Be Less Accurate Than Subsample OLS
 
-Puhani (2000) reviews the literature and finds that when selection bias is small
-(rho close to zero), the Heckman correction can **increase** mean squared error
-relative to naive OLS. The correction introduces additional noise through the
-estimated IMR, and when the bias being corrected is small, this noise outweighs
-the bias reduction.
+Puhani (2000) surveys Monte Carlo studies of the two-step estimator and concludes
+that collinearity between the inverse Mills ratio and the outcome regressors is
+the decisive problem. Collinearity comes from missing or weak exclusion
+restrictions, a narrow range of the selection index, or heavy censoring. When it
+is present, subsample OLS (or the two-part model) may be more robust than either
+the two-step or the FIML estimator. Without collinearity problems, Puhani
+recommends FIML and says the two-step estimator also gives reasonable results.
 
-**Decision rule:** If the IMR coefficient is not significant (or rho is close to
-zero in FIML), report the naive OLS results as the primary specification and note
-that the Heckman correction did not find evidence of selection bias.
+**Decision rule (DAAF convention, not from Puhani 2000):** First check
+collinearity (R-squared of the IMR on X, VIF, or condition number). If
+collinearity is low and the IMR coefficient (or rho in FIML) is not significant,
+report naive OLS as primary and the Heckman estimates as a robustness check. If
+collinearity is high, a non-significant IMR is not evidence of no selection:
+report both and state that the correction is weakly identified.
 
 ### 5. `sm.heckman.Heckman()` Does Not Exist
 
-Multiple online tutorials, blog posts, and even some textbooks show code like:
+Multiple online tutorials and blog posts show code like:
 
 ```python
 # THIS DOES NOT WORK -- the API does not exist
@@ -785,29 +823,35 @@ requesting this feature was opened in 2014 and remains open and unmerged as of
 You **must** implement the two-step procedure manually (Probit + OLS with IMR)
 or write the FIML log-likelihood by hand, as shown in this reference.
 
-### 6. The Bivariate Normality Assumption Is Strong and Untestable
+### 6. The Bivariate Normality Assumption Is Strong and Hard to Test
 
 The Heckman model assumes that the error terms (u_i, epsilon_i) are jointly
 bivariate normal. This assumption is:
 
 - **Strong:** It imposes a specific parametric form on the joint distribution of
   unobservables, ruling out heavy tails, skewness, or nonlinear dependence
-- **Untestable:** Because epsilon_i is only observed for selected units and u_i
-  is never observed directly, the joint distribution cannot be assessed from data
-- **Consequential:** If violated, both two-step and FIML estimates are
-  inconsistent -- the correction itself introduces bias
+- **Hard to test:** epsilon_i is observed only for selected units, so the joint
+  distribution can be checked only indirectly. Tests have been proposed: Puhani
+  (2000) cites Olsen (1982), "Distributional Tests for Selectivity Bias and a
+  More Robust Likelihood Estimator" (not reviewed for this file)
+- **Consequential:** If the assumption is violated, FIML is generally
+  inconsistent (DAAF inference). The two-step estimator needs weaker
+  conditions: Puhani (2000) states it is consistent "as long as u1 has a normal
+  distribution and ε2 is independent of λ" (in Puhani's notation, u1 is the
+  selection-equation error and ε2 the error of the second-step regression).
+  Violating those conditions biases the correction
 
 Robustness checks: (1) Compare two-step and FIML results -- large discrepancies
 suggest sensitivity to distributional assumptions. (2) Compare with semiparametric
 alternatives if available (e.g., Robinson 1988). (3) Try different functional forms
 for the selection and outcome equations.
 
-## References
+## References and Further Reading
 
 ### Core Papers
 
 Heckman, J.J. (1979). "Sample Selection Bias as a Specification Error."
-*Econometrica*, 47(1), 153-162. https://doi.org/10.2307/1912352
+*Econometrica*, 47(1), 153-161. https://doi.org/10.2307/1912352
 
 Robinson, P.M. (1988). "Root-N-Consistent Semiparametric Regression."
 *Econometrica*, 56(4), 931-954. https://doi.org/10.2307/1912705
@@ -827,6 +871,9 @@ https://doi.org/10.1080/07350015.1985.10509471
 Puhani, P.A. (2000). "The Heckman Correction for Sample Selection and Its Critique."
 *Journal of Economic Surveys*, 14(1), 53-68.
 https://doi.org/10.1111/1467-6419.00104
+Claims attributed to Puhani (2000) in this file were checked against the 1997
+working-paper version (ZEW Discussion Paper No. 97-07); the published text may
+differ.
 
 Toomet, O. and Henningsen, A. (2008). "Sample Selection Models in R: Package
 sampleSelection." *Journal of Statistical Software*, 27(7), 1-23.
@@ -838,12 +885,16 @@ Wooldridge, J.M. (2010). *Econometric Analysis of Cross Section and Panel Data*,
 2nd ed., Chapter 19. MIT Press. ISBN: 978-0-262-23258-6.
 
 Cameron, A.C. and Trivedi, P.K. (2005). *Microeconometrics: Methods and
-Applications*, Chapters 16 and 24. Cambridge University Press.
+Applications*, Chapter 16 (Tobit and Selection Models). Cambridge University
+Press.
 
 ### Methodology (Additional)
 
 Heckman, J.J. (1990). "Varieties of Selection Bias." *American Economic Review*,
 80(2), 313-318.
+
+Manski, C.F. (1989). "Anatomy of the Selection Problem." *The Journal of Human
+Resources*. https://doi.org/10.2307/145818
 
 Manski, C.F. (1990). "Nonparametric Bounds on Treatment Effects." *American
 Economic Review*, 80(2), 319-323.

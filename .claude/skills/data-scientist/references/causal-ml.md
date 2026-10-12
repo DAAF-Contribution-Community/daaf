@@ -37,7 +37,7 @@ methods, the role of ML in the causal toolkit), see `./causal-inference.md` >
 - [Diagnostics and Validation](#diagnostics-and-validation)
 - [Gotchas and Pitfalls](#gotchas-and-pitfalls)
 - [Decision Tree: Which Approach?](#decision-tree-which-approach)
-- [References](#references)
+- [References and Further Reading](#references-and-further-reading)
 
 ## When to Use Causal ML
 
@@ -99,14 +99,18 @@ Y = theta * D + g(X) + epsilon     (outcome equation)
 D = m(X) + U                       (treatment equation)
 ```
 
-where theta is the causal parameter of interest, g(X) is the outcome nuisance
-function, and m(X) is the treatment nuisance function (propensity score for
-binary treatment). The algorithm:
+where theta is the causal parameter of interest, g(X) is the structural
+nuisance function, and m(X) is the treatment nuisance function (propensity
+score for binary treatment). The partialling-out score used below does not fit
+g directly. It fits the outcome regression ℓ(X) = E[Y|X] (= θ·m(X) + g(X))
+(Chernozhukov et al. 2018, score 4.4). The algorithm:
 
-1. Split data into K folds (typically K=5)
+1. Split data into K folds (Chernozhukov et al. 2018, Remark 3.1: K = 4 or 5
+   worked better than K = 2)
 2. For each fold k:
-   a. Fit ML models for g(X) = E[Y|X] and m(X) = E[D|X] on all folds except k
-   b. Predict on fold k to get residuals: V_hat = Y - g_hat(X), U_hat = D - m_hat(X)
+   a. Fit ML models for ℓ(X) = E[Y|X] (= θ·m(X) + g(X)) and m(X) = E[D|X] on
+      all folds except k
+   b. Predict on fold k to get residuals: V_hat = Y - ℓ_hat(X), U_hat = D - m_hat(X)
 3. Estimate theta from the pooled residuals: theta = sum(U_hat * V_hat) / sum(U_hat^2)
 4. Compute standard errors accounting for the cross-fitting structure
 
@@ -118,15 +122,18 @@ strategy:
 
 | Learner | Strategy | Bias-Variance | Best When |
 |---------|----------|---------------|-----------|
-| **S-learner** | Single model on (X, D), CATE = mu(x,1) - mu(x,0) | High bias, low variance | Large samples; weak heterogeneity |
-| **T-learner** | Separate models per treatment arm | Low bias, high variance | Balanced treatment arms; strong heterogeneity |
-| **X-learner** | Impute individual treatment effects, then cross-estimate | Adaptive | Imbalanced groups (many controls, few treated) |
-| **R-learner** | Neyman-orthogonal loss minimization | Low bias | Valid causal design; moderate sample |
-| **DR-learner** | Doubly robust pseudo-outcomes | Low bias | Valid causal design; robustness desired |
+| **S-learner** | Single model on (X, D), CATE = mu(x,1) - mu(x,0) | High bias, low variance | CATE simple or mostly zero (Künzel et al. 2019) |
+| **T-learner** | Separate models per treatment arm | Low bias, high variance | Complex CATE with little shared structure between arms (Künzel et al. 2019) |
+| **X-learner** | Impute individual treatment effects, then cross-estimate | Adaptive | Imbalanced groups (many controls, few treated) (Künzel et al. 2019) |
+| **R-learner** | Neyman-orthogonal loss minimization | Low bias | Observational data; two-step loss built from estimated marginal effects and propensities (Nie and Wager 2021) |
+| **DR-learner** | Doubly robust pseudo-outcomes | Low bias | Valid causal design; robustness desired (Kennedy 2023) |
+
+Bias/variance labels are a DAAF summary, not source claims; Künzel et al.
+(2019) find no meta-learner uniformly best.
 
 S-learner and T-learner can be implemented manually with installed packages.
-X-learner, R-learner, and DR-learner with valid inference require EconML or
-CausalML.
+X-learner, R-learner, and DR-learner are not implemented manually here;
+packaged versions are in EconML or CausalML.
 
 ### Causal Forests
 
@@ -137,7 +144,9 @@ forests:
 - **Honesty:** Each tree uses separate subsamples for splitting (finding the
   partition) and estimation (computing treatment effects within leaves). This
   prevents the adaptive bias that occurs when the same data determines both
-  the partition and the estimates.
+  the partition and the estimates. (This is the double-sample construction;
+  Wager and Athey's propensity trees achieve honesty by splitting on
+  treatment assignment only.)
 - **Subsampling (not bootstrap):** Trees are grown on subsamples drawn without
   replacement. This is necessary for the asymptotic normality result that
   enables valid confidence intervals.
@@ -166,8 +175,10 @@ statsmodels, pyfixest). All package-based approaches require user installation.
 ## Manual DML: Partially Linear Model
 
 This implementation estimates the ATE (theta) in the partially linear model
-Y = theta * D + g(X) + epsilon using only installed packages. It follows the
-Chernozhukov et al. (2018) algorithm exactly.
+Y = theta * D + g(X) + epsilon using only installed packages. It implements
+the DML2 estimator with the partialling-out score of Chernozhukov et al.
+(2018), using a single sample split. The paper recommends repeating over S
+splits and reporting medians (Sec. 3.4).
 
 ### Step 1: Data Setup
 
@@ -202,28 +213,32 @@ print(f"Covariates: {len(COVARIATE_COLS)}")
 
 ```python
 # --- Cross-fitting: residualize Y and D on X ---
-# INTENT: Estimate nuisance functions g(X)=E[Y|X] and m(X)=E[D|X] using
+# INTENT: Estimate nuisance functions l(X)=E[Y|X] and m(X)=E[D|X] using
 #   cross-fitting to avoid overfitting bias
 # REASONING: Each observation's residuals are computed from models trained on
-#   OTHER observations, preventing the regularization bias that would arise
-#   from using the full sample
+#   OTHER observations, preventing the overfitting bias that would arise
+#   from using the full sample. The partialling-out score uses l(X)=E[Y|X]
+#   (= theta*m(X) + g(X)), not the structural g(X) (Chernozhukov et al. 2018,
+#   score 4.4).
 
-V_hat = np.full(n, np.nan)  # Y residuals: Y - g_hat(X)
+V_hat = np.full(n, np.nan)  # Y residuals: Y - l_hat(X)
 U_hat = np.full(n, np.nan)  # D residuals: D - m_hat(X)
 
 kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
 for fold_idx, (train_idx, test_idx) in enumerate(kf.split(X)):
-    # --- Outcome model: g(X) = E[Y|X] ---
+    # --- Outcome model: l(X) = E[Y|X] ---
     # REASONING: HistGradientBoosting handles missing values, high dimensions,
     #   and nonlinear relationships without manual tuning
+    # ASSUMES: max_iter=200, max_depth=5 here and below are a DAAF default,
+    #   untuned -- not values from the DML paper
     model_y = HistGradientBoostingRegressor(
         max_iter=200, max_depth=5, learning_rate=0.1,
         random_state=RANDOM_STATE,
     )
     model_y.fit(X[train_idx], Y[train_idx])
-    g_hat = model_y.predict(X[test_idx])
-    V_hat[test_idx] = Y[test_idx] - g_hat
+    l_hat = model_y.predict(X[test_idx])
+    V_hat[test_idx] = Y[test_idx] - l_hat
 
     # --- Treatment model: m(X) = E[D|X] ---
     # ASSUMES: Binary treatment uses classifier; continuous uses regressor
@@ -264,9 +279,11 @@ print(f"\nResiduals computed for all {n} observations")
 
 theta_hat = np.sum(U_hat * V_hat) / np.sum(U_hat ** 2)
 
-# --- Standard error: accounts for estimation uncertainty ---
-# REASONING: The influence function psi_i = U_hat_i * (V_hat_i - theta * U_hat_i)
-#   provides the basis for the sandwich-style variance estimator
+# --- Standard error: heteroskedasticity-robust sandwich ---
+# REASONING: The score psi_i = U_hat_i * (V_hat_i - theta * U_hat_i) gives the
+#   sandwich variance J^-1 E[psi^2] J^-1 with J = -E[U_hat^2] (pooled-sample
+#   form of Chernozhukov et al. 2018, Thm 3.2). It uses the empirical second
+#   moment of the score, so it does not assume homoskedastic errors.
 psi = U_hat * (V_hat - theta_hat * U_hat)
 var_theta = np.mean(psi ** 2) / (np.mean(U_hat ** 2) ** 2) / n
 se_theta = np.sqrt(var_theta)
@@ -327,11 +344,9 @@ print(fit.summary())
 # influence function.
 ```
 
-> **Note:** pyfixest always includes an intercept regardless of `- 1` syntax in
-> the formula (unlike R's `fixest`). This does not affect the point estimate on
-> `U_hat` (because DML residuals have mean near zero), but be aware that
-> `fit.coef()` includes both `Intercept` and `U_hat`. Extract the treatment
-> coefficient by name: `fit.coef()["U_hat"]`.
+> **Note:** In the installed pyfixest (0.60.0), `- 1` in the formula removes
+> the intercept, as does `pf.feols(..., drop_intercept=True)` (verified by
+> probe, 2026-10-11). Extract the coefficient by name, `fit.coef()["U_hat"]`.
 
 ### Sensitivity to ML Model Choice
 
@@ -400,7 +415,9 @@ function for the ATE.
 # INTENT: Estimate ATE without assuming a partially linear model
 # REASONING: The AIPW score is doubly robust — consistent if either the
 #   outcome model or the propensity score is correctly specified
-# ASSUMES: Binary treatment (D in {0, 1})
+#   (Bang and Robins 2005)
+# ASSUMES: Binary treatment (D in {0, 1}); HistGBR settings are a DAAF
+#   default, untuned
 
 mu1_hat = np.full(n, np.nan)  # E[Y|D=1, X]
 mu0_hat = np.full(n, np.nan)  # E[Y|D=0, X]
@@ -434,7 +451,9 @@ for train_idx, test_idx in kf.split(X):
 
 # Clip propensity scores to avoid extreme weights
 # REASONING: Propensity scores near 0 or 1 produce extreme IPW weights
-#   that inflate variance. Trimming at 0.01/0.99 is standard practice.
+#   that inflate variance. Chernozhukov et al. (2018, 401(k) application)
+#   trim propensity scores at 0.01 and 0.99; this is a convention, not a rule.
+#   Note that np.clip winsorizes the scores rather than dropping observations.
 e_hat_clipped = np.clip(e_hat, 0.01, 0.99)
 
 # AIPW score for each observation
@@ -467,13 +486,14 @@ CATE is estimated as the difference in predictions under D=1 and D=0.
 ```python
 # --- S-Learner ---
 # INTENT: Estimate CATE using a single model that includes treatment as a feature
-# REASONING: Simple and stable, but biased toward zero when treatment effects
-#   are small relative to the main effects — the model may ignore D entirely
-#   if X dominates the predictions
+# REASONING: Simple and stable, but can be biased toward zero (Künzel et al.
+#   2019) when treatment effects are small relative to the main effects — the
+#   model may ignore D entirely if X dominates the predictions
 
 # Construct feature matrix with treatment as a column
 XD = np.column_stack([X, D])
 
+# ASSUMES: max_iter=300, max_depth=5 are a DAAF default, untuned
 model_s = HistGradientBoostingRegressor(
     max_iter=300, max_depth=5, learning_rate=0.1, random_state=RANDOM_STATE,
 )
@@ -514,6 +534,7 @@ control_mask = D == 0
 
 print(f"T-Learner groups: treated={treated_mask.sum()}, control={control_mask.sum()}")
 
+# ASSUMES: max_iter=300, max_depth=5 are a DAAF default, untuned
 model_t1 = HistGradientBoostingRegressor(
     max_iter=300, max_depth=5, learning_rate=0.1, random_state=RANDOM_STATE,
 )
@@ -576,9 +597,15 @@ with a unified API.
 from econml.dml import LinearDML
 
 # LinearDML: partially linear model with linear final stage
+# REASONING: discrete_treatment=True is required when model_t is a classifier.
+#   With the default (False), EconML's first-stage wrapper raises
+#   "Cannot use a classifier as a first stage model when the target is
+#   continuous!" (upstream EconML dml.py on GitHub main; EconML is not
+#   installed in DAAF, so this was not executed)
 est = LinearDML(
     model_y=HistGradientBoostingRegressor(max_iter=200, random_state=42),
     model_t=HistGradientBoostingClassifier(max_iter=200, random_state=42),
+    discrete_treatment=True,  # Binary D with a classifier first stage
     cv=5,                    # Cross-fitting folds
     random_state=42,
 )
@@ -603,11 +630,17 @@ print(f"CATE intercept: {est.intercept_}")
 ```python
 from econml.dml import CausalForestDML
 
+# REASONING: discrete_treatment=True for a classifier model_t, as for
+#   LinearDML above. The classifier check is in upstream EconML dml.py; the
+#   CausalForestDML source itself was not reviewed, and EconML is not
+#   installed in DAAF.
 est = CausalForestDML(
     model_y=HistGradientBoostingRegressor(max_iter=200, random_state=42),
     model_t=HistGradientBoostingClassifier(max_iter=200, random_state=42),
-    n_estimators=1000,       # Number of trees
-    min_samples_leaf=10,     # Minimum leaf size (controls smoothing)
+    discrete_treatment=True,  # Binary D with a classifier first stage
+    n_estimators=1000,       # Number of trees (illustrative)
+    min_samples_leaf=10,     # Minimum leaf size (controls smoothing; illustrative,
+                             #   matches the EconML README example)
     cv=5,
     random_state=42,
 )
@@ -730,10 +763,13 @@ plr.sensitivity_analysis()
 # These bound how much an omitted confounder could change the estimate
 
 print(f"Sensitivity results:")
-print(f"  Robustness value (rho): {plr.sensitivity_params['rv']:.3f}")
-print(f"  Robustness value (rho, alpha=0.05): {plr.sensitivity_params['rva']:.3f}")
-# REASONING: rho is the minimum confounding strength that would change the
-# conclusion. Larger rho = more robust. rva accounts for statistical uncertainty.
+print(f"  Robustness value RV: {plr.sensitivity_params['rv'][0]:.3f}")
+print(f"  Robustness value RVa (alpha=0.05): {plr.sensitivity_params['rva'][0]:.3f}")
+# REASONING: RV is the confounding strength (cf_y = cf_d = RV) at which the
+# bias bound reaches the null; RVa also accounts for sampling uncertainty.
+# rho (default 1, conservative) is the assumed correlation of
+# confounding-induced deviations, not a robustness value. 'rv' and 'rva' are
+# arrays, hence [0] (DoubleML sensitivity docs; DoubleML is not installed).
 ```
 
 ## Causal Forests
@@ -772,7 +808,7 @@ ro.r.assign('W_r', D)  # grf uses W for treatment
 # Fit causal forest
 ro.r('''
 cf <- causal_forest(X_r, Y_r, W_r,
-                    num.trees = 2000,
+                    num.trees = 2000,  # illustrative
                     honesty = TRUE,
                     seed = 42)
 ''')
@@ -799,7 +835,7 @@ for i, col in enumerate(COVARIATE_COLS):
     print(f"  {col}: {vi[i]:.3f}")
 ```
 
-**Key grf features not available in EconML:**
+**Key grf diagnostics (EconML offers partial analogues via `econml.validate.DRTester`: BLP, calibration, QINI/AUTOC):**
 - `best_linear_projection()`: tests whether CATE varies with specific covariates
   (formal heterogeneity test)
 - `rank_average_treatment_effect()`: evaluates targeting quality (RATE metric)
@@ -825,6 +861,8 @@ e_scores = ps_model.predict_proba(X)[:, 1]
 print(f"Propensity score summary:")
 print(f"  Range:  [{e_scores.min():.3f}, {e_scores.max():.3f}]")
 print(f"  Mean:   {e_scores.mean():.3f}")
+# ASSUMES: The 0.05/0.95 flags are a DAAF diagnostic convention, not a sourced
+#   threshold; they differ from the 0.01/0.99 clip used in the AIPW example
 print(f"  < 0.05: {(e_scores < 0.05).sum()} obs ({(e_scores < 0.05).mean():.1%})")
 print(f"  > 0.95: {(e_scores > 0.95).sum()} obs ({(e_scores > 0.95).mean():.1%})")
 
@@ -846,15 +884,20 @@ overlap_plot = (
 # means CATE is extrapolated, not estimated, in those regions.
 ```
 
-### CATE Validation: Sorted Group Average Treatment Effects (GATES)
+### GATES-Style Heuristic Check (Not the CDDF GATES Estimator)
 
 ```python
-# --- GATES: test whether estimated CATE predicts actual heterogeneity ---
+# --- GATES-style heuristic: does estimated CATE track heterogeneity? ---
 # INTENT: Divide sample into quantile groups by estimated CATE and check
 #   whether the actual treatment effect varies across these groups
 # REASONING: If CATE estimates are informative, groups with higher predicted
-#   CATE should show larger actual treatment effects (Chernozhukov et al. 2018)
-# ASSUMES: Binary treatment with a valid causal design
+#   CATE should show larger actual treatment effects (Chernozhukov, Demirer,
+#   Duflo, and Fernández-Val 2025)
+# ASSUMES: Binary treatment with a valid causal design. CDDF assume a known
+#   propensity score (randomized design); proxies must be fit on a held-out
+#   split. This simplified version uses unweighted within-quintile differences
+#   in means on an in-sample CATE, so it is a heuristic, not the CDDF GATES
+#   estimator.
 
 # Sort observations by estimated CATE into quintiles
 cate_estimates = cate_t  # or cate_s, or any estimator
@@ -884,19 +927,23 @@ for q in range(5):
 
 gates_df = pl.DataFrame(gates_results)
 print(gates_df)
-# REASONING: An increasing pattern in actual_gate across quintiles sorted
-# by predicted_cate indicates the CATE estimates capture real heterogeneity.
-# A flat pattern suggests the estimated heterogeneity is noise.
+# REASONING: An increasing pattern is suggestive only (in-sample CATE; see
+# ASSUMES). A flat pattern suggests the estimated heterogeneity is noise.
 ```
 
-### BLP: Best Linear Predictor Test
+### BLP-Style Heuristic Check (Not the CDDF BLP Estimator)
 
 ```python
-# --- BLP test (Chernozhukov et al. 2018) ---
-# INTENT: Formal test of whether estimated CATE predicts actual heterogeneity
-# REASONING: Regress Y on (D, D*CATE_hat) controlling for CATE_hat.
-#   The coefficient on D*CATE_hat tests whether the estimated heterogeneity
-#   is predictive. A significant positive coefficient validates the CATE model.
+# --- Heuristic interaction check (NOT the CDDF BLP estimator) ---
+# INTENT: Quick check of whether estimated CATE tracks heterogeneity
+# REASONING: Naive OLS of Y on D, D*(CATE_hat - mean) and CATE_hat.
+#   Chernozhukov, Demirer, Duflo, and Fernández-Val (2025; arXiv v8,
+#   Comment 3.2, eq. 3.2) show that this kind of unweighted regression does
+#   not identify the BLP slope even in RCTs. For the formal BLP: fit the CATE
+#   proxy S and baseline proxy B on an auxiliary split; on the main split
+#   regress Y on [1, B, p, p*S, D-p, (D-p)(S-mean S)] with weights
+#   1/(p(1-p)); repeat over many splits and take medians. Rejecting
+#   beta2 = 0 indicates heterogeneity and that S is a relevant predictor.
 
 # Center CATE estimates for interpretability
 cate_centered = cate_estimates - cate_estimates.mean()
@@ -910,14 +957,15 @@ blp_df = pl.DataFrame({
 
 import statsmodels.formula.api as smf
 blp_fit = smf.ols("Y ~ D + D_cate + cate_hat", data=blp_df).fit(cov_type="HC1")
-print(f"\nBLP Test:")
+print(f"\nHeuristic interaction check (not the CDDF BLP):")
 print(f"  D coefficient (ATE):       {blp_fit.params['D']:.4f} "
       f"(p={blp_fit.pvalues['D']:.4f})")
 print(f"  D*CATE coefficient (het.): {blp_fit.params['D_cate']:.4f} "
       f"(p={blp_fit.pvalues['D_cate']:.4f})")
-# REASONING: If D_cate coefficient is significantly positive, the CATE
-# model captures real treatment effect heterogeneity. A coefficient near 1
-# suggests well-calibrated CATE estimates.
+# REASONING: Treat a positive D_cate coefficient as suggestive only. In the
+# properly weighted, split-sample BLP, beta2 = 1 if the proxy is perfect
+# (Chernozhukov, Demirer, Duflo, and Fernández-Val 2025, Sec. 3); this naive
+# regression does not support a calibration reading.
 ```
 
 ## Gotchas and Pitfalls
@@ -933,23 +981,23 @@ defended conditional independence), then use DML for estimation.
 
 ### 2. Cross-Fitting Is Not Optional
 
-The cross-fitting step in DML is not a convenience -- it is mathematically
-necessary. Without cross-fitting, the regularization bias from ML nuisance
-models contaminates the causal parameter estimate, and standard errors are
-invalid. Naive plug-in (fitting nuisance models on the full sample, then
-computing residuals on the same sample) produces overfitting bias that does
-not vanish at root-n rates. Always use K-fold cross-fitting with K >= 2
-(K=5 is standard).
+Cross-fitting is the default safeguard against overfitting bias when nuisance
+functions are fit with flexible, high-complexity ML learners, where classical
+Donsker-type conditions fail (Chernozhukov et al. 2018, Sec. 1). Orthogonal
+scores address regularization bias; cross-fitting addresses overfitting bias.
+Full-sample plug-in can be valid only under restrictive complexity conditions
+that DAAF does not attempt to verify, so always cross-fit. Chernozhukov et al.
+(2018, Remark 3.1) found K = 4 or 5 to work better than K = 2.
 
 ### 3. CATE Estimates Are Noisy for Small Subgroups
 
 Estimating CATE(x) for a specific covariate profile x requires sufficient
 data in the neighborhood of x. In thin regions of the covariate space,
 CATE estimates are driven by noise rather than signal. Confidence intervals
-(from EconML or causal forests) will correctly reflect this uncertainty by
-being wide -- but point estimates alone can be misleading. Always report
-confidence intervals for CATE, and be suspicious of extreme estimated CATE
-values that occur in sparse regions.
+(from EconML or causal forests) are intended to reflect (pointwise,
+asymptotically) this uncertainty by being wide -- but point estimates alone
+can be misleading. Always report confidence intervals for CATE, and be
+suspicious of extreme estimated CATE values that occur in sparse regions.
 
 ### 4. Overlap Is Critical for All CATE Methods
 
@@ -962,11 +1010,12 @@ requirement as for matching/IPW methods (see `./causal-matching.md`).
 
 ### 5. Meta-Learner Bias-Variance Tradeoffs
 
-S-learner is biased toward zero (the model may ignore a small treatment
-effect), while T-learner has high variance (two independent models with no
-information sharing). Neither dominates -- the right choice depends on sample
-balance and signal strength. When in doubt, estimate both and compare. If
-they disagree substantially, the heterogeneity pattern may not be robust.
+S-learner can be biased toward zero (Künzel et al. 2019), because the model
+may ignore a small treatment effect, while T-learner has high variance (two
+independent models with no information sharing). Neither dominates -- the
+right choice depends on sample balance and signal strength. When in doubt,
+estimate both and compare. If they disagree substantially, the heterogeneity
+pattern may not be robust.
 
 ### 6. Variable Importance in Causal Forests Is Not Causal Discovery
 
@@ -976,15 +1025,12 @@ the heterogeneity. A variable can rank high because it is correlated with
 a true effect modifier, not because it is one. Interpret importance scores as
 "predictive of heterogeneity," not "causing heterogeneity."
 
-### 7. DML Standard Errors May Need HC Adjustment
+### 7. DML Standard Errors and Clustering
 
-The standard DML variance formula assumes homoskedastic errors in the
-influence function. With heteroskedastic data, use HC-robust standard errors
-(HC1 or HC3) in the final-stage regression of V_hat on U_hat. The manual
-implementation above uses the sandwich-style estimator, which is
-heteroskedasticity-consistent. When data has clustering structure, use
-pyfixest with clustered SEs in the final stage (see the pyfixest final-stage
-example above).
+The DML variance estimator (Chernozhukov et al. 2018, Thm 3.2) is a sandwich
+form and is heteroskedasticity-robust; the manual implementation above
+computes it directly. With clustered data, use cluster-robust SEs in the final
+stage (pyfixest example above).
 
 ### 8. pyfixest Can Serve as the DML Final Stage
 
@@ -1013,21 +1059,23 @@ What is your goal?
 |   |
 |   +-- Just exploring heterogeneity patterns?
 |   |   +-- YES --> Manual S/T-learner (above)
-|   |   |          Then validate with GATES/BLP
+|   |   |          Then check with the GATES/BLP-style heuristics
+|   |   |          (not the formal CDDF estimators)
 |   |   +-- NO (need valid CIs on CATE)
-|   |       +-- EconML CausalForestDML or DR-Learner
+|   |       +-- EconML CausalForestDML or DR-Learner (DAAF guidance)
 |   |       +-- Or R grf (gold standard) via rpy2
 |   |
 |   +-- Imbalanced treatment groups?
-|   |   +-- YES --> X-Learner (EconML) or DR-Learner
-|   |   +-- NO  --> T-Learner or CausalForestDML
+|   |   +-- YES --> X-Learner (EconML; Künzel et al. 2019) or DR-Learner
+|   |   +-- NO  --> T-Learner or CausalForestDML (DAAF guidance)
 |   |
 |   +-- Want doubly robust estimation?
 |       +-- YES --> DR-Learner (EconML) or AIPW (manual, above)
-|       +-- NO  --> T-Learner or CausalForestDML
+|       +-- NO  --> T-Learner or CausalForestDML (DAAF guidance)
 |
-+-- Policy learning (who to treat?)
-|   +-- EconML PolicyTree or PolicyForest
++-- Policy learning (who to treat?) (DAAF guidance)
+|   +-- EconML PolicyTree or PolicyForest (the EconML README example
+|       uses DRPolicyTree / DRPolicyForest)
 |
 +-- Not sure where to start?
     +-- Start with manual DML for ATE
@@ -1035,7 +1083,12 @@ What is your goal?
     +-- Install EconML when you need valid CATE CIs
 ```
 
-## References
+## References and Further Reading
+
+Section, theorem, remark, and equation numbers cited in the text follow the
+versions read for this file: arXiv:1608.00060v7 for Chernozhukov et al.
+(2018) and arXiv:1712.04802v8 for Chernozhukov, Demirer, Duflo, and
+Fernández-Val (2025). Published numbering may differ.
 
 ### Foundational Papers
 
@@ -1043,6 +1096,20 @@ Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey,
 W., and Robins, J. (2018). "Double/Debiased Machine Learning for Treatment
 and Structural Parameters." *Econometrics Journal*, 21(1), C1-C68.
 https://doi.org/10.1111/ectj.12097
+
+Chernozhukov, V., Demirer, M., Duflo, E., and Fernández-Val, I. (2025).
+"Fisher–Schultz Lecture: Generic Machine Learning Inference on Heterogeneous
+Treatment Effects in Randomized Experiments, With an Application to
+Immunization in India." *Econometrica*, 93(4), 1121-1164.
+https://doi.org/10.3982/ECTA19303
+
+Chernozhukov, V., Cinelli, C., Newey, W.K., Sharma, A., and Syrgkanis, V.
+(2022). "Long Story Short: Omitted Variable Bias in Causal Machine Learning."
+NBER Working Paper 30302. https://doi.org/10.3386/w30302
+
+Bang, H. and Robins, J.M. (2005). "Doubly Robust Estimation in Missing Data
+and Causal Inference Models." *Biometrics*, 61(4), 962-973.
+https://doi.org/10.1111/j.1541-0420.2005.00377.x
 
 Wager, S. and Athey, S. (2018). "Estimation and Inference of Heterogeneous
 Treatment Effects Using Random Forests." *Journal of the American Statistical
@@ -1055,7 +1122,7 @@ https://doi.org/10.1214/18-AOS1709
 
 ### Meta-Learners
 
-Kunzel, S.R., Sekhon, J.S., Bickel, P.J., and Yu, B. (2019). "Metalearners
+Künzel, S.R., Sekhon, J.S., Bickel, P.J., and Yu, B. (2019). "Metalearners
 for Estimating Heterogeneous Treatment Effects Using Machine Learning."
 *Proceedings of the National Academy of Sciences*, 116(10), 4156-4165.
 https://doi.org/10.1073/pnas.1804597116
@@ -1073,14 +1140,14 @@ https://doi.org/10.1214/23-EJS2157
 
 Battocchi, K., Dillon, E., Hei, M., Lewis, G., Oka, P., Oprescu, M., and
 Syrgkanis, V. (2019). "EconML: A Python Package for ML-Based Heterogeneous
-Treatment Effects Estimation." Microsoft Research.
+Treatment Effects Estimation." Version 0.x.
 https://github.com/py-why/EconML
 
 Sharma, A. and Kiciman, E. (2020). "DoWhy: An End-to-End Library for
 Causal Inference." arXiv:2011.04216.
 https://arxiv.org/abs/2011.04216
 
-Bach, P., Chernozhukov, V., Kurz, M.S., and Spindler, M. (2022). "DoubleML:
+Bach, P., Chernozhukov, V., Kurz, M.S., and Spindler, M. (2022). "DoubleML -
 An Object-Oriented Implementation of Double Machine Learning in Python."
 *Journal of Machine Learning Research*, 23(53), 1-6.
 https://jmlr.org/papers/v23/21-0862.html

@@ -69,8 +69,10 @@ analyze survey data as if it were a simple random sample, two things go wrong:
    students within schools) introduces positive intra-cluster correlation: students in
    the same school are more alike than students in different schools. This means your
    data contains less independent information than the raw sample size suggests. Standard
-   errors that ignore clustering are typically **too small by a factor of 1.5 to 5x**,
-   depending on the intra-class correlation and cluster size. Your p-values will be too
+   errors that ignore clustering are often **too small by a factor of about 1.5 to 5**,
+   depending on the intra-class correlation and cluster size (a DAAF rule of thumb, not a
+   sourced range; the factor is √DEFF, so this corresponds to DEFF of about 2 to 25 -- see
+   [Design Effects](#design-effects-and-effective-sample-size)). Your p-values will be too
    liberal and your confidence intervals too narrow -- you will claim precision you do
    not have.
 
@@ -85,7 +87,7 @@ analyze survey data as if it were a simple random sample, two things go wrong:
 Stratification, by contrast, is the one design feature that *helps* you: it reduces
 variance by ensuring representation across key subgroups. Ignoring stratification
 produces standard errors that are slightly too large -- conservative but not wrong in
-the way that ignoring clustering is wrong.
+the way that ignoring clustering is wrong (a textbook generalization; not sourced here).
 
 **The bottom line:** ignoring the survey design produces point estimates that do not
 represent the population and standard errors that understate uncertainty. Both errors
@@ -110,7 +112,8 @@ characteristics.
 
 **Why it matters:** Stratification reduces sampling variance. Ignoring it produces
 slightly conservative standard errors (too large), which is the least harmful of the
-three design features to get wrong -- but you should still specify it correctly.
+three design features to get wrong (a textbook generalization; not sourced here) -- but
+you should still specify it correctly.
 
 ### Clustering (Primary Sampling Units)
 
@@ -130,15 +133,17 @@ often drastically so. This is the most consequential design feature to get wrong
 
 Most large federal surveys use multistage designs: first sample PSUs (counties or
 groups of counties), then sample institutions (schools, hospitals) within PSUs, then
-sample individuals within institutions. For variance estimation, only the first stage
-of clustering typically needs to be specified -- first-stage sampling contributes the
-dominant component of variance (Lohr 2022, Ch. 5). Most survey documentation provides
-only first-stage stratum and PSU identifiers for exactly this reason.
+sample individuals within institutions. Analysts usually specify only first-stage
+strata and PSUs: under the with-replacement ("ultimate cluster") approximation, a
+variance computed from PSU-level totals reflects the later-stage variation too, and it
+overstates the variance only slightly when first-stage sampling fractions are small
+(Rao, Wu, and Yue 1992, p. 210). Most survey documentation provides only first-stage
+stratum and PSU identifiers for this reason.
 
 ### Finite Population Corrections
 
-When the sampling fraction is large (more than about 5-10% of the population), the
-finite population correction (FPC) reduces variance. Most national surveys have
+When the sampling fraction is large (more than about 5-10% of the population, a rule of
+thumb), the finite population correction (FPC) reduces variance. Most national surveys have
 negligibly small sampling fractions and the FPC is ignored. Apply the FPC only when
 the survey documentation explicitly provides population sizes or sampling fractions
 for it.
@@ -195,10 +200,12 @@ sometimes uses the word "weight" for several unrelated concepts:
 | **Analytic weight** (aweight) | Inverse of the variance of an observation-level mean, used in WLS. | Heteroskedastic regression where each observation is an aggregate (e.g., group means with known group sizes). |
 | **Importance weight** | Application-specific emphasis on certain observations. | Machine learning loss functions, not survey estimation. |
 
-**The critical distinction:** Passing survey weights to an ordinary `WLS` or `GLM`
-`weights=` argument **does not produce correct survey estimates** -- it ignores
-clustering and stratification entirely. You must use dedicated survey estimation
-procedures that handle all three design features (strata, PSUs, weights) together.
+**The critical distinction:** Passing survey weights to an ordinary `WLS`/`GLM`
+`weights=` argument reproduces the survey-weighted point estimates (both solve the same
+weighted estimating equations; DAAF summary), but its standard errors treat the weights
+as precision weights and ignore clustering and stratification. You must use dedicated
+survey estimation procedures that handle all three design features (strata, PSUs,
+weights) together.
 
 ## Variance Estimation Methods
 
@@ -231,12 +238,13 @@ variance across replicate estimates approximates the sampling variance.
 **Balanced Repeated Replication (BRR):**
 Designed for designs with exactly 2 PSUs per stratum. Creates half-samples by
 systematically selecting one PSU from each stratum, reweighting observations
-accordingly. The Fay modification (Fay 1989) uses perturbation factors of k and
-2-k (where 0 < k < 1) instead of 0 and 2, so that every replicate uses the full
-sample. This avoids the problem of undefined estimates in half-samples (e.g., when
-a domain falls entirely within one PSU). The Fay coefficient k is survey-specific
-and documented alongside the replicate weights -- common values include 0.3 (NHANES)
-and 0.5 (some NCES surveys).
+accordingly. The Fay modification multiplies full-sample weights by k and 2-k
+(0 < k < 1) instead of 0 and 2, so every replicate keeps every PSU. Fay (1989)
+describes replicate weighting with factors of 1.5 and 0.5 in place of 2 and 0. The
+method has sometimes been used as a compromise between the jackknife and standard BRR
+when both quartile and small-domain estimates matter (NCHS, *NHANES III Weighting and
+Estimation Methodology*, 1996). k is survey-specific and documented with the replicate
+weights (e.g., k = 0.3 for NHANES III; same source).
 
 **Jackknife:**
 Removes one PSU at a time and reweights. More general than BRR (works with any
@@ -272,13 +280,14 @@ DEFF = Var_complex(estimate) / Var_SRS(estimate)
 ```
 
 A DEFF of 3.0 means the complex design produces a variance 3 times larger than an
-SRS would -- equivalently, you would need 3 times as many observations under SRS to
-achieve the same precision as this complex design.
+SRS would -- equivalently, the complex sample needs 3 times as many observations as an
+SRS to reach the same precision; an SRS of n/3 would match it.
 
 ### Kish's Approximation
 
 For a single-stage cluster design, the design effect due to clustering can be
-approximated as:
+approximated as follows (commonly attributed to Kish (1965); not checked against the
+book). The formula assumes equal cluster sizes:
 
 ```
 DEFF_cluster ≈ 1 + (b - 1) * rho
@@ -299,8 +308,8 @@ n_eff = n / DEFF
 
 This is the number of independent observations that would provide the same precision
 as your complex sample of size n. Report the effective sample size alongside the
-nominal sample size whenever you report survey results. A study with n = 10,000 but
-DEFF = 4.0 has the precision of a simple random sample of 2,500.
+nominal sample size whenever you report survey results (DAAF convention). A study with
+n = 10,000 but DEFF = 4.0 has the precision of a simple random sample of 2,500.
 
 **When DEFF matters most:** Power calculations, sample size justifications, and
 interpreting the precision of estimates. If a funding agency asks "is your sample
@@ -308,8 +317,9 @@ large enough?", the answer depends on n_eff, not n.
 
 ## Domain (Subpopulation) Estimation
 
-This is the single most common error in survey analysis: **never subset the dataframe
-before running a survey-weighted analysis on a subpopulation.**
+In DAAF's judgment, this is the single most common error in survey analysis: **do not
+subset the dataframe before running a survey-weighted analysis on a subpopulation**;
+use domain estimation instead (see the default rule below).
 
 ### Why Subsetting Is Wrong
 
@@ -323,9 +333,11 @@ variance estimator needs:
 - **The lonely PSU problem becomes more severe.** A stratum that had two PSUs may have
   only one PSU with subpopulation members, creating an undefined variance.
 
-The result: standard errors **biased in unpredictable directions**. As West, Berglund,
-and Heeringa (2008) demonstrate with NHAMCS data, the differences can be substantively
-meaningful.
+The result: incorrect standard errors and design degrees of freedom. In West, Berglund,
+and Heeringa's (2008) NHAMCS example, subsetting dropped 180 of 294 PSUs, cut design df
+from 286 to 106, and understated the standard error (1.576 vs. 1.590). The difference
+was small in that example, but the authors note the problem "tends to be exacerbated in
+complex samples with fewer PSUs selected from each sampling stratum."
 
 ### How to Do It Correctly
 
@@ -336,11 +348,17 @@ estimation to the subpopulation:
 - **R (survey package):** `svyby()` with `~domain_var` or `subset()` on a survey
   design object (which handles domains correctly internally)
 - **Stata:** The `subpop()` option on any `svy` command
-- **Python:** Use the `subpop` parameter in survey-aware functions (see the `svy` skill)
+- **Python (svy):** pass a polars expression to `where=` (or a domain column to `by=`);
+  see the `svy` skill
 
-**The rule is absolute:** define the subpopulation as a variable in the dataset and pass
-it to the estimation function. Never filter rows before creating the survey design
-object. This applies to every type of survey analysis without exception.
+**Default rule:** define the subpopulation as a variable and pass it to the estimation
+function; do not filter rows before creating the design object. West, Berglund, and
+Heeringa (2008, pp. 527-528) note narrow exceptions: replicate weights correctly built
+on the full design (as agencies usually supply them); a subpopulation that is a design
+domain whose members can appear only in a subset of strata; and subpopulation sizes known
+for each stratum. Domain estimation is the safe default, so use it whenever in doubt
+(for design domains, West et al. add that strata where the subpopulation cannot appear
+should be left out of the degrees-of-freedom count).
 
 ## Plausible Values
 
@@ -364,8 +382,9 @@ ranking students by plausible values) is a misuse.
 
 ### How to Analyze Plausible Values
 
-Each dataset provides multiple plausible values per student (NAEP provides 20; PISA
-provides 10). The analysis protocol, based on Rubin's (1987) combining rules:
+Each dataset provides multiple plausible values per student (NAEP provides 20, per the
+NAEP Technical Documentation; PISA provides 10 -- unsourced here, so check the cycle's
+technical report). The analysis protocol, based on Rubin's (1987) combining rules:
 
 1. **Run the complete analysis separately for each plausible value.** If there are 20
    plausible values, run 20 separate regressions (or means, or whatever your analysis
@@ -375,7 +394,8 @@ provides 10). The analysis protocol, based on Rubin's (1987) combining rules:
 3. **Combine variance estimates.** The total variance has two components:
    - *Within-imputation variance*: the average of the M variance estimates from step 1
    - *Between-imputation variance*: the variance of the M point estimates from step 1
-   - Total variance = within-imputation + (1 + 1/M) * between-imputation
+   - Total variance = within-imputation + (1 + 1/M) * between-imputation (the standard
+     combining rule; Rubin 1987 was not re-read for this file)
 
 This is identical to Rubin's combining rules for multiple imputation, because
 plausible values *are* multiple imputations of a latent variable.
@@ -396,7 +416,9 @@ uncertainty, making Rubin's combining rules the appropriate aggregation method.
 - NAEP provides both plausible values and jackknife replicate weights. The correct
   approach combines both: run the analysis for each plausible value using each set of
   replicate weights, then combine using the NAEP-specific variance formula that
-  accounts for both imputation variance and sampling variance.
+  accounts for both imputation variance and sampling variance (DAAF summary; see the
+  NAEP Technical Documentation for the formula -- this summary was not checked
+  against it).
 - Most education researchers use the NAEP Data Explorer or the `EdSurvey` R package,
   which handles the plausible value and replicate weight combination automatically.
   In Python, the combination must be implemented manually (see the `svy` skill for
@@ -410,30 +432,35 @@ different quantity and requires different inference.
 
 ### What Survey-Weighted Regression Estimates
 
-An unweighted OLS regression estimates the conditional expectation function (CEF) in
-the *sample*. A survey-weighted regression estimates the CEF in the *population* --
+Unweighted OLS estimates the linear projection of Y on X in the *sample*;
+survey-weighted regression consistently estimates the population linear projection --
 the regression you would obtain if you ran OLS on the entire target population (a
 "census regression").
 
-This is a population-average parameter: the average partial association between X and
-Y in the population, weighted by each population member's contribution. It differs
-from the sample-conditional parameter when the relationship between X and Y varies
-across subpopulations that are sampled at different rates.
+This is a population descriptive parameter, not in general the population average
+partial effect (Solon, Haider, and Wooldridge 2015, Sec. V). Weighted and unweighted
+estimates generally converge to different values when sampling relates to the outcome
+(endogenous sampling) or the model is misspecified.
 
 ### The Solon-Haider-Wooldridge Perspective
 
-Solon, Haider, and Wooldridge (2015) provide the most influential framework for
+Solon, Haider, and Wooldridge (2015) provide an influential framework for
 deciding when to weight regression estimates. They distinguish three motivations for
 weighting:
 
-1. **Correcting for heteroskedasticity** -- Survey weights are *not* optimal WLS
-   weights (they correct for selection, not heteroskedasticity), so this motivation
-   does not apply directly.
+1. **Correcting for heteroskedasticity** -- Solon et al. find this motive often fails
+   even when assumed: in their divorce-rate example, robust standard errors for OLS were
+   only about half those for population-weighted WLS. Inverse-probability weights can
+   themselves induce heteroskedasticity when the errors were homoskedastic. Diagnose
+   rather than assume.
 2. **Correcting for endogenous sampling** -- If selection probabilities depend on Y,
    unweighted estimates may be inconsistent. Weighting restores consistency.
-3. **Recovering average partial effects** -- If effects are heterogeneous and the
-   design oversamples subgroups with different effects, weighting recovers the
-   population-average effect.
+3. **Identifying average partial effects** -- Practitioners often assume that
+   weighting recovers the population average effect when effects are heterogeneous.
+   Solon et al. show it generally does not: with unmodeled heterogeneity, OLS and WLS
+   identify different weighted averages of the effects, and neither equals the
+   population average partial effect. Their advice is to model the heterogeneity
+   (e.g., interactions) rather than average it out with weights.
 
 **Their practical advice:** Do not assume weighting is always necessary or always
 beneficial. Report both weighted and unweighted results -- if they differ substantially,
@@ -445,8 +472,8 @@ also argues, the comparison itself is a diagnostic.
 | Goal | Weight? | Rationale |
 |------|---------|-----------|
 | Estimate population descriptive statistics (means, proportions, totals) | Always | The goal is a population parameter; weights are essential. |
-| Estimate a population-average regression coefficient | Yes | You want the census regression; weights recover it. |
-| Estimate a causal effect with a correctly specified model | Depends | If the model is correct and sampling is non-informative, weighting adds noise. If effects are heterogeneous and sampling is correlated with effect modification, weighting recovers the population ATT/ATE. Report both. |
+| Estimate a population linear-projection ("census regression") coefficient | Yes | You want the census regression; weights recover it. |
+| Estimate a causal effect | Depends | Exogenous sampling + correct specification: both are consistent; unweighted may be more precise. Sampling depends on the outcome (endogenous sampling): weight for consistency. Unmodeled heterogeneous effects: weighting does not generally recover the population ATE; model the heterogeneity (Solon, Haider, and Wooldridge 2015). Report both. |
 | Estimate associations for prediction (machine learning) | Usually no | Prediction accuracy on new data depends on model fit, not population representativeness. |
 | Estimate a model for an analytic subpopulation | Yes (with domain estimation) | The weights ensure the subpopulation estimate is representative of the subpopulation in the population. |
 
@@ -456,7 +483,7 @@ Even when weighted and unweighted point estimates are similar, standard errors w
 differ because they must account for clustering and stratification. Always compute
 survey regression standard errors using Taylor linearization or replicate weights --
 never with heteroskedasticity-robust (HC) or cluster-robust (CR) standard errors
-alone, which do not account for the full complex design.
+alone, which do not account for the full complex design (DAAF convention).
 
 ## Common Federal Survey Data Sources
 
@@ -472,13 +499,15 @@ to specify when setting up your survey analysis.
 | **NAEP** | National Assessment of Educational Progress | Complex multistage; matrix-sampled items | Student weight + jackknife replicate weights | Jackknife with plausible values | NAEP Technical Documentation (nces.ed.gov/nationsreportcard/tdw/) |
 | **ACS PUMS** | American Community Survey Public Use Microdata Sample | Stratified systematic sampling from Census Master Address File; no clustering in PUMS | `PWGTP` (person) or `WGTP` (housing unit) + 80 successive-difference replicate weights | Successive-difference replication | Census Bureau ACS PUMS documentation |
 | **CPS ASEC** | Current Population Survey Annual Social and Economic Supplement | Multistage: PSUs -> housing units; stratified by state and metropolitan status | `ASECWT` (supplement weight) + 160 replicate weights | Successive-difference replication | Census Bureau CPS Technical Paper 77 |
-| **NHANES** | National Health and Nutrition Examination Survey | Multistage: counties -> segments -> households -> persons; oversamples minorities, elderly | Exam and interview weights per cycle (e.g., `WTMEC2YR`) | TSL with masked variance units (`SDMVSTRA`, `SDMVPSU`) | NCHS Analytic Guidelines |
+| **NHANES** | National Health and Nutrition Examination Survey | Multistage: counties -> segments -> households -> persons; oversamples minorities, elderly | Exam and interview weights per cycle (e.g., `WTMEC2YR`) | TSL with masked variance units (`SDMVSTRA`, `SDMVPSU`); the earlier NHANES III instead released Fay BRR replicate weights (k = 0.3; NCHS 1996) | NCHS Analytic Guidelines |
 | **MEPS** | Medical Expenditure Panel Survey | Multistage panel: drawn from NHIS respondents; oversamples minorities, elderly | `PERWT` (person-level) per year; pooled weights for multi-year | TSL (`VARSTR`, `VARPSU`) | AHRQ MEPS documentation (meps.ahrq.gov) |
 
 **Notes:** Weight variable names are illustrative and may change across waves. Always
-consult the current user's manual. "TSL" means Taylor series linearization variables
-(strata + PSU) are provided. When both TSL and replicate weights are available, prefer
-replicate weights. For NAEP, see [Plausible Values](#plausible-values) above.
+consult the current user's manual. Design, weight, and report-number details in this
+table are unverified summaries; check each survey's documentation. "TSL" means Taylor
+series linearization variables (strata + PSU) are provided. When both TSL and replicate
+weights are available, prefer replicate weights (DAAF convention). For NAEP, see
+[Plausible Values](#plausible-values) above.
 
 ## Pitfalls Checklist
 
@@ -487,15 +516,18 @@ real research conclusions.
 
 1. **Ignoring the survey design entirely.** Running standard OLS, t-tests, or chi-squared
    tests as if the data were an SRS. *Consequence:* Standard errors are biased downward
-   (often 2-5x too small), producing inflated t-statistics and artificially significant
-   results. Every published finding is suspect. *Fix:* Specify strata, PSU, and weights
+   (often by a factor of about 1.5 to 5; the DAAF rule of thumb in
+   [Why Survey Analysis Requires Special Methods](#why-survey-analysis-requires-special-methods)),
+   producing inflated t-statistics and artificially significant results. Every
+   published finding is suspect. *Fix:* Specify strata, PSU, and weights
    using survey-aware estimation commands.
 
 2. **Subsetting the dataframe for domain estimation.** Filtering rows before analysis
    instead of using the subpopulation/domain mechanism. *Consequence:* Alters the
-   effective number of PSUs and strata, producing biased standard errors that can go in
-   either direction. *Fix:* Define a domain indicator variable and pass it to the
-   estimation function. See [Domain Estimation](#domain-subpopulation-estimation).
+   effective number of PSUs and strata, producing incorrect standard errors and design
+   degrees of freedom (understated in West, Berglund, and Heeringa's 2008 example).
+   *Fix:* Define a domain indicator variable and pass it to the estimation function.
+   See [Domain Estimation](#domain-subpopulation-estimation).
 
 3. **Using the wrong weight variable.** Applying a cross-sectional weight to a
    longitudinal analysis, a student-level weight to a school-level analysis, or a
@@ -505,9 +537,9 @@ real research conclusions.
 
 4. **Passing survey weights to ordinary regression `weights=` arguments.** Using
    `statsmodels` WLS or `scikit-learn` `sample_weight` with survey weights. *Consequence:*
-   Point estimates may approximate the weighted regression, but standard errors ignore
-   clustering and stratification -- they will be too small and inference will be invalid.
-   *Fix:* Use dedicated survey-aware estimation procedures that accept the full design
+   Point estimates match the weighted regression (DAAF summary), but standard errors
+   ignore clustering and stratification -- they will be too small and inference will be
+   invalid. *Fix:* Use dedicated survey-aware estimation procedures that accept the full design
    specification (strata, PSU, weights). See the `svy` skill.
 
 5. **Using the ordinary bootstrap on survey data.** Resampling observations with
@@ -540,13 +572,15 @@ real research conclusions.
    for survey estimates when the effective degrees of freedom are small. *Consequence:*
    With few PSUs, the t-distribution with survey-appropriate degrees of freedom can
    differ materially from the normal. *Fix:* Use degrees of freedom based on the number
-   of PSUs minus the number of strata. Some survey software computes this automatically.
+   of PSUs minus the number of strata (the standard design degrees of freedom; West,
+   Berglund, and Heeringa 2008, p. 526). Some survey software computes this automatically.
 
 10. **Combining survey cycles incorrectly.** Pooling multiple waves or cycles of a
     survey (e.g., combining 3 cycles of NHANES) without adjusting the weights.
     *Consequence:* Weighted totals will not sum to the correct population. *Fix:*
     Follow survey-specific guidance. For NHANES, divide weights by the number of
-    combined cycles. For ACS, use the provided multi-year PUMS weights.
+    combined cycles (per the NCHS Analytic Guidelines; not re-verified here). For ACS,
+    use the provided multi-year PUMS weights.
 
 ## Cross-References to DAAF Skills
 
@@ -568,7 +602,9 @@ Heeringa, S.G., West, B.T., and Berglund, P.A. (2017). *Applied Survey Data Anal
 (2nd ed.). Chapman and Hall/CRC.
 -- The most comprehensive applied textbook. Covers the full range of survey analysis
 tasks with Stata, SAS, and R examples. The standard reference for analysts working with
-federal survey microdata.
+federal survey microdata. A 2025 edition has since been published (West, B.T.,
+Heeringa, S.G., and Berglund, P.A., *Applied Survey Data Analysis*, Chapman and
+Hall/CRC; https://doi.org/10.1201/9781003472094); this file was not checked against it.
 
 Korn, E.L. and Graubard, B.I. (1999). *Analysis of Health Surveys*. Wiley.
 -- The definitive treatment for health survey analysis. Particularly strong on
@@ -576,8 +612,8 @@ subpopulation estimation, survey-weighted regression, and hypothesis testing.
 
 Lohr, S.L. (2022). *Sampling: Design and Analysis* (3rd ed.). Chapman and Hall/CRC.
 -- The leading graduate sampling textbook. Covers both design and analysis with
-exceptional clarity. The third edition adds material on nonprobability sampling and
-modern calibration methods.
+exceptional clarity. The third edition adds a new chapter on nonprobability samples
+(per the publisher's description).
 
 Lumley, T. (2010). *Complex Surveys: A Guide to Analysis Using R*. Wiley.
 -- Concise and practical. Written by the author of R's `survey` package. Best
@@ -586,8 +622,9 @@ single-volume introduction for a working analyst.
 ### Additional Textbooks
 
 Kish, L. (1965). *Survey Sampling*. Wiley.
--- The foundational text on survey sampling. Introduced the design effect concept and
-Kish's approximation formula. Still cited in every survey methods course.
+-- The foundational text on survey sampling. Commonly credited with introducing the
+design effect concept and Kish's approximation formula (attribution not checked against
+the book).
 
 Wolter, K.M. (2007). *Introduction to Variance Estimation* (2nd ed.). Springer.
 -- The comprehensive reference on variance estimation methods for surveys: Taylor
@@ -598,7 +635,8 @@ Zimmer, S.A., Powell, R.J., and Velásquez, I.C. (2024). *Exploring Complex Surv
 Analysis Using R: A Tidy Introduction with {srvyr} and {survey}*. Chapman and Hall/CRC.
 https://tidy-survey-r.github.io/tidy-survey-book/
 -- A modern, accessible introduction using tidyverse-style syntax. Freely available
-online. Excellent worked examples with RECS, ANES, and NHANES data.
+online. Worked examples with RECS and ANES data, plus NCVS and AmericasBarometer
+vignettes.
 
 ### Key Papers
 
@@ -633,6 +671,10 @@ Subpopulation Analysis of Complex-Sample Survey Data." *The Stata Journal*, 8(4)
 NCHS (National Center for Health Statistics). *NHANES Analytic Guidelines*.
 https://wwwn.cdc.gov/nchs/nhanes/analyticguidelines.aspx
 
+NCHS. (1996). *National Health and Nutrition Examination Survey III: Weighting and
+Estimation Methodology, Executive Summary*. Prepared by Westat, Inc. (Mohadjer, L., et
+al.). https://wwwn.cdc.gov/nchs/data/nhanes3/manuals/wgt_exec.pdf
+
 NCES (National Center for Education Statistics). *NAEP Technical Documentation*.
 https://nces.ed.gov/nationsreportcard/tdw/
 
@@ -644,6 +686,9 @@ https://meps.ahrq.gov/mepsweb/survey_comp/standard_errors.jsp
 
 U.S. Census Bureau. *ACS PUMS Documentation*.
 https://www.census.gov/programs-surveys/acs/microdata/documentation.html
+
+Agency documentation cited by report number in the text (CPS Technical Paper 77; NCES
+2015-074, 2018-140, 2014-364) was not re-verified in this review.
 
 ### Teaching Resources
 
