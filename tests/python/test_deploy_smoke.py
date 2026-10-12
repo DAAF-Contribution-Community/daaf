@@ -165,7 +165,16 @@ class MainModelProjectionTests(unittest.TestCase):
         self.assertEqual(result.resolved_model, "claude-sonnet-4-6")
         self.assertEqual(result.compatibility, "compatible")
         del env["ANTHROPIC_DEFAULT_SONNET_MODEL"]
-        self.assertEqual(route_detection.resolve_main_model(env).compatibility, "unknown")
+        # 2026-10-12: an unmapped alias resolves to Claude Code's built-in Claude
+        # model for its tier — family claude, exact ID unknown (resolved_model "").
+        # Native route: compatible (was "unknown"); a GPT shim route: incompatible.
+        result = route_detection.resolve_main_model(env)
+        self.assertEqual((result.family, result.compatibility, result.resolved_model),
+                         ("claude", "compatible", ""))
+        self.assertIsNone(result.safe_metadata()["resolved_sha256"])
+        shim_env = dict(env, DAAF_PROVIDER_SHIM="openai", SHIM_BACKEND_MODE="chatgpt",
+                        ANTHROPIC_BASE_URL="http://127.0.0.1:4141")
+        self.assertEqual(route_detection.resolve_main_model(shim_env).compatibility, "incompatible")
         self.assertEqual(route_detection.resolve_main_model({}, saved_model="claude-opus-4-8").source, "saved_model")
         self.assertEqual(route_detection.resolve_main_model({}).compatibility, "unknown")
         self.assertEqual(route_detection.resolve_main_model(env, uncertainty=("managed_policy_unresolved",)).compatibility, "unknown")
@@ -201,6 +210,434 @@ class MainModelProjectionTests(unittest.TestCase):
         (config / "managed-settings.json").write_text('{}')
         result, _ = smoke_probes.collect_main_model(env, str(root))
         self.assertEqual(result.compatibility, "unknown")
+
+
+class DefaultModelAndTierAliasTests(unittest.TestCase):
+    """2026-10-12: DAAF's settings.json ships the SOFT start default
+    ANTHROPIC_DEFAULT_MODEL (an alias such as "opus", or an explicit ID) instead
+    of a hard ANTHROPIC_MODEL pin, and non-standard provider lanes map all four
+    tier aliases (OPUS/SONNET/HAIKU/FABLE). Claude Code's main-model precedence:
+    --model > ANTHROPIC_MODEL > settings `model` key > ANTHROPIC_DEFAULT_MODEL
+    (ignored for default/inherit/opusplan/haiku) > account default."""
+
+    SHIM = {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt",
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141"}
+    GPT_REMAPS = {"ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]",
+                  "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]",
+                  "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]",
+                  "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]"}
+
+    def setUp(self):
+        import shutil
+        self.root = _scratch_dir("default_model")
+        self.addCleanup(shutil.rmtree, self.root)
+        self.user = self.root / "user"
+        self.user.mkdir()
+        (self.root / ".claude").mkdir()
+        self.env = {"CLAUDE_CONFIG_DIR": str(self.user)}
+
+    def _write(self, path, data):
+        path.write_text(json.dumps(data))
+
+    def _project(self, data):
+        self._write(self.root / ".claude/settings.json", data)
+
+    # (i) Anthropic route, only ANTHROPIC_DEFAULT_MODEL=opus in settings env.
+    def test_i_default_model_alias_in_settings_resolves_claude_without_unknowns(self):
+        self._project({"env": {"ANTHROPIC_DEFAULT_MODEL": "opus"}})
+        result, states = smoke_probes.collect_main_model(self.env, str(self.root))
+        self.assertEqual(states["project"], "present")
+        self.assertEqual((result.selector, result.source, result.family, result.compatibility),
+                         ("opus", "project_settings_env_default_model", "claude", "compatible"))
+        self.assertEqual(result.uncertainty, ())  # no dynamic_default/model_family_unresolved
+        self.assertEqual(smoke_probes.probe_main_model_coherence(self.env, str(self.root)).verdict,
+                         Verdict.PASS)
+        # The Tier 0 posture probes see the same value in the session env.
+        session_env = {"ANTHROPIC_DEFAULT_MODEL": "opus"}
+        info = route_detection.build_route_info(session_env)
+        self.assertEqual((info.detected_route, info.model_family, info.remap_active, info.session_model),
+                         (route_detection.ROUTE_ANTHROPIC, "claude", False, "opus"))
+        t03 = route_detection.probe_env_coherence(info, session_env)
+        outputs = {e.command: e.output for e in t03.evidence}
+        self.assertEqual(outputs["env: ANTHROPIC_DEFAULT_MODEL"], "opus")
+        self.assertEqual(outputs["env: ANTHROPIC_MODEL"], "<unset>")
+        self.assertEqual(route_detection.env_fingerprint(session_env)["ANTHROPIC_DEFAULT_MODEL"], "opus")
+
+    def test_i_ignored_default_model_values_fall_back_to_unresolved_account_default(self):
+        for value in ("default", "inherit", "opusplan", "haiku", ""):
+            with self.subTest(value=value):
+                result = route_detection.resolve_main_model({"ANTHROPIC_DEFAULT_MODEL": value})
+                self.assertEqual(result.source, "unresolved")
+                self.assertIn("dynamic_default_unresolved", result.uncertainty)
+                self.assertEqual(route_detection.build_route_info(
+                    {"ANTHROPIC_DEFAULT_MODEL": value}).session_model, "")
+
+    # (ii) ANTHROPIC_DEFAULT_MODEL=opus + ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m].
+    def test_ii_default_alias_follows_its_tier_remap(self):
+        env = dict(self.SHIM, ANTHROPIC_DEFAULT_MODEL="opus", **self.GPT_REMAPS)
+        result = route_detection.resolve_main_model(env)
+        self.assertEqual((result.resolved_model, result.family, result.compatibility),
+                         ("gpt-6-sol[1m]", "gpt", "compatible"))
+        self.assertEqual(route_detection.classify_model_family(env), ("gpt", True))
+        native = {"ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]"}
+        self.assertEqual(route_detection.resolve_main_model(native).compatibility, "incompatible")
+        # fable is now a recognized alias with its own mapping.
+        fable = route_detection.resolve_main_model(dict(env, ANTHROPIC_DEFAULT_MODEL="fable",
+                                                        ANTHROPIC_DEFAULT_FABLE_MODEL="gpt-6-astra[1m]"))
+        self.assertEqual(fable.resolved_model, "gpt-6-astra[1m]")
+
+    def test_ii_default_alias_family_follows_custom_remap_not_raw_alias_text(self):
+        # Regression (2026-10-12 review): the raw alias "opus" from
+        # ANTHROPIC_DEFAULT_MODEL used to join the family candidates, so a custom
+        # OpenRouter remap (OPUS -> a non-Claude, non-GPT slug) classified as
+        # claude and T0.4 stopped requiring CLAUDE_CODE_MAX_CONTEXT_TOKENS.
+        base = {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                "ANTHROPIC_AUTH_TOKEN": "x", "ANTHROPIC_API_KEY": "",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3-coder"}
+        for default in ("opus", "opus[1m]"):
+            with self.subTest(default=default):
+                env = dict(base, ANTHROPIC_DEFAULT_MODEL=default)
+                family, remap = route_detection.classify_model_family(env)
+                self.assertNotEqual(family, "claude")
+                self.assertTrue(remap)
+                info = route_detection.build_route_info(env)
+                self.assertEqual(info.detected_route, route_detection.ROUTE_OPENROUTER)
+                got = route_detection.probe_context_window_coherence(info, env)
+                self.assertEqual(got.verdict, Verdict.FAIL, got.detail)
+                declared = dict(env, CLAUDE_CODE_MAX_CONTEXT_TOKENS="262144")
+                got = route_detection.probe_context_window_coherence(
+                    route_detection.build_route_info(declared), declared)
+                self.assertEqual(got.verdict, Verdict.PASS, got.detail)
+        # Unmapped alias still counts as claude (Claude Code's built-in tier model).
+        for default in ("opus", "opus[1m]", "sonnet", "fable"):
+            with self.subTest(unmapped=default):
+                self.assertEqual(route_detection.classify_model_family(
+                    {"ANTHROPIC_DEFAULT_MODEL": default}), ("claude", False))
+        # An explicit default ID is classified as written, never via an alias map.
+        self.assertEqual(route_detection.classify_model_family(
+            {"ANTHROPIC_DEFAULT_MODEL": "claude-opus-5-5[1m]"}), ("claude", False))
+
+    def test_ii_unmapped_default_alias_on_shim_is_incompatible(self):
+        # Shipped default "opus" with no OPUS remap would send a claude-* slug.
+        env = dict(self.SHIM, ANTHROPIC_DEFAULT_MODEL="opus")
+        result = route_detection.resolve_main_model(env)
+        self.assertEqual((result.family, result.compatibility), ("claude", "incompatible"))
+
+    # (iii) Explicit ANTHROPIC_DEFAULT_MODEL ID is never rewritten by remaps.
+    def test_iii_explicit_default_id_is_not_rewritten_by_remaps(self):
+        env = dict(self.SHIM, ANTHROPIC_DEFAULT_MODEL="claude-opus-5-5[1m]", **self.GPT_REMAPS)
+        result = route_detection.resolve_main_model(env)
+        self.assertEqual((result.resolved_model, result.family, result.compatibility),
+                         ("claude-opus-5-5[1m]", "claude", "incompatible"))
+        native = {"ANTHROPIC_DEFAULT_MODEL": "claude-opus-5-5[1m]", **self.GPT_REMAPS}
+        result = route_detection.resolve_main_model(native)
+        self.assertEqual((result.resolved_model, result.compatibility),
+                         ("claude-opus-5-5[1m]", "compatible"))
+
+    # (iv) A saved `model` key (user or local settings) outranks ANTHROPIC_DEFAULT_MODEL.
+    def test_iv_saved_model_outranks_default_model(self):
+        self._project({"env": {"ANTHROPIC_DEFAULT_MODEL": "opus"}})
+        self._write(self.user / "settings.json", {"model": "claude-sonnet-4-6"})
+        result, _ = smoke_probes.collect_main_model(self.env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("claude-sonnet-4-6", "user_settings_model"))
+        self._write(self.root / ".claude/settings.local.json", {"model": "claude-haiku-4-5"})
+        result, _ = smoke_probes.collect_main_model(self.env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("claude-haiku-4-5", "local_settings_model"))
+        # Pure resolver: same ordering without the filesystem.
+        result = route_detection.resolve_main_model({"ANTHROPIC_DEFAULT_MODEL": "opus"},
+                                                    saved_model="claude-sonnet-4-6")
+        self.assertEqual(result.source, "saved_model")
+        # /model saves "<alias>[1m]" (observed live 2026-10-12: "opus[1m]"); it
+        # expands through the same alias mapping instead of reading as unknown.
+        result = route_detection.resolve_main_model({"ANTHROPIC_DEFAULT_MODEL": "opus"},
+                                                    saved_model="opus[1m]")
+        self.assertEqual((result.source, result.family, result.compatibility, result.uncertainty),
+                         ("saved_model", "claude", "compatible", ()))
+        result = route_detection.resolve_main_model(dict(self.SHIM, **self.GPT_REMAPS),
+                                                    saved_model="opus[1m]")
+        self.assertEqual((result.resolved_model, result.compatibility), ("gpt-6-sol[1m]", "compatible"))
+
+    # (v) ANTHROPIC_MODEL outranks a saved model; settings env overwrites process env.
+    def test_v_anthropic_model_outranks_saved_model_and_settings_env_wins(self):
+        self._project({"env": {"ANTHROPIC_DEFAULT_MODEL": "opus"}})
+        self._write(self.user / "settings.json", {"model": "claude-sonnet-4-6"})
+        env = dict(self.env, ANTHROPIC_MODEL="claude-opus-4-8")
+        result, _ = smoke_probes.collect_main_model(env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("claude-opus-4-8", "environment"))
+        self._project({"env": {"ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_MODEL": "claude-fable-5"}})
+        result, _ = smoke_probes.collect_main_model(env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("claude-fable-5", "project_settings_env"))
+        # A settings-file ANTHROPIC_DEFAULT_MODEL overwrites the process value.
+        self._write(self.user / "settings.json", {})
+        self._project({"env": {"ANTHROPIC_DEFAULT_MODEL": "opus"}})
+        env = dict(self.env, ANTHROPIC_DEFAULT_MODEL="claude-sonnet-4-6")
+        result, _ = smoke_probes.collect_main_model(env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("opus", "project_settings_env_default_model"))
+        self._project({})
+        result, _ = smoke_probes.collect_main_model(env, str(self.root))
+        self.assertEqual((result.selector, result.source), ("claude-sonnet-4-6", "environment_default_model"))
+
+    # (vi) HAIKU/FABLE in the fingerprint and in T0.4 window coherence.
+    def test_vi_haiku_and_fable_in_fingerprint_and_selectors(self):
+        for var in ("ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                    "ANTHROPIC_DEFAULT_FABLE_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE"):
+            self.assertIn(var, route_detection.FINGERPRINT_VARS)
+        for var in ("ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+                    "ANTHROPIC_DEFAULT_FABLE_MODEL"):
+            self.assertIn(var, route_detection.MODEL_SELECTOR_VARS)
+            self.assertIn(var, smoke_probes._MAIN_ENV_KEYS)
+        fp = route_detection.env_fingerprint(self.GPT_REMAPS)
+        self.assertEqual(fp["ANTHROPIC_DEFAULT_HAIKU_MODEL"], "gpt-6-luna[1m]")
+        self.assertEqual(fp["ANTHROPIC_DEFAULT_FABLE_MODEL"], "gpt-6-sol[1m]")
+
+    def test_vi_haiku_or_fable_window_mismatch_is_detected(self):
+        api = {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai"}
+        complete = dict(api, **self.GPT_REMAPS)
+        got = route_detection.probe_context_window_coherence(
+            route_detection.build_route_info(complete), complete)
+        self.assertEqual(got.verdict, Verdict.PASS, got.detail)
+        for var in ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL"):
+            with self.subTest(lane="openai-api missing [1m]", var=var):
+                env = dict(complete, **{var: complete[var].replace("[1m]", "")})
+                got = route_detection.probe_context_window_coherence(
+                    route_detection.build_route_info(env), env)
+                self.assertEqual(got.verdict, Verdict.FAIL, got.detail)
+            with self.subTest(lane="chatgpt above 919000", var=var):
+                env = {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt",
+                       "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", var: "gpt-6-luna[1m]",
+                       "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}
+                got = route_detection.probe_context_window_coherence(
+                    route_detection.build_route_info(env), env)
+                self.assertEqual(got.verdict, Verdict.FAIL, got.detail)
+                self.assertIn(var, got.detail)
+                self.assertIn("919000", got.detail)
+
+    def test_subagent_model_alone_is_a_fallback_not_a_ceiling_stand_down(self):
+        base = {"CLAUDE_CODE_SUBAGENT_MODEL": "gpt-6-sol"}
+        self.assertEqual(route_detection.classify_model_family(base), ("gpt", False))
+        info = route_detection.build_route_info(base)
+        t02 = route_detection.probe_model_family(info, base)
+        self.assertTrue(any("2.1.251" in e.note for e in t02.evidence))
+        for value, forced in (("1", True), ("true", True), ("TRUE", True), ("0", False), ("yes", False)):
+            with self.subTest(force=value):
+                env = dict(base, CLAUDE_CODE_SUBAGENT_MODEL_FORCE=value)
+                self.assertEqual(route_detection.classify_model_family(env)[1], forced)
+        # HAIKU/FABLE remaps alone do not stand the hook down (no DAAF agent uses them).
+        for var in ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL"):
+            self.assertFalse(route_detection.classify_model_family({var: "claude-x"})[1])
+
+    # --- Review-fix cycle 2 (2026-10-12) -------------------------------------
+
+    OPENROUTER = {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                  "ANTHROPIC_AUTH_TOKEN": "x", "ANTHROPIC_API_KEY": ""}
+    QWEN = "qwen/qwen3-coder"
+
+    def _t04(self, env):
+        return route_detection.probe_context_window_coherence(
+            route_detection.build_route_info(env), env)
+
+    def test_t04_any_non_claude_selector_requires_declaration_cases_a_to_e(self):
+        # Before this fix one Claude-looking selector made the combined family
+        # "claude" and T0.4 returned INFO, masking a non-Claude OPUS/SONNET
+        # mapping (reviewer probe cases A-D). E was already a FAIL.
+        cases = {
+            "A default alias in another case": {"ANTHROPIC_DEFAULT_MODEL": "Opus",
+                                                "ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN},
+            "B ANTHROPIC_MODEL alias": {"ANTHROPIC_MODEL": "opus",
+                                        "ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN,
+                                        "ANTHROPIC_DEFAULT_SONNET_MODEL": self.QWEN},
+            "C subagent alias": {"CLAUDE_CODE_SUBAGENT_MODEL": "sonnet",
+                                 "ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN,
+                                 "ANTHROPIC_DEFAULT_SONNET_MODEL": self.QWEN},
+            "D Claude haiku slug": {"ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN,
+                                    "ANTHROPIC_DEFAULT_SONNET_MODEL": self.QWEN,
+                                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5"},
+            "E all four qwen": {var: self.QWEN for var in (
+                "ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")},
+        }
+        for label, selectors in cases.items():
+            env = dict(self.OPENROUTER, **selectors)
+            with self.subTest(case=label):
+                got = self._t04(env)
+                self.assertEqual(got.verdict, Verdict.FAIL, got.detail)
+                self.assertIn("ANTHROPIC_DEFAULT_OPUS_MODEL", got.detail)
+                declared = dict(env, CLAUDE_CODE_MAX_CONTEXT_TOKENS="262144")
+                self.assertEqual(self._t04(declared).verdict, Verdict.PASS)
+        # A [1m] hint on a Claude-looking selector is not a substitute on OpenRouter.
+        env = dict(self.OPENROUTER, ANTHROPIC_MODEL="opus[1m]",
+                   ANTHROPIC_DEFAULT_OPUS_MODEL=self.QWEN)
+        self.assertEqual(self._t04(env).verdict, Verdict.FAIL)
+
+    def test_t04_all_claude_openrouter_and_unmapped_aliases_stay_info(self):
+        claude = {"ANTHROPIC_DEFAULT_FABLE_MODEL": "anthropic/claude-opus-5.5",
+                  "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5.5",
+                  "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-4.6",
+                  "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5"}
+        for extra in ({}, {"ANTHROPIC_DEFAULT_MODEL": "opus"},
+                      {"ANTHROPIC_MODEL": "Sonnet"}, {"CLAUDE_CODE_SUBAGENT_MODEL": "haiku"}):
+            env = dict(self.OPENROUTER, **claude, **extra)
+            with self.subTest(extra=extra):
+                self.assertEqual(self._t04(env).verdict, Verdict.INFO)
+        # Unmapped aliases are Claude Code's built-in Claude models.
+        env = dict(self.OPENROUTER, ANTHROPIC_DEFAULT_MODEL="opus", ANTHROPIC_MODEL="SONNET[1m]")
+        self.assertEqual(self._t04(env).verdict, Verdict.INFO)
+
+    def test_alias_resolution_is_case_insensitive_and_family_uses_it(self):
+        env = {"ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN}
+        for value in ("opus", "Opus", "OPUS", "opus[1m]", "Opus[1M]"):
+            with self.subTest(value=value):
+                self.assertEqual(route_detection._resolve_tier_alias(value, env), self.QWEN)
+        self.assertEqual(route_detection._resolve_tier_alias("Sonnet", env), "claude")
+        self.assertEqual(route_detection._resolve_tier_alias("claude-opus-5-5", env),
+                         "claude-opus-5-5")
+        # ANTHROPIC_MODEL / CLAUDE_CODE_SUBAGENT_MODEL aliases now resolve too.
+        for var in ("ANTHROPIC_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            with self.subTest(var=var):
+                remapped = {var: "opus", "ANTHROPIC_DEFAULT_OPUS_MODEL": self.QWEN}
+                self.assertEqual(route_detection.classify_model_family(remapped),
+                                 ("unknown", True))
+                self.assertEqual(route_detection.classify_model_family({var: "opus"}),
+                                 ("claude", False))
+
+    # --- Review-fix cycle 3 (2026-10-12) -------------------------------------
+
+    ALL_CLAUDE = {"ANTHROPIC_DEFAULT_FABLE_MODEL": "anthropic/claude-opus-5.5",
+                  "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-5.5",
+                  "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-4.6",
+                  "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4.5"}
+
+    def test_t04_non_model_alias_values_do_not_false_fail_all_claude_openrouter(self):
+        # Regression (cycle-2 review, executed vs HEAD): these documented alias
+        # values were passed through as raw text, read as non-Claude, and gave a
+        # false T0.4 FAIL on a valid all-Claude OpenRouter config.
+        extras = [
+            {"CLAUDE_CODE_SUBAGENT_MODEL": "inherit"},   # env-vars doc: same as unset
+            {"ANTHROPIC_MODEL": "default"},              # account/org/DEFAULT_MODEL chain
+            {"ANTHROPIC_MODEL": "best"},                 # fable/best -> FABLE mapping
+            {"ANTHROPIC_MODEL": "opusplan"},             # OPUS + SONNET mappings
+            {"ANTHROPIC_MODEL": "opusplan[1m]"},
+            {"ANTHROPIC_MODEL": "Best[1m]"},
+            {"CLAUDE_CODE_SUBAGENT_MODEL": "Inherit"},
+            {"CLAUDE_CODE_SUBAGENT_MODEL": "default"},
+            {"CLAUDE_CODE_SUBAGENT_MODEL": "opusplan"},
+            {"ANTHROPIC_DEFAULT_MODEL": "best"},
+            {"ANTHROPIC_DEFAULT_MODEL": "opusplan"},     # ignored by Claude Code
+            {"ANTHROPIC_DEFAULT_MODEL": "Default"},      # ignored, any case
+        ]
+        for extra in extras:
+            env = dict(self.OPENROUTER, **self.ALL_CLAUDE, **extra)
+            with self.subTest(extra=extra):
+                got = self._t04(env)
+                self.assertNotEqual(got.verdict, Verdict.FAIL, got.detail)
+                self.assertEqual(route_detection.classify_model_family(env)[0], "claude")
+        # The same values with the tier mappings unset resolve to Claude Code's
+        # built-in Claude models (or name no model), never to a non-Claude one.
+        for value in ("best", "opusplan", "opusplan[1m]"):
+            with self.subTest(unmapped=value):
+                self.assertEqual(route_detection.classify_model_family(
+                    {"ANTHROPIC_MODEL": value}), ("claude", False))
+        for value in ("inherit", "default", "Inherit[1m]"):
+            with self.subTest(no_model=value):
+                self.assertEqual(route_detection._expand_selector(value, self.ALL_CLAUDE), ())
+
+    def test_t04_opusplan_resolves_through_opus_and_sonnet_mappings(self):
+        qwen_opus = dict(self.ALL_CLAUDE, ANTHROPIC_DEFAULT_OPUS_MODEL=self.QWEN)
+        self.assertEqual(route_detection._expand_selector("opusplan", qwen_opus),
+                         (self.QWEN, "anthropic/claude-sonnet-4.6"))
+        self.assertEqual(route_detection._expand_selector("best", qwen_opus),
+                         ("anthropic/claude-opus-5.5",))
+        for var in ("ANTHROPIC_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            env = dict(self.OPENROUTER, **qwen_opus, **{var: "opusplan"})
+            with self.subTest(var=var):
+                got = self._t04(env)
+                self.assertEqual(got.verdict, Verdict.FAIL, got.detail)
+                self.assertIn(f"{var}='opusplan' -> {self.QWEN!r}", got.detail)
+                declared = dict(env, CLAUDE_CODE_MAX_CONTEXT_TOKENS="262144")
+                self.assertEqual(self._t04(declared).verdict, Verdict.PASS)
+        # opusplan's SONNET leg is checked too.
+        qwen_sonnet = dict(self.OPENROUTER, **self.ALL_CLAUDE, ANTHROPIC_MODEL="opusplan")
+        qwen_sonnet["ANTHROPIC_DEFAULT_SONNET_MODEL"] = self.QWEN
+        self.assertEqual(self._t04(qwen_sonnet).verdict, Verdict.FAIL)
+
+    def test_alias_case_is_handled_the_same_in_every_resolver(self):
+        # C3-2: _IGNORED_DEFAULT_MODEL_VALUES and resolve_main_model (T0.14) use
+        # the same case-insensitive convention as _resolve_tier_alias (T0.4).
+        lower = route_detection.resolve_main_model({"ANTHROPIC_DEFAULT_MODEL": "opus"})
+        for value in ("Opus", "OPUS", "Opus[1M]"):
+            with self.subTest(default=value):
+                got = route_detection.resolve_main_model({"ANTHROPIC_DEFAULT_MODEL": value})
+                self.assertEqual((got.family, got.compatibility, got.uncertainty),
+                                 (lower.family, lower.compatibility, lower.uncertainty))
+                self.assertEqual((got.family, got.compatibility), ("claude", "compatible"))
+        remapped = dict(self.SHIM, **self.GPT_REMAPS)
+        self.assertEqual(route_detection.resolve_main_model(
+            dict(remapped, ANTHROPIC_DEFAULT_MODEL="Opus")).resolved_model, "gpt-6-sol[1m]")
+        for value in ("haiku", "Haiku", "HAIKU", "inherit", "Inherit", "default", "Default",
+                      "opusplan", "OpusPlan"):
+            with self.subTest(ignored=value):
+                env = {"ANTHROPIC_DEFAULT_MODEL": value}
+                self.assertEqual(route_detection._effective_default_model(env), "")
+                got = route_detection.resolve_main_model(env)
+                self.assertEqual(got.source, "unresolved")
+                self.assertIn("dynamic_default_unresolved", got.uncertainty)
+                self.assertEqual(route_detection.build_route_info(env).session_model, "")
+
+    def _hook_fixture(self, text):
+        import shutil
+        root = _scratch_dir("ceiling_hook_fixture")
+        self.addCleanup(shutil.rmtree, root)
+        path = root / "enforce-model-ceiling.sh"
+        path.write_text(text)
+        return path
+
+    def test_t02_reads_installed_hook_rule_set(self):
+        # The live install carries the 2026-10-12 hook (installed by the user).
+        self.assertTrue(route_detection._ceiling_hook_recognizes_force(
+            route_detection.CEILING_HOOK_PATH))
+        current = self._hook_fixture('if [ "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" = 1 ]; then exit 0; fi\n')
+        legacy = self._hook_fixture('if [ -n "${CLAUDE_CODE_SUBAGENT_MODEL:-}" ]; then exit 0; fi\n')
+        missing = current.parent / "absent.sh"
+        sub_only = {"CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-4-6"}
+        force_only = {"ANTHROPIC_MODEL": "claude-opus-4-8", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"}
+        glm = {"ANTHROPIC_MODEL": "z-ai/glm-5.2", "CLAUDE_CODE_SUBAGENT_MODEL": "z-ai/glm-5.2"}
+
+        def detail(env, path):
+            return route_detection.probe_model_family(
+                route_detection.build_route_info(env), env, hook_path=path)
+
+        # Current hook: CLAUDE_CODE_SUBAGENT_MODEL alone does not stand it down.
+        got = detail(sub_only, current)
+        self.assertEqual(got.verdict, Verdict.INFO)
+        self.assertIn("RANK", got.detail)
+        self.assertNotIn("predates", got.detail)
+        got = detail(force_only, current)
+        self.assertIn("STAND DOWN", got.detail)
+        # Cycle 3: the rationale names only the reasons that apply.
+        self.assertIn("forced subagent model", got.detail)
+        self.assertNotIn("custom slugs", got.detail)
+        remap = {"ANTHROPIC_MODEL": "claude-opus-4-8",
+                 "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3-coder"}
+        got = detail(remap, current)
+        self.assertIn("custom slugs", got.detail)
+        self.assertNotIn("forced subagent model", got.detail)
+        self.assertIn("rule f", detail(glm, current).detail)
+        # Older hook: CLAUDE_CODE_SUBAGENT_MODEL alone stands it down; FORCE is unknown.
+        got = detail(sub_only, legacy)
+        self.assertIn("predates", got.detail)
+        self.assertIn("STAND DOWN", got.detail)
+        self.assertIn("older rule a", got.detail)
+        self.assertIn("2.1.251", got.detail)
+        self.assertNotIn("forced subagent model", got.detail)
+        self.assertNotIn("custom slugs", got.detail)
+        got = detail(force_only, legacy)
+        self.assertIn("RANK", got.detail)
+        self.assertIn("does not recognize it", got.detail)
+        self.assertIn("STAND DOWN", detail(glm, legacy).detail)
+        # Unreadable hook: current rule set assumed, and the evidence says so.
+        got = detail(sub_only, missing)
+        self.assertIn("RANK", got.detail)
+        self.assertTrue(any("unreadable" in e.output for e in got.evidence))
 
 
 class _HealthResponse:
@@ -2300,7 +2737,9 @@ class StatuslineProbeTests(unittest.TestCase):
 class LocalSettingsShadowingTests(unittest.TestCase):
     """T0.12 against a temporary base_dir holding .claude/settings{,.local}.json."""
 
-    SHARED_ENV = {"ANTHROPIC_MODEL": "claude-opus-5-5[1m]", "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"}
+    # Mirrors the shipped settings.json: the soft ANTHROPIC_DEFAULT_MODEL, no
+    # ANTHROPIC_MODEL pin (2026-10-12).
+    SHARED_ENV = {"ANTHROPIC_DEFAULT_MODEL": "opus", "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"}
 
     def setUp(self):
         self.base = _scratch_dir("t012_base")
@@ -2332,13 +2771,28 @@ class LocalSettingsShadowingTests(unittest.TestCase):
         self.assertIn("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", r.detail)
         self.assertNotIn('"3"', json.dumps([e.to_dict() for e in r.evidence]))
 
-    def test_shadowed_anthropic_model_fails_with_values_via_redaction_helper(self):
-        r = self._probe(json.dumps({"env": {"ANTHROPIC_MODEL": "gpt-6-astra[1m]"}}))
+    def test_shadowed_default_model_fails_with_values_via_redaction_helper(self):
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_DEFAULT_MODEL": "gpt-6-astra[1m]"}}))
         self.assertEqual(r.verdict, Verdict.FAIL)
-        self.assertIn("ANTHROPIC_MODEL", r.detail)
+        self.assertIn("ANTHROPIC_DEFAULT_MODEL", r.detail)
         outputs = " ".join(e.output for e in r.evidence)
         self.assertIn("gpt-6-astra[1m]", outputs)
-        self.assertIn("claude-opus-5-5[1m]", outputs)
+        self.assertIn("settings.json=opus", outputs)
+
+    def test_local_only_anthropic_model_warns(self):
+        # settings.json no longer pins ANTHROPIC_MODEL, so a local one shadows
+        # nothing — but it still outranks the shipped default for every session.
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_MODEL": "gpt-6-astra[1m]"}}))
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("ANTHROPIC_MODEL", r.detail)
+        self.assertIn("gpt-6-astra[1m]", " ".join(e.output for e in r.evidence))
+
+    def test_local_only_haiku_and_fable_selectors_warn(self):
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_DEFAULT_HAIKU_MODEL": "example-fast",
+                                            "ANTHROPIC_DEFAULT_FABLE_MODEL": "example-strong"}}))
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("ANTHROPIC_DEFAULT_HAIKU_MODEL", r.detail)
+        self.assertIn("ANTHROPIC_DEFAULT_FABLE_MODEL", r.detail)
 
     def test_invalid_local_json_warns(self):
         r = self._probe("{not json")
@@ -2361,10 +2815,10 @@ class LocalSettingsShadowingTests(unittest.TestCase):
         self.assertEqual(r.verdict, Verdict.PASS)
 
     def test_local_only_selector_is_noted_alongside_a_shadow_fail(self):
-        r = self._probe(json.dumps({"env": {"ANTHROPIC_MODEL": "example-model-2",
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_DEFAULT_MODEL": "example-model-2",
                                             "CLAUDE_CODE_SUBAGENT_MODEL": "example-model-1"}}))
         self.assertEqual(r.verdict, Verdict.FAIL)
-        self.assertIn("ANTHROPIC_MODEL", r.detail)
+        self.assertIn("ANTHROPIC_DEFAULT_MODEL", r.detail)
         self.assertIn("CLAUDE_CODE_SUBAGENT_MODEL", r.detail)
 
 

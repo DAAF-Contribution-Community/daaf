@@ -432,6 +432,20 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(error.get("type"), "invalid_request_error")
                 self.assertIn("ChatGPT (Codex)", error.get("message", ""))
                 self.assertIn("environment_settings.txt", error.get("message", ""))
+                # 2026-10-12 guidance: all four tier aliases are named in the
+                # config-block order (FABLE, OPUS, SONNET, HAIKU), the haiku-tier
+                # housekeeping calls are explained, a session-model claude-*
+                # slug points at /model, and the SUBAGENT_MODEL-alone
+                # suggestion (a fallback only since Claude Code 2.1.251) is gone.
+                message = error.get("message", "")
+                positions = [message.find(alias_var) for alias_var in (
+                    "ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")]
+                self.assertNotIn(-1, positions, message)
+                self.assertEqual(positions, sorted(positions), message)
+                self.assertIn("housekeeping calls", message)
+                self.assertIn("if this is your session model, pick a GPT model with /model", message)
+                self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", message)
                 shim.assert_offline_contract()
                 backend.assert_request_counts(responses=0)
 
@@ -1662,7 +1676,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.3.19 starting" in line
+                    if "req_id=- phase=process shim v1.4.6 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

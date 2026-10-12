@@ -1,7 +1,7 @@
 ---
 name: daaf-deploy-smoke-testing
 description: >-
-  In-situ smoke testing that verifies a LIVE DAAF deployment functions end-to-end in whatever provider route it is configured for. Auto-detects the active install route (anthropic-subscription, openrouter, chatgpt-subscription shim, openai-api shim) and runs tiered probes: Tier 0 free preflight (route/env coherence, hooks, statuslines, shim health); Tier 1 one live round-trip (~cents); Tier 2 a six-probe functional battery (dispatch, coding, web, skill loading, isolation-strip, nested-dispatch deny); Tier D a zero-cost deterministic battery (bats, Pester, lint, safety-hook tests). Use after install, after a rebuild or update, after any provider/config change (new API key, model remap, shim change), for pre-release validation, or when asked "is my install working" or to "smoke test the deployment/config." Requires the DAAF_DEV=1 dev image; a contributor tool, not end-user-facing. NOT DAAFBench (model behavioral-adherence evaluation under benchmarks/) and NOT scripts/smoke_tests/ (R/Python library-package smoke tests).
+  In-situ smoke testing that verifies a LIVE DAAF deployment works end-to-end in its configured provider route. Use for normal Auto Mode/classifier acceptance too. Auto-detects the active install route (anthropic-subscription, openrouter, chatgpt-subscription shim, openai-api shim) and runs tiered probes: Tier 0 free preflight (route/env coherence, hooks, statuslines, shim health); Tier 1 one live round-trip (~cents); Tier 2 six functional probes (dispatch, coding, web, skills, isolation, nesting); Tier D a zero-cost deterministic battery (bats, Pester, lint, safety-hook tests). Use after install, after a rebuild/update, after any provider/config change (API key, model remap, shim), for pre-release validation, or when asked "is my install working" or to "smoke test the deployment/config." Contributor tool; needs the DAAF_DEV=1 dev image. NOT DAAFBench (model behavioral-adherence evaluation under benchmarks/) and NOT scripts/smoke_tests/ (R/Python library-package smoke tests).
 metadata:
   audience: any-agent
   domain: research-orchestration
@@ -36,17 +36,17 @@ The deployment suite *reuses* Tier D to run the library smokes and *reuses* DAAF
 
 | Tier | Cost | What it checks | LLM? |
 |------|------|----------------|------|
-| **0** | free | Route detection + `--route` assertion, `DAAF_DEV=1`, env coherence for the detected route, model-family + ceiling-hook posture, context-window declaration (lane-aware: `DAAF_PROVIDER_SHIM`+`SHIM_BACKEND_MODE` select the 919k chatgpt-subscription ceiling), CLI liveness, all hooks registered, both statuslines render, shim `/health` (shim routes), chatgpt `auth.json` readable, workspace invariants, R UTF-8 locale (image `LANG`/`LC_ALL=C.UTF-8`) | no |
-| **1** | ~cents | One live `claude -p` round-trip + the plumbing around it: response returned, transcript located, audit-log hook fired, context-reporter injection, `/tmp` coordination caches, statusline against the real session, token/cost parsing | 1 call |
-| **2** | ~$0.60–3.00 / profile | Six-probe functional battery: subagent dispatch + search, coding agent writes + runs via `run_with_capture`, web access (WebSearch), skill loading, isolation-strip hook (SKIP-tolerant), nested-dispatch deny hook | 6 calls |
-| **D** | free | Deterministic battery: a harness self-test first (TD.0 — the suite's own provider-free `unittest` module), then `bats tests/bash`, Pester, `check-daaf-conventions.sh` lint, safety-hook tests, single-command hook tests, and (opt-in) the R/Python library smoke suite. Every Tier D subprocess runs under a sanitized env — the two live-config contaminants `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `DAAF_BRANCH` are stripped (defense-in-depth atop each battery's own fixture isolation); PATH/HOME/credentials/toolchain are preserved | no |
+| **0** | free | Route detection + `--route` assertion, `DAAF_DEV=1`, env coherence for the detected route, model-family + ceiling-hook posture, context-window declaration (lane-aware: `DAAF_PROVIDER_SHIM`+`SHIM_BACKEND_MODE` select the 919k chatgpt-subscription ceiling), CLI liveness, all hooks registered, both statuslines render, shim `/health` (shim routes), chatgpt `auth.json` readable, workspace invariants, R UTF-8 locale (image `LANG`/`LC_ALL=C.UTF-8`), `settings.local.json` `env` shadowing of `settings.json` (T0.12), claude.ai synced skills/plugins on disk, each plugin labelled with its `enabledPlugins` state (T0.13, INFO only), separate projected main-model/route coherence (T0.14) | no |
+| **1** | ~cents | One live `claude -p` round-trip + the plumbing around it: a real model answered (not a `<synthetic>`/API-error stub) and returned the completion token, transcript located, audit-log hook fired, a real context-reporter hook injection, the `/tmp` model cache matches the transcript model, statusline against the real transcript (report-local cache dir), token/cost parsing | 1 call |
+| **2** | ~$0.60–3.00 / profile | Six-probe functional battery: subagent dispatch + search, coding agent writes + runs via `run_with_capture`, web access (WebSearch or `web_fetch.sh`, non-error result), `polars` skill loading, isolation-strip hook (SKIP-tolerant), nested-dispatch prevention (harness spawn-depth limit, or the deny hook if the limit is lifted). Every probe FAILs with the reason when no real model answered; a recovered transient API error or a `--max-turns` stop turns a PASS into WARN instead | 6 calls |
+| **D** | free | Deterministic battery: a harness self-test first (TD.0 — provider-free `test_deploy_smoke*.py` discovery, including normal-Auto regressions), then `bats tests/bash`, Pester, `check-daaf-conventions.sh` lint, safety-hook tests, single-command hook tests, and (opt-in) the R/Python library smoke suite. Every Tier D subprocess runs under a sanitized env — the two live-config contaminants `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `DAAF_BRANCH` are stripped (defense-in-depth atop each battery's own fixture isolation); PATH/HOME/credentials/toolchain are preserved | no |
 
 Tier 2 cost scales with the configured model. Tiers 0 and D run once; Tiers 1 and 2 run once *per profile*. Each Tier 2 run operates inside its own per-run, UUID-owned sandbox (`scripts/deploy_smoke/_sandbox/run_<uuid>/`) that it self-cleans on exit, so no fixture from a prior run can satisfy a later one; correspondingly, the T2.2 coding probe PASSes only on freshly captured execution evidence, not on source text or a stale log (see `references/interpreting-results.md`).
 
 ## When to Run
 
 - **After a fresh install or a rebuild/update** — confirm the deployment still routes, dispatches, and enforces hooks.
-- **After any provider or configuration change** — a new API key, a model remap (`ANTHROPIC_DEFAULT_*`), a shim backend switch, a base-URL change.
+- **After any provider or configuration change** — a new API key, a model remap (`ANTHROPIC_DEFAULT_*`, including the start default `ANTHROPIC_DEFAULT_MODEL`), a shim backend switch, a base-URL change.
 - **Before a release** — validate across each configuration you support (Anthropic, OpenRouter with multiple model families, the shim routes).
 - **When something feels off** — statusline shows the wrong window, subagents behave oddly, a hook seems not to fire.
 
@@ -80,7 +80,44 @@ python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py --tiers 0,1,2,D --include
 | `--yes` | Skip the pre-launch cost/summary confirmation (needed for non-interactive runs). |
 | `--report-dir DIR` | Override the report output directory. |
 
-The suite omits `--model` on its `claude -p` probes by default, so it tests the model **as configured** (from `settings.json` / `ANTHROPIC_MODEL` / the profile overlay) — exactly what a real session would resolve.
+The suite omits `--model` on its `claude -p` probes by default, so it tests the model **as configured** — exactly what a real session would resolve: `ANTHROPIC_MODEL` (environment or profile overlay), else a saved settings `model` key (e.g. a `/model` choice), else the soft `ANTHROPIC_DEFAULT_MODEL` that DAAF's `settings.json` ships, each tier alias resolved through its `ANTHROPIC_DEFAULT_<ALIAS>_MODEL`.
+
+**Main-model preflight (T0.14).** Main selection is separate from the combined family/ceiling-hook posture in T0.2. It follows Claude Code's precedence: invocation `--model`, then `ANTHROPIC_MODEL`, then a saved settings `model` key, then `ANTHROPIC_DEFAULT_MODEL` (ignored when set to `default`, `inherit`, `opusplan` or `haiku`), then the unresolved account default (a Claude Enterprise org default, if set, is not modeled). An explicit Claude main ID stays Claude even when GPT default aliases or a GPT subagent pin exist. The short aliases `opus`/`sonnet`/`haiku`/`fable` (and their `[1m]` forms, such as the `opus[1m]` that `/model` saves) expand only through their own `ANTHROPIC_DEFAULT_<ALIAS>_MODEL`; an unmapped alias is Claude Code's built-in Claude model for that tier (family `claude`, exact ID unknown), so the shipped `opus` default PASSes on the native route and FAILs on a GPT shim route with no `ANTHROPIC_DEFAULT_OPUS_MODEL` mapping. The bounded settings projection respects `CLAUDE_CONFIG_DIR`, reports absent/malformed/unreadable/managed uncertainty, and does not emulate every client startup/policy source. PASS means configuration-compatible, not provider-accepted. Each paid profile is checked using its actual child inputs even if Tier 0 is omitted: known incompatibility blocks that profile; ordinary unknown/WARN behavior remains non-failing. No model or provider is silently repaired.
+
+## Opt-in Normal Auto Acceptance
+
+Use `scripts/deploy_smoke/run_auto_acceptance.py` when the question is specifically whether **normal Auto permission classification** works. This is a separate opt-in diagnostic, not another mandatory tier. Ordinary Tier 1/2 use `bypassPermissions` and benchmark gating; their PASS cannot certify Auto. The dedicated runner uses neither those controls nor the ordinary WARN-to-PASS report aggregator.
+
+Read `references/interpreting-results.md` § **Normal Auto acceptance** before live use. It documents consent, private capture, supported evidence, exact confirmation shapes and inconclusive outcomes. The fixed action is a single OpenSSL SHA256 of the repository's `CLAUDE.md`; there is no arbitrary-command option.
+
+For agent execution, write a **fresh flat audited launcher** inside the project's `scripts/` directory, then execute it through `run_with_capture.sh`. Do not append execution logs to maintained CLI source. A preflight-only launcher is:
+
+```python
+#!/usr/bin/env python3
+"""Free normal-Auto preflight; no live CLI child."""
+# --- Config ---
+import sys
+from pathlib import Path
+sys.dont_write_bytecode = True
+BASE_DIR = Path('/daaf')
+sys.path.insert(0, str(BASE_DIR / 'scripts/deploy_smoke'))
+from run_auto_acceptance import main
+# --- Validate ---
+# INTENT: inspect bounded configuration without inference.
+# REASONING: unknown precedence must not be certified compatible.
+# ASSUMES: the development image is active; settings remain unchanged.
+raise SystemExit(main(['--preflight-only']))
+```
+
+Execute the newly written launcher as one command, substituting its real absolute path:
+
+```bash
+bash /daaf/scripts/run_with_capture.sh /daaf/research/PROJECT/scripts/debug/NN_auto-preflight.py
+```
+
+For a separately approved live launcher, call `main(['--yes', '--retain-private-capture', '--allow-bounded-continuations'])`. These are **three independent consents**: cost, content retention (including ordinary CLI/hook records), and delegated exact-scope confirmations. Omit continuation consent to stop at any confirmation. Optional `--model MODEL` is a real invocation override, labeled overridden—not an as-configured certification. The runner checks the initialized model against an exact ID, so an as-configured start model that is an unmapped tier alias (such as the shipped `ANTHROPIC_DEFAULT_MODEL=opus`) stays inconclusive (`preflight_unresolved`, no child launched); pass `--model` to test a specific ID. `--report-dir DIR` must name a fresh repository-contained directory; an existing path is refused to prevent accidental relaunch.
+
+Bounds: **three CLI invocations total**, including at most two same-session resumes; six turns and 120 seconds per child plus five seconds for cleanup. These are not provider-call/retry ceilings. Owned stdout/stderr retention is capped; native debug is reactively monitored and its retained prefix capped, with any loss inconclusive. No inherited file-size limit is imposed on normal CLI/hook logs; external retention and peak native-debug disk use are not hard-bounded. After any attempted or ambiguous digest, live work stops without retry. Unsupported questions/new scope, denial, errors, incomplete capture and exhausted continuation budgets stop conservatively. Only `CLASSIFIER_ALLOW_PASS` exits 0; failures exit 1; preflight-only, no-consent, fast-path success and other inconclusive outcomes exit 2. A nonzero audited launcher can therefore be an expected diagnostic outcome, not a reason to relaunch.
 
 ## OpenRouter Multi-Profile Runs
 
@@ -91,7 +128,7 @@ python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
     --profiles openrouter-claude,openrouter-gpt,openrouter-glm --yes
 ```
 
-Profiles are defined in `scripts/deploy_smoke/profiles.yaml` (the three above are working examples — adapt the model slugs to models your OpenRouter account can reach). For non-Claude models a profile sets `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (keeps subagents model-pure and makes `enforce-model-ceiling.sh` stand down) and `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (declares the real window so context reporting is accurate).
+Profiles are defined in `scripts/deploy_smoke/profiles.yaml` (the three above are working examples — adapt the model slugs to models your OpenRouter account can reach). For non-Claude models a profile maps all four tier aliases — `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (keep DAAF's subagents model-pure and make `enforce-model-ceiling.sh` stand down), `ANTHROPIC_DEFAULT_HAIKU_MODEL` (also carries Claude Code's housekeeping calls, such as naming the session) and `ANTHROPIC_DEFAULT_FABLE_MODEL` (the `fable` alias) — plus `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (declares the real window so context reporting is accurate). `CLAUDE_CODE_SUBAGENT_MODEL` alone is not a substitute: since Claude Code 2.1.251 it is only a fallback for subagents without their own model, and every DAAF agent sets `model:`.
 
 **Shim routes are different.** On `openai-api` / `chatgpt-subscription` the shim *daemon* state (`SHIM_SANITIZE_TOOLS`, `backend_mode`) is fixed at daemon startup and cannot be changed per run — env overlays reach the CLI session, not the running shim. `--profiles` on a shim route emits a WARNING; verify daemon state read-only via Tier 0's shim `/health` probe instead.
 
@@ -101,7 +138,7 @@ Each run writes `scripts/deploy_smoke/reports/{YYYYMMDD_HHMMSS}_{route}/`:
 
 - **`report.md`** — human audit: per-probe verdict with quoted evidence, grouped by tier, plus a redacted env fingerprint.
 - **`report.json`** — machine-readable: git SHA, route, model family, redacted env fingerprint, per-probe results.
-- **`evidence/`** — discrete audit-snapshot files: `shim_health.json` (shim routes only) and `env_fingerprint.json`. The `/tmp` coordination-cache reads a Tier 1 probe performs are embedded inline in that probe's `report.md`/`report.json` evidence — they are *not* written as separate files under `evidence/`.
+- **`evidence/`** — discrete audit-snapshot files: `shim_health.json` (shim routes only) and `env_fingerprint.json`, plus the report-local statusline cache dirs `t07_statusline_cache/` (T0.7, synthetic session) and `t16_statusline_cache/` (T1.6). The `/tmp` coordination-cache reads a Tier 1 probe performs are embedded inline in that probe's `report.md`/`report.json` evidence — they are *not* written as separate files under `evidence/`.
 - **`evidence/tier_d/`** — Tier D failure artifacts (present when Tier D runs): the COMPLETE scrubbed output of any FAILed or timed-out battery is persisted at `evidence/tier_d/{probe_id}.log`, and Pester's NUnit `testResults.xml` is written here (report-local) rather than at the repository root. On a PASS the report keeps only a concise final excerpt; the full log is persisted only on FAIL/timeout.
 
 Verdicts are `PASS | FAIL | WARN | SKIP | INFO`. Only **FAIL** flips the overall result and the exit code (nonzero), matching the `run_all_smoke_tests.sh` contract. A route-appropriate SKIP (e.g. shim `/health` on a non-shim route) or a tolerant WARN never breaks the run.
@@ -124,8 +161,8 @@ The shim gate is checked before the OpenRouter base-URL test because shim routes
 ## Boundaries
 
 - **Requires `DAAF_DEV=1`.** The deployment smoke suite is intentionally restricted to development images as a contributor tool; the Tier 0 policy gate applies even to `--tiers 0`. Tier D additionally relies on development-only deterministic/test tooling, although an unavailable Tier-D tool can produce a probe-level SKIP. Codex itself ships in every image. Shim routing and `codex login` are separate explicit opt-ins and do not require a development image. The suite remains intentionally absent from the end-user install guide.
-- **Secrets never leak.** The env fingerprint redacts any var whose name contains `KEY`/`TOKEN`/`SECRET`/`AUTH`, but preserves the load-bearing empty-vs-unset distinction (e.g. OpenRouter needs `ANTHROPIC_API_KEY` present-and-empty).
-- **Reads `/tmp` caches, never writes them.** Reading DAAF's coordination caches is the sanctioned pattern; the suite writes only inside the project.
+- **Privacy is scoped, not guaranteed universally.** Ordinary reports redact secret-named fingerprint values while preserving empty-vs-unset distinctions. The dedicated Auto runner instead reports bounded categories/hashes/booleans and separately observed model metadata; it does not dump settings or environment values. Its explicitly consented raw captures remain private and content-bearing. Ordinary CLI/hook retention can also occur outside the owned directory; do not publish raw captures or assume universal sanitization.
+- **Reads the live session's `/tmp` caches; does not write them.** Reading DAAF's coordination caches is the sanctioned pattern. T1.6 renders the statusline with `DAAF_CONTEXT_BAR_CACHE_DIR` pointed at the report's `evidence/t16_statusline_cache/`, so it cannot write (or let T1.5 read back) the probe session's caches. T0.7's synthetic render likewise points both `DAAF_CONTEXT_BAR_CACHE_DIR` and `DAAF_SUBAGENT_BAR_CACHE_DIR` at `evidence/t07_statusline_cache/`, and WARNs if any exact `/tmp/claude-*-smoke-synthetic` path changes during the render.
 - **Do not confuse tiers with cost tiers.** Tier 0 and Tier D are free; Tiers 1 and 2 make live API calls billed to your configured provider. The pre-launch summary quotes the call count before any live tier runs (skip it with `--yes`).
 
 ## Reference Files

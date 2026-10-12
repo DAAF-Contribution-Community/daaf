@@ -258,8 +258,10 @@ def execute_smoke_run(
       * Parses output via the imported _parse_json_output / _extract_tool_failures.
 
     model_id: when empty (the in-situ default), --model is omitted so Claude Code
-    resolves the model exactly as a normal session would (from settings.json /
-    ANTHROPIC_MODEL / the profile overlay) — this tests the AS-CONFIGURED model.
+    resolves the model exactly as a normal session would (ANTHROPIC_MODEL from
+    the env or profile overlay, else a saved settings `model` key, else the
+    shipped settings.json ANTHROPIC_DEFAULT_MODEL, each tier alias resolved via
+    its ANTHROPIC_DEFAULT_<ALIAS>_MODEL) — this tests the AS-CONFIGURED model.
 
     Returns (RunResult, meta) where meta carries {session_id, timed_out, cmd}.
     """
@@ -1305,8 +1307,9 @@ def _read_settings_env(path: Path):
 # Deliberately narrow: these fields suffice for main selection/route projection.
 # Never inspect an authentication store or serialize the settings object.
 _MAIN_ENV_KEYS = frozenset({
-    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "DAAF_PROVIDER_SHIM", "SHIM_BACKEND_MODE", "ANTHROPIC_BASE_URL",
     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
     "DAAF_BENCHMARK_RUN", "CLAUDE_CODE_BYPASS_PERMISSIONS", "CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS",
@@ -1365,6 +1368,7 @@ def collect_main_model(env, base_dir=BASE_DIR, explicit_model=None):
         config = root / config
     effective = {k: v for k, v in env.items() if k in _MAIN_ENV_KEYS}
     source, saved_source, saved = "environment", "saved_model", None
+    default_source = "environment_default_model"
     states, uncertainty = {}, []
     for label, path in (("user", config / "settings.json"),
                         ("project", root / ".claude/settings.json"),
@@ -1375,6 +1379,11 @@ def collect_main_model(env, base_dir=BASE_DIR, explicit_model=None):
             uncertainty.append(label + "_settings_" + state)
         if "ANTHROPIC_MODEL" in projection.get("env", {}):
             source = label + "_settings_env"
+        # The shipped project settings.json sets the soft ANTHROPIC_DEFAULT_MODEL
+        # (not ANTHROPIC_MODEL); like every settings env value it overwrites the
+        # process variable, and resolve_main_model ranks it below a saved `model`.
+        if "ANTHROPIC_DEFAULT_MODEL" in projection.get("env", {}):
+            default_source = label + "_settings_env_default_model"
         effective.update(projection.get("env", {}))
         if projection.get("model") is not None:
             saved, saved_source = projection["model"], label + "_settings_model"
@@ -1393,7 +1402,8 @@ def collect_main_model(env, base_dir=BASE_DIR, explicit_model=None):
             states[label] = "unreadable"
             uncertainty.append("managed_policy_unresolved")
     resolution = resolve_main_model(effective, saved, explicit_model, source,
-                                    saved_source, uncertainty)
+                                    saved_source, uncertainty,
+                                    default_source=default_source)
     return resolution, states
 
 
@@ -1410,8 +1420,12 @@ def probe_local_settings_shadowing(base_dir: str = BASE_DIR) -> ProbeResult:
     shipped settings.json `env`?
 
     Claude Code applies the local file over the committed one, and an `env`
-    block follows that precedence, so a stale local ANTHROPIC_MODEL silently
-    re-points every session (observed during the 2.1.281 post-rebuild pass).
+    block follows that precedence, so a stale local model selector silently
+    re-points every session (a stale local ANTHROPIC_MODEL was observed during
+    the 2.1.281 post-rebuild pass; the shipped settings.json now sets only the
+    soft ANTHROPIC_DEFAULT_MODEL, so a local ANTHROPIC_MODEL is a local-only
+    selector). MODEL_SELECTOR_VARS covers both start selectors, all four tier
+    aliases (OPUS/SONNET/HAIKU/FABLE) and CLAUDE_CODE_SUBAGENT_MODEL.
     FAIL when a shadowed key is a model selector (MODEL_SELECTOR_VARS) whose
     value differs; WARN for any other shadowed key (including a selector pinned
     to the same value, which is harmless today but drifts on the next model
@@ -1454,9 +1468,12 @@ def probe_local_settings_shadowing(base_dir: str = BASE_DIR) -> ProbeResult:
         r.add_evidence("", note=("local-only env keys (override the container environment, not "
                                  f"settings.json): {', '.join(local_only)}"))
 
-    # A model selector set ONLY in the local file (e.g. CLAUDE_CODE_SUBAGENT_MODEL,
-    # which settings.json does not set) shadows nothing in settings.json, but it
-    # still re-points every session's model resolution over the container env.
+    # A model selector set ONLY in the local file (e.g. ANTHROPIC_MODEL or a tier
+    # alias such as ANTHROPIC_DEFAULT_HAIKU_MODEL, which settings.json does not
+    # set) shadows nothing in settings.json, but it still overrides the container
+    # env for every session. (CLAUDE_CODE_SUBAGENT_MODEL is listed too; since
+    # Claude Code 2.1.251 it only reaches subagents without their own model
+    # unless CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1.)
     local_only_selectors = [k for k in local_only if k in MODEL_SELECTOR_VARS]
     for key in local_only_selectors:
         r.add_evidence(f"env.{key}", output=(f"settings.local.json={redact_env_value(key, str(local_env.get(key)))}"
@@ -1676,7 +1693,8 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
     results = [
         probe_daaf_dev(env),
         probe_route_detection(route_info),
-        probe_model_family(route_info, env),
+        probe_model_family(route_info, env, hook_path=Path(base_dir) / ".claude" / "hooks"
+                           / "enforce-model-ceiling.sh"),
         probe_env_coherence(route_info, env),
         probe_context_window_coherence(route_info, env),
         probe_cli_available(),

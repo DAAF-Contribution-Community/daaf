@@ -14,7 +14,9 @@ The four routes (auto-detected from the live env, per the approved design):
     else                                                   -> anthropic-subscription
 
 This module makes NO subprocess calls and NO LLM calls — it is pure environment
-inspection so Tier 0 preflight can run for free. It is framework tooling (like
+inspection so Tier 0 preflight can run for free. Its one file access is a
+read-only text read of the installed enforce-model-ceiling.sh (T0.2 checks which
+rule set that hook carries). It is framework tooling (like
 benchmarks/), so it uses normal engineering style with functions, NOT the
 sequential no-functions research-script style that CLAUDE.md mandates for
 pipeline analysis scripts.
@@ -25,6 +27,7 @@ the internal import DAG is route_detection <- smoke_probes <- run_deploy_smoke.
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 # --- Verdict vocabulary ---------------------------------------------------
@@ -61,15 +64,186 @@ ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_OPENROUTER, ROUTE_OPENAI_API, ROUTE_CHATGPT
 # cannot change daemon-level state (SHIM_SANITIZE_TOOLS, backend_mode).
 SHIM_ROUTES = frozenset({ROUTE_OPENAI_API, ROUTE_CHATGPT})
 
-# Every selector that can make Claude Code itself or a dispatched subagent run a
-# mapped GPT model. T0.4 inspects all four rather than treating ANTHROPIC_MODEL as
-# a proxy for the effective model surface.
+# Every selector that can make Claude Code itself, a dispatched subagent, or a
+# housekeeping call run a mapped (possibly GPT) model. T0.4 inspects all
+# seven rather than treating ANTHROPIC_MODEL as a proxy for the effective model
+# surface:
+#   * ANTHROPIC_MODEL — hard session-start selector (outranks a saved `model`).
+#   * ANTHROPIC_DEFAULT_MODEL — soft session-start default (Claude Code 2.1.236+),
+#     applied only when no --model, ANTHROPIC_MODEL or settings `model` key
+#     selects one; DAAF's shipped settings.json sets it.
+#   * ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL — what each tier alias
+#     resolves to. HAIKU also drives Claude Code's housekeeping calls (naming
+#     and summarizing the session); FABLE is the fable alias + Fable recognition.
+#   * CLAUDE_CODE_SUBAGENT_MODEL — since Claude Code 2.1.251 only a FALLBACK for
+#     subagents without their own model (every DAAF agent sets `model:`); it is
+#     forced onto every subagent only with CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1.
 MODEL_SELECTOR_VARS = (
     "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "CLAUDE_CODE_SUBAGENT_MODEL",
 )
+
+# ANTHROPIC_DEFAULT_MODEL values Claude Code ignores (model-config docs,
+# fetched 2026-10-12): the session then starts on the account-type default.
+# Compared case-insensitively, the same convention as _resolve_tier_alias (the
+# docs do not say whether these values are case-sensitive).
+_IGNORED_DEFAULT_MODEL_VALUES = frozenset({"default", "inherit", "opusplan", "haiku"})
+
+
+def _subagent_force_enabled(env) -> bool:
+    """CLAUDE_CODE_SUBAGENT_MODEL_FORCE (Claude Code 2.1.257+) is documented as
+    "Set to 1". '1' and case-insensitive 'true' count as enabled, matching
+    enforce-model-ceiling.sh rule (a) (hook updated and installed 2026-10-12);
+    anything else is off."""
+    value = env.get("CLAUDE_CODE_SUBAGENT_MODEL_FORCE")
+    return isinstance(value, str) and (value == "1" or value.lower() == "true")
+
+
+def _effective_default_model(env) -> str:
+    """ANTHROPIC_DEFAULT_MODEL as Claude Code would honor it ('' when unset or
+    set to a value Claude Code ignores)."""
+    value = env.get("ANTHROPIC_DEFAULT_MODEL")
+    if (not isinstance(value, str) or not value
+            or value.lower() in _IGNORED_DEFAULT_MODEL_VALUES):
+        return ""
+    return value
+
+
+# Substrings that mark a model name as Claude-family: the four tier names that
+# enforce-model-ceiling.sh's rank_of() substring-matches (haiku, sonnet, opus,
+# fable), plus claude and mythos.
+_CLAUDE_FAMILY_KEYWORDS = ("claude", "opus", "sonnet", "haiku", "fable", "mythos")
+
+# Sentinel for "a tier alias with no ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping":
+# Claude Code then uses its built-in Claude model for that tier.
+_BUILTIN_CLAUDE = "claude"
+
+
+def _resolve_tier_alias(value, env) -> str:
+    """Resolve a selector that may be a tier alias the way Claude Code would.
+
+    "opus" / "sonnet" / "haiku" / "fable" (and "<alias>[1m]") resolve through
+    their own ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping: the mapped slug when set,
+    else _BUILTIN_CLAUDE (Claude Code's built-in Claude model for the tier). Any
+    other value is returned unchanged ('' for unset/non-string values).
+
+    Case handling: the alias match is case-insensitive ("Opus" resolves like
+    "opus"). Claude Code's model-configuration docs (fetched 2026-10-12) do not
+    say whether aliases are case-sensitive, so this is a chosen convention, not a
+    documented fact. It is the safe direction for T0.4: read case-sensitively,
+    "Opus" would count as a Claude name by keyword and could mask a non-Claude
+    OPUS mapping that needs a context-window declaration.
+    """
+    if not isinstance(value, str) or not value:
+        return ""
+    alias = value[:-len("[1m]")] if value.lower().endswith("[1m]") else value
+    alias = alias.lower()
+    if alias in _MAIN_ALIASES:
+        mapped = env.get(_MAIN_ALIASES[alias], "")
+        return mapped if isinstance(mapped, str) and mapped else _BUILTIN_CLAUDE
+    return value
+
+
+def _is_claude_family_name(model) -> bool:
+    """Keyword test on one (already resolved) model name."""
+    text = (model or "").lower()
+    return any(k in text for k in _CLAUDE_FAMILY_KEYWORDS)
+
+
+# Selector values that name no model on their own, so they are skipped rather
+# than classified as text (docs fetched 2026-10-12):
+#   * "inherit" — environment-variables docs, CLAUDE_CODE_SUBAGENT_MODEL:
+#     "Setting it to inherit is the same as leaving it unset."
+#   * "default" — model-configuration docs, "default model setting": it
+#     resolves to an organization default, an honored ANTHROPIC_DEFAULT_MODEL,
+#     the model recorded on the account, or the account-type default (a Claude
+#     model on every listed account type). The env-visible parts of that chain
+#     are inspected as selectors of their own.
+# The docs do not say what "inherit" means in ANTHROPIC_MODEL, or "default" in
+# CLAUDE_CODE_SUBAGENT_MODEL; skipping them there too is inference, chosen as
+# the non-failing direction for T0.4.
+_NO_MODEL_SELECTOR_VALUES = frozenset({"inherit", "default"})
+
+# Selector aliases that stand for one or more tier aliases:
+#   * "opusplan" — environment-variables docs: ANTHROPIC_DEFAULT_OPUS_MODEL is
+#     the model "that opusplan uses while Plan Mode is active", and
+#     ANTHROPIC_DEFAULT_SONNET_MODEL the one it uses "when Plan Mode is not
+#     active". Both mappings therefore apply.
+#   * "best" — model-configuration docs: "...except in Claude apps gateway
+#     sessions, where fable and best resolve to Fable 5." That is the docs' only
+#     mention of best. Resolving it through the FABLE mapping in other sessions
+#     is inference; it cannot add a T0.4 failure, because the FABLE mapping is
+#     inspected as a selector of its own.
+_COMPOUND_ALIASES = {"opusplan": ("opus", "sonnet"), "best": ("fable",)}
+
+
+def _expand_selector(value, env) -> tuple:
+    """Resolve one alias-capable selector value to the model names it can run.
+
+    Returns () for unset values and for _NO_MODEL_SELECTOR_VALUES, one name per
+    tier alias for _COMPOUND_ALIASES, and otherwise the single
+    _resolve_tier_alias result. Matching is case-insensitive and ignores a
+    trailing "[1m]", the same convention as _resolve_tier_alias."""
+    if not isinstance(value, str) or not value:
+        return ()
+    alias = value[:-len("[1m]")] if value.lower().endswith("[1m]") else value
+    alias = alias.lower()
+    if alias in _NO_MODEL_SELECTOR_VALUES:
+        return ()
+    if alias in _COMPOUND_ALIASES:
+        return tuple(_resolve_tier_alias(tier, env) for tier in _COMPOUND_ALIASES[alias])
+    return (_resolve_tier_alias(value, env),)
+
+
+def _resolved_selectors(env) -> list:
+    """(name, raw, resolved) for every set MODEL_SELECTOR_VARS entry.
+
+    ANTHROPIC_MODEL, an honored ANTHROPIC_DEFAULT_MODEL and
+    CLAUDE_CODE_SUBAGENT_MODEL can name an alias, so they are expanded through
+    _expand_selector: "inherit"/"default" yield no entry, "opusplan" yields one
+    entry per tier it uses, and a tier alias resolves through its mapping. The
+    four ANTHROPIC_DEFAULT_<ALIAS>_MODEL mappings are taken as written (they are
+    the alias targets)."""
+    out = []
+    for name in MODEL_SELECTOR_VARS:
+        if name == "ANTHROPIC_DEFAULT_MODEL":
+            raw = _effective_default_model(env)
+        else:
+            raw = env.get(name, "")
+            raw = raw if isinstance(raw, str) else ""
+        if not raw:
+            continue
+        if name in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+            for resolved in _expand_selector(raw, env):
+                out.append((name, raw, resolved))
+        else:
+            out.append((name, raw, raw))
+    return out
+
+
+# The installed ceiling hook. T0.2 reads it (read-only) to tell the 2026-10-12
+# rule set (stands down only for CLAUDE_CODE_SUBAGENT_MODEL_FORCE or an
+# OPUS/SONNET remap) from an older install (stands down whenever
+# CLAUDE_CODE_SUBAGENT_MODEL is set, and does not know the force flag).
+CEILING_HOOK_PATH = (Path(__file__).resolve().parents[2]
+                     / ".claude" / "hooks" / "enforce-model-ceiling.sh")
+_FORCE_MARKER = "SUBAGENT_MODEL_FORCE"
+
+
+def _ceiling_hook_recognizes_force(hook_path):
+    """True when the hook text mentions CLAUDE_CODE_SUBAGENT_MODEL_FORCE (the
+    2026-10-12 rule set), False when it does not (an older hook), None when the
+    file cannot be read. Text inspection only; the hook is never executed."""
+    try:
+        text = Path(hook_path).read_text(encoding="utf-8", errors="replace")
+    except (OSError, TypeError, ValueError):
+        return None
+    return _FORCE_MARKER in text
 
 _MAX_SIGNED_64 = 9223372036854775807
 _CANONICAL_POSITIVE_DECIMAL_RE = re.compile(r"^[1-9][0-9]*$")
@@ -150,8 +324,9 @@ class RouteInfo:
     detected_route: str
     asserted_route: str = ""        # from --route, "" if not asserted
     model_family: str = "unknown"   # claude | gpt | glm | unknown
-    remap_active: bool = False      # tier-alias remap or subagent-model pin set
-    session_model: str = ""         # ANTHROPIC_MODEL as configured
+    remap_active: bool = False      # OPUS/SONNET tier remap set, or forced subagent model
+    session_model: str = ""         # env start selector: ANTHROPIC_MODEL, else an honored
+                                    # ANTHROPIC_DEFAULT_MODEL (T0.14 adds settings `model`)
     route_match: bool = True        # False when asserted_route != detected_route
     shim_control: str = ""         # raw DAAF_PROVIDER_SHIM value (no normalization)
     backend_mode_control: str = "" # raw SHIM_BACKEND_MODE value (no normalization)
@@ -240,9 +415,13 @@ FINGERPRINT_VARS = (
     "SHIM_SANITIZE_TOOLS",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "CLAUDE_CODE_SUBAGENT_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     "CLAUDE_CODE_EFFORT_LEVEL",
@@ -455,32 +634,44 @@ def detect_route(env) -> str:
 def classify_model_family(env):
     """Classify the configured model family and whether a tier remap is active.
 
-    Returns (family, remap_active). family is one of claude|gpt|glm|unknown.
-    remap_active is True when any of the tier-alias remaps or the global
-    subagent-model pin is set — the condition under which enforce-model-ceiling
-    stands down (rules a/b of that hook). Expectations differ by family: on a
-    Claude-pure config the ceiling hook must actively rank; with remaps set it
-    must stand down.
+    Returns (family, remap_active). family is one of claude|gpt|glm|unknown and
+    is a combined posture over every MODEL_SELECTOR_VARS value (an honored
+    ANTHROPIC_DEFAULT_MODEL included); T0.14 resolves the main model separately.
+    remap_active is True when ANTHROPIC_DEFAULT_OPUS_MODEL or
+    ANTHROPIC_DEFAULT_SONNET_MODEL is set (the only tiers DAAF agents use), or
+    when CLAUDE_CODE_SUBAGENT_MODEL_FORCE is enabled — the conditions under which
+    enforce-model-ceiling.sh stands down (rules a/b; hook updated and installed
+    2026-10-12). CLAUDE_CODE_SUBAGENT_MODEL alone no longer counts: since Claude
+    Code 2.1.251 it is only a fallback for subagents without their own model, so
+    it does not override DAAF agents' `model:` frontmatter. HAIKU/FABLE remaps
+    alone do not count either: no DAAF agent dispatches on those tiers.
+    Expectations differ by family: on a Claude-pure config the ceiling hook must
+    actively rank; with an OPUS/SONNET remap or a forced subagent model it must
+    stand down. (T0.2 also reports an older installed hook's different rule set.)
+
+    Every selector that can name a tier alias — ANTHROPIC_MODEL, an honored
+    ANTHROPIC_DEFAULT_MODEL (DAAF ships "opus") and CLAUDE_CODE_SUBAGENT_MODEL,
+    each also as "<alias>[1m]", case-insensitively — is resolved through its own
+    ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping before it joins the candidates: the
+    mapped slug when the alias is remapped, or "claude" (Claude Code's built-in
+    model for that tier) only when it is unmapped (see _resolve_tier_alias).
+    Counting the raw alias text instead would classify a custom remap (e.g. OPUS
+    -> a qwen slug on OpenRouter) as claude.
     """
-    candidates = [
-        env.get("ANTHROPIC_MODEL", ""),
-        env.get("ANTHROPIC_DEFAULT_OPUS_MODEL", ""),
-        env.get("ANTHROPIC_DEFAULT_SONNET_MODEL", ""),
-        env.get("CLAUDE_CODE_SUBAGENT_MODEL", ""),
-    ]
+    candidates = [resolved for _, _, resolved in _resolved_selectors(env)]
     joined = " ".join(c for c in candidates if c).lower()
 
     remap_active = bool(
         env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
         or env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
-        or env.get("CLAUDE_CODE_SUBAGENT_MODEL")
+        or _subagent_force_enabled(env)
     )
 
     if "gpt-" in joined or "openai/" in joined:
         family = "gpt"
     elif "glm" in joined:
         family = "glm"
-    elif any(k in joined for k in ("claude", "opus", "sonnet", "haiku", "fable", "mythos")):
+    elif _is_claude_family_name(joined):
         family = "claude"
     else:
         family = "unknown"
@@ -497,7 +688,7 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
         asserted_route=asserted_route or "",
         model_family=family,
         remap_active=remap,
-        session_model=env.get("ANTHROPIC_MODEL", ""),
+        session_model=env.get("ANTHROPIC_MODEL", "") or _effective_default_model(env),
         shim_control=env.get("DAAF_PROVIDER_SHIM", ""),
         backend_mode_control=env.get("SHIM_BACKEND_MODE", ""),
         lane_control_issues=_lane_control_issues(env),
@@ -510,7 +701,7 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
 # --- Main-model projection (separate from ceiling-hook family posture) -----
 
 _MAIN_ALIASES = {name: f"ANTHROPIC_DEFAULT_{name.upper()}_MODEL"
-                 for name in ("opus", "sonnet", "haiku")}
+                 for name in ("opus", "sonnet", "haiku", "fable")}
 _MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*(?:\[1m\])?(?:#[A-Za-z0-9_-]+)?")
 
 
@@ -560,22 +751,35 @@ class MainModelResolution:
 
 def resolve_main_model(env, saved_model=None, explicit_model=None,
                        env_source="environment", saved_source="saved_model",
-                       uncertainty=(), route=None):
-    """Pure bounded 2.1.281 projection: invocation > effective env > saved model.
+                       uncertainty=(), route=None,
+                       default_source="environment_default_model"):
+    """Pure bounded projection of Claude Code's main-model precedence:
+    invocation (--model) > effective ANTHROPIC_MODEL > saved settings `model`
+    key > honored ANTHROPIC_DEFAULT_MODEL > account-type default (unresolved).
 
-    Caller supplies already-projected settings env. No dynamic default or managed
-    policy emulation. Only short opus/sonnet/haiku aliases expand their OWN mapping;
-    explicit IDs are not rewritten by default aliases or subagent model pins.
+    Caller supplies already-projected settings env (a settings-file `env` value
+    overwrites the same process variable). ANTHROPIC_DEFAULT_MODEL (Claude Code
+    2.1.236+) is ignored when set to default/inherit/opusplan/haiku, exactly as
+    Claude Code ignores it; its account-availability rule is not emulated. No
+    dynamic default or managed policy emulation. Only the short
+    opus/sonnet/haiku/fable aliases expand, each through its OWN
+    ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping; explicit IDs are not rewritten by
+    default aliases or subagent model pins. An alias whose mapping is unset
+    resolves to Claude Code's built-in Claude model for that tier: the family is
+    claude, but the exact ID (resolved_model) stays unknown.
     Configuration-compatible does not establish provider availability/acceptance.
     """
     issues = list(uncertainty)
     overridden = explicit_model is not None
+    default_model = _effective_default_model(env)
     if overridden:
         selector, source = explicit_model, "invocation"
     elif env.get("ANTHROPIC_MODEL"):
         selector, source = env["ANTHROPIC_MODEL"], env_source
     elif saved_model:
         selector, source = saved_model, saved_source
+    elif default_model:
+        selector, source = default_model, default_source
     else:
         selector, source = "", "unresolved"
         issues.append("dynamic_default_unresolved")
@@ -583,12 +787,23 @@ def resolve_main_model(env, saved_model=None, explicit_model=None,
         selector = ""
         issues.append("invalid_selector")
     resolved = selector
-    if selector in _MAIN_ALIASES:
-        resolved = env.get(_MAIN_ALIASES[selector], "")
+    builtin_alias = False
+    # "<alias>[1m]" (e.g. "opus[1m]", which /model saves to user settings) is the
+    # same alias with the 1M-context hint, so it expands through the same mapping.
+    # Case-insensitive ("Opus" expands like "opus"), the same chosen convention
+    # as _resolve_tier_alias (the docs are silent on alias case).
+    alias = selector[:-len("[1m]")] if selector.lower().endswith("[1m]") else selector
+    alias = alias.lower()
+    if alias in _MAIN_ALIASES:
+        resolved = env.get(_MAIN_ALIASES[alias], "")
         if not isinstance(resolved, str) or not resolved:
+            # Unmapped alias: Claude Code uses its built-in Claude model for the
+            # tier. Family is known (claude); the exact ID is version-dependent,
+            # so resolved_model stays "" and exact-ID consumers (normal-Auto
+            # acceptance) must treat it as unresolved.
             resolved = ""
-            issues.append("alias_default_unresolved")
-    family = main_model_family(resolved)
+            builtin_alias = True
+    family = "claude" if builtin_alias else main_model_family(resolved)
     if family == "unknown":
         issues.append("model_family_unresolved")
     route = route or detect_route(env)
@@ -724,23 +939,101 @@ def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
     return r
 
 
-def probe_model_family(route_info: RouteInfo, env) -> ProbeResult:
-    """Tier 0: classify the model family and note the expected ceiling-hook posture."""
+def probe_model_family(route_info: RouteInfo, env, hook_path=None) -> ProbeResult:
+    """Tier 0: classify the model family and note the expected ceiling-hook posture.
+
+    The posture depends on which enforce-model-ceiling.sh is installed, so the
+    hook file (CEILING_HOOK_PATH unless hook_path is given) is read, never run:
+      * current hook (2026-10-12, mentions CLAUDE_CODE_SUBAGENT_MODEL_FORCE):
+        stands down only for an enabled force flag (rule a) or an OPUS/SONNET
+        remap (rule b); CLAUDE_CODE_SUBAGENT_MODEL alone does not stand it down.
+      * older hook (no force flag in its text): stands down whenever
+        CLAUDE_CODE_SUBAGENT_MODEL is set (its rule a) or for an OPUS/SONNET
+        remap, and does not recognize the force flag.
+      * unreadable hook: the current rule set is assumed and the evidence says so
+        (T0.6 checks the hook's registration).
+    """
     r = ProbeResult(probe_id="T0.2", name="Model family classification", tier="0")
+    path = CEILING_HOOK_PATH if hook_path is None else hook_path
+    force_aware = _ceiling_hook_recognizes_force(path)
+    legacy = force_aware is False
     r.add_evidence(
         "classify_model_family(os.environ)",
         output=f"family={route_info.model_family} remap_active={route_info.remap_active}",
-        note="ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL / CLAUDE_CODE_SUBAGENT_MODEL",
+        note=("family: ANTHROPIC_MODEL / ANTHROPIC_DEFAULT_MODEL / "
+              "ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL / CLAUDE_CODE_SUBAGENT_MODEL, "
+              "tier aliases resolved through their ANTHROPIC_DEFAULT_<ALIAS>_MODEL mapping; "
+              "remap_active: ANTHROPIC_DEFAULT_{OPUS,SONNET}_MODEL or "
+              "CLAUDE_CODE_SUBAGENT_MODEL_FORCE enabled (current hook's rules a/b)"),
     )
-    if route_info.model_family == "claude" and not route_info.remap_active:
-        expectation = ("Claude-pure config: enforce-model-ceiling.sh must actively RANK "
-                       "subagent dispatches (haiku<sonnet<opus<fable).")
-    elif route_info.remap_active:
-        expectation = ("Tier remap / subagent pin active: enforce-model-ceiling.sh must "
-                       "STAND DOWN (rules a/b) — it cannot rank custom slugs.")
+    r.add_evidence(
+        f"read-only text search of {path} for {_FORCE_MARKER!r}",
+        output={True: "found (current 2026-10-12 rule set)",
+                False: "not found (older hook rule set)",
+                None: "hook file unreadable"}[force_aware],
+        note=("Older hooks stand down whenever CLAUDE_CODE_SUBAGENT_MODEL is set and do "
+              "not recognize CLAUDE_CODE_SUBAGENT_MODEL_FORCE." if legacy else
+              "Expectation below assumes the current rule set; T0.6 checks hook "
+              "registration." if force_aware is None else
+              "Hook stands down only for CLAUDE_CODE_SUBAGENT_MODEL_FORCE (rule a) or "
+              "an OPUS/SONNET remap (rule b)."),
+    )
+    subagent_model = env.get("CLAUDE_CODE_SUBAGENT_MODEL")
+    force = _subagent_force_enabled(env)
+    if subagent_model and not force:
+        r.add_evidence(
+            "env: CLAUDE_CODE_SUBAGENT_MODEL / CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+            output=(f"CLAUDE_CODE_SUBAGENT_MODEL={subagent_model!r}; "
+                    f"CLAUDE_CODE_SUBAGENT_MODEL_FORCE="
+                    f"{env.get('CLAUDE_CODE_SUBAGENT_MODEL_FORCE', '<unset>')!r}"),
+            note=("Since Claude Code 2.1.251 CLAUDE_CODE_SUBAGENT_MODEL is only a fallback "
+                  "for subagents without their own model; every DAAF agent sets `model:`, "
+                  "so it does not reroute DAAF dispatches unless "
+                  "CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 is also set. "
+                  + ("The installed older hook nevertheless stands down while it is set."
+                     if legacy else
+                     "It does not stand enforce-model-ceiling.sh down on its own.")),
+        )
+    opus_sonnet_remap = bool(env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                             or env.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
+    # Each stand-down reason carries its own rationale, so the explanation names
+    # only the rules that actually apply.
+    remap_reason = ("an OPUS/SONNET tier remap is set (rule b)",
+                    "the hook cannot rank custom slugs")
+    if legacy:
+        stand_down = bool(subagent_model) or opus_sonnet_remap
+        reasons = []
+        if subagent_model:
+            reasons.append(("CLAUDE_CODE_SUBAGENT_MODEL is set (older rule a)",
+                            "the older hook assumes that variable overrides every "
+                            "subagent's model, which held only before Claude Code 2.1.251"))
+        if opus_sonnet_remap:
+            reasons.append(remap_reason)
+        prefix = ("Installed enforce-model-ceiling.sh predates the 2026-10-12 update "
+                  "(no CLAUDE_CODE_SUBAGENT_MODEL_FORCE support). ")
     else:
-        expectation = ("Non-Claude family without remap: a Claude-tier subagent request "
-                       "would be DENIED with remap guidance (ceiling-hook rule f).")
+        stand_down = route_info.remap_active
+        reasons = []
+        if force:
+            reasons.append(("CLAUDE_CODE_SUBAGENT_MODEL_FORCE is enabled (rule a)",
+                            "a forced subagent model makes the ceiling moot"))
+        if opus_sonnet_remap:
+            reasons.append(remap_reason)
+        prefix = ""
+    if stand_down:
+        expectation = (prefix + "enforce-model-ceiling.sh must STAND DOWN because "
+                       + " and ".join(reason for reason, _ in reasons) + " — "
+                       + "; ".join(why for _, why in reasons) + ".")
+    elif route_info.model_family == "claude":
+        expectation = (prefix + "Claude-pure config: enforce-model-ceiling.sh must "
+                       "actively RANK subagent dispatches (haiku<sonnet<opus<fable).")
+    else:
+        expectation = (prefix + "Non-Claude family without an OPUS/SONNET remap: a "
+                       "Claude-tier subagent request would be DENIED with tier-alias "
+                       "guidance (ceiling-hook rule f).")
+    if legacy and force:
+        expectation += (" CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set, but this older hook "
+                        "does not recognize it.")
     r.verdict = Verdict.INFO
     r.detail = expectation
     return r
@@ -758,7 +1051,10 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.add_evidence(f"env: {name}", output=redact_env_value(name, env.get(name)) if name in env else "<unset>")
 
     if route == ROUTE_ANTHROPIC:
+        # Both start-model selectors: DAAF's shipped settings.json sets only the
+        # soft ANTHROPIC_DEFAULT_MODEL, so ANTHROPIC_MODEL is normally <unset>.
         note_var("ANTHROPIC_MODEL")
+        note_var("ANTHROPIC_DEFAULT_MODEL")
         note_var("CLAUDE_CODE_OAUTH_TOKEN")
         # Native Claude Code auth is interactive OR CLAUDE_CODE_OAUTH_TOKEN.
         # We cannot verify interactive OAuth without an LLM call, so this is INFO
@@ -870,11 +1166,29 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     # Any non-Claude family reached over a route Claude Code does not natively
     # recognize needs an explicit window declaration. Static runtime fallbacks do
     # not guarantee Claude Code's own dynamic/headless budgeting in every context.
+    # The combined family alone is not enough on OpenRouter: one Claude-looking
+    # selector (e.g. a Claude HAIKU slug) would make it "claude" and mask a
+    # non-Claude OPUS/SONNET mapping. So each selector is also checked on its own,
+    # tier aliases resolved first (_resolved_selectors; case-insensitive alias
+    # match), and ANY non-Claude one requires the declaration.
+    resolved = _resolved_selectors(env)
+    non_claude = [(name, raw, res) for name, raw, res in resolved
+                  if not _is_claude_family_name(res)]
+    r.add_evidence(
+        "resolved selectors (tier aliases expanded through ANTHROPIC_DEFAULT_<ALIAS>_MODEL)",
+        output="; ".join(f"{name}={raw!r} -> {res!r}" for name, raw, res in resolved) or "<none set>",
+        note=("non-Claude: " + ", ".join(name for name, _, _ in non_claude)
+              if non_claude else "no non-Claude selector"),
+    )
     needs_declaration = (
         route_info.detected_route in SHIM_ROUTES
         or route_info.model_family == "gpt"
         or (route_info.detected_route == ROUTE_OPENROUTER
-            and route_info.model_family != "claude")
+            and (route_info.model_family != "claude" or bool(non_claude)))
+    )
+    non_claude_text = ", ".join(
+        f"{name}={raw!r}" + (f" -> {res!r}" if res != raw else "")
+        for name, raw, res in non_claude
     )
 
     max_is_present = max_ctx is not None
@@ -908,6 +1222,7 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     )
     native_claude_1m = (
         route_info.model_family == "claude"
+        and not non_claude
         and any(_has_supported_1m_hint(value) for _, value in selectors if value)
     )
 
@@ -979,9 +1294,11 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = "Native Claude model uses its recognized [1m] context hint."
     else:
         r.verdict = Verdict.FAIL
+        selector_note = (f"; non-Claude selector(s): {non_claude_text}"
+                         if non_claude_text else "")
         r.detail = (
             f"Non-Claude/shim model ({route_info.model_family} family, "
-            f"{route_info.detected_route} route) lacks a route-supported context "
+            f"{route_info.detected_route} route{selector_note}) lacks a route-supported context "
             "declaration. Use a canonical positive CLAUDE_CODE_MAX_CONTEXT_TOKENS; "
             "for OpenRouter keep provider-prefixed bare GPT slugs and declare the "
             "route window explicitly. The [1m] suffix is supported for the direct "

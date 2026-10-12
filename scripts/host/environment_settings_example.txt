@@ -207,10 +207,15 @@
 #
 # Option C also serves OpenAI GPT models, and DAAF runs its full agentic stack on
 # them (multi-tool loops, subagent dispatch, two-tier routing) with no proxy and
-# no rebuild -- just the four Option C lines above plus the model-routing keys in
-# section [3] (validated live 2026-07-09). See section [3] for the GPT model
-# slugs (recommended: gpt-6-sol strong / gpt-6-luna fast), context-window sizing,
-# and the GPT family naming, plus the GPT-6 Astra flagship (slug gpt-6-astra).
+# no rebuild -- just the four Option C lines above plus the four model-tier keys
+# in section [3]. (The agentic stack was validated live on 2026-07-09 with the
+# OPUS/SONNET pair; the four-key form has not been through that live run.) See
+# section [3] for the GPT model slugs (recommended: gpt-6-sol strong /
+# gpt-6-luna fast), context-window sizing, and the GPT family naming, plus the
+# GPT-6 Astra flagship (slug gpt-6-astra).
+# Whatever you reach through OpenRouter -- GPT, GLM, or Claude models -- set all
+# four model-tier keys in section [3], so every model request Claude Code makes
+# names a model OpenRouter actually serves.
 #
 # ----------------------------------------------------------------------------
 # Option D: Amazon Bedrock
@@ -225,6 +230,16 @@
 #AWS_REGION=us-east-1
 #ANTHROPIC_BEDROCK_BASE_URL=https://bedrock-runtime.us-east-1.amazonaws.com
 #
+# MODEL TIERS: Claude Code's docs recommend pinning all four model-tier keys to
+# specific model versions before rolling out on Bedrock (section [3] explains
+# what each tier is for). The values below are PLACEHOLDERS, not real IDs --
+# fill in the Bedrock model IDs your organization uses.
+# --- To activate, remove the leading '#' and set your model IDs: ---
+#ANTHROPIC_DEFAULT_FABLE_MODEL=your-bedrock-fable-model-id
+#ANTHROPIC_DEFAULT_OPUS_MODEL=your-bedrock-opus-model-id
+#ANTHROPIC_DEFAULT_SONNET_MODEL=your-bedrock-sonnet-model-id
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=your-bedrock-haiku-model-id
+#
 # ----------------------------------------------------------------------------
 # Option E: Google Vertex AI
 # ----------------------------------------------------------------------------
@@ -236,48 +251,124 @@
 #ANTHROPIC_VERTEX_PROJECT_ID=your_project_id
 #CLOUD_ML_REGION=us-central1
 #
+# MODEL TIERS: as for Bedrock, Claude Code's docs recommend pinning all four
+# model-tier keys before rolling out on Vertex (Google Cloud's Agent Platform).
+# The values below are PLACEHOLDERS -- fill in your organization's model IDs.
+# --- To activate, remove the leading '#' and set your model IDs: ---
+#ANTHROPIC_DEFAULT_FABLE_MODEL=your-vertex-fable-model-id
+#ANTHROPIC_DEFAULT_OPUS_MODEL=your-vertex-opus-model-id
+#ANTHROPIC_DEFAULT_SONNET_MODEL=your-vertex-sonnet-model-id
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=your-vertex-haiku-model-id
+#
 #
 # ============================================================================
 # [3] Model Routing (advanced)  (restart required)
 # ============================================================================
-# You only need this section if you point Claude Code at an ALTERNATIVE provider
-# -- OpenRouter / GPT / GLM / etc. via Option C in [2], or the provider shim in
-# [4]. On a standard Anthropic setup (Options A / B / D / E) the defaults are
-# correct and you can skip everything here.
+# You need this section whenever Claude Code talks to anything OTHER than plain
+# Anthropic: OpenRouter (Option C in [2] -- whether you use GPT, GLM, or Claude
+# models there), a cloud platform (Options D / E, whose placeholder lines sit
+# with those options in [2]), or the provider shim in [4]. With an Anthropic API
+# key (Option A) or subscription (Option B) the defaults are correct and you can
+# skip everything here (except "Session model", if you want a different opening
+# model).
 #
 # WHY REMAP? DAAF routes specialist subagents to Claude model TIERS: 'opus' for
 # high-judgment work (planning, QA review, verification, debugging) and 'sonnet'
-# for well-specified work (fetching, profiling, notebook assembly). On a non-
-# Claude endpoint those Claude tier aliases don't exist, so you remap them to
-# YOUR models. If you set none of these on a non-Claude session, DAAF's model-
-# routing guard blocks mismatched Claude-tier dispatches and subagents fall back
-# to your session model.
+# for well-specified work (lookups, source research, notebook assembly). Claude
+# Code itself also asks for two more tier names: 'haiku' for its own
+# housekeeping calls and 'fable' for Anthropic's top tier. On a non-Claude
+# endpoint those Claude names don't exist, so you map all four to YOUR models.
+# If you set none of these on a non-Claude session, DAAF's model-tier guard
+# blocks its Claude-tier specialist dispatches, because they would ask for a
+# Claude model your route doesn't serve. Set at least OPUS and SONNET; setting
+# all four is recommended.
 #
 # ----------------------------------------------------------------------------
-# Two-tier routing: map DAAF's strong / fast tiers to your models
+# Four-tier routing: tell Claude Code which of YOUR models each tier means
 # ----------------------------------------------------------------------------
-# Strong tier (Opus-analog) and fast tier (Sonnet-analog).
-# Recommended same-window GPT pair: openai/gpt-6-sol (strong) with
-# openai/gpt-6-luna (fast); openai/gpt-6-astra is a premium strong-tier option.
-# See the GLM-specific global-window guidance below
-# before routing exact GLM and Air together.
+# Set ALL FOUR keys, even though DAAF's own agents only use two of them. In
+# plain terms (2026-10-12 user decision for the haiku / fable pair):
+#
+#   OPUS    The strong tier. DAAF's high-judgment specialists run here -- AND
+#           your session should open on it, because DAAF's default session
+#           model is the 'opus' tier (see "Session model" below; confirm with
+#           /status).
+#   SONNET  The fast tier. DAAF's lighter, well-specified specialists run here.
+#   HAIKU   Claude Code's own housekeeping calls (naming your session,
+#           summarizing it for --resume). DAAF's agents never use it, but
+#           Claude Code does. Left unmapped, Claude Code has sent these as
+#           Claude Haiku requests that your route rejects (July 2026 shim
+#           logs); Claude Code's current docs say they run on your main,
+#           pricier model. Map it to your FAST model.
+#   FABLE   Anthropic's top tier. DAAF doesn't use it today; map it to your
+#           STRONG model so nothing on your route ever asks for a Claude-only
+#           model name (for example if someone picks "fable" in /model). One
+#           honest note: Claude Code swaps a Fable model for the Opus one in a
+#           few places (e.g. Explore, the Auto Mode safety check). Because
+#           FABLE and OPUS map to the same model here, the swap lands on the
+#           same model. That is our reading of Claude Code's docs, not
+#           something we tested. (OpenRouter's own Claude Code guide sets all
+#           four, too.)
+#
+# Recommended same-window GPT set on OpenRouter: openai/gpt-6-sol for FABLE and
+# OPUS, openai/gpt-6-luna for SONNET and HAIKU; openai/gpt-6-astra is a premium
+# strong option (use it for FABLE and OPUS together). Reaching Claude models
+# through OpenRouter? Use the matching Claude slugs from OpenRouter's catalogue
+# (strong Claude model for FABLE / OPUS, fast one for SONNET / HAIKU). See the
+# GLM-specific global-window guidance below before mixing exact GLM and Air.
 # --- To activate, remove the leading '#' and set your model slugs: ---
+#ANTHROPIC_DEFAULT_FABLE_MODEL=your-strong-model-slug
 #ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
 #ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=your-fast-model-slug
 #
-# Or switch tiered routing OFF and run every subagent on a SINGLE model:
-# --- To activate, remove the leading '#': ---
-#CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
+# ONE MODEL FOR EVERYTHING? Set all four keys above to the same slug. (Older
+# DAAF docs suggested CLAUDE_CODE_SUBAGENT_MODEL for this. Since Claude Code
+# 2.1.251 it only covers subagents that name no model of their own -- and every
+# DAAF agent names one -- so it no longer does the job.)
+#
+# ADVANCED NOTE: Claude Code also has CLAUDE_CODE_SUBAGENT_MODEL_FORCE, which
+# makes CLAUDE_CODE_SUBAGENT_MODEL override every subagent's own model. DAAF
+# doesn't use it: it reaches only subagents, so your session model, Claude
+# Code's housekeeping (HAIKU) calls and the Fable tier would still need mapping
+# of their own. Setting all four keys to one model covers all of them.
 #
 # ----------------------------------------------------------------------------
-# Session model (the model a session OPENS on)
+# Session model (the model a session OPENS on) -- usually nothing to set
 # ----------------------------------------------------------------------------
-# On Option C (OpenRouter) this key works and sets your session model.
-# IMPORTANT: on the provider shim (Option F, section [4]) it does NOT take effect
-# from this file -- DAAF's settings.json "env" block overrides it; section [4]
-# explains how to change the standing default there.
-# --- To activate, remove the leading '#': ---
-#ANTHROPIC_MODEL=openai/gpt-6-sol
+# DAAF's settings.json ships a SOFT default, ANTHROPIC_DEFAULT_MODEL=opus: new
+# sessions open on whatever the 'opus' tier means on your route. With the four
+# keys above set, that should be your strong model -- no /model switch each
+# session. (This follows from how Claude Code resolves the 'opus' name; it
+# hasn't been tested on every route. Run /status to see the model you're on.
+# Newer Claude Code versions also label the Default row of the /model picker
+# "Set by ANTHROPIC_DEFAULT_MODEL" when this default is in effect.)
+#
+# The soft default steps aside for any choice you make. Claude Code picks the
+# opening model in this order -- first match wins:
+#   1. the --model flag
+#   2. ANTHROPIC_MODEL (the optional key below)
+#   3. a "model" value in any settings file -- including the choice /model
+#      saves when you press Enter (pressing 's' in the picker instead switches
+#      for this session only)
+#   4. an organization default model set by a Claude Enterprise admin (direct
+#      Anthropic routes only; if the admin makes it override user choices, it
+#      also outranks a /model choice and user, project and local settings,
+#      though managed settings and --settings still win)
+#   5. DAAF's ANTHROPIC_DEFAULT_MODEL=opus
+#   6. Claude Code's own default for your account type
+#
+# OPTIONAL HARD PIN: ANTHROPIC_MODEL re-applies on every launch and overrides
+# even a saved /model choice. Most people don't need it. Example use: open every
+# session on your FAST model instead of your strong one (bare slug with [1m] on
+# the shim lanes, e.g. gpt-6-luna[1m]; provider-prefixed on OpenRouter, e.g.
+# openai/gpt-6-luna).
+# --- To activate, remove the leading '#' and set your model slug: ---
+#ANTHROPIC_MODEL=your-fast-model-slug
+#
+# NOTE: don't put ANTHROPIC_DEFAULT_MODEL in this file. DAAF's settings.json
+# sets that variable, and a settings.json value replaces the same variable from
+# this file, so yours would be ignored. Use ANTHROPIC_MODEL or /model instead.
 #
 # ----------------------------------------------------------------------------
 # Context window size
@@ -296,18 +387,21 @@
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
 # Exact z-ai/glm-5.2 guidance (current OpenRouter catalogue, 2026-07-15):
-# for the recommended 1,048,576 declaration, route the main session and BOTH
-# subagent tiers to exact z-ai/glm-5.2 (equivalently, flatten all routing to it):
-#ANTHROPIC_MODEL=z-ai/glm-5.2
+# for the recommended 1,048,576 declaration, map ALL FOUR tiers to exact
+# z-ai/glm-5.2, so every model the session can reach -- including the session
+# model itself, which follows the OPUS key -- has that window (this is also the
+# "one model for everything" setup):
+#ANTHROPIC_DEFAULT_FABLE_MODEL=z-ai/glm-5.2
 #ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5.2
 #ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-5.2
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=z-ai/glm-5.2
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576
 # This declares PHYSICAL capacity only. GLM still uses DAAF's conservative
 # context-quality thresholds (40%/150k, 60%/200k, 75%/250k; whichever fires
-# first). If you want z-ai/glm-5.2-air as the fast tier, do not reuse 1048576
-# unless you independently verify Air's current physical window and confirm that
-# the one global value is valid for every routed model. This runtime path has no
-# supported per-model context-window override.
+# first). If you want z-ai/glm-5.2-air as the fast tier (SONNET / HAIKU), do
+# not reuse 1048576 unless you independently verify Air's current physical
+# window and confirm that the one global value is valid for every routed model.
+# This runtime path has no supported per-model context-window override.
 #
 # GPT window sizes: the gpt-5.6 family (sol / terra / luna), gpt-6-astra,
 # gpt-6-sol, gpt-6-luna, and gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes
@@ -319,11 +413,12 @@
 # Luna (fastest / cheapest); GPT-6 has Sol, Luna, and the Astra flagship (128,000
 # max output), with no Terra. All have 1,050,000-token windows; the older
 # gpt-5.5 / 5.4 / 5.2 slugs still work. DAAF's RECOMMENDED MAPPING (2026-09-29
-# user decision, not a validation run): Sol -> strong tier (OPUS key), Luna ->
-# fast tier (SONNET key), shown with gpt-6-sol / gpt-6-luna; gpt-6-astra is a
-# premium strong-tier option (5x Sol's price). Context-utilization numbers are
-# ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's token-counting
-# endpoint). GPT models use DAAF's conservative context-quality thresholds by
+# user decision, not a validation run): Sol -> strong tier (FABLE + OPUS keys),
+# Luna -> fast tier (SONNET + HAIKU keys), shown with gpt-6-sol / gpt-6-luna;
+# gpt-6-astra is a premium strong-tier option (5x Sol's price).
+# Context-utilization numbers are ESTIMATES on GPT sessions (OpenRouter
+# doesn't serve Claude Code's token-counting endpoint). GPT models use DAAF's
+# conservative context-quality thresholds by
 # default; exact gpt-5.6-sol and gpt-6-astra (validated), plus gpt-6-sol and the flagship -pro form of all three
 # (admitted 2026-09-29 by user policy decision, not validation) -- each optionally
 # [1m] and provider-prefixed -- share a profile that keeps higher absolute gates
@@ -410,20 +505,30 @@
 # subscription via Codex OAuth, an unofficial dev lane).
 #
 # MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
-# (see section [3] for what these keys do). Use BARE OpenAI slugs here -- no
-# "openai/" prefix. gpt-6-sol / gpt-6-luna are the recommended pair but are
-# UNTESTED on both shim lanes: the shim forwards any slug unchanged, while DAAF's
-# recorded shim-lane tests used gpt-5.6-sol and gpt-6-astra. If OpenAI rejects a
-# GPT-6 slug, use gpt-5.6-sol[1m] / gpt-5.6-luna[1m] instead.
-# --- To activate, remove the leading '#': ---
+# (see section [3] for what these four keys do -- set all four). Use BARE OpenAI
+# slugs here -- no "openai/" prefix -- and keep [1m] on every one of them.
+# gpt-6-sol / gpt-6-luna are the recommended pair but are UNTESTED on both shim
+# lanes: the shim forwards any slug unchanged, while DAAF's recorded shim-lane
+# tests used gpt-5.6-sol and gpt-6-astra. If OpenAI rejects a GPT-6 slug, use
+# gpt-5.6-sol[1m] / gpt-5.6-luna[1m] instead. Why the HAIKU line matters here:
+# left unmapped, Claude Code has sent its housekeeping calls as Claude Haiku
+# requests that OpenAI doesn't serve (the July 2026 ChatGPT-lane shim logs show
+# dozens of such rejected requests); Claude Code's current docs say they run on
+# your main, pricier model.
+# --- To activate, remove the leading '#' on all four lines: ---
+#ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-sol[1m]
 #ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]
 #ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6-luna[1m]
 #
 # GPT-6 Astra is available as an alternative strong-tier slug on this lane --
-# gpt-6-astra[1m] (bare; the [1m] hint is verified here). One Astra-specific
-# caveat: Astra does NOT support reasoning-effort "none" -- the shim clamps a
-# requested "none" to "low" for Astra (see REASONING-EFFORT CONTROL in 4.4).
-# --- To activate, remove the leading '#': ---
+# gpt-6-astra[1m] (bare; the [1m] hint is verified here). Use it on BOTH strong
+# lines (FABLE and OPUS) in place of gpt-6-sol[1m]; the fast lines stay as they
+# are. One Astra-specific caveat: Astra does NOT support reasoning-effort "none"
+# -- the shim clamps a requested "none" to "low" for Astra (see
+# REASONING-EFFORT CONTROL in 4.4).
+# --- To activate, remove the leading '#' (replaces the two Sol lines): ---
+#ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-astra[1m]
 #ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]
 #
 # CONTEXT WINDOW: CLAUDE_CODE_MAX_CONTEXT_TOKENS is LANE-SPECIFIC -- the two auth
@@ -431,15 +536,16 @@
 # below the model's true 1M window), so it is set per-lane in 4.2 / 4.3 below,
 # not here.
 #
-# SESSION-START MODEL: do NOT set ANTHROPIC_MODEL in this file for the shim -- it
-# will not take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its
-# "env" block (shipped default: claude-opus-5-5[1m], since most DAAF users run
-# Claude), and a settings.json env value OVERRIDES the container environment
-# (verified empirically 2026-07-12). GPT sessions therefore open on the Claude
-# default; the first message fails loudly, which makes the needed "/model" switch
-# obvious. To make GPT your STANDING default instead, edit the ANTHROPIC_MODEL
-# line in /daaf/.claude/settings.json (e.g. to gpt-6-sol[1m]) -- see the
-# technical FAQ entry "My GPT session starts on a Claude model" for details.
+# SESSION-START MODEL: nothing extra to set. DAAF's default session model is
+# the 'opus' tier, so with the four lines above in place your sessions should
+# open on your strong GPT model by themselves -- no per-session /model switch
+# and no settings.json edit. (This follows from how Claude Code resolves the
+# 'opus' name; confirm it with /status the first time.) To open on a different
+# model, pick it in /model and press Enter -- Claude Code remembers that choice
+# for new sessions -- or set the optional ANTHROPIC_MODEL hard pin from
+# section [3] (bare slug with [1m] here, e.g. gpt-6-luna[1m]). If sessions open
+# on a model you didn't expect, see the technical FAQ entry "My session opens
+# on a different model than I expected".
 #
 # ----------------------------------------------------------------------------
 # 4.2 Auth lane A: OpenAI API key  (sanctioned)
@@ -638,6 +744,55 @@
 # (top-right) -> API Token -> Create Token
 # --- To activate, remove the leading '#': ---
 #HARVARD_DATAVERSE_API_KEY=your_token_here
+#
+# ----------------------------------------------------------------------------
+# Scholarly literature search  (all OPTIONAL; restart required)
+# ----------------------------------------------------------------------------
+# Used by DAAF's scholarly-search tool (scripts/scholar_search.sh) for
+# literature searches, citation checks, open-access lookups and retraction
+# checks. Everything except Elicit works without these keys, in a reduced
+# form (Elicit has no keyless mode); Crossref, ERIC and Unpaywall never need
+# a key. Keys are sent only in request headers and are never printed.
+#
+# OpenAlex -- STRONGLY RECOMMENDED. Free key: https://openalex.org/settings/api
+# A free key gives a $1/day usage budget (about 1,000 searches; lookups by DOI
+# are free). Without a key the budget is $0.10/day.
+# --- To activate, remove the leading '#': ---
+#OPENALEX_API_KEY=your_openalex_key_here
+#
+# Semantic Scholar -- optional, free. Request a key:
+# https://www.semanticscholar.org/product/api#api-key-form
+# Without a key, requests share a public pool that is heavily throttled.
+# --- To activate, remove the leading '#': ---
+#SEMANTIC_SCHOLAR_API_KEY=your_s2_key_here
+#
+# Scite -- optional, PAID. Not needed for Scite's free keyless data, which
+# DAAF uses without a key: citation-stance tallies (supporting / contradicting
+# / mentioning) and editorial notices in the retraction check. The key only
+# enables Scite Search (scite-search), which also needs --ack-scite-license:
+# self-service keys need a Pro plan, Scite calls a Pro key "for evaluation",
+# and research use of Search needs a separate license. Create a key in the
+# Scite API Console: https://scite.ai/users/me/api
+# DAAF keeps Scite's raw responses and tallies in restricted/ and never shares
+# them (the retraction check shows only Scite's status and notice DOIs/dates).
+# --- To activate, remove the leading '#': ---
+#SCITE_API_KEY=your_scite_key_here
+#
+# Elicit -- optional, PAID (API access needs an Elicit Pro plan or higher).
+# Enables Elicit paper search with study-design tags and AI-generated research
+# reports. Reports draw on your plan's usage and run only with --confirm-spend.
+# Elicit outputs are stored in restricted/ and never shared, and must be
+# deleted within 30 days if your API access ends (Elicit's terms). Create a
+# key: https://elicit.com/developer
+# --- To activate, remove the leading '#': ---
+#ELICIT_API_KEY=your_elicit_key_here
+#
+# Contact email -- optional. Crossref's "polite pool" (faster, more reliable)
+# and the Unpaywall open-access lookup both ask for a contact address. DAAF
+# sends it ONLY to Crossref and Unpaywall, and only if you set it here. Unset:
+# Crossref uses its public pool and the Unpaywall step is skipped.
+# --- To activate, remove the leading '#': ---
+#SCHOLARLY_CONTACT_EMAIL=you@your-institution.edu
 #
 # Add your own keys below. When you onboard a new data source via DAAF's Data
 # Onboarding Mode, it will tell you which environment variable to add here.

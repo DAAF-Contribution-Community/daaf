@@ -146,7 +146,7 @@ The actual output will include more detail as each step progresses, but these ar
 ### What the installer does
 
 1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
-2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed, plus R 4.5.3 with 60+ pinned R data science packages and the Quarto CLI 1.7.29. R is a first-class execution language in every DAAF image — it ships alongside Python with nothing to enable (see [**R support (included)**](#r-support-included) below for details). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
+2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed, plus R 4.5.3 with 60+ pinned R data science packages and the Quarto CLI 1.10.18. R is a first-class execution language in every DAAF image — it ships alongside Python with nothing to enable (see [**R support (included)**](#r-support-included) below for details). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
 4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
 
@@ -200,7 +200,7 @@ On first launch, Claude Code should prompt you to authenticate (API key or subsc
 
 ### Configure Claude Code (optional)
 
-Once you're in, there are a few settings you can adjust to your liking. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using **Opus 5.5** with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. Development and testing has spanned several Anthropic model generations, and [empirical benchmarking across 29 Anthropic, OpenAI, Google, and open-weight models](https://daaf.openaugments.org/bench/) has shown that several models perform excellently with DAAF's orchestration workflows -- at very different price points.
+Once you're in, there are a few settings you can adjust to your liking. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using **Opus 5.5** with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. Picking a model there and pressing Enter also makes it your default for new sessions -- DAAF's default steps aside for any choice you make -- while pressing `s` instead switches for the current session only. Development and testing has spanned several Anthropic model generations, and [empirical benchmarking across 29 Anthropic, OpenAI, Google, and open-weight models](https://daaf.openaugments.org/bench/) has shown that several models perform excellently with DAAF's orchestration workflows -- at very different price points.
 
 There's nothing you need to change here — Opus 5.5 is a great default. But if you'd like to weigh cost against capability, the FAQ keeps a regularly refreshed guidance table: see [**Which Claude model should I use?**](07_faq_technical.md#q-which-claude-model-should-i-use). New model generations arrive faster than we can revise this guide, so treat [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/) as the live results page rather than assuming any table in the docs is current.
 
@@ -968,7 +968,7 @@ Every DAAF image ships with **R** as a first-class execution language alongside 
 
 - **R 4.5.3** (the current DAAF-pinned R release)
 - **60+ pinned R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions. The Python and system layers get the same treatment: the Dockerfile freezes the full Python package set (transitive dependencies included) and every Ubuntu system package to a single environment date (see [How DAAF Freezes the Environment](04_extending_daaf.md#how-daaf-freezes-the-environment-reproducible-rebuilds))
-- **Quarto CLI 1.7.29** — R's literate-programming notebook system, the R equivalent of Marimo for Python
+- **Quarto CLI 1.10.18** — R's literate-programming notebook system, the R equivalent of Marimo for Python
 
 Including R (with the full package set and Quarto) accounts for roughly **2 GB** of the image size — approximately 8.6 GB with R versus 6.4 GB without — though the exact figures vary with your Docker version and platform.
 
@@ -1023,51 +1023,53 @@ Your `daaf-docker` folder includes an `environment_settings_example.txt` templat
 
 #### Model routing for alternative providers (optional)
 
-DAAF splits its background helper agents across two Claude model tiers to balance quality against cost: a stronger tier (**Opus**) for high-judgment and hands-on data work like planning, fetching and profiling data, review, and verification, and a faster tier (**Sonnet**) for well-defined support work like structured lookups and notebook assembly. If you use Anthropic directly (Max subscription or API key), this happens automatically and you don't need to do anything.
+DAAF splits its specialist agents across two Claude model tiers to balance quality against cost: a stronger tier (**Opus**) for high-judgment and hands-on data work like planning, fetching and profiling data, review, and verification, and a faster tier (**Sonnet**) for well-defined support work like structured lookups and notebook assembly. If you use Anthropic directly (Max subscription or API key), this happens automatically and you don't need to do anything.
 
-If you point DAAF at an **alternative provider** (OpenRouter, or a cloud platform serving non-Claude models like GLM), the names "opus" and "sonnet" won't exist on your endpoint. You have two options, both set in `environment_settings.txt`:
+If you point DAAF anywhere else — OpenRouter (whether for GPT, GLM, or Claude models), the OpenAI provider shim, or a cloud platform like Bedrock or Vertex — Claude Code needs to be told which of *your* models each Claude tier name means. There are four tier names, and we recommend setting all four in `environment_settings.txt`, even though DAAF's own specialist agents only use two of them:
 
-- **Keep the two tiers, using your own models** — map each tier to one of your provider's models:
-  ```bash
-  ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
-  ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
-  ```
-  DAAF then routes high-judgment work to your strong model and routine work to your fast one.
+| Setting | What it covers | Map it to |
+|---------|----------------|-----------|
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | The strong tier: DAAF's high-judgment specialists, **and** the model your session should open on (DAAF's default session model is the `opus` tier; confirm with `/status`) | Your strong model |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | The fast tier: DAAF's lighter, well-specified specialists | Your fast model |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Claude Code's own housekeeping calls — naming your session and summarizing it for `--resume`. DAAF's agents never use it, but Claude Code does. Left unmapped, Claude Code has sent these as Claude Haiku requests that your route rejects (July 2026 shim logs); Claude Code's current docs say they run on your main, pricier model | Your fast model |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | Anthropic's top tier. DAAF doesn't use it today; mapping it means nothing on your route ever asks for a Claude-only model name (for example, if someone picks "fable" in `/model`) | Your strong model |
 
-  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is a **global** override: the same value
-  applies to the main session and every subagent, not separately to each model.
-  For the recommended 1,048,576-token declaration for exact `z-ai/glm-5.2`,
-  keep every route on that exact model by mapping both tiers to it:
-  ```bash
-  ANTHROPIC_MODEL=z-ai/glm-5.2
-  ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5.2
-  ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-5.2
-  CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576
-  ```
-  Equivalently, you can flatten subagent routing to exact `z-ai/glm-5.2` with
-  `CLAUDE_CODE_SUBAGENT_MODEL`. OpenRouter currently reports 1,048,576 tokens
-  for exact `z-ai/glm-5.2`. This is the model's **physical** capacity; it does
-  **not** claim that quality stays constant across the entire window. GLM keeps
-  DAAF's conservative context-quality gates: ELEVATED at 150k or 40%, HIGH at
-  200k or 60%, and CRITICAL at 250k or 75%, whichever trigger fires first.
+```bash
+ANTHROPIC_DEFAULT_FABLE_MODEL=your-strong-model-slug
+ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
+ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
+ANTHROPIC_DEFAULT_HAIKU_MODEL=your-fast-model-slug
+```
 
-  If you want `z-ai/glm-5.2-air` as the fast tier, do **not** reuse exact
-  `z-ai/glm-5.2`'s 1,048,576 declaration unless you independently verify Air's
-  current physical window and confirm the chosen global value is valid for the
-  main session and every routed subagent. This runtime path has no supported
-  per-model context-window override.
+DAAF then routes high-judgment work to your strong model and routine work to your fast one, and your sessions should open on your strong model without a `/model` switch. That last part follows from how Claude Code resolves the `opus` name rather than from a test on every route, so it's worth a quick check the first time: run `/status` to see the model you're on. (Newer Claude Code versions also label the Default row of the `/model` picker "Set by ANTHROPIC_DEFAULT_MODEL" when DAAF's default is in effect.)
 
-- **Use a single model for everything** — simplest if you'd rather not think about tiers:
-  ```bash
-  CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
-  ```
-  Every helper agent runs on that one model.
+One honest footnote on the Fable setting: Claude Code swaps a Fable model for the Opus one in a few places (for example Explore and the Auto Mode safety check). Because Fable and Opus map to the same model here, the swap lands on the same model. That is our reading of Claude Code's docs, not something we tested. (OpenRouter's own Claude Code guide sets all four as well.)
 
-If you set **neither** on a non-Claude session, DAAF still works: a built-in check keeps helper agents on your session's model instead of trying to reach a Claude model that isn't there. Setting one of the options above is recommended for the best results. The exact variable names are documented in `environment_settings_example.txt` as well.
+**Want one model for everything?** Set all four to the same slug. Older DAAF docs suggested `CLAUDE_CODE_SUBAGENT_MODEL` for this, but since Claude Code 2.1.251 that setting only applies to specialist agents that don't name a model of their own — and every DAAF agent names one — so it no longer does the job. (Claude Code's `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` would force it, but it reaches only specialist agents: your session model, Claude Code's housekeeping (Haiku) calls, and the Fable tier would still need their own mapping. Setting all four covers all of them, so DAAF doesn't use the force setting.)
+
+**Reaching Claude models through OpenRouter?** The same four settings apply: use the Claude slugs from OpenRouter's catalogue, with your chosen strong Claude model for Fable and Opus and your fast one for Sonnet and Haiku.
+
+**On a cloud platform (Bedrock or Vertex)?** Claude Code's own docs recommend pinning all four of these settings to specific model versions before rolling out on Bedrock or Google Cloud's Agent Platform (Vertex). Use your platform's model IDs — the commented lines under Options D and E in `environment_settings_example.txt` are placeholders for you to fill in. As the [provider overview](#1-ai-provider-account--authentication) notes, the DAAF maintainers haven't validated these two routes end-to-end yet.
+
+**GLM (exact `z-ai/glm-5.2`).** `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is a **global** override: the same value applies to the main session and every subagent, not separately to each model. For the recommended 1,048,576-token declaration for exact `z-ai/glm-5.2`, keep every route on that exact model by mapping all four tiers to it (which also makes it your session model):
+
+```bash
+ANTHROPIC_DEFAULT_FABLE_MODEL=z-ai/glm-5.2
+ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5.2
+ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-5.2
+ANTHROPIC_DEFAULT_HAIKU_MODEL=z-ai/glm-5.2
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576
+```
+
+OpenRouter currently reports 1,048,576 tokens for exact `z-ai/glm-5.2`. This is the model's **physical** capacity; it does **not** claim that quality stays constant across the entire window. GLM keeps DAAF's conservative context-quality gates: ELEVATED at 150k or 40%, HIGH at 200k or 60%, and CRITICAL at 250k or 75%, whichever trigger fires first.
+
+If you want `z-ai/glm-5.2-air` as the fast tier (Sonnet and Haiku), do **not** reuse exact `z-ai/glm-5.2`'s 1,048,576 declaration unless you independently verify Air's current physical window and confirm the chosen global value is valid for the main session and every routed subagent. This runtime path has no supported per-model context-window override.
+
+If you set **none** of these on a non-Claude session, DAAF's model-tier guard blocks its Claude-tier specialist dispatches, because they would ask for a Claude model your route doesn't serve. Set at least `ANTHROPIC_DEFAULT_OPUS_MODEL` and `ANTHROPIC_DEFAULT_SONNET_MODEL`; setting all four is recommended. The exact variable names are documented in `environment_settings_example.txt` as well.
 
 #### GPT (OpenAI) models via OpenRouter (Option C, extended)
 
-OpenRouter also serves **OpenAI GPT models**, and DAAF can drive them through the same "Option C" setup above — GPT runs the full DAAF agentic stack (multi-tool loops, subagent dispatch, the two-tier model routing) with **no proxy or code changes**, just environment variables. Validated live on 2026-07-09.
+OpenRouter also serves **OpenAI GPT models**, and DAAF can drive them through the same "Option C" setup above — GPT runs the full DAAF agentic stack (multi-tool loops, subagent dispatch, the two-tier model routing) with **no proxy or code changes**, just environment variables. Validated live on 2026-07-09 with the Opus/Sonnet pair; the four-setting form below has not been through that live run.
 
 Uncomment the OpenRouter section and set the model variables to GPT slugs (note the `openai/` prefix that OpenRouter uses):
 
@@ -1076,11 +1078,12 @@ Uncomment the OpenRouter section and set the model variables to GPT slugs (note 
 ANTHROPIC_BASE_URL=https://openrouter.ai/api
 ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
 ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=openai/gpt-6-sol
-# Strong tier (Opus-analog):
+# Strong tier (Opus-analog) -- also your default session model; Fable follows it:
+ANTHROPIC_DEFAULT_FABLE_MODEL=openai/gpt-6-sol
 ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-sol
-# Fast tier (Sonnet-analog):
+# Fast tier (Sonnet-analog) -- also Claude Code's housekeeping (haiku) calls:
 ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-6-luna
+ANTHROPIC_DEFAULT_HAIKU_MODEL=openai/gpt-6-luna
 # Context window -- see "known limitations" below:
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
@@ -1100,13 +1103,13 @@ Recommended GPT slugs (recommended roles set by a 2026-09-29 user decision; cont
 | `openai/gpt-5.2` | 400,000 | Previous fast-tier option | Smaller window than Terra at similar price |
 | `openai/gpt-5.*-chat` | 128,000 | Not recommended | Small window; avoid for pipeline work |
 
-The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` to your chosen GPT slugs, and DAAF's cost-control ceiling stands down automatically for non-Claude models.
+The four-tier mapping described above works identically: map the strong pair (`ANTHROPIC_DEFAULT_FABLE_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL`) and the fast pair (`ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL`) to your chosen GPT slugs, and DAAF's cost-control ceiling stands down once the Opus/Sonnet lines are set. Your session should open on the strong-tier slug (confirm with `/status`), so there's no need to set `ANTHROPIC_MODEL` (it's an optional hard pin — see [Step 3 of Option F](#option-f-openai-api-directly-daaf-provider-shim) below).
 
-> **GPT tier naming and DAAF's recommendation:** OpenAI's GPT-5.6 family comes in three tiers — *Sol* (strongest), *Terra* (mid), and *Luna* (fastest and cheapest) — all with 1,050,000-token windows. The GPT-6 generation has Sol and Luna plus the Astra flagship, and no Terra. Since 2026-09-29, DAAF recommends **Sol for the strong tier** (`ANTHROPIC_DEFAULT_OPUS_MODEL`) and **Luna for the fast tier** (`ANTHROPIC_DEFAULT_SONNET_MODEL`), and the examples use the GPT-6 slugs `gpt-6-sol` / `gpt-6-luna`. Luna fills the Sonnet slot like any other tier remap. This recommendation is a user decision based on hands-on experience with Luna's quality. It is not the result of a DAAF validation run: the 2026-07-09 live validation through the full agentic stack (including subagent dispatch on the tier remaps) covered `gpt-5.6-sol` with `gpt-5.6-terra`, and the GPT-6 Sol/Luna pair has not been validated the same way. On thresholds, `gpt-6-sol` is in DAAF's GPT extended-horizon profile (admitted 2026-09-29 by user policy, not validation), while Luna in either generation keeps the conservative profile, so fast-tier subagents get context warnings sooner than the strong tier. Astra remains available as a premium strong-tier option at 5x Sol's per-token price. One thing to watch: OpenAI's own pricing page (checked 2026-09-29) lists `gpt-6.1-sol` as a separate, newer Sol model at the same $2 / $10 price, shown above `gpt-6-sol` in its flagship table. DAAF does not register `gpt-6.1-sol` yet, so that slug would fall back to conservative thresholds.
+> **GPT tier naming and DAAF's recommendation:** OpenAI's GPT-5.6 family comes in three tiers — *Sol* (strongest), *Terra* (mid), and *Luna* (fastest and cheapest) — all with 1,050,000-token windows. The GPT-6 generation has Sol and Luna plus the Astra flagship, and no Terra. Since 2026-09-29, DAAF recommends **Sol for the strong tier** (`ANTHROPIC_DEFAULT_OPUS_MODEL`, plus its `ANTHROPIC_DEFAULT_FABLE_MODEL` partner) and **Luna for the fast tier** (`ANTHROPIC_DEFAULT_SONNET_MODEL`, plus its `ANTHROPIC_DEFAULT_HAIKU_MODEL` partner), and the examples use the GPT-6 slugs `gpt-6-sol` / `gpt-6-luna`. Luna fills the Sonnet slot like any other tier remap. This recommendation is a user decision based on hands-on experience with Luna's quality. It is not the result of a DAAF validation run: the 2026-07-09 live validation through the full agentic stack (including subagent dispatch on the tier remaps) covered `gpt-5.6-sol` with `gpt-5.6-terra`, and the GPT-6 Sol/Luna pair has not been validated the same way. On thresholds, `gpt-6-sol` is in DAAF's GPT extended-horizon profile (admitted 2026-09-29 by user policy, not validation), while Luna in either generation keeps the conservative profile, so fast-tier subagents get context warnings sooner than the strong tier. Astra remains available as a premium strong-tier option at 5x Sol's per-token price. One thing to watch: OpenAI's own pricing page (checked 2026-09-29) lists `gpt-6.1-sol` as a separate, newer Sol model at the same $2 / $10 price, shown above `gpt-6-sol` in its flagship table. DAAF does not register `gpt-6.1-sol` yet, so that slug would fall back to conservative thresholds.
 >
 > **Prefer the non-pro slugs via OpenRouter (Option C); the `-pro` slugs work but cost several times more.** In the 2026-07-10 DAAFBench smoke battery, `gpt-5.6-sol-pro` / `-terra-pro` / `-luna-pro` failed with hard "Prompt is too long" errors against a ~200k ceiling. A 2026-09-29 retest no longer reproduces that wall: on this route, `gpt-6-sol-pro`, `gpt-6-luna-pro`, and `gpt-5.6-sol-pro` (the July-failing slug) each accepted prompts above 930,000 reported tokens (largest 942,594) with HTTP 200 at every step. `gpt-6-astra-pro` was not tested at large sizes, so its ceiling is extrapolated, not observed. The inflated token accounting persists, though. On identical input, the `-pro` slugs report about 3.1x the non-pro input tokens (GPT-6 Sol/Astra/Luna) or 4.1x (`gpt-5.6-sol-pro`). That has two practical effects. First, billing follows the reported tokens, so a `-pro` session costs roughly 3x its non-pro base for the same work where per-token prices are equal (GPT-6), and about 8x for `gpt-5.6-sol-pro`, whose per-token price is 2x its base (2x price × 4.1x tokens). These cost multiples are derived from the token ratios and list prices, not verified against an invoice. Second, DAAF's context warnings fire after only about a third (GPT-6) or a quarter (5.6) as much real content as on the non-pro model. That is early, but in the safe direction. Evidence: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`.
 >
-> **GPT-6 Astra.** OpenAI's GPT-6 flagship (slug `openai/gpt-6-astra`) also runs on this route as a strong-tier option, with the same 1,050,000-token window (128,000-token max output). It joins DAAF's validated extended-horizon threshold profile at Sol parity (60%/300k, 75%/400k, 90%/500k). Pricing is $10 / $50 per M tokens in/out on standard context, rising to $20 / $75 above the 272k-input long-context threshold. One behavioral caveat: Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra. Since 2026-09-29, by user policy decision rather than validation, DAAF reads any flagship `-pro` slug (e.g. `openai/gpt-6-astra-pro`) with the same window and thresholds as its non-pro base, and treats `openai/gpt-6-sol` like `gpt-5.6-sol` and `openai/gpt-6-luna` like `gpt-5.6-luna`. The `-pro` cost caveat above still applies. The 2026-09-29 retest saw no prompt-length wall up to about 943,000 reported tokens (`gpt-6-astra-pro` untested), which is consistent with the catalogue's 1,050,000-token window, though that exact ceiling was not itself observed. DAAF's threshold reading does not correct for the `-pro` slugs' inflated token accounting, so warnings arrive earlier in real content terms.
+> **GPT-6 Astra.** OpenAI's GPT-6 flagship (slug `openai/gpt-6-astra`) also runs on this route as a strong-tier option (set it on both the Fable and Opus lines), with the same 1,050,000-token window (128,000-token max output). It joins DAAF's validated extended-horizon threshold profile at Sol parity (60%/300k, 75%/400k, 90%/500k). Pricing is $10 / $50 per M tokens in/out on standard context, rising to $20 / $75 above the 272k-input long-context threshold. One behavioral caveat: Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra. Since 2026-09-29, by user policy decision rather than validation, DAAF reads any flagship `-pro` slug (e.g. `openai/gpt-6-astra-pro`) with the same window and thresholds as its non-pro base, and treats `openai/gpt-6-sol` like `gpt-5.6-sol` and `openai/gpt-6-luna` like `gpt-5.6-luna`. The `-pro` cost caveat above still applies. The 2026-09-29 retest saw no prompt-length wall up to about 943,000 reported tokens (`gpt-6-astra-pro` untested), which is consistent with the catalogue's 1,050,000-token window, though that exact ceiling was not itself observed. DAAF's threshold reading does not correct for the `-pro` slugs' inflated token accounting, so warnings arrive earlier in real content terms.
 
 **Restart the container** to pick up the changes: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). No rebuild is needed for OpenRouter — it is config-only.
 
@@ -1135,20 +1138,24 @@ ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 ANTHROPIC_API_KEY=
 # Hide the native /fast control; use gpt_fast.sh below instead:
 CLAUDE_CODE_DISABLE_FAST_MODE=1
-# Strong tier (Opus-analog) and fast tier (Sonnet-analog); [1m] = 1M window hint:
+# Strong tier (Opus-analog; also your default session model) and its Fable partner;
+# [1m] = 1M window hint, kept on every line:
+ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-sol[1m]
 ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]
+# Fast tier (Sonnet-analog) and Claude Code's housekeeping (haiku) calls:
 ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]
+ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6-luna[1m]
 # Context window -- see "Context window on GPT sessions" below:
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
 > **GPT-6 Sol and Luna on the shim lanes are untested.** The shim forwards whatever model slug you set without checking it against a list, so `gpt-6-sol` and `gpt-6-luna` should work wherever OpenAI serves them. DAAF's recorded shim-lane tests, however, used `gpt-5.6-sol` and `gpt-6-astra`. If OpenAI rejects a GPT-6 slug, `gpt-5.6-sol[1m]` / `gpt-5.6-luna[1m]` are drop-in alternatives.
 
-> **GPT-6 Astra on the shim lanes.** To run OpenAI's GPT-6 flagship instead of Sol, set `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]` (bare slug; the `[1m]` hint is verified on this direct-API shim lane). Astra has the same 1,050,000-token window (128,000-token max output) and joins DAAF's validated threshold profile at Sol parity, and its standard pricing is $10 / $50 per M tokens in/out ($20 / $75 above the 272k-input long-context threshold). Note that Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra.
+> **GPT-6 Astra on the shim lanes.** To run OpenAI's GPT-6 flagship instead of Sol, set both strong lines to it — `ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-astra[1m]` and `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]` — and leave the fast lines on Luna (bare slug; the `[1m]` hint is verified on this direct-API shim lane). Astra has the same 1,050,000-token window (128,000-token max output) and joins DAAF's validated threshold profile at Sol parity, and its standard pricing is $10 / $50 per M tokens in/out ($20 / $75 above the 272k-input long-context threshold). Note that Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra.
 
 **Step 2 — Rebuild the image.** Unlike Option C (which is config-only), this lane needs a one-time rebuild, because the shim's auto-launch is baked into the container entrypoint. From the DAAF Control Panel choose **option 10, "Rebuild Container,"** or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) directly — see the [rebuild instructions](#keeping-daaf-updated). On boot, the container starts the shim automatically and keeps it alive (restarting it if it ever exits), so you normally never have to touch it.
 
-**Step 3 — Start Claude Code, then switch to your GPT model with `/model`.** Sessions always *open* on the Claude default; you switch once you're in. (Why: the start model is set by `ANTHROPIC_MODEL` in DAAF's project `.claude/settings.json`, shipped as `claude-opus-5-5[1m]` because most DAAF users run Claude, and that value intentionally overrides the container environment — so do **not** set `ANTHROPIC_MODEL` in `environment_settings.txt`. A personal `.claude/settings.local.json` `env` block, however, overrides settings.json — check it first if sessions open on an unexpected model.) Just run `/model` after launch and pick your GPT slug; a forgotten switch fails loudly on the very first message, so there is no silent wrong-model risk. To make GPT your standing default instead, edit the `"ANTHROPIC_MODEL"` line in `/daaf/.claude/settings.json` — see the [FAQ entry on session start model](07_faq_technical.md#q-my-gpt-session-starts-on-a-claude-model-instead-of-my-gpt-model).
+**Step 3 — Start Claude Code.** With the four model lines above in place, your session should open on your strong GPT model (`gpt-6-sol`) by itself — no `/model` switch and no settings.json edit. (Why: DAAF's `.claude/settings.json` ships a *soft* default, `ANTHROPIC_DEFAULT_MODEL=opus`, and on this route the `opus` name resolves through your `ANTHROPIC_DEFAULT_OPUS_MODEL` line. That follows from how Claude Code resolves model names; to confirm it on your setup, run `/status`. Newer Claude Code versions also label the Default row of the `/model` picker "Set by ANTHROPIC_DEFAULT_MODEL" when this default is in effect.) Want to open on a different model? Pick it in `/model` and press Enter — Claude Code remembers that choice for new sessions — or add `ANTHROPIC_MODEL` to `environment_settings.txt` (e.g. `ANTHROPIC_MODEL=gpt-6-luna[1m]`) as a hard pin that re-applies on every launch. If sessions open on a model you didn't expect, see the [FAQ entry on the session start model](07_faq_technical.md#q-my-session-opens-on-a-different-model-than-i-expected).
 
 **Step 4 — Confirm it's working (optional).** If a GPT session ever misbehaves, a small manager script and a health endpoint let you check the shim at a glance:
 
@@ -1207,8 +1214,8 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 **Context window on GPT sessions.** Two small settings tell Claude Code how big your GPT model's context window really is — without them it assumes a small (~200K) window for slugs it doesn't recognize, far below the 1,050,000-token window of the gpt-5.6 family and GPT-6 Sol, Luna, and Astra.
 
-- **On the direct OpenAI-API shim route,** append `[1m]` to your bare GPT slugs (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]` or `gpt-6-astra[1m]`, as shown above) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Claude Code reads `[1m]` as a 1M-window hint and strips it before sending.
-- **On OpenRouter,** keep the provider-prefixed bare slug (e.g. `ANTHROPIC_MODEL=openai/gpt-6-sol`) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Don't add `[1m]` to provider-prefixed slugs — it isn't established for that form.
+- **On the direct OpenAI-API shim route,** append `[1m]` to every bare GPT slug — all four tier lines (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]` or `gpt-6-astra[1m]`, as shown above) — and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Claude Code reads `[1m]` as a 1M-window hint and strips it before sending.
+- **On OpenRouter,** keep the provider-prefixed bare slug (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-sol`) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Don't add `[1m]` to provider-prefixed slugs — it isn't established for that form.
 - **On the [ChatGPT-subscription (Codex) lane below](#option-f-alternate-lane-chatgpt-subscription-codex-backend),** set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000` instead — that backend caps input at 919,000 tokens (measured 2026-09-05 for both `gpt-5.6-sol` and `gpt-6-astra`), and no client hint can raise it.
 
 *Why it matters:* the declaration keeps Claude Code and DAAF measuring utilization against the same real window. DAAF does **not** use `CLAUDE_CODE_AUTO_COMPACT_WINDOW` — automatic compaction stays off because it can disrupt orchestration. If a GPT session reports "Context limit reached" / "Prompt is too long" at low utilization, see the [technical FAQ entry on low-utilization context errors](07_faq_technical.md#q-my-gpt-session-says-context-limit-reached--prompt-is-too-long-at-low-utilization).
@@ -1265,8 +1272,11 @@ If that reports `codex: command not found`, your image predates the universal in
    ANTHROPIC_API_KEY=
    # hide native /fast; use gpt_fast.sh below
    CLAUDE_CODE_DISABLE_FAST_MODE=1
+   # all four model tiers, as on the API-key lane ([1m] on every line)
+   ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-sol[1m]
    ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]
    ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]
+   ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6-luna[1m]
    # Codex lane: backend-capped at 919k, NOT 1,050,000 — see below
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000
    ```
@@ -1279,7 +1289,7 @@ If that reports `codex: command not found`, your image predates the universal in
 cat /daaf/scripts/provider_shim/logs/shim.log
 ```
 
-A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `200` responses once a GPT session is running. Start a session, run `/model` to select your GPT slug (the [API-key lane above](#option-f-openai-api-directly-daaf-provider-shim) explains why sessions open on the Claude default), and send a message.
+A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `200` responses once a GPT session is running. Start a session — it should open on your strong GPT model on its own (confirm with `/status`; Step 3 of the [API-key lane above](#option-f-openai-api-directly-daaf-provider-shim) explains why) — and send a message. On this lane the `ANTHROPIC_DEFAULT_HAIKU_MODEL` line matters in particular: left unmapped, Claude Code has sent its housekeeping calls (naming your session, summarizing it for `--resume`) as Claude Haiku requests that the ChatGPT backend rejects (July 2026 shim logs show dozens of these); Claude Code's current docs say they run on your main, pricier model.
 
 **How auth stays fresh.** The shim reads the OAuth access token from `auth.json` in your `CODEX_HOME` store and **refreshes it automatically** (the access token lasts ~10 days; the shim refreshes only when it is near expiry or after a backend rejection, and it never logs any token value). If a refresh ever fails permanently, the shim's log tells you to run `codex login --device-auth` again.
 
@@ -1343,6 +1353,11 @@ However, some data domains require API keys from their hosting platforms. The ta
 | Data Source | Environment Variable | Where to Get a Key |
 |-------------|---------------------|-------------------|
 | County Presidential Election Returns (Harvard Dataverse) | `HARVARD_DATAVERSE_API_KEY` | [dataverse.harvard.edu](https://dataverse.harvard.edu/) → Log in → Account name (top-right) → API Token → Create Token |
+| Scholarly literature search: OpenAlex (optional, **strongly recommended**; free key = $1/day budget vs $0.10/day without) | `OPENALEX_API_KEY` | [openalex.org/settings/api](https://openalex.org/settings/api) (free account) |
+| Scholarly literature search: Semantic Scholar (optional, free; keyless requests share a heavily throttled pool) | `SEMANTIC_SCHOLAR_API_KEY` | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api#api-key-form) → request a key |
+| Scholarly literature search: Scite (optional, **paid** Pro plan). Not needed for Scite's citation-stance tallies or its editorial notices in the retraction check, which work keyless. The key only enables Scite Search, which also requires `--ack-scite-license`: Scite calls a Pro key "for evaluation", and research use of Search needs a separate license. Scite raw responses and tallies stay in `restricted/` and are never shared | `SCITE_API_KEY` | Scite API Console: [scite.ai/users/me/api](https://scite.ai/users/me/api) |
+| Scholarly literature search: Elicit (optional, **paid** Pro plan or higher). Enables Elicit paper search with study-design tags and AI-generated research reports; reports draw on your plan's usage and run only with `--confirm-spend`. Outputs stay in `restricted/`, are never shared, and must be deleted within 30 days if your API access ends (Elicit's terms) | `ELICIT_API_KEY` | [elicit.com/developer](https://elicit.com/developer) |
+| Scholarly literature search: contact email (optional; not a key) — enables Crossref's faster "polite pool" and the Unpaywall open-access lookup, and is sent only to those two services | `SCHOLARLY_CONTACT_EMAIL` | Your own email address |
 
 #### Recommended: Use an environment_settings.txt file (persistent across restarts)
 

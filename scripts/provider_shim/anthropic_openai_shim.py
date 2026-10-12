@@ -63,6 +63,28 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.2 (isolated draft, 2026-09-15): Support documented hosted search,
+#     open_page and find_in_page sequences without inventing ranked page results.
+#     Page actions retain typed inputs and explicit provenance text; optional absent
+#     open URLs are disclosed, required find evidence fails closed. Raw replay stays
+#     intact. Lifecycle action diagnostics contain fixed buckets/counts only.
+#     Schema-derived page fixtures are offline compatibility evidence, not proof of
+#     the action subtype responsible for the reported live 502s.
+#   v1.4.1 (2026-09-13): Accept the installed client's explicitly empty native
+#     allowed_domains/blocked_domains lists as omitted filters. Nonempty blocklists
+#     remain explicitly unsupported; malformed controls and unknown keys still fail
+#     closed. Nonempty allowlists retain their upstream mapping. This repairs the
+#     local unsupported-option rejection observed in the 1.4.0 live WebSearch check.
+#   v1.4.0 (isolated draft, 2026-09-11): Typed native web_search_20250305
+#     translation, bounded hosted-response collection and process-local replay.
+#     Real consulted-source URLs/titles and answer attribution are projected without
+#     invented source quotations or proprietary encrypted citation fields. Ordinary
+#     incomplete answers preserve observed partial text after search history, even
+#     when another output item has completed. Subscription max_uses is an observed
+#     call ceiling, NOT an upstream execution/billing/quota guarantee. Replay expires
+#     or is lost on eviction/restart; open_page/find_in_page remain unsupported.
+#     Installed extracted SDK/parser contracts are tested, not full CLI/live API
+#     certification. Shared promotion/deployment requires separate approval.
 #   v1.3.19 (2026-09-05): GPT-6 Astra onboarding — model-aware effort floor + model
 #     listing. _handle_models now advertises openai/gpt-6-astra alongside the
 #     existing gpt-5.6-sol/gpt-5.5 entries (additive). A single model-conditional
@@ -575,6 +597,10 @@
 #           non-stream inbound requests, carrying an actionable remap instruction
 #           (ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL /
 #           CLAUDE_CODE_SUBAGENT_MODEL). One scrubbed WARNING per rejection.
+#           [2026-10-12 text-only amendment, no logic change: the instruction now
+#           names all four tier aliases (OPUS/SONNET/HAIKU/FABLE) and no longer
+#           offers CLAUDE_CODE_SUBAGENT_MODEL, which Claude Code >= 2.1.251 treats
+#           only as a fallback for subagents without their own model.]
 #     WHY: deterministic backend rejections must not look retryable. The intended
 #       effect is that Claude Code stops the retry storm on context_length_exceeded
 #       once it sees invalid_request_error; that suppression is EXPECTED but pending
@@ -1124,7 +1150,13 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.19"
+# v1.4.0 ISOLATED DRAFT (2026-09-08): typed hosted-search bridge, bounded
+# completed-item collection, truthful URL projection and process-local group replay.
+# Subscription max_uses is an observed-call ceiling ONLY; upstream work may precede
+# cancellation. Replay expires after 30 minutes or cache eviction/process restart.
+# Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
+# No new health fields, env controls, backend lanes or persistent search caches.
+SHIM_VERSION = "1.4.6"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1518,11 +1550,76 @@ def _collapse_inbound_json(value, *, root=False):
     return value
 
 
-def _decode_anthropic_request_json(body):
+def _conversation_session_id(preserved, scope_headers=()):
+    # Claude Code 2.1.261 m9() JSON-encodes device_id/account_uuid/session_id in
+    # metadata.user_id. Generic API user IDs are not session IDs; only the
+    # verified worker header below refines the session routing namespace.
+    # INTENT: forward only the session UUID; never retain account/device metadata.
+    # REASONING: inspect preserved pairs so ambiguous duplicate keys omit the hint
+    # without changing existing request decoding or rejecting otherwise valid calls.
+    # ASSUMES: this untrusted routing hint grants no authority or cache isolation.
+    if not isinstance(preserved, _JSONObjectPairs):
+        return None
+    metadata = [value for key, value in preserved if key == "metadata"]
+    if len(metadata) != 1 or not isinstance(metadata[0], _JSONObjectPairs):
+        return None
+    user_ids = [value for key, value in metadata[0] if key == "user_id"]
+    if len(user_ids) != 1 or not isinstance(user_ids[0], str):
+        return None
+    # Defensive parser bound, not a claimed Anthropic schema limit.
+    if len(user_ids[0]) > 4096:
+        return None
+    try:
+        pairs = json.loads(user_ids[0], object_pairs_hook=_preserve_json_object_pairs)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(pairs, _JSONObjectPairs):
+        return None
+    fields = dict(pairs)
+    if len(fields) != len(pairs):
+        return None
+    if not all(isinstance(fields.get(key), str)
+               for key in ("device_id", "account_uuid", "session_id")):
+        return None
+    session_id = fields["session_id"]
+    if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", session_id) is None:
+        return None
+    session_id = session_id.lower()
+    worker_ids = []
+    parent_header_present = False
+    for name, value in scope_headers or ():
+        if name.lower() == b"x-claude-code-parent-agent-id":
+            parent_header_present = True
+        if name.lower() == b"x-claude-code-agent-id":
+            worker_ids.append(value)
+    if not worker_ids:
+        # Main contexts omit both worker headers. A parent-only header indicates
+        # incomplete worker identity: do not collapse it into the parent's route.
+        return None if parent_header_present else session_id
+    if len(worker_ids) != 1 or len(worker_ids[0]) > 81:
+        return None
+    try:
+        worker_id = worker_ids[0].decode("ascii")
+    except (AttributeError, UnicodeDecodeError):
+        return None
+    # Exact installed Claude Code DS()/bh() generated-worker grammar; other forms
+    # (including unverified teammate/custom IDs) omit the hint, never use parent.
+    if re.fullmatch(r"a(?:[A-Za-z0-9_-]{1,63}-)?[0-9a-f]{16}", worker_id) is None:
+        return None
+    # Stable, domain-separated worker UUID; no device/account data or raw worker
+    # ID goes upstream. This is our routing derivation, not a native client schema.
+    return str(uuid.uuid5(uuid.UUID(session_id), "daaf-claude-worker-v1:" + worker_id))
+
+
+def _decode_anthropic_request_json(body, scope_headers=()):
     preserved = json.loads(
         body.decode("utf-8"), object_pairs_hook=_preserve_json_object_pairs
     )
-    return _collapse_inbound_json(preserved, root=True)
+    request = _collapse_inbound_json(preserved, root=True)
+    state = _request_state()
+    if state is not None and SHIM_BACKEND_MODE == "chatgpt":
+        state.conversation_session_id = _conversation_session_id(preserved, scope_headers)
+    return request
 
 
 def _anthropic_beta_tokens(scope_headers):
@@ -1681,6 +1778,8 @@ class _RequestLifecycleState:
         # beyond the rate-limit cap it records the advertised source that triggered it.
         self.retry_delay_source = "-"
         self.client_request_id = self.req_id
+        # Private routing state only: never included in lifecycle logs or health.
+        self.conversation_session_id = None
         self.transport_exception = "-"
         self.upstream_request_id = "-"
         self.upstream_request_id_header = "-"
@@ -1708,6 +1807,51 @@ class _RequestLifecycleState:
 
 
 _REQUEST_STATE = ContextVar("shim_request_state", default=None)
+_DIAGNOSTICS = None
+_DIAGNOSTICS_STARTUP_ERROR = (
+    "SHIM_DEV_DIAGNOSTICS_MODULE could not initialize private developer diagnostics; "
+    "set it to an absolute readable module file with a working Recorder, "
+    "or unset it to disable diagnostics."
+)
+
+
+def _trace_event(event, content=None, **fields):
+    # Observational only: recorder failure cannot alter a model response.
+    if _DIAGNOSTICS is None:
+        return
+    try:
+        state = _request_state()
+        if state is not None:
+            _DIAGNOSTICS.record(state.req_id, event, content, **fields)
+    except Exception:
+        pass
+
+
+def _start_diagnostics():
+    global _DIAGNOSTICS
+    # Optional absolute path to a private developer tool; normal installs leave unset.
+    module_path = os.environ.get("SHIM_DEV_DIAGNOSTICS_MODULE", "")
+    if not module_path:
+        return
+    try:
+        import hashlib
+        import importlib.util
+        if not os.path.isabs(module_path) or not os.path.isfile(module_path):
+            raise ValueError()
+        spec = importlib.util.spec_from_file_location("_shim_dev_diagnostics", module_path)
+        if spec is None or spec.loader is None:
+            raise ValueError()
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source = os.path.abspath(__file__)
+        with open(source, "rb") as handle:
+            source_hash = hashlib.sha256(handle.read()).hexdigest()
+        _DIAGNOSTICS = module.Recorder(
+            os.path.join(os.path.dirname(source), "logs", "diagnostics"),
+            source_hash, SHIM_VERSION)
+    except (Exception, SystemExit):
+        raise RuntimeError(_DIAGNOSTICS_STARTUP_ERROR) from None
+
 
 
 def _request_state():
@@ -1755,6 +1899,7 @@ def _lifecycle_event(name, _fields_before_elapsed=False, **fields):
     state = _request_state()
     if state is None:
         return
+    _trace_event(name, **fields)
     parts = ["event=%s" % name]
     if not _fields_before_elapsed:
         parts.append("elapsed_ms=%d" % _elapsed_ms(state))
@@ -1856,6 +2001,14 @@ def _record_upstream_headers(response):
             state.upstream_request_id_header = name
             state.upstream_request_id = _scrub_metadata(value)
             break
+    _trace_event("upstream_headers_detail", status=response.status_code,
+                 http_version=state.upstream_http_version,
+                 upstream_request_id=state.upstream_request_id)
+    if response.is_closed:
+        try:
+            _trace_event("upstream_json", response.content)
+        except Exception:
+            pass
     _lifecycle_event(
         "upstream_headers", status=response.status_code,
         http_version=state.upstream_http_version,
@@ -3428,6 +3581,8 @@ def _tool_result_output(tr_content, message_index, block_index, role):
 def _messages_to_input(messages):
     # Translate in source order. User text/images remain adjacent content parts;
     # assistant tool replay keeps reasoning-cache injection immediately before calls.
+    # Prevalidate complete groups before emitting any input, once per occurrence.
+    replay_plan, replay_covered = _SEARCH_REPLAY.plan(messages)
     input_items = []
     injected_reasoning_ids = set()
     missing_reasoning = 0
@@ -3482,6 +3637,12 @@ def _messages_to_input(messages):
             pending_parts.clear()
 
         for block_index, block in enumerate(content):
+            key = (message_index, block_index)
+            if key in replay_plan:
+                flush_message_parts()
+                input_items.extend(replay_plan[key])
+            if key in replay_covered:
+                continue
             if not isinstance(block, dict):
                 raise _content_error(
                     message_index, block_index, role, "non_object",
@@ -3573,33 +3734,157 @@ def _messages_to_input(messages):
     )
 
 
+class _ToolRegistry:
+    """Request-local declaration types; names alone never imply hosted execution.
+
+    Source-backed controls: allowed_domains and approximate location (pinned
+    Codex ToolSpec / OpenAI SDK, 2026-09-06). Fixtures do not live-certify these
+    controls. Subscription max_uses is ONLY a shim-observed call ceiling, not an
+    upstream execution, billing, internal-query or quota guarantee. OpenAI's
+    max_tool_calls separately bounds total built-in calls, not exact searches.
+    """
+
+    def __init__(self, tools, choice=None):
+        self.tools = []
+        self.declared = tools is not None
+        self.kinds = {}
+        self.search_name = None
+        self.max_uses = None
+        self.forced_search = False
+        self.choice = None
+        self.parallel = None
+        if tools is None:
+            tools = []
+        if not isinstance(tools, list):
+            raise _InvalidRequestError("tools must be a list")
+        for tool in tools:
+            if not isinstance(tool, dict):
+                raise _InvalidRequestError("tool declaration must be an object")
+            name = tool.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", name):
+                raise _InvalidRequestError("tool declaration has an invalid name")
+            if name in self.kinds:
+                raise _InvalidRequestError("duplicate or ambiguous tool names")
+            kind = tool.get("type", "custom")
+            if kind == "web_search_20250305":
+                if name != "web_search" or self.search_name is not None:
+                    raise _InvalidRequestError("server search requires the unique name web_search")
+                allowed = {"type", "name", "max_uses", "allowed_domains", "blocked_domains", "user_location"}
+                if set(tool) - allowed:
+                    raise _InvalidRequestError("unsupported server search option")
+                # The installed CLI preserves explicit empty filters. Accept only a
+                # typed empty blocklist as a no-op; never discard actual exclusions.
+                if "blocked_domains" in tool:
+                    blocked = tool["blocked_domains"]
+                    if not isinstance(blocked, list):
+                        raise _InvalidRequestError("blocked_domains must be a list")
+                    if blocked:
+                        raise _InvalidRequestError("nonempty blocked_domains is unsupported")
+                limit = tool.get("max_uses")
+                if "max_uses" in tool and (type(limit) is not int or not 1 <= limit <= 100):
+                    raise _InvalidRequestError("server search max_uses must be an integer from 1 to 100")
+                self.max_uses = limit
+                self.search_name = name
+                hosted = {"type": "web_search", "external_web_access": True}
+                if "allowed_domains" in tool:
+                    domains = tool["allowed_domains"]
+                    # Reject paths/schemes/wildcards rather than silently widening a restriction.
+                    if (not isinstance(domains, list) or len(domains) > 100
+                            or any(not isinstance(d, str) or len(d) > 253 or not re.fullmatch(
+                                r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+                                r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", d)
+                                for d in domains)):
+                        raise _InvalidRequestError("allowed_domains requires bare DNS domains; paths are unsupported")
+                    if len({d.lower() for d in domains}) != len(domains):
+                        raise _InvalidRequestError("duplicate allowed_domains")
+                    # An empty allowlist is the client's no-filter representation;
+                    # omit the upstream filter rather than sending an ambiguous [].
+                    if domains:
+                        hosted["filters"] = {"allowed_domains": list(domains)}
+                if "user_location" in tool:
+                    location = tool["user_location"]
+                    if (not isinstance(location, dict)
+                            or location.get("type") != "approximate"
+                            or set(location) - {"type", "city", "region", "country", "timezone"}):
+                        raise _InvalidRequestError("unsupported server search user_location")
+                    for key, value in location.items():
+                        if (not isinstance(value, str) or not 1 <= len(value) <= 200
+                                or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+                            raise _InvalidRequestError("invalid server search location field")
+                    if "country" in location and not re.fullmatch(r"[A-Z]{2}", location["country"]):
+                        raise _InvalidRequestError("location country requires a two-letter uppercase code")
+                    if "timezone" in location:
+                        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+                        try:
+                            ZoneInfo(location["timezone"])
+                        except (ValueError, ZoneInfoNotFoundError):
+                            raise _InvalidRequestError("location timezone requires an IANA zone") from None
+                    hosted["user_location"] = dict(location)
+                self.kinds[name] = "server_search"
+                self.tools.append(hosted)
+            elif kind == "custom":
+                schema = tool.get("input_schema", {"type": "object", "properties": {}})
+                if not isinstance(schema, dict) or not isinstance(tool.get("description", ""), str):
+                    raise _InvalidRequestError("invalid function tool schema or description")
+                self.kinds[name] = "function"
+                self.tools.append({"type": "function", "name": name,
+                                   "description": tool.get("description", ""),
+                                   "parameters": schema})
+            else:
+                raise _InvalidRequestError("unsupported tool declaration type or version")
+        if choice is None:
+            return
+        if (not isinstance(choice, dict)
+                or set(choice) - {"type", "name", "disable_parallel_tool_use"}):
+            raise _InvalidRequestError("unsupported tool_choice")
+        if "disable_parallel_tool_use" in choice:
+            if type(choice["disable_parallel_tool_use"]) is not bool:
+                raise _InvalidRequestError("disable_parallel_tool_use must be boolean")
+            # Hosted search parallel semantics are not established by this control.
+            if self.search_name:
+                raise _InvalidRequestError("parallel search control is not established")
+            self.parallel = not choice["disable_parallel_tool_use"]
+        choice_type = choice.get("type")
+        if choice_type not in ("auto", "any", "none", "tool"):
+            raise _InvalidRequestError("unsupported tool_choice type")
+        if choice_type != "tool" and "name" in choice:
+            raise _InvalidRequestError("tool_choice name requires type tool")
+        if choice_type == "tool":
+            name = choice.get("name")
+            if not isinstance(name, str) or name not in self.kinds:
+                raise _InvalidRequestError("tool_choice names an undeclared tool")
+            if self.kinds[name] == "server_search":
+                if len(self.tools) != 1:
+                    raise _InvalidRequestError("forced server search with mixed tools is not established")
+                self.choice = "required"
+                self.forced_search = True
+            else:
+                self.choice = {"type": "function", "name": name}
+        else:
+            if choice_type == "any" and not self.tools:
+                raise _InvalidRequestError("required tool_choice needs a declaration")
+            self.choice = "required" if choice_type == "any" else choice_type
+            self.forced_search = bool(self.search_name and len(self.tools) == 1 and choice_type == "any")
+
+    def apply(self, payload):
+        if self.tools or self.declared:
+            payload["tools"] = self.tools
+        if self.choice is not None:
+            payload["tool_choice"] = self.choice
+        if self.parallel is not None:
+            payload["parallel_tool_calls"] = self.parallel
+        if self.search_name:
+            payload["include"].append("web_search_call.action.sources")
+            if self.max_uses is not None and SHIM_BACKEND_MODE == "openai":
+                payload["max_tool_calls"] = self.max_uses
+
+
 def _tools_to_responses(tools):
-    # Anthropic tool: {name, description, input_schema}
-    # Responses tool (FLAT / internally-tagged):
-    #   {type:"function", name, description, parameters}
-    # INTENT: emit the flat internally-tagged function-tool shape.
-    # REASONING: the Responses API uses INTERNAL tagging — name/description/
-    #   parameters are SIBLINGS of "type", NOT nested under a "function" key.
-    #   The nested {"type":"function","function":{...}} shape is Chat Completions
-    #   (external tagging) and is the #1 silent-failure trap in this migration
-    #   (spec file 04 §1). Verified HIGH confidence, quoted from migration docs.
-    if not tools:
-        return None
-    out = []
-    for t in tools:
-        if not isinstance(t, dict):
-            continue
-        out.append({
-            "type": "function",
-            "name": t.get("name", ""),
-            "description": t.get("description", ""),
-            "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
-        })
-    return out
+    return _ToolRegistry(tools).tools or None
 
 
 def _anthropic_to_responses_request(
-        body, bare_model, slug_effort_raw, requested_service_tier=None):
+        body, bare_model, slug_effort_raw, requested_service_tier=None, registry=None):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
     # Returns (payload, missing_reasoning_count, reasoning_cache_hits, effort_value,
     #   effort_source, injected_restored_reasoning_ids, injected_restored_call_ids).
@@ -3611,6 +3896,8 @@ def _anthropic_to_responses_request(
     # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
     # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
     # the backend — a "#"-bearing model is never forwarded.
+    if registry is None:
+        registry = _ToolRegistry(body.get("tools"), body.get("tool_choice"))
     input_items, missing_reasoning, reasoning_cache_hits, \
         injected_restored_reasoning_ids, injected_restored_call_ids = \
         _messages_to_input(body.get("messages", []))
@@ -3717,20 +4004,7 @@ def _anthropic_to_responses_request(
     #   for the same reason effort is: posture parity with DAAF Claude sessions.
     payload["text"] = {"verbosity": SHIM_TEXT_VERBOSITY}
 
-    ot = _tools_to_responses(body.get("tools"))
-    if ot:
-        payload["tools"] = ot
-        # Map Anthropic tool_choice -> Responses tool_choice where present.
-        tc = body.get("tool_choice")
-        if isinstance(tc, dict):
-            ttype = tc.get("type")
-            if ttype == "auto":
-                payload["tool_choice"] = "auto"
-            elif ttype == "any":
-                payload["tool_choice"] = "required"
-            elif ttype == "tool" and tc.get("name"):
-                # FLAT name (sibling of type), not nested — spec file 04 §1.
-                payload["tool_choice"] = {"type": "function", "name": tc["name"]}
+    registry.apply(payload)
 
     # `thinking`, `output_config`, `metadata`, `stream` (handled by transport),
     # and any unknown fields are intentionally dropped — output_config is an
@@ -3742,7 +4016,751 @@ def _anthropic_to_responses_request(
     )
 
 
+# --- Native search: bounded completed-item inventory and process-local replay ---
+# Fixed bounds, not new environment/configuration contracts. The cache is intentionally
+# process-local: eviction, age expiry and restart cause explicit continuity errors.
+_SEARCH_MAX_BYTES = 2 * 1024 * 1024
+_SEARCH_MAX_ITEMS = 128
+_SEARCH_MAX_EVENTS = 4096
+_SEARCH_MAX_ERROR_BYTES = 64 * 1024
+# Separate raw-input and projected-content budgets: citation titles may be reused
+# across many consulted sources. Never silently truncate evidence to fit these caps.
+_SEARCH_MAX_PROJECTED_BYTES = 2 * 1024 * 1024
+_SEARCH_MAX_SOURCES = 1024
+_SEARCH_MAX_TITLE_CHARS = 4096
+_SEARCH_REPLAY_MAX_BYTES = 8 * 1024 * 1024
+_SEARCH_REPLAY_MAX_GROUPS = 128
+_SEARCH_REPLAY_TTL = 1800
+# A bounded resident cache alone does not bound expansion of repeated historical
+# occurrences. These per-request ceilings are checked before decoding any group.
+_SEARCH_REPLAY_REQUEST_MAX_BYTES = 8 * 1024 * 1024
+_SEARCH_REPLAY_REQUEST_MAX_ITEMS = 1024
+_SEARCH_REPLAY_REQUEST_MAX_GROUPS = 128
+
+
+def _search_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def _search_json_size(value, limit):
+    """Count canonical ASCII JSON bytes without serializing amplified objects.
+
+    The iterator stack visits shared values once per occurrence (the wire will
+    repeat them too), but never builds a flattened traversal or encoded string.
+    This matches _search_json's separators/ensure_ascii policy, not provider units.
+    """
+    size = 0
+    stack = [iter((value,))]
+    while stack:
+        try:
+            part = next(stack[-1])
+        except StopIteration:
+            stack.pop()
+            continue
+        if isinstance(part, str):
+            size += 2
+            for char in part:
+                point = ord(char)
+                size += (2 if char in '\"\\\\\b\f\n\r\t' else
+                         6 if point < 32 or 126 < point <= 65535 else
+                         12 if point > 65535 else 1)
+                if size > limit:
+                    raise _ProtocolError("search projected content exceeded byte limit")
+        elif isinstance(part, dict):
+            size += 2 + max(0, len(part) - 1) + len(part)
+            if any(not isinstance(key, str) for key in part):
+                raise _ProtocolError("search projection contains invalid object keys")
+            stack.append(iter(component for pair in part.items() for component in pair))
+        elif isinstance(part, (list, tuple)):
+            size += 2 + max(0, len(part) - 1)
+            stack.append(iter(part))
+        elif part is None:
+            size += 4
+        elif isinstance(part, bool):
+            size += 4 if part else 5
+        elif isinstance(part, (int, float)):
+            size += len(json.dumps(part))
+        else:
+            raise _ProtocolError("search projection contains invalid JSON values")
+        if size > limit:
+            raise _ProtocolError("search projected content exceeded byte limit")
+    return size
+
+
+class _SearchProjectionList(list):
+    """Budget a growing projected array before any full JSON serialization."""
+    def __init__(self):
+        super().__init__()
+        self.json_bytes = 2
+
+    def append(self, value):
+        remaining = _SEARCH_MAX_PROJECTED_BYTES - self.json_bytes - bool(self)
+        size = _search_json_size(value, remaining)
+        self.json_bytes += size + bool(self)
+        super().append(value)
+
+
+class _SearchReplayCache:
+    def __init__(self):
+        self.groups = OrderedDict()
+        self.bytes = 0
+        self.lock = threading.RLock()
+
+    def _prune(self):
+        now = time.monotonic()
+        for key in list(self.groups):
+            entry = self.groups[key]
+            if now - entry[0] > _SEARCH_REPLAY_TTL:
+                self.bytes -= entry[3]
+                del self.groups[key]
+
+    def put(self, token, raw_items, blocks):
+        import hashlib
+        _search_json_size(blocks, _SEARCH_MAX_PROJECTED_BYTES)
+        raw = _search_json(raw_items)
+        fingerprints = tuple(hashlib.sha256(_search_json(b)).digest() for b in blocks)
+        size = len(raw) + len(fingerprints) * 32
+        if size > _SEARCH_MAX_BYTES:
+            raise _ProtocolError("search replay group exceeded byte limit")
+        # The first hosted reference anchors the whole emitted sequence, including
+        # any preceding thinking blocks. Later results/citations never re-inject it.
+        first = next(i for i, b in enumerate(blocks) if b["type"] == "server_tool_use")
+        refs = frozenset(b["id"] for b in blocks if b["type"] == "server_tool_use")
+        with self.lock:
+            self._prune()
+            while self.groups and (len(self.groups) >= _SEARCH_REPLAY_MAX_GROUPS
+                                   or self.bytes + size > _SEARCH_REPLAY_MAX_BYTES):
+                _, old = self.groups.popitem(last=False)
+                self.bytes -= old[3]
+            if size > _SEARCH_REPLAY_MAX_BYTES or _SEARCH_REPLAY_MAX_GROUPS < 1:
+                raise _ProtocolError("search replay cache capacity exceeded")
+            self.groups[token] = (time.monotonic(), raw, fingerprints, size, first, refs, len(raw_items))
+            self.bytes += size
+
+    def plan(self, messages):
+        import hashlib
+        planned, covered = {}, set()
+        # Snapshot immutable entry references at request start, under a short lock.
+        # Expiry/eviction after this snapshot applies to the next request. Hashing
+        # and JSON decoding must not monopolize the shared cache's critical section.
+        with self.lock:
+            self._prune()
+            available = dict(self.groups)
+        expanded_bytes = expanded_items = 0
+        for mi, message in enumerate(messages):
+            blocks = message.get("content")
+            if not isinstance(blocks, list):
+                continue
+            for bi, block in enumerate(blocks):
+                if (mi, bi) in covered or not isinstance(block, dict):
+                    continue
+                kind = block.get("type")
+                if kind not in ("server_tool_use", "web_search_tool_result"):
+                    continue
+                if message.get("role") != "assistant":
+                    raise _InvalidRequestError("search replay blocks require assistant role")
+                ref = block.get("id") if kind == "server_tool_use" else block.get("tool_use_id")
+                match = re.fullmatch(r"srvtoolu_shim_([0-9a-f]{32})_[0-9]+", ref or "") if isinstance(ref, str) else None
+                entry = available.get(match[1]) if match else None
+                if entry is None:
+                    raise _InvalidRequestError("search replay missing or expired; restart/eviction requires a fresh search")
+                if ref not in entry[5] or kind != "server_tool_use":
+                    raise _InvalidRequestError("search replay sequence is incomplete or modified")
+                start = bi - entry[4]
+                end = start + len(entry[2])
+                if (start < 0 or end > len(blocks)
+                        or any((mi, i) in covered for i in range(start, end))):
+                    raise _InvalidRequestError("search replay sequence is incomplete or modified")
+                expanded_bytes += len(entry[1])
+                expanded_items += entry[6]
+                if (expanded_bytes > _SEARCH_REPLAY_REQUEST_MAX_BYTES
+                        or expanded_items > _SEARCH_REPLAY_REQUEST_MAX_ITEMS
+                        or len(planned) >= _SEARCH_REPLAY_REQUEST_MAX_GROUPS):
+                    raise _InvalidRequestError("search replay request expansion exceeded limit")
+                planned[(mi, start)] = entry
+                covered.update((mi, i) for i in range(start, end))
+        # All occurrence budgets pass before any decoding. Then validate every
+        # complete emitted sequence before constructing independent raw occurrences.
+        for (mi, start), entry in planned.items():
+            blocks = messages[mi]["content"]
+            end = start + len(entry[2])
+            observed = tuple(hashlib.sha256(_search_json(blocks[i])).digest() for i in range(start, end))
+            if observed != entry[2]:
+                raise _InvalidRequestError("search replay sequence is incomplete or modified")
+        plan = {key: json.loads(entry[1]) for key, entry in planned.items()}
+        return plan, covered
+
+
+_SEARCH_REPLAY = _SearchReplayCache()
+
+
+class _SearchCollector:
+    """Strict search-only inventory. Completed items, not deltas, are replay evidence."""
+    def __init__(self, registry):
+        self.registry = registry
+        self.ids = {}
+        self.indexes = {}
+        self.types = {}
+        self.function_calls = {}  # index -> (call_id, name); never alters raw items
+        self.call_indexes = {}
+        self.added = {}
+        self.completed = {}
+        # Display-only fallback for ordinary truncation after search history.
+        # These deltas never enter completed inventory or hosted-search replay.
+        self.partial_text = {}
+        self.search_ids = set()
+        self.events = 0
+        self.retained_bytes = 0
+        self.terminal = None
+
+    def _identity(self, index, item_id, item_type=None, call_id=None):
+        if type(index) is not int or not 0 <= index < _SEARCH_MAX_ITEMS:
+            raise _ProtocolError("search output index missing or out of bounds")
+        if item_id is None and item_type == "function_call":
+            # Internal tagged identity cannot collide with a provider string id.
+            # A done-only/JSON function may expose only call_id. The caller first
+            # validates uniqueness and consistency; raw replay objects stay intact.
+            _require_protocol_string(call_id, "function call id")
+            item_id = self.indexes.get(index, ("function_call", call_id))
+        else:
+            _require_protocol_string(item_id, "search inventory item id")
+        if ((index in self.indexes and self.indexes[index] != item_id)
+                or (item_id in self.ids and self.ids[item_id] != index)):
+            raise _ProtocolError("search inventory identity conflict")
+        if item_type is not None:
+            if item_id in self.types and self.types[item_id] != item_type:
+                raise _ProtocolError("search inventory item type changed")
+            self.types[item_id] = item_type
+        self.ids[item_id] = index
+        self.indexes[index] = item_id
+        if item_type == "web_search_call":
+            self.search_ids.add(item_id)
+            if self.registry.choice == "none":
+                raise _ProtocolError("backend searched despite tool_choice none")
+            if self.registry.max_uses is not None and len(self.search_ids) > self.registry.max_uses:
+                raise _ProtocolError("shim-observed search-call ceiling exceeded; upstream work may already have occurred")
+
+    def event(self, event):
+        self.events += 1
+        if self.events > _SEARCH_MAX_EVENTS:
+            raise _ProtocolError("search event count exceeded limit")
+        kind = _validate_stream_event_fields(event)
+        if kind in ("response.output_item.added", "response.output_item.done"):
+            item = event["item"]
+            index = event.get("output_index")
+            if item.get("type") == "function_call":
+                # INTENT: preserve optional-id wire compatibility without ambiguous
+                # matching. REASONING: index, call_id and name are one association.
+                # ASSUMES: shared validation already checked function string fields.
+                call_id = item["call_id"]
+                identity = (call_id, item["name"])
+                registered = self.call_indexes.get(call_id)
+                if index is None and registered is not None:
+                    index = registered
+                if (type(index) is not int or not 0 <= index < _SEARCH_MAX_ITEMS
+                        or (registered is not None and registered != index)
+                        or (index in self.function_calls and self.function_calls[index] != identity)):
+                    raise _ProtocolError("search function identity conflict")
+                self.function_calls[index] = identity
+                self.call_indexes[call_id] = index
+            if kind.endswith("done") and item.get("type") == "web_search_call":
+                # Validate/log each unique completed inventory item before generic
+                # status rejection. Repeated identical done events do not double-count.
+                if type(index) is not int or index not in self.completed:
+                    _validate_hosted_action(item, observe=True)
+            self._identity(index, item.get("id"), item.get("type"), item.get("call_id"))
+            if kind.endswith("done"):
+                # Defer ordinary partial-item status to the terminal boundary.
+                # Historical search replay is not evidence of a search this turn.
+                allowed_statuses = ("completed", "incomplete") if not self.registry.search_name else ("completed",)
+                if "status" in item and item["status"] not in allowed_statuses:
+                    raise _ProtocolError("search inventory item was not completed")
+                if item.get("type") == "message" and (item.get("role") != "assistant" or item.get("status") not in allowed_statuses):
+                    raise _ProtocolError("search message role/status is invalid")
+                if index in self.added and json.loads(self.added[index])["type"] != item["type"]:
+                    raise _ProtocolError("search inventory item type changed")
+            destination = self.added if kind.endswith("added") else self.completed
+            raw = _search_json(item)
+            if index in destination:
+                if destination[index] != raw:
+                    raise _ProtocolError("search completed/added item conflict")
+            else:
+                self.retained_bytes += len(raw)
+                if self.retained_bytes > _SEARCH_MAX_BYTES:
+                    raise _ProtocolError("search retained inventory exceeded byte limit")
+                destination[index] = raw
+        elif "item_id" in event:
+            self._identity(event.get("output_index"), event["item_id"],
+                           "web_search_call" if kind.startswith("response.web_search_call.") else None)
+        if kind == "response.output_text.delta" and not self.registry.search_name:
+            # INTENT: retain ordinary text for an incomplete terminal lacking items.
+            # REASONING: replay history selects this collector even without a new
+            # search. Completed/terminal output remains authoritative when present.
+            # ASSUMES: explicit item/part identities associate the observed deltas;
+            # ambiguous identities fail closed rather than manufacture attribution.
+            index = event.get("output_index")
+            part = event.get("content_index")
+            self._identity(index, event.get("item_id"), "message")
+            if type(part) is not int or not 0 <= part < _SEARCH_MAX_ITEMS:
+                raise _ProtocolError("ordinary partial text index missing or out of bounds")
+            self.retained_bytes += len(_search_json(event["delta"]))
+            if self.retained_bytes > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search retained inventory exceeded byte limit")
+            self.partial_text.setdefault((index, part), []).append(event["delta"])
+        if kind in ("response.failed", "error"):
+            details = event.get("response") or event.get("error") or event
+            _, message, _, _ = _normalize_backend_error(details, phase="upstream_stream")
+            raise _ProtocolError(message)
+        if kind in ("response.completed", "response.incomplete"):
+            terminal = _validate_terminal_response(kind, event.get("response"))
+            if (kind == "response.incomplete" and not self.registry.search_name
+                    and not self.search_ids and terminal.get("error") is None):
+                # Ordinary continuation after replay: terminal partial output is
+                # authoritative; no hosted success or replay group is manufactured.
+                # Existing ordinary conversion maps incomplete to max_tokens.
+                if terminal.get("output"):
+                    indexed_partial = dict(enumerate(terminal["output"]))
+                else:
+                    indexed_partial = {i: json.loads(raw) for i, raw in self.completed.items()}
+                    if self.partial_text:
+                        # INTENT: reconcile ordinary display output per item, not
+                        # per response. A completed reasoning prefix cannot replace
+                        # the text of a different unfinished message.
+                        # ASSUMES: all observed output identities cover a contiguous
+                        # prefix; unfinished non-text items supply no invented text.
+                        if set(self.indexes) != set(range(len(self.indexes))):
+                            raise _ProtocolError("ordinary partial text has incomplete index coverage")
+                        for index in sorted({i for i, _ in self.partial_text}):
+                            if index in indexed_partial:
+                                continue  # This item's done content is authoritative.
+                            # Local incomplete display only, never completed replay.
+                            indexed_partial[index] = {
+                                "type": "message", "id": self.indexes[index],
+                                "role": "assistant", "status": "incomplete",
+                                "content": [{"type": "output_text", "text": "".join(chunks)}
+                                            for (output_index, _), chunks in sorted(self.partial_text.items())
+                                            if output_index == index]}
+                for index, item in sorted(indexed_partial.items()):
+                    _validate_output_item(item)
+                    if item.get("type") == "web_search_call":
+                        raise _ProtocolError("unexpected hosted search in ordinary continuation")
+                    self._identity(index, item.get("id"), item.get("type"), item.get("call_id"))
+                    if index in self.completed and json.loads(self.completed[index]) != item:
+                        raise _ProtocolError("ordinary terminal inventory conflicts with done items")
+                partial = [item for _, item in sorted(indexed_partial.items())]
+                if (len(partial) > _SEARCH_MAX_ITEMS or len(_search_json(partial)) > _SEARCH_MAX_BYTES):
+                    raise _ProtocolError("search output exceeded aggregate limit")
+                self.terminal = {**terminal, "output": partial}
+                return self.terminal
+            if kind != "response.completed" or terminal.get("error") is not None:
+                raise _ProtocolError("search response did not complete successfully")
+            if any(json.loads(raw).get("status", "completed") != "completed" for raw in self.completed.values()):
+                raise _ProtocolError("search inventory item was not completed")
+            if set(self.completed) != set(self.indexes) or set(self.indexes) != set(range(len(self.indexes))):
+                raise _ProtocolError("search inventory missing completed items or index coverage")
+            items = [json.loads(self.completed[i]) for i in range(len(self.completed))]
+            # Shared validation intentionally treats absent/null output like [].
+            # Coverage and byte-identical nonempty reconciliation stay mandatory.
+            terminal_items = terminal.get("output") or []
+            if terminal_items and terminal_items != items:
+                raise _ProtocolError("search terminal inventory conflicts with completed items")
+            self.terminal = {**terminal, "output": items}
+            return self.terminal
+        return None
+
+
+class _BoundedSearchStream:
+    """Narrow MIME fallback plus whole-body bound before the existing SSE iterator."""
+    def __init__(self, response):
+        self.response = response
+
+    async def aiter_bytes(self):
+        total = 0
+        prefix = bytearray()
+        mime = self.response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        recognized = mime == "text/event-stream"
+        if mime in ("text/html", "application/json"):
+            raise _ProtocolError("search expected SSE, received non-stream content")
+        async for chunk in self.response.aiter_bytes():
+            total += len(chunk)
+            if total > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search stream exceeded aggregate byte limit")
+            if not recognized:
+                prefix.extend(chunk)
+                # Non-SSE MIME fallback needs a real bounded response SSE
+                # preamble. Never scan past HTML, JSON, whitespace or challenge text.
+                if len(prefix) < 32 and b"\n" not in prefix:
+                    continue
+                if not (prefix.startswith(b"event: response.") or prefix.startswith(b'data: {"type":"response.')
+                        or prefix.startswith(b'data: {"type": "response.')):
+                    raise _ProtocolError("search stream has no recognized SSE response prefix")
+                recognized = True
+                yield bytes(prefix)
+                prefix.clear()
+            else:
+                yield chunk
+        if not recognized:
+            raise _ProtocolError("search stream has no recognized SSE response prefix")
+
+
+async def _collect_search_response(resp, disconnect_event, registry, json_mode=False,
+                                   reject_refusals=False):
+    collector = _SearchCollector(registry)
+    if json_mode:
+        raw = bytearray()
+        iterator = resp.aiter_bytes().__aiter__()
+        while True:
+            try:
+                chunk = await _await_or_disconnect(iterator.__anext__(), disconnect_event)
+            except StopAsyncIteration:
+                break
+            if len(raw) + len(chunk) > _SEARCH_MAX_BYTES:
+                raise _ProtocolError("search JSON exceeded aggregate byte limit")
+            raw.extend(chunk)
+        try:
+            response = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            raise _ProtocolError("search response contained malformed JSON") from None
+        response = _validate_response_for_conversion(response)
+        items = response.get("output")
+        if not isinstance(items, list):
+            raise _ProtocolError("search terminal output must be a list")
+        # JSON transport supplies the actual completed inventory in one object.
+        # Reuse the inventory validator; these internal events are not wire evidence.
+        for index, item in enumerate(items):
+            collector.event({"type": "response.output_item.done", "output_index": index, "item": item})
+        return collector.event({"type": "response." + response["status"], "response": response})
+    async for raw in _iter_bounded_sse_data(_BoundedSearchStream(resp), disconnect_event):
+        if raw.strip() == b"[DONE]":
+            break
+        try:
+            event = json.loads(raw)
+        except (ValueError, UnicodeDecodeError):
+            raise _ProtocolError("search stream contained malformed SSE JSON") from None
+        # Optional guard runs before history truncation can drop done evidence.
+        # Ordinary streaming never uses this buffered collection path.
+        if reject_refusals:
+            _reject_buffered_refusal_event(event)
+        terminal = collector.event(event)
+        if terminal is not None:
+            return terminal
+    raise _ProtocolError("search stream ended without a successful terminal response")
+
+
+def _search_url(value):
+    if not isinstance(value, str) or len(value) > 8192 or any(ord(c) <= 32 or ord(c) == 127 for c in value):
+        raise _ProtocolError("search source URL is invalid")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if parsed.scheme not in ("https", "http") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError()
+        parsed.port
+    except ValueError:
+        raise _ProtocolError("search source URL is invalid") from None
+    return value
+
+
+def _validate_hosted_action(item, observe=False):
+    """Validate documented action evidence; diagnostics never contain provider text."""
+    action = item.get("action")
+    kind = action.get("type") if isinstance(action, dict) else None
+    action_type = kind if isinstance(kind, str) and kind in ("search", "open_page", "find_in_page") else "unknown"
+    status = item.get("status")
+    action_status = status if isinstance(status, str) and status in ("in_progress", "searching", "completed", "failed", "incomplete") else "unknown"
+    outcome, evidence, source_count = "malformed", "absent", 0
+    try:
+        if action_status == "unknown":
+            raise _ProtocolError("hosted action status is invalid")
+        if status != "completed":
+            outcome = "not_completed"
+            raise _ProtocolError("hosted action did not complete successfully")
+        if not isinstance(action, dict) or not isinstance(kind, str) or not kind:
+            raise _ProtocolError("hosted action type is missing or invalid")
+        if action_type == "unknown":
+            outcome = "unsupported"
+            raise _ProtocolError("hosted action type is unsupported")
+        if kind == "search":
+            for key in ("query", "queries"):
+                if key not in action:
+                    continue
+                value = action[key]
+                if key == "query" and not isinstance(value, str):
+                    raise _ProtocolError("hosted search query is invalid")
+                if key == "queries" and (not isinstance(value, list) or any(not isinstance(q, str) for q in value)):
+                    raise _ProtocolError("hosted search queries are invalid")
+            sources = action.get("sources")
+            if sources is None and "sources" not in action:
+                outcome = "missing_evidence"
+                raise _ProtocolError("hosted search omitted consulted-source evidence")
+            if not isinstance(sources, list):
+                raise _ProtocolError("hosted search consulted-source evidence is invalid")
+            source_count = len(sources)
+            for source in sources:
+                if not isinstance(source, dict) or source.get("type") != "url":
+                    raise _ProtocolError("hosted search source is invalid")
+                _search_url(source.get("url"))
+                if "title" in source and source["title"] is not None and not isinstance(source["title"], str):
+                    raise _ProtocolError("hosted search source title is invalid")
+            evidence = "sources"
+            outcome = "valid" if sources else "zero_results"
+        else:
+            # INTENT: retain page actions as actions, never synthetic searches.
+            # REASONING: pinned OpenAPI + SDK specify optional nullable open URL,
+            # but require both URL and pattern for find. No source list is defined.
+            # ASSUMES: unsupported extensions need review, not guessed semantics.
+            allowed = {"type", "url"} if kind == "open_page" else {"type", "url", "pattern"}
+            if set(action) - allowed:
+                outcome = "unsupported"
+                raise _ProtocolError("hosted page action fields are unsupported")
+            if kind == "find_in_page" and "pattern" not in action:
+                outcome = "missing_evidence"
+                raise _ProtocolError("hosted find_in_page omitted required pattern")
+            if kind == "find_in_page" and not isinstance(action["pattern"], str):
+                raise _ProtocolError("hosted find_in_page pattern is invalid")
+            if kind == "find_in_page" and "url" not in action:
+                outcome = "missing_evidence"
+                raise _ProtocolError("hosted find_in_page omitted required URL")
+            url = action.get("url")
+            if kind == "find_in_page" or url is not None:
+                try:
+                    _search_url(url)
+                except _ProtocolError:
+                    raise _ProtocolError("hosted page action URL is invalid") from None
+                evidence = "url"
+            outcome = "valid" if evidence == "url" else "url_not_supplied"
+        return action
+    finally:
+        if observe:
+            # Only fixed enums and an integer derived from a bounded inventory.
+            # No query, URL, pattern, title, item id, extension or ciphertext enters logs.
+            _lifecycle_event("hosted_action", action_type=action_type,
+                             action_status=action_status, outcome=outcome,
+                             evidence=evidence, source_count=source_count)
+
+
+def _search_projection(response, model, registry):
+    """Keep malformed conversion failures structured and provider prose private."""
+    try:
+        message = _project_search_response(response, model, registry)
+        hosted = [item for item in response.get("output", []) if item.get("type") == "web_search_call"]
+        _lifecycle_event("hosted_projection", outcome="valid" if hosted else "no_hosted_actions",
+                         action_count=len(hosted),
+                         search_count=sum(item["action"]["type"] == "search" for item in hosted),
+                         open_page_count=sum(item["action"]["type"] == "open_page" for item in hosted),
+                         find_in_page_count=sum(item["action"]["type"] == "find_in_page" for item in hosted))
+        return message
+    except _ProtocolError:
+        _lifecycle_event("hosted_projection", outcome="protocol_error")
+        raise
+    except (TypeError, AttributeError, KeyError, ValueError, RecursionError):
+        _lifecycle_event("hosted_projection", outcome="malformed")
+        raise _ProtocolError("search response conversion failed") from None
+
+
+def _project_search_response(response, model, registry):
+    """Real consulted URLs and answer attribution; no proprietary-origin fields."""
+    response = _validate_response_for_conversion(response)
+    items = response["output"]
+    if len(items) > _SEARCH_MAX_ITEMS or len(_search_json(items)) > _SEARCH_MAX_BYTES:
+        raise _ProtocolError("search output exceeded aggregate limit")
+    searches = [i for i in items if i.get("type") == "web_search_call"]
+    if registry.forced_search and not searches:
+        raise _ProtocolError("forced search returned no hosted search evidence")
+    if registry.max_uses is not None and len(searches) > registry.max_uses:
+        raise _ProtocolError("shim-observed search-call ceiling exceeded; upstream work may already have occurred")
+    # INTENT: preserve the ordinary stream's missing-usage policy on buffered
+    # transports too. REASONING: measured zero is not absent/invalid usage.
+    # ASSUMES: shared validation has dropped invalid counters. Only model answer
+    # text feeds the existing heuristic; consulted URLs, attribution and hosted
+    # calls are NOT tokens or provider search charges manufactured by the shim.
+    usage = dict(response.get("usage") or {})
+    usage_estimated = "input_tokens" not in usage or "output_tokens" not in usage
+    if "output_tokens" not in usage:
+        answer_text = "".join(part.get("text", "") for item in items
+                              if item.get("type") == "message"
+                              for part in item.get("content", []) if part.get("type") == "output_text")
+        usage["output_tokens"] = _estimate_tokens(answer_text)
+    usage.setdefault("input_tokens", 0)
+    response = {**response, "usage": usage}
+    usage_source = "estimated" if usage_estimated else "backend"
+    if not searches:
+        message = _responses_to_anthropic(response, model)
+        message["_usage_source"] = usage_source
+        return message
+    titles, citations = {}, []
+    unverified_spans = False
+    for item in items:
+        _validate_output_item(item)
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                annotations = part.get("annotations", [])
+                if not isinstance(annotations, list):
+                    raise _ProtocolError("search annotations must be a list")
+                for annotation in annotations:
+                    if not isinstance(annotation, dict):
+                        raise _ProtocolError("search annotation must be an object")
+                    if annotation.get("type") != "url_citation":
+                        continue
+                    # INTENT: validate offsets explicitly without inventing source
+                    # quotations or assuming provider Unicode indexing semantics.
+                    # REASONING: our conservative local convention is a nonempty
+                    # half-open range in the original output_text. Only ASCII is
+                    # encoding-unambiguous across code points/UTF-8/UTF-16. For
+                    # non-ASCII or malformed/missing offsets, retain the URL as a
+                    # provider-linked source but label spans UNVERIFIED. Never
+                    # slice, repair offsets, or modify the replay annotation.
+                    # ASSUMES: titles/URLs are provider attribution, not quotations.
+                    text = part.get("text") if part.get("type") == "output_text" else None
+                    start, end = annotation.get("start_index"), annotation.get("end_index")
+                    valid_range = (isinstance(text, str) and type(start) is int and type(end) is int
+                                   and 0 <= start < end <= len(text))
+                    if not valid_range or not text.isascii():
+                        unverified_spans = True
+                    url = _search_url(annotation.get("url"))
+                    title = annotation.get("title")
+                    if title is not None and not isinstance(title, str):
+                        raise _ProtocolError("search citation title is invalid")
+                    title = title or "URL: " + url
+                    if len(title) > _SEARCH_MAX_TITLE_CHARS:
+                        raise _ProtocolError("search citation title exceeded character limit")
+                    titles[url] = title
+                    citations.append((title, url))
+    blocks = _SearchProjectionList()
+    source_count = 0
+    token = uuid.uuid4().hex
+    for item in items:
+        kind = item.get("type")
+        if kind == "reasoning":
+            text = _reasoning_summary_text(item)
+            if text:
+                blocks.append({"type": "thinking", "thinking": text, "signature": ""})
+        elif kind == "web_search_call":
+            action = _validate_hosted_action(item)
+            if action["type"] != "search":
+                # The installed WebSearch parser retains text blocks, but renders
+                # web_search_tool_result arrays as ranked links. Use the existing
+                # hosted tool identity as a replay anchor and text as action evidence;
+                # never reinterpret a page open/find as a new search or source quote.
+                ref = "srvtoolu_shim_%s_%d" % (token, len(blocks))
+                actual_input = dict(action)
+                blocks.append({"type": "server_tool_use", "id": ref, "name": "web_search", "input": actual_input})
+                url = action.get("url")
+                detail = "\n\nHosted web action: " + action["type"] + " (not ranked search results)."
+                if url is None:
+                    detail += " URL not supplied by provider; page provenance unavailable."
+                else:
+                    source_count += 1
+                    if source_count > _SEARCH_MAX_SOURCES:
+                        raise _ProtocolError("search consulted-source count exceeded limit")
+                    target = url.replace("<", "%3C").replace(">", "%3E").replace("(", "%28").replace(")", "%29")
+                    detail += " Provider action URL: [page](" + target + ")."
+                if action["type"] == "find_in_page":
+                    detail += " Pattern: " + json.dumps(action["pattern"], ensure_ascii=True) + "."
+                detail += " Action completion does not verify page content or a pattern match.\n\n"
+                blocks.append({"type": "text", "text": detail})
+                continue
+            sources = action.get("sources")
+            if not isinstance(sources, list):
+                raise _ProtocolError("hosted search omitted consulted-source evidence")
+            actual_input = {}
+            for key in ("query", "queries"):
+                if key not in action:
+                    continue
+                value = action[key]
+                if key == "query" and not isinstance(value, str):
+                    raise _ProtocolError("hosted search query is invalid")
+                if key == "queries" and (not isinstance(value, list) or any(not isinstance(q, str) for q in value)):
+                    raise _ProtocolError("hosted search queries are invalid")
+                actual_input[key] = value
+            # Never invent a single query for missing/multiple upstream queries.
+            if "queries" in actual_input and len(actual_input["queries"]) > 1:
+                actual_input.pop("query", None)
+            ref = "srvtoolu_shim_%s_%d" % (token, len(blocks))
+            source_count += len(sources)
+            if source_count > _SEARCH_MAX_SOURCES:
+                raise _ProtocolError("search consulted-source count exceeded limit")
+            results = _SearchProjectionList()
+            for source in sources:
+                if not isinstance(source, dict) or source.get("type") != "url":
+                    raise _ProtocolError("hosted search source is invalid")
+                url = _search_url(source.get("url"))
+                title = source.get("title") or titles.get(url) or "URL: " + url
+                if not isinstance(title, str):
+                    raise _ProtocolError("hosted search source title is invalid")
+                if len(title) > _SEARCH_MAX_TITLE_CHARS:
+                    raise _ProtocolError("search source title exceeded character limit")
+                results.append({"type": "web_search_result", "url": url, "title": title})
+            blocks.append({"type": "server_tool_use", "id": ref, "name": "web_search", "input": actual_input})
+            blocks.append({"type": "web_search_tool_result", "tool_use_id": ref, "content": results})
+        elif kind == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "output_text" and part.get("text"):
+                    blocks.append({"type": "text", "text": part["text"]})
+        elif kind == "function_call":
+            try:
+                arguments = json.loads(item["arguments"])
+            except ValueError:
+                raise _ProtocolError("search-associated function arguments are invalid") from None
+            arguments, _ = _sanitize_tool_args(item["name"], arguments)
+            blocks.append({"type": "tool_use", "id": item["call_id"], "name": item["name"], "input": arguments})
+    if citations:
+        # Explicit added attribution, never source quotations or invented ciphertext.
+        # Percent-encode Markdown delimiters only in display links; replay keeps
+        # original query-bearing URLs and every original annotation field unchanged.
+        links = _SearchProjectionList()
+        for title, url in dict.fromkeys(citations):
+            label = title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("\n", " ").replace("\r", " ")
+            target = url.replace("<", "%3C").replace(">", "%3E").replace("(", "%28").replace(")", "%29")
+            links.append("[%s](%s)" % (label, target))
+        label = ("Provider-linked sources (text spans unverified): " if unverified_spans
+                 else "Source attribution: ")
+        blocks.append({"type": "text", "text": "\n\n" + label + "; ".join(links)})
+    usage = response.get("usage") or {}
+    input_total, output_total = usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+    cached = _resolve_cached_tokens(usage, input_total)
+    message = {"id": response.get("id") or "msg_" + uuid.uuid4().hex, "type": "message",
+            "role": "assistant", "model": model, "content": blocks,
+            "stop_reason": "tool_use" if any(b["type"] == "tool_use" for b in blocks) else "end_turn",
+            "stop_sequence": None, "_cached_tokens": cached, "_usage_source": usage_source,
+            "usage": _anthropic_usage_block(input_total, output_total, cached, _actual_speed_from_response(response))}
+    # Validate the full response before committing any replay state. A failed
+    # projection must neither insert a group nor evict a prior valid occurrence.
+    _search_json_size(message, _SEARCH_MAX_PROJECTED_BYTES)
+    _SEARCH_REPLAY.put(token, items, blocks)
+    return message
+
+
 # --- Helpers: response translation (OpenAI Responses -> Anthropic) ---
+
+class _ToolWhitespaceError(_ProtocolError):
+    """Provider failed to make structural progress while forming tool arguments."""
+
+
+def _check_tool_argument_whitespace(st, fragment):
+    # This is an operational output bound, not a JSON grammar restriction.
+    # Preserve lexical state across SSE fragments; strings may contain arbitrary
+    # whitespace, escaped quotes and backslashes without counting as padding.
+    inside, escaped, run = st.get("json_whitespace_state", (False, False, 0))
+    for char in fragment:
+        if inside:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                inside = False
+            run = 0
+        else:
+            if char == '"':
+                inside = True
+            run = run + 1 if char in " \t\r\n" else 0
+            if run > 256:
+                raise _ToolWhitespaceError(
+                    "backend tool arguments exceeded 256 consecutive whitespace "
+                    "characters outside JSON strings; generation cancelled "
+                    "before tool arguments completed")
+    st["json_whitespace_state"] = (inside, escaped, run)
+
 
 def _sanitize_tool_args(tool_name, args):
     # Evidence-based cleanup of the GPT "fill-every-optional" tool-call habit,
@@ -4427,6 +5445,7 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
         if disconnect_event.is_set():
             raise _ClientDisconnected()
         try:
+            _trace_event("provider_request", payload, transport="json")
             _record_attempt("json")
             r = await _await_or_disconnect(
                 _client.post(url, headers=headers, json=payload),
@@ -4571,7 +5590,37 @@ async def _settle_request_resources(state):
         raise owner_cancellation
 
 
-async def _open_backend_stream(url, headers, payload, disconnect_event):
+async def _read_search_error_body(resp, disconnect_event):
+    """Read a search error once with a transport bound, never an unbounded aread.
+
+    Bounds apply to decoded chunks delivered by HTTPX; the current transport chunk
+    can cross the ceiling, but it is not retained and no further chunk is pulled.
+    The owner must settle the stream on overflow, disconnect, or read failure.
+    """
+    cache_key = "daaf_search_error_body"
+    if cache_key in resp.extensions:
+        return resp.extensions[cache_key]
+    raw = bytearray()
+    iterator = resp.aiter_bytes().__aiter__()
+    try:
+        while True:
+            try:
+                chunk = await _await_or_disconnect(iterator.__anext__(), disconnect_event)
+            except StopAsyncIteration:
+                break
+            if len(raw) + len(chunk) > _SEARCH_MAX_ERROR_BYTES:
+                raise _ProtocolError("search error body exceeded byte limit")
+            raw.extend(chunk)
+    finally:
+        # Close the owned iterator explicitly: do not leave its async-generator
+        # finalization to garbage collection after request cleanup was reported.
+        await iterator.aclose()
+    result = bytes(raw)
+    resp.extensions[cache_key] = result
+    return result
+
+
+async def _open_backend_stream(url, headers, payload, disconnect_event, *, search_bearing=False):
     # v1.2.7 shared streamed-connect helper.
     # INTENT: give downstream streaming and ChatGPT inbound-nonstream accumulation
     # the same pre-content retries/lazy-401 behavior while making every blocked
@@ -4587,6 +5636,7 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             raise _ClientDisconnected()
         stream_cm = _client.stream("POST", url, headers=headers, json=payload)
         try:
+            _trace_event("provider_request", payload, transport="sse")
             _record_attempt("sse")
             resp = await _await_or_disconnect(
                 stream_cm.__aenter__(),
@@ -4651,16 +5701,25 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             # preserve the retry budget and reconnect before semantic content.
             continue
 
+        if search_bearing and resp.status_code >= 400:
+            # Bound the ACTUAL read before retry classification, even on the final
+            # attempt. The ordinary route deliberately retains its existing policy.
+            try:
+                search_error = await _read_search_error_body(resp, disconnect_event)
+            except BaseException:
+                await _settle_stream_context(stream_cm)
+                raise
+
         if resp.status_code >= 400 and attempt < MAX_RETRIES:
             # v1.2.14 (R4): read the error body ONCE for classification-driven gating
             # and delay-source selection. The body is parsed in memory for structural
             # signals only (never decoded into a log line). On disconnect the read is
             # cancelled and the owned context is settled before propagating.
             try:
-                raw_err = await _await_or_disconnect(
+                raw_err = (search_error if search_bearing else await _await_or_disconnect(
                     resp.aread(),
                     disconnect_event,
-                )
+                ))
             except _ClientDisconnected:
                 await _settle_stream_context(stream_cm)
                 raise
@@ -4785,9 +5844,9 @@ def _actual_speed_from_response(response):
         if terminal_order > _LATEST_TERMINAL_ORDER:
             _LATEST_TERMINAL = latest
             _LATEST_TERMINAL_ORDER = terminal_order
-    if raw_tier in _FAST_ACTUAL_SERVICE_TIERS:
+    if canonical_served in _FAST_ACTUAL_SERVICE_TIERS:
         return "fast"
-    if raw_tier in _STANDARD_ACTUAL_SERVICE_TIERS:
+    if canonical_served in _STANDARD_ACTUAL_SERVICE_TIERS:
         return "standard"
     return None
 
@@ -4818,6 +5877,74 @@ def _anthropic_usage_block(input_total, output_total, cached, speed=None):
 
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
 
+def _validate_nonstream_output_items(output_items):
+    # INTENT: reject the entire refusal-bearing response before cache/content effects.
+    # REASONING: clients may parse allow-looking text despite a refusal stop reason;
+    # neither refusal nor prefix may escape through ordinary or hosted conversion.
+    # ASSUMES: callers supply a validated list, after any collector recovery. The
+    # refusal discriminator suffices even for empty, missing or malformed payloads.
+    # The buffered search-stream fallback also uses this check via the converter;
+    # ordinary streaming refusal handling is deliberately outside this change.
+    for item in output_items:
+        _validate_output_item(item)
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "refusal":
+                    raise _ProtocolError("backend response contains refusal")
+
+
+def _reject_buffered_refusal_event(event):
+    """Reject explicit refusal evidence before buffered inventory reconciliation."""
+    kind = event.get("type") if isinstance(event, dict) else None
+    if kind in ("response.refusal.delta", "response.refusal.done"):
+        raise _ProtocolError("backend response contains refusal")
+    if kind in ("response.content_part.added", "response.content_part.done"):
+        part = event.get("part")
+        if isinstance(part, dict) and part.get("type") == "refusal":
+            raise _ProtocolError("backend response contains refusal")
+    if kind == "response.output_item.done":
+        _validate_nonstream_output_items([event.get("item")])
+
+
+def _parse_recovery_number(value):
+    # Used for every float/constant token, even one overwritten by a duplicate key.
+    number = float(value)
+    if not -float("inf") < number < float("inf"):
+        raise ValueError("non-finite recovery number")
+    return number
+
+
+def _validate_recovered_function_arguments(raw):
+    # INTENT: reject invalid/unserializable recovered inputs before any cache effect.
+    # REASONING: Python JSON accepts NaN/Infinity and can overflow finite literals;
+    # deep input can exhaust decoder/encoder recursion. Full-terminal legacy stays
+    # unchanged. ASSUMES: raw inventory already passed the existing byte bound.
+    try:
+        arguments = json.loads(raw, parse_float=_parse_recovery_number,
+                               parse_constant=_parse_recovery_number)
+        if not isinstance(arguments, dict):
+            raise _ProtocolError("backend recovered function arguments are not an object")
+        # Iterator stack bounds structural depth without recursively walking values
+        # or allocating a flattened copy. Count the root object as depth one.
+        stack = [iter(arguments.values())]
+        while stack:
+            try:
+                value = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                continue
+            if isinstance(value, (dict, list)):
+                if len(stack) >= 64:
+                    raise _ProtocolError("backend recovered function arguments exceed nesting limit")
+                stack.append(iter(value.values() if isinstance(value, dict) else value))
+        encoded = json.dumps(arguments, allow_nan=False, ensure_ascii=True,
+                             separators=(",", ":"))
+        if len(encoded) > _SEARCH_MAX_BYTES:
+            raise _ProtocolError("backend recovered function arguments exceed byte limit")
+    except (ValueError, RecursionError):
+        raise _ProtocolError("backend recovered function arguments are not bounded finite JSON") from None
+
+
 def _responses_to_anthropic(resp_obj, model):
     # Translate a complete Responses response object into an Anthropic message.
     # INTENT: walk `output[]` and build the Anthropic content array in the order
@@ -4829,8 +5956,12 @@ def _responses_to_anthropic(resp_obj, model):
     #   reasoning cache so a non-streaming turn seeds continuity.
     resp_obj = _validate_response_for_conversion(resp_obj)
     output_items = resp_obj.get("output", [])
-    for item in output_items:
-        _validate_output_item(item)
+    # Recovery callers supply a list before reaching this boundary. Explicit null
+    # here has no usable inventory; reject rather than invent an empty success.
+    # The shared terminal validator still permits streaming's existing recovery.
+    if output_items is None:
+        raise _ProtocolError("backend nonstream response output is null")
+    _validate_nonstream_output_items(output_items)
     # v1.3.3 (A2-R1): persist only when the populate actually mutated the cache, so a
     # reasoning-free or unpaired turn triggers no disk write. Fail-open; never on the hot
     # path's critical section (the write is atomic-replace and swallows all errors).
@@ -5199,6 +6330,8 @@ async def _build_backend_headers(force_token_refresh=False, rejected_token=None)
             "authorization": f"Bearer {access_token}",
             "content-type": "application/json",
             "accept": "text/event-stream",
+            **({"session-id": state.conversation_session_id}
+               if state is not None and state.conversation_session_id is not None else {}),
             "X-Client-Request-Id": client_request_id,
         }
     return {
@@ -5265,6 +6398,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
     event_open = False
     chunk_iterator = resp.aiter_bytes().__aiter__()
     while True:
+        _trace_event("upstream_read_start")
         try:
             chunk = await _await_or_disconnect(
                 chunk_iterator.__anext__(),
@@ -5272,6 +6406,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
             )
         except StopAsyncIteration:
             break
+        _trace_event("upstream_chunk", bytes=len(chunk), content_omitted="raw_chunk_credentials_boundary")
         line_buffer.extend(chunk)
         while True:
             newline_at = line_buffer.find(b"\n")
@@ -5299,7 +6434,9 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
             if payload is not None:
                 _record_upstream_first_event()
                 _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
+                _trace_event("upstream_event", payload)
                 yield payload
+    _trace_event("upstream_eof", partial_line_bytes=len(line_buffer), partial_event_bytes=event_size)
     if not (line_buffer or event_open or data_lines):
         return
     # v1.2.14 (R5): a non-blank-terminated tail at EOF. If a complete, dispatchable
@@ -5318,6 +6455,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
         data_lines.clear()
         _record_upstream_first_event()
         _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
+        _trace_event("upstream_event", payload, eof_flushed=True)
         yield payload
         return
     # Otherwise the residual is a genuinely incomplete event (a partial data line, or
@@ -5343,6 +6481,12 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     # v1.2.14 (R5): a mutable one-slot flag lets the bounded SSE reader tolerate a
     # malformed tail at EOF only after a terminal semantic frame was accepted.
     terminal_seen = [False]
+    # INTENT: preserve completed items omitted from a compact terminal envelope.
+    # REASONING: retain bounded inventory, but defer search-only validation errors
+    # until recovery is needed. A populated terminal keeps ordinary acceptance.
+    # ASSUMES: only done items are evidence; deltas/partial tool JSON are not repaired.
+    completed_inventory = _SearchCollector(_ToolRegistry(None, None))
+    recovery_error = None
     try:
         async for data_bytes in _iter_bounded_sse_data(
                 resp, disconnect_event, terminal_seen):
@@ -5353,9 +6497,55 @@ async def _accumulate_terminal_response(resp, disconnect_event):
             except (ValueError, UnicodeDecodeError):
                 return None, "backend stream contained malformed SSE JSON"
             etype = _validate_stream_event_fields(ev)
+            _reject_buffered_refusal_event(ev)
+            if (etype in ("response.output_item.added", "response.output_item.done")
+                    and recovery_error is None):
+                try:
+                    completed_inventory.event(ev)
+                except _ProtocolError:
+                    # Fixed message only; release retained content and stop collecting.
+                    # Continue shared event validation and wait for terminal authority.
+                    recovery_error = "backend completed-item recovery inventory is invalid or exceeds limits"
+                    completed_inventory = None
+            if (recovery_error is None and etype in (
+                    "response.output_text.delta", "response.output_text.done",
+                    "response.function_call_arguments.delta", "response.function_call_arguments.done",
+                    "response.content_part.added", "response.content_part.done",
+                    "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
+                    "response.reasoning_summary_part.added", "response.reasoning_summary_part.done")):
+                try:
+                    index, item_id = ev.get("output_index"), ev.get("item_id")
+                    if index is None and isinstance(item_id, str):
+                        index = completed_inventory.ids.get(item_id)
+                    if item_id is None and type(index) is int:
+                        item_id = completed_inventory.indexes.get(index)
+                    # No content retention or synthesis: only strengthen coverage.
+                    _require_protocol_string(item_id, "recovery item reference")
+                    if item_id not in completed_inventory.ids:
+                        completed_inventory.retained_bytes += len(_search_json(item_id))
+                        if completed_inventory.retained_bytes > _SEARCH_MAX_BYTES:
+                            raise _ProtocolError("backend recovery references exceed byte limit")
+                    item_type = ("function_call" if etype.startswith("response.function_call_arguments.")
+                                 else "reasoning" if etype.startswith("response.reasoning_summary_")
+                                 else "message")
+                    completed_inventory._identity(index, item_id, item_type)
+                except _ProtocolError:
+                    recovery_error = "backend completed-item recovery has ambiguous item references"
+                    completed_inventory = None
             if etype in ("response.completed", "response.incomplete"):
                 terminal_seen[0] = True
                 terminal = _validate_terminal_response(etype, ev.get("response"))
+                if not terminal.get("output"):
+                    if recovery_error is not None:
+                        raise _ProtocolError(recovery_error)
+                    if completed_inventory.indexes:
+                        if (set(completed_inventory.completed) != set(completed_inventory.indexes)
+                                or set(completed_inventory.indexes) != set(range(len(completed_inventory.indexes)))):
+                            raise _ProtocolError("backend completed-item recovery lacks complete index coverage")
+                        terminal = completed_inventory.event(ev)
+                        for item in terminal["output"]:
+                            if item.get("type") == "function_call":
+                                _validate_recovered_function_arguments(item["arguments"])
                 return terminal, None
             if etype == "response.failed":
                 response_obj = ev.get("response")
@@ -5417,7 +6607,16 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     # collapse; unrelated and nested duplicates retain last-key-wins compatibility.
     _set_phase("request_parse")
     try:
-        req = _decode_anthropic_request_json(body)
+        req = _decode_anthropic_request_json(body, scope_headers)
+        if _DIAGNOSTICS is not None and isinstance(req, dict):
+            try:
+                _DIAGNOSTICS.bind(_request_state().req_id, req, body)
+                _trace_event("client_correlation", headers={
+                    key.decode("ascii"): value.decode("ascii", errors="replace")
+                    for key, value in scope_headers
+                    if key.lower() in (b"x-client-request-id", b"x-request-id")})
+            except Exception:
+                pass
     except _DuplicateTopLevelSpeedError:
         _mark_error(phase="request_validation", error_type="invalid_request_error")
         await _send_json(send, 400, {"type": "error", "error": {
@@ -5539,10 +6738,11 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
     try:
+        search_registry = _ToolRegistry(req.get("tools"), req.get("tool_choice"))
         responses_payload, missing_reasoning, reasoning_cache_hits, effort_value, \
             effort_source, injected_restored_reasoning_ids, injected_restored_call_ids = \
             _anthropic_to_responses_request(
-                req, model, slug_effort_raw, requested_service_tier)
+                req, model, slug_effort_raw, requested_service_tier, search_registry)
     except _InvalidRequestError as error:
         # The exception text is constructed exclusively from structural indexes,
         # bounded type labels, and local constants. Never log or reflect block data.
@@ -5551,6 +6751,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             "type": "invalid_request_error", "message": str(error),
         }})
         return
+    search_bearing = bool(search_registry.search_name or any(
+        item.get("type") == "web_search_call" for item in responses_payload["input"]))
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
     state = _request_state()
@@ -5614,11 +6816,21 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 "backend round-trip", _safe_slug)
             await _send_json(send, 400, {"type": "error", "error": {
                 "type": "invalid_request_error",
+                # User-facing guidance (2026-10-12): name all four tier aliases.
+                # CLAUDE_CODE_SUBAGENT_MODEL alone is only a fallback for
+                # subagents without their own model (Claude Code >= 2.1.251), so
+                # it cannot stop DAAF's opus/sonnet agents sending claude-* slugs;
+                # and Claude Code's housekeeping calls (naming and summarizing
+                # the session) use the haiku tier. Text only — no logic change.
                 "message": (
                     "model %r is not available via the ChatGPT (Codex) lane; "
-                    "remap Claude aliases to GPT slugs via "
-                    "ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL "
-                    "/ CLAUDE_CODE_SUBAGENT_MODEL in environment_settings.txt"
+                    "map all four Claude tier aliases to GPT slugs in "
+                    "environment_settings.txt: ANTHROPIC_DEFAULT_FABLE_MODEL, "
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL "
+                    "and ANTHROPIC_DEFAULT_HAIKU_MODEL (Claude Code's housekeeping "
+                    "calls, such as naming and summarizing your session, use the "
+                    "haiku tier); or, if this is your session model, pick a GPT "
+                    "model with /model"
                 ) % _safe_slug,
             }})
             return
@@ -5700,6 +6912,64 @@ async def _handle_messages(body, receive, send, scope_headers=()):
     url = f"{SHIM_BACKEND_BASE_URL}/responses"
 
     try:
+        if not stream and search_bearing:
+            # Both search transports remain bounded. OpenAI retains JSON while
+            # subscription requests SSE; neither emits partial downstream content.
+            json_mode = SHIM_BACKEND_MODE == "openai"
+            responses_payload["stream"] = not json_mode
+            search_cm = None
+            try:
+                resp, search_cm, headers, retries, refreshed = await _open_backend_stream(
+                    url, headers, responses_payload, disconnect_event, search_bearing=True)
+                if resp.status_code >= 400:
+                    # The opener already bounded this body; reuse its private bytes.
+                    raw_error = await _read_search_error_body(resp, disconnect_event)
+                    try:
+                        details = json.loads(raw_error)
+                    except ValueError:
+                        details = {}
+                    error_type, message, _, _ = _normalize_backend_error(details, status=resp.status_code, phase="upstream_headers")
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                    await _send_json(send, resp.status_code, {"type": "error", "error": {"type": error_type, "message": message}})
+                    return
+                terminal = await _collect_search_response(resp, disconnect_event, search_registry, json_mode, reject_refusals=True)
+                owned, search_cm = search_cm, None
+                await _settle_stream_context(owned)
+                # Validate recovered inventory before hosted projection/replay effects.
+                _validate_nonstream_output_items(terminal["output"])
+                anth = _search_projection(terminal, model, search_registry)
+                cached = anth.pop("_cached_tokens", None)
+                usage_source = anth.pop("_usage_source")
+                state = _request_state()
+                if state is not None:
+                    state.input_tokens = anth["usage"]["input_tokens"] + (cached or 0)
+                    state.output_tokens = anth["usage"]["output_tokens"]
+                    state.cached_tokens = cached
+                    state.usage_source = usage_source
+                    state.stop_reason = anth["stop_reason"]
+                if usage_source == "backend":
+                    _calibrate_count_ratio(anth["usage"]["input_tokens"] + (cached or 0), len(body))
+                await _send_json(send, 200, anth)
+            except RuntimeError:
+                if search_cm is not None:
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                await _send_json(send, 401, {"type": "error", "error": {"type": "authentication_error", "message": _RELOGIN_MSG}})
+            except (_ProtocolError, ValueError, httpx.HTTPError) as error:
+                # Release upstream BEFORE a downstream send can backpressure.
+                if search_cm is not None:
+                    owned, search_cm = search_cm, None
+                    await _settle_stream_context(owned)
+                message = str(error) if isinstance(error, _ProtocolError) else "backend search transport or framing error"
+                state = _request_state()
+                error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
+                await _send_json(send, 502, {"type": "error", "error": {"type": error_type, "message": message}})
+            finally:
+                if search_cm is not None:
+                    await _settle_stream_context(search_cm)
+            return
+
         if not stream and SHIM_BACKEND_MODE == "chatgpt":
             # v1.2.7: Codex requires stream:true even when the Anthropic caller
             # requested JSON. Consume one real upstream SSE response internally,
@@ -5745,7 +7015,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     backend_status = status
                     try:
                         raw_err = (
-                            await _await_or_disconnect(
+                            await _read_search_error_body(resp, disconnect_event)
+                            if search_bearing else await _await_or_disconnect(
                                 resp.aread(),
                                 disconnect_event,
                             )
@@ -6019,7 +7290,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         async def emit(ev, data):
             state = _request_state()
             is_terminal = ev in ("message_stop", "error")
+            _trace_event("emit_intent", event_type=ev,
+                         deferred_text_chars=len(deferred_text), deferred_thinking_chars=len(deferred_thinking))
             async with emit_lock:
+                _trace_event("emit_lock_acquired", event_type=ev)
                 if is_terminal and state is not None:
                     state.terminal_frame_send = "attempted"
                 _record_downstream_first_content()
@@ -6304,7 +7578,12 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # only the in-band error `type` string is status-aware. Every other caller
             # (mid-stream protocol/framing/transport failures with no backend status)
             # keeps the default api_error, preserving the v1.2.8 finalizer semantics.
-            nonlocal text_block_open, thinking_block_open, failure_finalized
+            nonlocal text_block_open, thinking_block_open, failure_finalized, stream_cm
+            # Buffered search no longer needs its upstream after any failure.
+            # Relinquish ownership before heartbeat settlement or downstream writes.
+            if search_bearing and stream_cm is not None:
+                owned, stream_cm = stream_cm, None
+                await _settle_stream_context(owned)
             # v1.2.14 (R6): stop the heartbeat before emitting any terminal-failure
             # frames so a ping can never interleave with the error/body-close sequence.
             await _stop_heartbeat()
@@ -6352,7 +7631,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         try:
             resp, stream_cm, headers, retries, did_401_refresh = \
                 await _open_backend_stream(
-                    url, headers, responses_payload, disconnect_event)
+                    url, headers, responses_payload, disconnect_event, search_bearing=search_bearing)
+        except _ProtocolError as error:
+            precontent_failure_message = str(error)
         except RuntimeError as e:
             # A permanent token-refresh failure is converted to a clean terminal
             # error stream below; no credential material is included.
@@ -6403,7 +7684,8 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     raw_err = ""
                     try:
                         raw_err = (
-                            await _await_or_disconnect(
+                            await _read_search_error_body(resp, disconnect_event)
+                            if search_bearing else await _await_or_disconnect(
                                 resp.aread(),
                                 disconnect_event,
                             )
@@ -6475,6 +7757,57 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 _hb_state = _request_state()
                 if _hb_state is not None:
                     _hb_state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
+            if search_bearing:
+                # Search-bearing requests share one canonical buffered collector.
+                # The existing heartbeat, disconnect watcher, error finalizer and
+                # stream-context owner remain in force; ordinary streaming is untouched.
+                try:
+                    terminal = await _collect_search_response(resp, disconnect_event, search_registry, reject_refusals=not search_registry.search_name)
+                    owned, stream_cm = stream_cm, None
+                    await _settle_stream_context(owned)
+                    anth = _search_projection(terminal, model, search_registry)
+                except _ProtocolError as error:
+                    state = _request_state()
+                    error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
+                    await _finalize_stream_failure(str(error), error_type)
+                    return
+                for index, block in enumerate(anth["content"]):
+                    kind = block["type"]
+                    start = dict(block)
+                    field = {"text": "text", "thinking": "thinking", "tool_use": "input", "server_tool_use": "input"}.get(kind)
+                    if field:
+                        start[field] = {} if field == "input" else ""
+                        if kind == "thinking":
+                            start.pop("signature", None)
+                    await emit("content_block_start", {"type": "content_block_start", "index": index, "content_block": start})
+                    if field:
+                        delta = ({"type": "input_json_delta", "partial_json": json.dumps(block[field])}
+                                 if field == "input" else {"type": field + "_delta", field: block[field]})
+                        await emit("content_block_delta", {"type": "content_block_delta", "index": index, "delta": delta})
+                        if kind == "thinking":
+                            await emit("content_block_delta", {"type": "content_block_delta", "index": index,
+                                       "delta": {"type": "signature_delta", "signature": ""}})
+                    await emit("content_block_stop", {"type": "content_block_stop", "index": index})
+                cached = anth.pop("_cached_tokens", None)
+                usage_source = anth.pop("_usage_source")
+                state = _request_state()
+                if state is not None:
+                    state.input_tokens = anth["usage"]["input_tokens"] + (cached or 0)
+                    state.output_tokens = anth["usage"]["output_tokens"]
+                    state.cached_tokens = cached
+                    state.usage_source = usage_source
+                    state.stop_reason = anth["stop_reason"]
+                    state.tools_called = sum(b["type"] == "tool_use" for b in anth["content"])
+                if usage_source == "backend":
+                    _calibrate_count_ratio(anth["usage"]["input_tokens"] + (cached or 0), len(body))
+                await _stop_heartbeat()
+                await emit("message_delta", {"type": "message_delta", "delta": {
+                    "stop_reason": anth["stop_reason"], "stop_sequence": None}, "usage": anth["usage"]})
+                await emit("message_stop", {"type": "message_stop"})
+                _mark_success()
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+                return
 
             async for data_bytes in _iter_bounded_sse_data(
                 resp, disconnect_event, terminal_seen
@@ -6676,6 +8009,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     # canonical fallback when arguments.done omits the full string,
                     # in both sanitize modes. Sanitize mode still defers emission
                     # to .done; sanitize-off still forwards incrementally.
+                    _check_tool_argument_whitespace(st, frag)
                     st["args_buf"] += frag
                     # v1.2.14 (R3): forward incrementally only once the block is OPEN.
                     # A still-deferred tool just buffers (emitted_len stays behind, and
@@ -7051,6 +8385,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # Transport, framing, controlled protocol, and narrow translation/state
             # failures after response start share one terminal-error lifecycle. Do
             # not catch asyncio.CancelledError: task cancellation remains cancellation.
+            if isinstance(e, _ToolWhitespaceError):
+                _record_backend_error("api_error", backend_type="tool_argument_guard",
+                                      backend_code="excessive_json_whitespace",
+                                      phase="upstream_tool_arguments")
+                # Stop upstream before an error send can block on the downstream.
+                if stream_cm is not None:
+                    owned, stream_cm = stream_cm, None
+                    await _settle_stream_context(owned)
             if isinstance(e, _ProtocolError):
                 failure_kind = _scrub_and_trim_body(str(e))[:200] or "backend protocol error"
             elif isinstance(e, ValueError):
@@ -7313,8 +8655,17 @@ async def app(scope, receive, send):
         while True:
             message = await receive()
             if message["type"] == "lifespan.startup":
+                try:
+                    _start_diagnostics()
+                except RuntimeError:
+                    # Explicit failure prevents ASGI auto-detection from continuing.
+                    await send({"type": "lifespan.startup.failed",
+                                "message": _DIAGNOSTICS_STARTUP_ERROR})
+                    return
                 await send({"type": "lifespan.startup.complete"})
             elif message["type"] == "lifespan.shutdown":
+                if _DIAGNOSTICS is not None:
+                    await asyncio.to_thread(_DIAGNOSTICS.stop)
                 await send({"type": "lifespan.shutdown.complete"})
                 return
         return
@@ -7341,6 +8692,21 @@ async def app(scope, receive, send):
         except Exception:
             state.gpt_policy_snapshot = None
         token = _REQUEST_STATE.set(state)
+        original_send = send
+
+        async def observed_send(message):
+            # Capture actual ASGI body handoff; headers remain outside recorder.
+            _trace_event("downstream_send_start", message.get("body"),
+                         asgi_type=message.get("type"), status=message.get("status"),
+                         more_body=message.get("more_body"))
+            try:
+                await original_send(message)
+            except BaseException as error:
+                _trace_event("downstream_send_failure", exception=type(error).__name__)
+                raise
+            _trace_event("downstream_send_completed", asgi_type=message.get("type"))
+
+        send = observed_send
         _lifecycle_event("request_start", method="POST", path="/v1/messages")
         try:
             body = await _read_body(receive)

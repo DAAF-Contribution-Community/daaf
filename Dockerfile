@@ -1208,8 +1208,14 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # Pinned to 2.1.281 (npm `latest` = `next`; changelog head) on 2026-09-24. The
 # previous pin, 2.1.280 (2026-09-23), is the first version that ships Claude
 # Opus 5.5 (`claude-opus-5-5`, added 2.1.280; 1M context, now the default `opus`
-# alias), which DAAF adopts as its shipped `ANTHROPIC_MODEL`; no earlier pin
-# runs that default. 2.1.276 is the HARD MINIMUM for any shim-lane install:
+# alias). DAAF's .claude/settings.json ships the soft session default
+# `ANTHROPIC_DEFAULT_MODEL=opus` (honored from Claude Code 2.1.236), which at
+# this pin resolves to Opus 5.5 on a standard Anthropic subscription / API key;
+# a pin before 2.1.280 resolves the same `opus` to an earlier Opus. Every
+# Claude Code version bump must re-check what the `opus` alias resolves to (and
+# the Opus 5.5 default named in user_reference/01_installation_and_quickstart.md
+# and user_reference/07_faq_technical.md). 2.1.276 is the HARD
+# MINIMUM for any shim-lane install:
 # three separate `ANTHROPIC_BASE_URL` gateway/proxy regressions landed in
 # 2.1.265 (Artifact-tool input-schema regex -> HTTP 400, fixed 2.1.268;
 # `CLAUDE_CODE_USE_GATEWAY` forcing Cloud sign-in, fixed 2.1.266) and 2.1.275
@@ -1227,8 +1233,9 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 #   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/  (2.1.281)
 # Prior review (2.1.188-2.1.202):
 #   research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202/
-# Rollback target: 2.1.280 (the only earlier pin that runs the shipped default
-# `claude-opus-5-5[1m]`; 2.1.261 predates Opus 5.5)
+# Rollback target: 2.1.280 (the only earlier pin at which the shipped `opus`
+# default still resolves to Opus 5.5; 2.1.261 predates Opus 5.5, so there it
+# would resolve to an earlier Opus)
 ARG CLAUDE_CODE_VERSION=2.1.281
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"

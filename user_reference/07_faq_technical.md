@@ -233,7 +233,7 @@ These are Claude Code slash commands you can type anytime during a session:
 - `/config` — Opens the Claude Code settings menu. DAAF pre-configures the key settings for you (no action needed — you can verify them here if you like):
   - **Auto-compact:** Off by default (DAAF manages its own context)
   - **Verbose output:** On by default (lets you see what agents are thinking)
-- `/model` — Switch the active model (use arrow keys to select)
+- `/model` — Switch the active model (use arrow keys to select; Enter also saves it as your default for new sessions, `s` switches for this session only)
 - `/clear` — Clear conversation history and start fresh (used when resuming from STATE.md)
 - `/exit` — Exit Claude Code (first step in ending a session)
 - `/status` — Check connection status and current model
@@ -308,7 +308,7 @@ Current Claude models also support configurable "thinking levels" (toggle in the
 
 ### Q: How do I change the Claude model during a session?
 
-Type `/model` in the Claude Code chat window. You'll see a list of available models -- use the arrow keys to select one and press Enter. The change takes effect immediately for all subsequent interactions in that session.
+Type `/model` in the Claude Code chat window. You'll see a list of available models -- use the arrow keys to select one and press Enter. The change takes effect immediately for all subsequent interactions in that session, and Claude Code also remembers it as your default for new sessions. If you only want to switch for the current session, press `s` on the highlighted model instead of Enter. (DAAF's own Opus default steps aside for any model you save this way; see [My session opens on a different model than I expected](#q-my-session-opens-on-a-different-model-than-i-expected) for the full picture.)
 
 You can also adjust the thinking level by pressing the left and right arrow keys while a model is highlighted in the model selector.
 
@@ -349,23 +349,40 @@ I would honestly be thrilled if someone forked DAAF and adapted it for another p
 
 ### Q: Can I run DAAF on OpenAI GPT models?
 
-Yes, and it's been validated live (2026-07-09). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
+Yes. DAAF's agentic stack was validated live on GPT on 2026-07-09, with the Opus/Sonnet pair of model-tier settings (the four-setting form recommended below has not been through that live run). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
 
-- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs. DAAF recommends `openai/gpt-6-sol` for the strong tier and `openai/gpt-6-luna` for the fast tier (a 2026-09-29 user decision, not a validation run); `openai/gpt-6-astra` (GPT-6 flagship) is a premium strong-tier alternative at 5x Sol's per-token price. GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
-- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai`, exact `SHIM_BACKEND_MODE=openai`, `OPENAI_API_KEY`, and exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). The initial shim setup requires an image rebuild because it auto-starts from the container entrypoint; later settings-only changes need only a container recreate (**Restart Container** in the DAAF Control Panel, or by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`) and a new Claude Code session.
+- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs by setting all four model-tier settings (`ANTHROPIC_DEFAULT_FABLE_MODEL`, `_OPUS_`, `_SONNET_`, `_HAIKU_`). DAAF recommends `openai/gpt-6-sol` for the strong pair (Fable and Opus) and `openai/gpt-6-luna` for the fast pair (Sonnet and Haiku), a 2026-09-29 user decision rather than a validation run; `openai/gpt-6-astra` (GPT-6 flagship) is a premium strong-tier alternative at 5x Sol's per-token price. GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
+- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai`, exact `SHIM_BACKEND_MODE=openai`, `OPENAI_API_KEY`, and exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`, then point Claude Code at the local shim (`http://127.0.0.1:4141`) and set the same four model-tier settings to bare GPT slugs with the `[1m]` window hint (e.g. `gpt-6-sol[1m]` / `gpt-6-luna[1m]`). The initial shim setup requires an image rebuild because it auto-starts from the container entrypoint; later settings-only changes need only a container recreate (**Restart Container** in the DAAF Control Panel, or by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`) and a new Claude Code session.
 
 GPT support is a capability DAAF has engineered carefully and tested — the specifics and honest caveats are in the limitation entries below. Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but that is territory a vendor could change.
 
-If your session still starts on a Claude model after configuring, see [My GPT session starts on a Claude model](#q-my-gpt-session-starts-on-a-claude-model-instead-of-my-gpt-model).
+If your session opens on a Claude model (or any model you didn't expect) after configuring, see [My session opens on a different model than I expected](#q-my-session-opens-on-a-different-model-than-i-expected).
 
-### Q: My GPT session starts on a Claude model instead of my GPT model
+### Q: My session opens on a different model than I expected
 
-This is expected, not a bug: DAAF ships with Claude as the default model, so a GPT session opens on Claude until you switch it. You have two ways to fix it:
+Usually this means some model choice is outranking DAAF's default, which is by design. DAAF ships a *soft* default: its project `.claude/settings.json` sets `ANTHROPIC_DEFAULT_MODEL=opus`, which on a standard Anthropic subscription or API key means Claude Opus 5.5 with its 1M-token window. Claude Code picks the model a session opens on in this order, and the first match wins:
 
-- **Per session (simplest):** just run `/model` after launch and pick your GPT model. If you forget, the very first message fails with a loud authentication/model error, so there's no silent wrong-model risk.
-- **Standing default:** edit the `"ANTHROPIC_MODEL"` line in `/daaf/.claude/settings.json` to your GPT slug — bare with the window hint for the Option F shim lane (`"gpt-6-sol[1m]"`), prefixed for the Option C OpenRouter lane (`"openai/gpt-6-sol"`). This is a deliberate manual edit to a tracked framework file; expect to re-apply it after DAAF updates that touch settings.json.
+| Order | Source | Where it comes from |
+|-------|--------|---------------------|
+| 1 | The `--model` flag | Only if you launch Claude Code with it |
+| 2 | `ANTHROPIC_MODEL` | Optional; you would set it in `environment_settings.txt` |
+| 3 | A `model` value in any settings file | Including the choice `/model` saves when you press Enter (kept in `~/.claude/settings.json` inside the container), and a `model` key in a personal `.claude/settings.local.json` |
+| 4 | An organization default model | Set by a Claude Enterprise admin; reaches direct Anthropic sessions only. If the admin sets it to override user choices, it also outranks a `/model` choice and a `model` in user, project or local settings, though managed settings and `--settings` still win |
+| 5 | `ANTHROPIC_DEFAULT_MODEL=opus` | DAAF's shipped soft default |
+| 6 | Claude Code's own default for your account type | Built in |
 
-**Under the hood.** Sessions open on the model named by `ANTHROPIC_MODEL` in the `env` block of DAAF's project `.claude/settings.json`, which currently ships as `claude-opus-5-5[1m]` — a deliberate Claude-first default, since most DAAF users run Claude. (The shipped value tracks the current flagship and has changed over time; earlier releases shipped `claude-opus-4-8[1m]`, then `claude-opus-5[1m]`.) Importantly, that settings.json value **overrides** the container environment — a precedence rule verified empirically on 2026-07-12, when a process-environment `ANTHROPIC_MODEL` lost to the settings.json value on the wire, and unchanged since — so setting `ANTHROPIC_MODEL` in `environment_settings.txt` does **not** work; don't use that route. One file does outrank it: a personal `.claude/settings.local.json` with its own `env` block overrides settings.json (verified 2026-09-24, when a stale local `ANTHROPIC_MODEL` made every session open on the wrong model), so if sessions open on a model you didn't expect, check that file first.
+So DAAF's default steps aside for any choice you make. To see which model you're actually on, run `/status`. (Newer Claude Code versions also label the Default row of the `/model` picker "Set by ANTHROPIC_DEFAULT_MODEL" when DAAF's default is the one in effect.)
+
+**To choose a different model:**
+
+- **Pick a new standing default (simplest):** run `/model`, highlight the model you want, and press Enter. Claude Code switches now and remembers the choice for new sessions. Press `s` instead if you only want it for the current session.
+- **Pin it from the host:** set `ANTHROPIC_MODEL=...` in `environment_settings.txt` and recreate the container (**Restart Container** in the DAAF Control Panel). This hard pin re-applies on every launch and overrides even a saved `/model` choice. Don't set `ANTHROPIC_DEFAULT_MODEL` there, though: DAAF's settings.json already sets that variable, and a settings.json value replaces the same variable from the container environment (a precedence rule DAAF verified on 2026-07-12), so yours would be ignored.
+
+**On GPT or another alternative provider** you shouldn't need either. With all four model-tier settings in place (`ANTHROPIC_DEFAULT_FABLE_MODEL`, `_OPUS_`, `_SONNET_`, and `_HAIKU_`; see [Model routing for alternative providers](01_installation_and_quickstart.md#model-routing-for-alternative-providers-optional)), the `opus` name resolves to your strong model, so sessions should open there automatically: `gpt-6-sol[1m]` on the Option F shim lanes, `openai/gpt-6-sol` on OpenRouter. That follows from how Claude Code resolves model names and hasn't yet been checked live on every route, so confirm it with `/status` the first time. If a GPT session still opens on a Claude model, check that `ANTHROPIC_DEFAULT_OPUS_MODEL` is set and that you recreated the container after setting it, then work down the table above.
+
+**Updated DAAF recently, and now sessions open on an older model?** Earlier DAAF releases shipped a *hard* pin (`ANTHROPIC_MODEL` in settings.json, most recently `claude-opus-5-5[1m]`) that overrode everything else, including a model you had once saved with `/model`. That saved choice was hidden, not deleted, so after updating, sessions open on it. To fix it, run `/model` and press Enter on the model you want, or remove the `"model"` line from `~/.claude/settings.json` inside the container.
+
+**Still surprised?** Check `.claude/settings.local.json` in the DAAF folder. It's a personal, git-ignored settings file that outranks DAAF's shipped project settings, so a `model` key there, or an `env` block that sets `ANTHROPIC_MODEL`, decides your opening model. (On 2026-09-24 a stale local `ANTHROPIC_MODEL` there made every session open on the wrong model.)
 
 ### Q: On a GPT session, is the context bar accurate?
 

@@ -5,12 +5,16 @@
 # Contract (from the hook header): a subagent must never run on a HIGHER model
 # tier than the current main session model. Ranks by substring match:
 #   haiku=1, sonnet=2, opus=3, fable=4; a non-Claude slug = rank 0.
-# Decision order (first match wins): (a) CLAUDE_CODE_SUBAGENT_MODEL set -> ALLOW;
-# (b) ANTHROPIC_DEFAULT_OPUS/SONNET_MODEL set -> ALLOW; (c) requested model from
+# Decision order (first match wins): (a) CLAUDE_CODE_SUBAGENT_MODEL_FORCE enabled
+# ("1" or "true", any case) -> ALLOW — CLAUDE_CODE_SUBAGENT_MODEL alone does NOT
+# stand the hook down (since Claude Code 2.1.251 it is only a fallback for
+# subagents without their own model); (b) ANTHROPIC_DEFAULT_OPUS/SONNET_MODEL set
+# -> ALLOW (HAIKU/FABLE remaps alone do not); (c) requested model from
 # tool_input.model else agent frontmatter, empty/inherit -> ALLOW; (d) session
 # model from transcript then /tmp cache, undetectable -> ALLOW (fail-open);
-# (f) non-Claude session + Claude request -> DENY (remap guidance); (g) requested
-# rank > session rank -> DENY; (h) otherwise ALLOW.
+# (f) non-Claude session + Claude request -> DENY (tier-alias env guidance; not
+# fixable per dispatch); (g) requested rank > session rank -> DENY naming the
+# session-tier ALIAS to re-dispatch with; (h) otherwise ALLOW.
 #
 # This hook is a COST guard and is deliberately FAIL-OPEN: missing jq, an
 # undetectable session model, an unreadable/absent agent file, empty stdin, and
@@ -36,7 +40,9 @@ setup() {
     # Neutralize ambient env that would short-circuit the ceiling check (legs
     # a/b). A real container may export none of these, but a developer shell
     # might -- unset so the tests exercise the ranking logic deterministically.
-    unset CLAUDE_CODE_SUBAGENT_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL
+    unset CLAUDE_CODE_SUBAGENT_MODEL CLAUDE_CODE_SUBAGENT_MODEL_FORCE \
+        ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL \
+        ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_FABLE_MODEL
 }
 
 teardown() {
@@ -126,6 +132,25 @@ _make_agent_fixture() {
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
     # The deny reason names the session model so the orchestrator can re-dispatch.
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("claude-haiku-4-5")' >/dev/null
+    # ...and the ALIAS to re-dispatch with (the per-dispatch parameter takes only aliases).
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("model: haiku")' >/dev/null
+}
+
+@test "(g) deny reason names the session-tier alias and the alias-only parameter enum" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-g-alias" "$tp" "fable")
+    assert_success
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("model: sonnet")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("sonnet | opus | haiku | fable")' >/dev/null
+    # The session model ID stays in the message for context, but is not offered
+    # as the value to pass.
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("claude-sonnet-4-5")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("model: claude-sonnet-4-5") | not' >/dev/null
+    # Names exactly the session tier; no "or lower" wording that would invite haiku.
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("model: sonnet (the session tier)")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("lower") | not' >/dev/null
 }
 
 # =========================================================================
@@ -173,6 +198,18 @@ _make_agent_fixture() {
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("claude-haiku-4-5")' >/dev/null
 }
 
+@test "(g) via frontmatter alias: session sonnet + agent 'model: opus  # ...' -> DENY naming the agent and 'model: sonnet (the session tier)'" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    local stype; stype="$(_make_agent_fixture "fixture-opus-g" "model: opus   # High-judgment tier note words")"
+    run env DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR="$TEST_DIR" bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-g" "$tp" "" "$stype")
+    assert_success
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    # The frontmatter alias (no tool_input.model) reaches path (g), not (f).
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("Re-dispatch this fixture-opus-g with model: sonnet (the session tier)")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("non-Claude") | not' >/dev/null
+}
+
 # =========================================================================
 # DENY: non-Claude session (rank 0) + Claude-family request -> remap guidance
 # =========================================================================
@@ -184,6 +221,21 @@ _make_agent_fixture() {
     [ -n "$output" ]
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("ANTHROPIC_DEFAULT_OPUS_MODEL")' >/dev/null
+    # Four-tier guidance; no per-dispatch fix; no SUBAGENT_MODEL-alone suggestion.
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("ANTHROPIC_DEFAULT_SONNET_MODEL")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("ANTHROPIC_DEFAULT_HAIKU_MODEL")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("ANTHROPIC_DEFAULT_FABLE_MODEL")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("cannot be fixed per dispatch")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("CLAUDE_CODE_SUBAGENT_MODEL") | not' >/dev/null
+}
+
+@test "(f) CLAUDE_CODE_SUBAGENT_MODEL alone no longer bypasses: non-Claude session + Claude request -> DENY" {
+    local tp; tp="$(_make_transcript "z-ai/glm-5.2")"
+    export CLAUDE_CODE_SUBAGENT_MODEL="z-ai/glm-5.2"
+    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-f-subagent" "$tp" "opus")
+    assert_success
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 }
 
 # =========================================================================
@@ -233,21 +285,85 @@ _make_agent_fixture() {
 }
 
 # =========================================================================
-# ALLOW: legs (a)/(b) -- env overrides short-circuit before ranking
+# Legs (a)/(b) -- env overrides that short-circuit before ranking (FORCE and
+# OPUS/SONNET remaps), and the ones that no longer do (SUBAGENT_MODEL alone,
+# HAIKU/FABLE remaps alone)
 # =========================================================================
 
-@test "CLAUDE_CODE_SUBAGENT_MODEL set: ALLOW even for an over-tier request" {
+# Since Claude Code 2.1.251 CLAUDE_CODE_SUBAGENT_MODEL is only a fallback for
+# subagents without their own model, so alone it no longer short-circuits.
+@test "CLAUDE_CODE_SUBAGENT_MODEL alone (no FORCE): over-tier request still DENIED" {
     local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
     export CLAUDE_CODE_SUBAGENT_MODEL="claude-opus-4-8"
     run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-9" "$tp" "opus")
     assert_success
-    assert_output ""
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+}
+
+@test "CLAUDE_CODE_SUBAGENT_MODEL_FORCE enabled (1 / true / TRUE): ALLOW even for an over-tier request" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    local value
+    for value in 1 true TRUE; do
+        run env CLAUDE_CODE_SUBAGENT_MODEL_FORCE="$value" bash "$ENFORCE_MODEL_CEILING_SH" \
+            < <(_payload "bats-ceiling-force-${value}" "$tp" "opus")
+        assert_success
+        assert_output ""
+    done
+}
+
+@test "CLAUDE_CODE_SUBAGENT_MODEL_FORCE not enabled (0 / empty / yes): over-tier request still DENIED" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    local value
+    for value in 0 "" yes; do
+        run env CLAUDE_CODE_SUBAGENT_MODEL_FORCE="$value" CLAUDE_CODE_SUBAGENT_MODEL="claude-opus-4-8" \
+            bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-noforce" "$tp" "opus")
+        assert_success
+        [ -n "$output" ]
+        echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    done
+}
+
+@test "HAIKU or FABLE remap alone does not stand the hook down: over-tier DENY" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    local var
+    for var in ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_FABLE_MODEL; do
+        run env "${var}=my-custom-slug" bash "$ENFORCE_MODEL_CEILING_SH" \
+            < <(_payload "bats-ceiling-${var}" "$tp" "opus")
+        assert_success
+        [ -n "$output" ]
+        echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    done
 }
 
 @test "ANTHROPIC_DEFAULT_OPUS_MODEL set: ALLOW even for an over-tier request" {
     local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
     export ANTHROPIC_DEFAULT_OPUS_MODEL="my-custom-opus"
     run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-10" "$tp" "opus")
+    assert_success
+    assert_output ""
+}
+
+# Rule (b) keys on EITHER remap: a SONNET-only remap stands the hook down too
+# (documented behavior: "ANTHROPIC_DEFAULT_OPUS_MODEL or
+# ANTHROPIC_DEFAULT_SONNET_MODEL set -> ALLOW"), on a Claude or non-Claude session.
+@test "ANTHROPIC_DEFAULT_SONNET_MODEL alone set: ALLOW (Claude and non-Claude sessions)" {
+    local model tp
+    for model in "claude-sonnet-4-5" "z-ai/glm-5.2"; do
+        tp="$(_make_transcript "$model")"
+        run env ANTHROPIC_DEFAULT_SONNET_MODEL="my-custom-sonnet" bash "$ENFORCE_MODEL_CEILING_SH" \
+            < <(_payload "bats-ceiling-sonnet-only" "$tp" "opus")
+        assert_success
+        assert_output ""
+    done
+}
+
+# Rule (a) runs before rule (f): with the force flag on, Claude Code runs every
+# subagent on one model, so a non-Claude session is ALLOWED, not denied.
+@test "CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 on a non-Claude session: ALLOW (rule a precedes rule f)" {
+    local tp; tp="$(_make_transcript "z-ai/glm-5.2")"
+    run env CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 CLAUDE_CODE_SUBAGENT_MODEL="z-ai/glm-5.2" \
+        bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-force-nonclaude" "$tp" "opus")
     assert_success
     assert_output ""
 }

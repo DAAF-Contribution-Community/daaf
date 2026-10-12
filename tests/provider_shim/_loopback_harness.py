@@ -254,6 +254,7 @@ class ASGIProbeReport:
     terminal_tie_wait_used_first_completed: list[bool]
     terminal_tie_children_done: bool
     pending_task_count: int
+    outbound_headers: list[dict[str, str]] = field(default_factory=list)
 
 
 class _EventBuilder:
@@ -2165,6 +2166,7 @@ _LIFECYCLE_ORDER = {
             "upstream_headers",
             "quota_snapshot",
             "upstream_first_event",
+            "hosted_projection",
             "downstream_first_content",
             "backend_error",
             "request_shape",
@@ -2999,6 +3001,7 @@ def controlled_asgi_probe(
     global_policy_backend: Optional[str] = None,
     toggle_policy_on_first_receive: Optional[bool] = None,
     inject_stale_restored_reasoning: bool = False,
+    configure_module: Optional[Callable[[Any], None]] = None,
 ) -> ASGIProbeReport:
     """Drive the production app with controlled receive/send and upstream seams.
 
@@ -3185,6 +3188,7 @@ def controlled_asgi_probe(
         ]
         upstream_calls = 0
         outbound_payloads: list[dict[str, Any]] = []
+        outbound_headers: list[dict[str, str]] = []
         stream_close_calls = 0
         stream_close_attempts: list[int] = []
         close_after_cleanup: list[bool] = []
@@ -3202,7 +3206,7 @@ def controlled_asgi_probe(
                 )
                 raise module.httpx.ReadTimeout("injected mid-body read timeout")
 
-        def response_for_attempt(attempt_number: int):
+        def response_for_attempt(attempt_number: int, upstream_stream: bool):
             outcome = selected_outcomes[min(attempt_number - 1, len(selected_outcomes) - 1)]
             injected_transport_errors = {
                 "transport": module.httpx.ConnectError,
@@ -3227,7 +3231,7 @@ def controlled_asgi_probe(
             status = int(outcome)
             content = (
                 stream_payload
-                if status < 400 and stream
+                if status < 400 and upstream_stream
                 else (
                     json.dumps(
                         active_scenario.nonstream_response,
@@ -3259,7 +3263,9 @@ def controlled_asgi_probe(
                     await upstream_hold.wait()
                 elif pure_disconnect:
                     await upstream_hold.wait()
-                return response_for_attempt(self.attempt_number)
+                return response_for_attempt(
+                    self.attempt_number, self.payload.get("stream") is True
+                )
 
             async def __aexit__(self, exc_type, exc, traceback):
                 nonlocal stream_close_calls
@@ -3281,16 +3287,19 @@ def controlled_asgi_probe(
             def stream(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
+                outbound_headers.append(dict(kwargs.get("headers") or {}))
                 return ProbeStreamContext(upstream_calls, kwargs.get("json"))
 
             async def post(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
                 outbound_payloads.append(copy.deepcopy(kwargs.get("json")))
-                return response_for_attempt(upstream_calls)
+                outbound_headers.append(dict(kwargs.get("headers") or {}))
+                return response_for_attempt(
+                    upstream_calls, (kwargs.get("json") or {}).get("stream") is True
+                )
 
         original_client = module._client
-        module._client = ProbeClient()
         original_settle_owned_task = module._settle_owned_task
 
         async def observed_settle_owned_task(task, cancel=False):
@@ -3456,18 +3465,24 @@ def controlled_asgi_probe(
         }
         if send_action == "same_turn_terminal_disconnect":
             asyncio.wait = observed_asyncio_wait
-        task = asyncio.create_task(module.app(scope, receive, send))
         try:
-            if send_action in {
-                "cancel_response_start", "cancel_terminal", "cancel_body_close",
-            }:
-                await asyncio.wait_for(send_gate.wait(), timeout=3.0)
-                task.cancel("controlled ASGI send cancellation")
-            await asyncio.wait_for(task, timeout=5.0)
-        except asyncio.CancelledError:
-            cancelled = True
-        except Exception as error:
-            raised = type(error).__name__
+            # Configuration errors propagate, but still release the real client and
+            # restore observation seams. Do not normalize them as app outcomes.
+            if configure_module is not None:
+                configure_module(module)
+            module._client = ProbeClient()
+            task = asyncio.create_task(module.app(scope, receive, send))
+            try:
+                if send_action in {
+                    "cancel_response_start", "cancel_terminal", "cancel_body_close",
+                }:
+                    await asyncio.wait_for(send_gate.wait(), timeout=3.0)
+                    task.cancel("controlled ASGI send cancellation")
+                await asyncio.wait_for(task, timeout=5.0)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception as error:
+                raised = type(error).__name__
         finally:
             if send_action == "same_turn_terminal_disconnect":
                 asyncio.wait = original_asyncio_wait
@@ -3498,6 +3513,7 @@ def controlled_asgi_probe(
             upstream_calls=upstream_calls,
             auth_calls=auth_calls,
             outbound_payloads=outbound_payloads,
+            outbound_headers=outbound_headers,
             gpt_service_tier_health=module._gpt_service_tier_health_block(),
             stream_close_calls=stream_close_calls,
             stream_close_attempts=stream_close_attempts,

@@ -142,7 +142,7 @@ print(f"GPT physical mapping: {len(expected)}/{len(expected)} cases passed")
     assert_output "GPT physical mapping: 40/40 cases passed"
 }
 
-@test "route diagnostic enforces canonical decimal and all four effective GPT selectors" {
+@test "route diagnostic enforces canonical decimal and every effective GPT selector (incl. default, haiku, fable)" {
     run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${SMOKE_PROBES_DIR}:${REPO_ROOT}" python3 -c '
 from route_detection import (
     MODEL_SELECTOR_VARS,
@@ -179,8 +179,11 @@ all_mapped = {
     "DAAF_PROVIDER_SHIM": "openai",
     "SHIM_BACKEND_MODE": "chatgpt",
     "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_MODEL": "gpt-6-sol[1m]",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5.5",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.6-terra",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-astra[1m]",
     "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-5.6-sol[1m]",
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000",
 }
@@ -194,10 +197,11 @@ for declaration in invalid[1:]:
     got = probe_context_window_coherence(build_route_info(env), env)
     assert got.verdict == Verdict.FAIL, (declaration, got.verdict, got.detail)
     assert "canonical positive decimal" in got.detail, (declaration, got.detail)
-print("canonical declarations and selector remaps: 41/41 cases passed")
+assert len(MODEL_SELECTOR_VARS) == 7, MODEL_SELECTOR_VARS
+print("canonical declarations and selector remaps: 53/53 cases passed")
 '
     assert_success
-    assert_output "canonical declarations and selector remaps: 41/41 cases passed"
+    assert_output "canonical declarations and selector remaps: 53/53 cases passed"
 }
 
 @test "route diagnostic keeps wide routes and non-flagship controls separate" {
@@ -233,6 +237,15 @@ cases = [
     ("ChatGPT effort-suffixed gpt-6-astra above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-astra[1m]#xhigh", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
     ("retired gpt-6-terra is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-terra", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter gpt-6-sol keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    # 2026-10-12 four-tier alias coverage: HAIKU/FABLE slots get the same window
+    # scrutiny as OPUS/SONNET, and the soft ANTHROPIC_DEFAULT_MODEL is a selector.
+    ("ChatGPT gpt-6-luna haiku remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol fable remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT four-tier remap at lane cap", {**base_chatgpt, "ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("direct API four-tier [1m] remap is complete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_MODEL": "opus", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]"}, Verdict.PASS),
+    ("direct API haiku slot missing [1m] is incomplete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna"}, Verdict.FAIL),
+    ("direct API fable slot missing [1m] is incomplete", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6-sol", "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6-sol[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]"}, Verdict.FAIL),
+    ("native soft default alias needs no declaration", {"ANTHROPIC_DEFAULT_MODEL": "opus"}, Verdict.INFO),
 ]
 for label, env, want in cases:
     got = probe_context_window_coherence(build_route_info(env), env)
@@ -242,5 +255,5 @@ for label, env, want in cases:
 print(f"route and model controls: {len(cases)}/{len(cases)} cases passed")
 '
     assert_success
-    assert_output "route and model controls: 22/22 cases passed"
+    assert_output "route and model controls: 29/29 cases passed"
 }
