@@ -25,32 +25,32 @@ What kind of data are you coloring?
 
 | Use Case | Palette | Why |
 |----------|---------|-----|
-| Sequential continuous | **viridis** | Perceptually uniform, colorblind-safe, prints in grayscale |
+| Sequential continuous | **viridis** | Perceptually uniform; "the current gold standard colormap" (Nuñez et al. 2018); usually readable in grayscale (DAAF heuristic) |
 | Sequential, CVD-optimized | **cividis** | Blue-yellow range avoids red-green entirely |
-| Sequential, high contrast | **inferno** | Wide luminance range; strong visual punch |
+| Sequential, high contrast | **inferno** | Wide luminance range; strong visual punch (DAAF heuristic) |
 | Diverging (general) | **BrBG** (ColorBrewer) | Brown-teal avoids red-green; clear midpoint |
-| Diverging (familiar) | **RdBu** (ColorBrewer) | Red-blue is intuitive for hot/cold, +/-; less CVD-safe than BrBG — use BrBG when accessibility is the priority |
+| Diverging (familiar) | **RdBu** (ColorBrewer) | Red-blue is intuitive for hot/cold, +/-; ColorBrewer flags RdBu colorblind-friendly, like BrBG |
 | Categorical (≤8 groups) | **Okabe-Ito** | Purpose-built for color vision deficiency |
-| Categorical (alternative) | **ColorBrewer Set2 / Dark2** | Tested for print, screen, and CVD |
+| Categorical (alternative) | **ColorBrewer Set2 / Dark2** | ColorBrewer flags Set2/Dark2 colorblind-friendly only at small class counts; check colorbrewer2.org for your number of classes, or use Okabe-Ito |
 | Highlight one thing | **gray + one saturated color** | Instant attention focus; no legend needed |
 
-**Okabe-Ito hex values (in recommended order):** `#E69F00` (orange), `#56B4E9` (sky blue), `#009E73` (bluish green), `#F0E442` (yellow), `#0072B2` (blue), `#D55E00` (vermilion), `#CC79A7` (reddish purple), `#000000` (black). Use via `scale_color_manual()` in plotnine or `color_discrete_sequence` in plotly.
+**Okabe-Ito hex values (R's `palette.colors()` order, with black moved last and gray `#999999` omitted):** `#E69F00` (orange), `#56B4E9` (sky blue), `#009E73` (bluish green), `#F0E442` (yellow), `#0072B2` (blue), `#D55E00` (vermilion), `#CC79A7` (reddish purple), `#000000` (black). Use via `scale_color_manual()` in plotnine or `color_discrete_sequence` in plotly.
 
 ### Color Restraint
 
-- **Maximum useful categories: 5-7.** Beyond that, viewers can't reliably distinguish colors. Group small categories into "Other," use faceting, or label directly.
+- **Maximum useful categories: 5-7 (rule of thumb).** Beyond that, viewers can't reliably distinguish colors. Group small categories into "Other," use faceting, or label directly.
 - **Gray is your best friend.** Set everything to gray by default, then add color only where it encodes information or draws attention. This is the single most effective technique for directing focus.
-- **Never use rainbow/jet.** It's perceptually non-uniform (false bright bands at yellow/cyan), colorblind-hostile, and doesn't convert to grayscale meaningfully.
+- **Never use rainbow/jet.** It's perceptually non-uniform (bright yellows can read as false peaks; Nuñez et al. 2018), colorblind-hostile, and doesn't convert to grayscale meaningfully.
 - **Muted fills, vivid accents.** Use desaturated colors for large areas (bars, choropleth). Reserve saturated colors for small elements that need to stand out.
 
 ## Colorblind Accessibility
 
-~8% of males and ~0.5% of females have color vision deficiency. In a room of 50 people, 2-4 statistically cannot distinguish your red-green color scheme.
+Red-green color vision deficiency affects about 8% of men and 0.4% of women of European ancestry, and 4-6.5% of Chinese and Japanese men (Birch 2012). In a room of 50 people of European ancestry, half of them men, expect about 2 who struggle to tell a red-green scheme apart.
 
 ### The Golden Rule: Redundant Encoding
 
 **Never rely on color alone.** Always pair color with at least one other visual channel:
-- **Shape** — circles, squares, triangles in scatter plots (limit to 3-4)
+- **Shape** — circles, squares, triangles in scatter plots (limit to 3-4, rule of thumb)
 - **Line style** — solid, dashed, dotted for line charts
 - **Direct labels** — text on chart elements eliminates color lookup entirely
 - **Pattern/texture** — hatching in bar fills (use sparingly)
@@ -67,7 +67,7 @@ Convert your chart to grayscale. If you lose information, your design relies too
 
 - Red vs. green (the most common problem by far)
 - Any palette where two colors differ only in hue at similar lightness
-- More than 3-4 colors without redundant encoding as backup
+- More than 3-4 colors without redundant encoding as backup (rule of thumb)
 
 ### Testing Tools
 
@@ -90,7 +90,7 @@ Convert your chart to grayscale. If you lose information, your design relies too
 | Many categories (>5) | Legend may be necessary, but consider faceting first |
 | Small multiples | Shared legend is fine — panel labels do the main work |
 
-**Legend placement when needed:** Inside the plot area (corner with no data) is better than outside. Top-of-chart horizontal legends work for 2-4 items. Avoid bottom-of-chart placement.
+**Legend placement when needed:** Inside the plot area (corner with no data) is better than outside. Top-of-chart horizontal legends work for 2-4 items. Avoid bottom-of-chart placement (DAAF convention).
 
 ### Titles
 
@@ -119,15 +119,17 @@ Annotations are where the analyst adds value beyond what the data alone shows. U
 - **Callouts** — brief text pointing to a specific data element. One short sentence max.
 - **Strategic highlighting** — bold or saturate the focal element; gray out everything else
 
-**Default limit:** 1-2 annotations per chart. Time series with multiple relevant events may warrant 3-4, but each must earn its place. If you need more than 4, consider splitting into panels.
+**Default limit (DAAF convention):** 1-2 annotations per chart. Time series with multiple relevant events may warrant 3-4, but each must earn its place. If you need more than 4, consider splitting into panels.
 
 ## Typography & Layout
 
 ### Font Selection
 
-**Sans-serif for all chart text.** Sans-serif letterforms have less visual noise, making numbers and short labels easier to parse at small sizes. Recommended: Inter, Source Sans Pro, Roboto, Lato, Helvetica/Arial.
+**Sans-serif for all chart text (DAAF convention).** Recommended: Inter, Source Sans Pro, Roboto, Lato, Helvetica/Arial.
 
 ### Size Hierarchy
+
+These sizes are a DAAF convention; the Urban Institute guide, for example, uses 8.5pt axis labels in PDF figures.
 
 | Element | Print Size | Screen Size | Weight |
 |---------|-----------|-------------|--------|
@@ -142,7 +144,7 @@ Annotations are where the analyst adds value beyond what the data alone shows. U
 
 ### Aspect Ratios
 
-| Chart Type | Recommended Ratio | Why |
+| Chart Type | Recommended Ratio (rule of thumb) | Why |
 |------------|-------------------|-----|
 | Time series | ~16:9 or wider | Spreads temporal data; slopes are easier to perceive |
 | Scatter plot | ~4:3 or 1:1 | Equal perception in both dimensions |
@@ -154,11 +156,13 @@ Leave adequate margins. Don't crowd labels against edges. Internal padding betwe
 
 ## Export Standards
 
+These are DAAF conventions; journals and publishers set their own requirements.
+
 | Context | DPI | Format | Notes |
 |---------|-----|--------|-------|
 | Screen / web | 72-150 | PNG | Retina displays benefit from 2x (144-192) |
 | Presentations | 150 | PNG | Balance quality and file size |
-| Print / publication | 300+ | PNG or PDF | 300 DPI is the standard minimum |
+| Print / publication | 300+ | PNG or PDF | 300 DPI is a common minimum |
 | Scalable / archival | N/A | SVG or PDF | Vector; scales without quality loss |
 
 **Never use JPEG for charts.** Lossy compression creates visible artifacts around sharp lines and text.
@@ -171,7 +175,7 @@ Define visual standards once and apply them to every figure. Inconsistency acros
 
 ### What to Standardize
 
-| Element | Define Once |
+| Element | Define Once (DAAF convention) |
 |---------|-------------|
 | Color palette | 5-8 named colors (primary, secondary, accent, sequential, diverging) |
 | Font family | Single sans-serif family for all text |
@@ -213,4 +217,7 @@ Build a reusable theme or configuration that encodes these standards. Apply it t
 - [Urban Institute Style Guide](https://urbaninstitute.github.io/graphics-styleguide/) — practical model for project consistency
 - [Datawrapper Blog: Colorblindness](https://www.datawrapper.de/blog/colorblindness-part2) — practical accessibility guidance
 - [ColorBrewer](https://colorbrewer2.org) — palette selection with CVD/print filters
-- WCAG 2.1 — contrast ratio guidelines (4.5:1 text, 3:1 graphical elements)
+- WCAG 2.1: 4.5:1 for normal text (3:1 for large text; SC 1.4.3) and 3:1 for graphical objects needed to understand the content (SC 1.4.11)
+- Birch, J. (2012). "Worldwide prevalence of red-green color deficiency." *Journal of the Optical Society of America A* 29(3):313. doi:10.1364/JOSAA.29.000313
+- Nuñez, J.R., Anderton, C.R., & Renslow, R.S. (2018). "Optimizing colormaps with consideration for color vision deficiency to enable accurate interpretation of scientific data." *PLOS ONE* 13(7):e0199239. doi:10.1371/journal.pone.0199239
+- Okabe, M. & Ito, K. (2002, modified 2008). [Color Universal Design (CUD): How to make figures and presentations that are friendly to Colorblind people](https://jfly.uni-koeln.de/color/)

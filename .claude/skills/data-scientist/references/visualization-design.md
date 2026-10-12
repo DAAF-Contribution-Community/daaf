@@ -6,7 +6,7 @@ How to *think* about data visualization — choosing the right chart, encoding d
 
 Every visualization serves one of two purposes. Know which one you're making.
 
-**Exploratory:** You're investigating — "turning over 100 rocks to find 1-2 gemstones" (Knaflic). Show comprehensive data across multiple dimensions. Keep it neutral. Enable the viewer to draw conclusions.
+**Exploratory:** You're investigating — "turning over 100 rocks to find perhaps 1 or 2 precious gemstones" (Knaflic 2014, "exploratory vs explanatory analysis" blog post). Show comprehensive data across multiple dimensions. Keep it neutral. Enable the viewer to draw conclusions.
 
 **Explanatory:** You've found the gemstone. Now communicate it. Use selective highlighting, strategic annotation, and a declarative title to guide the audience to a specific insight.
 
@@ -28,47 +28,46 @@ Each visualization should communicate a single clear takeaway. If you need two m
 
 **Common violations:**
 - Dual-axis charts implying a relationship between unrelated series
-- Overloaded charts with 8+ colored series and a large legend
+- Overloaded charts with many (say 8+) colored series and a large legend
 - Charts that require a paragraph of explanation to interpret
 
 ## Visual Encoding Hierarchy
 
-Not all visual encodings are equally effective. Cleveland & McGill (1984), extended by Mackinlay (1986) and Munzner (2014), established that humans decode some visual channels far more accurately than others:
+Not all visual encodings are equally effective. Cleveland & McGill (1984) hypothesized, and partly tested by experiment, an ordering of elementary perceptual tasks by how accurately people judge quantitative values. Mackinlay (1986) extended it to ordinal and nominal data without empirical verification, and Munzner (2014) separates magnitude channels (for ordered data) from identity channels (for categories):
 
 ```
-Most accurate
-  │  1. Position on a common scale (scatter plot, dot plot)
-  │  2. Position on non-aligned scales (separate panels, small multiples)
-  │  3. Length (bar chart height)
-  │  4. Slope (line chart trends)
-  │  5. Angle (pie slice)
-  │  6. Area (bubble size, treemap)
-  │  7. Color saturation (heatmap intensity)
-  │  8. Color hue (categorical distinction only)
+Most accurate (Cleveland & McGill 1984, p. 536)
+  1. Position along a common scale (scatter plot, dot plot)
+  2. Position along nonaligned scales (separate panels, small multiples)
+  3. Length, direction (slope), angle (tied)
+  4. Area (bubble size, treemap)
+  5. Volume, curvature
+  6. Shading, color saturation (heatmap intensity)
 Least accurate
 ```
 
-**Practical implications:**
-- Bars beat pies for the same data (length at rank 3 vs. angle at rank 5)
-- Line chart slopes (rank 4) are read more accurately than pie angles (rank 5)
-- Scatter plots are powerful — both axes use position (rank 1)
-- Bubble charts sacrifice precision — size uses area (rank 6)
-- Heatmaps show patterns, not precise values — use for "where are the hot spots?"
+Ranks 3, 5, and 6 each contain tied tasks (p. 537). Color hue is not on this scale: Cleveland & McGill excluded it because hue has no single small-to-large ordering (p. 532). Use hue for categorical distinctions (an identity channel in Munzner 2014).
 
-**Encoding depends on data type:**
+**Practical implications:**
+- Bars beat pies for the same data: a bar chart lets readers compare positions on a common scale (rank 1) where a pie needs angle judgments (rank 3). In Cleveland & McGill's experiment the pie chart was more accurate on average in only 3 of 40 cases (p. 540).
+- Scatter plots are powerful: both axes use position (rank 1).
+- Bubble charts sacrifice precision: size uses area (rank 4).
+- Heatmaps show patterns, not precise values: use them for "where are the hot spots?"
+
+**Encoding depends on data type** (DAAF summary; see Munzner 2014, Ch. 5, on magnitude vs. identity channels):
 - Quantitative → position, length, area, saturation
 - Ordinal → position, saturation, size
 - Categorical → position, hue, shape
 
 ## Chart Selection by Relationship
 
-Start with the relationship you want to show, not the chart type you like. This framework draws from the Financial Times Visual Vocabulary (9 categories) distilled to the 6 most common in policy/research work.
+Start with the relationship you want to show, not the chart type you like. This framework draws from the Financial Times Visual Vocabulary (9 categories) distilled to the 6 most common in policy/research work. Numeric thresholds in these tables (category counts, series counts, sample sizes) are rules of thumb, not sourced cutoffs.
 
 ### Comparison — How do values differ across categories?
 
 | Chart | Best For | Key Rule |
 |-------|----------|----------|
-| Vertical bar | Few categories (<12), short labels | Must start at zero |
+| Vertical bar | Few categories (<12), short labels | Must start at zero (widely held convention) |
 | Horizontal bar | Many categories or long labels | Sort by value (don't alphabetize) |
 | Dot plot | Many categories, emphasis on position | Less ink than bars; avoids zero-baseline issue |
 | Grouped bar | Sub-groups within categories | Limit to 2-3 sub-groups |
@@ -93,7 +92,7 @@ Start with the relationship you want to show, not the chart type you like. This 
 | Area chart | Emphasizing volume over time | Stacked areas: only bottom layer and total are readable; middle layers lack a common baseline |
 | Small multiples | 5+ series that would overlap | Each gets its own panel — avoids spaghetti |
 | Bar chart | Discrete time periods (annual totals) | When each period is independent |
-| Sparklines | Inline trend context in tables/text | Data-dense, word-sized graphics (Tufte) |
+| Sparklines | Inline trend context in tables/text | Data-intense, design-simple, word-sized graphics (Tufte 2006, *Beautiful Evidence*) |
 
 ### Correlation — How do variables relate?
 
@@ -114,7 +113,7 @@ Start with the relationship you want to show, not the chart type you like. This 
 | Waffle chart | Simple proportion ("7 out of 10") | Intuitive for general audiences |
 | Stacked area | Composition change over time | Bottom layer + total are reliable; middle layers are hard to read precisely |
 
-**Why pie charts are usually poor:** They encode values as angle (rank 4), not length (rank 3). Comparing slices across pies is nearly impossible. Beyond 3-4 slices they become unreadable. A bar chart almost always communicates the same data more accurately. The one defensible use: showing that one category overwhelmingly dominates.
+**Why pie charts are usually poor:** They encode values as angle (rank 3), whereas a bar chart supports position judgments on a common scale (rank 1). Comparing slices across pies is nearly impossible. As a rule of thumb, beyond 3-4 slices they become unreadable. A bar chart almost always communicates the same data more accurately. The one defensible use: showing that one category overwhelmingly dominates.
 
 ### Ranking — What is the order?
 
@@ -128,9 +127,9 @@ Start with the relationship you want to show, not the chart type you like. This 
 
 When you have more than 5 series, small multiples almost always beat an overloaded single chart.
 
-**Why they work:** The eye learns the chart structure once, then compares across panels. Structure is O(1), comparison is O(n) — far less cognitive load than decoding a legend for each data point.
+**Why they work:** The eye learns the chart structure once, then compares across panels. Structure is O(1), comparison is O(n) (a DAAF heuristic) — far less cognitive load than decoding a legend for each data point.
 
-**When to use:**
+**When to use** (thresholds are rules of thumb):
 - Too many series for one chart (>5 lines, >4 groups)
 - Comparing pattern/shape across a categorical variable
 - The legend would need more than ~5 entries
@@ -147,18 +146,18 @@ When you have more than 5 series, small multiples almost always beat an overload
 
 | Pitfall | Why It's Bad | Better Alternative |
 |---------|-------------|-------------------|
-| Pie charts (>3 slices) | Angle encoding is weak; cross-pie comparison is impossible | Horizontal bar, stacked bar |
+| Pie charts (>3 slices, rule of thumb) | Angle encoding is weak; cross-pie comparison is impossible | Horizontal bar, stacked bar |
 | Dual-axis charts | Scale choices create false implied correlations; deeply misleading | Two separate panels; index to common baseline |
 | 3D effects | Add no information; distort perception via perspective | Standard 2D charts |
 | Spaghetti plots (>5 lines) | Colors become indistinguishable; tracking is impossible | Small multiples; gray + highlight one series |
 | Truncated bar chart axes | Bars encode *length* — not starting at zero breaks that mapping | Start at zero, or switch to dot plot |
-| Rainbow color scales | Perceptually non-uniform; artificial bright bands at yellow/cyan; colorblind-hostile | viridis, cividis, or single-hue sequential |
+| Rainbow color scales | Perceptually non-uniform; bright yellows can read as false peaks (Nuñez et al. 2018, on jet); colorblind-hostile | viridis, cividis, or single-hue sequential |
 
 ## Integrity Checklist
 
 Before finalizing any visualization:
 
-- [ ] Bar charts start at zero
+- [ ] Bar charts start at zero (widely held convention)
 - [ ] Scales are consistent across all panels/small multiples
 - [ ] No dual axes implying false relationships
 - [ ] Area/volume encodings are proportional (no distorted bubbles)
@@ -173,9 +172,14 @@ Before finalizing any visualization:
 
 ## Key References
 
-- Cleveland & McGill (1984). "Graphical Perception." *Journal of the American Statistical Association*
+- Cleveland & McGill (1984). "Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods." *Journal of the American Statistical Association* 79(387):531–554. doi:10.1080/01621459.1984.10478080
+- Mackinlay, J.D. (1986). "Automating the design of graphical presentations of relational information." *ACM Transactions on Graphics* 5(2):110–141. doi:10.1145/22949.22950
+- Munzner, T. *Visualization Analysis and Design* (2014). A K Peters/CRC Press. doi:10.1201/b17511
 - Tufte, E. *The Visual Display of Quantitative Information* (1983, 2nd ed. 2001)
+- Tufte, E.R. *Beautiful Evidence* (2006)
+- Knaflic, C.N. (2014). "exploratory vs explanatory analysis." storytellingwithdata.com blog. https://www.storytellingwithdata.com/blog/2014/04/exploratory-vs-explanatory-analysis
 - Knaflic, C.N. *Storytelling with Data* (2015)
+- Nuñez, J.R., Anderton, C.R., & Renslow, R.S. (2018). "Optimizing colormaps with consideration for color vision deficiency to enable accurate interpretation of scientific data." *PLOS ONE* 13(7):e0199239. doi:10.1371/journal.pone.0199239
 - Schwabish, J. *Better Data Visualizations* (2021)
 - Wilke, C. *Fundamentals of Data Visualization* (2019) — freely available at clauswilke.com/dataviz
 - [FT Visual Vocabulary](https://ft-interactive.github.io/visual-vocabulary/) — 9-category chart selection framework
