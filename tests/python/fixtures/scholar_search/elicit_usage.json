@@ -1,0 +1,11 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 1 (GET /api/v2/usage, HTTP 200, 2026-10-11: integer percentUsed, ISO timestamps with milliseconds, extraUsage null); values invented (percentUsed, period dates).",
+  "http_status": 200,
+  "body": {
+    "hasUsageRemaining": true,
+    "percentUsed": 7,
+    "periodStart": "2030-01-05T11:00:00.000Z",
+    "periodEnd": "2030-02-05T11:00:00.000Z",
+    "extraUsage": null
+  }
+}

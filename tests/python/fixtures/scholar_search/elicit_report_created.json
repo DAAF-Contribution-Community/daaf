@@ -1,0 +1,20 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 4 (POST /api/v2/sessions/reports, HTTP 202, phase created checkpoint, 2026-10-11: {type, sessionId, status processing, url, isPublic, links.self}, no executionStage); values invented (sessionId and the URLs built from it). The request body is this test's own input.",
+  "http_status": 202,
+  "request_body": {
+    "researchQuestion": "What are the effects of high-dosage tutoring on K-12 student achievement?",
+    "maxSearchPapers": 10,
+    "maxExtractPapers": 5,
+    "isPublic": false
+  },
+  "body": {
+    "type": "report",
+    "sessionId": "11111111-2222-4333-8444-555555555555",
+    "status": "processing",
+    "url": "https://elicit.com/review/11111111-2222-4333-8444-555555555555",
+    "isPublic": false,
+    "links": {
+      "self": "https://elicit.com/api/v2/sessions/reports/11111111-2222-4333-8444-555555555555"
+    }
+  }
+}

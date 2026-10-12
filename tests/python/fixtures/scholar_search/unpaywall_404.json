@@ -1,0 +1,5 @@
+{
+ "_fixture_source": "LIVE-WIRE capture (trimmed): scholar_search `oa --all-legs`, 2026-10-02, DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live; raw artifact research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s1/2026-10-02T190851Z_scholar_oa_10-1371-journal-pmed-0020124-10-1093-qje-qjv036-10_1ff906cd.json; MANIFEST.jsonl line 15 (timestamp 2026-10-02T19:08:51Z). Request email param logged as [SCHOLARLY_CONTACT_EMAIL]; the response does not echo it. HTTP 404 for a DataCite DOI (10.48550/arxiv.2205.01833).",
+ "http_status": 404,
+ "body": "<!doctype html>\n<html lang=en>\n<title>404 Not Found</title>\n<h1>Not Found</h1>\n<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n"
+}

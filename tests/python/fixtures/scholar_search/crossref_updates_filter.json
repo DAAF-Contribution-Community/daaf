@@ -1,0 +1,71 @@
+{
+ "status": "ok",
+ "message-type": "work-list",
+ "message-version": "1.0.0",
+ "message": {
+  "facets": {},
+  "total-results": 2,
+  "items": [
+   {
+    "DOI": "10.1016/s0140-6736(04)15715-2",
+    "title": [
+     "Retraction of an interpretation"
+    ],
+    "type": "journal-article",
+    "update-to": [
+     {
+      "DOI": "10.1016/s0140-6736(97)11096-0",
+      "type": "correction",
+      "label": "Correction",
+      "source": "retraction-watch",
+      "updated": {
+       "date-parts": [
+        [
+         2004,
+         3,
+         6
+        ]
+       ],
+       "date-time": "2004-03-06T00:00:00Z",
+       "timestamp": 1078531200000
+      },
+      "record-id": "17269"
+     }
+    ]
+   },
+   {
+    "DOI": "10.1016/s0140-6736(10)60175-4",
+    "title": [
+     "Retraction—Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children"
+    ],
+    "type": "journal-article",
+    "update-to": [
+     {
+      "DOI": "10.1016/s0140-6736(97)11096-0",
+      "type": "retraction",
+      "label": "Retraction",
+      "source": "retraction-watch",
+      "updated": {
+       "date-parts": [
+        [
+         2010,
+         2,
+         6
+        ]
+       ],
+       "date-time": "2010-02-06T00:00:00Z",
+       "timestamp": 1265414400000
+      },
+      "record-id": "4036"
+     }
+    ]
+   }
+  ],
+  "items-per-page": 20,
+  "query": {
+   "start-index": 0,
+   "search-terms": null
+  }
+ },
+ "_fixture_source": "live-wire capture, scholar_search S1 smoke 2026-10-02 (trimmed)"
+}

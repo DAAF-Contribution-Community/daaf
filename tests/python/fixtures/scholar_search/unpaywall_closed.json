@@ -1,0 +1,42 @@
+{
+ "best_oa_location": null,
+ "data_standard": 2,
+ "doi": "10.1093/qje/qjv036",
+ "doi_url": "https://doi.org/10.1093/qje/qjv036",
+ "first_oa_location": null,
+ "genre": "journal-article",
+ "has_repository_copy": false,
+ "is_oa": false,
+ "is_paratext": false,
+ "journal_is_in_doaj": false,
+ "journal_is_oa": false,
+ "journal_issn_l": "0033-5533",
+ "journal_issns": "0033-5533,1531-4650",
+ "journal_name": "The Quarterly Journal of Economics",
+ "oa_locations": [],
+ "oa_locations_embargoed": [],
+ "oa_status": "closed",
+ "published_date": "2015-10-01",
+ "publisher": "Oxford University Press (OUP)",
+ "title": "The Effects of School Spending on Educational and Economic Outcomes: Evidence from School Finance Reforms *",
+ "updated": "2025-06-20T04:27:11Z",
+ "year": 2015,
+ "z_authors": [
+  {
+   "author_position": "first",
+   "is_corresponding": true,
+   "raw_author_name": "C. Kirabo Jackson"
+  },
+  {
+   "author_position": "additional",
+   "is_corresponding": false,
+   "raw_author_name": "Rucker C. Johnson"
+  },
+  {
+   "author_position": "last",
+   "is_corresponding": false,
+   "raw_author_name": "Claudia Persico"
+  }
+ ],
+ "_fixture_source": "LIVE-WIRE capture (trimmed): scholar_search `oa --all-legs`, 2026-10-02, DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live; raw artifact research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s1/2026-10-02T190851Z_scholar_oa_10-1371-journal-pmed-0020124-10-1093-qje-qjv036-10_1ff906cd.json; MANIFEST.jsonl line 15 (timestamp 2026-10-02T19:08:51Z). Request email param logged as [SCHOLARLY_CONTACT_EMAIL]; the response does not echo it. raw_affiliation_strings dropped."
+}

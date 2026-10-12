@@ -1,0 +1,38 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 5 (keyless POST /tallies with a bare-array body -> 200 {\"tallies\": {doi: tally}}, 2026-10-11); the documented {\"dois\": [...]} body got HTTP 400 {\"message\": \"Invalid request.\"} one call earlier (MANIFEST row 4: measured behavior, kept verbatim); values invented (DOIs under 10.5555/, every count).",
+  "request_body": [
+    "10.5555/synth.2001",
+    "10.5555/synth.1998"
+  ],
+  "rejected_body": {
+    "dois": [
+      "10.5555/synth.2001",
+      "10.5555/synth.1998"
+    ]
+  },
+  "rejected_response": {
+    "message": "Invalid request."
+  },
+  "body": {
+    "tallies": {
+      "10.5555/synth.2001": {
+        "total": 120,
+        "supporting": 14,
+        "contradicting": 2,
+        "mentioning": 98,
+        "unclassified": 6,
+        "doi": "10.5555/synth.2001",
+        "citingPublications": 131
+      },
+      "10.5555/synth.1998": {
+        "total": 410,
+        "supporting": 5,
+        "contradicting": 11,
+        "mentioning": 380,
+        "unclassified": 14,
+        "doi": "10.5555/synth.1998",
+        "citingPublications": 352
+      }
+    }
+  }
+}

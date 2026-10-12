@@ -1,0 +1,140 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 6 (keyed GET /api_partner/search, --limit 1, Pro key, 2026-10-11: titles wrap matches in <strong class=\"highlight\">; every citation snippetHidden true with snippet \"\"). Every live key is kept: the keys the first version trimmed (abstract, fulltextExcerpts, aggregations, highlightedFields, suggestedTerm and the other hit/citation fields; 48 key paths listed by session script 29, which prints no live value) were added 2026-10-12 with invented values of the live type; lists that were empty live stay empty; values invented (DOI under 10.5555/, title, author, slugs, IDs, scores, count, tally). The rate-limit header names and values are measured behavior from the same entry.",
+  "rate_headers": {
+    "x-ratelimit-limit-second": "13",
+    "ratelimit-limit": "13",
+    "ratelimit-remaining": "12",
+    "ratelimit-reset": "1",
+    "x-ratelimit-remaining-second": "12",
+    "x-ratelimit-remaining-minute": "59",
+    "x-ratelimit-limit-minute": "60"
+  },
+  "count": 4321,
+  "countIsApproximate": false,
+  "restrictedCites": false,
+  "suggestedTerm": null,
+  "aggregations": {
+    "affiliations": [],
+    "authors": [],
+    "dateHistogram": [],
+    "editorialNotices": [],
+    "journals": [],
+    "maxDate": null,
+    "meshDescriptors": [],
+    "minDate": null,
+    "paperTypes": [],
+    "substances": [],
+    "topics": []
+  },
+  "hits": [
+    {
+      "id": "synthetic-hit-0001",
+      "doi": "10.5555/synth.3003",
+      "title": "<strong class=\"highlight\">Tutoring</strong> in invented schools: a synthetic <strong class=\"highlight\">tutoring</strong> example",
+      "abstract": "An invented abstract for a synthetic search hit. It describes no real study.",
+      "year": 2021,
+      "date": "2021-03-15",
+      "slug": "tutoring-in-invented-schools-a-synthetic-Yz9Ab0",
+      "journal": "Journal of Synthetic Examples",
+      "shortJournal": "J Synth Ex",
+      "publisher": "Example Publishing House",
+      "issns": ["0000-0001"],
+      "volume": "12",
+      "issue": "2",
+      "page": "33-48",
+      "memberId": 99901,
+      "lastUpdate": 1700000000,
+      "isOa": false,
+      "oaStatus": "closed",
+      "relevancyScore": 12.5,
+      "normalizedTypes": ["synthetic-type"],
+      "meshTypes": [],
+      "highlightedFields": ["title"],
+      "fulltextExcerpts": [],
+      "authors": [
+        {
+          "authorName": "Di Fictive",
+          "authorSlug": "di-fictive-Cd1Ef2",
+          "authorSequenceNumber": 1,
+          "affiliation": "Example University",
+          "affiliationSlug": "example-university-Ab1C",
+          "affiliations": [
+            "Example University"
+          ],
+          "affiliationSlugs": [
+            "example-university-Ab1C"
+          ]
+        }
+      ],
+      "tally": {
+        "total": 9,
+        "supporting": 1,
+        "contradicting": 0,
+        "mentioning": 7,
+        "unclassified": 1,
+        "doi": null,
+        "citingPublications": 8
+      },
+      "editorialNotices": [],
+      "citations": [
+        {
+          "id": 800000001,
+          "type": "mentioning",
+          "typeConfidence": 0.91,
+          "positive": 0.03,
+          "negative": 0.02,
+          "neutral": 0.95,
+          "snippet": "",
+          "snippetHidden": true,
+          "source": "10.5555/synth.citing.1",
+          "target": "10.5555/synth.3003",
+          "section": "Introduction",
+          "refLocation": "[1]",
+          "lang": "en",
+          "langConfidence": 0.99,
+          "selfCites": [],
+          "memberId": null,
+          "expertClassification": null
+        },
+        {
+          "id": 800000002,
+          "type": "mentioning",
+          "typeConfidence": 0.88,
+          "positive": 0.05,
+          "negative": 0.01,
+          "neutral": 0.94,
+          "snippet": "",
+          "snippetHidden": true,
+          "source": "10.5555/synth.citing.2",
+          "target": "10.5555/synth.3003",
+          "section": "Discussion",
+          "refLocation": "[7]",
+          "lang": "en",
+          "langConfidence": 0.98,
+          "selfCites": [],
+          "memberId": null,
+          "expertClassification": null
+        },
+        {
+          "id": 800000003,
+          "type": "mentioning",
+          "typeConfidence": 0.86,
+          "positive": 0.02,
+          "negative": 0.04,
+          "neutral": 0.94,
+          "snippet": "",
+          "snippetHidden": true,
+          "source": "10.5555/synth.citing.3",
+          "target": "10.5555/synth.3003",
+          "section": "Methods",
+          "refLocation": "[12]",
+          "lang": "en",
+          "langConfidence": 0.97,
+          "selfCites": [],
+          "memberId": null,
+          "expertClassification": null
+        }
+      ]
+    }
+  ]
+}

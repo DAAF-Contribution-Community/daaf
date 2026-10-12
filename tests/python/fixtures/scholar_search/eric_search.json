@@ -1,0 +1,58 @@
+{
+ "response": {
+  "numFound": 37,
+  "start": 0,
+  "numFoundExact": true,
+  "docs": [
+   {
+    "id": "EJ000001",
+    "title": "Partnering With Invented Community Groups for Placeholder Tutoring",
+    "author": [
+     "Ada Example",
+     "Rowan Sample"
+    ],
+    "description": "This invented article describes how placeholder community groups could support a tutoring program in a fictional state. The text is synthetic and reports no real findings. It exists so the ERIC mapper has an abstract of realistic length to read.",
+    "subject": [
+     "Tutoring",
+     "Community Organizations",
+     "Placeholder Program Practice",
+     "Placeholder Descriptor"
+    ],
+    "e_fulltextauth": 0,
+    "source": "Journal of Invented Education Policy",
+    "publicationtype": [
+     "Journal Articles",
+     "Reports - Evaluative"
+    ],
+    "publicationdateyear": 2024,
+    "url": "https://example.invalid/synthetic/eric/EJ000001",
+    "peerreviewed": "T"
+   },
+   {
+    "id": "EJ000002",
+    "title": "Effects of a Placeholder Tutoring Program on Invented Early Readers: A Multilevel Example",
+    "author": [
+     "Sam Q. Fixture",
+     "Jo Exemplar"
+    ],
+    "description": "The purpose of this synthetic randomized trial was to give the test suite a second invented abstract. Fictional students in made-up classrooms were assigned to a placeholder tutoring group or a comparison group. No real data were collected.",
+    "subject": [
+     "Tutoring",
+     "Reading Achievement",
+     "Early Readers",
+     "Placeholder Descriptor"
+    ],
+    "e_fulltextauth": 0,
+    "source": "Journal of Synthetic Reading Research",
+    "publicationtype": [
+     "Journal Articles",
+     "Reports - Research"
+    ],
+    "publicationdateyear": 2023,
+    "url": "http://dx.doi.org/10.5555/synth.eric.0002",
+    "peerreviewed": "T"
+   }
+  ]
+ },
+ "_fixture_source": "SYNTHETIC; shape from live response smoke_s1/2026-10-02T125058Z_scholar_find_effects-of-high-dosage-tutoring-on-student-achieve_518461bb.json (ERIC api.ies.ed.gov/eric/ leg of `find`; trimmed, scholar_search S1 smoke 2026-10-02); values invented"
+}

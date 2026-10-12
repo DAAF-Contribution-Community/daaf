@@ -1,0 +1,19 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 1 (keyless GET /tallies/{doi}, 2026-10-11); values invented (DOI under 10.5555/, every count). The rate-limit header names and values are measured behavior from the same entry.",
+  "rate_headers": {
+    "ratelimit-limit": "60",
+    "ratelimit-remaining": "59",
+    "ratelimit-reset": "3",
+    "x-ratelimit-remaining-minute": "59",
+    "x-ratelimit-limit-minute": "60"
+  },
+  "body": {
+    "total": 120,
+    "supporting": 14,
+    "contradicting": 2,
+    "mentioning": 98,
+    "unclassified": 6,
+    "doi": "10.5555/synth.2001",
+    "citingPublications": 131
+  }
+}

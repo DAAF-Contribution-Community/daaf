@@ -1,0 +1,780 @@
+{
+ "meta": {
+  "count": 50,
+  "db_response_time_ms": 8673,
+  "page": 1,
+  "per_page": 25,
+  "groups_count": null,
+  "cost_usd": 0.001
+ },
+ "results": [
+  {
+   "id": "https://openalex.org/W3124209168",
+   "doi": "https://doi.org/10.1086/705882",
+   "display_name": "High-Dosage Tutoring and Reading Achievement: Evidence from New York City",
+   "publication_year": 2019,
+   "authorships": [
+    {
+     "author_position": "first",
+     "author": {
+      "id": "https://openalex.org/A5080267776",
+      "display_name": "Roland G. Fryer",
+      "orcid": "https://orcid.org/0000-0002-4512-423X",
+      "observed_orcids": [
+       "https://orcid.org/0000-0002-4512-423X"
+      ]
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I1321305853",
+       "display_name": "National Bureau of Economic Research",
+       "ror": "https://ror.org/04grmx538",
+       "country_code": "US",
+       "type": "nonprofit",
+       "lineage": [
+        "https://openalex.org/I1321305853"
+       ]
+      },
+      {
+       "id": "https://openalex.org/I136199984",
+       "display_name": "Harvard University",
+       "ror": "https://ror.org/03vek6s52",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I136199984"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Roland G. Fryer",
+     "raw_affiliation_strings": [
+      "Harvard University and National Bureau of Economic Research"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Harvard University and National Bureau of Economic Research",
+       "institution_ids": [
+        "https://openalex.org/I1321305853",
+        "https://openalex.org/I136199984"
+       ]
+      }
+     ]
+    },
+    {
+     "author_position": "last",
+     "author": {
+      "id": "https://openalex.org/A5110739776",
+      "display_name": "Meghan Howard-Noveck",
+      "orcid": null,
+      "observed_orcids": []
+     },
+     "institutions": [],
+     "countries": [],
+     "is_corresponding": false,
+     "raw_author_name": "Meghan Howard-Noveck",
+     "raw_affiliation_strings": [
+      "Education Innovation Laboratory"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "Education Innovation Laboratory",
+       "institution_ids": []
+      }
+     ]
+    }
+   ],
+   "primary_location": {
+    "id": "doi:10.1086/705882",
+    "is_oa": false,
+    "landing_page_url": "https://doi.org/10.1086/705882",
+    "pdf_url": null,
+    "source": {
+     "id": "https://openalex.org/S8557221",
+     "display_name": "Journal of Labor Economics",
+     "issn_l": "0734-306X",
+     "issn": [
+      "0734-306X",
+      "1537-5307"
+     ],
+     "is_oa": false,
+     "is_in_doaj": false,
+     "is_core": true,
+     "listed_in": [
+      "abdc-a-star",
+      "cwts-core",
+      "jufo-3",
+      "norway-2"
+     ],
+     "host_organization": "https://openalex.org/P4310315672",
+     "host_organization_name": "University of Chicago Press",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310315672",
+      "https://openalex.org/P4310315690"
+     ],
+     "host_organization_lineage_names": [
+      "University of Chicago Press",
+      "University of Chicago"
+     ],
+     "type": "journal"
+    },
+    "license": null,
+    "license_id": null,
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "Journal of Labor Economics",
+    "raw_type": "journal-article"
+   },
+   "cited_by_count": 37,
+   "abstract_inverted_index": {
+    "This": [
+     0
+    ],
+    "study": [
+     1
+    ],
+    "examines": [
+     2
+    ],
+    "the": [
+     3,
+     47
+    ],
+    "impact": [
+     4
+    ],
+    "on": [
+     5,
+     41,
+     56,
+     64,
+     75
+    ],
+    "student": [
+     6
+    ],
+    "achievement": [
+     7
+    ],
+    "of": [
+     8,
+     37
+    ],
+    "high-dosage": [
+     9
+    ],
+    "reading": [
+     10,
+     44
+    ],
+    "tutoring": [
+     11,
+     39,
+     49
+    ],
+    "for": [
+     12
+    ],
+    "middle": [
+     13
+    ],
+    "school": [
+     14,
+     57
+    ],
+    "students": [
+     15
+    ],
+    "in": [
+     16
+    ],
+    "New": [
+     17
+    ],
+    "York": [
+     18
+    ],
+    "City": [
+     19
+    ],
+    "public": [
+     20
+    ],
+    "schools,": [
+     21
+    ],
+    "using": [
+     22
+    ],
+    "a": [
+     23,
+     42,
+     51,
+     59
+    ],
+    "school-level": [
+     24
+    ],
+    "randomized": [
+     25
+    ],
+    "field": [
+     26
+    ],
+    "experiment.": [
+     27
+    ],
+    "Across": [
+     28
+    ],
+    "3": [
+     29
+    ],
+    "years,": [
+     30
+    ],
+    "schools": [
+     31
+    ],
+    "offered": [
+     32
+    ],
+    "at": [
+     33
+    ],
+    "least": [
+     34
+    ],
+    "130": [
+     35
+    ],
+    "hours": [
+     36
+    ],
+    "four-on-one": [
+     38
+    ],
+    "based": [
+     40
+    ],
+    "guided": [
+     43
+    ],
+    "model.": [
+     45
+    ],
+    "At": [
+     46
+    ],
+    "mean,": [
+     48
+    ],
+    "had": [
+     50
+    ],
+    "positive": [
+     52,
+     60
+    ],
+    "and": [
+     53,
+     72,
+     91
+    ],
+    "significant": [
+     54
+    ],
+    "effect": [
+     55,
+     63,
+     74
+    ],
+    "attendance,": [
+     58
+    ],
+    "but": [
+     61
+    ],
+    "insignificant": [
+     62
+    ],
+    "English": [
+     65
+    ],
+    "language": [
+     66
+    ],
+    "arts": [
+     67
+    ],
+    "(ELA)": [
+     68
+    ],
+    "state": [
+     69,
+     77
+    ],
+    "test": [
+     70,
+     78
+    ],
+    "scores,": [
+     71
+    ],
+    "no": [
+     73
+    ],
+    "math": [
+     76
+    ],
+    "scores.": [
+     79
+    ],
+    "For": [
+     80
+    ],
+    "black": [
+     81
+    ],
+    "students,": [
+     82
+    ],
+    "our": [
+     83
+    ],
+    "treatment": [
+     84
+    ],
+    "increased": [
+     85
+    ],
+    "attendance": [
+     86
+    ],
+    "by": [
+     87,
+     94
+    ],
+    "2.0": [
+     88
+    ],
+    "percentage": [
+     89
+    ],
+    "points": [
+     90
+    ],
+    "ELA": [
+     92
+    ],
+    "scores": [
+     93
+    ],
+    "0.09": [
+     95
+    ],
+    "standard": [
+     96
+    ],
+    "deviations": [
+     97
+    ],
+    "per": [
+     98
+    ],
+    "year.": [
+     99
+    ]
+   },
+   "open_access": {
+    "is_oa": false,
+    "oa_status": "closed",
+    "oa_url": null,
+    "any_repository_has_fulltext": false
+   },
+   "type": "article",
+   "has_content": {
+    "pdf": false,
+    "grobid_xml": false
+   },
+   "content_urls": null,
+   "ids": {
+    "openalex": "https://openalex.org/W3124209168",
+    "doi": "https://doi.org/10.1086/705882",
+    "mag": "3124209168"
+   },
+   "referenced_works_count": 19,
+   "is_retracted": false
+  },
+  {
+   "id": "https://openalex.org/W2002765572",
+   "doi": "https://doi.org/10.1080/00220973.1973.11011433",
+   "display_name": "Learning through Tutoring",
+   "publication_year": 1973,
+   "authorships": [
+    {
+     "author_position": "first",
+     "author": {
+      "id": "https://openalex.org/A5013972788",
+      "display_name": "Vernon L. Allen",
+      "orcid": null,
+      "observed_orcids": []
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I1304256225",
+       "display_name": "University of Wisconsin System",
+       "ror": "https://ror.org/03ydkyb10",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I1304256225"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Vernon L. Allen",
+     "raw_affiliation_strings": [
+      "University of Wisconsin",
+      "University of Wisconsin –,"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "University of Wisconsin",
+       "institution_ids": [
+        "https://openalex.org/I1304256225"
+       ]
+      },
+      {
+       "raw_affiliation_string": "University of Wisconsin –,",
+       "institution_ids": []
+      }
+     ]
+    },
+    {
+     "author_position": "last",
+     "author": {
+      "id": "https://openalex.org/A5109897524",
+      "display_name": "Robert S. Feldman",
+      "orcid": null,
+      "observed_orcids": []
+     },
+     "institutions": [
+      {
+       "id": "https://openalex.org/I1304256225",
+       "display_name": "University of Wisconsin System",
+       "ror": "https://ror.org/03ydkyb10",
+       "country_code": "US",
+       "type": "education",
+       "lineage": [
+        "https://openalex.org/I1304256225"
+       ]
+      }
+     ],
+     "countries": [
+      "US"
+     ],
+     "is_corresponding": false,
+     "raw_author_name": "Robert S. Feldman",
+     "raw_affiliation_strings": [
+      "University of Wisconsin",
+      "University of Wisconsin –,"
+     ],
+     "raw_orcid": null,
+     "affiliations": [
+      {
+       "raw_affiliation_string": "University of Wisconsin",
+       "institution_ids": [
+        "https://openalex.org/I1304256225"
+       ]
+      },
+      {
+       "raw_affiliation_string": "University of Wisconsin –,",
+       "institution_ids": []
+      }
+     ]
+    }
+   ],
+   "primary_location": {
+    "id": "doi:10.1080/00220973.1973.11011433",
+    "is_oa": false,
+    "landing_page_url": "https://doi.org/10.1080/00220973.1973.11011433",
+    "pdf_url": null,
+    "source": {
+     "id": "https://openalex.org/S143721676",
+     "display_name": "The Journal of Experimental Education",
+     "issn_l": "0022-0973",
+     "issn": [
+      "0022-0973",
+      "1940-0683"
+     ],
+     "is_oa": false,
+     "is_in_doaj": false,
+     "is_core": true,
+     "listed_in": [
+      "cwts-core",
+      "erih-plus",
+      "jufo-2",
+      "norway-1"
+     ],
+     "host_organization": "https://openalex.org/P4310320547",
+     "host_organization_name": "Taylor & Francis",
+     "host_organization_lineage": [
+      "https://openalex.org/P4310320547",
+      "https://openalex.org/P4310320449"
+     ],
+     "host_organization_lineage_names": [
+      "Taylor & Francis",
+      "Informa"
+     ],
+     "type": "journal"
+    },
+    "license": null,
+    "license_id": null,
+    "version": "publishedVersion",
+    "is_accepted": true,
+    "is_published": true,
+    "raw_source_name": "The Journal of Experimental Education",
+    "raw_type": "journal-article"
+   },
+   "cited_by_count": 120,
+   "abstract_inverted_index": {
+    "Low-achieving": [
+     0
+    ],
+    "fifth-grade": [
+     1
+    ],
+    "children": [
+     2
+    ],
+    "either": [
+     3
+    ],
+    "taught": [
+     4,
+     57
+    ],
+    "a": [
+     5,
+     11,
+     66,
+     70
+    ],
+    "third-grader": [
+     6
+    ],
+    "or": [
+     7
+    ],
+    "studied": [
+     8
+    ],
+    "alone": [
+     9,
+     37
+    ],
+    "for": [
+     10,
+     74
+    ],
+    "series": [
+     12
+    ],
+    "of": [
+     13,
+     19,
+     42,
+     55,
+     79
+    ],
+    "daily": [
+     14
+    ],
+    "sessions:": [
+     15
+    ],
+    "At": [
+     16
+    ],
+    "the": [
+     17,
+     20,
+     23,
+     30,
+     35,
+     43,
+     76
+    ],
+    "end": [
+     18
+    ],
+    "two-week": [
+     21
+    ],
+    "period,": [
+     22
+    ],
+    "low-achievers’": [
+     24
+    ],
+    "performance": [
+     25,
+     78
+    ],
+    "was": [
+     26,
+     49
+    ],
+    "significantly": [
+     27
+    ],
+    "better": [
+     28
+    ],
+    "in": [
+     29,
+     34,
+     40
+    ],
+    "tutoring": [
+     31
+    ],
+    "condition": [
+     32
+    ],
+    "than": [
+     33
+    ],
+    "studying": [
+     36,
+     59
+    ],
+    "condition–a": [
+     38
+    ],
+    "reversal": [
+     39
+    ],
+    "direction": [
+     41
+    ],
+    "initial": [
+     44
+    ],
+    "difference": [
+     45
+    ],
+    "between": [
+     46
+    ],
+    "conditions.": [
+     47
+    ],
+    "There": [
+     48
+    ],
+    "no": [
+     50
+    ],
+    "differential": [
+     51
+    ],
+    "effect": [
+     52
+    ],
+    "on": [
+     53
+    ],
+    "tutees": [
+     54
+    ],
+    "being": [
+     56
+    ],
+    "versus": [
+     58
+    ],
+    "alone.": [
+     60
+    ],
+    "Results": [
+     61
+    ],
+    "suggest": [
+     62
+    ],
+    "that": [
+     63
+    ],
+    "serving": [
+     64
+    ],
+    "as": [
+     65
+    ],
+    "tutor": [
+     67
+    ],
+    "may": [
+     68
+    ],
+    "be": [
+     69
+    ],
+    "particularly": [
+     71
+    ],
+    "useful": [
+     72
+    ],
+    "method": [
+     73
+    ],
+    "enhancing": [
+     75
+    ],
+    "academic": [
+     77
+    ],
+    "low-achieving": [
+     80
+    ],
+    "children.": [
+     81
+    ]
+   },
+   "open_access": {
+    "is_oa": false,
+    "oa_status": "closed",
+    "oa_url": null,
+    "any_repository_has_fulltext": false
+   },
+   "type": "article",
+   "has_content": {
+    "pdf": false,
+    "grobid_xml": false
+   },
+   "content_urls": null,
+   "ids": {
+    "openalex": "https://openalex.org/W2002765572",
+    "doi": "https://doi.org/10.1080/00220973.1973.11011433",
+    "mag": "2002765572"
+   },
+   "referenced_works_count": 5,
+   "is_retracted": false
+  }
+ ],
+ "group_by": [],
+ "_fixture_source": "live-wire capture, scholar_search S1 smoke 2026-10-02 (trimmed)"
+}

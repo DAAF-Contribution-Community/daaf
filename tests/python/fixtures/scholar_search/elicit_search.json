@@ -1,0 +1,38 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 2 (POST /api/v2/search/papers --max-results 1, HTTP 200, 2026-10-11: every documented paper field present, pmid null, warnings []); values invented (paper ID, title, authors, abstract, DOI under 10.5555/, venue, count, URLs). The request body is this test's own input.",
+  "http_status": 200,
+  "request_body": {
+    "query": "synthetic tutoring question for fixture tests",
+    "maxResults": 1,
+    "searchMode": "semantic",
+    "corpus": "elicit"
+  },
+  "body": {
+    "papers": [
+      {
+        "elicitId": "ss-100000001",
+        "title": "An Invented Tutoring Program and Reading Outcomes: A Synthetic Example",
+        "authors": [
+          "Ada Example",
+          "Bo Placeholder",
+          "Cy Sample"
+        ],
+        "year": 2021,
+        "abstract": "This invented abstract describes a synthetic randomized trial that exists only as a unit-test fixture.",
+        "doi": "10.5555/synth.4004",
+        "pmid": null,
+        "venue": "Journal of Synthetic Examples",
+        "citedByCount": 12,
+        "urls": [
+          "https://example.org/papers/synth-4004.pdf"
+        ],
+        "studyTypeTags": [
+          "RCT"
+        ],
+        "journalQuartile": 1,
+        "fullTextUrl": "https://example.org/papers/synth-4004.pdf"
+      }
+    ],
+    "warnings": []
+  }
+}

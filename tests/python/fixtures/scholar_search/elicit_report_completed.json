@@ -1,0 +1,48 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live responses smoke_s2/elicit/ MANIFEST row 5 (elicit-resume re-attach, 2026-10-11): requests[0] GET /api/v2/sessions/reports/{id} (HTTP 200 -> `status_read`: result {title, summary}, five export URL fields, exportsStatus ready) and requests[1] the same with ?include=reportBody (-> `body`: adds result.reportBody, markdown with inline {<64-hex>_<n>} anchors, and result.abstract); values invented (sessionId, title, summary, abstract, report text, anchor hex); the export URLs are non-resolving example.invalid placeholders that keep only the X-Amz-Expires=604800 parameter shape (no presigned URL, credential or token).",
+  "http_status": 200,
+  "status_read": {
+    "type": "report",
+    "sessionId": "11111111-2222-4333-8444-555555555555",
+    "status": "completed",
+    "executionStage": "done",
+    "url": "https://elicit.com/review/11111111-2222-4333-8444-555555555555",
+    "isPublic": false,
+    "result": {
+      "title": "Synthetic report title for fixture tests",
+      "summary": "An invented one-sentence summary that exists only for the unit tests."
+    },
+    "pdfUrl": "https://exports.example.invalid/FIXTURE.pdf?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "docxUrl": "https://exports.example.invalid/FIXTURE.docx?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "txtUrl": "https://exports.example.invalid/FIXTURE.txt?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "bibUrl": "https://exports.example.invalid/FIXTURE.bib?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "risUrl": "https://exports.example.invalid/FIXTURE.ris?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "exportsStatus": "ready",
+    "links": {
+      "self": "https://elicit.com/api/v2/sessions/reports/11111111-2222-4333-8444-555555555555"
+    }
+  },
+  "body": {
+    "type": "report",
+    "sessionId": "11111111-2222-4333-8444-555555555555",
+    "status": "completed",
+    "executionStage": "done",
+    "url": "https://elicit.com/review/11111111-2222-4333-8444-555555555555",
+    "isPublic": false,
+    "result": {
+      "title": "Synthetic report title for fixture tests",
+      "summary": "An invented one-sentence summary that exists only for the unit tests.",
+      "reportBody": "# Results\n\n## Included studies (synthetic)\n\nThis invented paragraph stands in for an AI-generated report body.\n\n| Example et al. (2021) | Yes | Synthetic RCT{0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_0} |",
+      "abstract": "An invented abstract for the synthetic report."
+    },
+    "pdfUrl": "https://exports.example.invalid/FIXTURE.pdf?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "docxUrl": "https://exports.example.invalid/FIXTURE.docx?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "txtUrl": "https://exports.example.invalid/FIXTURE.txt?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "bibUrl": "https://exports.example.invalid/FIXTURE.bib?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "risUrl": "https://exports.example.invalid/FIXTURE.ris?X-Amz-Expires=604800&X-Amz-Signature=FIXTURE",
+    "exportsStatus": "ready",
+    "links": {
+      "self": "https://elicit.com/api/v2/sessions/reports/11111111-2222-4333-8444-555555555555"
+    }
+  }
+}

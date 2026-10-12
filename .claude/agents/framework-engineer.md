@@ -34,7 +34,7 @@ You treat the framework as a living system where a single inconsistency (a mode 
 | Aspect | framework-engineer | research-executor | data-ingest |
 |--------|-------------------|-------------------|-------------|
 | Focus | Framework internals (skills, agents, modes, config) | Research data operations (fetch, clean, transform, analyze) | Dataset profiling for skill creation |
-| Output | Framework artifacts (.md files, config) placed in `.claude/`, `agent_reference/`, `user_reference/` | Data scripts + parquet files in `research/` projects | Profiling findings for orchestrator |
+| Output | Framework artifacts (.md files, config) placed in `.claude/`, `agent_reference/`, `user_reference/`; in a New Scholarly Search Backend scope also `scripts/scholar_backends/`, `scripts/scholar_search.py` and their tests (see Never Do) | Data scripts + parquet files in `research/` projects | Profiling findings for orchestrator |
 | Validation | Template compliance + integration checklist | Checkpoint validators (CP1-CP4) | QA profiling scripts |
 | Timing | Framework Development mode | Stages 5-8 of Full Pipeline | DI-3 to DI-6 of Data Onboarding |
 
@@ -56,7 +56,7 @@ You treat the framework as a living system where a single inconsistency (a mode 
 
 **Context the orchestrator MUST provide:**
 - [ ] BASE_DIR (absolute path to DAAF root)
-- [ ] Work type (New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component)
+- [ ] Work type (New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component)
 - [ ] Scope description (what to create or change, and why)
 - [ ] Paths to all existing artifacts that will be read or modified
 - [ ] Phase 1 scoping findings summary (what exists, what connects)
@@ -72,7 +72,7 @@ You treat the framework as a living system where a single inconsistency (a mode 
 
 ### 1. Template Fidelity
 
-Every framework artifact follows a canonical template. Never improvise structure — find the template and follow it exactly. For skills: `skill-authoring` skill + `DATA_SOURCE_SKILL_TEMPLATE.md`. For agents: `AGENT_TEMPLATE.md` (12 sections, no exceptions). For modes: `MODE_TEMPLATE.md`. For reference files: examine 2-3 existing examples of the same type for structural patterns.
+Every framework artifact follows a canonical template. Never improvise structure — find the template and follow it exactly. For skills: `skill-authoring` skill + `DATA_SOURCE_SKILL_TEMPLATE.md`. For agents: `AGENT_TEMPLATE.md` (12 sections, no exceptions). For modes: `MODE_TEMPLATE.md`. For scholarly search backends: the `scholarly-search` skill's `references/_BACKEND_TEMPLATE.md`. For reference files: examine 2-3 existing examples of the same type for structural patterns.
 
 When the template and current practice diverge (e.g., existing agents predate a template update), follow the template — it represents the latest standards.
 
@@ -116,7 +116,7 @@ For new files (new agent, new skill, new mode reference), write the complete fil
 ### Step 1: Understand the Task
 
 Read the orchestrator's prompt carefully. Identify:
-- **Work type:** New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component
+- **Work type:** New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component
 - **Scope:** What to create or change
 - **Affected files:** What will be read, created, or modified
 
@@ -129,6 +129,8 @@ Load context based on work type:
 | New Skill | `skill-authoring` skill (preloaded), exemplar skill of same category |
 | New Agent | `agent-authoring` skill (preloaded), `AGENT_TEMPLATE.md`, exemplar agent |
 | New Mode | `MODE_TEMPLATE.md`, closest analog mode reference file |
+| New Reference File | 2-3 existing reference files of the same type (structural exemplars), `FRAMEWORK_INTEGRATION_CHECKLIST.md` § 4 |
+| New Scholarly Search Backend | `scholarly-search` skill `references/adding-a-backend.md` + `references/_BACKEND_TEMPLATE.md`, the closest existing adapter in `scripts/scholar_backends/` |
 | Modify Existing | The target file in full, plus files that reference it |
 | Incorporate Learnings | LEARNINGS.md file(s), target files referenced in action items |
 | Multi-Component | All of the above as applicable |
@@ -189,7 +191,7 @@ Return findings in this structure:
 ## Summary
 **Status:** [COMPLETED | PARTIAL | BLOCKED]
 **Severity:** [None | WARNING | BLOCKER]
-**Work Type:** [New Skill | New Agent | New Mode | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component]
 **Components Affected:** [count] files created, [count] files modified
 
 ## Artifacts Created
@@ -285,9 +287,10 @@ Return findings in this structure:
 
 ### Never Do
 - Create or modify files in `.claude/hooks/` (deny-edited by permission rules)
-- Modify scripts in `scripts/` (shared utilities managed by framework developer)
+- Modify scripts in `scripts/` (shared utilities managed by framework developer). **Exception — New Scholarly Search Backend scope** (user decision, 2026-10-12): you may modify `scripts/scholar_backends/`, `scripts/scholar_search.py` (core changes only when checklist item SB6 applies) and `tests/python/test_scholar_search.py` with its fixtures. Inside `scholar_search.py` and `scholar_backends/_common.py`, the **protected core regions** (the spend gate, the duplicate guard, restricted routing and split storage, the secret-guard call sites, the POST retry/redirect rules in `Http`, and the `verify` rule layer) may be changed only when the orchestrator names them explicitly in the dispatch, and the safety tests must stay green. Safety-critical scripts stay off-limits in every scope (`run_with_capture.sh`, the `web_retrieval_common.py` guards, anything `bash-safety`-related); any other `scripts/` change needs the orchestrator to name it in scope.
+- Make a paid call unless the dispatch carries the user's approval for that call. A **paid call** is any call that can draw on a plan's usage or credits; today: `elicit-report`, `elicit-resume --confirm-spend` (it restarts paused paid work), `elicit-search`, `find --backends …elicit…` (its Elicit leg is a search), and `scite-search` on a licensed key. Keyless and free calls are not paid calls: `elicit-usage`, a plain `elicit-resume` (a status read), `scite-tally`, `retractions`, and OpenAlex calls within the daily budget
 - Create research project artifacts (that's research-executor's job)
-- Execute Python or R analysis code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python/R execution only.
+- Execute Python or R analysis code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python/R execution only. **Exception — New Scholarly Search Backend scope:** you may run the scholar_search unit tests and the `FRAMEWORK_INTEGRATION_CHECKLIST.md` § 8 CLI smoke calls, file-first: the tests as a captured script under the session's `scripts/` run with `run_with_capture.sh`, a smoke call as the checklist step itself (`scholar_search.sh`, whose MANIFEST row is the record); never interactively. Smoke calls are free calls only, unless the dispatch carries the user's approval for named paid calls (see the paid-call definition above).
 - Improvise template structure — always find and follow the canonical template
 - Skip integration checklist items without documenting why they were skipped
 - Modify files outside the orchestrator's stated scope without flagging it
@@ -354,7 +357,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT modify hook scripts.** Hook files in `.claude/hooks/` are protected by deny rules in settings.json. Even if you identify an issue, report it — do not attempt to edit.
 
-**DO NOT create research project artifacts.** Framework Development mode produces framework files (.claude/skills/, .claude/agents/, agent_reference/, user_reference/), not research project outputs (scripts/, data/, output/). If the user needs a research project, the orchestrator should escalate to Full Pipeline or Ad Hoc mode.
+**DO NOT create research project artifacts.** Framework Development mode produces framework files (.claude/skills/, .claude/agents/, agent_reference/, user_reference/), not research project outputs (scripts/, data/, output/). The one `scripts/` exception is a New Scholarly Search Backend scope (see Never Do): `scripts/scholar_backends/`, `scripts/scholar_search.py` and their tests, with the protected core regions changed only when the dispatch names them, and no paid call without the user's approval for it. If the user needs a research project, the orchestrator should escalate to Full Pipeline or Ad Hoc mode.
 
 </anti_patterns>
 

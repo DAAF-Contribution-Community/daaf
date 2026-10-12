@@ -1,0 +1,7 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 3 (keyless GET /tallies/{doi} -> 404, 2026-10-11); values invented except the vendor's error message, which is measured behavior.",
+  "http_status": 404,
+  "body": {
+    "detail": "Tally not found"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 2, restricted raw requests[0] (keyless GET /papers/{doi}, 2026-10-11: no tally key; notices carry status/date/noticeDoi/doi and no urls; the five native notice statuses are the measured vocabulary); values invented (DOIs under 10.5555/, title, authors, slugs, IDs, dates). Every live key is kept; the 12 keys (14 key paths) the first version dropped (id, issns, issue, journalSlug, memberId, normalizedTypes, page, preprintLinks, publicationLinks, publisher, shortJournal, volume) were added 2026-10-12 with invented values of the live type (key paths listed by session script 29, which prints no live value).",
+  "doi": "10.5555/synth.1998",
+  "title": "RETRACTED: A Synthetic Trial That Was Later Withdrawn",
+  "year": 2008,
+  "slug": "retracted-a-synthetic-trial-that-was-later-withdrawn-Qr7St8",
+  "type": "journal-article",
+  "journal": "Synthetic Medical Letters",
+  "retracted": true,
+  "authors": [
+    {
+      "family": "Placeholder",
+      "given": "Bo",
+      "affiliation": "Institute of Invented Research",
+      "authorSlug": "bo-placeholder-Lm3No4",
+      "authorName": "Bo Placeholder",
+      "authorID": "1000002",
+      "authorSequenceNumber": 1,
+      "affiliationSlug": "institute-of-invented-research-Pq5R",
+      "affiliationID": "2000002"
+    },
+    {
+      "family": "Sample",
+      "given": "Cy",
+      "affiliation": "Institute of Invented Research",
+      "authorSlug": "cy-sample-Uv6Wx7",
+      "authorName": "Cy Sample",
+      "authorID": "1000003",
+      "authorSequenceNumber": 2,
+      "affiliationSlug": "institute-of-invented-research-Pq5R",
+      "affiliationID": "2000002"
+    }
+  ],
+  "editorialNotices": [
+    {
+      "status": "Retracted",
+      "date": "2012-4-3",
+      "noticeDoi": "10.5555/synth.notice.1",
+      "doi": "10.5555/synth.1998"
+    },
+    {
+      "status": "Has correction",
+      "date": "2009-5-1",
+      "noticeDoi": "10.5555/synth.notice.2",
+      "doi": "10.5555/synth.1998"
+    },
+    {
+      "status": "Has erratum",
+      "date": "2009-5",
+      "noticeDoi": "10.5555/synth.notice.2",
+      "doi": "10.5555/synth.1998"
+    },
+    {
+      "status": "Has expression of concern",
+      "date": "2011-9",
+      "noticeDoi": "10.5555/synth.notice.3",
+      "doi": "10.5555/synth.1998"
+    },
+    {
+      "status": "Comment",
+      "date": "2008-6",
+      "noticeDoi": "10.5555/synth.notice.4",
+      "doi": "10.5555/synth.1998"
+    },
+    {
+      "status": "Comment",
+      "date": "2008-7",
+      "noticeDoi": "10.5555/synth.notice.5",
+      "doi": "10.5555/synth.1998"
+    }
+  ],
+  "id": 900000002,
+  "issns": ["0000-0002"],
+  "issue": "7",
+  "journalSlug": "synthetic-medical-letters-Gh6Ij7",
+  "memberId": 99902,
+  "normalizedTypes": ["synthetic-type"],
+  "page": "640-647",
+  "preprintLinks": [],
+  "publicationLinks": [],
+  "publisher": "Invented Medical Press",
+  "shortJournal": "Synth Med Lett",
+  "volume": "351"
+}

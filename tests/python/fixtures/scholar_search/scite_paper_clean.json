@@ -1,0 +1,37 @@
+{
+  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 2, restricted raw requests[1] (keyless GET /papers/{doi}, 2026-10-11: no tally key, empty editorialNotices); values invented (DOI under 10.5555/, title, author, slugs, IDs). Every live key is kept; the 13 keys (15 key paths) the first version dropped (abstract, id, issns, issue, journalSlug, keywords, memberId, normalizedTypes, page, preprintLinks, publicationLinks, publisher, volume) were added 2026-10-12 with invented values of the live type (key paths listed by session script 29, which prints no live value).",
+  "doi": "10.5555/synth.2001",
+  "title": "A Synthetic Study of Classroom Practice Used Only as a Test Fixture",
+  "year": 2019,
+  "slug": "a-synthetic-study-of-classroom-practice-Ab1Cd2",
+  "type": "journal-article",
+  "journal": "Journal of Synthetic Examples",
+  "retracted": false,
+  "authors": [
+    {
+      "family": "Example",
+      "given": "Ada",
+      "affiliation": "Example University",
+      "authorSlug": "ada-example-Xy12Zz",
+      "authorName": "Ada Example",
+      "authorID": "1000001",
+      "authorSequenceNumber": 1,
+      "affiliationSlug": "example-university-Ab1C",
+      "affiliationID": "2000001"
+    }
+  ],
+  "editorialNotices": [],
+  "abstract": "An invented abstract for a synthetic test fixture. It describes no real study.",
+  "id": 900000001,
+  "issns": ["0000-0001"],
+  "issue": "3",
+  "journalSlug": "journal-of-synthetic-examples-Jk4Lm5",
+  "keywords": [],
+  "memberId": 99901,
+  "normalizedTypes": ["synthetic-type"],
+  "page": "101-115",
+  "preprintLinks": [],
+  "publicationLinks": [],
+  "publisher": "Example Publishing House",
+  "volume": "42"
+}

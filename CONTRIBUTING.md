@@ -485,15 +485,16 @@ DAAF's components are wired together at many small registration points -- an age
 | If you are changing... | Registration points (see the checklist) | Tests to run |
 |------------------------|------------------------------------------|--------------|
 | A **data source or methodology skill** | § 1 (S1-S10 new / SM1-SM6 modify) | The skill sequence under [Testing Your Changes](#testing-your-changes): Data Discovery, Fetch, and Context tests |
-| An **agent** protocol | § 2 (A1-A16 / AM1-AM5) -- incl. the agent index, coordination matrix, and root-README count | Dependency-chain trace, run the affected stage, gate-satisfaction check, ideally a full pipeline |
+| An **agent** protocol | § 2 (A1-A16 / AM1-AM6) -- incl. the agent index, coordination matrix, and root-README count | Dependency-chain trace, run the affected stage, gate-satisfaction check, ideally a full pipeline |
 | An **engagement mode** | § 3 (M1-M21 / MM1-MM6) -- the largest surface: orchestrator SKILL.md, BOUNDARIES, user docs, disclosure reference | A full pipeline that exercises the mode, including its confirmation gate |
 | A **reference file** in `agent_reference/` | § 4 (R1-R6 / RM1-RM4) -- CLAUDE.md table plus every "When to Read" trigger | Link and cross-reference checks; render the Markdown |
 | A **hook** (`.claude/hooks/`) | § 5 (H1-H5) -- note hooks are human-deployed (deny-protected) | The safety regression batteries `bash scripts/test_safety_hooks.sh` and `bash scripts/test_enforce_single_command.sh`, plus both allow and block scenarios |
-| A **host-facing script** (`scripts/host/`) | § 6 (HS1-HS11) -- install lists, updater filter, CI smoke lists, `.sh`/`.ps1` parity | `bats tests/bash/`, Pester, `shellcheck`, `PSScriptAnalyzer`, and `bash tests/lint/check-daaf-conventions.sh` (all run in CI) |
+| A **host-facing script** (`scripts/host/`) | § 6 (HS1-HS12 / HSM1-HSM5) -- install lists, updater filter, CI smoke lists, `.sh`/`.ps1` parity | `bats tests/bash/`, Pester, `shellcheck`, `PSScriptAnalyzer`, and `bash tests/lint/check-daaf-conventions.sh` (all run in CI) |
 | The **provider shim** (`scripts/provider_shim/`) | § 7 (P1-P11 / PM1-PM6) -- `/health` schema, `SHIM_*` env-var lockstep, `SHIM_VERSION` bump | Production-path shim tests, lifecycle Bats, route/provenance and deploy-smoke self-tests; package smoke when Docker pins change; after deployment, Tier 0 + Tier 1 and strict `/health` version confirmation; privacy-safe live image validation before a ChatGPT compatibility claim |
+| A **scholarly search backend** (`scripts/scholar_backends/`) | § 8 (SB1-SB17 / SBM1-SBM7) -- adapter registry, license class and `restricted/` storage, skill tables, env template and key docs; procedure in the `scholarly-search` skill's `adding-a-backend.md` | `python3 -m unittest discover -s tests/python -p "test_scholar_search.py"`, `bats tests/bash/environment_settings_example.bats` for a keyed source, and one cheap live call through the CLI |
 | A **deployment / provider configuration** (API key, model remap, base URL) | Route/env coherence | deploy-smoke Tier 0 (free preflight), adding Tier 1/2 as needed (Tier 2 ≈ $0.60-3.00) |
 | **Documentation only** | -- | Read it aloud, check links and cross-references, render the Markdown |
-| **Any of the above** | § 8 cross-cutting (CC1-CC8) | Sweep for stale count words, broken cross-references, naming drift, and stale examples/templates |
+| **Any of the above** | § 9 cross-cutting (CC1-CC8) | Sweep for stale count words, broken cross-references, naming drift, and stale examples/templates |
 
 Two zero-cost batteries are worth knowing regardless of what you touched: the deployment smoke suite's **Tier D** deterministic battery (bats, Pester, lint, and safety-hook tests) and the conventions linter both run without any provider cost, and both run in CI on every push that touches a script.
 
