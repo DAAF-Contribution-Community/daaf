@@ -1765,10 +1765,11 @@ _color_for() {
     ctx_re=$(sed -n "s/^gpt_flagship_re='\(.*\)'\$/\1/p" "$context_bar_sh")
     [ -n "$bar_re" ]
     [ "$bar_re" = "$ctx_re" ]
-    # And it is the approved 2026-09-29 grammar.
-    [ "$bar_re" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$' ]
+    # And it is the approved 2026-09-29 grammar plus the 2026-10-12 gpt-6.1-sol
+    # alternative (user policy decision; one exact alternative, no wildcard).
+    [ "$bar_re" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
     run sed -n "s/^gpt_extended_re='\(.*\)'\$/\1/p" "$SUBAGENT_BAR_SH"
-    assert_output '^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$'
+    assert_output '^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 }
 
 @test "dotted anthropic/claude-opus-5.5 row: 250k NOMINAL, 300k ELEVATED -- extended-horizon profile" {
@@ -2004,6 +2005,114 @@ _color_for() {
     done
 }
 
+# 2026-10-12 GPT-6.1 Sol registration (USER POLICY DECISION, not validation):
+# gpt-6.1-sol, with an optional -pro and then an optional [1m], reads exactly as
+# gpt-6-sol — 1.05M window (OpenRouter openai/gpt-6.1-sol fetched 2026-10-12),
+# inferred 919k ChatGPT-lane cap (lane ceiling pending measurement), extended
+# tier, measured-input participation. No gpt-6.1-* wildcard.
+
+@test "gpt-6.1-sol rows (bare, provider-prefixed, [1m], -pro) map to 1.05M and use the extended tier" {
+    local model row tokens expected pct
+    for model in gpt-6.1-sol openai/gpt-6.1-sol 'gpt-6.1-sol[1m]' 'openrouter/openai/gpt-6.1-sol[1m]' \
+                 gpt-6.1-sol-pro 'gpt-6.1-sol-pro[1m]'; do
+        for row in \
+            "299000 NOMINAL 28" \
+            "300000 ELEVATED 28" \
+            "400000 HIGH 38" \
+            "500000 CRITICAL 47"; do
+            read -r tokens expected pct <<< "$row"
+            _iso_sonnet_row_fixture "$model"
+            run _iso_row t1 "$tokens"
+            assert_success
+            assert_output --partial "$(_color_for "$expected")"
+            assert_output --partial "m${pct}%"
+        done
+    done
+}
+
+@test "gpt-6.1-sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local row tokens expected pct
+    for row in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected pct <<< "$row"
+        rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+        _iso_seed_window 400000
+        _iso_seed_session_model "gpt-6.1-sol[1m]"
+        _iso_seed_task_model t1 "gpt-6.1-sol[1m]"
+        run _iso_row t1 "$tokens"
+        assert_success
+        assert_output --partial "$(_color_for "$expected")"
+        assert_output --partial "m${pct}%"
+    done
+}
+
+@test "chatgpt lane caps gpt-6.1-sol rows at 919k" {
+    local model
+    for model in gpt-6.1-sol 'gpt-6.1-sol[1m]' gpt-6.1-sol-pro; do
+        _iso_sonnet_row_fixture "$model"
+        _append_subbar_usage t1 111000
+        run _iso_row t1 111000 DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+        assert_success
+        # 111000 / 919000 = 12% (1.05M uncapped would be 10%).
+        assert_output --partial "m12%"
+        refute_output --partial "context pending"
+    done
+}
+
+@test "measured input: gpt-6.1-sol participates; GPT-6.1 near misses do not" {
+    export DAAF_PROVIDER_SHIM=openai
+    local mode model
+    for mode in chatgpt openai; do
+        for model in gpt-6.1-sol 'openrouter/openai/gpt-6.1-sol[1m]' gpt-6.1-sol-pro; do
+            _measured_child "$model"
+            run env SHIM_BACKEND_MODE="$mode" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+            assert_success
+            assert_output --partial '70k'
+            refute_output --partial 'm24'
+        done
+        for model in gpt-6.1-luna gpt-6.1-sol-mini 'gpt-6.1-sol[1m]-pro' gpt-6x1-sol; do
+            _measured_child "$model"
+            run env SHIM_BACKEND_MODE="$mode" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+            assert_success
+            assert_output --partial 'm24'
+            refute_output --partial '70k'
+        done
+    done
+}
+
+@test "GPT-6.1 near misses stay conservative on the generic 200k row window (no 919k cap)" {
+    local model
+    for model in gpt-6.1-luna gpt-6.1-astra gpt-6.1 gpt-6.1-sol-mini gpt-6.1-sol-chat \
+                 gpt-6.1-sol-pro-x gpt-6.10-sol gpt-6x1-sol xgpt-6.1-sol; do
+        _iso_sonnet_row_fixture "$model" 1000000
+        run _iso_row t1 90000 DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+        assert_success
+        # 90k / 200k = 45% -> conservative ELEVATED (extended would be NOMINAL;
+        # 919k or 1.05M would be 9% / 8%).
+        assert_output --partial "m45%"
+        assert_output --partial "$COLOR_ELEVATED"
+    done
+}
+
+@test "malformed GPT-6.1 Sol [1m] ids map to 200k, not the generic 1M [1m] arm" {
+    # Family pre-filter now includes gpt-6.1-sol, so these agree with the
+    # reporter and context-bar (200k). 90k / 200k = 45% ELEVATED.
+    local model
+    for model in 'gpt-6.1-sol[1m]-pro' 'gpt-6.1-sol-mini[1m]' 'openai/gpt-6.1-sol[1m]-x'; do
+        _iso_sonnet_row_fixture "$model"
+        run _iso_row t1 90000
+        assert_success
+        assert_output --partial "m45%"
+        assert_output --partial "$COLOR_ELEVATED"
+        refute_output --partial "m9%"
+    done
+}
+
 # Cross-script window agreement (review fix 2026-09-29). subagent-bar.sh's
 # static_window_for_model (extracted and evaluated with its own EREs) must return
 # exactly the window context-bar.sh's static map caches for the same id (no
@@ -2039,6 +2148,10 @@ _ctxbar_static_window() {
         'openai/gpt-6-luna[1m]-pro 200000' \
         'gpt-6-sol-pro[1m] 1050000' \
         'openai/gpt-6-luna 1050000' \
+        'gpt-6.1-sol 1050000' \
+        'gpt-6.1-sol-pro[1m] 1050000' \
+        'gpt-6.1-sol[1m]-pro 200000' \
+        'gpt-6.1-luna 200000' \
         'gpt-5.6-mini[1m] 400000' \
         'gpt-5.6-chat 128000'; do
         read -r model expected <<< "$row"

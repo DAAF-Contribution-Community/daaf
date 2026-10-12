@@ -132,6 +132,14 @@ expected = {
     "gpt-6-sol-pro[1m]x": None,
     "gpt-6-astra[1m]x": None,
     "xgpt-6-sol": None,
+    # USER POLICY DECISION 2026-10-12 (not validation): gpt-6.1-sol reads as
+    # gpt-6-sol; one exact alternative, no gpt-6.1-* wildcard.
+    "gpt-6.1-sol": 1050000,
+    "openai/gpt-6.1-sol": 1050000,
+    "gpt-6.1-sol-pro[1m]": 1050000,
+    "gpt-6.1-luna": None,
+    "gpt-6.1-sol-mini": None,
+    "gpt-6x1-sol": None,
 }
 for model_id, want in expected.items():
     got = _gpt_physical_window(model_id)
@@ -139,7 +147,7 @@ for model_id, want in expected.items():
 print(f"GPT physical mapping: {len(expected)}/{len(expected)} cases passed")
 '
     assert_success
-    assert_output "GPT physical mapping: 40/40 cases passed"
+    assert_output "GPT physical mapping: 46/46 cases passed"
 }
 
 @test "route diagnostic enforces canonical decimal and every effective GPT selector (incl. default, haiku, fable)" {
@@ -237,6 +245,9 @@ cases = [
     ("ChatGPT effort-suffixed gpt-6-astra above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-astra[1m]#xhigh", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
     ("retired gpt-6-terra is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-terra", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter gpt-6-sol keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    # USER POLICY DECISION 2026-10-12: gpt-6.1-sol takes the same inferred lane cap.
+    ("ChatGPT gpt-6.1-sol above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6.1-sol at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
     # 2026-10-12 four-tier alias coverage: HAIKU/FABLE slots get the same window
     # scrutiny as OPUS/SONNET, and the soft ANTHROPIC_DEFAULT_MODEL is a selector.
     ("ChatGPT gpt-6-luna haiku remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-6-luna[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
@@ -255,5 +266,5 @@ for label, env, want in cases:
 print(f"route and model controls: {len(cases)}/{len(cases)} cases passed")
 '
     assert_success
-    assert_output "route and model controls: 29/29 cases passed"
+    assert_output "route and model controls: 31/31 cases passed"
 }

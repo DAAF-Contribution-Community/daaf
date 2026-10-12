@@ -2376,9 +2376,13 @@ class RealShim(AbstractContextManager["RealShim"]):
         *,
         port_selector: Optional[Callable[[], int]] = None,
         env_overrides: Optional[dict[str, str]] = None,
+        backend_base_url_template: str = "{base}",
     ) -> None:
         if mode not in {"openai", "chatgpt"}:
             raise ValueError(f"unsupported shim mode: {mode}")
+        if "{base}" not in backend_base_url_template:
+            raise ValueError("backend_base_url_template must contain {base}")
+        self._backend_base_url_template = backend_base_url_template
         overrides = dict(env_overrides or {})
         rejected = set(overrides) - self._TEST_ENV_OVERRIDE_NAMES
         if rejected:
@@ -2503,6 +2507,14 @@ class RealShim(AbstractContextManager["RealShim"]):
             # Apply only the narrow, constructor-validated behavior knobs. Backend,
             # credential, proxy, port, and auth-store defaults remain fixed by the rig.
             env.update(self._env_overrides)
+            # v1.4.7: base-URL normalization tests hand the shim a "pasted" form of
+            # the loopback URL (whitespace, trailing "/" or "/responses"). The
+            # template only decorates the rig's own loopback URL and is re-checked.
+            pasted_base_url = self._backend_base_url_template.format(
+                base=self.backend_base_url
+            )
+            _assert_loopback_url(pasted_base_url.strip())
+            env["SHIM_BACKEND_BASE_URL"] = pasted_base_url
 
             # The reserve/release/start sequence has an unavoidable test-only bind
             # race. Retry at most twice, and only when uvicorn's captured startup

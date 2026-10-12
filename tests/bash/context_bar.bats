@@ -1544,6 +1544,56 @@ JSON
     done
 }
 
+# =========================================================================
+# 2026-10-12 GPT-6.1 Sol registration (USER POLICY DECISION, not validation):
+# gpt-6.1-sol, with an optional -pro and then an optional [1m], reads exactly as
+# gpt-6-sol (1.05M window per OpenRouter openai/gpt-6.1-sol fetched 2026-10-12;
+# 919k ChatGPT-lane cap inferred, lane ceiling pending measurement). One exact
+# alternative, no gpt-6.1-* wildcard.
+# =========================================================================
+
+@test "gpt-6.1-sol slugs map to the 1,050,000 window" {
+    local model
+    for model in gpt-6.1-sol 'gpt-6.1-sol[1m]' openai/gpt-6.1-sol \
+                 'openrouter/openai/gpt-6.1-sol[1m]' gpt-6.1-sol-pro 'gpt-6.1-sol-pro[1m]'; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        run cat "$CTX_CACHE"
+        assert_output "1050000"
+    done
+}
+
+@test "GPT-6.1 near misses stay on the ordinary 200k default" {
+    local model
+    for model in gpt-6.1-luna gpt-6.1-astra gpt-6.1 gpt-6.1-sol-mini gpt-6.1-sol-chat \
+                 'gpt-6.1-sol[1m]-pro' gpt-6.1-sol-pro-x gpt-6.10-sol gpt-6x1-sol xgpt-6.1-sol; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 1050k tokens"
+    done
+}
+
+@test "chatgpt lane caps gpt-6.1-sol at 919,000 and leaves GPT-6.1 near misses uncapped" {
+    local model
+    for model in gpt-6.1-sol 'gpt-6.1-sol[1m]' 'gpt-6.1-sol-pro[1m]'; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 919k tokens"
+        run cat "$CTX_CACHE"
+        assert_output "919000"
+    done
+    for model in gpt-6.1-luna 'gpt-6.1-sol[1m]-pro' gpt-6x1-sol; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        refute_output --partial "of 919k tokens"
+    done
+}
+
 @test "context-bar seeds the main-session model cache with the RAW dotted Claude id" {
     # context-bar.sh deliberately does NOT normalize provider-dotted Claude ids
     # (it has no Claude window arm and applies no quality tier). Its

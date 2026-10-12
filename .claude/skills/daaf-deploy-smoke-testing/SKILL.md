@@ -1,7 +1,7 @@
 ---
 name: daaf-deploy-smoke-testing
 description: >-
-  In-situ smoke testing that verifies a LIVE DAAF deployment works end-to-end in its configured provider route. Use for normal Auto Mode/classifier acceptance too. Auto-detects the active install route (anthropic-subscription, openrouter, chatgpt-subscription shim, openai-api shim) and runs tiered probes: Tier 0 free preflight (route/env coherence, hooks, statuslines, shim health); Tier 1 one live round-trip (~cents); Tier 2 six functional probes (dispatch, coding, web, skills, isolation, nesting); Tier D a zero-cost deterministic battery (bats, Pester, lint, safety-hook tests). Use after install, after a rebuild/update, after any provider/config change (API key, model remap, shim), for pre-release validation, or when asked "is my install working" or to "smoke test the deployment/config." Contributor tool; needs the DAAF_DEV=1 dev image. NOT DAAFBench (model behavioral-adherence evaluation under benchmarks/) and NOT scripts/smoke_tests/ (R/Python library-package smoke tests).
+  In-situ smoke testing that verifies a LIVE DAAF deployment works end-to-end in its configured provider route. Also covers checking that Auto mode works. Auto-detects the active install route (anthropic-subscription, openrouter, chatgpt-subscription shim, openai-api shim) and runs tiered probes: Tier 0 free preflight (route/env coherence, hooks, statuslines, shim health); Tier 1 one live round-trip (~cents); Tier 2 six functional probes (dispatch, coding, web, skills, isolation, nesting); Tier D a zero-cost deterministic battery (bats, Pester, lint, safety-hook tests). Use after install, after a rebuild/update, after any provider/config change (API key, model remap, shim), for pre-release validation, or when asked "is my install working" or to "smoke test the deployment/config." Contributor tool; needs the DAAF_DEV=1 dev image. NOT DAAFBench (model behavioral-adherence evaluation under benchmarks/) and NOT scripts/smoke_tests/ (R/Python library-package smoke tests).
 metadata:
   audience: any-agent
   domain: research-orchestration
@@ -84,40 +84,9 @@ The suite omits `--model` on its `claude -p` probes by default, so it tests the 
 
 **Main-model preflight (T0.14).** Main selection is separate from the combined family/ceiling-hook posture in T0.2. It follows Claude Code's precedence: invocation `--model`, then `ANTHROPIC_MODEL`, then a saved settings `model` key, then `ANTHROPIC_DEFAULT_MODEL` (ignored when set to `default`, `inherit`, `opusplan` or `haiku`), then the unresolved account default (a Claude Enterprise org default, if set, is not modeled). An explicit Claude main ID stays Claude even when GPT default aliases or a GPT subagent pin exist. The short aliases `opus`/`sonnet`/`haiku`/`fable` (and their `[1m]` forms, such as the `opus[1m]` that `/model` saves) expand only through their own `ANTHROPIC_DEFAULT_<ALIAS>_MODEL`; an unmapped alias is Claude Code's built-in Claude model for that tier (family `claude`, exact ID unknown), so the shipped `opus` default PASSes on the native route and FAILs on a GPT shim route with no `ANTHROPIC_DEFAULT_OPUS_MODEL` mapping. The bounded settings projection respects `CLAUDE_CONFIG_DIR`, reports absent/malformed/unreadable/managed uncertainty, and does not emulate every client startup/policy source. PASS means configuration-compatible, not provider-accepted. Each paid profile is checked using its actual child inputs even if Tier 0 is omitted: known incompatibility blocks that profile; ordinary unknown/WARN behavior remains non-failing. No model or provider is silently repaired.
 
-## Opt-in Normal Auto Acceptance
+## Checking Auto Mode
 
-Use `scripts/deploy_smoke/run_auto_acceptance.py` when the question is specifically whether **normal Auto permission classification** works. This is a separate opt-in diagnostic, not another mandatory tier. Ordinary Tier 1/2 use `bypassPermissions` and benchmark gating; their PASS cannot certify Auto. The dedicated runner uses neither those controls nor the ordinary WARN-to-PASS report aggregator.
-
-Read `references/interpreting-results.md` § **Normal Auto acceptance** before live use. It documents consent, private capture, supported evidence, exact confirmation shapes and inconclusive outcomes. The fixed action is a single OpenSSL SHA256 of the repository's `CLAUDE.md`; there is no arbitrary-command option.
-
-For agent execution, write a **fresh flat audited launcher** inside the project's `scripts/` directory, then execute it through `run_with_capture.sh`. Do not append execution logs to maintained CLI source. A preflight-only launcher is:
-
-```python
-#!/usr/bin/env python3
-"""Free normal-Auto preflight; no live CLI child."""
-# --- Config ---
-import sys
-from pathlib import Path
-sys.dont_write_bytecode = True
-BASE_DIR = Path('/daaf')
-sys.path.insert(0, str(BASE_DIR / 'scripts/deploy_smoke'))
-from run_auto_acceptance import main
-# --- Validate ---
-# INTENT: inspect bounded configuration without inference.
-# REASONING: unknown precedence must not be certified compatible.
-# ASSUMES: the development image is active; settings remain unchanged.
-raise SystemExit(main(['--preflight-only']))
-```
-
-Execute the newly written launcher as one command, substituting its real absolute path:
-
-```bash
-bash /daaf/scripts/run_with_capture.sh /daaf/research/PROJECT/scripts/debug/NN_auto-preflight.py
-```
-
-For a separately approved live launcher, call `main(['--yes', '--retain-private-capture', '--allow-bounded-continuations'])`. These are **three independent consents**: cost, content retention (including ordinary CLI/hook records), and delegated exact-scope confirmations. Omit continuation consent to stop at any confirmation. Optional `--model MODEL` is a real invocation override, labeled overridden—not an as-configured certification. The runner checks the initialized model against an exact ID, so an as-configured start model that is an unmapped tier alias (such as the shipped `ANTHROPIC_DEFAULT_MODEL=opus`) stays inconclusive (`preflight_unresolved`, no child launched); pass `--model` to test a specific ID. `--report-dir DIR` must name a fresh repository-contained directory; an existing path is refused to prevent accidental relaunch.
-
-Bounds: **three CLI invocations total**, including at most two same-session resumes; six turns and 120 seconds per child plus five seconds for cleanup. These are not provider-call/retry ceilings. Owned stdout/stderr retention is capped; native debug is reactively monitored and its retained prefix capped, with any loss inconclusive. No inherited file-size limit is imposed on normal CLI/hook logs; external retention and peak native-debug disk use are not hard-bounded. After any attempted or ambiguous digest, live work stops without retry. Unsupported questions/new scope, denial, errors, incomplete capture and exhausted continuation budgets stop conservatively. Only `CLASSIFIER_ALLOW_PASS` exits 0; failures exit 1; preflight-only, no-consent, fast-path success and other inconclusive outcomes exit 2. A nonzero audited launcher can therefore be an expected diagnostic outcome, not a reason to relaunch.
+The ordinary Tier 1/2 probes run with `bypassPermissions`, so their PASS says nothing about Auto mode's permission classifier. To check Auto mode, run one plain session instead: `claude -p --permission-mode auto "Run this exact Bash command and report its output: openssl dgst -sha256 /daaf/CLAUDE.md"`. Then confirm three things: the command ran, there was no "cannot determine the safety" message, and (on a shim route) the shim log shows a request line containing `stream=n msgs=<N> tools=0` at that time. That pattern is a heuristic, not proof: a non-streaming request with no tools is likely a classifier request, but other housekeeping calls can match it too. See `references/interpreting-results.md` § Auto mode for what normal, denied and failed classification look like. A heavier dedicated runner (`run_auto_acceptance.py`) was built in October 2026 and parked unshipped in `research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/parked_auto_acceptance_runner/`.
 
 ## OpenRouter Multi-Profile Runs
 

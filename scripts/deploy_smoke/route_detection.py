@@ -253,9 +253,11 @@ _CANONICAL_POSITIVE_DECIMAL_RE = re.compile(r"^[1-9][0-9]*$")
 # .claude/scripts/subagent-bar.sh and .claude/scripts/context-bar.sh; a lockstep
 # test in tests/python/test_deploy_smoke.py compares them. Apply it with
 # fullmatch (see _gpt_physical_window). The GPT-6 Sol/Luna and flagship -pro
-# members come from a USER POLICY DECISION of 2026-09-29, not validation.
+# members come from a USER POLICY DECISION of 2026-09-29, and the GPT-6.1 Sol
+# member (one exact alternative, no gpt-6.1-* wildcard) from one of 2026-10-12;
+# neither is a validation.
 _GPT_FLAGSHIP_RE = re.compile(
-    r"^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$"
+    r"^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$"
 )
 
 
@@ -506,8 +508,9 @@ def _gpt_physical_window(model_id: str):
         if "-chat" in slug:
             return 128000
         return 1050000
-    # GPT-6 flagships: gpt-6-astra, gpt-6-sol and gpt-6-luna, each optionally
-    # followed by '-pro' and then '[1m]', are 1,050,000-token models. They are
+    # GPT-6 flagships: gpt-6-astra, gpt-6-sol, gpt-6-luna and gpt-6.1-sol, each
+    # optionally followed by '-pro' and then '[1m]', are 1,050,000-token models
+    # (gpt-6.1-sol per OpenRouter openai/gpt-6.1-sol, fetched 2026-10-12). They are
     # matched by the closed-set flagship grammar shared verbatim with
     # context-reporter.sh (GPT_FLAGSHIP_RE), subagent-bar.sh and context-bar.sh
     # (gpt_flagship_re); the grammar is used unmodified so the lockstep test can
@@ -540,7 +543,9 @@ def _gpt_physical_window(model_id: str):
     # decision gpt-6-sol reads as gpt-5.6-sol, gpt-6-luna reads as gpt-5.6-luna,
     # and every flagship '-pro' reads as its non-pro base. Their 1,050,000 window
     # matches the OpenRouter catalogue fetched 2026-09-29. Their 919000 lane cap
-    # is INFERRED from the Sol/Astra measurements, not measured.
+    # is INFERRED from the Sol/Astra measurements, not measured. gpt-6.1-sol
+    # (USER POLICY DECISION 2026-10-12) reads as gpt-6-sol on the same terms;
+    # its ChatGPT-lane ceiling is pending measurement.
     if _GPT_FLAGSHIP_RE.fullmatch(slug.split("#", 1)[0]):
         return 1050000
     if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
@@ -1135,8 +1140,8 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     lane, any selector mapped to the runtime's anchored GPT flagship physical
     family makes the 919000 ceiling relevant. That family is gpt-5.4/5.5/5.6 plus
     gpt-6-astra, and also gpt-6-sol, gpt-6-luna and the flagship -pro forms under
-    the 2026-09-29 user policy decision, where the cap is inferred rather than
-    measured.
+    the 2026-09-29 user policy decision and gpt-6.1-sol under the 2026-10-12 one,
+    where the cap is inferred rather than measured.
     Numeric declarations use the same canonical positive signed-64-bit contract
     as the Bash consumers.
     """

@@ -830,7 +830,8 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
         # Parallels the bats "GPT physical-family classifier" battery. The GPT-6
         # flagships gpt-6-astra, gpt-6-sol and gpt-6-luna, each with an optional
         # '-pro' and then an optional '[1m]', map to 1,050,000. The Sol/Luna and
-        # '-pro' members come from the USER POLICY DECISION of 2026-09-29, not
+        # '-pro' members come from the USER POLICY DECISION of 2026-09-29, and
+        # gpt-6.1-sol from that of 2026-10-12, not
         # validation. Bare 'gpt-6', the retired 'gpt-6-terra', GPT-6 mini/chat, and
         # right- or left-boundary text are near misses and map to None.
         expected = {
@@ -873,6 +874,23 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
             "gpt-6-astra[1m]#xhigh": 1050000,
             "gpt-6-sol[1m]#medium": 1050000,
             "openai/gpt-6-luna-pro#high": 1050000,
+            # 2026-10-12 policy registration: gpt-6.1-sol reads as gpt-6-sol
+            "gpt-6.1-sol": 1050000,
+            "gpt-6.1-sol[1m]": 1050000,
+            "openai/gpt-6.1-sol": 1050000,
+            "gpt-6.1-sol-pro": 1050000,
+            "gpt-6.1-sol-pro[1m]": 1050000,
+            "gpt-6.1-sol[1m]#max": 1050000,
+            # GPT-6.1 near misses: one exact alternative, no gpt-6.1-* wildcard,
+            # and the '.' is literal (gpt-6x1-sol)
+            "gpt-6.1-luna": None,
+            "gpt-6.1-astra": None,
+            "gpt-6.1": None,
+            "gpt-6.1-sol-mini": None,
+            "gpt-6.1-sol[1m]-pro": None,
+            "gpt-6.10-sol": None,
+            "gpt-6x1-sol": None,
+            "xgpt-6.1-sol": None,
             # near misses
             "gpt-6": None,
             "gpt-6-terra": None,

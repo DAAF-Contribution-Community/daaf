@@ -63,6 +63,23 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.7 (2026-10-12): Institutional-gateway robustness. SHIM_BACKEND_BASE_URL is
+#     trimmed, an empty value falls back to the lane default, trailing "/" is dropped,
+#     and a pasted ".../responses" suffix is stripped with one startup WARNING (the
+#     shim appends /responses itself). /health "backend" reports the normalized URL;
+#     the API key is still never logged. The permissive GET .../models listing
+#     (_handle_models) also advertises openai/gpt-6-sol, openai/gpt-6-luna and
+#     openai/gpt-6.1-sol. No other behavior change.
+#   v1.4.6 (2026-09-21): Worker-aware conversation routing (stable per session and
+#     worker routing hints for concurrent Claude Code workers).
+#   v1.4.5 (2026-09-20): Non-streaming recovery: completed output items are no longer
+#     lost, and explicit refusal evidence is preserved through validation.
+#   v1.4.4 (2026-09-17): Fail-fast guard on runaway whitespace outside JSON strings in
+#     streamed tool arguments (256-character limit).
+#   v1.4.3 (2026-09-17): Live stream-interruption diagnostics revision.
+#     Details for 1.4.3-1.4.6 are in the project research notes under
+#     research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/ (STATE_2026-09-17_*,
+#     STATE_2026-09-20_*, STATE_2026-09-21_*).
 #   v1.4.2 (isolated draft, 2026-09-15): Support documented hosted search,
 #     open_page and find_in_page sequences without inventing ranked page results.
 #     Page actions retain typed inputs and explicit provenance text; optional absent
@@ -1049,6 +1066,8 @@
 #                           https://chatgpt.com/backend-api/codex. An explicit env
 #                           value overrides the mode default in either lane. The
 #                           Responses endpoint is always {base}/responses.
+#                           v1.4.7: trimmed; empty = default; a trailing "/" or
+#                           pasted "/responses" suffix is stripped.
 #   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY. Used only in openai
 #                           mode; ignored in chatgpt mode (the OAuth access_token
 #                           is the Bearer there).
@@ -1156,7 +1175,7 @@ import uvicorn
 # cancellation. Replay expires after 30 minutes or cache eviction/process restart.
 # Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
 # No new health fields, env controls, backend lanes or persistent search caches.
-SHIM_VERSION = "1.4.6"
+SHIM_VERSION = "1.4.7"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1228,9 +1247,23 @@ _BACKEND_BASE_URL_DEFAULTS = {
     "openai": "https://api.openai.com/v1",
     "chatgpt": "https://chatgpt.com/backend-api/codex",
 }
-SHIM_BACKEND_BASE_URL = os.environ.get(
-    "SHIM_BACKEND_BASE_URL", _BACKEND_BASE_URL_DEFAULTS[SHIM_BACKEND_MODE]
+# v1.4.7: normalize a user-pasted gateway URL. INTENT: accept the forms people copy
+#   from a provider's docs. REASONING: env_file values keep stray whitespace, a
+#   trailing "/" would yield "//responses", and a pasted ".../v1/responses" would
+#   yield ".../responses/responses"; an empty value now means "use the default".
+# ASSUMES: no OpenAI-compatible base URL legitimately ends in "/responses".
+SHIM_BACKEND_BASE_URL = (
+    os.environ.get("SHIM_BACKEND_BASE_URL", "").strip()
+    or _BACKEND_BASE_URL_DEFAULTS[SHIM_BACKEND_MODE]
 ).rstrip("/")
+_backend_base_url_warn = None
+if SHIM_BACKEND_BASE_URL.lower().endswith("/responses"):
+    SHIM_BACKEND_BASE_URL = SHIM_BACKEND_BASE_URL[: -len("/responses")].rstrip("/")
+    # Deferred like _backend_mode_warn: `log` is configured further down.
+    _backend_base_url_warn = (
+        "SHIM_BACKEND_BASE_URL ended in /responses; stripped that suffix because "
+        "the shim appends /responses itself (using backend=%s)" % SHIM_BACKEND_BASE_URL
+    )
 # API key is read from env and never logged. Default to OPENAI_API_KEY. Used only
 # in openai mode; in chatgpt mode the OAuth access_token (from auth.json) is the
 # Bearer and this value is ignored.
@@ -2976,6 +3009,9 @@ log = logging.getLogger("shim")
 # invalid value; silent for a valid one.
 if _backend_mode_warn is not None:
     log.warning(_backend_mode_warn)
+# v1.4.7: one-time notice for a base URL pasted with a trailing /responses.
+if _backend_base_url_warn is not None:
+    log.warning(_backend_base_url_warn)
 
 # v1.3.3 (A2-R3): emit the deferred reasoning-cache restore line now that `log` exists.
 # The restore itself ran at import above (before logging was configured). Silent when
@@ -8484,6 +8520,9 @@ async def _handle_models(send):
         {"type": "model", "id": "openai/gpt-5.6-sol", "display_name": "gpt-5.6-sol"},
         {"type": "model", "id": "openai/gpt-5.5", "display_name": "gpt-5.5"},
         {"type": "model", "id": "openai/gpt-6-astra", "display_name": "gpt-6-astra"},
+        {"type": "model", "id": "openai/gpt-6-sol", "display_name": "gpt-6-sol"},
+        {"type": "model", "id": "openai/gpt-6-luna", "display_name": "gpt-6-luna"},
+        {"type": "model", "id": "openai/gpt-6.1-sol", "display_name": "gpt-6.1-sol"},
     ]})
 
 

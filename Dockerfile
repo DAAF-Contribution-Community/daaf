@@ -1214,7 +1214,11 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # a pin before 2.1.280 resolves the same `opus` to an earlier Opus. Every
 # Claude Code version bump must re-check what the `opus` alias resolves to (and
 # the Opus 5.5 default named in user_reference/01_installation_and_quickstart.md
-# and user_reference/07_faq_technical.md). 2.1.276 is the HARD
+# and user_reference/07_faq_technical.md), and must re-check that Auto mode
+# still works on a provider-shim route: shim routes rely on Claude Code's
+# client-side classifier fallback, which a third party reports may be removed in
+# releases after 2026-10-23 (see the deploy-smoke skill's interpreting-results.md
+# § Auto mode). 2.1.276 is the HARD
 # MINIMUM for any shim-lane install:
 # three separate `ANTHROPIC_BASE_URL` gateway/proxy regressions landed in
 # 2.1.265 (Artifact-tool input-schema regex -> HTTP 400, fixed 2.1.268;

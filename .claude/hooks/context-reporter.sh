@@ -7,7 +7,7 @@
 # thresholds are quality-tier conditional: Fable/Mythos and Opus 5.5 (user
 # policy decision 2026-09-23) use 30%/40%/50% OR
 # 300k/400k/500k; the exact extended-horizon GPT ids (GPT 5.6 Sol, GPT-6
-# Astra, GPT-6 Sol, and their flagship -pro forms) use 60%/75%/90% OR
+# Astra, GPT-6 Sol, GPT-6.1 Sol, and their flagship -pro forms) use 60%/75%/90% OR
 # 300k/400k/500k; all other models use 40%/60%/75%
 # OR 150k/200k/250k, whichever fires first; see calculate() below).
 #
@@ -72,7 +72,9 @@
 #   POLICY DECISION of 2026-09-29 (not validation), gpt-6-sol and the flagship
 #   -pro form of all three (e.g. gpt-6-sol-pro[1m]) join that GPT tier
 #   (GPT_EXTENDED_RE); provenance:
-#   research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames. Provider
+#   research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames. By USER POLICY
+#   DECISION of 2026-10-12 (not validation), gpt-6.1-sol (and its -pro form)
+#   joins it on the same terms as gpt-6-sol. Provider
 #   paths are accepted only when one of those exact slugs is the final path
 #   segment. All other models (every Opus model except Opus 5.5 — see below —,
 #   Sonnet, other GPT variants including GPT-6 Luna, GLM, unknown/empty) get
@@ -321,15 +323,22 @@ INJECT_INTERVAL=60  # seconds between injections
 # gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry):
 # web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
 # workspace. Capping at 919k can only make a reading more conservative.
+# USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (one exact
+# alternative, optional -pro and [1m]) is treated identically to gpt-6-sol —
+# 1,050,000 window, inferred 919k ChatGPT-lane cap (lane ceiling pending
+# measurement), extended quality tier. Window per OpenRouter openai/gpt-6.1-sol
+# fetched 2026-10-12
+# (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/).
+# No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
 # GPT_EXTENDED_RE is the QUALITY-TIER grammar used by calculate(), deliberately
 # narrower than the window grammar: gpt-5.6-sol and gpt-6-astra (validated),
-# plus gpt-6-sol and the -pro form of all three (policy decision above);
+# plus gpt-6-sol, gpt-6.1-sol, and the -pro form of each (policy decisions above);
 # gpt-6-luna and every Terra/Luna form keep a 1.05M window but the
 # conservative tier. Both strings are kept byte-identical with subagent-bar.sh
 # (gpt_flagship_re, gpt_extended_re) and, for the flagship grammar, with
 # context-bar.sh (lockstep tests in tests/bash/context_reporter.bats).
-GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$'
-GPT_EXTENDED_RE='^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$'
+GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
+GPT_EXTENDED_RE='^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
 # open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
@@ -418,7 +427,7 @@ static_window_for_model() {
         *)
             # gpt-5.4/5.5/5.6 family plus the GPT-6 Astra/Sol/Luna flagships
             # (broad globs select the arm; gpt-6-sol and gpt-6-luna admitted
-            # 2026-09-29 by user policy decision). Within it: the 1,050,000
+            # 2026-09-29, gpt-6.1-sol 2026-10-12, by user policy decision). Within it: the 1,050,000
             # flagship window is granted ONLY to an exact closed-set match
             # (GPT_FLAGSHIP_RE, which also accepts the flagship -pro forms);
             # mini/chat keep their smaller windows. A malformed codename that
@@ -428,7 +437,7 @@ static_window_for_model() {
             # exact flagship, so it maps conservatively to 200k instead of
             # inheriting the flagship window.
             case "$slug" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*|gpt-6.1-sol|gpt-6.1-sol[-\[]*)
                     # Closed-set classification (Convention 3): only the anchored
                     # flagship/mini/chat grammars earn a GPT window. Order
                     # flagship, then mini, then chat. Malformed suffixes that
@@ -514,8 +523,8 @@ fi
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a measured model in
 # the anchored flagship arm (Convention 3 closed set — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra, and (user policy decision 2026-09-29, not
-# measurement) gpt-6-sol, gpt-6-luna, and the flagship -pro forms, which
+# family plus gpt-6-astra, and (user policy decisions 2026-09-29 and 2026-10-12,
+# not measurement) gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and the flagship -pro forms, which
 # inherit the cap from their bases; mini/chat are excluded because they carry
 # suffixes the ERE does not accept). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
@@ -597,8 +606,8 @@ calculate() {
     # matching. Fable/Mythos keep the validated extended-horizon percentage and
     # absolute gates; the exact terminal extended-horizon GPT slugs — Sol and
     # the second registered extended-horizon model GPT-6 Astra (validated),
-    # plus GPT-6 Sol and the flagship -pro form of all three (user policy
-    # decision 2026-09-29, not validation; see GPT_EXTENDED_RE) — use 60/75/90%
+    # plus GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of each (user policy
+    # decisions 2026-09-29 and 2026-10-12, not validation; see GPT_EXTENDED_RE) — use 60/75/90%
     # percentage gates while retaining the larger absolute gates. Each is matched
     # only as the bare slug or the final segment of a provider path (the ERE is
     # tested against the provider-stripped terminal slug); left- or

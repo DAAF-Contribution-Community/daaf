@@ -312,7 +312,8 @@
 #
 # Recommended same-window GPT set on OpenRouter: openai/gpt-6-sol for FABLE and
 # OPUS, openai/gpt-6-luna for SONNET and HAIKU; openai/gpt-6-astra is a premium
-# strong option (use it for FABLE and OPUS together). Reaching Claude models
+# strong option (use it for FABLE and OPUS together), and openai/gpt-6.1-sol is a
+# newer strong option on the same terms. Reaching Claude models
 # through OpenRouter? Use the matching Claude slugs from OpenRouter's catalogue
 # (strong Claude model for FABLE / OPUS, fast one for SONNET / HAIKU). See the
 # GLM-specific global-window guidance below before mixing exact GLM and Air.
@@ -321,6 +322,16 @@
 #ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
 #ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
 #ANTHROPIC_DEFAULT_HAIKU_MODEL=your-fast-model-slug
+#
+# Optional, GPT or GLM models on OpenRouter only: if Claude Code shows a notice
+# that Auto mode "classifier requests" aren't eligible on your route, this line
+# silences it. On DAAF's pinned Claude Code version (2.1.281) the line only hides
+# the notice; DAAF has not confirmed the notice or this fix on OpenRouter itself,
+# and a future Claude Code may turn Auto mode off on such routes. Leave it unset
+# when you reach Claude models (on OpenRouter or Anthropic). Details: technical
+# FAQ, "Is Auto mode working on my GPT route?".
+# --- Optional: remove the leading '#' to silence the notice: ---
+#CLAUDE_CODE_AUTO_MODE_SERVER=0
 #
 # ONE MODEL FOR EVERYTHING? Set all four keys above to the same slug. (Older
 # DAAF docs suggested CLAUDE_CODE_SUBAGENT_MODEL for this. Since Claude Code
@@ -404,7 +415,7 @@
 # This runtime path has no supported per-model context-window override.
 #
 # GPT window sizes: the gpt-5.6 family (sol / terra / luna), gpt-6-astra,
-# gpt-6-sol, gpt-6-luna, and gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes
+# gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes
 # (flagship -pro slugs share their base's window); gpt-5.2 is 400000. DAAF keeps Claude
 # Code automatic compaction disabled, so CLAUDE_CODE_AUTO_COMPACT_WINDOW is NOT
 # an alternative declaration or protection mechanism.
@@ -415,12 +426,14 @@
 # gpt-5.5 / 5.4 / 5.2 slugs still work. DAAF's RECOMMENDED MAPPING (2026-09-29
 # user decision, not a validation run): Sol -> strong tier (FABLE + OPUS keys),
 # Luna -> fast tier (SONNET + HAIKU keys), shown with gpt-6-sol / gpt-6-luna;
-# gpt-6-astra is a premium strong-tier option (5x Sol's price).
+# gpt-6-astra is a premium strong-tier option (5x Sol's price). GPT-6.1 Sol
+# (gpt-6.1-sol) is a newer strong-tier option, set on FABLE + OPUS like Sol.
 # Context-utilization numbers are ESTIMATES on GPT sessions (OpenRouter
 # doesn't serve Claude Code's token-counting endpoint). GPT models use DAAF's
 # conservative context-quality thresholds by
 # default; exact gpt-5.6-sol and gpt-6-astra (validated), plus gpt-6-sol and the flagship -pro form of all three
-# (admitted 2026-09-29 by user policy decision, not validation) -- each optionally
+# (admitted 2026-09-29 by user policy decision, not validation) and gpt-6.1-sol
+# (admitted 2026-10-12 the same way) -- each optionally
 # [1m] and provider-prefixed -- share a profile that keeps higher absolute gates
 # while using higher percentages: 60%/300k, 75%/400k, and 90%/500k (whichever
 # fires first). gpt-6-luna, other GPT variants, and near-match variants remain
@@ -477,18 +490,30 @@
 # ----------------------------------------------------------------------------
 # 4.1 Basic shim setup (both auth lanes need these)
 # ----------------------------------------------------------------------------
-# --- To activate, remove the leading '#' on all five lines: ---
+# --- To activate, remove the leading '#' on all six lines: ---
 #DAAF_PROVIDER_SHIM=openai
 #ANTHROPIC_BASE_URL=http://127.0.0.1:4141
 #ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 #ANTHROPIC_API_KEY=
 #CLAUDE_CODE_DISABLE_FAST_MODE=1
+#CLAUDE_CODE_AUTO_MODE_SERVER=0
 #
 # The exact disable value above hides Claude Code's misleading native /fast control
 # on GPT routes. Supported Anthropic models retain native /fast. Edit this private
 # HOST file yourself: in-container DAAF code cannot access it. Recreate the
 # container and start a new Claude session after changing it; no image rebuild is
 # required for this setting.
+#
+# AUTO MODE (recommended on both shim lanes): CLAUDE_CODE_AUTO_MODE_SERVER=0
+# silences Claude Code's "classifier requests ... isn't eligible because your
+# requests go through 127.0.0.1:4141" notice. On DAAF's pinned Claude Code version
+# (2.1.281) nothing changes otherwise: Auto mode keeps working, and its safety
+# checks still run through the shim on your GPT model, exactly as before. Claude
+# Code calls this a temporary setting, and a third-party report says later Claude
+# Code releases may only offer Auto mode where the provider supports it (the shim
+# never can), so a future update may turn Auto mode off on GPT routes. DAAF
+# re-checks this before moving its pinned version (technical FAQ: "Is Auto mode
+# working on my GPT route?"). Do NOT set it on Anthropic routes.
 #
 # GPT FAST / GPT PRIORITY SPEED BOOST (shim v1.3.9+): OFF by default. One command
 # inside the container turns it on, turns it off, or reports where things stand:
@@ -502,7 +527,8 @@
 # Full details: the technical FAQ's GPT Fast entry.
 #
 # Then pick ONE auth lane below: 4.2 (OpenAI API key, sanctioned) or 4.3 (ChatGPT
-# subscription via Codex OAuth, an unofficial dev lane).
+# subscription via Codex OAuth, an unofficial dev lane). Using a university or
+# company AI gateway instead? Skip 4.1 to 4.3 and use the complete preset in 4.5.
 #
 # MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
 # (see section [3] for what these four keys do -- set all four). Use BARE OpenAI
@@ -530,6 +556,11 @@
 # --- To activate, remove the leading '#' (replaces the two Sol lines): ---
 #ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-astra[1m]
 #ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]
+#
+# GPT-6.1 Sol (gpt-6.1-sol[1m]) is another strong-tier option on the same terms:
+# put it on BOTH strong lines in place of gpt-6-sol[1m]. Like gpt-6-sol it is
+# UNTESTED on the shim lanes, and its ChatGPT-lane ceiling is not yet measured
+# (DAAF assumes the same 919000 cap as the other flagships until it is).
 #
 # CONTEXT WINDOW: CLAUDE_CODE_MAX_CONTEXT_TOKENS is LANE-SPECIFIC -- the two auth
 # lanes hit different effective ceilings (the ChatGPT/Codex backend is capped far
@@ -676,7 +707,12 @@
 # --- To activate, remove the leading '#' on the lines you need: ---
 # DEFAULT: 4141 is the default port; the line below shows it, so uncommenting it changes nothing.
 #SHIM_PORT=4141
-# DEFAULT: https://api.openai.com/v1 is the default backend; the line below shows it, so uncommenting it changes nothing.
+# SHIM_BACKEND_BASE_URL is WHERE the shim sends your requests. Left unset, the
+# API-key lane uses OpenAI itself (https://api.openai.com/v1, shown below). Set it
+# to any OpenAI-compatible service that offers OpenAI's Responses API, such as a
+# university or company AI gateway (4.5 below has a complete preset). Paste the
+# base URL, usually ending in /v1; a trailing "/" or "/responses" is removed for
+# you (shim v1.4.7+).
 #SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 #SHIM_BACKEND_API_KEY=
 #
@@ -716,7 +752,7 @@
 # present. Valid values none|low|medium|high|xhigh|max ("max" is supported on the
 # gpt-5.6 family and gpt-6-astra). gpt-6-astra does NOT accept "none" -- the shim
 # clamps a requested "none" to "low" for Astra. DAAF has not checked which levels
-# gpt-6-sol and gpt-6-luna accept.
+# gpt-6-sol, gpt-6-luna, and gpt-6.1-sol accept.
 # Leave unset to use the default "high" (v1.2.2+ always sends an effort now -- the
 # old implicit "medium" server default no longer applies). Read at shim startup,
 # so a restart is required.
@@ -731,6 +767,93 @@
 # startup, so a restart is required.
 # --- To activate, remove the leading '#': ---
 #SHIM_TEXT_VERBOSITY=
+#
+# ----------------------------------------------------------------------------
+# 4.5 Preset: institutional / university OpenAI-compatible gateway
+# ----------------------------------------------------------------------------
+# Some universities and companies run their own OpenAI-compatible AI gateway.
+# DAAF uses one through the
+# same shim, on the API-key lane. The lines below are the COMPLETE setup: use them
+# INSTEAD of 4.1 and 4.2 (do not also uncomment those; if you already set up
+# Option F, put a '#' back in front of those 4.1 and 4.2 lines), and replace the
+# three placeholders with what your institution gives you:
+#   - the gateway's base URL (usually ends in /v1),
+#   - your gateway API key (DAAF never copies it into any other file),
+#   - the model name the gateway serves (your-gateway-model below is a placeholder; add [1m] to it only if the model has a 1M-token window).
+# The gateway must support OpenAI's Responses API (/v1/responses); ask your
+# provider if you are not sure. Two things are only known once you try it:
+# whether the gateway supports web search (WebSearch), and how much context it
+# really accepts. After the first start, check it as described in
+# user_reference/01_installation_and_quickstart.md ("Using an institutional
+# OpenAI-compatible gateway"). Recreate the container after any change here.
+# --- To activate, remove the leading '#' on all lines you use: ---
+#DAAF_PROVIDER_SHIM=openai
+#ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+#ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+#ANTHROPIC_API_KEY=
+#CLAUDE_CODE_DISABLE_FAST_MODE=1
+#SHIM_BACKEND_MODE=openai
+#SHIM_BACKEND_BASE_URL=https://gateway.example.edu/v1
+#OPENAI_API_KEY=your_gateway_api_key_here
+#ANTHROPIC_DEFAULT_FABLE_MODEL=your-gateway-model
+#ANTHROPIC_DEFAULT_OPUS_MODEL=your-gateway-model
+#ANTHROPIC_DEFAULT_SONNET_MODEL=your-gateway-model
+#ANTHROPIC_DEFAULT_HAIKU_MODEL=your-gateway-model
+# Context window: 400000 is a cautious starting value, NOT a measured one. Confirm
+# your gateway's real ceiling with scripts/provider_shim/probe_context_ceiling.py,
+# naming your gateway model and a wide search range (its built-in defaults are
+# for the ChatGPT lane); the exact command is in the installation guide section
+# named above. It spends real gateway quota (several requests of up to about a
+# million input tokens each). Put the measured number here.
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=400000
+# Silences Claude Code's Auto-mode eligibility notice on shim routes (see 4.1).
+#CLAUDE_CODE_AUTO_MODE_SERVER=0
+#
+# With this preset, DAAF also sets up the Codex CLI (`codex`, preinstalled in the
+# container) to use the same gateway: it writes a "daaf_gateway" provider and your
+# OPUS model into Codex's config.toml at every container start (see 4.6). Codex
+# reads the key from OPENAI_API_KEY; the key is never written to that file.
+#
+# ----------------------------------------------------------------------------
+# 4.6 Codex CLI settings (config.toml) from this file
+# ----------------------------------------------------------------------------
+# The Codex CLI keeps its settings in config.toml inside the container. You never
+# edit that file yourself: add numbered DAAF_CODEX_CONFIG_<N> lines here instead,
+# and DAAF writes them into config.toml every time the container starts. Each line
+# is one Codex setting, written as  setting.name=value  (the same form as
+# `codex -c setting.name=value`). Lines apply in number order; a later line wins.
+# Setting names come from the Codex configuration reference:
+# https://developers.openai.com/codex/config-reference
+#
+# HOW TO WRITE THE VALUE: wrap the whole value in single quotes, as in the
+# examples. Docker Compose keeps everything inside single quotes exactly as typed
+# (no $ substitution), so the double quotes Codex needs around text survive. A
+# plain word without quotes also works (it is read as text). Do not add a comment
+# after the value on the same line.
+#
+# Never paste a key or password into these lines; DAAF refuses values that look
+# like credentials -- use env_key/env_http_headers to point at an environment
+# variable instead. (A header your gateway needs goes under env_http_headers as
+# header name = the NAME of an environment variable holding its value.)
+#
+# What happens to the file: DAAF marks config.toml as its own on the first line,
+# and from then on DAAF owns it. Remove a DAAF_CODEX_CONFIG line and recreate the
+# container, and the setting is gone. Anything Codex itself writes into that file
+# (for example when you tell it to trust a folder) is replaced at the next
+# container start, so set lasting options with DAAF_CODEX_CONFIG lines, as in the
+# second example below. If config.toml was written by someone else, DAAF leaves it
+# alone and puts its version next to it as config.toml.daaf-generated. These
+# settings affect the Codex CLI only; the GPT shim takes its settings from the
+# SHIM_* lines above.
+#
+# Did it work? Inside the container run
+#     bash /daaf/scripts/provider_shim/start_shim.sh --status
+# The line starting "CODEX CONFIG:" says what DAAF wrote at the last start and
+# how many lines had problems; the reasons (never your values) are in
+# scripts/provider_shim/logs/codex_config.log.
+# --- To activate, remove the leading '#' on the lines you need: ---
+#DAAF_CODEX_CONFIG_1='model_reasoning_effort="high"'
+#DAAF_CODEX_CONFIG_2='projects={"/daaf"={trust_level="trusted"}}'
 #
 #
 # ============================================================================

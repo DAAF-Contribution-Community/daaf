@@ -18,6 +18,7 @@
 #   --status   Print running/stopped + strictly validated health JSON. A stop
 #              caused by the supervisor giving up after a restart storm is
 #              reported distinctly (with timestamp) via the supervisor.state file.
+#              Also prints the last Codex config.toml render summary, if any.
 #   --help     Print public action usage.
 #
 # Config (env, all optional — defaults mirror the shim's own):
@@ -66,6 +67,17 @@
 #                           signal > "#<effort>" slug suffix > env > high)
 #   SHIM_TEXT_VERBOSITY     low|medium|high; default medium
 #
+# Codex config.toml: --auto, --start and --restart first run
+# render_codex_config.py, which writes $CODEX_HOME/config.toml from the
+# DAAF_CODEX_CONFIG_<N> lines in environment_settings.txt (plus a derived gateway
+# provider on the openai lane). It runs on --auto even when DAAF_PROVIDER_SHIM is
+# unset, because Codex settings are useful without the shim and because a
+# DAAF-managed file must be removed once its settings are deleted. The renderer is
+# silent when there is nothing to do; any failure is a warning, never fatal. Each
+# run's summary and warnings (never values) are kept, last 200 lines, in
+# logs/codex_config.log; --status prints the most recent summary line. The run is
+# bounded by a 20-second timeout.
+#
 # Keepalive: the supervisor restarts the shim after an unexpected exit. A guard
 # stops after 10 crashes in 60 seconds so a broken configuration cannot spin.
 # On every lifecycle transition the supervisor records its phase
@@ -96,6 +108,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly SCRIPT_DIR
 readonly SHIM_PY="${SCRIPT_DIR}/anthropic_openai_shim.py"
 readonly LIFECYCLE_CAPABILITY_PY="${SCRIPT_DIR}/lifecycle_capability.py"
+readonly CODEX_CONFIG_RENDERER_PY="${SCRIPT_DIR}/render_codex_config.py"
 readonly LOG_DIR="${SCRIPT_DIR}/logs"
 readonly LOG_FILE="${LOG_DIR}/shim.log"
 readonly PID_FILE="${LOG_DIR}/shim.pid"
@@ -104,6 +117,7 @@ readonly SUP_STATE_FILE="${LOG_DIR}/supervisor.state"
 readonly PGID_FILE="${LOG_DIR}/pgid"
 readonly STOP_FILE="${LOG_DIR}/stop.requested"
 readonly QUOTA_STATE_FILE="${LOG_DIR}/quota_state.json"
+readonly CODEX_CONFIG_LOG="${LOG_DIR}/codex_config.log"
 readonly LOCK_DIR="${LOG_DIR}/lifecycle.lock"
 readonly LOG_WRITE_LOCK_DIR="${LOG_DIR}/log-write.lock"
 readonly SHIM_SERVICE_ID="daaf-anthropic-openai-shim"
@@ -118,6 +132,7 @@ readonly STORM_LIMIT=10
 readonly STORM_WINDOW=60
 readonly RESTART_DELAY=2
 readonly READINESS_WAIT=15
+readonly RENDER_TIMEOUT=20
 
 # Test-only timing controls are intentionally outside the SHIM_* user-config
 # namespace and activate only when the isolated Bats harness opts in. Production
@@ -127,12 +142,14 @@ storm_window="$STORM_WINDOW"
 restart_delay="$RESTART_DELAY"
 readiness_wait="$READINESS_WAIT"
 termination_wait=5
+render_timeout="$RENDER_TIMEOUT"
 if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ]; then
     storm_limit="${DAAF_SHIM_TEST_STORM_LIMIT:-$STORM_LIMIT}"
     storm_window="${DAAF_SHIM_TEST_STORM_WINDOW:-$STORM_WINDOW}"
     restart_delay="${DAAF_SHIM_TEST_RESTART_DELAY:-$RESTART_DELAY}"
     readiness_wait="${DAAF_SHIM_TEST_READINESS_WAIT:-$READINESS_WAIT}"
     termination_wait="${DAAF_SHIM_TEST_TERMINATION_WAIT:-5}"
+    render_timeout="${DAAF_SHIM_TEST_RENDER_TIMEOUT_S:-$RENDER_TIMEOUT}"
 fi
 
 HEALTH_JSON=""
@@ -2219,6 +2236,50 @@ do_rotate_only() {
     return "$rc"
 }
 
+# --- Codex config.toml (from environment_settings.txt) ---------------------
+render_codex_config() {
+    # Non-fatal by design: a bad DAAF_CODEX_CONFIG_<N> line or an unwritable
+    # CODEX_HOME must never block the shim or container boot. The renderer prints
+    # its own summary/warnings to stderr (never secret values) and stays silent
+    # when there is nothing to do. A missing renderer (older install) is a no-op.
+    # Each run's summary and warnings (never values) also go to CODEX_CONFIG_LOG,
+    # which --status reads; an unsafe log location just skips that record.
+    local rc=0
+    local -a log_args=()
+    [ -f "$CODEX_CONFIG_RENDERER_PY" ] || return 0
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf 'WARNING: python3 not found; Codex config.toml was not updated. Continuing.\n' >&2
+        return 0
+    fi
+    if [ ! -L "$LOG_DIR" ] && { [ ! -e "$LOG_DIR" ] || [ -d "$LOG_DIR" ]; } && \
+        path_is_safe_file_target "$CODEX_CONFIG_LOG"; then
+        log_args=(--log-file "$CODEX_CONFIG_LOG")
+    fi
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$render_timeout" python3 "$CODEX_CONFIG_RENDERER_PY" \
+            ${log_args[@]+"${log_args[@]}"} </dev/null || rc=$?
+    else
+        python3 "$CODEX_CONFIG_RENDERER_PY" ${log_args[@]+"${log_args[@]}"} </dev/null || rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+        printf 'WARNING: Codex config.toml rendering exited %s; continuing. Check the DAAF_CODEX_CONFIG_<N> lines in environment_settings.txt.\n' \
+            "$rc" >&2
+    fi
+    return 0
+}
+
+print_codex_config_status() {
+    # One line for --status: the renderer's most recent summary, if any. The log
+    # holds no values; the line is still reduced to printable characters.
+    local line=""
+    path_is_safe_file_target "$CODEX_CONFIG_LOG" || return 0
+    [ -f "$CODEX_CONFIG_LOG" ] || return 0
+    line="$(grep -F ' summary: ' "$CODEX_CONFIG_LOG" 2>/dev/null | tail -n 1 | \
+        tr -cd '[:print:]' | cut -c1-400)" || line=""
+    [ -n "$line" ] || return 0
+    printf 'CODEX CONFIG: %s (details: %s)\n' "$line" "$CODEX_CONFIG_LOG"
+}
+
 # --- Dispatch ---------------------------------------------------------------
 print_usage() {
     printf 'Usage: %s {--auto|--start|--restart|--stop|--status|--help}\n' \
@@ -2235,12 +2296,15 @@ case "$ACTION" in
         do_rotate_only
         ;;
     --auto)
+        render_codex_config
         do_auto
         ;;
     --start)
+        render_codex_config
         do_start explicit
         ;;
     --restart)
+        render_codex_config
         do_restart
         ;;
     --stop)
@@ -2248,6 +2312,9 @@ case "$ACTION" in
         ;;
     --status)
         do_status
+        status_rc=$?
+        print_codex_config_status
+        exit "$status_rc"
         ;;
     --help|-h)
         print_usage

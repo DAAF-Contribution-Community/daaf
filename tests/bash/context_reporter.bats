@@ -1915,8 +1915,10 @@ _extract_normalize() {
     [ "$rep_flag" = "$ctx_flag" ]
     [ -n "$rep_ext" ]
     [ "$rep_ext" = "$bar_ext" ]
-    [ "$rep_flag" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$' ]
-    [ "$rep_ext" = '^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$' ]
+    # 2026-10-12 user policy decision: gpt-6.1-sol joins both grammars as one
+    # exact alternative (no gpt-6.1-* wildcard).
+    [ "$rep_flag" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
+    [ "$rep_ext" = '^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
 }
 
 @test "normalize_model_id (reporter copy): rewrites only terminal dotted claude-<family>-<major>.<minor>" {
@@ -2111,6 +2113,84 @@ _extract_normalize() {
     done
 }
 
+# =========================================================================
+# GPT-6.1 Sol (USER POLICY DECISION 2026-10-12, not validation): gpt-6.1-sol,
+# with an optional -pro and then an optional [1m], reads exactly as gpt-6-sol —
+# 1,050,000 window (OpenRouter openai/gpt-6.1-sol, fetched 2026-10-12), the
+# inferred 919k ChatGPT-lane cap (lane ceiling pending measurement), and the
+# GPT extended tier. No gpt-6.1-* wildcard: other GPT-6.1 names stay
+# conservative. PATCH DEPENDENCE: until the user applies
+# research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/hook_patch/context-reporter_gpt-6.1-sol.patch,
+# the positive cases below fail BY DESIGN against the live hook; all pass with
+#   CONTEXT_REPORTER_SH=research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/hook_patch/context-reporter.patched.sh
+# =========================================================================
+
+@test "gpt-6.1-sol subagents (bare, provider-prefixed, [1m], -pro) map to 1050k and use the extended tier" {
+    local model row tokens expected
+    for model in gpt-6.1-sol openai/gpt-6.1-sol 'gpt-6.1-sol[1m]' 'openrouter/openai/gpt-6.1-sol[1m]' \
+                 gpt-6.1-sol-pro 'gpt-6.1-sol-pro[1m]'; do
+        for row in \
+            "299000 NOMINAL" \
+            "300000 ELEVATED" \
+            "400000 HIGH" \
+            "500000 CRITICAL"; do
+            read -r tokens expected <<< "$row"
+            _dotted_subagent_fixture "$model" "$tokens"
+            run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+            assert_success
+            assert_output --partial "[${expected}]: $((tokens / 1000))k / 1050k"
+        done
+    done
+}
+
+@test "gpt-6.1-sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct
+    _seed_window 400000
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-6.1-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 400k tokens (${expected_pct}%)"
+    done
+}
+
+@test "chatgpt lane caps gpt-6.1-sol subagents at 919k" {
+    local model
+    for model in gpt-6.1-sol 'gpt-6.1-sol[1m]' gpt-6.1-sol-pro; do
+        _dotted_subagent_fixture "$model" 111000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "111k / 919k"
+    done
+}
+
+@test "GPT-6.1 near misses stay conservative on the generic 200k window (no 919k cap)" {
+    # gpt-6x1-sol proves the ERE dot is literal; gpt-6.10-sol and gpt-6.1 the
+    # anchors; gpt-6.1-luna/-astra/-sol-mini that no gpt-6.1-* wildcard exists.
+    local model
+    for model in gpt-6.1-luna gpt-6.1-astra gpt-6.1 gpt-6.1-sol-mini gpt-6.1-sol-chat \
+                 'gpt-6.1-sol[1m]-pro' gpt-6.1-sol-pro-x gpt-6.10-sol gpt-6x1-sol xgpt-6.1-sol; do
+        _dotted_subagent_fixture "$model" 90000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        # 90k / 200k = 45% -> conservative ELEVATED (extended would be NOMINAL).
+        assert_output --partial "[ELEVATED]: 90k / 200k tokens (45%)"
+        refute_output --partial "/ 919k"
+        refute_output --partial "/ 1050k"
+    done
+}
+
 # Cross-script window agreement (review fix 2026-09-29). Malformed GPT-family
 # ids used to diverge: subagent-bar.sh's generic Claude *\[1m\]* arm gave
 # gpt-6-sol[1m]-pro etc. 1,000,000 while this hook (family pre-filter glob)
@@ -2137,6 +2217,11 @@ _static_window_from() {
         'openai/gpt-6-luna[1m]-pro 200000' \
         'gpt-6-sol-pro[1m] 1050000' \
         'openai/gpt-6-luna 1050000' \
+        'gpt-6.1-sol 1050000' \
+        'gpt-6.1-sol-pro[1m] 1050000' \
+        'gpt-6.1-sol[1m]-pro 200000' \
+        'gpt-6.1-sol-mini[1m] 200000' \
+        'gpt-6.1-luna 200000' \
         'gpt-5.6-mini[1m] 400000' \
         'gpt-5.6-chat 128000' \
         'claude-opus-4-8[1m] 1000000'; do

@@ -38,6 +38,21 @@ OpenRouter reports Claude models with a dotted version (`anthropic/claude-opus-5
 - make Sol (strong) plus Luna (fast) the recommended GPT pairing in place of Sol plus Terra;
 - make the statusline tolerate effort-suffixed model ids.
 
+### GPT Through Your Institution's Gateway, and Codex Settings From One File
+
+DAAF's GPT shim can now be pointed at a university or company OpenAI-compatible gateway with nothing but lines in `environment_settings.txt`. The shim always could send requests to another address (`SHIM_BACKEND_BASE_URL`), but the settings template described that line as a no-op. Now:
+- `environment_settings_example.txt` has a complete gateway preset (section 4.5), and the installation guide and technical FAQ explain what to set, what only testing can tell you (web search support, the context ceiling) and a three-command check.
+- The shim (v1.4.7) accepts the URL in the forms people paste: extra spaces, a trailing `/`, or a URL that already ends in `/responses`, which it strips with one log warning.
+- Codex CLI settings come from numbered `DAAF_CODEX_CONFIG_<N>` lines in the same file. At every container start, `start_shim.sh` writes them into Codex's `config.toml`, even when the shim is off. With the gateway preset it also adds a matching Codex provider, so `codex` in the container uses the same gateway. Lines whose names or values look like credentials, including any plain-text header or query value other than `api-version`, are refused; `env_key` and `env_http_headers` point Codex at an environment variable instead, so the key never lands in the file. Removing a line removes the setting, and a `config.toml` that DAAF did not write is never overwritten. A problem here prints a warning and never stops the container from starting; `start_shim.sh --status` shows the last result, and the reasons (never the values) are kept in `scripts/provider_shim/logs/codex_config.log`.
+
+### Auto Mode on GPT Routes: A Quieter, Explained Notice
+
+On the GPT shim lanes, Claude Code's Auto mode prints a notice that the session "isn't eligible" for Anthropic's new classifier billing. That fix needs a gateway that passes Anthropic's `safeguards` fields through to Anthropic's servers. The shim talks to OpenAI, so it can never do that. Auto mode keeps working: Claude Code uses its own classifier requests, which go through the shim to your GPT model. The settings template now offers `CLAUDE_CODE_AUTO_MODE_SERVER=0` in the shim block, with an optional line for non-Claude OpenRouter models, to skip that request and the notice. A new technical FAQ entry explains what working Auto mode looks like (no prompts for allowed actions; denials show a notification and appear under *Recently denied* in `/permissions`). The deploy-smoke skill replaces its parked opt-in Auto runner with a one-session check. One caution: a third party reports that Claude Code releases after 2026-10-23 may drop the client-side classifier. Anthropic's docs do not say so. Re-check Auto mode on a shim route before moving the Claude Code pin past 2.1.281.
+
+### GPT-6.1 Sol
+
+OpenAI's **GPT-6.1 Sol** (`gpt-6.1-sol`, OpenRouter `openai/gpt-6.1-sol`) is now registered wherever GPT-6 Sol is: in context monitoring, which gives it a 1,050,000-token window and the GPT extended-horizon thresholds (by user policy decision on 2026-10-12, not DAAF validation); in the statusline and agent panel; in the deploy-smoke route checks; in the shim's `/v1/models` list, which also gains the previously missing `gpt-6-sol` and `gpt-6-luna`; and in the installation guide, FAQ and settings template as an available option. The ChatGPT-lane ceiling is assumed to match the other flagships (919,000 tokens) until it is measured with `probe_context_ceiling.py`. The hook's half ships as a user-applied patch (`research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/HOOK_PATCH_context-reporter_gpt-6.1-sol.md`). DAAFBench pricing for the model is not yet added.
+
 ### Execution Wrapper Evidence Integrity
 
 `scripts/run_with_capture.sh` now distinguishes computation success from evidence-capture and persistence success. A run that computed correctly but whose execution log was truncated or never appended used to exit 0 and print `SUCCESS`; it now prints an `EVIDENCE INCOMPLETE` banner, retains the capture buffer, and exits 74.
@@ -134,9 +149,9 @@ Opus and Sonnet are DAAF's two agent tiers. Haiku carries Claude Code's housekee
 - T0.14 follows Claude Code's main-model precedence, including `ANTHROPIC_DEFAULT_MODEL` and `opus[1m]`-style saved choices; an unmapped alias counts as Claude Code's built-in Claude model for its tier (family `claude`, exact ID unresolved).
 - T0.2's stand-down expectation follows the updated hook (an OPUS/SONNET remap or `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`). It also reads the installed hook and, if that hook predates the update, describes the older rule set.
 - T0.4 resolves tier aliases in `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL` (case-insensitively; Claude Code's docs do not say whether alias names are case-sensitive, so this is the cautious reading) and, on OpenRouter, requires a context-window declaration when any selector is non-Claude. `inherit` and `default` name no model and are skipped; `opusplan` is checked through both the Opus and Sonnet mappings and `best` through the Fable one (an inference outside Claude apps gateway sessions, the only place the docs define it). T0.14 matches aliases and its ignored values case-insensitively too. Before this, one Claude-looking selector, such as a Claude Haiku slug, hid a non-Claude Opus/Sonnet mapping.
-- `profiles.yaml` maps all four aliases, and `run_auto_acceptance.py` treats an unmapped alias start model as unresolved.
+- `profiles.yaml` maps all four aliases.
 
-`tests/python/test_deploy_smoke.py` gains a `DefaultModelAndTierAliasTests` class (18 tests); `tests/bash/deploy_smoke.bats` and `test_deploy_smoke_auto.py` gain matching cases.
+`tests/python/test_deploy_smoke.py` gains a `DefaultModelAndTierAliasTests` class (18 tests); `tests/bash/deploy_smoke.bats` gains matching cases. The opt-in `run_auto_acceptance.py` runner and its test module, committed in the same change, were parked unshipped in the project research folder on 2026-10-12; Auto mode is checked with one plain `--permission-mode auto` session instead (deploy-smoke skill § Checking Auto Mode).
 
 **Provider shim.** The ChatGPT-lane fast-fail message for a Claude model name now names all four tier aliases and, for a Claude session model, points to `/model` (`tests/provider_shim/test_stream_hardening.py` updated). The change is message text only; `SHIM_VERSION` is unchanged.
 

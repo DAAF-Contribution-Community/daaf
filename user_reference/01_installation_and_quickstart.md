@@ -1095,6 +1095,7 @@ Recommended GPT slugs (recommended roles set by a 2026-09-29 user decision; cont
 | `openai/gpt-6-sol` | 1,050,000 | **Strong tier (Opus-analog) — recommended default** | $2 / $10 per M tokens in/out; long-context (>272k input) $4 / $15. Read like `gpt-5.6-sol`, including its extended threshold profile (2026-09-29 user policy decision, not validated) |
 | `openai/gpt-6-luna` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $0.10 / $0.50 per M tokens in/out; long-context (>272k input) $0.20 / $0.75 (half `gpt-5.6-luna`'s price). For context monitoring it reads like `gpt-5.6-luna`, so it keeps DAAF's conservative thresholds |
 | `openai/gpt-6-astra` | 1,050,000 | GPT-6 flagship — premium alternative strong tier (Opus-analog) | $10 / $50 per M tokens in/out (5x Sol); long-context (>272k input) $20 / $75; 128k max output; rejects reasoning-effort `none` |
+| `openai/gpt-6.1-sol` | 1,050,000 | Newer alternative strong tier (Opus-analog) | 128k max output (OpenRouter, 2026-10-12). OpenAI's pricing page listed it at Sol's $2 / $10 (2026-09-29); OpenRouter's price not re-checked. Read like `gpt-6-sol`, including its extended threshold profile (2026-10-12 user policy decision, not validated) |
 | `openai/gpt-5.6-sol` | 1,050,000 | Alternative strong tier (Opus-analog) | $2 / $10 per M tokens in/out; long-context (>272k input) $4 / $15; validated live through the full agentic stack on 2026-07-09 |
 | `openai/gpt-5.6-luna` | 1,050,000 | Alternative fast tier (Sonnet-analog) | $0.20 / $1.20 per M tokens; long-context (>272k input) $0.40 / $1.80 |
 | `openai/gpt-5.6-terra` | 1,050,000 | Mid tier (Sonnet-analog) | $2 / $12 per M tokens; long-context (>272k input) $4 / $18; validated live as the fast tier on 2026-07-09 |
@@ -1105,7 +1106,7 @@ Recommended GPT slugs (recommended roles set by a 2026-09-29 user decision; cont
 
 The four-tier mapping described above works identically: map the strong pair (`ANTHROPIC_DEFAULT_FABLE_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL`) and the fast pair (`ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_HAIKU_MODEL`) to your chosen GPT slugs, and DAAF's cost-control ceiling stands down once the Opus/Sonnet lines are set. Your session should open on the strong-tier slug (confirm with `/status`), so there's no need to set `ANTHROPIC_MODEL` (it's an optional hard pin — see [Step 3 of Option F](#option-f-openai-api-directly-daaf-provider-shim) below).
 
-> **GPT tier naming and DAAF's recommendation:** OpenAI's GPT-5.6 family comes in three tiers — *Sol* (strongest), *Terra* (mid), and *Luna* (fastest and cheapest) — all with 1,050,000-token windows. The GPT-6 generation has Sol and Luna plus the Astra flagship, and no Terra. Since 2026-09-29, DAAF recommends **Sol for the strong tier** (`ANTHROPIC_DEFAULT_OPUS_MODEL`, plus its `ANTHROPIC_DEFAULT_FABLE_MODEL` partner) and **Luna for the fast tier** (`ANTHROPIC_DEFAULT_SONNET_MODEL`, plus its `ANTHROPIC_DEFAULT_HAIKU_MODEL` partner), and the examples use the GPT-6 slugs `gpt-6-sol` / `gpt-6-luna`. Luna fills the Sonnet slot like any other tier remap. This recommendation is a user decision based on hands-on experience with Luna's quality. It is not the result of a DAAF validation run: the 2026-07-09 live validation through the full agentic stack (including subagent dispatch on the tier remaps) covered `gpt-5.6-sol` with `gpt-5.6-terra`, and the GPT-6 Sol/Luna pair has not been validated the same way. On thresholds, `gpt-6-sol` is in DAAF's GPT extended-horizon profile (admitted 2026-09-29 by user policy, not validation), while Luna in either generation keeps the conservative profile, so fast-tier subagents get context warnings sooner than the strong tier. Astra remains available as a premium strong-tier option at 5x Sol's per-token price. One thing to watch: OpenAI's own pricing page (checked 2026-09-29) lists `gpt-6.1-sol` as a separate, newer Sol model at the same $2 / $10 price, shown above `gpt-6-sol` in its flagship table. DAAF does not register `gpt-6.1-sol` yet, so that slug would fall back to conservative thresholds.
+> **GPT tier naming and DAAF's recommendation:** OpenAI's GPT-5.6 family comes in three tiers — *Sol* (strongest), *Terra* (mid), and *Luna* (fastest and cheapest) — all with 1,050,000-token windows. The GPT-6 generation has Sol and Luna plus the Astra flagship, and no Terra. Since 2026-09-29, DAAF recommends **Sol for the strong tier** (`ANTHROPIC_DEFAULT_OPUS_MODEL`, plus its `ANTHROPIC_DEFAULT_FABLE_MODEL` partner) and **Luna for the fast tier** (`ANTHROPIC_DEFAULT_SONNET_MODEL`, plus its `ANTHROPIC_DEFAULT_HAIKU_MODEL` partner), and the examples use the GPT-6 slugs `gpt-6-sol` / `gpt-6-luna`. Luna fills the Sonnet slot like any other tier remap. This recommendation is a user decision based on hands-on experience with Luna's quality. It is not the result of a DAAF validation run: the 2026-07-09 live validation through the full agentic stack (including subagent dispatch on the tier remaps) covered `gpt-5.6-sol` with `gpt-5.6-terra`, and the GPT-6 Sol/Luna pair has not been validated the same way. On thresholds, `gpt-6-sol` is in DAAF's GPT extended-horizon profile (admitted 2026-09-29 by user policy, not validation), while Luna in either generation keeps the conservative profile, so fast-tier subagents get context warnings sooner than the strong tier. Astra remains available as a premium strong-tier option at 5x Sol's per-token price. OpenAI's own pricing page (checked 2026-09-29) also lists `gpt-6.1-sol`, a separate, newer Sol model at the same $2 / $10 price. Since 2026-10-12 DAAF registers it on the same terms as `gpt-6-sol` (1,050,000-token window, GPT extended-horizon profile; user policy decision, not validation), so you can use it on both strong lines in place of `gpt-6-sol`. The recommended default stays `gpt-6-sol`.
 >
 > **Prefer the non-pro slugs via OpenRouter (Option C); the `-pro` slugs work but cost several times more.** In the 2026-07-10 DAAFBench smoke battery, `gpt-5.6-sol-pro` / `-terra-pro` / `-luna-pro` failed with hard "Prompt is too long" errors against a ~200k ceiling. A 2026-09-29 retest no longer reproduces that wall: on this route, `gpt-6-sol-pro`, `gpt-6-luna-pro`, and `gpt-5.6-sol-pro` (the July-failing slug) each accepted prompts above 930,000 reported tokens (largest 942,594) with HTTP 200 at every step. `gpt-6-astra-pro` was not tested at large sizes, so its ceiling is extrapolated, not observed. The inflated token accounting persists, though. On identical input, the `-pro` slugs report about 3.1x the non-pro input tokens (GPT-6 Sol/Astra/Luna) or 4.1x (`gpt-5.6-sol-pro`). That has two practical effects. First, billing follows the reported tokens, so a `-pro` session costs roughly 3x its non-pro base for the same work where per-token prices are equal (GPT-6), and about 8x for `gpt-5.6-sol-pro`, whose per-token price is 2x its base (2x price × 4.1x tokens). These cost multiples are derived from the token ratios and list prices, not verified against an invoice. Second, DAAF's context warnings fire after only about a third (GPT-6) or a quarter (5.6) as much real content as on the non-pro model. That is early, but in the safe direction. Evidence: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`.
 >
@@ -1138,6 +1139,8 @@ ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 ANTHROPIC_API_KEY=
 # Hide the native /fast control; use gpt_fast.sh below instead:
 CLAUDE_CODE_DISABLE_FAST_MODE=1
+# Silence the harmless Auto mode "isn't eligible" notice (see the FAQ):
+CLAUDE_CODE_AUTO_MODE_SERVER=0
 # Strong tier (Opus-analog; also your default session model) and its Fable partner;
 # [1m] = 1M window hint, kept on every line:
 ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-sol[1m]
@@ -1152,6 +1155,10 @@ CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 > **GPT-6 Sol and Luna on the shim lanes are untested.** The shim forwards whatever model slug you set without checking it against a list, so `gpt-6-sol` and `gpt-6-luna` should work wherever OpenAI serves them. DAAF's recorded shim-lane tests, however, used `gpt-5.6-sol` and `gpt-6-astra`. If OpenAI rejects a GPT-6 slug, `gpt-5.6-sol[1m]` / `gpt-5.6-luna[1m]` are drop-in alternatives.
 
 > **GPT-6 Astra on the shim lanes.** To run OpenAI's GPT-6 flagship instead of Sol, set both strong lines to it — `ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-astra[1m]` and `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]` — and leave the fast lines on Luna (bare slug; the `[1m]` hint is verified on this direct-API shim lane). Astra has the same 1,050,000-token window (128,000-token max output) and joins DAAF's validated threshold profile at Sol parity, and its standard pricing is $10 / $50 per M tokens in/out ($20 / $75 above the 272k-input long-context threshold). Note that Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra.
+
+> **GPT-6.1 Sol on the shim lanes.** `gpt-6.1-sol[1m]` is another strong-tier option: put it on both strong lines in place of `gpt-6-sol[1m]`. DAAF reads it like `gpt-6-sol` (2026-10-12 user policy decision), and like `gpt-6-sol` it is untested on the shim lanes. Its ChatGPT-lane ceiling is not yet measured either; DAAF assumes the same 919,000 cap as the other flagships until it is.
+
+> **Auto mode on the shim lanes.** `CLAUDE_CODE_AUTO_MODE_SERVER=0` in the block above silences a harmless Claude Code notice that Auto mode's "classifier requests" aren't eligible on this route. On DAAF's pinned Claude Code version (2.1.281), Auto mode keeps working either way; a future Claude Code may turn it off on GPT routes, and DAAF will re-check before moving the pin. Don't set it on an Anthropic route. See the [FAQ entry on Auto mode on GPT routes](07_faq_technical.md#q-is-auto-mode-working-on-my-gpt-route-what-is-the-classifier-requests-isnt-eligible-notice).
 
 **Step 2 — Rebuild the image.** Unlike Option C (which is config-only), this lane needs a one-time rebuild, because the shim's auto-launch is baked into the container entrypoint. From the DAAF Control Panel choose **option 10, "Rebuild Container,"** or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) directly — see the [rebuild instructions](#keeping-daaf-updated). On boot, the container starts the shim automatically and keeps it alive (restarting it if it ever exits), so you normally never have to touch it.
 
@@ -1173,7 +1180,7 @@ That's the whole setup. The paragraphs that follow are optional reading you can 
 
 **Optional tuning.**
 
-**Reasoning effort.** The shim always sets the OpenAI request's reasoning effort, resolved by a four-tier precedence chain — first present wins: (1) a per-request signal from Claude Code, (2) a `#<effort>` suffix you append to a model slug (e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]#medium`; it works alongside the `[1m]` window hint and is stripped before the request reaches OpenAI), (3) the `SHIM_REASONING_EFFORT` env var, and (4) the default `high` (parity with DAAF Claude sessions). Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is supported on the gpt-5.6 family and gpt-6-astra; `gpt-6-astra` does **not** support `none` — the shim clamps a requested `none` to `low` for Astra; DAAF has not checked which levels `gpt-6-sol` and `gpt-6-luna` accept). Leave everything unset to get `high` everywhere; set the env var or a slug suffix only if you want a different level.
+**Reasoning effort.** The shim always sets the OpenAI request's reasoning effort, resolved by a four-tier precedence chain — first present wins: (1) a per-request signal from Claude Code, (2) a `#<effort>` suffix you append to a model slug (e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]#medium`; it works alongside the `[1m]` window hint and is stripped before the request reaches OpenAI), (3) the `SHIM_REASONING_EFFORT` env var, and (4) the default `high` (parity with DAAF Claude sessions). Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is supported on the gpt-5.6 family and gpt-6-astra; `gpt-6-astra` does **not** support `none` — the shim clamps a requested `none` to `low` for Astra; DAAF has not checked which levels `gpt-6-sol`, `gpt-6-luna`, and `gpt-6.1-sol` accept). Leave everything unset to get `high` everywhere; set the env var or a slug suffix only if you want a different level.
 
 > **The `/model` effort selector does not work for GPT slugs.** Claude Code gates the in-UI reasoning-effort selector by model-ID pattern, and for an unrecognized (GPT) slug it pins `high` on every request — so toggling the selector has no effect on GPT sessions. DAAF's provider shim recognizes that pinned inbound `high` as unset and falls through to your slug/env steer, which reactivates tiers (2) and (3) above as the real controls. To run GPT at a non-default effort, use the `#<effort>` slug suffix or `SHIM_REASONING_EFFORT` — not the `/model` selector.
 
@@ -1212,7 +1219,7 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 **Optional reading — under the hood.** The setting is persistent and shim-wide, and it's bound to the active route: switching routes resets it off, and switching back doesn't restore the old state — run `on` again on the new route. Requesting the faster tier is not the same as being served it; only the provider's actual response settles what served a given request, and the controller's `status` shows the latest such result the running shim has seen (qualified by model and completion time), not a promise about your current turn. One early ChatGPT-subscription probe requested priority and was served the standard tier — a dated, single-shape result, kept scoped to that old request rather than read as a standing entitlement test. The full policy semantics, wire-contract details, and version history live in the shim code, its tests, and git history.
 
-**Context window on GPT sessions.** Two small settings tell Claude Code how big your GPT model's context window really is — without them it assumes a small (~200K) window for slugs it doesn't recognize, far below the 1,050,000-token window of the gpt-5.6 family and GPT-6 Sol, Luna, and Astra.
+**Context window on GPT sessions.** Two small settings tell Claude Code how big your GPT model's context window really is — without them it assumes a small (~200K) window for slugs it doesn't recognize, far below the 1,050,000-token window of the gpt-5.6 family, GPT-6 Sol, Luna, and Astra, and GPT-6.1 Sol.
 
 - **On the direct OpenAI-API shim route,** append `[1m]` to every bare GPT slug — all four tier lines (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]` or `gpt-6-astra[1m]`, as shown above) — and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Claude Code reads `[1m]` as a 1M-window hint and strips it before sending.
 - **On OpenRouter,** keep the provider-prefixed bare slug (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-sol`) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Don't add `[1m]` to provider-prefixed slugs — it isn't established for that form.
@@ -1226,7 +1233,7 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 **Optional reading.** Here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).
 
-**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.18"` before testing the new behavior.
+**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.4.7"` before testing the new behavior.
 
 **Session continuity across rebuilds.** On a shim lane, the shim keeps a small reasoning-cache file (`~/.claude/provider_shim/reasoning_cache.json`) that carries GPT reasoning continuity from one turn to the next. It lives on your per-install `daaf-claude-config` volume, so it survives container restarts and image rebuilds — you don't have to do anything to preserve it. Only an explicit `docker compose down -v` or `docker volume rm` erases it.
 
@@ -1272,6 +1279,8 @@ If that reports `codex: command not found`, your image predates the universal in
    ANTHROPIC_API_KEY=
    # hide native /fast; use gpt_fast.sh below
    CLAUDE_CODE_DISABLE_FAST_MODE=1
+   # silence the harmless Auto mode "isn't eligible" notice (see the FAQ)
+   CLAUDE_CODE_AUTO_MODE_SERVER=0
    # all four model tiers, as on the API-key lane ([1m] on every line)
    ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-sol[1m]
    ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]
@@ -1280,7 +1289,7 @@ If that reports `codex: command not found`, your image predates the universal in
    # Codex lane: backend-capped at 919k, NOT 1,050,000 — see below
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000
    ```
-   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins. **Note the `CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000`** above: unlike the API-key lane's full `1050000`, the ChatGPT/Codex backend caps input at 919,000 tokens (measured 2026-09-05 for both `gpt-5.6-sol` and `gpt-6-astra`), independent of the model's true 1M window on the API route — and no `[1m]` hint or client setting can raise it. For `gpt-6-sol` and `gpt-6-luna`, DAAF applies the same 919,000 cap by policy (inferred, not measured), and whether the subscription backend serves those two slugs has not been tested; if it rejects them, use `gpt-5.6-sol[1m]` / `gpt-5.6-luna[1m]`. Declaring `919000` keeps Claude Code and DAAF's utilization accounting aligned with that ceiling; a breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`). Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
+   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins. **Note the `CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000`** above: unlike the API-key lane's full `1050000`, the ChatGPT/Codex backend caps input at 919,000 tokens (measured 2026-09-05 for both `gpt-5.6-sol` and `gpt-6-astra`), independent of the model's true 1M window on the API route — and no `[1m]` hint or client setting can raise it. For `gpt-6-sol`, `gpt-6-luna`, and `gpt-6.1-sol`, DAAF applies the same 919,000 cap by policy (inferred, not measured; a `gpt-6.1-sol` measurement is pending), and whether the subscription backend serves those slugs has not been tested; if it rejects them, use `gpt-5.6-sol[1m]` / `gpt-5.6-luna[1m]`. Declaring `919000` keeps Claude Code and DAAF's utilization accounting aligned with that ceiling; a breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`). Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
 5. **Recreate the container** to apply: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup. If this is the first time you have turned the shim on, choose **Rebuild Container** instead, as in [Step 2 of the API-key lane](#option-f-openai-api-directly-daaf-provider-shim).
 
 **Confirm it's working.** After the container comes back up, check the shim log:
@@ -1304,6 +1313,62 @@ A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `
 **Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, the [Codex plugin](#using-the-codex-plugin-for-claude-code), the shim — inside a *single* container off the *same* login. As of shim v1.3.0 the shim is a pure *reader* of `auth.json`: it never rewrites the store, delegating every token refresh to the `codex` CLI — the single writer per `CODEX_HOME` — so the old shim-versus-other-tool rotation race is structurally eliminated. What stays unverified is *codex-versus-codex*: two independent codex invocations against one `CODEX_HOME` (for instance the plugin and the shim's delegated refresh firing at nearly the same moment). The safe posture is therefore still to give each codex-based tool its own `codex login` under a separate `CODEX_HOME`. None of this is needed for a normal single-tool setup.)
 
 See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).
+
+#### Using an institutional OpenAI-compatible gateway (e.g. a university API toolkit)
+
+**Who this is for:** researchers whose university or employer gives them access to GPT models through its own OpenAI-compatible service, instead of a personal OpenAI account.
+
+**What you'll end up with:** the API-key lane of Option F, pointed at your institution's gateway instead of OpenAI. Nothing else changes: the same shim, the same models, the same commands.
+
+**What to ask your institution for:** (1) the gateway's **base URL** (it usually ends in `/v1`), (2) your **API key**, and (3) the **model name** it serves. The gateway must support OpenAI's **Responses API** (`/v1/responses`). If it only offers the older Chat Completions API, the shim cannot use it.
+
+**Setup.** Section **4.5** of `environment_settings_example.txt` holds the complete block. Copy those lines into your `environment_settings.txt` **instead of** the Option F block above (not as well as it), then fill in your three values:
+
+```bash
+DAAF_PROVIDER_SHIM=openai
+ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+ANTHROPIC_API_KEY=
+CLAUDE_CODE_DISABLE_FAST_MODE=1
+SHIM_BACKEND_MODE=openai
+SHIM_BACKEND_BASE_URL=https://gateway.example.edu/v1
+OPENAI_API_KEY=your_gateway_api_key_here
+ANTHROPIC_DEFAULT_FABLE_MODEL=your-gateway-model
+ANTHROPIC_DEFAULT_OPUS_MODEL=your-gateway-model
+ANTHROPIC_DEFAULT_SONNET_MODEL=your-gateway-model
+ANTHROPIC_DEFAULT_HAIKU_MODEL=your-gateway-model
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=400000
+CLAUDE_CODE_AUTO_MODE_SERVER=0
+```
+
+The URL and model name are placeholders; use your gateway's. Add `[1m]` to the model name only if it has a 1M-token window. If your gateway serves only one model, put it on all four model lines as shown. Then rebuild once if this is your first time using the shim (Step 2 of Option F), or otherwise recreate the container (**Restart Container** in the Control Panel). Whenever you change these lines later, recreate the container again.
+
+**What isn't known until you try it.** Every gateway is set up differently, so two things can only be checked on yours:
+
+- **Web search.** DAAF's WebSearch tool relies on OpenAI's hosted web search. Your gateway may not offer it. If web searches fail while ordinary chat works, that is the likely reason.
+- **Context ceiling.** `400000` above is a cautious starting value, not a measured one. Your gateway may accept more or less. Measure it with the probe below, once the shim is running. Its built-in defaults are tuned for the ChatGPT lane (model `gpt-5.6-sol`, a 900k–1M search range), so name your gateway's model and give it a wide range:
+
+  ```bash
+  python3 /daaf/scripts/provider_shim/probe_context_ceiling.py \
+      --base-url http://127.0.0.1:4141 --model your-gateway-model \
+      --bracket-low 100000 --bracket-high 1000000 --oversize-target 1100000
+  ```
+
+  Use your own model name in place of `your-gateway-model` (no `[1m]`). The probe first sends one oversized request and stops there if the gateway's error states its limit; otherwise it narrows the range with several more requests, some of them hundreds of thousands of tokens long. **It spends real gateway quota.** Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the number it reports. If every request fails with something other than a context-length error (for example a request-size limit), the result is not a context ceiling; keep `400000` and ask your provider.
+
+Leave GPT Priority (`gpt_fast.sh`) off unless your gateway's documentation says it supports priority processing.
+
+**Check that it works.** Inside the container:
+
+```bash
+bash /daaf/scripts/provider_shim/start_shim.sh --status   # expect "running and strictly ready"
+curl -s http://127.0.0.1:4141/health                     # "backend" should show your gateway URL
+claude -p "Reply with the single word OK"                # one short, cheap round trip
+```
+
+If the last command prints `OK`, the route works end to end. If it fails, `/daaf/scripts/provider_shim/logs/shim.log` records the gateway's status code and error type (never your key or your text); a `401` usually means a wrong key, and a `404` usually means a wrong base URL or a gateway without the Responses API.
+
+**The Codex CLI comes along for free.** With this setup, DAAF also points the Codex CLI that ships in the container (`codex`) at the same gateway: at every container start it writes a `daaf_gateway` provider and your strong-tier model into Codex's `config.toml`. Codex reads your key from `OPENAI_API_KEY`; the key is never written into that file. To change other Codex settings, add numbered `DAAF_CODEX_CONFIG_<N>` lines to `environment_settings.txt` (section 4.6 of the example file explains the format). Never paste a key or password into these lines; DAAF refuses values that look like credentials — use `env_key`/`env_http_headers` to point at an environment variable instead. You don't need to edit `config.toml` yourself, and edits made there (by hand, or by Codex itself, such as trusting a folder) are overwritten at the next start, unless you delete the file's first line, which hands the file back to you. To see what DAAF wrote, or why a line was skipped, run `bash /daaf/scripts/provider_shim/start_shim.sh --status` and read its `CODEX CONFIG:` line.
 
 #### Using the Codex Plugin for Claude Code
 

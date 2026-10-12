@@ -73,6 +73,11 @@ profiles:
   # matches that route (NOT the ChatGPT-subscription lane's measured 919,000
   # ceiling — that lane cannot be exercised via a profile overlay anyway, since
   # the shim daemon's backend_mode is fixed at startup).
+  #
+  # GPT-6.1 Sol: to smoke-test it instead (registered 2026-10-12 by user policy
+  # decision; not yet in benchmarks/config/models.yaml), copy THIS openrouter-astra
+  # profile (the block directly below), give the copy a new name, and swap every
+  # "openai/gpt-6-astra" slug for "openai/gpt-6.1-sol"; its window is also 1,050,000.
   openrouter-astra:
     description: "OpenAI GPT-6 Astra via OpenRouter with tier-alias remap."
     env:

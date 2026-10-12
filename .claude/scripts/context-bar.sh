@@ -322,13 +322,19 @@ fi
 # openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro,
 # gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry),
 # web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
-# workspace. Kept byte-identical with subagent-bar.sh's gpt_flagship_re and
+# workspace. USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (exact
+# alternative, optional -pro and [1m]) reads as gpt-6-sol — 1,050,000 window per
+# OpenRouter openai/gpt-6.1-sol fetched 2026-10-12
+# (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/);
+# its ChatGPT-lane ceiling is pending measurement, so the 919k cap is inferred.
+# No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
+# Kept byte-identical with subagent-bar.sh's gpt_flagship_re and
 # context-reporter.sh's GPT_FLAGSHIP_RE (three-way lockstep test in
 # tests/bash/context_reporter.bats; subagent_bar.bats additionally locks the
 # bar-vs-context-bar pair). Stored in a variable to avoid [[ =~ ]] quoting
 # pitfalls; defined unconditionally so it is in scope for the ChatGPT-lane
 # predicate below even when this static-map block is skipped.
-gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$'
+gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
 # (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
@@ -349,12 +355,13 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
             max_context=1048576 ;;
         *)
             case "$physical_slug" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*|gpt-6.1-sol|gpt-6.1-sol[-\[]*)
                     # Closed-set classification (Convention 3), byte-consistent
                     # with subagent-bar.sh: only the anchored flagship/mini/chat
                     # grammars earn a GPT window. Order flagship, then mini, then
                     # chat. The family glob only admits candidates (gpt-6-sol and
-                    # gpt-6-luna added 2026-09-29 by user policy decision); the
+                    # gpt-6-luna added 2026-09-29, gpt-6.1-sol 2026-10-12, both by
+                    # user policy decision); the
                     # anchored ERE decides. Malformed suffixes that reached this
                     # family glob (e.g. gpt-5.4-, gpt-5.6-experimental,
                     # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x, gpt-6-astra-pro-x,
@@ -387,8 +394,9 @@ fi
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a model in the same
 # anchored flagship arm used by the static map above — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra, and (user policy decision 2026-09-29, not
-# measurement) gpt-6-sol, gpt-6-luna, and the flagship -pro forms, which inherit
+# family plus gpt-6-astra, and (user policy decisions 2026-09-29 and
+# 2026-10-12, not measurement) gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and the
+# flagship -pro forms, which inherit
 # the cap from their bases (mini/chat variants are excluded by the arm's
 # ordering). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted

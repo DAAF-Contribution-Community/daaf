@@ -79,8 +79,8 @@ C_BAR_EMPTY=$'\033[38;5;238m'
 # validation), use ELEVATED >= 30% OR >= 300k,
 # HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. The exact terminal
 # extended-horizon GPT slugs — GPT 5.6 Sol and GPT-6 Astra (validated), plus
-# GPT-6 Sol and the flagship -pro form of all three (user policy decision
-# 2026-09-29, not validation; see gpt_extended_re) — use 60%/75%/90%
+# GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of each (user policy
+# decisions 2026-09-29 and 2026-10-12, not validation; see gpt_extended_re) — use 60%/75%/90%
 # percentage gates while retaining the larger 300k/400k/500k absolute gates.
 # Every other model — including every other Opus model (Opus 5 included),
 # Sonnet, other GPT variants (GPT-6 Luna, Terra, mini, chat), GLM, and unknown
@@ -336,14 +336,21 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
 # gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry):
 # web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
 # workspace. Capping at 919k can only make a reading more conservative.
+# USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (one exact
+# alternative, optional -pro and [1m]) is treated identically to gpt-6-sol —
+# 1,050,000 window, inferred 919k ChatGPT-lane cap (lane ceiling pending
+# measurement), extended quality tier. Window per OpenRouter openai/gpt-6.1-sol
+# fetched 2026-10-12
+# (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/).
+# No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
 #   flagship  -> 1,050,000 physical window + eligible for the 919k ChatGPT cap
 #   mini      -> 400,000
 #   chat      -> 128,000
 #   prev (gpt-5 / gpt-5.2) -> 400,000, or 128,000 for its -chat variant
 # gpt_extended_re is the QUALITY-TIER grammar (60/75/90% + 300/400/500k),
 # deliberately narrower than the flagship window grammar: gpt-5.6-sol and
-# gpt-6-astra (validated), plus gpt-6-sol and the -pro form of all three
-# (policy decision above). Tested against the provider-stripped terminal slug,
+# gpt-6-astra (validated), plus gpt-6-sol, gpt-6.1-sol, and the -pro form of
+# each (policy decisions above). Tested against the provider-stripped terminal slug,
 # so a bare slug or a provider path whose FINAL segment matches is accepted and
 # left-boundary near misses (xgpt-6-astra, foo-gpt-5.6-sol,
 # vendor/notgpt-5.6-sol) stay conservative. Kept byte-identical with
@@ -352,8 +359,8 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
 # lockstep test lives in tests/bash/context_reporter.bats;
 # tests/bash/subagent_bar.bats locks only gpt_flagship_re against context-bar.sh
 # (plus the literal gpt_extended_re value).
-gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$'
-gpt_extended_re='^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$'
+gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
+gpt_extended_re='^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 gpt_prev_re='^gpt-5(\.2)?(-mini)?(\[1m\])?$'
@@ -431,7 +438,7 @@ static_window_for_model() {
                     # gpt-5.6-sol[1m]x): map it to the conservative 200000
                     # BEFORE the generic Claude *\[1m\]* arm below can hand it
                     # 1,000,000, so all three scripts agree on the window.
-                    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*)
+                    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*|gpt-6.1-sol|gpt-6.1-sol[-\[]*)
                         window=200000 ;;
                     *)
                         case "$model" in
@@ -493,11 +500,13 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # gpt-6-luna participate like gpt-6-astra, and the flagship -pro form of
     # every participating flagship participates as its base does (-pro is
     # mutually exclusive with -mini/-chat, so gpt-5.6-mini-pro stays out).
+    # 2026-10-12 user policy decision: gpt-6.1-sol (and its -pro form)
+    # participates like gpt-6-sol.
     # Matched against the RAW task_model: normalize_model_id rewrites only
     # claude-* ids, and this grammar admits only gpt-* slugs, so normalization is
     # the identity on every id that can match here (and this block runs before
     # the control-strip that model_key is derived after).
-    measured_input_re='^(gpt-5\.6(-(sol|terra|luna))?(-(mini|chat|pro))?|gpt-6-(astra|sol|luna)(-pro)?)(\[1m\])?$'
+    measured_input_re='^(gpt-5\.6(-(sol|terra|luna))?(-(mini|chat|pro))?|gpt-6-(astra|sol|luna)(-pro)?|gpt-6\.1-sol(-pro)?)(\[1m\])?$'
     shim_local=0
     if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
           ( "${SHIM_BACKEND_MODE:-}" == "chatgpt" || "${SHIM_BACKEND_MODE:-}" == "openai" ) && \
@@ -587,8 +596,9 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # ChatGPT-subscription/Codex final physical-window accounting constraint.
     # Canonical activation requires BOTH exact lane signals and a task model in
     # the anchored flagship arm — the gpt-5.4/5.5/5.6 family plus gpt-6-astra,
-    # and (user policy decision 2026-09-29, not measurement) gpt-6-sol,
-    # gpt-6-luna, and the flagship -pro forms, which inherit the cap from their
+    # and (user policy decisions 2026-09-29 and 2026-10-12, not measurement)
+    # gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and the flagship -pro forms, which
+    # inherit the cap from their
     # bases; mini/chat variants are excluded by ordering. Probes 2026-09-05 (Codex CLI
     # 0.153.2, shim v1.3.19, SHIM_BACKEND_MODE=chatgpt) measured BOTH lane
     # flagships: gpt-6-astra accepted 919,053 real input tokens and rejected
@@ -660,9 +670,10 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # GPT extended-tier matching (gpt_extended_re, tested against the
     # provider-stripped terminal slug of model_key) accepts the bare slug or a
     # provider path only when its final segment is exactly gpt-5.6-sol,
-    # gpt-6-astra, or gpt-6-sol, each with an optional -pro and then an optional
-    # [1m] (gpt-6-sol and every -pro form admitted 2026-09-29 by user policy
-    # decision, not validation — see gpt_flagship_re); left- or right-boundary
+    # gpt-6-astra, gpt-6-sol, or gpt-6.1-sol, each with an optional -pro and then
+    # an optional [1m] (gpt-6-sol and every -pro form admitted 2026-09-29, and
+    # gpt-6.1-sol 2026-10-12, by user policy decision, not validation — see
+    # gpt_flagship_re); left- or right-boundary
     # near misses (xgpt-6-astra, gpt-6-astra-pro-x, gpt-6-astra-mini,
     # gpt-6-astra[1m]-x, gpt-6-sol[1m]-pro), gpt-6-luna (1.05M window but
     # conservative tier, like gpt-5.6-luna), and unknown/empty models fall
