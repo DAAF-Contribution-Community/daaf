@@ -21,12 +21,20 @@ setup() {
     mock_docker
     mock_curl
     # Source the harness in test mode: this defines the tm_* pure functions and
-    # returns at the DAAF_TEST_MODE guard before any execution. Neutralize the
-    # set -euo pipefail inherited from the harness preamble for the test body,
-    # and initialize the arg-parse globals tm_parse_args writes to.
+    # returns at the DAAF_TEST_MODE guard before any execution. The harness
+    # preamble's `set -euo pipefail` leaks into this shell, so put back the
+    # options bats runs tests with (`set -eET`, no nounset, no pipefail):
+    #   -e         KEEP errexit. Bats fails a test only through it, so without it
+    #              every assertion but the last one in a test is ignored (this
+    #              setup() used to run `set +eu`, which did exactly that).
+    #   +u         bats does not run tests under nounset; keep its default.
+    #   +o pipefail  the pins' `grep ... | head -1 | cut` pipelines must not fail
+    #              when head closes the pipe early.
+    # The harness sets no ERR trap before its test-mode return, so bats's own ERR
+    # trap (which records the failing line) is left in place: do not `trap - ERR`.
     DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/test_migration.sh"
-    trap - ERR
-    set +eu
+    set -e +u +o pipefail
+    # Initialize the arg-parse globals tm_parse_args writes to.
     RUN_ALL=0
     AUTO_MODE=0
     SKIP_MULTI_CLI=0
@@ -540,9 +548,6 @@ teardown() {
 # normalized name when the two differ; the comparison itself uses the normalized name.
 
 @test "era guard: the refusal shows DAAF_PROJECT_NAME as typed, plus the normalized name when they differ" {
-    # setup() runs `set +eu` for the sourced harness, which would leave every
-    # assertion but the last inert here: turn errexit back on for this test.
-    set -e
     run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_DATA_VOLUME_NAME \
         NO_COLOR=1 DAAF_TEST_VERSION=v2.0.1 DAAF_PROJECT_NAME=Work \
         bash "${REPO_ROOT}/scripts/host/test_migration.sh"
@@ -560,7 +565,6 @@ teardown() {
 }
 
 @test "era guard (.sh/.ps1): both twins carry the as-typed wording" {
-    set -e  # see the test above: setup()'s `set +eu` would make the assertions inert
     run grep -cF "only the default 'daaf' project is supported (got: '\${DAAF_PROJECT_NAME:-}', which Docker Compose uses as '\${PROJECT_NAME}')." "${REPO_ROOT}/scripts/host/test_migration.sh"
     assert_output "1"
     run grep -cF "(got: '\${PROJECT_NAME}')" "${REPO_ROOT}/scripts/host/test_migration.sh"

@@ -64,20 +64,54 @@
 #       DAAF_INVARIANT_ROOT=/home/appuser/.claude bash scripts/check_workspace_invariants.sh --names-only
 #     Do not run the full check (without --names-only) on a folder other than
 #     /daaf -- see above.
-# Default behavior with no env var and no args is byte-for-byte compatible with
-# existing callers.
+#
+# Allowlist override: set DAAF_INVARIANT_ALLOWLIST to REPLACE the built-in
+# symlink allowlist (the ALLOWLIST block below) for one run. It exists for
+# tests: the built-in entries are DAAF dev-container paths that a CI checkout
+# does not have, so a fixture can only be exempted through this variable, e.g.
+#       DAAF_INVARIANT_ROOT=<fixture> DAAF_INVARIANT_ALLOWLIST=<fixture>/allowed/ \
+#           bash /daaf/scripts/check_workspace_invariants.sh
+#   - Format: one absolute path prefix per line (newline-separated); several
+#     entries can be built with "$(printf '%s\n' "$a" "$b")". Newline, not
+#     colon: a prefix may contain spaces, tabs or colons (a parent folder of the
+#     root, which Invariant 3 does not check, can hold a colon), and every
+#     character but newline is kept as written. A newline cannot be part of a
+#     prefix -- harmless, since a name with a newline in it is itself an
+#     Invariant 3 violation.
+#   - Replace, not extend: while it is set, ONLY its entries exempt a symlink;
+#     the built-in entries do not apply. A test can then show that its own
+#     prefix is exempt and that nothing else is.
+#   - Set but empty (or blank lines only): no prefix at all, so every symlink is
+#     flagged (fail safe). Blank lines are skipped and never become an empty
+#     prefix, which would match every path.
+#   - Relative entries (anything not starting with /) are refused: the run
+#     stops with exit 1 before any walk. Entries are compared as literal text
+#     (glob characters included) with the start of each symlink path as find
+#     prints it, "$ROOT/...", so a relative entry could never match and can
+#     only be a mistake. End each entry with / so it cannot match a sibling
+#     name such as allowed_not/.
+#   - An entry that would exempt the whole checked folder (/, $ROOT/, or any
+#     other prefix of "$ROOT/") is refused the same way: it would turn the
+#     symlink check off while the run still exits 0.
+#   - While it is set, every full run prints a NOTE on stderr (also with -q),
+#     so a leftover export cannot quietly change the gate. --names-only skips
+#     Invariant 1, so it prints no NOTE, but a relative entry still stops it.
+# Default behavior with neither env var set and no args is byte-for-byte
+# compatible with existing callers.
 #
 # Exit codes:
 #   0 — all invariants satisfied (with --names-only: Invariant 3 satisfied)
 #   1 — one or more violations found (offending paths listed with control chars escaped),
-#       the Invariant 3 name walk did not complete (fail closed), or an unknown
-#       argument was given (usage printed)
+#       the Invariant 3 name walk did not complete (fail closed), an unknown
+#       argument was given (usage printed), or a DAAF_INVARIANT_ALLOWLIST entry
+#       is not an absolute path (nothing walked)
 
 set -euo pipefail
 
 # --- Allowlist (edit this block to add exceptions) ---
 # Prefix-match based: any path that begins with one of these strings is exempt
 # from the symlink invariant. Keep each entry as specific as possible.
+# DAAF_INVARIANT_ALLOWLIST, when set, replaces this list (see the header).
 #
 # syslibs_glpk: extracted .deb shared libraries for the R Support GLPK work.
 # These .so.N symlinks are legitimate scratch provenance artifacts, not probe
@@ -118,6 +152,58 @@ for arg in "$@"; do
     esac
 done
 
+# --- Symlink allowlist in effect: built-in, or the DAAF_INVARIANT_ALLOWLIST override ---
+# INTENT: pick the prefixes Invariant 1 exempts: the built-in ALLOWLIST when
+#   DAAF_INVARIANT_ALLOWLIST is unset, otherwise ONLY the override's entries.
+# REASONING: `${VAR+set}` tells unset apart from set-but-empty, so an empty value
+#   means "no exemptions" (fail safe), never a fallback to the built-in list or
+#   "allow everything". Blank lines are skipped before they can become an empty
+#   prefix, which `"$prefix"*` would match against every path. A relative entry
+#   is refused before any walk, because it could only be a mistake that exempts
+#   nothing. Reading through printf instead of a here-string keeps bash from
+#   writing a temp file.
+# ASSUMES: entries are newline-separated (see the header); IFS= and read -r keep
+#   each line exactly as written, spaces and backslashes included.
+allowlist_override=0
+active_allowlist=()
+if [ -n "${DAAF_INVARIANT_ALLOWLIST+set}" ]; then
+    allowlist_override=1
+    while IFS= read -r allow_entry; do
+        [ -n "$allow_entry" ] || continue
+        case "$allow_entry" in
+            /*) ;;
+            *)
+                echo "WORKSPACE INVARIANT ERROR: every DAAF_INVARIANT_ALLOWLIST entry must be an absolute path (start with /)." >&2
+                printf '  Relative entry (control characters shown escaped): %s\n' "$allow_entry" | cat -A >&2
+                echo "  Nothing was checked." >&2
+                exit 1
+                ;;
+        esac
+        # INTENT: refuse an entry that would exempt the WHOLE checked tree.
+        # REASONING: matching is a literal prefix test, so an entry such as `/`,
+        #   `/da` or `$ROOT/` matches every symlink under ROOT and turns Invariant 1
+        #   off while the run still exits 0 (review 55, SUGGESTION). Callers such as
+        #   the deploy-smoke probe judge by exit code alone, so this must be an error.
+        # ASSUMES: every checked path starts with "${ROOT%/}/", with or without a
+        #   trailing slash on ROOT.
+        case "${ROOT%/}/" in
+            "$allow_entry"*)
+                echo "WORKSPACE INVARIANT ERROR: a DAAF_INVARIANT_ALLOWLIST entry would exempt the whole checked folder (${ROOT})." >&2
+                printf '  Entry (control characters shown escaped): %s\n' "$allow_entry" | cat -A >&2
+                echo "  Nothing was checked." >&2
+                exit 1
+                ;;
+        esac
+        active_allowlist+=("$allow_entry")
+    done < <(printf '%s\n' "$DAAF_INVARIANT_ALLOWLIST")
+    if [ "$NAMES_ONLY" -eq 0 ]; then
+        echo "NOTE: DAAF_INVARIANT_ALLOWLIST is set, so its ${#active_allowlist[@]} prefix(es) replace the built-in symlink allowlist for this run." >&2
+    fi
+else
+    active_allowlist=("${ALLOWLIST[@]}")
+fi
+readonly allowlist_override active_allowlist
+
 # Track whether any invariant failed so we can report both before exiting.
 any_violation=0
 
@@ -141,12 +227,13 @@ sym_violations=()
 while IFS= read -r -d '' link; do
     checked=$((checked + 1))
     allowed=0
-    for prefix in "${ALLOWLIST[@]}"; do
+    for prefix in "${active_allowlist[@]}"; do
         # INTENT: prefix-match the symlink path against each allowlist entry.
         # REASONING: case "$link" in "$prefix"*) uses glob prefix matching without
         #   spawning a subprocess per link; the trailing * anchors to the start.
-        # ASSUMES: allowlist prefixes contain no glob metacharacters (they are
-        #   literal directory paths), so the only wildcard is our own trailing *.
+        # ASSUMES: the quoted "$prefix" matches as literal text, so a glob
+        #   character in an entry (e.g. a * from the override) is not a wildcard;
+        #   the only wildcard is our own trailing * (checked with bash 5.2).
         case "$link" in
             "$prefix"*) allowed=1; break ;;
         esac
@@ -301,8 +388,13 @@ if [ "${#sym_violations[@]}" -gt 0 ]; then
     echo "WORKSPACE INVARIANT VIOLATION: unauthorized symlink(s) found under $ROOT" >&2
     echo "  (${#sym_violations[@]} of $checked symlink(s) are not on the allowlist)" >&2
     echo "  Fix: delete these objects (a scratch probe likely leaked them)." >&2
-    echo "       Symlinks are allowed only under an allowlisted prefix; see the" >&2
-    echo "       ALLOWLIST block at the top of this script." >&2
+    if [ "$allowlist_override" -eq 1 ]; then
+        echo "       Symlinks are allowed only under an allowlisted prefix; this run" >&2
+        echo "       used the DAAF_INVARIANT_ALLOWLIST override, not the ALLOWLIST block." >&2
+    else
+        echo "       Symlinks are allowed only under an allowlisted prefix; see the" >&2
+        echo "       ALLOWLIST block at the top of this script." >&2
+    fi
     echo "  Offending paths (control characters shown escaped):" >&2
     # INTENT: render each offending path with control characters made visible.
     # REASONING: a symlink named with an embedded tab or newline is invisible/

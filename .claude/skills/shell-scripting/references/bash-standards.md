@@ -330,7 +330,7 @@ bash "${BASE_DIR}/scripts/check_workspace_invariants.sh"   # prints an OK line o
 
 The per-probe trap binds each runner. The checker is the *checkable invariant* that binds everyone. A clean run is the gate: if the checker lists an offending object, a probe or test leaked it, so rename or delete it before proceeding.
 
-The full check is for `/daaf` only. `--names-only` (combinable with `-q`) runs Invariant 3 alone; with `DAAF_INVARIANT_ROOT=<dir>` it is the safe way to check another folder, such as the Claude Code state volume at `/home/appuser/.claude` that the backup's unreadable-name-list hint points at. Invariants 1-2 there would flag legitimate files (Codex's symlinks, Claude Code's own zero-byte files) as objects to delete.
+The full check is for `/daaf` only. `--names-only` (combinable with `-q`) runs Invariant 3 alone; with `DAAF_INVARIANT_ROOT=<dir>` it is the safe way to check another folder, such as the Claude Code state volume at `/home/appuser/.claude` that the backup's unreadable-name-list hint points at. Invariants 1-2 there would flag legitimate files (Codex's symlinks, Claude Code's own zero-byte files) as objects to delete. `DAAF_INVARIANT_ALLOWLIST` (one absolute path prefix per line) replaces the built-in symlink allowlist for one run, so a test can exempt a fixture without editing the script: an empty value exempts nothing, relative entries and entries that would cover the whole checked folder (such as `/`) are refused, and a `NOTE:` on stderr says when the override is in use.
 
 ### Composable Scripts (DAAF_NESTED)
 
