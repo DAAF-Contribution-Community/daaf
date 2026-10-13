@@ -90,7 +90,7 @@ Script behaving unexpectedly?
 │   └─ cd went to wrong dir → ./references/gotchas.md (cd without || exit)
 ├─ PowerShell
 │   ├─ Native command error ignored → ./references/gotchas.md ($LASTEXITCODE)
-│   ├─ Native stderr missing from a 2>&1 capture on PS 5.1 → ./references/gotchas.md (SilentlyContinue drops it)
+│   ├─ Native stderr missing from a 2>&1 capture or a 2>> file on PS 5.1 → ./references/gotchas.md (SilentlyContinue drops it)
 │   ├─ "Program ... ended with non-zero exit code" line / NativeCommandExitException → ./references/gotchas.md ($PSNativeCommandUseErrorActionPreference)
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md

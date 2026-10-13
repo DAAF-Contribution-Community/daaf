@@ -12,8 +12,13 @@
 # preference no longer applies to redirected native stderr (sourced:
 # about_Preference_Variables), so pwsh 7 -- this container and every Pester run
 # in CI -- keeps the line, and no behavioral test on pwsh 7 can see the drop.
-# Whether a `2>` / `2>>` FILE redirect is emptied the same way is inference; the
-# validate-ps-windows CI job's "Probe native stderr capture" step reports it.
+# A `2>>` FILE redirect is emptied the same way: observed by the
+# validate-ps-windows CI job's "Probe native stderr capture" step (CI - Scripts
+# run 38316686493, 5.1.26100.33438, 2026-10-12: `file_lines=0` under
+# 'SilentlyContinue'), which now asserts it; a plain `2>` is inference. Under
+# 'Continue' the same run's file held PowerShell's formatted 7-line error record
+# (`cmd.exe : PROBE_ERR`, CategoryInfo, ...), not the raw line, which is why
+# stderr read back for display is kept in memory rather than in a file.
 #
 # WHAT THIS GUARD CHECKS
 # ----------------------

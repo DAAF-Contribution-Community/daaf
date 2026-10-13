@@ -329,8 +329,8 @@ Describe "rebuild_daaf.ps1 error paths" {
 # Native stderr reaches the user (dispatch #63: G2 readiness, G6 preference)
 # ============================================================================
 # Windows PowerShell 5.1 drops a native command's stderr from a 2>&1 capture when
-# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas), and by
-# inference from a `2>> file` redirect too. The readiness errors ("Docker
+# $ErrorActionPreference is 'SilentlyContinue' (shell-scripting gotchas), and (CI-observed
+# 2026-10-12) from a `2>> file` redirect too. The readiness errors ("Docker
 # reported:") are kept in memory under 'Continue' instead. pwsh 7 keeps the lines
 # either way, so the behavioral test cannot catch a revert on its own.
 

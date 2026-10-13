@@ -129,7 +129,7 @@ On Windows PowerShell 5.1, several host scripts captured a failing command's err
 - "Failed to start the notebook server:" and "Could not start the log viewer server:" (Control Panel);
 - "Git reported:" (update);
 - "Details from the staging scan:" (backup);
-- "Docker reported:" (Restart Container). For the install, rebuild and update readiness checks this is expected but not yet observed.
+- "Docker reported:" (Restart Container). For the install, rebuild and update readiness checks (a `2>>` file), the CI probe has since observed the same drop on Windows PowerShell 5.1.
 
 Those captures now keep the error text on every PowerShell version. The install, rebuild and update readiness checks also keep it in memory instead of in a temporary file. The launchers (`run_daaf`, `view_notebooks`, `run_vscode`, `view_quarto`, `view_logs`) now read only Docker's normal output when checking whether the container is running (and, in `run_daaf`, when it was created), so on PowerShell 7 a Docker warning can no longer make a stopped container look running. Other changes:
 - All host scripts that check exit codes now switch off PowerShell 7.4's `$PSNativeCommandUseErrorActionPreference`.
@@ -584,14 +584,14 @@ The default `daaf` path is unchanged: probes comparing the scripts before and af
 #### Host PowerShell: Native stderr Under Windows PowerShell 5.1
 
 **Why.** The restore field test (D2 above) showed that Windows PowerShell 5.1 drops a native command's stderr from a `2>&1` capture under `$ErrorActionPreference = 'SilentlyContinue'`; pwsh 7.2+ keeps it. An audit of every `scripts/host/*.ps1` (`research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/05_ps1_stderr_audit.md`) found no branch that depends on Docker's error text. It did find:
-- 12 captures shown to the user that 5.1 empties, 3 of them `2>> $readyLog` file redirects, whose 5.1 behavior is not yet observed;
+- 12 captures shown to the user that 5.1 empties, 3 of them `2>> $readyLog` file redirects. For those 3 the audit's drop was an inference; the CI probe's first run (CI - Scripts run 38316686493, Windows PowerShell 5.1.26100.33438, 2026-10-12) then observed 5.1 writing nothing to the file under `SilentlyContinue` (`file_lines=0`);
 - 7 "inverted polarity" stdout-only reads: six container-ID checks (`$x = docker compose ps -q daaf-docker 2>&1`, then is-it-empty) and one creation-date parse (`$_created` in `run_daaf.ps1`). Here the 5.1 drop is what made each read correct, and pwsh 7 misreads a stderr-only warning as a running container;
 - an unused helper;
 - 11 scripts without the `$PSNativeCommandUseErrorActionPreference` guard.
 
 **What changed (dispatch #63; `.ps1` only, since Bash does not have this problem).**
 - **Captures shown to the user** now run under `'Continue'`: `daaf.ps1` (`$launchErr` x2, `$manifestErr` x2, `$serveErr`, `$readyErr`), `update_daaf.ps1` (`$fetchOutput`) and `backup_daaf.ps1` (`$StageLog`, `$ClaudeStageLog`).
-- **Readiness lines kept in memory.** The `install`, `rebuild` and `update` readiness loops keep stderr lines in memory under `'Continue'` instead of in a `2>> $readyLog` file, and print the last five, as before.
+- **Readiness lines kept in memory.** The `install`, `rebuild` and `update` readiness loops keep stderr lines in memory under `'Continue'` instead of in a `2>> $readyLog` file, and print the last five, as before. Switching the file redirect to `'Continue'` would not have been enough: in the same CI run the file then held PowerShell's formatted 7-line error record (`cmd.exe : PROBE_ERR`, `+ CategoryInfo ...`), not the raw line.
 - **Stdout-only reads take stdout only.** The six ID checks and the date parse now use `2>$null`, never `'Continue'`, which would carry pwsh 7's misread over to 5.1.
 - **Dead code removed:** `Invoke-ContainerShellVerbose` in `migrate_daaf.ps1`.
 - **`$PSNativeCommandUseErrorActionPreference = $false`** is set in the ten remaining scripts that read `$LASTEXITCODE` (`daaf_lib.ps1` inherits `daaf.ps1`'s).
@@ -605,9 +605,10 @@ The default `daaf` path is unchanged: probes comparing the scripts before and af
 - **`stream_capture_idiom.Tests.ps1`** used to assert that `SilentlyContinue` keeps stderr and claimed to run on 5.1 in CI. Both claims were wrong. It now tests the `'Continue'` idiom, plus a version-conditional `SilentlyContinue` case.
 - **The CI probe.** The `validate-ps-windows` CI job gains the step "Probe native stderr capture (Windows PS 5.1)", which runs with `shell: powershell` and no Pester.
   - It asserts the two field-observed `2>&1` facts: `SilentlyContinue` drops the stderr line and `'Continue'` keeps it.
-  - It only reports the `2>> file` results and the merged record type.
+  - After its first run (run 38316686493, all as expected) it also asserts that a `2>> file` under `SilentlyContinue` gets no lines, once the stdout line has arrived. A failure says `KEPT` and names the docs to correct.
+  - It reports the `2>> file` result under `'Continue'` and the merged record type (`error_records=1` in that run), with a warning if the file no longer holds a formatted error record.
 
-**Docs.** `shell-scripting`'s `gotchas.md` entry for the 5.1 drop now chooses the fix by the capture's purpose, and records the inverted-polarity lesson, the in-memory readiness form, the guard, the CI probe, and where each form lives. Its `$PSNativeCommandUseErrorActionPreference` entry lists the scripts that now set it.
+**Docs.** `shell-scripting`'s `gotchas.md` entry for the 5.1 drop now chooses the fix by the capture's purpose, and records the inverted-polarity lesson, the in-memory readiness form, the guard, the CI probe and what its first run observed, and where each form lives. Its `$PSNativeCommandUseErrorActionPreference` entry lists the scripts that now set it.
 
 **Tests.** Pester 1294 -> 1384 cases across the `tests/powershell` suites (dispatch #63 to 1332, then the guard's 51 and one more idiom case). Mutations caught: every dispatch #63 group (G1, G2, G3, G4, G6), and every guard revert.
 

@@ -193,24 +193,33 @@ jobs:
       # 'SilentlyContinue' (shell-scripting skill > gotchas.md) is invisible to
       # every test suite. This step turns it into evidence on each run:
       #   - `2>&1` into a variable: ASSERTED -- 'SilentlyContinue' drops the stderr
-      #     line and 'Continue' keeps it (field-observed 2026-10-05 on 5.1.26100).
-      #     If 5.1 behaves otherwise, the step fails, and its ::error:: names the
-      #     direction: SilentlyContinue KEPT the line (the fixes still hold; the
-      #     docs and guard rationale need correcting) or Continue DROPPED it
-      #     (the G1/G2 fixes do not work on 5.1; escalate).
-      #   - `2>> file` under both preferences, and whether the kept line is an
-      #     ErrorRecord whose "$_" is the plain text (the install/rebuild/update
-      #     readiness loops rely on both): REPORTED only (not yet observed on 5.1).
+      #     line and 'Continue' keeps it (field-observed 2026-10-05 on 5.1.26100;
+      #     observed here too, CI - Scripts run 38316686493, 5.1.26100.33438,
+      #     2026-10-12). If 5.1 behaves otherwise, the step fails, and its
+      #     ::error:: names the direction: SilentlyContinue KEPT the line (the
+      #     fixes still hold; the docs and guard rationale need correcting) or
+      #     Continue DROPPED it (the G1/G2 fixes do not work on 5.1; escalate).
+      #   - `2>> file` under 'SilentlyContinue': ASSERTED -- the file gets no
+      #     lines (observed in run 38316686493: file_lines=0). The stdout line
+      #     is checked first, so a probe that never ran cannot pass. If the file
+      #     gets lines, the step fails with a KEPT message: nothing is broken
+      #     (the readiness loops keep stderr in memory since dispatch #63), but
+      #     the docs need correcting.
+      #   - `2>> file` under 'Continue', and whether the merged `2>&1` line is
+      #     an ErrorRecord: REPORTED. Run 38316686493 saw error_records=1, and a
+      #     7-line FORMATTED error record in the file (`cmd.exe : PROBE_ERR`,
+      #     `+ CategoryInfo ...`), not the raw line. Not asserted, because no
+      #     host script sends stderr to a file any more, so a change here breaks
+      #     nothing; a ::warning:: says when the file no longer holds a
+      #     formatted record naming PROBE_ERR, so the docs can be corrected.
       # Plain PowerShell, no Pester: whether Pester 5 imports under 5.1 on this
       # runner is unverified. `if: !cancelled()` so a PSScriptAnalyzer failure
       # above does not hide the probe's result.
-      # WATCH THE FIRST RUN: the probe's shape is not the field probe's. Here
-      # cmd.exe writes the lines and the capture is a direct `@(... 2>&1)`
-      # assignment; the 2026-10-05 field probe used `docker ... 2>&1 |
-      # ForEach-Object`. The drop is expected to come from PowerShell's handling
-      # of redirected stderr, not from the program (inference), but a red first
-      # run may be that shape difference alone -- read which direction failed
-      # before acting on it.
+      # The probe's shape is not the field probe's. Here cmd.exe writes the
+      # lines and the capture is a direct `@(... 2>&1)` assignment; the
+      # 2026-10-05 field probe used `docker ... 2>&1 | ForEach-Object`. The
+      # first run (38316686493) gave the field result anyway. If the step goes
+      # red, read which direction failed before acting on it.
       - name: Probe native stderr capture (Windows PS 5.1)
         if: ${{ !cancelled() }}
         shell: powershell
@@ -252,7 +261,7 @@ jobs:
             }
           }
 
-          Write-Host "--- 2>> file (reported, not asserted) ---"
+          Write-Host "--- 2>> file (SilentlyContinue asserted; Continue reported) ---"
           foreach ($pref in @('SilentlyContinue', 'Continue')) {
             $log = Join-Path $env:RUNNER_TEMP "daaf-stderr-probe-$pref.log"
             if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
@@ -265,13 +274,27 @@ jobs:
             Write-Host "2>> file under ${pref}: captured_stdout_items=$($items.Count) file_exists=$(Test-Path -LiteralPath $log) file_lines=$($fileLines.Count) lines_naming_PROBE_ERR=$errLines"
             foreach ($line in $fileLines) { Write-Host "    | $line" }
             Write-Host "::notice::Windows PowerShell 5.1, 2>> file under ${pref}: file_lines=$($fileLines.Count), lines_naming_PROBE_ERR=$errLines"
+            if ($pref -eq 'SilentlyContinue') {
+              # Asserted: an empty file only means "dropped" if the command ran.
+              $outLines = @($items | ForEach-Object { "$_".Trim() } | Where-Object { $_ -eq 'PROBE_OUT' }).Count
+              if ($outLines -ne 1) {
+                Write-Host "::error::2>> file under SilentlyContinue: the stdout line is missing (stdout_lines=$outLines), so the probe itself is broken."
+                $failed = 1
+              } elseif ($fileLines.Count -ne 0) {
+                Write-Host "::error::2>> file under SilentlyContinue KEPT stderr (expected file_lines=0, got $($fileLines.Count)): Windows PowerShell 5.1 now keeps file-redirected stderr under SilentlyContinue. Nothing is broken (the readiness loops keep stderr in memory); correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry), CHANGELOG.md, this probe, and the header of tests/powershell/native_stderr_capture.Tests.ps1."
+                $failed = 1
+              }
+            } elseif ($errLines -lt 1 -or @($fileLines | Where-Object { $_ -match 'CategoryInfo' }).Count -lt 1) {
+              # Reported: run 38316686493 saw a formatted ErrorRecord here.
+              Write-Host "::warning::2>> file under Continue no longer holds a formatted error record naming PROBE_ERR (run 38316686493 had file_lines=7, lines_naming_PROBE_ERR=2): correct .claude/skills/shell-scripting/references/gotchas.md (the 5.1 drop entry)."
+            }
           }
 
           if ($failed) {
             Write-Host "Native stderr probe FAILED (see the errors above)."
             exit 1
           }
-          Write-Host "Native stderr probe: Windows PowerShell 5.1 behaved as field-observed."
+          Write-Host "Native stderr probe: Windows PowerShell 5.1 behaved as previously observed."
           exit 0
 
   # ---------------------------------------------------------------------------

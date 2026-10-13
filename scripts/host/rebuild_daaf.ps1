@@ -346,7 +346,7 @@ $maxRetries = 30
 # Docker's stderr from every attempt, kept in memory (not a temp file) for the
 # "Docker reported:" lines below. 'Continue', not 'SilentlyContinue': Windows
 # PowerShell 5.1 drops native stderr from a 2>&1 capture under SilentlyContinue
-# (and, by inference, from the old `2>> file` redirect too). Only the stderr
+# (and from the old `2>> file` redirect too; CI-observed 2026-10-12). Only the stderr
 # records are kept ("$_" renders one as its plain message text); stdout passes
 # through as before.
 $readyErrLines = New-Object System.Collections.Generic.List[string]

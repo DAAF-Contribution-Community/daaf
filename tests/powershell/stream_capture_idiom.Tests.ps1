@@ -47,7 +47,9 @@
 # and the "Probe native stderr capture" step of the validate-ps-windows job in
 # .github/workflows/ci-scripts.yml, which runs under Windows PowerShell 5.1 and
 # fails if 5.1 stops dropping the line under SilentlyContinue, or drops it
-# under 'Continue'.
+# under 'Continue', or writes any line to a `2>>` file under SilentlyContinue
+# (all three observed as expected in its first run, CI - Scripts run
+# 38316686493, 5.1.26100.33438, 2026-10-12).
 #
 # PLATFORM: the native command is cmd.exe on Windows and /bin/sh elsewhere.
 # The test skips only if neither is resolvable (a genuine "cannot run it").
