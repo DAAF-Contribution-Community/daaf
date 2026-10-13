@@ -11,10 +11,10 @@ to "no equivalent exists."
 DAAF's Python stack covers the most common causal designs:
 - **Difference-in-differences:** pyfixest (TWFE, did2s, lpdid, Sun-Abraham event_study)
 - **Event studies:** pyfixest (i() operator, iplot, panelview)
-- **Regression discontinuity:** rdrobust (same authors as Stata version)
+- **Regression discontinuity:** rdrobust (same rdpackages project as the Stata version)
 - **Instrumental variables:** pyfixest (with FE) and linearmodels (LIML, GMM)
 - **Marginal effects / interpretation:** marginaleffects (same author as R version)
-- **Synthetic control:** scpi (same authors as Stata version), CausalPy (Bayesian)
+- **Synthetic control:** scpi (one package implemented in Python, R, and Stata; not the authors of Stata `synth`), CausalPy (Bayesian)
 - **Binscatter:** binsreg (same authors as Stata version)
 
 This reference documents both what translates cleanly and where real gaps remain.
@@ -38,11 +38,13 @@ This reference documents both what translates cleanly and where real gaps remain
 > Dockerfile (user additions block near the end) and rebuild before use.
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
-> Huntington-Klein, *The Effect* (CRC Press, 2021);
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Cattaneo, Idrobo, & Titiunik, *A Practical Introduction to Regression
-> Discontinuity Designs* (Cambridge, 2020);
-> Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024);
+> Discontinuity Designs: Foundations* (Cambridge, 2020);
+> Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using
+> marginaleffects for R and Python" (*J. Statistical Software*, 2024;
+> https://doi.org/10.18637/jss.v111.i09);
 > Goodman-Bacon, "Difference-in-Differences with Variation in Treatment Timing"
 > (*J. Econometrics*, 2021);
 > de Chaisemartin & D'Haultfoeuille, "Two-Way Fixed Effects Estimators with
@@ -54,9 +56,13 @@ This reference documents both what translates cleanly and where real gaps remain
 
 ### Traditional TWFE DiD
 
-The simplest DiD design: all treated units adopt simultaneously, effects are
-homogeneous. When these assumptions hold, TWFE and modern estimators produce
-identical results.
+The simplest DiD design: all treated units adopt simultaneously. In this setting
+TWFE is reasonable. Roth et al. (2023, Table 1) note that when everyone is
+treated at the same time and the panel is balanced, TWFE specifications "yield
+easily interpretable estimates"; with staggered timing, they advise considering
+a heterogeneity-robust estimator and to "Use TWFE only if you’re confident in
+treatment effect homogeneity." Modern estimators target the same parameter, though their
+estimates need not be numerically identical (DAAF inference).
 
 **Stata:**
 ```stata
@@ -173,7 +179,9 @@ using for published research.
 ### Sun-Abraham Saturated Estimator
 
 Fully saturates the model with cohort-by-period indicators, then aggregates.
-Avoids contamination from comparing already-treated to newly-treated units.
+This avoids the cross-lag "contamination" of dynamic TWFE coefficients when
+treatment effects differ across adoption cohorts (Sun and Abraham 2021, as
+summarized by Roth et al. 2023).
 
 **Stata:**
 ```stata
@@ -209,11 +217,10 @@ The underlying estimator is identical.
 
 ### Local Projections DiD (Dube et al., 2023)
 
-Flexible dynamics without assuming a specific functional form for treatment
-effects over time.
+Local projections estimated separately at each horizon (Jordà, 2005), combined with a "clean control" condition; can accommodate non-absorbing treatment (Dube et al., 2023).
 
-**Stata:** No widely adopted standalone Stata package; typically implemented
-manually via local projections (Jorda, 2005).
+**Stata:** `lpdid` (Busch and Girardi 2023, SSC; `ssc install lpdid`) implements
+LP-DiD; local projections follow Jordà (2005).
 
 **Python (pyfixest):**
 ```python
@@ -232,9 +239,6 @@ result = pf.lpdid(
 # result.summary() and result.iplot() will NOT work
 ```
 
-This is a rare case where Python (pyfixest) has a more convenient implementation
-than Stata.
-
 **Important:** `lpdid()` returns a pandas DataFrame with columns for period,
 estimate, std_error, ci_lower, ci_upper, etc. It cannot be passed to
 `pf.etable()` or use `.iplot()`. Plot results manually with plotnine or
@@ -244,11 +248,11 @@ matplotlib.
 
 | Stata | pyfixest | When to Use |
 |-------|----------|-------------|
-| `reghdfe y treated, absorb(unit year)` | `pf.feols("y ~ treated \| unit + year")` | Simultaneous treatment, no heterogeneity |
+| `reghdfe y treated, absorb(unit year)` | `pf.feols("y ~ treated \| unit + year")` | Simultaneous adoption, balanced panel |
 | `did2s` | `pf.did2s(...)` | Staggered; imputation-based |
 | `csdid` | `csdid.att_gt(...)` | Staggered; group-time ATTs |
 | `eventstudyinteract` / `sunab` | `pf.event_study(estimator="saturated")` | Staggered; fully saturated |
-| Manual LP-DiD | `pf.lpdid(...)` | Flexible dynamics |
+| `lpdid` (SSC) | `pf.lpdid(...)` | Flexible dynamics |
 | `did_multiplegt` | **No Python equivalent** | de Chaisemartin-D'Haultfoeuille |
 
 ---
@@ -346,9 +350,12 @@ time periods. This is built into pyfixest with no additional package needed.
 
 ## 3. Regression Discontinuity
 
-All three implementations (Stata, R, Python) are maintained by the same authors
-(Cattaneo, Idrobo, Titiunik), ensuring very high cross-platform fidelity. The
-translation is nearly mechanical.
+All three implementations (Stata, R, Python) of rdrobust come from the
+rdpackages project. The Stata software paper and CRAN package are by Calonico,
+Cattaneo, Farrell, and Titiunik (Calonico et al. 2017); the pinned Python
+package's metadata (rdrobust 1.3.0) lists Ricardo Masini as author, and the
+current PyPI release (2.1.1) lists Calonico, Cattaneo, Farrell, Masini, and
+Titiunik. The translation is nearly mechanical.
 
 ### Sharp RD
 
@@ -406,7 +413,7 @@ The API is virtually identical. The main syntactic differences are Stata's
 space-separated paired values vs Python's lists, and Stata's varlist vs numpy
 arrays for covariates.
 
-### Additional RD Packages (Same Authors, Same API Across Languages)
+### Additional RD Packages (rdpackages Suite, Same API Across Languages)
 
 | Tool | Stata Command | Python Package | Install |
 |------|---------------|----------------|---------|
@@ -417,8 +424,9 @@ arrays for covariates.
 | Multi-cutoff/score | `rdmulti` | `rdmulti` | `pip install rdmulti` |
 | Power calculations | `rdpower` | `rdpower` | `pip install rdpower` |
 
-All packages in the `rdpackages` suite are maintained by the same team across
-Stata, R, and Python. Translation is mechanical.
+The `rdpackages` suite (https://rdpackages.github.io/) collects these packages;
+author lists differ by package, so check each package's own author list and
+software paper. Translation is mechanical.
 
 ### Data Preparation Difference
 
@@ -461,7 +469,7 @@ fit = pf.feols(
     "log_wage ~ experience | state + year | education ~ college_prox",
     data=df, vcov={"CRV1": "state"}
 )
-fit.IV_Diag()                        # Effective F, Cragg-Donald, etc.
+fit.IV_Diag()                        # First-stage F and effective F
 fit._model_1st_stage.summary()       # First-stage results
 ```
 
@@ -495,12 +503,16 @@ estat firststage
 **Python (pyfixest):**
 ```python
 fit = pf.feols("y ~ 1 | 0 | x_endog ~ z1 + z2", data=df)
-fit.IV_Diag()    # Reports effective F (Olea-Pflueger), Cragg-Donald, Kleibergen-Paap
+fit.IV_Diag()    # First-stage F and effective F (Montiel Olea-Pflueger 2013)
 ```
 
-pyfixest reports the effective F-statistic (Olea & Pflueger, 2013), which is
-preferred over the Cragg-Donald F-statistic for models with clustered SEs or
-multiple endogenous regressors.
+pyfixest reports the Montiel Olea-Pflueger (2013) effective F-statistic, a
+weak-instrument test for a linear IV model with one endogenous regressor that is
+robust to heteroscedasticity, autocorrelation, and clustering; the Staiger-Stock
+(1997) and Stock-Yogo (2005) pretests assume conditionally homoscedastic,
+serially uncorrelated errors. Montiel Olea and Pflueger give a conservative TSLS rule of
+thumb: reject the null of weak instruments when the effective F exceeds 23.1
+(Nagar bias above 10% of a "worst-case" benchmark, 5% size).
 
 ---
 
@@ -569,12 +581,16 @@ errors.
 
 ### The Standard Error Problem
 
-Stata's `teffects psmatch` computes standard errors that account for the fact
-that propensity scores are estimated (Abadie & Imbens, 2016). Most Python
-matching packages do NOT make this correction, which means their reported SEs
-and p-values are wrong (too small). For published research using propensity score
-matching, consider running the matching step in Stata or R and importing the
-matched dataset.
+Stata's `teffects psmatch` computes Abadie-Imbens standard errors that account
+for the fact that propensity scores are estimated (Abadie & Imbens, 2016;
+Stata's manual cites the 2012 NBER working-paper version). Python matching
+packages generally do not offer this adjustment (DAAF assessment, not checked
+package by package). Ignoring the adjustment does not uniformly make SEs too
+small: for the ATE the adjustment reduces the asymptotic variance, so unadjusted
+SEs tend to be too large; for the ATT the adjustment need not reduce it (Abadie &
+Imbens, 2016; checked against the 2009 NBER working-paper version). For
+published research using propensity score matching, consider estimating with
+Stata's `teffects psmatch`.
 
 ### Available Python Matching Packages
 
@@ -602,7 +618,7 @@ synth depvar predictor1 predictor2, trunit(treated_id) trperiod(treatment_year)
 import scpi
 
 # scpi (by Cattaneo, Feng, Palomba, Titiunik) provides prediction intervals
-# and uncertainty quantification; same authors as Stata version
+# and uncertainty quantification; scpi is also implemented in R and Stata
 ```
 
 **Python (SyntheticControlMethods — community):**
@@ -633,14 +649,16 @@ result.plot()
 
 | Stata | Python Equivalent | Install | Fidelity | Notes |
 |-------|------------------|---------|----------|-------|
-| `synth` | `scpi` | `pip install scpi` | High | Same authors; includes prediction intervals |
+| `synth` | `scpi` | `pip install scpi` | High | Different authors from Stata `synth` (scpi: Cattaneo, Feng, Palomba, Titiunik); includes prediction intervals |
 | `synth` | `SyntheticControlMethods` | `pip install SyntheticControlMethods` | Medium | Community; classic ADH estimator |
 | `synth_runner` | No direct equivalent | N/A | **Gap** | Automated inference for synth |
 | N/A | `CausalPy` | `pip install CausalPy` | Different methodology | Bayesian SC (PyMC) |
 | N/A | `synthdid` | `pip install synthdid` | Medium | Synthetic DiD (Arkhangelsky et al.) |
 
-The `scpi` package by Cattaneo et al. is the most rigorous Python option for
-synthetic control, providing prediction intervals and uncertainty quantification.
+The `scpi` package provides prediction intervals and uncertainty quantification;
+its JSS paper describes it as "the first package to offer uncertainty
+quantification using prediction intervals with random potential outcomes"
+(Cattaneo, Feng, Palomba, and Titiunik 2025).
 
 ---
 
@@ -771,7 +789,6 @@ correction, Sargan/Hansen tests for over-identification).
 
 | Capability | Python Advantage | Notes |
 |-----------|-----------------|-------|
-| `pf.lpdid()` | Convenient LP-DiD wrapper | No Stata equivalent package |
 | `pf.event_study()` | Unified interface for TWFE/did2s/Sun-Abraham | Stata requires different commands for each |
 | `pf.panelview()` | Built-in treatment pattern visualization | Stata requires separate install |
 | LIML/GMM estimators | `linearmodels` has LIML, GMM, CUE in one package | Stata `ivregress` has 2SLS/LIML/GMM but less unified |
@@ -788,12 +805,12 @@ correction, Sargan/Hansen tests for over-identification).
 | **did2s** | `did2s` | `pf.did2s()` | Very High | Arg names differ |
 | **Sun-Abraham** | `eventstudyinteract` | `pf.event_study(est="saturated")` | High | Different API, same estimator |
 | **Callaway-Sant'Anna** | `csdid` | `csdid.att_gt()` | Medium | Community port |
-| **LP-DiD** | Manual | `pf.lpdid()` | N/A | Python has better wrapper |
+| **LP-DiD** | `lpdid` (SSC) | `pf.lpdid()` | Medium | Both languages have packages |
 | **de Chaisemartin-D'Haultfoeuille** | `did_multiplegt` | **No equivalent** | N/A | **Gap** |
 | **Event study (iplot)** | `coefplot` / `event_plot` | `fit.iplot()` | Very High | Method vs command |
-| **RD (sharp/fuzzy)** | `rdrobust` | `rdrobust` | Very High | Same authors |
-| **RD plots** | `rdplot` | `rdrobust.rdplot()` | Very High | Same authors |
-| **RD density test** | `rddensity` | `rddensity` | Very High | Same authors |
+| **RD (sharp/fuzzy)** | `rdrobust` | `rdrobust` | Very High | Same rdpackages project |
+| **RD plots** | `rdplot` | `rdrobust.rdplot()` | Very High | Same rdpackages project |
+| **RD density test** | `rddensity` | `rddensity` | Very High | Same rdpackages project |
 | **IV + FE** | `ivreghdfe` | `pf.feols()` | Very High | Three-part formula |
 | **IV (2SLS, no FE)** | `ivregress 2sls` | `linearmodels.IV2SLS()` | High | Formula syntax differs |
 | **LIML** | `ivregress liml` | `linearmodels.IVLIML()` | High | |
@@ -801,11 +818,11 @@ correction, Sargan/Hansen tests for over-identification).
 | **PS matching** | `teffects psmatch` | `pymatchit-causal` / manual | Low | **SE gap** |
 | **IPW** | `teffects ipw` | Manual sklearn + weighting | Low | **SE gap** |
 | **AIPW** | `teffects aipw` | `econml.dr.DRLearner` | Medium | Different implementation |
-| **Synthetic control** | `synth` | `scpi` | High | Same authors |
+| **Synthetic control** | `synth` | `scpi` | High | Different authors from Stata `synth` |
 | **Binscatter** | `binsreg` / `binscatter` | `binsreg` | Very High | Same authors |
 | **Survival/Cox** | `stcox` | `lifelines.CoxPHFitter()` | High | Not installable in DAAF (needs pandas<3.0); use R `survival` |
 | **Dynamic panel GMM** | `xtabond2` | **No equivalent** | N/A | **Gap** |
-| **Marginal effects** | `margins` | `marginaleffects` | High | Same author (R version); Python is alpha |
+| **Marginal effects** | `margins` | `marginaleffects` | High | Same author (R version); Python port announced as "alpha" in July 2023 (pinned 0.5.0) |
 
 ### Fidelity Legend
 
@@ -815,23 +832,47 @@ correction, Sargan/Hansen tests for over-identification).
 - **Low:** Partial coverage; significant feature gaps or SE issues
 - **N/A:** No equivalent available
 
-> **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021), ch. 5-9;
-> Huntington-Klein, *The Effect* (CRC Press, 2021), ch. 16-21;
+> **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021), ch. 5-10
+> (1st edition);
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022; online 2nd ed.,
+> Chs. 14, 16-21);
 > Gardner, "Two-Stage Differences in Differences" (arXiv:2207.05943, 2022);
 > Callaway & Sant'Anna, "Difference-in-Differences with Multiple Time Periods"
 > (*J. Econometrics*, 2021);
 > Sun & Abraham, "Estimating Dynamic Treatment Effects in Event Studies with
 > Heterogeneous Treatment Effects" (*J. Econometrics*, 2021);
-> Dube, Girardi, Jorda, & Taylor, "A Local Projections Approach to
+> Roth, J., Sant'Anna, P.H.C., Bilinski, A., and Poe, J. (2023). "What's Trending in Difference-in-Differences?" *Journal of Econometrics*, 235(2), 2218-2244. https://doi.org/10.1016/j.jeconom.2023.03.008;
+> Dube, Girardi, Jordà, & Taylor, "A Local Projections Approach to
 > Difference-in-Differences" (NBER WP 31184, 2023);
+> Jordà, Ò. (2005). "Estimation and Inference of Impulse Responses by Local
+> Projections." *American Economic Review*.
+> https://doi.org/10.1257/0002828053828518;
+> Busch & Girardi, "LPDID: Stata module implementing Local Projections
+> Difference-in-Differences (LP-DiD) estimator" (Statistical Software
+> Components S459273, Boston College Department of Economics, 2023);
 > Cattaneo, Idrobo, & Titiunik, *A Practical Introduction to Regression
-> Discontinuity Designs* (Cambridge, 2020);
+> Discontinuity Designs: Foundations* (Cambridge, 2020);
 > Calonico, Cattaneo, Farrell, & Titiunik, "rdrobust: Software for
 > Regression-discontinuity Designs" (*Stata Journal*, 2017);
-> Cattaneo, Feng, Palomba, & Titiunik, "scpi" (nppackages.github.io/scpi);
-> Abadie, Diamond, & Hainmueller, "Synthetic Control Methods" (*JASA*, 2010);
+> Cattaneo, M.D., Feng, Y., Palomba, F., and Titiunik, R. (2025). "scpi:
+> Uncertainty Quantification for Synthetic Control Methods." *Journal of
+> Statistical Software*, 113(1), 1-38. https://doi.org/10.18637/jss.v113.i01;
+> Abadie, Diamond, & Hainmueller, "Synthetic Control Methods for Comparative
+> Case Studies: Estimating the Effect of California's Tobacco Control Program"
+> (*JASA*, 2010);
+> Arkhangelsky, D., Athey, S., Hirshberg, D.A., Imbens, G.W., and Wager, S.
+> (2021). "Synthetic Difference-in-Differences." *American Economic Review*,
+> 111(12), 4088-4118. https://doi.org/10.1257/aer.20190159;
 > Abadie & Imbens, "Matching on the Estimated Propensity Score" (*Econometrica*,
 > 2016);
+> Montiel Olea, J.L., & Pflueger, C. (2013). "A Robust Test for Weak
+> Instruments." *Journal of Business & Economic Statistics*, 31(3), 358-369.
+> https://doi.org/10.1080/00401706.2013.806694;
+> Staiger, D. and Stock, J.H. (1997). "Instrumental Variables Regression with
+> Weak Instruments." *Econometrica*, 65(3), 557-586;
+> Stock, J.H. and Yogo, M. (2005). "Testing for Weak Instruments in Linear IV
+> Regression." In Andrews, D.W.K. and Stock, J.H. (Eds.), *Identification and
+> Inference for Econometric Models*, 80-108. Cambridge University Press;
 > de Chaisemartin & D'Haultfoeuille, "Two-Way Fixed Effects Estimators with
 > Heterogeneous Treatment Effects" (*AER*, 2020);
 > Goodman-Bacon, "Difference-in-Differences with Variation in Treatment Timing"

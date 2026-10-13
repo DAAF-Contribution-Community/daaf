@@ -1,7 +1,7 @@
 # Causal Inference: R to Python Translation
 
-R has been the primary language for causal inference in quantitative social
-science for over a decade. Most influential causal methods papers (DiD, RD,
+In DAAF's assessment, R has been the primary language for causal inference in
+quantitative social science for over a decade. Many influential causal methods papers (DiD, RD,
 synthetic control, matching) ship reference implementations as R packages first,
 with Python ports following months to years later. This gap has narrowed
 considerably: pyfixest now mirrors R fixest's DiD capabilities almost exactly,
@@ -11,7 +11,7 @@ marginaleffects) have released official Python ports of their own tools.
 DAAF's Python stack provides strong coverage for the most common causal designs:
 - **Difference-in-differences:** pyfixest (TWFE, did2s, lpdid, Sun-Abraham)
 - **Event studies:** pyfixest (i() operator, iplot)
-- **Regression discontinuity:** rdrobust (pre-installed; same authors as R version)
+- **Regression discontinuity:** rdrobust (pre-installed; same rdpackages project as the R version)
 - **Instrumental variables:** pyfixest (with FE) and linearmodels (LIML, GMM)
 - **Marginal effects:** marginaleffects (same author as R version)
 
@@ -25,10 +25,13 @@ imputation (no mice equivalent). These are documented honestly in this reference
 > See SKILL.md § Library Versions for the complete version table.
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
-> Huntington-Klein, *The Effect* (CRC Press, 2021);
-> Berge, Butts, & McDermott, *fixest* (CRAN, v0.13);
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022);
+> Berge, *fixest* (CRAN, v0.14.0, the version referenced above;
+> https://cran.r-project.org/package=fixest);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
-> Cattaneo, Idrobo, & Titiunik, *rdrobust* (rdpackages.github.io);
+> Calonico, Cattaneo, Farrell, & Titiunik, *rdrobust*
+> (https://github.com/rdpackages/rdrobust; software paper: *Stata Journal* 17(2),
+> 372-404, 2017, https://doi.org/10.1177/1536867x1701700208);
 > Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using
 > marginaleffects for R and Python" (JSS, 2024)
 
@@ -52,8 +55,9 @@ imputation (no mice equivalent). These are documented honestly in this reference
 
 ### Traditional TWFE DiD
 
-The simplest DiD design: all treated units adopt simultaneously, effects are
-homogeneous.
+The simplest DiD design: all treated units adopt at the same time. In the
+canonical two-period setting, TWFE recovers the ATT under parallel trends and no
+anticipation, without assuming homogeneous effects (Roth et al., 2023, Sec. 2).
 
 **R (fixest):**
 ```r
@@ -83,9 +87,10 @@ The formula syntax is identical. The only difference is the clustering syntax
 (`~unit` vs `{"CRV1": "unit"}`).
 
 **When TWFE fails:** With staggered treatment timing and heterogeneous effects,
-TWFE can produce severely biased estimates including sign reversals (Goodman-Bacon,
-2021; de Chaisemartin & D'Haultfoeuille, 2020). Use one of the modern estimators
-below for staggered designs.
+the TWFE coefficient is a weighted sum of group-period average effects whose
+weights may be negative, so it can be negative even when every effect is positive
+(de Chaisemartin & D'Haultfoeuille, 2020; see also Goodman-Bacon, 2021). Use one
+of the modern estimators below for staggered designs.
 
 ### Two-Stage DiD (Gardner, 2022)
 
@@ -192,7 +197,9 @@ R when using for published research.
 
 ### Sun-Abraham Saturated Estimator
 
-Fully saturates the model with cohort-by-period indicators, then aggregates.
+Fully saturates the model with cohort × relative-period indicators, using
+never-treated (or last-to-be-treated) units as the comparison, then aggregates
+(Sun & Abraham, 2021, as summarized by Roth et al. 2023).
 
 **R (fixest):**
 ```r
@@ -235,11 +242,10 @@ The underlying estimator is identical.
 
 ### Local Projections DiD (Dube et al., 2023)
 
-Flexible dynamics without assuming a specific functional form for treatment
-effects over time.
+Local projections estimated separately at each horizon (Jordà, 2005), combined with a "clean control" condition; can accommodate non-absorbing treatment (Dube et al., 2023).
 
 **R:** No widely adopted standalone R package; typically implemented manually
-using local projections (Jorda, 2005) applied to a DiD setting.
+using local projections (Jordà, 2005) applied to a DiD setting.
 
 **Python (pyfixest):**
 ```python
@@ -375,8 +381,11 @@ time. This is a pyfixest feature without a direct fixest equivalent.
 
 ## 3. Regression Discontinuity
 
-Both R and Python implementations are maintained by the same authors (Cattaneo,
-Idrobo, Titiunik), ensuring very high fidelity across languages.
+Both R and Python implementations come from the rdpackages project. The rdrobust
+software papers and CRAN package are by Calonico, Cattaneo, Farrell, and Titiunik
+(2017); the Python package's metadata (rdrobust 1.3.0) lists Ricardo Masini as
+author; the current PyPI release (2.1.1) lists Calonico, Cattaneo, Farrell,
+Masini, and Titiunik.
 
 ### Sharp RD
 
@@ -454,8 +463,9 @@ covariates.
 | Multi-cutoff/score | `rdmulti` | `rdmulti` | `pip install rdmulti` |
 | Power calculations | `rdpower` | `rdpower` | `pip install rdpower` |
 
-All packages in the `rdpackages` suite are maintained by the same team across
-R, Python, and Stata.
+The `rdpackages` suite (https://rdpackages.github.io/) collects these packages;
+author lists differ by package, so check each package's own author list and
+software paper.
 
 ---
 
@@ -487,7 +497,7 @@ fit = pf.feols("log_wage ~ experience | state + year | education ~ college_prox"
 # First-stage results
 fit._model_1st_stage.summary()
 
-# Comprehensive diagnostics (effective F, Cragg-Donald, Kleibergen-Paap)
+# First-stage F and effective F (Montiel Olea-Pflueger 2013)
 fit.IV_Diag()
 ```
 
@@ -519,7 +529,7 @@ print(fit.first_stage)
 | Diagnostic | R (fixest) | R (ivreg) | pyfixest | linearmodels |
 |-----------|-----------|-----------|----------|--------------|
 | First-stage F | `fitstat(, "ivf")` | `summary(, diag=T)` | `fit.IV_Diag()` | `fit.first_stage` |
-| Weak instrument | `fitstat(, "ivwald")` | Cragg-Donald F | Effective F (Olea-Pflueger) | Cragg-Donald F |
+| Weak instrument | `fitstat(, "ivwald")` | Cragg-Donald F | Effective F (Montiel Olea-Pflueger 2013) | Cragg-Donald F |
 | Sargan/Hansen | `fitstat(, "sargan")` | `summary(, diag=T)` | Not built-in | `fit.sargan` |
 | Wu-Hausman | `fitstat(, "wh")` | `summary(, diag=T)` | Not built-in | `fit.wu_hausman()` |
 
@@ -536,10 +546,10 @@ fit <- ivreg(y ~ x + endo | x + z1 + z2, data = df, method = "LIML")
 ```python
 from linearmodels.iv import IVLIML, IVGMM
 
-# LIML — better finite-sample properties than 2SLS
+# LIML — often recommended over 2SLS with weak instruments (standard result; not checked against a source here)
 fit_liml = IVLIML.from_formula("y ~ 1 + x + [endo ~ z1 + z2]", data=df).fit()
 
-# GMM — efficient with heteroskedasticity and overidentification
+# GMM — efficiency gains under heteroskedasticity with overidentification (standard result; not checked here)
 fit_gmm = IVGMM.from_formula("y ~ 1 + x + [endo ~ z1 + z2]", data=df).fit()
 ```
 
@@ -646,10 +656,10 @@ hypotheses(fit, "(x1 / x2 - 1) * 100 = 0")
 The R version supports 100+ model classes. The Python version supports
 statsmodels, pyfixest, scikit-learn, and a growing list of other packages.
 
-**Caveat:** The Python `marginaleffects` package is described by its author as an
-alpha release. There are known numerical discrepancies between R and Python
-results in some edge cases. For published research, verify critical marginal
-effects calculations against the R implementation.
+**Caveat:** When the Python port was announced in July 2023, its author called it
+an "alpha" release with results that still needed checking; it has matured since
+(pinned here at 0.5.0). For published research, verify critical marginal-effects
+calculations against the R implementation.
 
 ---
 
@@ -855,8 +865,9 @@ cate = cf.effect(X)
 ```
 
 `econml` is a different implementation from `grf` and may produce different
-results. The `grf` R package remains the reference implementation for
-Athey-Imbens-Wager causal forests.
+results. The `grf` R package (Athey, Tibshirani, and Wager 2019) remains the
+reference implementation for generalized random forests, including causal forests
+(Wager and Athey 2018).
 
 ### Multiple Imputation
 
@@ -879,7 +890,7 @@ Partial alternatives exist:
 | `miceforest` | `pip install miceforest` | Community package; less validated than R mice |
 
 For research requiring proper multiple imputation with Rubin's pooling rules,
-R's `mice` remains the gold standard. Consider running imputation in R and
+R's `mice` remains the standard choice (DAAF opinion). Consider running imputation in R and
 exporting the completed datasets.
 
 ---
@@ -897,9 +908,9 @@ exporting the completed datasets.
 | **Callaway-Sant'Anna** | `did::att_gt()` | `csdid.att_gt()` | Medium | `pip install csdid` | Community port |
 | **LP-DiD** | Manual/emerging | `pf.lpdid()` | N/A | Pre-installed | Python has better wrapper |
 | **Event study (iplot)** | `fixest::iplot()` | `fit.iplot()` | Very High | Pre-installed | Method vs function syntax |
-| **RD (sharp/fuzzy)** | `rdrobust::rdrobust()` | `rdrobust.rdrobust()` | Very High | Pre-installed | Same authors |
-| **RD plots** | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Very High | Pre-installed | Same authors |
-| **RD density test** | `rddensity::rddensity()` | `rddensity.rddensity()` | Very High | `pip install rddensity` | Same authors |
+| **RD (sharp/fuzzy)** | `rdrobust::rdrobust()` | `rdrobust.rdrobust()` | Very High | Pre-installed | Same rdpackages project |
+| **RD plots** | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Very High | Pre-installed | Same rdpackages project |
+| **RD density test** | `rddensity::rddensity()` | `rddensity.rddensity()` | Very High | `pip install rddensity` | Same core authors (Cattaneo, Jansson, Ma) |
 | **IV + FE** | `fixest::feols()` | `pf.feols()` | Very High | Pre-installed | Identical 3-part formula |
 | **IV (2SLS, no FE)** | `ivreg::ivreg()` | `linearmodels.IV2SLS()` | High | Pre-installed (Python); R `ivreg` not pre-installed | Formula syntax differs |
 | **LIML** | `ivreg(method="LIML")` | `linearmodels.IVLIML()` | High | Pre-installed (Python); R `ivreg` not pre-installed | |
@@ -923,17 +934,31 @@ exporting the completed datasets.
 - **Low:** Partial coverage; significant feature gaps
 - **N/A:** No equivalent available; gap in the ecosystem
 
-> **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021), ch. 5-9;
-> Huntington-Klein, *The Effect* (CRC Press, 2021), ch. 16-21;
+> **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021), ch. 5-10 (1st edition);
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022; online 2nd ed., Chs. 14, 16-21);
 > Gardner, "Two-Stage Differences in Differences" (arXiv:2207.05943, 2022);
 > Callaway & Sant'Anna, "Difference-in-Differences with Multiple Time Periods"
 > (*J. Econometrics*, 2021);
 > Sun & Abraham, "Estimating Dynamic Treatment Effects in Event Studies with
 > Heterogeneous Treatment Effects" (*J. Econometrics*, 2021);
-> Dube, Girardi, Jorda, & Taylor, "A Local Projections Approach to
+> Dube, Girardi, Jordà, & Taylor, "A Local Projections Approach to
 > Difference-in-Differences" (NBER WP 31184, 2023);
+> Jordà, "Estimation and Inference of Impulse Responses by Local Projections"
+> (*AER*, 2005), https://doi.org/10.1257/0002828053828518;
+> Roth, J., Sant'Anna, P.H.C., Bilinski, A., and Poe, J. (2023). "What's Trending in Difference-in-Differences?" *Journal of Econometrics*, 235(2), 2218-2244. https://doi.org/10.1016/j.jeconom.2023.03.008;
 > Cattaneo, Idrobo, & Titiunik, *A Practical Introduction to Regression
-> Discontinuity Designs* (Cambridge, 2020);
+> Discontinuity Designs: Foundations* (Cambridge, 2020);
+> Montiel Olea & Pflueger, "A Robust Test for Weak Instruments"
+> (*Journal of Business & Economic Statistics*, 31(3), 358-369, 2013),
+> https://doi.org/10.1080/00401706.2013.806694;
+> Xu, "Generalized Synthetic Control Method: Causal Inference with Interactive
+> Fixed Effects Models" (*Political Analysis*, 2017),
+> https://doi.org/10.1017/pan.2016.2;
+> Wager & Athey, "Estimation and Inference of Heterogeneous Treatment Effects
+> using Random Forests" (*J. American Statistical Association*, 2018),
+> https://doi.org/10.1080/01621459.2017.1319839;
+> Athey, Tibshirani, & Wager, "Generalized Random Forests" (*Annals of
+> Statistics*, 2019), https://doi.org/10.1214/18-aos1709;
 > Arel-Bundock, "marginaleffects" (marginaleffects.com, accessed 2026-03-28);
 > Goodman-Bacon, "Difference-in-Differences with Variation in Treatment Timing"
 > (*J. Econometrics*, 2021);

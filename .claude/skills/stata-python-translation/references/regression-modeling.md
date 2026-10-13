@@ -25,9 +25,10 @@ as variables. There is no `estimates store` / `estimates restore` — every
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
+> Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
 > Turrell, "Coming from Stata" in *Coding for Economists* (aeturrell.github.io);
 > pyfixest PR #897, "Show how to replicate Stata results";
-> Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024)
+> Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09)
 
 ---
 
@@ -225,9 +226,15 @@ fe = fit.fixef()       # Returns dict of Series
 fe["state"]            # State-level FE estimates
 ```
 
-pyfixest uses the same iterative demean algorithm as `reghdfe` (Correia, 2016)
-and produces numerically equivalent results. pyfixest is generally faster for
-datasets with many FE levels.
+pyfixest and `reghdfe` both demean iteratively, but the algorithms differ.
+Correia (2016) uses symmetric projections with conjugate-gradient acceleration.
+The current pyfixest docs ("When Are Fixed Effects Estimations Difficult?")
+describe pyfixest's alternating-projections demeaner as running without
+acceleration and name a modified LSMR solver as the default; those docs may
+postdate pyfixest 0.60.0, so check which demeaner your installed version uses.
+Coefficients should agree up to the convergence tolerance; standard errors match
+only when small-sample corrections and singleton handling are aligned (DAAF
+inference — verify on your data).
 
 ---
 
@@ -623,9 +630,10 @@ There is no built-in `marginsplot` equivalent. Extract results from
 | `margins group` | `avg_slopes(fit, by="group")` or `predictions(fit, by="group")` | By group |
 | `marginsplot` | Manual with plotnine | No built-in equivalent |
 
-**Caveat:** The Python `marginaleffects` package is described by its author as an
-alpha release. There are known numerical discrepancies in some edge cases. For
-published research, verify critical marginal effects calculations against Stata.
+**Caveat:** When the Python port was announced in July 2023, its author called it
+an "alpha" release with results that still needed checking; it has matured since
+(pinned here at 0.5.0). For published research, verify critical marginal-effects
+calculations against Stata.
 
 ### 6d. Predictions
 
@@ -958,7 +966,8 @@ complexity in one command, Python requires manual assembly.
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
+> Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
 > Turrell, "Coming from Stata" (aeturrell.github.io);
-> Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024);
+> Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09);
 > Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
-> Huntington-Klein, *The Effect* (CRC Press, 2021)
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022)

@@ -1,13 +1,14 @@
 # Causal Inference: R Explained for Python Users
 
-R has been the primary language for causal inference in quantitative social
-science. Most influential causal methods papers ship R implementations first.
+In DAAF's assessment, R has been the primary language for causal inference in
+quantitative social science. Many influential causal methods papers ship R
+implementations first.
 This reference explains R causal inference code in terms Python users know.
 
 DAAF's R stack provides strong coverage:
 - **fixest:** TWFE DiD, Sun-Abraham (`sunab()`), event studies (`i()`, `iplot`)
 - **did2s:** Two-stage DiD (Gardner, 2022)
-- **rdrobust:** Regression discontinuity (same authors as Python version)
+- **rdrobust:** Regression discontinuity (same rdpackages project as the Python version)
 - **marginaleffects:** Post-estimation interpretation (same author as Python)
 - **MatchIt/WeightIt:** Matching and weighting (R has much stronger coverage)
 
@@ -92,7 +93,8 @@ iplot(fit, joint = TRUE)   # Bonferroni bands
 
 ## 3. Regression Discontinuity
 
-Both R and Python rdrobust are maintained by the same authors. The API is
+Both R and Python rdrobust come from the rdpackages project (author lists
+differ: see the Sources entry and the Python package metadata). The API is
 virtually identical.
 
 ```r
@@ -167,7 +169,7 @@ statsmodels, pyfixest, and scikit-learn.
 | Callaway-Sant'Anna | `did::att_gt()` (not pre-installed) | `csdid` (`pip install csdid`) | Medium |
 | Sun-Abraham | `fixest::sunab()` | `pf.event_study(est="saturated")` | High |
 | LP-DiD | Manual | `pf.lpdid()` | Python has better wrapper |
-| RD | `rdrobust` | `rdrobust` (Python) | Very High (same authors) |
+| RD | `rdrobust` | `rdrobust` (Python) | Very High (same rdpackages project) |
 | IV + FE | `fixest::feols()` | `pf.feols()` | Very High |
 | **Matching** | `MatchIt` | Manual | **Significant gap** |
 | **Weighting** | `WeightIt` | No equivalent | **Significant gap** |
@@ -177,5 +179,6 @@ statsmodels, pyfixest, and scikit-learn.
 | Survival/Cox | `survival::coxph()` | `lifelines` | High |
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (2021);
-> Huntington-Klein, *The Effect* (2021);
-> Cattaneo, Idrobo, & Titiunik, *rdrobust* (rdpackages.github.io)
+> Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022);
+> Gardner, "Two-Stage Differences in Differences" (arXiv:2207.05943, 2022);
+> Calonico, Cattaneo, Farrell, & Titiunik, *rdrobust* (https://github.com/rdpackages/rdrobust; *Stata Journal* 17(2), 372-404, 2017)
