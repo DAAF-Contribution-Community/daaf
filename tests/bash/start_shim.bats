@@ -573,7 +573,7 @@ SH
 @test "cleanly stopped status exits zero without launching a process" {
     run "$MANAGER" --status
     assert_success
-    assert_output "STATUS: stopped"
+    assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
     [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
     [ "$(count_exact_arg_processes "$MANAGER")" -eq 0 ]
     [ ! -e "${LOG_DIR}/supervisor.pid" ]
@@ -591,7 +591,7 @@ SH
         case "$kind" in
             malformed|oversized)
                 assert_success
-                assert_output "STATUS: stopped"
+                assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
                 ;;
             *)
                 assert_failure
@@ -655,7 +655,7 @@ SH
         create_pid_fixture_object "$kind" "$pid_path" "$referent"
         run timeout 3 "$MANAGER" --status
         assert_success
-        assert_output "STATUS: stopped"
+        assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
         remove_pid_fixture_object "$pid_path"
     done
 
@@ -2390,7 +2390,7 @@ SH
     # A clean stop is indistinguishable from never-started: plain "stopped".
     run "$MANAGER" --status
     assert_success
-    assert_output "STATUS: stopped"
+    assert_output "$(printf 'STATUS: stopped\nCODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)')"
 }
 
 @test "unsafe symlink supervisor.state target is rejected by lifecycle preflight" {

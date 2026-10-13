@@ -412,10 +412,10 @@ def atomic_write(path, text, prefix=".config.toml."):
 
 
 def write_run_log(path, exit_code):
-    # Bounded, private, append-style log of this run (no values, ever). A missing
-    # log is only created when the run has something to say.
-    quiet = all(kind == "summary" and text.startswith("no Codex settings") for kind, text in RUN_LOG)
-    if not RUN_LOG or (quiet and not os.path.lexists(path)):
+    # Bounded, private, append-style log of this run (no values, ever). Every run
+    # records its summary, including "no Codex settings", so start_shim.sh --status
+    # can show that the renderer ran even when there was nothing to write.
+    if not RUN_LOG:
         return
     directory = os.path.dirname(os.path.abspath(path))
     if os.path.islink(directory) or (os.path.lexists(directory) and not os.path.isdir(directory)):

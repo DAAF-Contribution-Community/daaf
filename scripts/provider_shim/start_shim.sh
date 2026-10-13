@@ -18,7 +18,7 @@
 #   --status   Print running/stopped + strictly validated health JSON. A stop
 #              caused by the supervisor giving up after a restart storm is
 #              reported distinctly (with timestamp) via the supervisor.state file.
-#              Also prints the last Codex config.toml render summary, if any.
+#              Also prints the last Codex config.toml render summary, or "no render recorded yet".
 #   --help     Print public action usage.
 #
 # Config (env, all optional — defaults mirror the shim's own):
@@ -76,7 +76,7 @@
 # provider on the openai lane). It runs on --auto even when DAAF_PROVIDER_SHIM is
 # unset, because Codex settings are useful without the shim and because a
 # DAAF-managed file must be removed once its settings are deleted. The renderer is
-# silent when there is nothing to do; any failure is a warning, never fatal. Each
+# quiet on the terminal when there is nothing to do (it still logs a summary); any failure is a warning, never fatal. Each
 # run's summary and warnings (never values) are kept, last 200 lines, in
 # logs/codex_config.log; --status prints the most recent summary line. The run is
 # bounded by a 20-second timeout.
@@ -2243,8 +2243,8 @@ do_rotate_only() {
 render_codex_config() {
     # Non-fatal by design: a bad DAAF_CODEX_CONFIG_<N> line or an unwritable
     # CODEX_HOME must never block the shim or container boot. The renderer prints
-    # its own summary/warnings to stderr (never secret values) and stays silent
-    # when there is nothing to do. A missing renderer (older install) is a no-op.
+    # its own summary/warnings to stderr (never secret values) and is quiet on the terminal
+    # when there is nothing to do, though every run still logs a one-line summary. A missing renderer (older install) is a no-op.
     # Each run's summary and warnings (never values) also go to CODEX_CONFIG_LOG,
     # which --status reads; an unsafe log location just skips that record.
     local rc=0
@@ -2272,11 +2272,14 @@ render_codex_config() {
 }
 
 print_codex_config_status() {
-    # One line for --status: the renderer's most recent summary, if any. The log
+    # One line for --status: the renderer's most recent summary, or "no render recorded yet". The log
     # holds no values; the line is still reduced to printable characters.
     local line=""
     path_is_safe_file_target "$CODEX_CONFIG_LOG" || return 0
-    [ -f "$CODEX_CONFIG_LOG" ] || return 0
+    if [ ! -f "$CODEX_CONFIG_LOG" ]; then
+        printf 'CODEX CONFIG: no render recorded yet (renders at container start and on --start/--restart)\n'
+        return 0
+    fi
     line="$(grep -F ' summary: ' "$CODEX_CONFIG_LOG" 2>/dev/null | tail -n 1 | \
         tr -cd '[:print:]' | cut -c1-400)" || line=""
     [ -n "$line" ] || return 0

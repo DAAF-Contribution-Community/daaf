@@ -355,11 +355,12 @@ class RenderCodexConfigTests(unittest.TestCase):
         self.assertEqual(self.render({}, "--log-file", str(log)).returncode, 0)
         self.assertIn("summary: no Codex settings configured; removed", log.read_text(encoding="utf-8").splitlines()[-1])
 
-    def test_run_log_is_bounded_and_not_created_for_a_silent_no_op(self) -> None:
+    def test_run_log_is_bounded_and_records_a_no_op_run(self) -> None:
+        # A run with nothing to write still records its summary, so
+        # start_shim.sh --status can show the renderer ran (live finding 2026-10-13).
         log = self.root / "logs" / "codex_config.log"
         self.assertEqual(self.render({}, "--log-file", str(log)).returncode, 0)
-        self.assertFalse(log.exists())
-        log.parent.mkdir(mode=0o700)
+        self.assertIn("summary: no Codex settings", log.read_text(encoding="utf-8").splitlines()[-1])
         log.write_text("".join(f"old line {i}\n" for i in range(500)), encoding="utf-8")
         self.assertEqual(self.render({"DAAF_CODEX_CONFIG_1": "x=1"}, "--log-file", str(log)).returncode, 0)
         lines = log.read_text(encoding="utf-8").splitlines()
