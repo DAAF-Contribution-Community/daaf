@@ -326,7 +326,8 @@ fi
 # alternative, optional -pro and [1m]) reads as gpt-6-sol — 1,050,000 window per
 # OpenRouter openai/gpt-6.1-sol fetched 2026-10-12
 # (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/);
-# its ChatGPT-lane ceiling is pending measurement, so the 919k cap is inferred.
+# its ChatGPT-lane ceiling was measured 2026-10-13 (accepted 919,744, rejected
+# 921,973), matching the 919k lane cap.
 # No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
 # Kept byte-identical with subagent-bar.sh's gpt_flagship_re and
 # context-reporter.sh's GPT_FLAGSHIP_RE (three-way lockstep test in

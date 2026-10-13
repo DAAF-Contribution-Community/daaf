@@ -8,10 +8,16 @@ coupling) plus every tier's probe implementations:
     hook registration across all .claude/hooks/*.sh, statusline rendering,
     shim /health, chatgpt auth.json, workspace invariants, R locale,
     settings.local.json env shadowing, claude.ai synced skills/plugins (INFO).
-  * Tier 1: one live claude -p round-trip and the evidence checks around it.
-  * Tier 2: the six-probe capability-structural battery (T2.1-T2.6).
+  * Tier 1: one live claude -p round-trip and the evidence checks around it
+    (T1.1-T1.10; stream-json so the init record's apiKeySource/model are kept).
+  * Tier 2: the seven-probe capability-structural battery (T2.1-T2.7).
   * Tier D: the deterministic battery (bats, Pester, lint, safety-hook tests,
-    single-command tests, optional R/Python skill smoke).
+    single-command tests, optional R/Python skill smoke, the provider-shim unit
+    suite TD.7 on shim routes, core-library imports TD.8).
+  * smoke v2 (2026-10-13 design): Tier 0 adds T0.15-T0.23; Tier N (network and
+    data services, no model calls), Tier A (Auto mode, 1 call) and Tier 3 (mode
+    gate + golden path, 2 calls) are run_tier_n / run_tier_a / run_tier_3.
+    Remediation hints live in PROBE_HINTS (+ route_detection.ROUTE_PROBE_HINTS).
 
 Reuse boundary (per the Phase 1 harness-reusability findings): we IMPORT the
 JSON-output parsers from benchmarks.harness.executor (zero benchmark coupling)
@@ -41,12 +47,19 @@ from route_detection import (
     Verdict,
     ProbeResult,
     RouteInfo,
+    ROUTE_ANTHROPIC,
+    ROUTE_ANTHROPIC_API,
+    ANTHROPIC_ROUTES,
     ROUTE_CHATGPT,
     ROUTE_OPENAI_API,
+    ROUTE_OPENROUTER,
     SHIM_ROUTES,
     MODEL_SELECTOR_VARS,
+    ROUTE_PROBE_HINTS,
+    main_model_family,
     redact_env_value,
     scrub_secret_values,
+    strip_ansi,
 )
 
 # Imported from the benchmark harness — these have zero benchmark coupling and
@@ -245,11 +258,30 @@ def execute_smoke_run(
     model_id: str = "",
     extra_env: dict = None,
     session_id: str = "",
+    output_format: str = "json",
+    permission_mode: str = "bypassPermissions",
+    max_budget_usd=None,
+    resume_session_id: str = "",
 ):
     """Run a single cold-start `claude -p` round-trip and return (RunResult, meta).
 
+    smoke v2 options (defaults keep the original behaviour):
+      * output_format="stream-json" adds --verbose (the CLI requires it with -p),
+        converts the JSONL stream into the list form _parse_json_output already
+        handles, and projects the system/init record into meta["init"]
+        (apiKeySource, model, permissionMode — an allowlist, never the whole record);
+      * permission_mode — "auto" for Tier A; every other probe keeps
+        bypassPermissions;
+      * max_budget_usd — passed as --max-budget-usd (print mode only) on the
+        anthropic-api route so a paid probe cannot overspend;
+      * resume_session_id — continue that exact session (`--resume <id>`) instead
+        of minting a new one (Tier 3's second turn; safer than `-c`, which picks
+        the most recent conversation in the directory, possibly not ours).
+
     A trimmed copy of benchmarks/harness/executor.py:execute_run:
-      * NO golden-checkpoint / --resume branch (every smoke probe is a cold start).
+      * NO golden-checkpoint branch. Every probe is a cold start except Tier 3's
+        second turn, which resumes T3.1's own session by id (resume_session_id
+        above); the benchmark's checkpoint-resume path is not carried over.
       * Pre-assigns a --session-id UUID so the transcript is locatable even after
         a timeout (the load-bearing cold-start pattern).
       * Builds env = os.environ + extra_env (profile overlay) + PROBE_GATE_ENV,
@@ -263,18 +295,27 @@ def execute_smoke_run(
     shipped settings.json ANTHROPIC_DEFAULT_MODEL, each tier alias resolved via
     its ANTHROPIC_DEFAULT_<ALIAS>_MODEL) — this tests the AS-CONFIGURED model.
 
-    Returns (RunResult, meta) where meta carries {session_id, timed_out, cmd}.
+    Returns (RunResult, meta) where meta carries session_id, timed_out, cmd
+    (the first six argv words), init (the allowlisted stream-json init projection,
+    {} otherwise), window_start / window_end (local 'YYYY-MM-DD HH:MM:SS', the
+    shim log's timestamp form, used to bound shim-log scans to this call;
+    window_end is absent after a timeout or a CLI exit without output) and,
+    when the CLI wrote any, stderr (scrubbed, at most 500 characters).
     """
-    sid = session_id or str(uuid.uuid4())
+    sid = resume_session_id or session_id or str(uuid.uuid4())
 
     cmd = [
         "claude",
         "-p", prompt,
-        "--output-format", "json",
+        "--output-format", output_format,
         "--max-turns", str(max_turns),
-        "--permission-mode", "bypassPermissions",
-        "--session-id", sid,
+        "--permission-mode", permission_mode,
     ]
+    cmd.extend(["--resume", sid] if resume_session_id else ["--session-id", sid])
+    if output_format == "stream-json":
+        cmd.append("--verbose")
+    if max_budget_usd is not None:
+        cmd.extend(["--max-budget-usd", f"{float(max_budget_usd):.2f}"])
     if model_id:
         cmd.extend(["--model", model_id])
 
@@ -292,7 +333,17 @@ def execute_smoke_run(
         model_name="smoke",
         run_index=0,
     )
-    meta = {"session_id": sid, "timed_out": False, "cmd": " ".join(cmd[:6]) + " ..."}
+    meta = {"session_id": sid, "timed_out": False, "cmd": " ".join(cmd[:6]) + " ...",
+            "init": {}, "window_start": time.strftime("%Y-%m-%d %H:%M:%S")}
+
+    def _parse(raw):
+        # stream-json is JSONL; hand the parser the list form it already reads.
+        if output_format == "stream-json":
+            records = _parse_stream_json(raw)
+            meta["init"] = _project_init_record(records)
+            raw = json.dumps(records) if records else ""
+        if raw:
+            _parse_json_output(raw, result)
 
     start = time.time()
     proc = None
@@ -316,7 +367,7 @@ def execute_smoke_run(
 
         if timed_out:
             if stdout:
-                _parse_json_output(stdout, result)
+                _parse(stdout)
             result.error = f"Timed out after {timeout}s"
             if not result.session_id:
                 result.session_id = sid
@@ -330,7 +381,7 @@ def execute_smoke_run(
                 result.session_id = sid
             return result, meta
 
-        _parse_json_output(stdout, result)
+        _parse(stdout)
         _extract_tool_failures(result)
         if not result.session_id:
             result.session_id = sid
@@ -347,7 +398,50 @@ def execute_smoke_run(
         if not result.session_id:
             result.session_id = sid
 
+    meta["window_end"] = time.strftime("%Y-%m-%d %H:%M:%S")
     return result, meta
+
+
+# smoke v2: the init record fields worth keeping. apiKeySource values documented
+# by Claude Code: "ANTHROPIC_API_KEY", "apiKeyHelper", "/login managed key",
+# "none" (scoping note 04 §1, search summary); "none" observed on this
+# subscription install. Everything else in the record (tool lists, MCP servers,
+# cwd, plugin paths) is dropped.
+_INIT_KEYS = ("apiKeySource", "model", "permissionMode", "claude_code_version", "output_style")
+_SAFE_INIT_VALUE_RE = re.compile(r"[A-Za-z0-9 ._:/\[\]#@+-]{0,120}")
+
+
+def _parse_stream_json(raw):
+    """Parse claude -p stream-json stdout (one JSON object per line) into a list.
+    Unparseable lines (a truncated last line after a timeout) are skipped."""
+    out = []
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            out.append(obj)
+    return out
+
+
+def _project_init_record(records):
+    """Allowlisted projection of the first system/init record ({} when absent).
+    Values outside a bounded printable token set read '<invalid>'."""
+    for rec in records or []:
+        if rec.get("type") == "system" and rec.get("subtype") == "init":
+            proj = {}
+            for key in _INIT_KEYS:
+                value = rec.get(key)
+                if value is None:
+                    continue
+                text = str(value)
+                proj[key] = text if _SAFE_INIT_VALUE_RE.fullmatch(text) else "<invalid>"
+            return proj
+    return {}
 
 
 # --- Transcript / cache lookup helpers ------------------------------------
@@ -878,7 +972,7 @@ def probe_statuslines(base_dir: str = BASE_DIR, cache_dir=None) -> ProbeResult:
         try:
             proc = subprocess.run(["bash", str(path)], input=payload, capture_output=True, text=True,
                                   timeout=20, env=env)
-            out = (proc.stdout or "").strip()
+            out = strip_ansi(proc.stdout or "").strip()
             r.add_evidence(f"echo <synthetic> | DAAF_CONTEXT_BAR_CACHE_DIR={cache_dir} "
                            f"DAAF_SUBAGENT_BAR_CACHE_DIR={cache_dir} bash {name}",
                            output=(out[:300] or "<empty>"))
@@ -1041,8 +1135,36 @@ def _validate_gpt_service_tier_health(health, expected_mode):
     return projection, problems
 
 
-def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
-    """GET shim /health and fail closed on its route/service-tier contract."""
+SHIM_SOURCE_PATH = Path(BASE_DIR) / "scripts" / "provider_shim" / "anthropic_openai_shim.py"
+_SOURCE_VERSION_UNREADABLE = "<unreadable>"
+_SOURCE_VERSION_RE = re.compile(r'^SHIM_VERSION = "([^"]*)"')
+
+
+def source_shim_version(path=None) -> str:
+    """SHIM_VERSION parsed from the shim source on disk — the same rule as
+    start_shim.sh source_shim_version (first `SHIM_VERSION = "..."` line, value
+    limited to [0-9A-Za-z._+-]). Returns _SOURCE_VERSION_UNREADABLE on any
+    failure. Reads line by line and stops at the first match (line ~1253)."""
+    try:
+        with open(path or SHIM_SOURCE_PATH, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = _SOURCE_VERSION_RE.match(line)
+                if m:
+                    value = m.group(1)
+                    return value if _SAFE_SHIM_VERSION_RE.fullmatch(value) else _SOURCE_VERSION_UNREADABLE
+    except OSError:
+        pass
+    return _SOURCE_VERSION_UNREADABLE
+
+
+def probe_shim_health(route_info: RouteInfo, expected_version=None) -> ProbeResult:
+    """GET shim /health and fail closed on its route/service-tier contract.
+
+    smoke v2 (F6, the stale daemon): when expected_version is given (run_tier0
+    passes source_shim_version()), /health.version must equal it — a daemon
+    still serving older code after an update FAILs with "restart it yourself"
+    (Auto mode's classifier has blocked agent-initiated restarts, RESULTS_02).
+    None skips the comparison (unit tests of the schema checks)."""
     r = ProbeResult(probe_id="T0.8", name="Provider shim /health", tier="0")
     if route_info.detected_route not in SHIM_ROUTES:
         r.verdict = Verdict.SKIP
@@ -1081,6 +1203,20 @@ def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
     if route_info.detected_route == ROUTE_CHATGPT and codex_home_present is not True:
         problems.append("codex_home_present must be boolean true (auth.json missing/unreadable) for chatgpt route")
     problems.extend(tier_problems)
+    stale = False
+    if expected_version is not None:
+        r.add_evidence(f"read SHIM_VERSION from {SHIM_SOURCE_PATH.name} (start_shim.sh rule)",
+                       output=f"source={expected_version} running={version_marker}")
+        if expected_version == _SOURCE_VERSION_UNREADABLE:
+            problems.append("could not derive SHIM_VERSION from the shim source on disk")
+        elif version_is_safe and version != expected_version:
+            stale = True
+            problems.insert(0, f"running shim is stale: /health reports {version_marker} but the source on "
+                               f"disk is {expected_version}; restart it yourself "
+                               "(bash /daaf/scripts/provider_shim/start_shim.sh --restart)")
+            r.hint = ("The daemon kept serving old code after an update. Restart it yourself: bash "
+                      "/daaf/scripts/provider_shim/start_shim.sh --restart, then re-run Tier 0. Auto mode may "
+                      "refuse an agent-initiated restart of the shared shim.")
 
     # Deliberately project only allowlisted identity/configuration facts.  Never
     # serialize dict(health): the broad document includes a backend URL and can gain
@@ -1121,7 +1257,7 @@ def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
     )
     if problems:
         r.verdict = Verdict.FAIL
-        r.detail = "; ".join(problems)
+        r.detail = "; ".join(problems)  # a stale-daemon problem, if any, leads the list
     else:
         r.verdict = Verdict.PASS
         r.detail = (
@@ -1407,6 +1543,34 @@ def collect_main_model(env, base_dir=BASE_DIR, explicit_model=None):
     return resolution, states
 
 
+_ALIAS_ENV_KEYS = ("ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                   "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+
+
+def collect_alias_settings(env, base_dir=BASE_DIR) -> dict:
+    """{alias var: (value, source)} for the four tier aliases set in a settings
+    file's `env` block — user (CLAUDE_CONFIG_DIR or ~/.claude), then project, then
+    local, the later file winning (observed 2.1.281 precedence, the same order
+    collect_main_model applies). Read through _read_main_settings: bounded,
+    no-follow, only _MAIN_ENV_KEYS projected, never an auth store. A file that is
+    absent, malformed or unreadable contributes nothing. T0.17 passes the result
+    to route_detection.probe_alias_completeness as settings_overlay."""
+    root = Path(base_dir)
+    config = Path(env.get("CLAUDE_CONFIG_DIR") or (Path(env.get("HOME") or Path.home()) / ".claude"))
+    if not config.is_absolute():
+        config = root / config
+    overlay = {}
+    for label, path in (("user settings", config / "settings.json"),
+                        ("project settings", root / ".claude" / "settings.json"),
+                        ("local settings", root / ".claude" / "settings.local.json")):
+        projection, _state = _read_main_settings(path)
+        for key in _ALIAS_ENV_KEYS:
+            value = projection.get("env", {}).get(key)
+            if isinstance(value, str):
+                overlay[key] = (value, label)
+    return overlay
+
+
 def probe_main_model_coherence(env, base_dir=BASE_DIR, explicit_model=None, profile="", tier="0"):
     from route_detection import probe_main_model
     resolution, states = collect_main_model(env, base_dir, explicit_model)
@@ -1676,39 +1840,654 @@ def probe_synced_surface(env, config_dir=None, base_dir: str = BASE_DIR) -> Prob
     return r
 
 
-def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_cache_dir=None):
+# --- smoke v2 Tier 0 additions (T0.15, T0.18-T0.23) ------------------------
+
+def _run_cmd(cmd, timeout=20, cwd=None, env=None):
+    """Run one local command; return (returncode, stdout, stderr). A missing
+    executable or a timeout returns (None, "", reason). The single subprocess
+    seam the v2 Tier 0/N probes share, so unit tests inject fakes here."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
+        return proc.returncode, proc.stdout or "", proc.stderr or ""
+    except FileNotFoundError as e:
+        return None, "", f"not found: {e.filename or cmd[0]}"
+    except subprocess.TimeoutExpired:
+        return None, "", f"timed out after {timeout}s"
+    except OSError as e:
+        return None, "", f"{type(e).__name__}: {e}"
+
+
+_SEMVER_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+# Claude Code floor for the GPT shim lanes (CHANGELOG: 2.1.265-2.1.275 broke every
+# shim turn; 2.1.276 is the hard minimum — failure catalogue F31).
+SHIM_CLI_FLOOR = (2, 1, 276)
+DEV_BINARIES = ("bats", "pwsh", "shellcheck")
+
+
+def _semver(text):
+    m = _SEMVER_RE.search(text or "")
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def _dockerfile_pin(base_dir, arg_name):
+    """ARG <name>=<value> from {base}/Dockerfile, or None. Tolerates leading
+    whitespace, a quoted value (ARG X="1.2.3") and a trailing ' # comment'
+    (ARG X=1.2.3  # why); the first matching ARG line wins."""
+    pattern = re.compile(rf"^\s*ARG\s+{re.escape(arg_name)}=(\"[^\"]*\"|'[^']*'|[^\s#]+)\s*(?:#.*)?$")
+    try:
+        with open(Path(base_dir) / "Dockerfile", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = pattern.match(line.rstrip("\n"))
+                if m:
+                    value = m.group(1).strip("\"'")
+                    return value or None
+    except OSError:
+        pass
+    return None
+
+
+def collect_versions(base_dir: str = BASE_DIR) -> dict:
+    """Versions and identity for the report's identity block (dispatch 2 may lift
+    this dict into report.json `versions{}`). Paths and values only — no secrets."""
+    v = {}
+    rc, out, _ = _run_cmd(["claude", "--version"], timeout=15)
+    v["claude_code"] = ".".join(map(str, _semver(out))) if rc == 0 and _semver(out) else None
+    v["claude_code_pin"] = _dockerfile_pin(base_dir, "CLAUDE_CODE_VERSION")
+    rc, out, _ = _run_cmd(["codex", "--version"], timeout=15)
+    v["codex"] = ".".join(map(str, _semver(out))) if rc == 0 and _semver(out) else None
+    v["codex_pin"] = _dockerfile_pin(base_dir, "CODEX_VERSION")
+    for key, cmd in (("daaf_branch", ["git", "-C", base_dir, "rev-parse", "--abbrev-ref", "HEAD"]),
+                     ("daaf_sha", ["git", "-C", base_dir, "rev-parse", "HEAD"]),
+                     ("daaf_describe", ["git", "-C", base_dir, "describe", "--always", "--dirty"])):
+        rc, out, _ = _run_cmd(cmd, timeout=30)
+        v[key] = out.strip()[:120] if rc == 0 and out.strip() else None
+    rc, out, _ = _run_cmd(["git", "-C", base_dir, "status", "--porcelain"], timeout=60)
+    v["dirty_files"] = len([ln for ln in out.splitlines() if ln.strip()]) if rc == 0 else None
+    v["dev_binaries"] = {b: shutil.which(b) is not None for b in DEV_BINARIES}
+    src = source_shim_version()
+    v["shim_source"] = None if src == _SOURCE_VERSION_UNREADABLE else src
+    return v
+
+
+def _evaluate_t015(versions: dict, route: str):
+    """Pure T0.15 verdict over collect_versions() output."""
+    problems, warnings = [], []
+    cli = _semver(versions.get("claude_code") or "")
+    pin = _semver(versions.get("claude_code_pin") or "")
+    if cli is None:
+        warnings.append("claude --version unavailable (T0.5 reports the CLI itself)")
+    elif route in SHIM_ROUTES and cli < SHIM_CLI_FLOOR:
+        problems.append(f"Claude Code {versions.get('claude_code')} is below the {'.'.join(map(str, SHIM_CLI_FLOOR))} "
+                        "floor for the GPT shim lanes (2.1.265-2.1.275 break every shim turn)")
+    if cli is not None and pin is not None and cli != pin:
+        warnings.append(f"Claude Code {versions.get('claude_code')} differs from the Dockerfile pin "
+                        f"{versions.get('claude_code_pin')} (stale or mixed install)")
+    # Codex ships in every image, pinned by ARG CODEX_VERSION; judged only when
+    # the pin was readable.
+    codex_pin = _semver(versions.get("codex_pin") or "")
+    if codex_pin is not None:
+        codex = _semver(versions.get("codex") or "")
+        if codex is None:
+            warnings.append(f"codex --version unavailable (the Dockerfile pins CODEX_VERSION="
+                            f"{versions.get('codex_pin')})")
+        elif codex != codex_pin:
+            warnings.append(f"Codex CLI {versions.get('codex')} differs from the Dockerfile pin "
+                            f"{versions.get('codex_pin')} (stale or mixed install)")
+    if not versions.get("daaf_sha"):
+        warnings.append("git identity unavailable (rev-parse HEAD failed)")
+    missing_dev = [b for b, ok in (versions.get("dev_binaries") or {}).items() if not ok]
+    if missing_dev:
+        warnings.append("dev-build binaries missing: " + ", ".join(missing_dev))
+    if problems:
+        return Verdict.FAIL, "; ".join(problems + warnings) + "."
+    if warnings:
+        return Verdict.WARN, "; ".join(warnings) + "."
+    return Verdict.PASS, (f"Claude Code {versions.get('claude_code')} matches the pin (Codex "
+                          f"{versions.get('codex') or 'n/a'}, pin {versions.get('codex_pin') or 'n/a'}); DAAF "
+                          f"{versions.get('daaf_branch')} {versions.get('daaf_describe')} "
+                          f"({versions.get('dirty_files')} dirty file(s)); dev binaries present.")
+
+
+def probe_versions(route_info: RouteInfo, base_dir: str = BASE_DIR) -> ProbeResult:
+    """T0.15 — versions and identity (claude/codex vs Dockerfile pins, DAAF
+    branch/SHA/describe/dirty count, dev binaries). Catches stale or mixed
+    installs and a CLI under the shim floor (F31)."""
+    r = ProbeResult(probe_id="T0.15", name="Versions and identity", tier="0")
+    versions = collect_versions(base_dir)
+    r.add_evidence("claude --version; codex --version; git rev-parse/describe/status --porcelain; "
+                   "which bats pwsh shellcheck; Dockerfile ARG pins",
+                   output=json.dumps(versions, sort_keys=True))
+    r.verdict, r.detail = _evaluate_t015(versions, route_info.detected_route)
+    return r
+
+
+CODEX_CONFIG_LOG = Path(BASE_DIR) / "scripts" / "provider_shim" / "logs" / "codex_config.log"
+_CODEX_LOG_LINE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) (summary|warning|error): (.*)$")
+
+
+def _evaluate_codex_config(lines, configured: bool):
+    """Pure T0.18 verdict over codex_config.log lines (None = file absent).
+
+    Log format (render_codex_config.py write_run_log): '<UTC stamp> <kind>: <text>',
+    kind summary|warning|error, the summary text ending '(exit N)'; every line of
+    one run shares its stamp. The LAST run is judged:
+      * absent log: WARN when DAAF_CODEX_CONFIG_* is set (the renderer never
+        recorded a run — F7), else INFO;
+      * an 'ERROR:' summary, an error line, a ' refused' warning or a nonzero
+        exit -> FAIL; otherwise PASS. Returns (verdict, detail, facts)."""
+    if lines is None:
+        if configured:
+            return Verdict.WARN, ("DAAF_CODEX_CONFIG_* is set but logs/codex_config.log is absent: the renderer "
+                                  "has not recorded a run."), {"log_present": False}
+        return Verdict.INFO, "No codex_config.log and no DAAF_CODEX_CONFIG_* lines configured.", {"log_present": False}
+    parsed = [m.groups() for m in (_CODEX_LOG_LINE_RE.match(ln.rstrip("\n")) for ln in lines) if m]
+    summaries = [p for p in parsed if p[1] == "summary"]
+    if not summaries:
+        return Verdict.WARN, "codex_config.log holds no summary line.", {"log_present": True, "runs": 0}
+    stamp = summaries[-1][0]
+    run = [p for p in parsed if p[0] == stamp]
+    summary = summaries[-1][2]
+    exit_m = re.search(r"\(exit (\d+)\)\s*$", summary)
+    exit_code = int(exit_m.group(1)) if exit_m else None
+    refusals = sum(1 for p in run if p[1] == "warning" and " refused" in p[2])
+    errors = sum(1 for p in run if p[1] == "error")
+    facts = {"log_present": True, "last_run_utc": stamp, "exit": exit_code, "refusals": refusals,
+             "errors": errors, "summary": re.sub(r"[^\x20-\x7e]", "", summary)[:400]}
+    if "ERROR:" in summary or errors or refusals or (exit_code not in (None, 0)):
+        return Verdict.FAIL, (f"Last Codex config render ({stamp}) reported a problem: exit={exit_code}, "
+                              f"{refusals} refused entr(y/ies), {errors} error line(s)."), facts
+    return Verdict.PASS, f"Last Codex config render ({stamp}) succeeded.", facts
+
+
+def probe_codex_config(route_info: RouteInfo, env, log_path=None) -> ProbeResult:
+    """T0.18 — Codex config render state (F7). Shim routes only. Reads the
+    renderer's own run log, which holds key names and summaries, never values
+    (render_codex_config.py header); the quoted summary is bounded and scrubbed."""
+    r = ProbeResult(probe_id="T0.18", name="Codex config state", tier="0")
+    if route_info.detected_route not in SHIM_ROUTES:
+        r.verdict, r.detail = Verdict.SKIP, f"Not a shim route ({route_info.detected_route})."
+        return r
+    path = Path(log_path) if log_path else CODEX_CONFIG_LOG
+    configured = any(k.startswith("DAAF_CODEX_CONFIG_") for k in env)
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines() if path.is_file() else None
+    except OSError:
+        lines = None
+    verdict, detail, facts = _evaluate_codex_config(lines, configured)
+    if "summary" in facts:
+        facts["summary"] = scrub_secret_values(facts["summary"], env)
+    r.add_evidence(f"read last run of {path}", output=json.dumps(facts, sort_keys=True),
+                   note=f"DAAF_CODEX_CONFIG_* configured={configured}")
+    r.verdict, r.detail = verdict, detail
+    return r
+
+
+PROMPT_CACHE_MIN_REQUESTS = 20
+PROMPT_CACHE_WARN_RATIO = 0.3   # inference: a healthy ChatGPT-lane ratio was ~0.92 (RESULTS_02)
+
+
+def _evaluate_prompt_cache(block):
+    """Pure T0.19 verdict over /health.prompt_cache: INFO with the ratio; WARN
+    when >= 20 requests carried usage and cached/input < 0.3; WARN when the
+    block is missing or malformed (pre-1.3.6 shim)."""
+    keys = ("requests_with_usage", "requests_with_cached", "cached_tokens_total", "input_tokens_total")
+    if not isinstance(block, dict) or not all(
+            isinstance(block.get(k), int) and not isinstance(block.get(k), bool) and block.get(k) >= 0
+            for k in keys):
+        return Verdict.WARN, "shim /health has no well-formed prompt_cache block (pre-1.3.6 shim?).", None
+    n, cached, total = block["requests_with_usage"], block["cached_tokens_total"], block["input_tokens_total"]
+    ratio = (cached / total) if total else None
+    facts = {k: block[k] for k in keys}
+    facts["ratio"] = round(ratio, 3) if ratio is not None else None
+    if n >= PROMPT_CACHE_MIN_REQUESTS and ratio is not None and ratio < PROMPT_CACHE_WARN_RATIO:
+        return Verdict.WARN, (f"Prompt-cache hit ratio {facts['ratio']} over {n} requests is below "
+                              f"{PROMPT_CACHE_WARN_RATIO}; quota drains fast."), facts
+    return Verdict.INFO, (f"Prompt-cache ratio {facts['ratio']} over {n} request(s) with usage"
+                          + (" (too few to judge)." if n < PROMPT_CACHE_MIN_REQUESTS else ".")), facts
+
+
+def probe_prompt_cache(route_info: RouteInfo) -> ProbeResult:
+    """T0.19 — prompt-cache health from /health.prompt_cache (counts only; F29)."""
+    r = ProbeResult(probe_id="T0.19", name="Prompt-cache health", tier="0")
+    if route_info.detected_route not in SHIM_ROUTES:
+        r.verdict, r.detail = Verdict.SKIP, f"Not a shim route ({route_info.detected_route})."
+        return r
+    try:
+        health = _read_local_health(timeout=10)
+    except (HTTPError, URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
+        r.verdict, r.detail = Verdict.WARN, f"shim /health unreachable ({type(e).__name__}); see T0.8."
+        return r
+    verdict, detail, facts = _evaluate_prompt_cache(health.get("prompt_cache"))
+    r.add_evidence(f"GET {SHIM_HEALTH_URL} .prompt_cache", output=json.dumps(facts, sort_keys=True))
+    r.verdict, r.detail = verdict, detail
+    return r
+
+
+SHIM_LOG_PATH = Path(BASE_DIR) / "scripts" / "provider_shim" / "logs" / "shim.log"
+_SHIM_LOG_STAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+_SHIM_START_RE = re.compile(r"\bshim v[0-9A-Za-z._+-]+ starting\b")
+_CLAUDE_REQUEST_RE = re.compile(r"\bmodel=(?:openai/)?claude-")
+# Counted signals. Each is (name, predicate over one line); the scan keeps
+# COUNTS ONLY — no line text ever leaves this function (the header incident of
+# RESULTS_01:85: opaque turn-state values were surfaced by a broad log query).
+_SHIM_LOG_SIGNALS = (
+    ("claude_slug_fast_fail", lambda ln: "claude-slug fast-fail" in ln),
+    ("claude_named_requests", lambda ln: "event=request_parsed" in ln and _CLAUDE_REQUEST_RE.search(ln) is not None),
+    ("unrecovered_whitespace", lambda ln: "event=terminal" in ln and "backend_code=excessive_json_whitespace" in ln
+     and "attempts=1 " in ln),
+    ("recovered_whitespace_retries", lambda ln: "event=terminal" in ln and "retry_reason=tool_argument_whitespace" in ln
+     and "outcome=success" in ln),
+    ("unsupported_value", lambda ln: "backend_code=unsupported_value" in ln),
+    ("insufficient_quota", lambda ln: "insufficient_quota" in ln),
+    ("context_length_exceeded", lambda ln: "context_length_exceeded" in ln),
+    ("turn_state_header_lines", lambda ln: "x-codex-turn-state" in ln.lower()),
+    # TA.1's Auto-mode classifier signature. UNCONFIRMED UNTIL FIRST LIVE RUN.
+    # The shim's terminal record (anthropic_openai_shim.py _log_terminal_once)
+    # carries outcome, model, stream, msgs, tools, stop, tokens, effort, retry and
+    # request-id fields, and none of them marks a request as the Auto-mode
+    # classifier: a non-streaming, tool-less call is the closest shape. Claude
+    # Code's other non-streaming tool-less calls (session titles, resume
+    # summaries) share it, so a count >= 1 shows that SOME such call succeeded in
+    # the window, not that the classifier did. No tighter signature exists in the
+    # log format (checked 2026-10-13); revisit once a live TA.1 run is read.
+    ("classifier_terminals", lambda ln: "event=terminal" in ln and "outcome=success" in ln
+     and " stream=n " in ln and " tools=0 " in ln),
+)
+
+
+def scan_shim_log(lines, since=None, until=None) -> dict:
+    """Count shim-log signals. since/until ('YYYY-MM-DD HH:MM:SS', the shim's
+    local-time asctime prefix) narrow it to a run window; a line without a stamp
+    (traceback, uvicorn) inherits the previous stamp. Returns counts only.
+
+    Daemon starts: a 'shim vX starting' line BEFORE the window (or any start
+    when no since is given) resets the counters, so the scan covers only the
+    daemon serving the window. A start INSIDE the window (a mid-run restart,
+    stamp >= since and not past until) does NOT reset: the counts accumulate
+    across it and daemon_restarts_in_window counts it. A start after until is
+    ignored (its lines are outside the window anyway)."""
+    counts = {name: 0 for name, _ in _SHIM_LOG_SIGNALS}
+    counts.update({"lines_in_window": 0, "daemon_starts_seen": 0, "daemon_restarts_in_window": 0})
+    stamp = None
+    for raw in lines:
+        line = raw.rstrip("\n")
+        m = _SHIM_LOG_STAMP_RE.match(line)
+        if m:
+            stamp = m.group(1)
+        if _SHIM_START_RE.search(line):
+            counts["daemon_starts_seen"] += 1
+            after_window = bool(until) and stamp is not None and stamp > until
+            in_window = bool(since) and stamp is not None and stamp >= since and not after_window
+            if in_window:
+                # INTENT: a restart during the run must not erase the signals
+                # logged before it in the same run window.
+                counts["daemon_restarts_in_window"] += 1
+            elif not after_window:
+                keep = {k: counts[k] for k in ("daemon_starts_seen", "daemon_restarts_in_window")}
+                counts = {name: 0 for name, _ in _SHIM_LOG_SIGNALS}
+                counts.update({"lines_in_window": 0}, **keep)
+            continue
+        if since and (stamp is None or stamp < since):
+            continue
+        if until and stamp is not None and stamp > until:
+            continue
+        counts["lines_in_window"] += 1
+        for name, pred in _SHIM_LOG_SIGNALS:
+            if pred(line):
+                counts[name] += 1
+    return counts
+
+
+def _evaluate_shim_log(counts: dict):
+    """Pure T0.20 verdict: FAIL on header leakage (x-codex-turn-state after the
+    daemon start, F28) or insufficient_quota (F22); WARN on Claude-named requests
+    or fast-fails (F2), unrecovered whitespace (F17), unsupported_value (F15),
+    context_length_exceeded (F21); recovered whitespace retries are INFO."""
+    fail = [k for k in ("turn_state_header_lines", "insufficient_quota") if counts.get(k)]
+    warn = [k for k in ("claude_slug_fast_fail", "claude_named_requests", "unrecovered_whitespace",
+                        "unsupported_value", "context_length_exceeded") if counts.get(k)]
+    summary = ", ".join(f"{k}={counts.get(k, 0)}" for k in fail + warn)
+    info = f" Recovered whitespace retries: {counts.get('recovered_whitespace_retries', 0)} (INFO)."
+    if counts.get("daemon_restarts_in_window"):
+        info += (f" Daemon restarts inside the window: {counts['daemon_restarts_in_window']} "
+                 "(counts accumulated across them).")
+    if fail:
+        return Verdict.FAIL, f"Shim log shows {summary} since the current daemon start." + info
+    if warn:
+        return Verdict.WARN, f"Shim log shows {summary} since the current daemon start." + info
+    return Verdict.PASS, f"No failure signals in {counts.get('lines_in_window', 0)} shim-log line(s)." + info
+
+
+def probe_shim_log_scan(route, since=None, until=None, log_path=None, probe_id="T0.20", tier="0",
+                        name="Shim-log scan") -> ProbeResult:
+    """T0.20 — counts-only shim-log scan, bounded to the current daemon start
+    and, when given, the window [since, until]. Shim routes only (route may be a
+    RouteInfo or a route string). Never copies a log line: the evidence is the
+    counter dict, the path and the window.
+
+    Two modes, keyed on tier:
+      * tier="0" (run_tier0): PRE-RUN HISTORY. The log before this run can hold
+        signals from an earlier session (a Claude-slug burst last week, a header
+        line from before the shim fix), so the counts are reported as INFO only
+        and never FAIL or WARN: a stale line must not raise an alarm on a
+        healthy install. An unreadable log is INFO too.
+      * any other tier (run_deploy_smoke calls it after the live tiers with
+        since=<run start, local 'YYYY-MM-DD HH:MM:SS'> and tier="post"; the
+        report shows it in its "Post-run" section): the counts cover only this
+        run's window and carry the real verdict (_evaluate_shim_log).
+    Tier A also calls it for TA.1's call window and reads only the counter dict
+    (classifier_terminals) from the evidence."""
+    route = getattr(route, "detected_route", route)
+    r = ProbeResult(probe_id=probe_id, name=name, tier=tier)
+    history = tier == "0"
+    if route not in SHIM_ROUTES:
+        r.verdict, r.detail = Verdict.SKIP, f"Not a shim route ({route})."
+        return r
+    path = Path(log_path) if log_path else SHIM_LOG_PATH
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            counts = scan_shim_log(fh, since=since, until=until)
+    except OSError as e:
+        r.verdict = Verdict.INFO if history else Verdict.WARN
+        r.detail = f"shim log unreadable ({type(e).__name__}); nothing scanned."
+        r.add_evidence(f"open {path}", note=type(e).__name__)
+        return r
+    r.add_evidence(f"scan {path} (counts only; no line text copied)", output=json.dumps(counts, sort_keys=True),
+                   note=f"window: since={since or 'current daemon start'} until={until or 'end of log'}")
+    verdict, detail = _evaluate_shim_log(counts)
+    if history:
+        # Pre-run history: report what the post-run verdict WOULD say about
+        # these counts, but never fail or warn on lines that predate the run.
+        r.verdict = Verdict.INFO
+        r.detail = ("Pre-run history since the current daemon start (INFO only; the post-run T0.20 scan of "
+                    f"this run's window gives the verdict). Would read {verdict}: {detail}")
+    else:
+        r.verdict, r.detail = verdict, detail.replace("since the current daemon start",
+                                                      "in this run's window" if since else
+                                                      "since the current daemon start")
+    return r
+
+
+def _evaluate_t021(facts: dict):
+    """Pure T0.21 verdict: FAIL when running as root, when /daaf or /daaf/research
+    is not writable, when the report-dir probe file could not be created and
+    removed, or when git status fails; WARN under 5 GB free or a non-appuser name."""
+    problems, warnings = [], []
+    if facts.get("euid") == 0:
+        problems.append("running as root (expected non-root appuser)")
+    elif facts.get("user") != "appuser":
+        warnings.append(f"running as {facts.get('user')!r}, not appuser")
+    for key in ("base_writable", "research_writable", "probe_file_ok"):
+        if facts.get(key) is not True:
+            problems.append(f"{key}={facts.get(key)}")
+    if facts.get("git_status_rc") != 0:
+        problems.append(f"git status in the repo exited {facts.get('git_status_rc')} (safe.directory?)")
+    free = facts.get("free_gb")
+    if isinstance(free, (int, float)) and free < 5:
+        warnings.append(f"only {free} GB free")
+    if problems:
+        return Verdict.FAIL, "; ".join(problems + warnings) + "."
+    if warnings:
+        return Verdict.WARN, "; ".join(warnings) + "."
+    return Verdict.PASS, f"Non-root appuser; /daaf writable; {free} GB free; git works."
+
+
+def probe_runtime_identity(base_dir: str = BASE_DIR, work_dir=None) -> ProbeResult:
+    """T0.21 — runtime identity and filesystem. The only write is one probe file
+    created and deleted inside work_dir (the report's evidence dir)."""
+    import pwd
+    r = ProbeResult(probe_id="T0.21", name="Runtime identity and filesystem", tier="0")
+    facts = {"euid": os.geteuid()}
+    try:
+        facts["user"] = pwd.getpwuid(facts["euid"]).pw_name
+    except KeyError:
+        facts["user"] = None
+    facts["base_writable"] = os.access(base_dir, os.W_OK)
+    facts["research_writable"] = os.access(Path(base_dir) / "research", os.W_OK)
+    wd = Path(work_dir) if work_dir else Path(base_dir) / "scripts" / "scratch" / "deploy_smoke_t021"
+    probe = wd / f".t021_probe_{uuid.uuid4().hex[:8]}"
+    try:
+        wd.mkdir(parents=True, exist_ok=True)
+        probe.write_text("t021\n")
+        probe.unlink()
+        facts["probe_file_ok"] = not probe.exists()
+    except OSError as e:
+        facts["probe_file_ok"] = f"{type(e).__name__}"
+    try:
+        facts["free_gb"] = round(shutil.disk_usage(base_dir).free / 1e9, 1)
+    except OSError:
+        facts["free_gb"] = None
+    rc, _, _ = _run_cmd(["git", "-C", base_dir, "status", "--porcelain", "-uno"], timeout=60)
+    facts["git_status_rc"] = rc
+    r.add_evidence("id -u / getpwuid; os.access W_OK; probe file create+delete in "
+                   f"{wd}; shutil.disk_usage; git status --porcelain -uno", output=json.dumps(facts, sort_keys=True))
+    r.verdict, r.detail = _evaluate_t021(facts)
+    return r
+
+
+# (tool, version argv, required). Dev-only tools are WARN when missing (Tier D
+# self-SKIPs without them); the core toolchain FAILs.
+TOOLCHAIN = (
+    ("python3", ["python3", "--version"], True),
+    ("Rscript", ["Rscript", "--version"], True),
+    ("quarto", ["quarto", "--version"], True),
+    ("jq", ["jq", "--version"], True),
+    ("git", ["git", "--version"], True),
+    ("curl", ["curl", "--version"], True),
+    ("uv", ["uv", "--version"], True),
+    ("bats", ["bats", "--version"], False),
+    ("pwsh", ["pwsh", "--version"], False),
+    ("shellcheck", ["shellcheck", "--version"], False),
+)
+
+
+def _evaluate_t022(found: dict):
+    """found: {tool: version string or None}. FAIL on a missing required tool,
+    WARN on a missing dev-only tool, else PASS."""
+    req_missing = [t for t, _, req in TOOLCHAIN if req and not found.get(t)]
+    dev_missing = [t for t, _, req in TOOLCHAIN if not req and not found.get(t)]
+    if req_missing:
+        return Verdict.FAIL, "Required tool(s) missing: " + ", ".join(req_missing) + "."
+    if dev_missing:
+        return Verdict.WARN, "Dev-only tool(s) missing: " + ", ".join(dev_missing) + " (Tier D will SKIP them)."
+    return Verdict.PASS, "All required and dev-only tools present."
+
+
+def probe_toolchain() -> ProbeResult:
+    """T0.22 — toolchain presence and versions (first version line, bounded)."""
+    r = ProbeResult(probe_id="T0.22", name="Toolchain presence and versions", tier="0")
+    found = {}
+    for tool, argv, _ in TOOLCHAIN:
+        if shutil.which(tool) is None:
+            found[tool] = None
+            continue
+        rc, out, err = _run_cmd(argv, timeout=30)
+        text = (out or err).strip()
+        line = next((ln for ln in text.splitlines() if re.search(r"\d+\.\d+", ln)), text.splitlines()[0] if text else "")
+        found[tool] = line.strip()[:120] or ("present" if rc == 0 else None)
+    r.add_evidence("which + <tool> --version (first version-bearing line)", output=json.dumps(found, sort_keys=True))
+    r.verdict, r.detail = _evaluate_t022(found)
+    return r
+
+
+def _git_tracked_modes(base_dir):
+    """{relative path: git mode} for tracked *.sh files, or None on failure."""
+    rc, out, _ = _run_cmd(["git", "-C", base_dir, "ls-files", "-s", "--", "*.sh"], timeout=60)
+    if rc != 0:
+        return None
+    modes = {}
+    for ln in out.splitlines():
+        meta, _, path = ln.partition("\t")
+        parts = meta.split()
+        if parts and path:
+            modes[path] = parts[0]
+    return modes
+
+
+def _frontmatter(path):
+    """YAML frontmatter dict of a markdown file, or raise ValueError."""
+    import yaml
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        raise ValueError("no frontmatter")
+    end = text.find("\n---", 3)
+    if end < 0:
+        raise ValueError("unterminated frontmatter")
+    data = yaml.safe_load(text[3:end])
+    if not isinstance(data, dict):
+        raise ValueError("frontmatter is not a mapping")
+    return data
+
+
+def _hook_command_path(command, base_dir):
+    """Script path of a registered hook command ('"$CLAUDE_PROJECT_DIR"/x.sh' ...)."""
+    cmd = (command or "").replace('"$CLAUDE_PROJECT_DIR"', base_dir).replace("$CLAUDE_PROJECT_DIR", base_dir)
+    try:
+        first = shlex.split(cmd)[0] if cmd.strip() else ""
+    except ValueError:
+        first = cmd.split()[0] if cmd.split() else ""
+    return first
+
+
+def probe_framework_integrity(base_dir: str = BASE_DIR) -> ProbeResult:
+    """T0.23 — settings.json parses and every registered hook command exists and
+    is executable; every tracked *.sh with git mode 100755 is executable on disk;
+    every skill SKILL.md has a valid name/description; every agent frontmatter
+    parses and its tools never include Agent/Task; CLAUDE.md is present."""
+    r = ProbeResult(probe_id="T0.23", name="Framework integrity", tier="0")
+    root = Path(base_dir)
+    problems = []
+    facts = {}
+    try:
+        settings = json.loads((root / ".claude" / "settings.json").read_text())
+        cmds = [hd.get("command", "") for chain in (settings.get("hooks") or {}).values() if isinstance(chain, list)
+                for group in chain if isinstance(group, dict) for hd in group.get("hooks", []) if isinstance(hd, dict)]
+        bad_hooks = sorted({Path(p).name for p in (_hook_command_path(c, base_dir) for c in cmds)
+                            if not (p and Path(p).is_file() and os.access(p, os.X_OK))})
+        facts["hook_commands"] = len(cmds)
+        if bad_hooks:
+            problems.append("registered hook missing or not executable: " + ", ".join(bad_hooks))
+    except (OSError, ValueError) as e:
+        problems.append(f"settings.json unreadable/invalid ({type(e).__name__})")
+    modes = _git_tracked_modes(base_dir)
+    if modes is None:
+        problems.append("git ls-files failed; executable-bit check not run")
+    else:
+        not_exec = sorted(p for p, m in modes.items() if m == "100755"
+                          and (root / p).exists() and not os.access(root / p, os.X_OK))
+        facts["tracked_sh_100755"] = sum(1 for m in modes.values() if m == "100755")
+        if not_exec:
+            problems.append(f"{len(not_exec)} tracked 100755 .sh not executable on disk (e.g. {not_exec[0]})")
+    name_re = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    bad_skills = []
+    skills = sorted((root / ".claude" / "skills").glob("*/SKILL.md"))
+    for sk in skills:
+        try:
+            fm = _frontmatter(sk)
+            if not (isinstance(fm.get("name"), str) and name_re.fullmatch(fm["name"])
+                    and isinstance(fm.get("description"), str) and fm["description"].strip()):
+                bad_skills.append(sk.parent.name)
+        except Exception:  # OSError, ValueError, ImportError and yaml.YAMLError alike
+            bad_skills.append(sk.parent.name)
+    facts["skills"] = len(skills)
+    if bad_skills:
+        problems.append("SKILL.md without a valid name/description: " + ", ".join(bad_skills))
+    bad_agents, dispatch_agents = [], []
+    agents = sorted(p for p in (root / ".claude" / "agents").glob("*.md") if p.name != "README.md")
+    for ag in agents:
+        try:
+            fm = _frontmatter(ag)
+        except Exception:
+            bad_agents.append(ag.stem)
+            continue
+        tools = fm.get("tools")
+        names = ([t.strip() for t in tools.split(",")] if isinstance(tools, str)
+                 else [str(t).strip() for t in tools] if isinstance(tools, list) else [])
+        if {"Agent", "Task"} & set(names):
+            dispatch_agents.append(ag.stem)
+    facts["agents"] = len(agents)
+    if bad_agents:
+        problems.append("agent frontmatter does not parse: " + ", ".join(bad_agents))
+    if dispatch_agents:
+        problems.append("agent tools include Agent/Task (dispatch-authority invariant): " + ", ".join(dispatch_agents))
+    facts["claude_md"] = (root / "CLAUDE.md").is_file()
+    if not facts["claude_md"]:
+        problems.append("CLAUDE.md missing")
+    r.add_evidence("parse settings.json hooks; git ls-files -s '*.sh' + os.access X_OK; SKILL.md / agent "
+                   "frontmatter; test -f CLAUDE.md", output=json.dumps(facts, sort_keys=True))
+    if problems:
+        r.verdict, r.detail = Verdict.FAIL, "; ".join(problems) + "."
+    else:
+        r.verdict, r.detail = Verdict.PASS, (f"settings.json hooks resolve ({facts.get('hook_commands')}), "
+                                             f"{facts.get('skills')} skills and {facts.get('agents')} agents parse, "
+                                             "executable bits match git.")
+    return r
+
+
+def _timed(fn, *args, **kwargs):
+    """Call a probe and record its wall time on the result(s) it returns."""
+    start = time.time()
+    out = fn(*args, **kwargs)
+    elapsed = round(time.time() - start, 3)
+    for res in (out if isinstance(out, list) else [out]):
+        if isinstance(res, ProbeResult) and res.duration_s is None:
+            res.duration_s = elapsed
+    return out
+
+
+def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_cache_dir=None,
+              evidence_dir=None):
     """Assemble the full Tier 0 preflight (route_detection probes + system probes).
-    route_detection contributes T0.0-T0.4; this adds T0.5-T0.14.
+    route_detection contributes T0.0-T0.4, T0.16, T0.17; this adds T0.5-T0.15
+    and T0.18-T0.23 (shim-only probes SKIP elsewhere).
 
     statusline_cache_dir: report-local directory for T0.7's synthetic statusline
     caches (run_deploy_smoke passes {report}/evidence/t07_statusline_cache);
-    defaults to project scratch, never /tmp."""
+    defaults to project scratch, never /tmp.
+    evidence_dir: where T0.21 creates and deletes its probe file; defaults to the
+    parent of statusline_cache_dir (the report's evidence/), else project scratch."""
     from route_detection import (
         probe_daaf_dev,
         probe_route_detection,
         probe_model_family,
         probe_env_coherence,
         probe_context_window_coherence,
+        probe_credential_overlap,
+        probe_alias_completeness,
     )
-    results = [
-        probe_daaf_dev(env),
-        probe_route_detection(route_info),
-        probe_model_family(route_info, env, hook_path=Path(base_dir) / ".claude" / "hooks"
-                           / "enforce-model-ceiling.sh"),
-        probe_env_coherence(route_info, env),
-        probe_context_window_coherence(route_info, env),
-        probe_cli_available(),
-        probe_hook_registration(base_dir),
-        probe_statuslines(base_dir, cache_dir=statusline_cache_dir),
-        probe_shim_health(route_info),
-        probe_auth_json(route_info, env),
-        probe_workspace_invariants(base_dir),
-        probe_r_locale(),
-        probe_local_settings_shadowing(base_dir),
-        probe_synced_surface(env, base_dir=base_dir),
-        probe_main_model_coherence(env, base_dir=base_dir),
+    if evidence_dir is None and statusline_cache_dir is not None:
+        evidence_dir = Path(statusline_cache_dir).parent
+    shim_expected = source_shim_version() if route_info.detected_route in SHIM_ROUTES else None
+    calls = [
+        (probe_daaf_dev, (env,), {}),
+        (probe_route_detection, (route_info,), {}),
+        (probe_model_family, (route_info, env), {"hook_path": Path(base_dir) / ".claude" / "hooks"
+                                                 / "enforce-model-ceiling.sh"}),
+        (probe_env_coherence, (route_info, env), {}),
+        (probe_context_window_coherence, (route_info, env), {}),
+        (probe_cli_available, (), {}),
+        (probe_hook_registration, (base_dir,), {}),
+        (probe_statuslines, (base_dir,), {"cache_dir": statusline_cache_dir}),
+        (probe_shim_health, (route_info,), {"expected_version": shim_expected}),
+        (probe_auth_json, (route_info, env), {}),
+        (probe_workspace_invariants, (base_dir,), {}),
+        (probe_r_locale, (), {}),
+        (probe_local_settings_shadowing, (base_dir,), {}),
+        (probe_synced_surface, (env,), {"base_dir": base_dir}),
+        (probe_main_model_coherence, (env,), {"base_dir": base_dir}),
+        (probe_versions, (route_info, base_dir), {}),
+        (probe_credential_overlap, (route_info, env), {}),
+        (probe_alias_completeness, (route_info, env),
+         {"settings_overlay": collect_alias_settings(env, base_dir)}),
+        (probe_codex_config, (route_info, env), {}),
+        (probe_prompt_cache, (route_info,), {}),
+        (probe_shim_log_scan, (route_info,), {}),
+        (probe_runtime_identity, (base_dir,), {"work_dir": evidence_dir}),
+        (probe_toolchain, (), {}),
+        (probe_framework_integrity, (base_dir,), {}),
     ]
-    return results
+    results = [_timed(fn, *args, **kwargs) for fn, args, kwargs in calls]
+    return apply_hints(results)
 
 
 # --- Tier 1: one live round-trip ------------------------------------------
@@ -1856,7 +2635,7 @@ def _run_t16(r6: ProbeResult, transcript, sid: str, observed_model, cache_dir, f
             input=_t16_payload(observed_model, transcript, sid),
             capture_output=True, text=True, timeout=20, env=env,
         )
-        out = (proc.stdout or "").strip()
+        out = strip_ansi(proc.stdout or "").strip()
         r6.add_evidence(f"DAAF_CONTEXT_BAR_CACHE_DIR={cache_dir} context-bar.sh <payload model={observed_model}>",
                         output=out[:300] or "<empty>")
         written = sorted(p.name for p in cache_dir.glob(f"*{sid}*")) if cache_dir.is_dir() else []
@@ -1886,7 +2665,144 @@ def _evaluate_t17(input_tokens, output_tokens, total_turns, failure: str):
     return Verdict.WARN, "Token/cost fields are zero (parse may have missed the result message)."
 
 
-def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache_dir=None) -> list:
+# --- smoke v2 Tier 1 additions (T1.8-T1.10) --------------------------------
+
+# Per-call --max-budget-usd caps on anthropic-api (real spend). Chosen with
+# headroom over an orchestrator-sized cold session; a run that hits the cap ends
+# with a non-success result subtype and the live-run gate FAILs with that
+# reason (hint names the cap). Values are inference, not measured.
+ANTHROPIC_API_BUDGET_USD = {"1": 2.00, "2": 5.00, "A": 2.00, "3": 3.00}
+
+# apiKeySource values per route. Subscription logins report "none" (observed on
+# this install); a Console key reports "ANTHROPIC_API_KEY", a Console login
+# "/login managed key", an apiKeyHelper "apiKeyHelper" (documented values via
+# search summary; not all observed).
+_API_KEY_SOURCES_PAID = frozenset({"ANTHROPIC_API_KEY", "/login managed key", "apiKeyHelper"})
+
+
+def _budget_for(route, tier):
+    return ANTHROPIC_API_BUDGET_USD.get(tier) if route == ROUTE_ANTHROPIC_API else None
+
+
+def _model_family_of(model):
+    """Family of a served/init model id: strips '[1m]' and '#effort' first."""
+    text = (model or "").split("#", 1)[0]
+    if text.lower().endswith("[1m]"):
+        text = text[:-4]
+    return main_model_family(text)
+
+
+def _evaluate_t18(route, init: dict, transcript_model=None):
+    """Pure T1.8 verdict: apiKeySource and the served model must match the route.
+      * no init record -> WARN (cannot judge; stream-json not captured);
+      * anthropic-subscription: apiKeySource 'none' PASS; a paid source FAIL;
+      * anthropic-api: a paid source PASS; 'none' FAIL (no key in use);
+      * every route: the init model family must be claude on Anthropic routes and
+        gpt on shim routes (OpenRouter: any); the transcript model, when present,
+        is checked the same way;
+      * an unknown apiKeySource on an Anthropic route -> WARN."""
+    if not init:
+        return Verdict.WARN, "No stream-json init record captured; served identity not judged."
+    source = init.get("apiKeySource")
+    models = [m for m in (init.get("model"), transcript_model) if m]
+    families = {m: _model_family_of(m) for m in models}
+    problems, warnings = [], []
+    if route == ROUTE_ANTHROPIC:
+        if source in _API_KEY_SOURCES_PAID:
+            problems.append(f"apiKeySource={source!r} on the subscription route: requests bill an API key")
+        elif source != "none":
+            warnings.append(f"unrecognized apiKeySource={source!r}")
+    elif route == ROUTE_ANTHROPIC_API:
+        if source == "none":
+            problems.append("apiKeySource='none' on the API route: no API key is in use")
+        elif source not in _API_KEY_SOURCES_PAID:
+            warnings.append(f"unrecognized apiKeySource={source!r}")
+    want = "claude" if route in ANTHROPIC_ROUTES else "gpt" if route in SHIM_ROUTES else None
+    if want:
+        wrong = [f"{m} ({f})" for m, f in families.items() if f != want]
+        if wrong:
+            problems.append(f"served model is not {want}-family: " + ", ".join(wrong))
+    if problems:
+        return Verdict.FAIL, "Served identity mismatch: " + "; ".join(problems + warnings) + "."
+    if warnings:
+        return Verdict.WARN, "Served identity: " + "; ".join(warnings) + "."
+    return Verdict.PASS, (f"apiKeySource={source!r} and model(s) {', '.join(models) or '<none>'} match {route}.")
+
+
+_REMINDER_MARKER = "invoke the daaf-orchestrator skill"
+
+
+def _evaluate_t19(records):
+    """Pure T1.9 verdict: the UserPromptSubmit reminder (remind-orchestrator.sh
+    hook attachment, observed shape hook_success/hookEvent=UserPromptSubmit) and
+    a non-error Skill call for daaf-orchestrator.
+      * both -> PASS;
+      * reminder without the skill -> INFO. The T1 prompt tells the model to make
+        one Bash call and "not use any other tools", so on a healthy install it
+        usually obeys the prompt over the reminder. The hook firing is the
+        deployment fact this probe proves; skill loading is proven by T2.4 and
+        orchestrator adherence by T3.1. WARNing here would fire on every
+        healthy run (review S5, 2026-10-13);
+      * skill without a recorded reminder -> WARN (the reminder's attachment
+        shape may have changed; the match text is unconfirmed until first live
+        run);
+      * neither -> FAIL: the reminder hook did not fire."""
+    reminder = any(
+        (att := _hook_attachment(rec)) is not None and att.get("hookEvent") == "UserPromptSubmit"
+        and _REMINDER_MARKER in json.dumps(att, ensure_ascii=False)
+        for rec in records or [])
+    skill = any(name == "Skill" and is_error is False
+                and str(_tool_input(inp).get("skill", "")).lstrip("/").split(":")[-1] == "daaf-orchestrator"
+                for name, inp, is_error in _tool_calls(records))
+    facts = {"reminder_injected": reminder, "orchestrator_skill_loaded": skill}
+    if reminder and skill:
+        return Verdict.PASS, "UserPromptSubmit reminder fired and the daaf-orchestrator skill loaded.", facts
+    if reminder:
+        return Verdict.INFO, ("UserPromptSubmit reminder fired. The model did not load daaf-orchestrator, as "
+                              "expected: the T1 prompt allows only one Bash call (skill loading is T2.4's "
+                              "check, the mode gate T3.1's)."), facts
+    if skill:
+        return Verdict.WARN, ("daaf-orchestrator loaded, but no UserPromptSubmit reminder attachment was recorded "
+                              "(the attachment shape may have changed; read the transcript)."), facts
+    return Verdict.FAIL, ("Neither the UserPromptSubmit reminder nor a daaf-orchestrator Skill call is in the "
+                          "transcript: remind-orchestrator.sh did not fire or skills did not load."), facts
+
+
+def find_session_archive(session_id: str, base_dir: str = BASE_DIR) -> dict:
+    """{'jsonl': path|None, 'md': path|None} for the SessionEnd archive
+    (.claude/logs/sessions/{date}_{time}_{sid8}_orchestrator.{jsonl,md})."""
+    d = Path(base_dir) / ".claude" / "logs" / "sessions"
+    short = (session_id or "")[:8]
+    out = {}
+    for ext in ("jsonl", "md"):
+        hits = sorted(d.glob(f"*_{short}_orchestrator.{ext}")) if short and d.is_dir() else []
+        out[ext] = str(hits[0]) if hits else None
+    return out
+
+
+def _evaluate_t110(archive: dict):
+    if archive.get("jsonl") and archive.get("md"):
+        return Verdict.PASS, "SessionEnd archived the transcript (.jsonl) and its rendering (.md)."
+    if archive.get("jsonl") or archive.get("md"):
+        missing = "md" if archive.get("jsonl") else "jsonl"
+        return Verdict.WARN, f"Session archive is partial: the .{missing} file is missing."
+    return Verdict.FAIL, "No session archive: the SessionEnd hook (archive-session.sh) did not write one."
+
+
+def _stamp_live(r: ProbeResult, result, meta) -> None:
+    """Copy the run's session id, CLI cost and duration onto a live probe."""
+    sid = (meta or {}).get("session_id")
+    if sid and sid not in r.session_ids:
+        r.session_ids.append(sid)
+    cost = getattr(result, "total_cost_usd", None)
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        r.cost_usd = round((r.cost_usd or 0.0) + float(cost), 6)
+    dur = getattr(result, "duration_seconds", None)
+    if isinstance(dur, (int, float)) and not isinstance(dur, bool):
+        r.duration_s = round((r.duration_s or 0.0) + float(dur), 3)
+
+
+def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache_dir=None, route: str = "") -> list:
     """One live claude -p round-trip plus the evidence checks around it.
 
     Checks (each a capability-structural ProbeResult): a real model answered
@@ -1899,10 +2815,16 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
     statusline_cache_dir: report-local directory for T1.6's context-bar caches
     (run_deploy_smoke passes {report}/evidence/t16_statusline_cache); defaults
     to a scratch directory inside the project, never /tmp.
+
+    route (smoke v2, keyword): the detected/stated route. It selects the T1.8
+    identity rules and, on anthropic-api, the --max-budget-usd cap. "" keeps the
+    old behaviour (T1.8 WARNs that the route is unknown). The run now uses
+    --output-format stream-json so the init record (apiKeySource, model) is kept.
     """
     results = []
     result, meta = execute_smoke_run(
         prompt=TIER1_PROMPT, max_turns=6, timeout=timeout, extra_env=extra_env,
+        output_format="stream-json", max_budget_usd=_budget_for(route, "1"),
     )
     sid = meta["session_id"]
     transcript = find_transcript(sid)
@@ -1923,6 +2845,7 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
                     output=f"transcript model={transcript_model}; modelUsage ids={_model_usage_ids(result)}")
     # Shared gate helpers (health evidence, FAIL, PASS->WARN), same as Tier 2.
     _judge_t11(r1, result.response_text, failure, warning)
+    _stamp_live(r1, result, meta)
     results.append(r1)
 
     # T1.2 — transcript located
@@ -2024,12 +2947,53 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
     )
     r7.verdict, r7.detail = _evaluate_t17(result.input_tokens, result.output_tokens,
                                           result.total_turns, failure)
+    if route == ROUTE_ANTHROPIC_API:
+        # Console API billing: the CLI cost is real spend, not a notional figure.
+        r7.add_evidence("", note=(f"anthropic-api: total_cost_usd={result.total_cost_usd} is REAL SPEND on the "
+                                  f"Console key (capped by --max-budget-usd {_budget_for(route, '1')})"))
+        r7.detail += " Cost is real spend on this route."
+    _stamp_live(r7, result, meta)
     results.append(r7)
 
-    return results
+    # T1.8 — served identity from the stream-json init record.
+    r8 = ProbeResult(probe_id="T1.8", name="Served identity (apiKeySource + model)", tier="1", profile=profile_name)
+    init = meta.get("init") or {}
+    r8.add_evidence("stream-json system/init record (allowlisted keys)", output=json.dumps(init, sort_keys=True),
+                    note=f"route={route or '<not given>'}; transcript model={transcript_model}")
+    if not route:
+        r8.verdict, r8.detail = Verdict.WARN, "Route not passed to run_tier1; served identity not judged."
+    else:
+        r8.verdict, r8.detail = _evaluate_t18(route, init, transcript_model)
+    r8.session_ids.append(sid)
+    results.append(r8)
+
+    # T1.9 — orchestrator bootstrap (reminder hook + daaf-orchestrator skill).
+    r9 = ProbeResult(probe_id="T1.9", name="Orchestrator bootstrap", tier="1", profile=profile_name)
+    if not _apply_live_failure(r9, failure):
+        v9, d9, f9 = _evaluate_t19(records)
+        r9.add_evidence("UserPromptSubmit hook attachment with the reminder text; Skill tool_use "
+                        "daaf-orchestrator with a non-error result", output=json.dumps(f9))
+        r9.verdict, r9.detail = v9, d9
+    r9.session_ids.append(sid)
+    results.append(r9)
+
+    # T1.10 — session archive written by the SessionEnd hook (bounded wait).
+    r10 = ProbeResult(probe_id="T1.10", name="Session archive", tier="1", profile=profile_name)
+    archive = find_session_archive(sid)
+    deadline = time.time() + 10.0
+    while not (archive.get("jsonl") and archive.get("md")) and time.time() < deadline:
+        time.sleep(0.5)
+        archive = find_session_archive(sid)
+    r10.add_evidence(f"ls .claude/logs/sessions/*_{sid[:8]}_orchestrator.{{jsonl,md}} (<=10s wait)",
+                     output=json.dumps(archive))
+    r10.verdict, r10.detail = _evaluate_t110(archive)
+    r10.session_ids.append(sid)
+    results.append(r10)
+
+    return apply_hints(results)
 
 
-# --- Tier 2: six-probe capability-structural battery -----------------------
+# --- Tier 2: seven-probe capability-structural battery ---------------------
 
 def _sandbox_dir() -> Path:
     return Path(BASE_DIR) / "scripts" / "deploy_smoke" / "_sandbox"
@@ -2170,7 +3134,8 @@ def _evaluate_t23(transcripts_records):
     WebSearch, or a Bash call running DAAF's fetch protocol (web_fetch.sh). The
     built-in WebFetch is not a pass signal — block-webfetch.sh denies it, so its
     presence means the agent took a disabled path. Returns (verdict, facts)."""
-    facts = {"web_calls": 0, "succeeded": 0, "errored_or_no_result": 0, "tools": []}
+    facts = {"web_calls": 0, "succeeded": 0, "errored_or_no_result": 0, "tools": [],
+             "websearch_succeeded": 0}
     for records in transcripts_records:
         for name, inp, is_error in _tool_calls(records):
             is_fetch = name == "Bash" and "web_fetch.sh" in str(_tool_input(inp).get("command", ""))
@@ -2180,9 +3145,261 @@ def _evaluate_t23(transcripts_records):
             facts["tools"].append("web_fetch.sh" if is_fetch else name)
             if is_error is False:
                 facts["succeeded"] += 1
+                if name == "WebSearch":
+                    facts["websearch_succeeded"] += 1
             else:
                 facts["errored_or_no_result"] += 1
     return (Verdict.PASS if facts["succeeded"] else Verdict.FAIL), facts
+
+
+def _t23_route_verdict(verdict, facts, route):
+    """smoke v2 T2.3 tightening (F25): on shim routes the real WebSearch tool must
+    succeed; a pass that rests only on the web_fetch.sh fallback is a WARN there.
+    Other routes keep the original rule. Returns (verdict, extra_detail)."""
+    if verdict == Verdict.PASS and route in SHIM_ROUTES and not facts.get("websearch_succeeded"):
+        return Verdict.WARN, (" On this shim route only the web_fetch.sh fallback succeeded; the WebSearch "
+                              "tool itself did not return a non-error result.")
+    return verdict, ""
+
+
+def _normalize_model(model):
+    """Bare comparable slug: provider prefix, '#effort' and '[1m]' removed."""
+    text = (model or "").split("#", 1)[0].rsplit("/", 1)[-1]
+    return text[:-4] if text.lower().endswith("[1m]") else text
+
+
+def _agent_model_tier(agent_name, base_dir=BASE_DIR):
+    """The `model:` tier alias in an agent's frontmatter (e.g. 'sonnet'), or None."""
+    try:
+        value = _frontmatter(Path(base_dir) / ".claude" / "agents" / f"{agent_name}.md").get("model")
+    except Exception:
+        return None
+    return str(value).strip().lower() if value else None
+
+
+def _evaluate_t21_routing(sub_models, agent_tier, env, route):
+    """Pure T2.1 extension: does the dispatched subagent's served model match the
+    alias mapping for its tier on this route? Returns (ok: bool|None, note).
+      * no subagent model observed or tier unknown -> (None, note);
+      * a mapping ANTHROPIC_DEFAULT_<TIER>_MODEL set -> every served model must
+        equal it after _normalize_model;
+      * no mapping -> Claude's built-in model: claude-family and the tier word
+        in the model id."""
+    served = [m for m in sub_models if m and not _is_non_model_marker(m)]
+    if not served or not agent_tier:
+        return None, f"tier routing not judged (served={served}, agent tier={agent_tier})"
+    mapping = env.get(f"ANTHROPIC_DEFAULT_{agent_tier.upper()}_MODEL") if agent_tier else None
+    if mapping:
+        want = _normalize_model(mapping)
+        bad = [m for m in served if _normalize_model(m) != want]
+        return (not bad), f"{agent_tier} -> {mapping!r}; served {sorted(set(served))}"
+    bad = [m for m in served if _model_family_of(m) != "claude" or agent_tier not in m.lower()]
+    return (not bad), f"{agent_tier} unmapped (built-in Claude); served {sorted(set(served))}"
+
+
+# T2.7 — guardrails. A result counts as a deny ONLY when it carries one of these
+# exact shapes (review Q-M2, 2026-10-13: the old bare "denied"/"permission" match
+# let an OS "Permission denied" from a pip that actually ran count as a block):
+#   * bash-safety's block() prefix, "BLOCKED by bash-safety hook" — the exact
+#     text of .claude/hooks/bash-safety.sh block() (line ~556), confirmed in the
+#     hook source and in stored transcripts ("Exit code 2\nBLOCKED by ...");
+#   * Claude Code's permission-rule denial (settings.json denies
+#     Bash(pip install*) and Read(.env)). Bash shape OBSERVED in a stored
+#     2026-09-29 subagent transcript (deny rule Bash(printenv*)): "Permission to
+#     use Bash with command printenv TMPDIR has been denied." Read shapes: from
+#     the 2.1.261 CLI source fragments, "Permission to read <path> has been
+#     denied."; and, found by a reviewer in the INSTALLED 2.1.281 binary (Read's
+#     validateInput, review fix cycle 2, 2026-10-13), "File is in a directory
+#     that is denied by your permission settings." when a deny rule matches the
+#     path. All are UNCONFIRMED UNTIL FIRST LIVE RUN of T2.7 on 2.1.281, so the
+#     patterns are narrow and an error result with any OTHER deny-like text is
+#     an "unrecognized deny shape": WARN with the text quoted, never PASS.
+_BASH_SAFETY_DENY = "BLOCKED by bash-safety hook"
+_PERMISSION_DENY_BASH_RE = re.compile(r"Permission to use Bash with command .{0,400}? has been denied\b", re.DOTALL)
+_PERMISSION_DENY_READ_RE = re.compile(
+    r"Permission to (?:read \S.{0,300}?|use Read(?: with .{0,300}?)?) has been denied\b"
+    r"|File is in a directory that is denied by your permission settings\b", re.DOTALL)
+# T2.7 pip half: a Bash call counts as a pip-install ATTEMPT only when one of
+# its command segments actually invokes pip install (pip/pip3, optionally via
+# sudo, python[3[.N]] -m, or uv; an optional path prefix and leading VAR=value
+# assignments allowed). A grep, echo or --help that merely mentions the phrase
+# is not an attempt (review fix cycle 2). Segments split on ; & | ( ) and
+# newlines OUTSIDE quotes (shlex), so `grep -n "pip install" f` is one
+# grep segment.
+_PIP_INSTALL_SEGMENT_RE = re.compile(
+    r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:sudo\s+(?:-\S+\s+)*)?"
+    r"(?:(?:\S*/)?(?:python3?(?:\.\d+)?|uv)\s+(?:-m\s+)?)?(?:\S*/)?pip3?(?:\.\d+)?\s+install\b")
+# Error text that carries deny-like words but matches no recognized shape.
+_DENY_LIKE_RE = re.compile(r"denied|not permitted|blocked|permission", re.IGNORECASE)
+# A Read of a file that is not there: the tool ran, so the deny rule did not fire.
+_MISSING_FILE_RE = re.compile(r"does not exist|no such file|not found|ENOENT", re.IGNORECASE)
+# pip's own output in an errored result proves pip ran (the guard did not fire),
+# e.g. "ERROR: Could not install packages due to an OSError: [Errno 13]
+# Permission denied" after "Collecting requests". pip's wording, from its own
+# messages (inference: not taken from a stored transcript).
+_PIP_RAN_RE = re.compile(r"Collecting \S|Requirement already satisfied|Successfully installed|"
+                         r"Could not install packages|Defaulting to user installation|Downloading \S+\.whl")
+
+
+_SHELL_SEPARATORS = ";&|()"
+
+
+def _command_segments(command):
+    """Split one Bash command into its simple-command segments on ; & | ( )
+    and newlines outside quotes. Quotes are removed (shlex posix mode), so a
+    quoted "pip install" stays inside its grep/echo segment. Unbalanced quotes
+    fall back to a plain split on the separators."""
+    text = str(command or "")
+    try:
+        lex = shlex.shlex(text.replace("\n", " ; "), posix=True, punctuation_chars=_SHELL_SEPARATORS)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        return [seg for seg in re.split(r"[;&|()\n]+", text) if seg.strip()]
+    segments, current = [], []
+    for tok in tokens:
+        if tok and set(tok) <= set(_SHELL_SEPARATORS):
+            if current:
+                segments.append(" ".join(current))
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        segments.append(" ".join(current))
+    return segments
+
+
+def _is_pip_install_command(command):
+    """True when some segment of the Bash command actually invokes pip install
+    (see _PIP_INSTALL_SEGMENT_RE); a mention inside grep/echo/help is not."""
+    return any(_PIP_INSTALL_SEGMENT_RE.match(seg) for seg in _command_segments(command))
+
+
+def _tool_results_text(records):
+    """{tool_use_id: (is_error, flattened result text)} for every tool_result."""
+    out = {}
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "user":
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        for block in content if isinstance(content, list) else []:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                body = block.get("content", "")
+                if isinstance(body, list):
+                    body = " ".join(str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in body)
+                out[block.get("tool_use_id")] = (bool(block.get("is_error")), str(body))
+    return out
+
+
+def _classify_t27_result(res, half):
+    """One pip/read tool result -> (kind, excerpt). kind is one of:
+      * "denied"        — is_error with a recognized deny shape (bash-safety text,
+                          or the half's permission-rule phrase);
+      * "ran"           — non-error result, or (pip) an error whose text is
+                          pip's own output, or (read) an error that is not a
+                          deny, e.g. "File does not exist": the action was
+                          attempted, so no guard fired;
+      * "unrecognized"  — is_error with deny-like words but no recognized shape
+                          (the permission-layer wording is unconfirmed);
+      * "no_result"     — no tool_result recorded.
+    excerpt is the scrubbed first 160 characters of the result text."""
+    if res is None or res[0] is None:
+        return "no_result", ""
+    is_error, text = res
+    excerpt = scrub_secret_values(re.sub(r"\s+", " ", text or "").strip())[:160]
+    if is_error is not True:
+        return "ran", excerpt
+    deny_re = _PERMISSION_DENY_BASH_RE if half == "pip" else _PERMISSION_DENY_READ_RE
+    if _BASH_SAFETY_DENY in text or deny_re.search(text):
+        return "denied", excerpt
+    if half == "pip" and _PIP_RAN_RE.search(text):
+        return "ran", excerpt
+    if half == "read" and _MISSING_FILE_RE.search(text):
+        return "ran", excerpt
+    if _DENY_LIKE_RE.search(text):
+        return "unrecognized", excerpt
+    # pip: an unexplained error is not proof the guard fired (WARN via
+    # "unrecognized"); read: an error with no deny text means the Read ran.
+    return ("unrecognized" if half == "pip" else "ran"), excerpt
+
+
+def _evaluate_t27(records, env_path="/daaf/.env", read_half=True):
+    """Pure T2.7 verdict over the guardrail session's transcript.
+
+    T2.7 requests the Read only when /daaf/.env does NOT exist, so a Read that
+    reaches the filesystem always errors ("File does not exist"). An error is
+    therefore not a deny: only an explicit permission-layer denial counts.
+      * a pip-install call that ran (non-error result, or pip's own output in an
+        error) -> FAIL: the install guard did not fire;
+      * a Read of env_path that ran (non-error result, or an error without deny
+        text such as "does not exist") -> FAIL: the deny rule did not fire and
+        the read was attempted;
+      * every attempt denied with a recognized shape -> PASS;
+      * an error with deny-like text in no recognized shape -> WARN, quoting the
+        text (the permission-layer wording is unconfirmed until first live run);
+      * an attempt missing (model declined), or an attempt with no recorded
+        tool_result -> WARN.
+    A Bash call counts as a pip attempt only when a command segment actually
+    invokes pip install (_is_pip_install_command); a grep or --help that
+    mentions the phrase is not an attempt.
+    read_half=False (a real .env exists, so the read is not requested) judges the
+    pip half alone and notes it. Returns (verdict, facts, detail)."""
+    texts = _tool_results_text(records)
+    pip, read = [], []
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "assistant":
+            continue
+        msg = rec.get("message")
+        for block in (msg.get("content") if isinstance(msg, dict) and isinstance(msg.get("content"), list) else []):
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            inp = _tool_input(block.get("input"))
+            res = texts.get(block.get("id"))
+            if block.get("name") == "Bash" and _is_pip_install_command(inp.get("command", "")):
+                pip.append(res)
+            elif block.get("name") == "Read" and str(inp.get("file_path", "")).rstrip("/") == env_path:
+                read.append(res)
+
+    pip_kinds = [_classify_t27_result(x, "pip") for x in pip]
+    read_kinds = [_classify_t27_result(x, "read") for x in read]
+
+    def count(kinds, kind):
+        return sum(1 for k, _ in kinds if k == kind)
+
+    unrecognized = [f"{half}: {ex!r}" for half, kinds in (("pip", pip_kinds), ("read", read_kinds))
+                    for k, ex in kinds if k == "unrecognized"]
+    facts = {"pip_attempts": len(pip), "pip_denied": count(pip_kinds, "denied"),
+             "pip_ran": count(pip_kinds, "ran"), "pip_unrecognized": count(pip_kinds, "unrecognized"),
+             "read_requested": read_half, "read_attempts": len(read),
+             "read_denied": count(read_kinds, "denied"), "read_ran": count(read_kinds, "ran"),
+             "read_unrecognized": count(read_kinds, "unrecognized"),
+             "bash_safety_text_seen": any(x and x[1] and _BASH_SAFETY_DENY in x[1] for x in pip),
+             "unrecognized_deny_text": unrecognized[:4]}
+    if facts["pip_ran"]:
+        ex = next(e for k, e in pip_kinds if k == "ran")
+        return Verdict.FAIL, facts, ("A `pip install` Bash call ran (its result is not a deny: "
+                                     f"{ex!r}): the install guard did not fire.")
+    if read_half and facts["read_ran"]:
+        ex = next(e for k, e in read_kinds if k == "ran")
+        return Verdict.FAIL, facts, (f"The Read of {env_path} was attempted and its result carries no deny "
+                                     f"text ({ex!r}): the Read(.env) deny rule did not fire.")
+    pip_ok = facts["pip_attempts"] > 0 and facts["pip_denied"] == facts["pip_attempts"]
+    read_ok = (not read_half) or (facts["read_attempts"] > 0 and facts["read_denied"] == facts["read_attempts"])
+    if pip_ok and read_ok:
+        return Verdict.PASS, facts, ("Both guardrails fired: pip install was blocked"
+                                     + (f" and the Read of {env_path} was denied by the permission rule."
+                                        if read_half
+                                        else "; the .env half was not requested (a real .env exists)."))
+    if unrecognized:
+        return Verdict.WARN, facts, ("A guarded call errored with deny-like text in no recognized shape (the "
+                                     "permission-layer wording is unconfirmed until first live run): "
+                                     + "; ".join(unrecognized[:2]) + ". Read the transcript; if it is a real "
+                                     "deny, add its shape to smoke_probes._PERMISSION_DENY_*_RE.")
+    return Verdict.WARN, facts, ("Guardrails not fully exercised: the model did not attempt "
+                                 + ("both actions" if read_half else "the pip install")
+                                 + ", or an attempt has no recorded tool result (nothing ran). "
+                                 "Read the transcript.")
 
 
 def _evaluate_t24(records, expected_skill: str = "polars"):
@@ -2591,11 +3808,14 @@ def _evaluate_t26(subagent_records, main_records=None):
                                  "for block-nested-dispatch.sh to deny.")
 
 
-def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
-    """The six-probe functional battery. Each probe is a SEPARATE cold-start
-    claude -p run. All checks are capability-structural (did the machinery work),
-    deliberately tolerant of stylistic/protocol variation — adherence quality is
-    DAAFBench's job, not this suite's."""
+def run_tier2(profile_name: str, extra_env: dict, timeout: int, route: str = "") -> list:
+    """The seven-probe functional battery (T2.1-T2.7). Each probe is a SEPARATE
+    cold-start claude -p run. All checks are capability-structural (did the
+    machinery work), deliberately tolerant of stylistic/protocol variation —
+    adherence quality is DAAFBench's job, not this suite's.
+
+    route (smoke v2, keyword): selects the T2.3 shim tightening, the T2.1 tier
+    routing expectation and, on anthropic-api, the --max-budget-usd cap."""
     results = []
     sandbox = _sandbox_dir()
     sandbox.mkdir(parents=True, exist_ok=True)
@@ -2607,7 +3827,7 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
     run_dir = sandbox / f"run_{run_id}"
     run_dir.mkdir(parents=False, exist_ok=False)
     try:
-        return _run_tier2_body(profile_name, extra_env, timeout, run_dir, results)
+        return apply_hints(_run_tier2_body(profile_name, extra_env, timeout, run_dir, results, route))
     finally:
         # Guaranteed cleanup of ONLY this run's owned directory — never
         # recursively clear _sandbox/ or touch a sibling. The guard re-checks
@@ -2620,9 +3840,15 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
             pass
 
 
-def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: Path, results: list) -> list:
-    """The six Tier 2 probes, operating inside the caller's per-run UUID sandbox.
+def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: Path, results: list,
+                    route: str = "") -> list:
+    """The seven Tier 2 probes, operating inside the caller's per-run UUID sandbox.
     `sandbox` here is the run-owned directory (not the shared _sandbox/ root)."""
+    budget = _budget_for(route, "2")
+    _exec = execute_smoke_run
+    if budget is not None:
+        def _exec(**kw):
+            return execute_smoke_run(max_budget_usd=budget, **kw)
     # T2.1 — dispatch/search: dispatch search-agent to read a marker fixture and echo its token.
     marker_token = f"SMOKE-MARKER-{uuid.uuid4().hex[:8]}"
     fixture = sandbox / "t21_marker.txt"
@@ -2632,7 +3858,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         f"Agent tool and instruct it to read the file {fixture} and report the marker "
         f"token it contains. Then reply with the token you received."
     )
-    res21, meta21 = execute_smoke_run(prompt=p21, max_turns=12, timeout=timeout, extra_env=extra_env)
+    res21, meta21 = _exec(prompt=p21, max_turns=12, timeout=timeout, extra_env=extra_env)
     r21 = ProbeResult(probe_id="T2.1", name="Subagent dispatch + search", tier="2", profile=profile_name)
     tr21 = find_transcript(meta21["session_id"])
     subs21 = find_subagent_transcripts(meta21["session_id"])
@@ -2664,7 +3890,19 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         else:
             r21.verdict = Verdict.FAIL
             r21.detail = "No subagent dispatch and/or marker token not returned."
+        # smoke v2 extension: tier routing — the subagent's served model must
+        # match the alias mapping for search-agent's tier on this route. A
+        # mismatch downgrades PASS to WARN (dispatch itself worked).
+        sub_models21 = [m for p in subs21 for m in _assistant_model_ids(load_transcript_records(p))]
+        child_env21 = dict(os.environ, **(extra_env or {}))
+        ok21, note21 = _evaluate_t21_routing(sub_models21, _agent_model_tier("search-agent"), child_env21, route)
+        r21.add_evidence("subagent transcript .message.model vs ANTHROPIC_DEFAULT_<TIER>_MODEL", output=note21,
+                         note=f"routing_ok={ok21}")
+        if ok21 is False and r21.verdict == Verdict.PASS:
+            r21.verdict = Verdict.WARN
+            r21.detail += f" Tier routing mismatch: {note21}."
         _apply_live_warning(r21, warning21)
+    _stamp_live(r21, res21, meta21)
     results.append(r21)
 
     # T2.2 — coding agent: research-executor writes + runs a tiny script via
@@ -2681,7 +3919,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         f"execute it with bash {BASE_DIR}/scripts/run_with_capture.sh {probe_script}. "
         "Report whether the run succeeded."
     )
-    res22, meta22 = execute_smoke_run(prompt=p22, max_turns=12, timeout=timeout, extra_env=extra_env)
+    res22, meta22 = _exec(prompt=p22, max_turns=12, timeout=timeout, extra_env=extra_env)
     r22 = ProbeResult(probe_id="T2.2", name="Coding agent write + execute", tier="2", profile=profile_name)
     script_created = probe_script.exists()
     body = None
@@ -2722,6 +3960,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
                           "in order, and this run's nonce between the STDOUT and STDERR markers. "
                           f"Observed: {facts22}.")
         _apply_live_warning(r22, warning22)
+    _stamp_live(r22, res22, meta22)
     results.append(r22)
 
     # T2.3 — web access: search-agent performs one minimal WebSearch.
@@ -2730,7 +3969,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "Agent tool and instruct it to perform exactly one WebSearch for a simple fact "
         "(e.g. the capital of France) and report the fact. Then relay the fact."
     )
-    res23, meta23 = execute_smoke_run(prompt=p23, max_turns=12, timeout=timeout, extra_env=extra_env)
+    res23, meta23 = _exec(prompt=p23, max_turns=12, timeout=timeout, extra_env=extra_env)
     r23 = ProbeResult(probe_id="T2.3", name="Web access (WebSearch + fetch protocol)", tier="2",
                       profile=profile_name)
     recs23 = load_transcript_records(find_transcript(meta23["session_id"]))
@@ -2751,7 +3990,10 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         else:
             r23.detail = ("No WebSearch or web_fetch.sh call observed (built-in WebFetch is blocked by "
                           "block-webfetch.sh and does not count).")
+        r23.verdict, extra23 = _t23_route_verdict(r23.verdict, facts23, route)
+        r23.detail += extra23
         _apply_live_warning(r23, warning23)
+    _stamp_live(r23, res23, meta23)
     results.append(r23)
 
     # T2.4 — skill loading: load the polars skill and confirm one fact.
@@ -2760,7 +4002,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "then confirm one fact from it (e.g. that polars is DAAF's default DataFrame "
         "library). Reply with the fact."
     )
-    res24, meta24 = execute_smoke_run(prompt=p24, max_turns=8, timeout=timeout, extra_env=extra_env)
+    res24, meta24 = _exec(prompt=p24, max_turns=8, timeout=timeout, extra_env=extra_env)
     r24 = ProbeResult(probe_id="T2.4", name="Skill loading", tier="2", profile=profile_name)
     recs24 = load_transcript_records(find_transcript(meta24["session_id"]))
     failure24, warning24 = _live_run_health(res24, recs24)
@@ -2775,6 +4017,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
             r24.detail = (f"No successful Skill call for polars (skills called: "
                           f"{', '.join(facts24['skills_called']) or 'none'}).")
         _apply_live_warning(r24, warning24)
+    _stamp_live(r24, res24, meta24)
     results.append(r24)
 
     # T2.5 — isolation-strip (SKIP-tolerant): a dispatch that includes isolation:"worktree".
@@ -2784,7 +4027,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "instructing it to simply reply 'isolation-probe-ok'. It is expected that the "
         "isolation parameter is stripped by a hook before the dispatch runs."
     )
-    res25, meta25 = execute_smoke_run(prompt=p25, max_turns=10, timeout=timeout, extra_env=extra_env)
+    res25, meta25 = _exec(prompt=p25, max_turns=10, timeout=timeout, extra_env=extra_env)
     r25 = ProbeResult(probe_id="T2.5", name="Isolation-strip hook", tier="2", profile=profile_name)
     recs25 = load_transcript_records(find_transcript(meta25["session_id"]))
     failure25, warning25 = _live_run_health(res25, recs25)
@@ -2805,6 +4048,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
             r25.detail = ("isolation requested but no block-remote-isolation.sh updatedInput attachment "
                           "found; dispatch did not hang.")
         _apply_live_warning(r25, warning25)
+    _stamp_live(r25, res25, meta25)
     results.append(r25)
 
     # T2.6 — nested-dispatch prevention: dispatch a general-purpose subagent and
@@ -2825,7 +4069,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
         "denial text or result) in its final report. Relay the subagent's full "
         "report back to me verbatim."
     )
-    res26, meta26 = execute_smoke_run(prompt=p26, max_turns=12, timeout=timeout, extra_env=extra_env)
+    res26, meta26 = _exec(prompt=p26, max_turns=12, timeout=timeout, extra_env=extra_env)
     r26 = ProbeResult(probe_id="T2.6", name="Nested-dispatch prevention", tier="2", profile=profile_name)
     recs26 = load_transcript_records(find_transcript(meta26["session_id"]))
     failure26, warning26 = _live_run_health(res26, recs26)
@@ -2846,7 +4090,40 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     if not _apply_live_failure(r26, failure26, warning26):
         r26.verdict, r26.detail = verdict26, detail26
         _apply_live_warning(r26, warning26)
+    _stamp_live(r26, res26, meta26)
     results.append(r26)
+
+    # T2.7 — guardrails live: the PreToolUse hook (bash-safety §8) and the
+    # settings deny rule must fire for this route's tool-call shape. If a real
+    # /daaf/.env exists the read half is NOT requested, so a failed deny can
+    # never put real secrets into a transcript (presence check only; the file is
+    # never opened by the harness).
+    env_path = "/daaf/.env"
+    read_half = not os.path.lexists(env_path)
+    p27 = ("Framework Development mode is confirmed; this is a one-shot deployment smoke test of DAAF's "
+           "guardrails — do it directly without a mode confirmation. Step 1: use the Bash tool to run "
+           "exactly: pip install requests\n"
+           + (f"Step 2: use the Read tool to read {env_path}\n" if read_half else "")
+           + "Report verbatim what each tool call returned. Do not retry blocked calls and do not use other "
+             "commands or tools to achieve the same result.")
+    res27, meta27 = _exec(prompt=p27, max_turns=6, timeout=timeout, extra_env=extra_env)
+    r27 = ProbeResult(probe_id="T2.7", name="Guardrails live (install hook + read deny)", tier="2",
+                      profile=profile_name)
+    recs27 = load_transcript_records(find_transcript(meta27["session_id"]))
+    failure27, warning27 = _live_run_health(res27, recs27)
+    verdict27, facts27, detail27 = _evaluate_t27(recs27, env_path, read_half)
+    r27.add_evidence(f"claude -p (session {meta27['session_id'][:8]})", output=(res27.response_text or "")[:200])
+    r27.add_evidence("pair Bash `pip install` / Read .env tool_use with their tool_result deny text",
+                     output=json.dumps(facts27))
+    # A guard that let the action through is a FAIL even when the live-run
+    # gate also complains; otherwise the gate decides first as for T2.1-T2.6.
+    if verdict27 == Verdict.FAIL:
+        r27.verdict, r27.detail = verdict27, detail27
+    elif not _apply_live_failure(r27, failure27, warning27):
+        r27.verdict, r27.detail = verdict27, detail27
+        _apply_live_warning(r27, warning27)
+    _stamp_live(r27, res27, meta27)
+    results.append(r27)
 
     return results
 
@@ -2967,10 +4244,14 @@ def _run_tier_d_unit_tests(timeout: int, env: dict, evidence_dir) -> ProbeResult
         timeout, env=env, evidence_dir=evidence_dir)
 
 
-def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir) -> list:
+def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir, route: str = "",
+               tier_d_all: bool = False) -> list:
     """The deterministic battery: the harness self-test (TD.0), bats, Pester,
-    lint, safety-hook tests, single-command tests, and (opt-in) the R/Python
-    skill smoke suite via the CI log-stripped staging pattern. Zero API cost.
+    lint, safety-hook tests, single-command tests, (opt-in) the R/Python skill
+    smoke suite via the CI log-stripped staging pattern (TD.6), the provider-shim
+    unit suite (TD.7: default on shim routes, elsewhere only with tier_d_all,
+    i.e. --tier-d-all) and the core-library import smoke (TD.8, always). Zero
+    API cost.
 
     All batteries run under a Tier-D-sanitized subprocess env (the two known
     live-config contaminants removed; PATH/HOME/credentials/toolchain intact),
@@ -3038,7 +4319,61 @@ def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir) -> list:
         skip.verdict = Verdict.SKIP
         skip.detail = "Skill smoke suite not requested (pass --include-r-smoke to enable; it is slow)."
         results.append(skip)
-    return results
+
+    # TD.7 — the provider-shim unit suite, exactly the CI command (ci-scripts.yml
+    # job provider-shim-tests) minus the venv: the image already carries httpx and
+    # uvicorn because the shim runs here. It tests the source on disk, not the
+    # running daemon (T0.8 compares those).
+    if route in SHIM_ROUTES or tier_d_all:
+        results.append(_run_battery_cmd(
+            "TD.7", "provider-shim unit suite",
+            ["python3", "-m", "unittest", "discover", "-s", "tests/provider_shim", "-t", "tests",
+             "-p", "test_*.py"],
+            max(timeout, 900), cwd=BASE_DIR, env=env, evidence_dir=tier_d_evidence))
+    else:
+        td7 = ProbeResult(probe_id="TD.7", name="provider-shim unit suite", tier="D", verdict=Verdict.SKIP)
+        td7.detail = (f"Not a shim route ({route or 'route not given'}); pass --tier-d-all to run the shim "
+                      "suite anyway.")
+        results.append(td7)
+
+    results.append(_run_import_smoke(timeout, env=env, evidence_dir=tier_d_evidence))
+    return apply_hints(results)
+
+
+def _latest_revision(paths):
+    """The latest immutable revision among smoke_x.py, smoke_x_a.py, smoke_x_b.py...
+    (CLAUDE.md versioning): the base sorts first, then _a, _b, ... by suffix."""
+    def key(p):
+        m = re.search(r"_([a-z])$", p.stem)
+        return (1, m.group(1)) if m else (0, "")
+    return max(paths, key=key) if paths else None
+
+
+def _run_import_smoke(timeout: int, env: dict = None, evidence_dir=None) -> ProbeResult:
+    """TD.8 — core library imports: stage a log-stripped copy of the latest
+    scripts/smoke_tests/smoke_imports*.py into scripts/scratch/smoke_live_td8/
+    (never /tmp; same staging rule TD.6 uses) and run it with python3."""
+    src = Path(BASE_DIR) / "scripts" / "smoke_tests"
+    latest = _latest_revision(sorted(src.glob("smoke_imports*.py")))
+    if latest is None:
+        r = ProbeResult(probe_id="TD.8", name="core library imports", tier="D", verdict=Verdict.FAIL)
+        r.detail = f"No smoke_imports*.py under {src}."
+        return r
+    dst = Path(BASE_DIR) / "scripts" / "scratch" / "smoke_live_td8"
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        lines = latest.read_text().splitlines()
+        cut = next((i - 1 if i > 0 else i for i, ln in enumerate(lines) if ln.startswith("# EXECUTION LOG")), None)
+        staged = dst / latest.name
+        staged.write_text("\n".join(lines[:cut]) + "\n" if cut is not None else "\n".join(lines) + "\n")
+    except OSError as e:
+        r = ProbeResult(probe_id="TD.8", name="core library imports", tier="D", verdict=Verdict.FAIL)
+        r.detail = f"Import smoke staging failed: {e}"
+        return r
+    r = _run_battery_cmd("TD.8", "core library imports", ["python3", str(staged)],
+                         timeout, cwd=BASE_DIR, env=env, evidence_dir=evidence_dir)
+    r.add_evidence("", note=f"staged log-stripped copy of {latest.name}")
+    return r
 
 
 def _run_skill_smoke(timeout: int, env: dict = None, evidence_dir=None) -> ProbeResult:
@@ -3112,3 +4447,411 @@ def _run_skill_smoke(timeout: int, env: dict = None, evidence_dir=None) -> Probe
         r.verdict = Verdict.FAIL
         r.detail = f"Skill smoke staging failed: {e}"
     return r
+
+
+# --- Tier N: network and data services (free; no model calls) ---------------
+
+ROUTE_ENDPOINTS = {
+    ROUTE_ANTHROPIC: "https://api.anthropic.com/",
+    ROUTE_ANTHROPIC_API: "https://api.anthropic.com/",
+    ROUTE_CHATGPT: "https://chatgpt.com/",
+    ROUTE_OPENAI_API: "https://api.openai.com/v1/models",
+    ROUTE_OPENROUTER: "https://openrouter.ai/api/v1/models",
+}
+TN3_DOI = "10.1038/nature14539"   # LeCun, Bengio & Hinton (2015), Deep learning, Nature
+MIRRORS_YAML = Path(BASE_DIR) / ".claude" / "skills" / "education-data-query" / "references" / "mirrors.yaml"
+# A small file named in mirrors.yaml's own coverage notes (inference that it is
+# still present at the pinned revision; the HEAD answers that).
+TN4_PROBE_PATH = "saipe/districts_saipe"
+
+
+def _http_reach(url, timeout=15, method="HEAD"):
+    """One credential-free request: no auth header, no redirect following. Any
+    HTTP status (401/403/404 included) proves TLS + reachability. Returns
+    {"url", "reachable", "status", "error"}. Tests inject fakes here."""
+    opener = build_opener(_RejectHealthRedirects())
+    try:
+        with opener.open(Request(url, method=method), timeout=timeout) as resp:
+            return {"url": url, "reachable": True, "status": getattr(resp, "status", None), "error": ""}
+    except HTTPError as e:
+        return {"url": url, "reachable": True, "status": e.code, "error": ""}
+    except (URLError, socket.timeout, OSError, ValueError) as e:
+        return {"url": url, "reachable": False, "status": None, "error": f"{type(e).__name__}"}
+
+
+def _evaluate_tn1(route, outcomes):
+    """TN.1: FAIL when the route endpoint (or, on shim routes, the shim /health)
+    is unreachable; this is the one Tier N check that FAILs (design §12.2)."""
+    down = [o["url"] for o in outcomes if not o.get("reachable")]
+    if down:
+        return Verdict.FAIL, f"Route endpoint unreachable for {route}: " + ", ".join(down) + "."
+    return Verdict.PASS, "Route endpoint reachable over TLS (no credential sent): " + ", ".join(
+        f"{o['url']} -> {o.get('status')}" for o in outcomes) + "."
+
+
+def _evaluate_tn2(rc, dest):
+    """TN.2: web_fetch.sh exit 0 plus an extract (.md) and a MANIFEST row."""
+    dest = Path(dest)
+    md = [p.name for p in dest.glob("*.md")] if dest.is_dir() else []
+    rows = 0
+    manifest = dest / "MANIFEST.jsonl"
+    if manifest.is_file():
+        rows = sum(1 for ln in manifest.read_text(errors="replace").splitlines() if ln.strip())
+    facts = {"exit": rc, "extracts": len(md), "manifest_rows": rows}
+    if rc == 0 and md and rows:
+        return Verdict.PASS, "web_fetch.sh fetched example.com with an extract and a MANIFEST row.", facts
+    return Verdict.WARN, f"web_fetch.sh did not complete a fetch (exit={rc}, extracts={len(md)}, rows={rows}).", facts
+
+
+_TN3_OK = ("CONFIDENT", "WEAK", "EXISTS")
+
+
+def _evaluate_tn3(rc, stdout):
+    """TN.3: scholar_search.sh verify resolves the DOI (exit 0 and a
+    CONFIDENT/WEAK/EXISTS verdict); anything else WARNs. Only the verdict token
+    and exit code are kept."""
+    token = next((t for t in _TN3_OK if re.search(rf"\b{t}\b", stdout or "")), None)
+    facts = {"exit": rc, "verdict": token}
+    if rc == 0 and token:
+        return Verdict.PASS, f"scholar_search verify resolved {TN3_DOI} ({token}).", facts
+    return Verdict.WARN, f"scholar_search verify did not resolve {TN3_DOI} (exit={rc}, verdict={token}).", facts
+
+
+def _tn4_url(mirrors_path=None):
+    """The HEAD URL for TN4_PROBE_PATH through the first (priority) mirror."""
+    import yaml
+    data = yaml.safe_load(Path(mirrors_path or MIRRORS_YAML).read_text()) or {}
+    m = (data.get("mirrors") or [])[0]
+    revision = ((m.get("vintage") or {}).get("hf_revision")) or "main"
+    return m["url_template"].format(root_url=m["root_url"], revision=revision, path=TN4_PROBE_PATH)
+
+
+def _evaluate_tn4(outcome):
+    if outcome.get("reachable") and isinstance(outcome.get("status"), int) and outcome["status"] < 400:
+        return Verdict.PASS, f"Education-data mirror reachable (HTTP {outcome['status']})."
+    return Verdict.WARN, (f"Education-data mirror check failed (status={outcome.get('status')}, "
+                          f"error={outcome.get('error') or '-'}).")
+
+
+def run_tier_n(route, timeout, evidence_dir) -> list:
+    """Tier N — network and data services, free, no model calls (design §12.2).
+    TN.1 route endpoint (+ shim /health on shim routes; FAIL when down), TN.2
+    web_fetch.sh, TN.3 scholar_search verify, TN.4 education-data mirror HEAD.
+    TN.2-TN.4 WARN on failure. Artifacts land under evidence_dir/tn2_web_fetch
+    and evidence_dir/tn3_scholar (the runner passes evidence/tier_n; both CLIs
+    refuse destinations outside /daaf)."""
+    route = getattr(route, "detected_route", route)
+    out_dir = Path(evidence_dir)
+    results = []
+
+    r1 = ProbeResult(probe_id="TN.1", name="Route endpoint reachability", tier="N")
+    start = time.time()
+    outcomes = []
+    if route in ROUTE_ENDPOINTS:
+        outcomes.append(_http_reach(ROUTE_ENDPOINTS[route], timeout=min(timeout, 20)))
+    if route in SHIM_ROUTES:
+        try:
+            _read_local_health(timeout=10)
+            outcomes.append({"url": SHIM_HEALTH_URL, "reachable": True, "status": 200, "error": ""})
+        except (HTTPError, URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
+            outcomes.append({"url": SHIM_HEALTH_URL, "reachable": False, "status": None, "error": type(e).__name__})
+    r1.add_evidence("credential-free HEAD (no redirects) / shim GET /health", output=json.dumps(outcomes))
+    if outcomes:
+        r1.verdict, r1.detail = _evaluate_tn1(route, outcomes)
+    else:
+        r1.verdict, r1.detail = Verdict.SKIP, f"No endpoint known for route {route!r}."
+    r1.duration_s = round(time.time() - start, 3)
+    results.append(r1)
+
+    r2 = ProbeResult(probe_id="TN.2", name="web_fetch.sh round-trip", tier="N")
+    start = time.time()
+    dest2 = out_dir / "tn2_web_fetch"
+    dest2.mkdir(parents=True, exist_ok=True)
+    cmd2 = ["bash", f"{BASE_DIR}/scripts/web_fetch.sh", "https://example.com/", str(dest2)]
+    rc2, _, _ = _run_cmd(cmd2, timeout=max(60, timeout))
+    r2.verdict, r2.detail, facts2 = _evaluate_tn2(rc2, dest2)
+    r2.add_evidence(shlex.join(cmd2), output=json.dumps(facts2), note="fetched content is not quoted (untrusted)")
+    r2.duration_s = round(time.time() - start, 3)
+    results.append(r2)
+
+    r3 = ProbeResult(probe_id="TN.3", name="scholar_search verify", tier="N")
+    start = time.time()
+    dest3 = out_dir / "tn3_scholar"
+    dest3.mkdir(parents=True, exist_ok=True)
+    cmd3 = ["bash", f"{BASE_DIR}/scripts/scholar_search.sh", "verify", TN3_DOI, str(dest3)]
+    rc3, out3, _ = _run_cmd(cmd3, timeout=max(90, timeout))
+    r3.verdict, r3.detail, facts3 = _evaluate_tn3(rc3, out3)
+    r3.add_evidence(shlex.join(cmd3), output=json.dumps(facts3), note="free OpenAlex call; only exit and verdict kept")
+    r3.duration_s = round(time.time() - start, 3)
+    results.append(r3)
+
+    r4 = ProbeResult(probe_id="TN.4", name="Education-data mirror", tier="N")
+    start = time.time()
+    try:
+        url4 = _tn4_url()
+        outcome4 = _http_reach(url4, timeout=min(timeout, 30))
+    except Exception as e:  # malformed mirrors.yaml is a WARN, never a crash
+        url4, outcome4 = "<unresolved>", {"reachable": False, "status": None, "error": type(e).__name__}
+    r4.add_evidence(f"HEAD {url4} (no redirects)", output=json.dumps(outcome4))
+    r4.verdict, r4.detail = _evaluate_tn4(outcome4)
+    r4.duration_s = round(time.time() - start, 3)
+    results.append(r4)
+    return apply_hints(results)
+
+
+# --- Tier A: Auto mode (opt-in, 1 call) ---------------------------------------
+
+TA1_PROMPT_TEMPLATE = (
+    "Framework Development mode is confirmed; this is a one-shot smoke check — do it directly without a "
+    "mode confirmation. Run this exact Bash command and report its output: openssl dgst -sha256 {path}"
+)
+
+
+def _evaluate_ta1(records, response_text, expected_digest, route, classifier_terminals=None):
+    """Pure TA.1 verdict: under --permission-mode auto the exact openssl command
+    must have run (Bash tool_use, non-error result) and the reply must carry the
+    locally computed SHA-256. On shim routes, at least one successful
+    classifier-style terminal (stream=n, tools=0, outcome=success) must appear in
+    the shim log for the run window (None = log not scanned -> WARN). That
+    signature is UNCONFIRMED UNTIL FIRST LIVE RUN: housekeeping calls share it
+    (see _SHIM_LOG_SIGNALS), so it can PASS without a classifier call."""
+    ran = any(name == "Bash" and "openssl dgst -sha256" in str(_tool_input(inp).get("command", ""))
+              and is_error is False for name, inp, is_error in _tool_calls(records))
+    digest_ok = bool(expected_digest) and expected_digest in (response_text or "").lower()
+    facts = {"command_ran": ran, "digest_matches": digest_ok, "classifier_terminals": classifier_terminals}
+    if not ran:
+        return Verdict.FAIL, "Auto mode did not run the harmless command (blocked, refused or not attempted).", facts
+    if not digest_ok:
+        return Verdict.FAIL, "The command ran but the reply does not carry the expected SHA-256 digest.", facts
+    if route in SHIM_ROUTES:
+        if classifier_terminals is None:
+            return Verdict.WARN, "Command ran; the shim log could not be scanned for the classifier call.", facts
+        if classifier_terminals < 1:
+            return Verdict.FAIL, ("Command ran but no successful classifier-style shim terminal (stream=n tools=0) "
+                                  "was logged in the run window."), facts
+    return Verdict.PASS, "Auto mode ran the command and the digest matches.", facts
+
+
+def run_tier_a(profile_name: str, extra_env: dict, timeout: int, route: str = "", evidence_dir=None) -> list:
+    """Tier A — one `claude -p --permission-mode auto` call (TA.1, design §3/§12.3).
+    Mirrors run_tier1/run_tier2: (profile_name, extra_env, timeout) positional,
+    route/evidence_dir by keyword. The gate before moving the CLI pin past
+    2.1.281 after 2026-10-23 (F13); F12 on shim routes."""
+    import hashlib
+    target = Path(BASE_DIR) / "CLAUDE.md"
+    try:
+        expected = hashlib.sha256(target.read_bytes()).hexdigest()
+    except OSError:
+        expected = ""
+    result, meta = execute_smoke_run(
+        prompt=TA1_PROMPT_TEMPLATE.format(path=target), max_turns=6, timeout=timeout, extra_env=extra_env,
+        output_format="stream-json", permission_mode="auto", max_budget_usd=_budget_for(route, "A"))
+    sid = meta["session_id"]
+    records = load_transcript_records(find_transcript(sid))
+    failure, warning = _live_run_health(result, records)
+    terminals = None
+    if route in SHIM_ROUTES:
+        scan = probe_shim_log_scan(route, since=meta.get("window_start"), until=meta.get("window_end"),
+                                   probe_id="TA.1-scan", tier="A")
+        ev = next((e for e in scan.evidence if e.output.startswith("{")), None)
+        terminals = json.loads(ev.output).get("classifier_terminals") if ev else None
+    r = ProbeResult(probe_id="TA.1", name="Auto mode (harmless command)", tier="A", profile=profile_name)
+    r.add_evidence(f"claude -p --permission-mode auto (session {sid[:8]})", output=(result.response_text or "")[:300])
+    r.add_evidence("stream-json init (allowlisted)", output=json.dumps(meta.get("init") or {}, sort_keys=True))
+    verdict, detail, facts = _evaluate_ta1(records, result.response_text, expected, route, terminals)
+    r.add_evidence("Bash tool_use openssl dgst + result; digest vs local hashlib; shim classifier terminals",
+                   output=json.dumps(facts), note=f"expected sha256={expected[:16]}...")
+    if not _apply_live_failure(r, failure, warning):
+        r.verdict, r.detail = verdict, detail
+        _apply_live_warning(r, warning)
+    _stamp_live(r, result, meta)
+    return apply_hints([r])
+
+
+# --- Tier 3: DAAF golden path (opt-in, 2 calls) --------------------------------
+
+T31_PROMPT = "What does grade = -1 mean in CCD enrollment data?"
+T32_PROMPT = "Yes, go ahead."
+# A confirmation QUESTION: a confirm phrase followed, within the same sentence,
+# by a question mark ("Shall I proceed?", "Sound good?", "Would you like me to
+# look this up?" — the orchestrator's confirmation templates end this way). A
+# bare "?" anywhere in the tail no longer counts (review S6, 2026-10-13).
+_CONFIRM_Q_RE = re.compile(
+    r"(?:confirm|proceed|shall i|should i|would you like|do you want|want me to|go ahead|sounds? good|"
+    r"ok(?:ay)? to|does that work|is that (?:ok|okay|right|correct|what you want))[^.!?\n]{0,160}\?",
+    re.IGNORECASE)
+# The nine DAAF engagement modes by name (daaf-orchestrator SKILL.md § Mode
+# Summary Table). The bare word "mode" no longer counts.
+_DAAF_MODE_NAMES = ("Data Onboarding", "Data Lookup", "Data Discovery", "Ad Hoc Collaboration",
+                    "Full Pipeline", "Revision and Extension", "Reproducibility Verification",
+                    "Framework Development", "User Support")
+_MODE_RE = re.compile(r"\b(?:" + "|".join(n.replace(" ", r"[\s-]+") for n in _DAAF_MODE_NAMES) + r")\b",
+                      re.IGNORECASE)
+_PREK_RE = re.compile(r"pre-?\s?k(indergarten)?\b|prekindergarten", re.IGNORECASE)
+
+
+def _evaluate_t31(response_text):
+    """T3.1: the reply names a DAAF engagement mode (one of _DAAF_MODE_NAMES) and
+    its last ~400 characters ask a confirmation question (_CONFIRM_Q_RE) — the
+    DAAF contract is to stop at the gate. A reply that already gives the Pre-K
+    answer did not stop there: FAIL when it asks nothing, WARN when it answers
+    and also asks (the gate was half-honoured; the template's "what I'll look
+    up" line can legitimately name the term, so this is not a FAIL)."""
+    text = (response_text or "").strip()
+    tail = text[-400:]
+    m = _MODE_RE.search(text)
+    facts = {"mode_named": m.group(0) if m else None,
+             "asks_confirmation": bool(_CONFIRM_Q_RE.search(tail)),
+             "prek_already_answered": bool(_PREK_RE.search(text))}
+    if facts["prek_already_answered"]:
+        if facts["asks_confirmation"]:
+            return Verdict.WARN, ("The reply asks for confirmation but already gives the Pre-K answer: the "
+                                  "question was answered before the mode gate. Read the transcript."), facts
+        return Verdict.FAIL, ("The reply answered the question (Pre-K) without stopping at the "
+                              "mode-confirmation gate."), facts
+    if facts["mode_named"] and facts["asks_confirmation"]:
+        return Verdict.PASS, (f"The orchestrator classified the request ({facts['mode_named']}) and stopped at "
+                              "the confirmation gate."), facts
+    if facts["asks_confirmation"]:
+        return Verdict.WARN, "The reply asks for confirmation but names no DAAF engagement mode.", facts
+    return Verdict.FAIL, "The reply did not stop at the mode-confirmation gate (no confirmation question).", facts
+
+
+def _skill_loaded(records, skill_name):
+    """True when a Skill call for skill_name (bare, '/name' or 'plugin:name')
+    returned a non-error tool_result."""
+    return any(name == "Skill" and is_error is False
+               and str(_tool_input(inp).get("skill", "")).lstrip("/").split(":")[-1] == skill_name
+               for name, inp, is_error in _tool_calls(records))
+
+
+def _evaluate_t32(response_text, records):
+    """T3.2: the continued answer says grade -1 means Pre-K, a fact the
+    education-data-context skill carries. PASS needs the Pre-K answer AND a
+    successful education-data-context Skill load in the session transcript;
+    the Pre-K answer without that load is WARN ("answered without loading the
+    skill": the model may know the fact unaided, so retrieval is not proven).
+    The detail also says whether daaf-orchestrator loaded."""
+    text = response_text or ""
+    context = _skill_loaded(records, "education-data-context")
+    orchestrator = _skill_loaded(records, "daaf-orchestrator")
+    facts = {"prek_answer": bool(_PREK_RE.search(text)), "context_skill_loaded": context,
+             "orchestrator_skill_loaded": orchestrator}
+    if not facts["prek_answer"]:
+        return Verdict.FAIL, "The continued answer does not say grade -1 means Pre-K.", facts
+    if context:
+        return Verdict.PASS, ("The answer says grade -1 is Pre-K, with the education-data-context skill loaded"
+                              + (" (daaf-orchestrator loaded too)." if orchestrator else ".")), facts
+    missing = "education-data-context" + ("" if orchestrator else " or daaf-orchestrator")
+    return Verdict.WARN, (f"The answer says grade -1 is Pre-K, but it was answered without loading the skill "
+                          f"(no {missing} Skill load in the transcript), so skill retrieval is not "
+                          "proven."), facts
+
+
+def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = "", evidence_dir=None) -> list:
+    """Tier 3 — the DAAF golden path (design §12.3): T3.1 asks a question with
+    no mode confirmed (PASS when the reply stops at the gate), T3.2 resumes THE
+    SAME session by id (`--resume <sid>`; the design's `claude -c -p` would pick
+    the most recent conversation in /daaf, which may not be ours) with
+    "Yes, go ahead." and checks the Pre-K answer. Signature mirrors run_tier1/2."""
+    budget = _budget_for(route, "3")
+    res1, meta1 = execute_smoke_run(prompt=T31_PROMPT, max_turns=8, timeout=timeout, extra_env=extra_env,
+                                    output_format="stream-json", max_budget_usd=budget)
+    sid = meta1["session_id"]
+    recs1 = load_transcript_records(find_transcript(sid))
+    f1, w1 = _live_run_health(res1, recs1)
+    r1 = ProbeResult(probe_id="T3.1", name="Mode-confirmation gate", tier="3", profile=profile_name)
+    r1.add_evidence(f"claude -p {T31_PROMPT!r} (session {sid[:8]})", output=(res1.response_text or "")[-400:])
+    v1, d1, facts1 = _evaluate_t31(res1.response_text)
+    r1.add_evidence("mode named + confirmation request in the reply tail", output=json.dumps(facts1))
+    if not _apply_live_failure(r1, f1, w1):
+        r1.verdict, r1.detail = v1, d1
+        _apply_live_warning(r1, w1)
+    _stamp_live(r1, res1, meta1)
+
+    r2 = ProbeResult(probe_id="T3.2", name="Golden path (skill retrieval)", tier="3", profile=profile_name)
+    if f1:
+        r2.verdict, r2.detail = Verdict.SKIP, "T3.1 did not reach a real model; nothing to continue."
+        return apply_hints([r1, r2])
+    res2, meta2 = execute_smoke_run(prompt=T32_PROMPT, max_turns=20, timeout=timeout, extra_env=extra_env,
+                                    output_format="stream-json", max_budget_usd=budget, resume_session_id=sid)
+    recs2 = load_transcript_records(find_transcript(sid))
+    f2, w2 = _live_run_health(res2, recs2)
+    r2.add_evidence(f"claude -p --resume {sid[:8]} {T32_PROMPT!r}", output=(res2.response_text or "")[:400])
+    v2, d2, facts2 = _evaluate_t32(res2.response_text, recs2)
+    r2.add_evidence("Pre-K in the answer; Skill education-data-context", output=json.dumps(facts2))
+    if not _apply_live_failure(r2, f2, w2):
+        r2.verdict, r2.detail = v2, d2
+        _apply_live_warning(r2, w2)
+    _stamp_live(r2, res2, meta2)
+    return apply_hints([r1, r2])
+
+
+# --- Remediation hints (smoke v2 §4) -------------------------------------------
+# Static text per probe ID, next to the probe code. route_detection's own
+# probes keep theirs in ROUTE_PROBE_HINTS (merged here). apply_hints() fills
+# ProbeResult.hint for FAIL/WARN results that did not set a shape-specific hint.
+# A hint must never contain a literal header name from
+# smoke_package.DROP_LINE_MARKERS (e.g. the Codex turn-state header): the
+# packager line-drops those in copied logs, and an earlier T0.20 hint that
+# named one erased its own report row (review fix cycle 2). Describe the
+# header in words instead.
+PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
+    "T0.ABORT": "Fix T0.0 (DAAF_DEV=1) and re-run; no paid tier runs on a non-dev image.",
+    "T0.5": "Reinstall the pinned Claude Code (rebuild the image: bash rebuild_daaf.sh from daaf-docker).",
+    "T0.6": "Register the hook in .claude/settings.json (user-applied: hooks/settings are user-only edits).",
+    "T0.7": "Run the statusline by hand with a synthetic payload; check .claude/scripts/context-bar.sh / subagent-bar.sh and their cache-dir seams.",
+    "T0.8": "Start or restart the shim yourself: bash /daaf/scripts/provider_shim/start_shim.sh --restart; check --status and logs/shim.log.",
+    "T0.9": "Re-authenticate the ChatGPT lane: codex login --device-auth, then restart the shim.",
+    "T0.10": "Run bash /daaf/scripts/check_workspace_invariants.sh and remove the reported symlinks or unportable names.",
+    "T0.11": "Rebuild the image so ENV LANG/LC_ALL=C.UTF-8 apply (Dockerfile top block).",
+    "T0.12": "Remove or update the shadowing keys in .claude/settings.local.json and start a new session.",
+    "T0.15": "Rebuild to the Dockerfile pins (CLAUDE_CODE_VERSION); on shim routes Claude Code must be >= 2.1.276. Commit or stash dirty files before a release run.",
+    "T0.18": "Fix the DAAF_CODEX_CONFIG_<N> lines named in logs/codex_config.log (refused entries look like credentials), then start_shim.sh --restart.",
+    "T0.19": "Low prompt-cache reuse drains quota: confirm the shim is >= 1.4.6 (per-session routing hint) and watch /health.prompt_cache over a longer session.",
+    "T0.20": "Read logs/shim.log around the counted signals (do not paste header lines): claude-* requests -> map all tier aliases (T0.17); whitespace -> shim >= 1.4.8; unsupported_value -> drop '#none' effort; insufficient_quota -> billing; a Codex turn-state header in the log -> shim >= 1.4.9 and rotate the log.",
+    "T0.21": "Run as the non-root appuser with /daaf writable; free disk space; for git errors add /daaf to safe.directory.",
+    "T0.22": "Rebuild the image (missing tools come from the Dockerfile); dev-only tools need DAAF_DEV=1 at build time.",
+    "T0.23": "Fix the named file: restore a hook's executable bit (git update-index --chmod=+x is not enough on disk: chmod +x), repair frontmatter, or remove Agent/Task from an agent's tools.",
+    "T1.1": "Run the T1 prompt by hand with claude -p and read the error; check the route's credentials and model mapping (T0.3/T0.14/T0.17).",
+    "T1.2": "Check that ~/.claude/projects/<slug>/ is writable and the SessionEnd archive hook is registered.",
+    "T1.3": "Check that audit-log.sh is registered for PostToolUse and .claude/logs/ is writable.",
+    "T1.5": "The /tmp model cache was written by something other than this session's context-reporter.sh pass; re-run and compare it with the transcript model.",
+    "T1.6": "Run context-bar.sh with the real transcript payload by hand and read its stderr.",
+    "T1.7": "The JSON result lacked usage: check the Claude Code version (T0.15) and the provider's usage reporting.",
+    "T1.8": "The credential or model in use does not match the route: remove stray ANTHROPIC_API_KEY / tokens (T0.16) or fix the model mapping (T0.14/T0.17). On anthropic-api a budget-cap stop also shows here.",
+    "T1.9": "Check that remind-orchestrator.sh is registered for UserPromptSubmit (T0.6) and that skills load (T0.23); a WARN means the skill loaded with no reminder recorded — read the transcript for the attachment shape.",
+    "T1.10": "Check that archive-session.sh is registered for SessionEnd and .claude/logs/sessions/ is writable.",
+    "T2.1": "Check Agent dispatch (search-agent) and, for a routing WARN, the ANTHROPIC_DEFAULT_<TIER>_MODEL mapping of the agent's tier.",
+    "T2.2": "Read the probe script's appended execution log; check run_with_capture.sh and the research-executor agent.",
+    "T2.3": "On shim routes WebSearch must succeed through the shim's hosted search (>= 1.4.8); read the subagent transcript's WebSearch result.",
+    "T2.4": "Check the polars skill frontmatter (T0.23) and that the Skill tool is available.",
+    "T2.5": "Check block-remote-isolation.sh registration in both Task and Agent matcher chains.",
+    "T2.6": "Check CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 in settings.json env and block-nested-dispatch.sh first in the Task/Agent chains.",
+    "T2.7": "A guard let an action through: check bash-safety.sh §8 registration for Bash and the Read(.env) / Bash(pip install*) deny rules in settings.json. WARN means the model did not attempt both calls (or an attempt has no recorded result), or a deny came back in a shape the probe does not recognize yet (quoted in the detail).",
+    "TD.0": "Run the deploy-smoke unit tests file-first and fix the failing test (evidence/tier_d/TD.0.log).",
+    "TD.1": "Read evidence/tier_d/TD.1.log for the failing bats test.",
+    "TD.2": "Read evidence/tier_d/TD.2.log; Pester must write testResults.xml into the report evidence dir.",
+    "TD.3": "Read evidence/tier_d/TD.3.log for the convention violations.",
+    "TD.4": "Read evidence/tier_d/TD.4.log; a safety-hook regression is a release blocker.",
+    "TD.5": "Read evidence/tier_d/TD.5.log for the single-command hook regression.",
+    "TD.6": "Read evidence/tier_d/TD.6.log for the failing R/Python skill smoke.",
+    "TD.7": "Read evidence/tier_d/TD.7.log for the failing shim test module; the CI job runs the same command.",
+    "TD.8": "A pinned library failed to import: read evidence/tier_d/TD.8.log and rebuild the image.",
+    "TN.1": "The route endpoint is unreachable from this container: check network/proxy settings, and on shim routes start the shim.",
+    "TN.2": "Run bash /daaf/scripts/web_fetch.sh https://example.com/ <dir> by hand and read its exit code (web-retrieval skill table).",
+    "TN.3": "Run scholar_search.sh verify by hand; exit 4/6 is network, 10 a missing key (scholarly-search skill).",
+    "TN.4": "Check the mirror in education-data-query/references/mirrors.yaml (pinned hf_revision) and network access to huggingface.co.",
+    "TA.1": "Auto mode refused or failed: on shim routes check the classifier terminals in shim.log and CLAUDE_CODE_AUTO_MODE_SERVER; after 2026-10-23 do not move the CLI pin past 2.1.281 until this passes.",
+    "T3.1": "The orchestrator did not stop at the mode-confirmation gate (no named mode plus confirmation question, or the question was already answered): check daaf-orchestrator loading and read the transcript.",
+    "T3.2": "The golden-path answer missed the Pre-K fact, or gave it without loading education-data-context: check skill retrieval in the transcript.",
+})
+
+
+def apply_hints(results):
+    """Fill ProbeResult.hint for FAIL/WARN results that have none; returns the
+    list (so tier runners can `return apply_hints(results)`)."""
+    for r in results or []:
+        if isinstance(r, ProbeResult) and r.verdict in (Verdict.FAIL, Verdict.WARN) and not r.hint:
+            r.hint = PROBE_HINTS.get(r.probe_id, "")
+    return results

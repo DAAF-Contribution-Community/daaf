@@ -153,6 +153,23 @@ _archive() {
     assert_output --partial "Tokens: in=120, out=42"
 }
 
+@test "Token line counts cache reads and writes in the input total" {
+    # input_tokens is only the uncached part; the archive's "in" must be the sum
+    # of all three fields (as context-reporter.sh computes), with the cached share
+    # shown. A non-numeric field counts as 0 instead of aborting the render.
+    cat > "$TRANSCRIPT" <<'JSONL'
+{"timestamp":"2026-09-23T10:00:00.000Z","message":{"role":"user","content":"profile the CCD file"}}
+{"timestamp":"2026-09-23T10:00:05.000Z","message":{"role":"assistant","model":"gpt-6-sol","content":[{"type":"text","text":"Cached turn."}],"usage":{"input_tokens":120,"cache_read_input_tokens":900,"cache_creation_input_tokens":80,"output_tokens":42}}}
+{"timestamp":"2026-09-23T10:00:06.000Z","message":{"role":"assistant","model":"gpt-6-sol","content":[{"type":"text","text":"Odd usage."}],"usage":{"input_tokens":50,"cache_read_input_tokens":"7","output_tokens":5}}}
+JSONL
+    _archive "cafe0000-1111-2222" "$TRANSCRIPT"
+    assert_success
+    run cat "${ARCHIVE_DIR}"/*_cafe0000_orchestrator.md
+    assert_output --partial "Tokens: in=1100 (cached=900), out=42"
+    assert_output --partial "Tokens: in=50, out=5"
+    assert_output --partial "Odd usage."
+}
+
 @test "Markdown ends with a session summary block" {
     _archive "deadbeef-1111-2222" "$TRANSCRIPT"
     assert_success

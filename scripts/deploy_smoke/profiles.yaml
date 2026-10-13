@@ -3,7 +3,9 @@
 # WHAT THIS IS
 #   Named sets of environment-variable overrides applied to the PROBE SUBPROCESS
 #   ENV ONLY (never the daemon), reusing the DAAFBench env_overrides mechanism.
-#   `--profiles a,b,c` runs Tiers 1-2 once per profile; Tiers 0 and D run once.
+#   `--profiles a,b,c` runs the live tiers (1, 2, A and 3, whichever --tiers
+#   selects) once per profile; Tiers 0, N and D run once per run, against the
+#   ambient environment, never an overlay.
 #
 # WHEN IT APPLIES
 #   Profiles are designed for the OpenRouter route, where swapping the per-run
@@ -22,7 +24,7 @@
 #   actually have access to on your OpenRouter account. Model slugs below are the
 #   current GPT/GLM entries from benchmarks/config/models.yaml (2026-07). Run e.g.:
 #     python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
-#         --profiles openrouter-claude,openrouter-gpt,openrouter-glm
+#         --profiles openrouter-claude,openrouter-gpt,openrouter-astra,openrouter-glm
 #
 # NOTE ON THE TIER-ALIAS REMAP
 #   For NON-Claude models, all four tier aliases are mapped, matching DAAF's

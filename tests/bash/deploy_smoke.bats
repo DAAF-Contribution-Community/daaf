@@ -245,7 +245,8 @@ cases = [
     ("ChatGPT effort-suffixed gpt-6-astra above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-astra[1m]#xhigh", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
     ("retired gpt-6-terra is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-terra", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter gpt-6-sol keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
-    # USER POLICY DECISION 2026-10-12: gpt-6.1-sol takes the same inferred lane cap.
+    # USER POLICY DECISION 2026-10-12: gpt-6.1-sol takes the same 919k lane cap
+    # (its ChatGPT-lane ceiling was measured 2026-10-13: accepted 919,744, rejected 921,973).
     ("ChatGPT gpt-6.1-sol above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
     ("ChatGPT gpt-6.1-sol at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6.1-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
     # 2026-10-12 four-tier alias coverage: HAIKU/FABLE slots get the same window

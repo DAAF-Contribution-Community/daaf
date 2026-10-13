@@ -2117,12 +2117,9 @@ _extract_normalize() {
 # GPT-6.1 Sol (USER POLICY DECISION 2026-10-12, not validation): gpt-6.1-sol,
 # with an optional -pro and then an optional [1m], reads exactly as gpt-6-sol —
 # 1,050,000 window (OpenRouter openai/gpt-6.1-sol, fetched 2026-10-12), the
-# inferred 919k ChatGPT-lane cap (lane ceiling pending measurement), and the
-# GPT extended tier. No gpt-6.1-* wildcard: other GPT-6.1 names stay
-# conservative. PATCH DEPENDENCE: until the user applies
-# research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/hook_patch/context-reporter_gpt-6.1-sol.patch,
-# the positive cases below fail BY DESIGN against the live hook; all pass with
-#   CONTEXT_REPORTER_SH=research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/hook_patch/context-reporter.patched.sh
+# 919k ChatGPT-lane cap (lane ceiling measured 2026-10-13: accepted 919,744;
+# rejected a request of ~921,973), and the GPT extended tier. No gpt-6.1-*
+# wildcard: other GPT-6.1 names stay conservative.
 # =========================================================================
 
 @test "gpt-6.1-sol subagents (bare, provider-prefixed, [1m], -pro) map to 1050k and use the extended tier" {

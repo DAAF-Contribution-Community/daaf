@@ -1548,8 +1548,8 @@ JSON
 # 2026-10-12 GPT-6.1 Sol registration (USER POLICY DECISION, not validation):
 # gpt-6.1-sol, with an optional -pro and then an optional [1m], reads exactly as
 # gpt-6-sol (1.05M window per OpenRouter openai/gpt-6.1-sol fetched 2026-10-12;
-# 919k ChatGPT-lane cap inferred, lane ceiling pending measurement). One exact
-# alternative, no gpt-6.1-* wildcard.
+# 919k ChatGPT-lane cap, lane ceiling measured 2026-10-13: accepted 919,744;
+# rejected a request of ~921,973). One exact alternative, no gpt-6.1-* wildcard.
 # =========================================================================
 
 @test "gpt-6.1-sol slugs map to the 1,050,000 window" {

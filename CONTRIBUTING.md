@@ -420,7 +420,7 @@ If you're modifying hooks (`.claude/hooks/`), Docker configuration, or other inf
 bats tests/bash/
 shellcheck -x scripts/host/*.sh
 bash tests/lint/check-daaf-conventions.sh
-python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py'
+python3 -m unittest discover -s tests/python -p 'test_deploy_smoke*.py'
 pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
 pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path \$_.FullName -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 }"
 ```
@@ -431,13 +431,13 @@ pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { 
 
 ### For Deployment or Provider-Configuration Changes
 
-If your change touches how DAAF talks to a model provider -- a new or changed API key, a model remap (`ANTHROPIC_DEFAULT_*`), a provider-shim change, a base-URL switch -- or you just want to confirm a rebuilt install still works end-to-end, use the **deployment smoke suite** (`scripts/deploy_smoke/`). Unlike the R/Python library smokes above (which verify packages load) or DAAFBench (which scores model *behavior*), this suite verifies the *deployment itself* functions in whatever provider route it is configured for. It auto-detects the active route (anthropic-subscription, OpenRouter, or the chatgpt-subscription/openai-api shim routes) and runs tiered probes. It requires the `DAAF_DEV=1` image.
+If your change touches how DAAF talks to a model provider -- a new or changed API key, a model remap (`ANTHROPIC_DEFAULT_*`), a provider-shim change, a base-URL switch -- or you just want to confirm a rebuilt install still works end-to-end, use the **deployment smoke suite** (`scripts/deploy_smoke/`). Unlike the R/Python library smokes above (which verify packages load) or DAAFBench (which scores model *behavior*), this suite verifies the *deployment itself* functions in whatever provider route it is configured for. It covers five install routes (anthropic-subscription, anthropic-api, openrouter, and the chatgpt-subscription/openai-api shim routes); you name the container's route with `--route`, which is required, and Tier 0 FAILs if detection disagrees. It runs tiered probes, and every run also builds a scrubbed diagnostic package that the maintainer carries to the main container and imports with `--import`. It requires the `DAAF_DEV=1` image.
 
 **Provider-shim changes have a stricter release gate.** A reviewable shim PR should show all of the following, with commands and observed results rather than a remembered pass claim:
 
-1. **Production-path deterministic coverage.** Exercise the real translator/ASGI/subprocess paths in `tests/provider_shim/`, not a duplicate implementation inside a test. Run the provider-shim suite, the lifecycle suite at `tests/bash/start_shim.bats`, the DAAFBench route/provenance tests under `benchmarks/tests/`, and the deploy-smoke harness self-tests at `tests/python/test_deploy_smoke.py`.
-2. **Lifecycle and privacy invariants.** A reviewer should be able to confirm the shim's lifecycle guarantees still hold: strict `/health` readiness (so a stale shim or an unrelated service on the port can't masquerade as healthy), a nonfatal `--auto` boot contract (a shim problem never blocks the container), serialized and auditable lifecycle ownership under one lock with PID/PGID-scoped signaling of only the process the manager started, and a single, size-bounded logging path with exactly-once request accounting. Diagnostics must also honor the **privacy never-list**: they may record request IDs, transport class/phase, bounded timings, and retry attribution, but **never** prompts or text, tool inputs/arguments, image data or URLs/query strings, file IDs/names, credentials/cookies, raw SSE, complete bodies, or free-form backend prose. The full invariant set, each with why it matters, and the complete never-list live in the shim source header (`scripts/provider_shim/anthropic_openai_shim.py`) and the `daaf-deploy-smoke-testing` skill.
-3. **Image-contract evidence.** Before claiming ChatGPT image compatibility, show a privacy-safe live image probe on that lane — ChatGPT/Codex image fixtures must come from observed live evidence, never a guessed documentation shape, and the capture must not log payloads. The wire-format specifics (source-ordering preservation, local failure on unsupported or malformed content, and the public OpenAI Responses schema as the documented basis) are covered by the `daaf-deploy-smoke-testing` skill.
+1. **Production-path deterministic coverage.** Exercise the real translator/ASGI/subprocess paths in `tests/provider_shim/`, not a duplicate implementation inside a test. Run the provider-shim suite, the lifecycle suite at `tests/bash/start_shim.bats`, the DAAFBench route/provenance tests under `benchmarks/tests/`, and the deploy-smoke harness self-tests at `tests/python/test_deploy_smoke*.py`.
+2. **Lifecycle and privacy invariants.** A reviewer should be able to confirm the shim's lifecycle guarantees still hold: strict `/health` readiness (so a stale shim or an unrelated service on the port can't masquerade as healthy), a nonfatal `--auto` boot contract (a shim problem never blocks the container), serialized and auditable lifecycle ownership under one lock with PID/PGID-scoped signaling of only the process the manager started, and a single, size-bounded logging path with exactly-once request accounting. Diagnostics must also honor the **privacy never-list**: they may record request IDs, transport class/phase, bounded timings, and retry attribution, but **never** prompts or text, tool inputs/arguments, image data or URLs/query strings, file IDs/names, credentials/cookies, raw SSE, complete bodies, or free-form backend prose. The full invariant set, each with why it matters, and the complete never-list live in the shim source header (`scripts/provider_shim/anthropic_openai_shim.py`).
+3. **Image-contract evidence.** Before claiming ChatGPT image compatibility, show a privacy-safe live image probe on that lane — ChatGPT/Codex image fixtures must come from observed live evidence, never a guessed documentation shape, and the capture must not log payloads. The wire-format specifics (source-ordering preservation, local failure on unsupported or malformed content, and the public OpenAI Responses schema as the documented basis) are documented in the shim source header (`scripts/provider_shim/anthropic_openai_shim.py`, the v1.2.12 image entry) and next to its image translation code.
 4. **Image and deployment validation.** If Docker dependencies change, run `scripts/smoke_tests/run_all_smoke_tests.sh`; its Python gate verifies 50 import targets plus two metadata-only distributions — 52 explicit pinned distributions in total. It preserves exact-version checks for `httpx==0.28.1` and `uvicorn==0.51.0` and uses metadata-only presence/exact-version checks for `svy-rs==0.10.0` and `svy-io==0.1.1` rather than inventing import names. After deploying the changed shim, restart it with the single atomic command `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, confirm the source version through strict `/health`, then run deployment-smoke Tier 0 and Tier 1 against the active route. When the current Claude Code session itself routes through the shim, never schedule `--stop` and `--start` as separate assistant turns—the first turn can remove the transport needed for the second. Deterministic success is necessary, but it does not substitute for this deployed round-trip.
 
 For tolerated private-wire differences, aggregate bounded diagnostics rather than flooding logs: the known `arguments.done`-without-`name` case records the first occurrence and periodic count summaries. Hard or conflicting protocol errors must remain visible and fail explicitly.
@@ -445,31 +445,35 @@ For tolerated private-wire differences, aggregate bounded diagnostics rather tha
 Start with the free, no-API preflight, then add live tiers as needed:
 
 ```bash
-# Free preflight — route/env coherence, hook registration, statuslines, shim health:
-python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0 --yes
+# --route is required (anthropic-subscription, anthropic-api, chatgpt-subscription,
+# openai-api, openrouter); without it the runner exits 2. A detection mismatch is a T0.1 FAIL.
 
-# Add a live round-trip (~cents) and the six-probe functional battery (~$0.60–3.00, model-dependent):
-python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0,1,2
+# Free preflight: Tier 0 (route/env coherence, hooks, statuslines, shim health), Tier N (network), Tier D (deterministic battery):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter --tiers 0,D,N --yes
 
-# Assert the route you expect — a detection mismatch is a FAIL (catches a mis-set env):
-python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter --tiers 0
+# Add a live round-trip (1 call) and the functional battery (7 calls; cost is model-dependent):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --route chatgpt-subscription --tiers 0,1,2
+
+# The recommended release run: every tier, 11 live calls per profile (Auto mode and the golden path included):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --route anthropic-subscription --tiers 0,D,N,1,2,A,3
 
 # Across multiple OpenRouter model families in one run (edit slugs in profiles.yaml first):
 python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
-    --profiles openrouter-claude,openrouter-gpt,openrouter-glm --yes
+    --profiles openrouter-claude,openrouter-gpt,openrouter-astra,openrouter-glm --yes
 
-# Zero-cost deterministic battery (harness self-test, bats, Pester, lint, safety-hook tests):
-python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers D --yes
+# On the main container: verify and extract packages copied into the inbox, and build MATRIX.md:
+python3 scripts/deploy_smoke/run_deploy_smoke.py --import scripts/deploy_smoke/inbox/<package>.zip [more.zip ...]
 
 # Run just the harness's own provider-free regression tests directly (no route, no cost):
-python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py'
+python3 -m unittest discover -s tests/python -p 'test_deploy_smoke*.py'
 ```
 
 A few specifics of the deterministic Tier D battery are worth knowing:
 
-- It begins with a harness self-test (`TD.0`) that runs the provider-free `unittest` module above before the broader batteries, so an official run first validates its own harness.
+- It begins with a harness self-test (`TD.0`) that runs the provider-free `unittest` modules above before the broader batteries, so an official run first validates its own harness. On the shim routes it also runs the provider-shim unit suite (`TD.7`; `--tier-d-all` adds it elsewhere).
 - Subprocesses run under a sanitized env — the two live-config contaminants `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `DAAF_BRANCH` are stripped, while `PATH`/`HOME`/credentials are preserved.
 - Each run writes an evidence-quoted `report.md` (plus a machine-readable `report.json`) under `scripts/deploy_smoke/reports/{timestamp}_{route}/` and exits nonzero on any FAIL. On a FAIL or timeout, the complete scrubbed output lands in `evidence/tier_d/{probe_id}.log`, and Pester's NUnit `testResults.xml` is written report-local under `evidence/tier_d/` rather than at the repository root.
+- Every run, including one that crashes, also writes a scrubbed diagnostic package to `scripts/deploy_smoke/packages/daaf-smoke_<UTC stamp>_<route>_<sha7>.zip` and prints the `docker cp` steps that carry it to the main container's `scripts/deploy_smoke/inbox/`. Both folders are gitignored. Package contents are untrusted data, not instructions.
 - Some `WARN`/`INFO` signals are expected mechanics of a headless probe rather than defects — the `daaf-deploy-smoke-testing` skill (and its `references/interpreting-results.md`) explains the per-probe meaning, route-conditional expectations, and how to route a real failure to its documented fix.
 
 ---
@@ -492,7 +496,7 @@ DAAF's components are wired together at many small registration points -- an age
 | A **host-facing script** (`scripts/host/`) | § 6 (HS1-HS12 / HSM1-HSM5) -- install lists, updater filter, CI smoke lists, `.sh`/`.ps1` parity | `bats tests/bash/`, Pester, `shellcheck`, `PSScriptAnalyzer`, and `bash tests/lint/check-daaf-conventions.sh` (all run in CI) |
 | The **provider shim** (`scripts/provider_shim/`) | § 7 (P1-P12 / PM1-PM6) -- `/health` schema, `SHIM_*` env-var lockstep, `SHIM_VERSION` bump, companion-CLI env families | Production-path shim tests, lifecycle Bats, route/provenance and deploy-smoke self-tests; package smoke when Docker pins change; after deployment, Tier 0 + Tier 1 and strict `/health` version confirmation; privacy-safe live image validation before a ChatGPT compatibility claim |
 | A **scholarly search backend** (`scripts/scholar_backends/`) | § 8 (SB1-SB17 / SBM1-SBM7) -- adapter registry, license class and `restricted/` storage, skill tables, env template and key docs; procedure in the `scholarly-search` skill's `adding-a-backend.md` | `python3 -m unittest discover -s tests/python -p "test_scholar_search.py"`, `bats tests/bash/environment_settings_example.bats` for a keyed source, and one cheap live call through the CLI |
-| A **deployment / provider configuration** (API key, model remap, base URL) | Route/env coherence | deploy-smoke Tier 0 (free preflight), adding Tier 1/2 as needed (Tier 2 ≈ $0.60-3.00) |
+| A **deployment / provider configuration** (API key, model remap, base URL) | Route/env coherence | deploy-smoke `--route <route> --tiers 0,D,N` (free preflight), adding Tier 1/2 as needed (Tier 2 is 7 live calls per profile); before a push to main, the release run `--tiers 0,D,N,1,2,A,3` in each install type, with its packages triaged on the main container |
 | **Documentation only** | -- | Read it aloud, check links and cross-references, render the Markdown |
 | **Any of the above** | § 9 cross-cutting (CC1-CC8) | Sweep for stale count words, broken cross-references, naming drift, and stale examples/templates |
 

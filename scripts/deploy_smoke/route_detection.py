@@ -4,14 +4,19 @@ the DAAF deployment smoke-testing suite.
 This is the foundational layer of the suite. It defines the shared result
 vocabulary (Verdict, Evidence, ProbeResult) used by every tier and the pure,
 no-LLM inspection logic that reads the *live* environment to determine which of
-DAAF's four install routes is active — exactly as the user configured it.
+DAAF's five install routes is active — exactly as the user configured it.
 
-The four routes (auto-detected from the live env, per the approved design):
+The five routes (auto-detected from the live env, presence-only — no credential
+value is ever read beyond empty-vs-set; smoke v2 design 2026-10-13 §2):
 
     DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=chatgpt  -> chatgpt-subscription
     DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=openai   -> openai-api
     ANTHROPIC_BASE_URL contains "openrouter.ai"            -> openrouter
+    else, ANTHROPIC_API_KEY set (non-empty)                -> anthropic-api
     else                                                   -> anthropic-subscription
+
+Env alone cannot tell an interactive Console login from a subscription login,
+so Tier 1 confirms the credential from the stream-json init record (T1.8).
 
 This module makes NO subprocess calls and NO LLM calls — it is pure environment
 inspection so Tier 0 preflight can run for free. Its one file access is a
@@ -53,11 +58,20 @@ class Verdict:
 # --- Install route constants ----------------------------------------------
 
 ROUTE_ANTHROPIC = "anthropic-subscription"
+ROUTE_ANTHROPIC_SUBSCRIPTION = ROUTE_ANTHROPIC   # explicit alias; ROUTE_ANTHROPIC kept for callers
+ROUTE_ANTHROPIC_API = "anthropic-api"
 ROUTE_OPENROUTER = "openrouter"
 ROUTE_OPENAI_API = "openai-api"
 ROUTE_CHATGPT = "chatgpt-subscription"
 
-ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_OPENROUTER, ROUTE_OPENAI_API, ROUTE_CHATGPT)
+# Five routes, in the design's table order (smoke v2 §2). run_deploy_smoke uses
+# this as the --route choice list.
+ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_ANTHROPIC_API, ROUTE_CHATGPT, ROUTE_OPENAI_API,
+              ROUTE_OPENROUTER)
+
+# The two native-Anthropic routes: same endpoint and model family, different
+# credential (subscription login/OAuth token vs Console API key).
+ANTHROPIC_ROUTES = frozenset({ROUTE_ANTHROPIC, ROUTE_ANTHROPIC_API})
 
 # Routes that place the provider shim in the request path. For these, shim
 # /health is a required Tier 0 probe and per-run env overlays (--profiles)
@@ -297,6 +311,11 @@ class ProbeResult:
     detail: str = ""        # one-line summary of the finding
     evidence: list = field(default_factory=list)   # list[Evidence]
     profile: str = ""       # profile name this result belongs to ("" = tier-once)
+    # smoke v2 §13 contract fields (all optional; readers use getattr defaults):
+    duration_s: float = None                       # wall time of the probe, when measured
+    session_ids: list = field(default_factory=list)  # claude -p session ids this probe ran
+    cost_usd: float = None                         # CLI-reported cost of this probe's run(s)
+    hint: str = ""          # static remediation text (FAIL/WARN only; "" when none)
 
     def add_evidence(self, command: str, output: str = "", note: str = "",
                      is_inference: bool = False) -> None:
@@ -316,6 +335,10 @@ class ProbeResult:
             "detail": self.detail,
             "profile": self.profile,
             "evidence": [e.to_dict() for e in self.evidence],
+            "duration_s": self.duration_s,
+            "session_ids": list(self.session_ids),
+            "cost_usd": self.cost_usd,
+            "hint": self.hint,
         }
 
 
@@ -356,6 +379,46 @@ class RouteInfo:
 # that must never be written to a report. Matched case-insensitively.
 _SECRET_NAME_RE = re.compile(r"(KEY|TOKEN|SECRET|AUTH)", re.IGNORECASE)
 
+# smoke v2 fingerprint fix: a *_TOKENS variable holding a plain decimal count
+# (CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000, a MAX_OUTPUT/THINKING_TOKENS budget)
+# is a size, not a credential. Matching the TOKEN name pattern used to redact it
+# in the fingerprint and rewrite "919000" anywhere in free text, while T0.4
+# printed the same value in the clear — a self-contradicting report. Only an
+# all-digit value of at most 20 characters qualifies; anything else stays
+# redacted by name.
+_NUMERIC_COUNT_RE = re.compile(r"[0-9]{1,20}")
+
+
+def _is_numeric_token_count(name: str, value) -> bool:
+    return (isinstance(name, str) and name.upper().endswith("_TOKENS")
+            and isinstance(value, str) and _NUMERIC_COUNT_RE.fullmatch(value) is not None)
+
+
+# Non-secret controls recorded in the fingerprint with a closed value set, so an
+# arbitrary value is classified rather than reflected into the report.
+_BOUNDED_FINGERPRINT_VALUES = {
+    "SHIM_PDF_MODE": ("file", "omit"),
+    "CLAUDE_CODE_AUTO_MODE_SERVER": ("0", "1", "true", "false"),
+}
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
+# The same CSI colour codes written as TEXT escapes rather than raw ESC bytes.
+# subagent-bar.sh emits one JSON line per task ({"id", "content"}), so jq encodes
+# its ESC bytes as the six characters "\u001b"; T0.7 quoted that JSON verbatim and
+# the report carried "\u001b[38;5;…m" noise even after raw ESC was stripped.
+# Covers \u001b / \u001B, \x1b / \x1B, \033 and \e, each followed by a CSI body.
+_ESCAPED_ANSI_RE = re.compile(r"\\(?:u001[bB]|x1[bB]|033|e)\[[0-9;?]*[ -/]*[@-~]")
+
+
+def strip_ansi(text):
+    """Remove ANSI CSI/OSC escape sequences (statusline colour codes) from text
+    before it is quoted as evidence; report.md used to carry them raw. Both the
+    raw ESC form and the textual escape form (JSON "\\u001b[…m", "\\x1b[", "\\033[",
+    "\\e[") are removed."""
+    if not text:
+        return text
+    return _ESCAPED_ANSI_RE.sub("", _ANSI_RE.sub("", text))
+
 
 def redact_env_value(name: str, value):
     """Return a report-safe rendering of an env var value.
@@ -375,6 +438,10 @@ def redact_env_value(name: str, value):
         return _bounded_lane_control(value, ("openai",))
     if name == "SHIM_BACKEND_MODE":
         return _bounded_lane_control(value, ("chatgpt", "openai"))
+    if name in _BOUNDED_FINGERPRINT_VALUES:
+        return _bounded_lane_control(value, _BOUNDED_FINGERPRINT_VALUES[name])
+    if _is_numeric_token_count(name, value):
+        return value
     if _SECRET_NAME_RE.search(name):
         return "<redacted:empty>" if value == "" else "<redacted:set>"
     return value
@@ -401,6 +468,8 @@ def scrub_secret_values(text, env=None):
     scrubbed = text
     for name, value in env.items():
         if not value or len(value) < 6:
+            continue
+        if _is_numeric_token_count(name, value):
             continue
         if _SECRET_NAME_RE.search(name):
             scrubbed = scrubbed.replace(value, f"<redacted:{name}>")
@@ -429,6 +498,10 @@ FINGERPRINT_VARS = (
     "CLAUDE_CODE_EFFORT_LEVEL",
     "CLAUDE_CODE_DISABLE_FAST_MODE",
     "CODEX_HOME",
+    # smoke v2: PDF handling mode of the shim (file|omit) and the Auto-mode
+    # server opt-out (F12); both bounded to a closed value set.
+    "SHIM_PDF_MODE",
+    "CLAUDE_CODE_AUTO_MODE_SERVER",
     # Secret-bearing (values redacted by name match; empty/set state preserved):
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -545,7 +618,8 @@ def _gpt_physical_window(model_id: str):
     # matches the OpenRouter catalogue fetched 2026-09-29. Their 919000 lane cap
     # is INFERRED from the Sol/Astra measurements, not measured. gpt-6.1-sol
     # (USER POLICY DECISION 2026-10-12) reads as gpt-6-sol on the same terms;
-    # its ChatGPT-lane ceiling is pending measurement.
+    # its ChatGPT-lane ceiling was MEASURED 2026-10-13 (accepted 919,744, rejected
+    # 921,973; probe_context_ceiling.py), matching the 919000 lane cap.
     if _GPT_FLAGSHIP_RE.fullmatch(slug.split("#", 1)[0]):
         return 1050000
     if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
@@ -633,6 +707,11 @@ def detect_route(env) -> str:
         return ROUTE_OPENAI_API
     if "openrouter.ai" in base_url:
         return ROUTE_OPENROUTER
+    # Presence-only: a non-empty ANTHROPIC_API_KEY is what `claude -p` bills
+    # (in print mode the key is always used when present), so it names the
+    # Console API route. Empty or unset falls through to the subscription route.
+    if _key_state(env, "ANTHROPIC_API_KEY") == "set":
+        return ROUTE_ANTHROPIC_API
     return ROUTE_ANTHROPIC
 
 
@@ -829,7 +908,7 @@ def resolve_main_model(env, saved_model=None, explicit_model=None,
         if base in ("http://127.0.0.1:4141", "http://127.0.0.1:4141/",
                     "http://localhost:4141", "http://localhost:4141/"):
             endpoint = "fixed_loopback_shim"
-    elif route == ROUTE_ANTHROPIC and base in (None, "", "https://api.anthropic.com", "https://api.anthropic.com/"):
+    elif route in ANTHROPIC_ROUTES and base in (None, "", "https://api.anthropic.com", "https://api.anthropic.com/"):
         endpoint = "native_anthropic"
     elif route == ROUTE_OPENROUTER and base in ("https://openrouter.ai/api", "https://openrouter.ai/api/"):
         endpoint = "openrouter_api"
@@ -839,7 +918,7 @@ def resolve_main_model(env, saved_model=None, explicit_model=None,
     if not issues:
         if route in SHIM_ROUTES:
             compatibility = "compatible" if family == "gpt" else "incompatible"
-        elif route == ROUTE_ANTHROPIC:
+        elif route in ANTHROPIC_ROUTES:
             compatibility = "compatible" if family == "claude" else "incompatible"
         elif route == ROUTE_OPENROUTER:
             compatibility = "compatible"
@@ -1055,12 +1134,22 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
     def note_var(name):
         r.add_evidence(f"env: {name}", output=redact_env_value(name, env.get(name)) if name in env else "<unset>")
 
-    if route == ROUTE_ANTHROPIC:
+    if route in ANTHROPIC_ROUTES:
         # Both start-model selectors: DAAF's shipped settings.json sets only the
         # soft ANTHROPIC_DEFAULT_MODEL, so ANTHROPIC_MODEL is normally <unset>.
         note_var("ANTHROPIC_MODEL")
         note_var("ANTHROPIC_DEFAULT_MODEL")
         note_var("CLAUDE_CODE_OAUTH_TOKEN")
+        note_var("ANTHROPIC_API_KEY")
+        # anthropic-api: the Console key is the credential (detection requires it
+        # set). ANTHROPIC_AUTH_TOKEN outranks it in Claude Code's credential order
+        # (environment_settings_example.txt), so a stray one silently replaces the
+        # key on both Anthropic routes; T0.16 reports the billing consequence.
+        if _key_state(env, "ANTHROPIC_AUTH_TOKEN") == "set":
+            problems.append(
+                "ANTHROPIC_AUTH_TOKEN is set on a native Anthropic route — it outranks "
+                "ANTHROPIC_API_KEY and the subscription login, so requests use it instead."
+            )
         # Native Claude Code auth is interactive OR CLAUDE_CODE_OAUTH_TOKEN.
         # We cannot verify interactive OAuth without an LLM call, so this is INFO
         # unless ANTHROPIC_BASE_URL is unexpectedly pointed elsewhere.
@@ -1068,7 +1157,7 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
         if base and "anthropic.com" not in base.lower():
             problems.append(
                 f"ANTHROPIC_BASE_URL is set to '{base}' but route detected as "
-                f"anthropic-subscription — unexpected for the native route."
+                f"{route} — unexpected for the native route."
             )
 
     elif route == ROUTE_OPENROUTER:
@@ -1311,3 +1400,137 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW is not an accepted substitute."
         )
     return r
+
+
+# --- smoke v2 Tier 0: credential overlap (T0.16) and alias completeness (T0.17)
+
+def probe_credential_overlap(route_info: RouteInfo, env) -> ProbeResult:
+    """T0.16 — presence-only credential overlap on the native Anthropic routes.
+
+    The "stated" route is --route when given, else the detected route. Claude
+    Code's credential order (environment_settings_example.txt): Bedrock/Vertex >
+    ANTHROPIC_AUTH_TOKEN > ANTHROPIC_API_KEY > CLAUDE_CODE_OAUTH_TOKEN >
+    interactive login, and in -p mode a present ANTHROPIC_API_KEY is always used
+    (scoping note 04 §1, search summary of the authentication docs — not fetched).
+      * ANTHROPIC_AUTH_TOKEN set on an Anthropic route -> FAIL (it outranks both);
+      * stated subscription with ANTHROPIC_API_KEY set -> FAIL (every -p probe
+        would silently test and bill the key);
+      * stated API with CLAUDE_CODE_OAUTH_TOKEN set -> WARN (overlap; the key wins);
+      * otherwise PASS. Non-Anthropic routes SKIP (OpenRouter's key rules are T0.3).
+    Values are never read: only unset/empty/set."""
+    r = ProbeResult(probe_id="T0.16", name="Credential overlap", tier="0")
+    stated = route_info.asserted_route or route_info.detected_route
+    states = {n: _key_state(env, n) for n in
+              ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
+    r.add_evidence("env presence (unset|empty|set): " + ", ".join(states),
+                   output="; ".join(f"{n}={s}" for n, s in states.items()),
+                   note=f"stated route={stated} (detected={route_info.detected_route})")
+    if stated not in ANTHROPIC_ROUTES:
+        r.verdict = Verdict.SKIP
+        r.detail = f"Not a native Anthropic route ({stated}); credential precedence is checked by T0.3."
+        return r
+    problems, warnings = [], []
+    if states["ANTHROPIC_AUTH_TOKEN"] == "set":
+        problems.append("ANTHROPIC_AUTH_TOKEN is set: it outranks ANTHROPIC_API_KEY and the "
+                        "subscription login, so every request uses that token instead")
+    if stated == ROUTE_ANTHROPIC and states["ANTHROPIC_API_KEY"] == "set":
+        problems.append("the stated route is anthropic-subscription but ANTHROPIC_API_KEY is set: "
+                        "in -p mode the key is always used, so the paid probes would test and "
+                        "bill the API key, not the subscription")
+    if stated == ROUTE_ANTHROPIC_API and states["CLAUDE_CODE_OAUTH_TOKEN"] == "set":
+        warnings.append("the stated route is anthropic-api but CLAUDE_CODE_OAUTH_TOKEN is also set; "
+                        "the key wins, the token is unused overlap")
+    if problems:
+        r.verdict = Verdict.FAIL
+        r.detail = "Credential overlap: " + "; ".join(problems + warnings) + "."
+    elif warnings:
+        r.verdict = Verdict.WARN
+        r.detail = "Credential overlap: " + "; ".join(warnings) + "."
+    else:
+        r.verdict = Verdict.PASS
+        r.detail = f"No credential overlap for {stated}."
+    return r
+
+
+_TIER_ALIAS_VARS = ("ANTHROPIC_DEFAULT_FABLE_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+
+
+def probe_alias_completeness(route_info: RouteInfo, env, settings_overlay=None) -> ProbeResult:
+    """T0.17 — on non-Anthropic routes every tier alias must be mapped (F2/F3:
+    an unmapped HAIKU sends Claude Code's housekeeping calls — session naming,
+    resume summaries — to a Claude model name the route cannot serve).
+
+    settings_overlay: {alias var: (value, source label)} from the settings files'
+    `env` blocks (smoke_probes.collect_alias_settings; user < project < local, the
+    observed 2.1.281 precedence). A settings value overrides the process env, as
+    in a real session. None means the settings files were not read: the verdict
+    then judges the process env alone and the detail says so.
+
+      * shim routes: all four ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL
+        set and non-Claude, else FAIL (the ChatGPT lane fast-fails claude-*
+        slugs; the API lane forwards them to a backend that rejects them);
+      * OpenRouter with a non-Claude model family: an unset alias is WARN (the
+        built-in Claude name may not resolve there); a Claude-family mapping is
+        accepted, because OpenRouter can serve Claude slugs (billed per use);
+      * Anthropic routes and Claude-family OpenRouter: SKIP.
+    Model names are not secrets and are quoted as configured."""
+    r = ProbeResult(probe_id="T0.17", name="Tier-alias completeness", tier="0")
+    route = route_info.detected_route
+    values = {n: (env.get(n) if isinstance(env.get(n), str) else "") for n in _TIER_ALIAS_VARS}
+    sources = {n: ("process env" if values[n] else "unset") for n in _TIER_ALIAS_VARS}
+    for name, entry in (settings_overlay or {}).items():
+        if name in values and isinstance(entry, tuple) and len(entry) == 2 and isinstance(entry[0], str):
+            values[name], sources[name] = entry[0], entry[1]
+    r.add_evidence("env + settings `env` (user < project < local): " + ", ".join(_TIER_ALIAS_VARS),
+                   output="; ".join(f"{n}={v or '<unset>'} ({sources[n]})" for n, v in values.items()),
+                   note=("settings files read" if settings_overlay is not None
+                         else "settings files NOT read: process env only"))
+    scope_note = ("" if settings_overlay is not None
+                  else " Settings `env` mappings were not checked (process env only).")
+    if route in ANTHROPIC_ROUTES or (route == ROUTE_OPENROUTER and route_info.model_family == "claude"):
+        r.verdict = Verdict.SKIP
+        r.detail = f"Tier aliases resolve natively on {route} (family {route_info.model_family})."
+        return r
+    unset = [n for n, v in values.items() if not v]
+    claude = [n for n, v in values.items() if v and _is_claude_family_name(v)]
+    if route in SHIM_ROUTES:
+        if unset or claude:
+            r.verdict = Verdict.FAIL
+            parts = []
+            if unset:
+                parts.append("unset: " + ", ".join(unset))
+            if claude:
+                parts.append("Claude-family: " + ", ".join(claude))
+            r.detail = ("Every tier alias must map to a GPT model on shim routes (" + "; ".join(parts)
+                        + "). Unmapped or Claude-named aliases reach the shim as claude-* requests."
+                        + scope_note)
+        else:
+            r.verdict = Verdict.PASS
+            r.detail = "All four tier aliases map to non-Claude models." + scope_note
+        return r
+    # OpenRouter, non-Claude family.
+    if unset:
+        r.verdict = Verdict.WARN
+        r.detail = ("Non-Claude OpenRouter config leaves tier alias(es) unmapped: " + ", ".join(unset)
+                    + ". Claude Code then requests its built-in Claude name for that tier." + scope_note)
+    else:
+        r.verdict = Verdict.PASS
+        r.detail = "All four tier aliases are mapped" + (
+            f" (Claude-family via OpenRouter: {', '.join(claude)})." if claude else ".") + scope_note
+    return r
+
+
+# --- Remediation hints (smoke v2 §4) ----------------------------------------
+# Static text per probe, kept beside the probe definitions so hint and check
+# change together. smoke_probes.PROBE_HINTS holds the other modules' probes and
+# merges this dict; a probe may also set ProbeResult.hint for a specific shape.
+ROUTE_PROBE_HINTS = {
+    "T0.0": "Run inside the DAAF_DEV=1 dev image (set DAAF_DEV=1 in environment_settings.txt and recreate the container).",
+    "T0.1": "Re-run with the --route that matches this container, or fix DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE / ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY in environment_settings.txt; detection is authoritative.",
+    "T0.3": "Set the route's required variables in environment_settings.txt (see the install guide for this route), recreate the container, and start a new session.",
+    "T0.4": "Declare CLAUDE_CODE_MAX_CONTEXT_TOKENS (919000 on the ChatGPT lane; the model window elsewhere) and remove CLAUDE_CODE_AUTO_COMPACT_WINDOW.",
+    "T0.14": "Remove the stale ANTHROPIC_MODEL pin, settings `model` key or /model choice so the route's GPT/Claude mapping applies; see FAQ 'main model route rejection'.",
+    "T0.16": "Keep exactly one credential per install: unset ANTHROPIC_AUTH_TOKEN on Anthropic routes; on a subscription install remove ANTHROPIC_API_KEY (it is billed per use); on an API install drop CLAUDE_CODE_OAUTH_TOKEN.",
+    "T0.17": "Map all four ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL to models this route serves (environment_settings_example.txt), recreate the container, start a new session.",
+}

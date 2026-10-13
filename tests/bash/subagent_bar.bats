@@ -2008,8 +2008,9 @@ _color_for() {
 # 2026-10-12 GPT-6.1 Sol registration (USER POLICY DECISION, not validation):
 # gpt-6.1-sol, with an optional -pro and then an optional [1m], reads exactly as
 # gpt-6-sol — 1.05M window (OpenRouter openai/gpt-6.1-sol fetched 2026-10-12),
-# inferred 919k ChatGPT-lane cap (lane ceiling pending measurement), extended
-# tier, measured-input participation. No gpt-6.1-* wildcard.
+# 919k ChatGPT-lane cap (lane ceiling measured 2026-10-13: accepted 919,744;
+# rejected a request of ~921,973), extended tier, measured-input
+# participation. No gpt-6.1-* wildcard.
 
 @test "gpt-6.1-sol rows (bare, provider-prefixed, [1m], -pro) map to 1.05M and use the extended tier" {
     local model row tokens expected pct

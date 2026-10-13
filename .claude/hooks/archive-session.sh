@@ -251,12 +251,19 @@ elif $role == "assistant" then
   # Tool uses
   ([$blocks[] | select(.type == "tool_use") | render_tool_use] | join("\n")) +
 
-  # Token usage
+  # Token usage. input_tokens is only the uncached part of the prompt; cache
+  # reads and writes are reported separately, so "in" is the sum of all three
+  # (the same total context-reporter.sh and context-bar.sh use). The cached
+  # share is shown when present. Non-numeric fields count as 0, so a malformed
+  # usage block cannot abort the render.
   (if .message.usage != null then
-    (.message.usage.input_tokens // 0) as $in |
-    (.message.usage.output_tokens // 0) as $out |
+    ([.message.usage | (.input_tokens, .cache_read_input_tokens,
+        .cache_creation_input_tokens, .output_tokens)]
+      | map(if type == "number" then . else 0 end)) as [$base, $cr, $cw, $out] |
+    ($base + $cr + $cw) as $in |
     if ($in > 0) or ($out > 0) then
-      "*Tokens: in=\($in), out=\($out)*\n\n"
+      "*Tokens: in=\($in)" + (if $cr > 0 then " (cached=\($cr))" else "" end)
+        + ", out=\($out)*\n\n"
     else "" end
   else "" end) +
 

@@ -338,8 +338,8 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
 # workspace. Capping at 919k can only make a reading more conservative.
 # USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (one exact
 # alternative, optional -pro and [1m]) is treated identically to gpt-6-sol —
-# 1,050,000 window, inferred 919k ChatGPT-lane cap (lane ceiling pending
-# measurement), extended quality tier. Window per OpenRouter openai/gpt-6.1-sol
+# 1,050,000 window, 919k ChatGPT-lane cap (ceiling measured 2026-10-13: accepted
+# 919,744, rejected 921,973), extended quality tier. Window per OpenRouter openai/gpt-6.1-sol
 # fetched 2026-10-12
 # (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/).
 # No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.

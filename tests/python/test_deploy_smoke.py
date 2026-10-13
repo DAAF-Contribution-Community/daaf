@@ -48,6 +48,28 @@ from route_detection import Verdict  # noqa: E402
 
 _SCRATCH = _REPO_ROOT / "scripts" / "scratch"
 
+# C-M2 guard: no test in this module may leave a package (or a staging folder)
+# in the real scripts/deploy_smoke/packages/. Every main() call passes
+# --no-package; this snapshot catches a future test that forgets.
+_PACKAGES_BEFORE = None
+
+
+def _packages_listing():
+    root = Path(run_deploy_smoke.PACKAGES_ROOT)
+    return set(os.listdir(root)) if root.is_dir() else set()
+
+
+def setUpModule():
+    global _PACKAGES_BEFORE
+    _PACKAGES_BEFORE = _packages_listing()
+
+
+def tearDownModule():
+    added = sorted(_packages_listing() - (_PACKAGES_BEFORE or set()))
+    if added:
+        raise AssertionError(f"tests left new entries in {run_deploy_smoke.PACKAGES_ROOT}: {added} "
+                             "(pass --no-package or patch PACKAGES_ROOT)")
+
 
 def _scratch_dir(prefix):
     """Create and return a fresh, uniquely named scratch directory (inside the
@@ -57,6 +79,14 @@ def _scratch_dir(prefix):
     return d
 
 
+def _V2_TIER0_STUBS(stub):
+    """smoke v2 Tier 0 system probes (T0.15, T0.18-T0.23) stubbed, so the
+    run_tier0 wiring tests stay provider-, git- and filesystem-free."""
+    names = ("probe_versions", "probe_codex_config", "probe_prompt_cache", "probe_shim_log_scan",
+             "probe_runtime_identity", "probe_toolchain", "probe_framework_integrity")
+    return {n: mock.MagicMock(return_value=stub) for n in names}
+
+
 class MainModelLaunchGateTests(unittest.TestCase):
     def test_per_profile_gating_with_or_without_tier_zero(self):
         from contextlib import ExitStack
@@ -64,7 +94,9 @@ class MainModelLaunchGateTests(unittest.TestCase):
         for tiers in ('1,2', '0,1,2'):
             with self.subTest(tiers=tiers), ExitStack() as stack:
                 stack.enter_context(mock.patch.dict(os.environ, {'ANTHROPIC_MODEL': 'claude-opus-4-8'}, clear=True))
-                stack.enter_context(mock.patch.object(sys, 'argv', ['smoke', '--tiers', tiers, '--yes']))
+                # --route stated (smoke v2 makes it a required choice).
+                stack.enter_context(mock.patch.object(sys, 'argv', ['smoke', '--route', 'anthropic-subscription',
+                                                                      '--tiers', tiers, '--yes', '--no-package']))
                 stack.enter_context(mock.patch.object(sys, 'stdout', io.StringIO()))
                 stack.enter_context(mock.patch.object(sys, 'stderr', io.StringIO()))
                 stack.enter_context(mock.patch.object(run_deploy_smoke, 'load_profiles', return_value=[('bad', {}), ('good', {'ANTHROPIC_MODEL': 'gpt-6-astra'})]))
@@ -77,6 +109,8 @@ class MainModelLaunchGateTests(unittest.TestCase):
                 t1 = stack.enter_context(mock.patch.object(smoke_probes, 'run_tier1', return_value=[]))
                 t2 = stack.enter_context(mock.patch.object(smoke_probes, 'run_tier2', return_value=[]))
                 stack.enter_context(mock.patch.object(run_deploy_smoke, 'write_reports', return_value=True))
+                # No real git/claude identity probes: versions are irrelevant to the gate.
+                stack.enter_context(mock.patch.object(run_deploy_smoke, 'collect_versions', return_value={}))
                 self.assertEqual(run_deploy_smoke.main(), 1)
                 self.assertEqual(check.call_count, 2)
                 self.assertEqual(t1.call_count, 1)
@@ -128,7 +162,8 @@ class MainModelProjectionTests(unittest.TestCase):
                 with self.subTest(tiers=tiers, source=flag_source), ExitStack() as stack:
                     stack.enter_context(mock.patch.dict(os.environ, env, clear=True))
                     stack.enter_context(mock.patch.object(run_deploy_smoke,'BASE_DIR',str(root)))
-                    stack.enter_context(mock.patch.object(sys,'argv',['smoke','--tiers',tiers,'--yes']))
+                    stack.enter_context(mock.patch.object(sys,'argv',['smoke','--route','chatgpt-subscription',
+                                                                      '--tiers',tiers,'--yes','--no-package']))
                     stack.enter_context(mock.patch.object(sys,'stdout',io.StringIO()))
                     stack.enter_context(mock.patch.object(sys,'stderr',io.StringIO()))
                     stack.enter_context(mock.patch.object(run_deploy_smoke,'load_profiles',return_value=[('bad',overlay)]))
@@ -984,7 +1019,8 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
              mock.patch.object(smoke_probes, "probe_workspace_invariants", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_local_settings_shadowing", return_value=stub), \
-             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub):
+             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub), \
+             mock.patch.multiple(smoke_probes, **_V2_TIER0_STUBS(stub)):
             results = smoke_probes.run_tier0(route, env, base_dir="/not-used")
         route_results = [result for result in results if result.probe_id == "T0.1"]
         self.assertEqual(len(route_results), 1)
@@ -1928,8 +1964,8 @@ class Tier2SandboxCleanupTests(unittest.TestCase):
              mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
             results = smoke_probes.run_tier2("", {}, timeout=5)
 
-        # Six probes still produced (structure intact), no exception.
-        self.assertEqual(len(results), 6)
+        # Seven probes still produced (structure intact; T2.7 added in smoke v2), no exception.
+        self.assertEqual(len(results), 7)
         # The sibling survived; no stray run_ directory remains.
         self.assertTrue(self.sibling.exists())
         leftover = [p for p in self.sandbox.glob("run_*") if p.is_dir()]
@@ -2552,7 +2588,7 @@ class Tier2VerdictTests(unittest.TestCase):
                                return_value=[_SYNTHETIC_ERROR_RECORD]), \
              mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
             results = smoke_probes.run_tier2("", {}, timeout=5)
-        self.assertEqual([r.probe_id for r in results], ["T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6"])
+        self.assertEqual([r.probe_id for r in results], ["T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6", "T2.7"])
         for r in results:
             with self.subTest(probe=r.probe_id):
                 self.assertEqual(r.verdict, Verdict.FAIL, r.detail)
@@ -2736,14 +2772,19 @@ class StatuslineProbeTests(unittest.TestCase):
              mock.patch.object(smoke_probes, "probe_workspace_invariants", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_local_settings_shadowing", return_value=stub), \
-             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub):
+             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub), \
+             mock.patch.multiple(smoke_probes, **_V2_TIER0_STUBS(stub)):
             smoke_probes.run_tier0(route_detection.build_route_info({}), {}, base_dir="/not-used",
                                    statusline_cache_dir=self.cache)
         self.assertEqual(ps.call_args.kwargs["cache_dir"], self.cache)
 
         report = _scratch_dir("t07_report")
         self.addCleanup(__import__("shutil").rmtree, report, True)
-        argv = ["run_deploy_smoke.py", "--tiers", "0", "--yes", "--report-dir", str(report)]
+        # --no-package: this test exercises the T0.7 cache-dir wiring only; without
+        # it main() built a real package from the live env into packages/ (C-M2).
+        argv = ["run_deploy_smoke.py", "--route",
+                route_detection.detect_route(os.environ), "--tiers", "0", "--yes", "--report-dir", str(report),
+                "--no-package"]
         with mock.patch.object(sys, "argv", argv), \
              mock.patch.object(smoke_probes, "run_tier0", return_value=[stub]) as rt0, \
              mock.patch("builtins.print"):
@@ -2925,8 +2966,9 @@ class ParseTiersTests(unittest.TestCase):
             self.assertIn(tok, msg)
 
     def test_invalid_token_not_silently_dropped_when_valid_present(self):
+        # smoke v2 made "3" a valid tier (with N and A); "4" is still invalid.
         with self.assertRaises(ValueError):
-            run_deploy_smoke.parse_tiers("D,3")
+            run_deploy_smoke.parse_tiers("D,4")
 
 
 class LintScopingTests(unittest.TestCase):

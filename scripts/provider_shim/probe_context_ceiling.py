@@ -38,11 +38,16 @@ lane-wide cap DAAF accounts against is 919,000 — consistent with Astra's docum
 370,000 (2026-07-16), now stale. The bracket/oversize defaults below sit just
 below/above that measured band.
 
-ROBUSTNESS: the 2026-09-05 gpt-5.6-sol run also exposed a backend that answered a
-~912k-token request with a bogus usage.input_tokens=42165. The probe adopted it as
+ROBUSTNESS: the 2026-09-05 gpt-5.6-sol run also saw a ~912k-token request answered
+with an apparently bogus usage.input_tokens=42165 (likely the cache split; see the
+next paragraph). The probe adopted it as
 truth, chars/token exploded, and the remaining bisect probed meaningless sizes. A
 single reading that would change the running chars/token estimate by more than
 MAX_CALIBRATION_RATIO_CHANGE-fold is now ignored with a printed warning.
+Likely root cause (2026-10-13, inference): since shim v1.3.6, `usage.input_tokens` is
+only the uncached remainder and cache hits are reported in `cache_read_input_tokens`.
+The probe's filler is deterministic, so successive requests share a cacheable prefix.
+The probe now sums all three usage fields; the guard stays as a backstop.
 
 COMPATIBILITY: this probe parses the rejection MESSAGE TEXT, not the HTTP status or
 error `type`, so it works against both the live v1.2.8 shim (which collapses the
@@ -77,15 +82,16 @@ DEFAULT_OVERSIZE_TARGET = 1150000
 DEFAULT_TOLERANCE = 3000
 # Initial chars-per-token guess before the first accepted response recalibrates it.
 # ~4 chars/token is a standard rough prior for English text; the probe replaces this
-# with the real usage.input_tokens ratio as soon as one request is accepted.
+# with the real (cache-inclusive) input-token ratio as soon as one request is accepted.
 INITIAL_CHARS_PER_TOKEN = 4.0
 # When confirming a parsed ceiling, aim this many tokens BELOW it for the single
 # just-under-ceiling acceptance check.
 CONFIRM_MARGIN_TOKENS = 4000
 # Largest fold-change in the running chars-per-token estimate that a single accepted
-# response is allowed to cause. A backend that reports a wildly wrong
-# usage.input_tokens (observed 2026-09-05: input_tokens=42165 for a ~912k-token
-# request) would otherwise be adopted as truth and derail every subsequent target.
+# response is allowed to cause. A reading that looks wildly wrong (observed 2026-09-05:
+# input_tokens=42165 for a ~912k-token request, likely the uncached remainder before
+# the probe summed the cache fields) would otherwise derail every subsequent target.
+# Kept as a backstop now that the probe reads the cache-inclusive total.
 MAX_CALIBRATION_RATIO_CHANGE = 3.0
 
 # Deterministic filler vocabulary — a fixed word list repeated so every run of the
@@ -208,12 +214,20 @@ def classify_response(status, payload):
     accepted = False
     real_input_tokens = None
     if status == 200 and isinstance(payload, dict):
-        # An accepted Anthropic message carries usage.input_tokens (the REAL backend
-        # count — trustworthy, unlike the shim's 0.9-biased count_tokens estimate).
+        # An accepted Anthropic message carries a usage block (the REAL backend count —
+        # trustworthy, unlike the shim's 0.9-biased count_tokens estimate).
+        # Since shim v1.3.6 usage.input_tokens is only the UNCACHED remainder: a cache
+        # hit is reported as cache_read_input_tokens, and the three fields sum to the
+        # backend total (anthropic_openai_shim.py, v1.3.6 "ANTHROPIC USAGE MAPPING").
+        # Sum them, or a cached prefix makes a ~900k request read as a few thousand.
         usage = payload.get("usage")
         if isinstance(usage, dict) and isinstance(usage.get("input_tokens"), int):
             accepted = True
-            real_input_tokens = usage["input_tokens"]
+            cache_keys = ("cache_read_input_tokens", "cache_creation_input_tokens")
+            real_input_tokens = usage["input_tokens"] + sum(
+                usage[key] for key in cache_keys
+                if isinstance(usage.get(key), int) and not isinstance(usage.get(key), bool)
+            )
         elif payload.get("type") == "message":
             accepted = True
     context_exceeded = (not accepted) and looks_like_context_exceeded(message)
@@ -328,8 +342,9 @@ def run_live_probe(args, post_fn=post_probe):
             observed = record["real_input_tokens"]
             candidate = max(1.0, record["filler_chars"] / observed)
             # INTENT: reject a single absurd usage.input_tokens rather than adopting it.
-            # REASONING: observed live 2026-09-05 (gpt-5.6-sol) — the backend answered a
-            #   ~912k-token request with input_tokens=42165, which recalibrated
+            # REASONING: observed live 2026-09-05 (gpt-5.6-sol) — a ~912k-token request
+            #   read as input_tokens=42165 (likely the uncached remainder; the probe
+            #   did not yet sum the cache fields), which recalibrated
             #   chars/token from ~4.4 to ~96 and sent the remaining bisect probing
             #   multi-million-character payloads that could only be rejected.
             # ASSUMES: a genuine backend tokenizer never shifts the running estimate by
@@ -471,6 +486,23 @@ def run_self_test():
     check("accepted real tokens read", accepted["real_input_tokens"] == 337034)
     check("accepted is not context_exceeded", accepted["context_exceeded"] is False)
 
+    # Shim v1.3.6+ subtraction mapping: a cache hit moves tokens out of input_tokens
+    # into cache_read_input_tokens. The real count is the sum of all three fields.
+    cached = classify_response(
+        200, {"type": "message", "usage": {
+            "input_tokens": 42165, "cache_read_input_tokens": 870000,
+            "cache_creation_input_tokens": 0, "output_tokens": 1}}
+    )
+    check("cached accept sums uncached + cache_read + cache_creation",
+          cached["real_input_tokens"] == 912165)
+    malformed_cache = classify_response(
+        200, {"type": "message", "usage": {
+            "input_tokens": 5000, "cache_read_input_tokens": True,
+            "cache_creation_input_tokens": "9", "output_tokens": 1}}
+    )
+    check("non-int cache fields are ignored, not added",
+          malformed_cache["real_input_tokens"] == 5000)
+
     rejected_502 = classify_response(
         502, {"type": "error", "error": {
             "type": "api_error", "message": "context_length_exceeded: too many tokens"}}
@@ -600,6 +632,36 @@ def run_self_test():
           abs(g_est - bisect_ceiling_real) <= tol)
     check("guard never adopted the bogus count as an accept bound",
           g_largest is not None and g_largest > bisect_ceiling_real // 2)
+
+    # 3d. Cache-split path (shim v1.3.6+ usage mapping): every accepted response
+    #     reports 90% of its input as cache_read_input_tokens. The probe must read the
+    #     cache-inclusive total, so the guard never fires and the bisect converges.
+    def fake_cached_post(base_url, body, timeout):
+        chars = len(body["messages"][0]["content"])
+        real = int(round(chars / real_cpt))
+        if real > bisect_ceiling_real:
+            return 400, {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": "context_length_exceeded: too many tokens"}}
+        cached_part = (real * 9) // 10
+        return 200, {"type": "message", "usage": {
+            "input_tokens": real - cached_part, "cache_read_input_tokens": cached_part,
+            "cache_creation_input_tokens": 0, "output_tokens": 1}}
+
+    cache_args = argparse.Namespace(
+        base_url="http://fake.invalid", model="gpt-5.6-sol",
+        bracket_low=337000, bracket_high=450000, oversize_target=450000,
+        tolerance=tol, max_tokens=1, timeout=1.0,
+    )
+    c_est, c_method, c_largest, _c_reject, c_log = run_live_probe(
+        cache_args, post_fn=fake_cached_post)
+    check("cache-split self-test drives the real bisect path", c_method == "bisect")
+    check("cache-split readings never trip the calibration guard",
+          not any("implausible usage.input_tokens" in line for line in c_log))
+    check("cache-split bisect converges on the true ceiling",
+          abs(c_est - bisect_ceiling_real) <= tol)
+    check("cache-split accept bound is the cache-inclusive total",
+          c_largest is not None and c_largest > bisect_ceiling_real // 2)
 
     print()
     if failures:
