@@ -1342,6 +1342,46 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # `uv pip install --user` / `pip install --user`, etc. Running these as root
 # would write into /root or leave root-owned files in /home/appuser.
 # RUN curl -fsSL https://example.com/install.sh | bash
+#
+# ---- DAAF ADDITION: PDF reading layer (ACTIVE, unlike the examples above) ----
+# Added 2026-10-13 with the user's approval (Literature Review build session S3,
+# decision D-20). Serves the planned framework CLIs scripts/pdf_ingest.sh (text
+# extraction, per-page flags, OCR of scanned pages) and scripts/lit_verify.sh
+# (fuzzy quote matching). poppler-utils (pdftotext, pdftoppm, pdfinfo) is
+# already installed in the system-deps layer above.
+# Licenses (all permissive):
+#   tesseract-ocr, -eng, -osd   Apache-2.0
+#   pypdfium2 5.13.0            Apache-2.0 / BSD-3-Clause (+ bundled PDFium deps)
+#   pdfplumber 0.11.10          MIT
+#   pdfminer.six 20260107       MIT
+#   rapidfuzz 3.14.6            MIT
+#   cryptography 50.0.1         Apache-2.0 OR BSD-3-Clause (pdfminer.six dep)
+#   cffi 2.1.1                  MIT-0 (cryptography dep)
+#   pycparser 3.0               BSD-3-Clause (cffi dep)
+# PyMuPDF is deliberately EXCLUDED: AGPL (decision D-2).
+# CPU-only: no GPU, no CUDA, no model downloads. The Python pins resolve to
+# prebuilt wheels for x86_64 and aarch64, and all are at or before
+# UV_EXCLUDE_NEWER, so no --exclude-newer-package override is needed.
+# tesseract-ocr is in Ubuntu's `universe` component, which the snapshot sources
+# above include. At run time pdf_ingest runs OCR only on pages it flags as
+# scanned and caps Tesseract at one thread (OMP_THREAD_LIMIT=1 in the
+# subprocess environment), so OCR stays light on CPU.
+USER root
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-osd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+RUN uv pip install --system \
+    pypdfium2==5.13.0 \
+    pdfplumber==0.11.10 \
+    pdfminer.six==20260107 \
+    rapidfuzz==3.14.6 \
+    cryptography==50.0.1 \
+    cffi==2.1.1 \
+    pycparser==3.0
+USER appuser
 # ============================================
 
 # Install the DAAF entrypoint wrapper. It best-effort auto-starts the provider

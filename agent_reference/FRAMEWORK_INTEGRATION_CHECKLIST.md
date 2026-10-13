@@ -10,7 +10,7 @@
 
 ## How to Use This Document
 
-Each section covers one component type (Skill, Agent, Mode, Reference File, Hook, Host-Facing Script, Provider Shim, Scholarly Search Backend). Items are marked:
+Each section covers one component type (Skill, Agent, Mode, Reference File, Hook, Host-Facing Script, Provider Shim, Scholarly Search Backend, Framework CLI). Items are marked:
 - **[M]** = Mandatory (must be completed for every instance)
 - **[C]** = Conditional (required only when the stated condition applies)
 
@@ -317,7 +317,49 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 
 ---
 
-## 9. Cross-Cutting Consistency Checks
+## 9. Adding or Modifying a Framework CLI
+
+> **Scope:** A standalone framework command-line tool under `scripts/`: a `.sh` wrapper plus the `.py` it execs, which agents call directly and which writes its own provenance record (today `web_fetch.sh` and `scholar_search.sh`; `pdf_ingest.sh` and `lit_verify.sh` are planned). It is not a pipeline analysis script (those run through `run_with_capture.sh` and follow CLAUDE.md § Code Style), not a hook (§ 5), not a host-facing script (§ 6) and not part of the provider shim (§ 7). A new backend for `scholar_search` is § 8. A framework CLI's audit record is the MANIFEST.jsonl row it writes, and it falls under the CLAUDE.md exception for "standalone CLI tools requiring argparse", so it may define functions.
+
+> **Precedent:** `web_fetch` (the web-retrieval layer) and `scholar_search` (build sessions S1–S2, 2026-10-02 to 2026-10-12) set the conventions below. The general work type was added on 2026-10-13 (user decision D-20) ahead of `pdf_ingest` and `lit_verify` (S3). Session record and conventions evidence: `research/2026-10-02_FrameworkDev_ScholarlySearch/` (SESSION_NOTES D-20; `preliminary_notes/09_scope_s3_cli_conventions_boundaries.md`). `web_fetch` predates FC5 and part of FC6 (it has no `TOOL_VERSION` and no `kind` field); new CLIs follow the checklist, not that gap.
+
+### New Framework CLI Checklist
+
+| # | Item | Req | File | Section / Location |
+|---|------|-----|------|--------------------|
+| FC1 | Write the `.sh` wrapper in the shared shape. The header says the tool is "a standalone framework CLI tool, NOT a pipeline analysis script", that it runs `python3` directly rather than through `run_with_capture.sh`, and that its audit record is the MANIFEST.jsonl it writes; it also carries the usage lines and the exit table. Body: `set -euo pipefail`, `SCRIPT_DIR` resolved with `pwd -P`, preflight checks (argument count, `command -v python3`, the `.py` exists; each failure exits 1), then `exec python3 "$TOOL" "$@"` | [M] | `scripts/<cli>.sh` | Exemplars: `scripts/scholar_search.sh`, `scripts/web_fetch.sh` (headers) |
+| FC2 | Write the `.py` with a header docstring that states the standalone-CLI exemption from the no-function-definitions rule; build the parser in `build_parser()` and enter through `main(argv=None)`, so tests can call `main()` directly | [M] | `scripts/<cli>.py` | `scripts/scholar_search.py` is the worked example |
+| FC3 | Keep the exit-code table identical in three places: the `.py` header, the argparse description and the `.sh` header. Exit 3 is reserved for `run_with_capture.sh` and never used. Reuse the shared meanings (0 ok, 1 usage, 2 guard refusal, 4 network, 6 timeout, 7 oversize) before adding tool-specific codes. A test asserts that the copies agree and that 3 is unused | [M] | `scripts/<cli>.py`, `scripts/<cli>.sh`, `tests/python/test_<cli>.py` | Precedent: the exit-3 test in `tests/python/test_scholar_search.py` |
+| FC4 | Use `_UsageExitParser`: an `argparse.ArgumentParser` subclass whose `error()` exits 1, not argparse's default 2, because 2 means a guard refusal. Pass it as `parser_class` to any subparsers | [M] | `scripts/<cli>.py` | `scholar_search.py` § argparse |
+| FC5 | Define a `TOOL_VERSION` constant with a dated changelog in comments, and stamp it into every MANIFEST row (and the user agent, if the CLI makes HTTP requests). Bump it whenever a row field, a stdout line or an exit meaning changes | [M] | `scripts/<cli>.py` | `scholar_search.py` `TOOL_VERSION` block |
+| FC6 | Write one MANIFEST row per attempt. Seed it before any work (`kind`, `tool_version`, `command`, `parameters`, `timestamp`, `requesting_context` from `DAAF_FETCH_CONTEXT`, each artifact's name, bytes and SHA-256, `redaction_count`, `secret_redactions`, `exit_code`, `note`), and append it through a single `finish()` path that runs `redact_secrets` over the whole serialized row before `append_manifest`. Every attempt with a valid DEST gets a row; a usage error or a refused DEST writes none | [M] | `scripts/<cli>.py` | Helpers in `scripts/web_retrieval_common.py`; `scholar_search.py` `finish()` |
+| FC7 | Guard every destination with `validate_dest_dir` (it requires `/daaf` and refuses `/tmp`, `/var/tmp`, `/dev/shm`, `/host_data`, `/daaf/.claude` and `/daaf/.git`); a refusal exits 2. This includes output paths handed to a subprocess binary (e.g. `pdftoppm`), because `bash-safety.sh` does not see writes made through program arguments. Create files with `write_new` and `unique_basename` (never overwrite). A CLI that reads an input file states its own source-path rule (e.g. refuse a source outside `/daaf`) | [M] | `scripts/<cli>.py` | `web_retrieval_common.py` `validate_dest_dir`, `write_new`, `unique_basename` |
+| FC8 | Handle untrusted text (anything read from the web or from a document) in this order: scrub (`scrub_injection`), wrap (`wrap_lines`), redact secrets (`redact_secrets`), fence (`fence`). An untrusted string printed to stdout goes through `one_line`. Keep a tool-local list of forged-status patterns for the CLI's own status prefix (e.g. `pdf_ingest:`) and apply it after `scrub_injection`: the shared pattern covers only `web_fetch\|scholar_search:`. Do not edit the shared module unless the dispatch names that change | [M] | `scripts/<cli>.py` | `scholar_search.py` digest path (scrub before wrap) |
+| FC9 | Set the `.sh` mode to `100755`: `chmod +x`, then `git update-index --chmod=+x`, and verify with `git ls-files -s` (the `.py` stays `100644`) | [M] | `scripts/<cli>.sh` | See the § 5 note under H1b |
+| FC10 | Add unit tests in `tests/python/test_<cli>.py`. CI discovers them (`.github/workflows/ci-scripts.yml`, job "Deploy-Smoke Harness Unit Tests", runs `unittest discover -s tests/python -p 'test_*.py'` on an `ubuntu-latest` runner whose venv holds only the pinned `httpx`), so guard every test that needs an optional binary or library with `unittest.skipUnless`, and guard a module-level third-party import with `try/except ModuleNotFoundError: raise unittest.SkipTest(...)` (precedent: the `httpx` guard in `tests/python/test_scholar_search.py`). A dependency the tests should actually exercise in CI goes into that job's install step (a workflow change, made by the user). Cover the exit table, the dest guard, secret redaction in the MANIFEST row and the forged-status scrub. Run the suite file-first: a captured `.py` under the session workspace's `scripts/` runs `unittest` through `subprocess` and prints the result line, executed with `run_with_capture.sh` (`python3 -m unittest` typed at the command line is blocked by `enforce-file-first.sh` for the agents that register it). Quote the result line | [M] | `tests/python/test_<cli>.py` | Precedent: SB15 |
+| FC11 | Use synthetic fixtures only, committed together with their sources and a generator kept beside them. No third-party document text: the repository is published. One test may regenerate a fixture from source and compare the extracted text, not the bytes | [M] | `tests/python/fixtures/<cli>/` | Precedent: SB7/SB8 synthetic fixtures |
+| FC12 | Document the CLI in a skill reference: syntax and flags, the exit table, MANIFEST fields, artifacts and destination conventions, and the untrusted-content rule. Register the reference in the skill's tables (§ 1 SM1–SM6 apply) | [M] | `.claude/skills/<skill>/SKILL.md`, `references/` | Exemplars: `web-retrieval`, `scholarly-search` |
+| FC13 | Re-route existing mentions: grep `.claude/`, `agent_reference/`, `user_reference/` and `scripts/` for text that describes the gap the CLI fills or names it as "forthcoming", and point that text at the CLI | [C] | Multiple | When the CLI replaces or extends a documented workflow (e.g. the `web-retrieval` exit-8 guidance for PDFs) |
+| FC14 | If named agents will call the CLI, confirm their `tools` include `Bash` and their boundary text permits the call; for an agent that registers `enforce-file-first.sh`, confirm the call passes the hook (`bash …/<cli>.sh` is not checked; `python3 /daaf/scripts/<cli>.py` is whitelisted) | [C] | `.claude/agents/*.md` | § 2 AM1–AM4 |
+| FC15 | Confirm the CONTRIBUTING change-surface matrix routes the CLI. The generic framework-CLI row covers it; add a dedicated row when its tests differ (a live call, an external binary), as `scholar_search` has | [M] | `CONTRIBUTING.md` | § Change Surfaces and Pull Request Evidence > The Change-Surface Matrix |
+| FC16 | When the CLI adds a third-party library or binary, credit it in the README acknowledgments with its license | [C] | `README.md` | § Acknowledgments (precedent: Trafilatura) |
+| FC17 | When the CLI adds a dependency, install it in the Dockerfile USER ADDITIONS block (Ask First). Pin at or before the frozen date (`UV_EXCLUDE_NEWER`, `UBUNTU_SNAPSHOT`) or use a per-package override; name the licenses in the block's comment and record any license-based exclusion (e.g. AGPL). An active apt line there moves the exact count of `daaf-apt-update` call sites asserted in `tests/bash/daaf_lib.bats`, so update that count. Remind the user to rebuild (`bash rebuild_daaf.sh` from `daaf-docker`); until then the CLI exits cleanly with a documented "missing dependency" code and its tests skip | [C] | `Dockerfile`, `tests/bash/daaf_lib.bats` | `framework-development-mode.md` § Boundaries > Ask First (rebuild reminder); `user_reference/04_extending_daaf.md` |
+| FC18 | Run the § 10 cross-cutting checks, the standard Framework Development review pass and `bash scripts/check_workspace_invariants.sh` (probe fixtures removed by a trap in the probe script) before Checkpoint 2 | [M] | — | `framework-development-mode.md` § Phase 4 |
+
+### Modifying an Existing Framework CLI
+
+| # | Item | Req | File | What to Check |
+|---|------|-----|------|----|
+| FCM1 | Read the `.sh`, the `.py` region you are changing and its tests before editing | [M] | `scripts/<cli>.sh`, `scripts/<cli>.py`, `tests/python/test_<cli>.py` | Header and exit table vs. actual behavior |
+| FCM2 | If the output shape changes (MANIFEST fields, stdout lines, digest, exit meanings), bump `TOOL_VERSION`, update all three exit-table copies, and grep for scripts and docs that parse the output | [C] | `scripts/<cli>.py`, `.sh`; consumers | Grep the CLI name across `.claude/`, `agent_reference/`, `scripts/` |
+| FCM3 | Re-run the tests file-first (as in FC10) and quote the result line | [M] | `tests/python/test_<cli>.py` | — |
+| FCM4 | Change `scripts/web_retrieval_common.py` only when the dispatch names the change, then re-run the suite of every CLI that imports it | [C] | `scripts/web_retrieval_common.py` | `grep -rln web_retrieval_common scripts tests` lists the importers |
+| FCM5 | When flags, exits or tests change, update the skill reference and the CONTRIBUTING row | [C] | Skill reference, `CONTRIBUTING.md` | The wordings agree |
+| FCM6 | Retiring a CLI: remove it from the skill, CONTRIBUTING and the tests; drop a dependency only if nothing else uses it (reverse FC17); record the rationale in a dated research document | [C] | Multiple; `research/{workspace}/` | Per the § 5 HR5 precedent; grep the CLI name repo-wide afterwards |
+
+---
+
+## 10. Cross-Cutting Consistency Checks
 
 After completing any component checklist above, run these universal verification steps:
 

@@ -407,3 +407,16 @@ indicates a preference during conversation.
        under either setting — commit execution is orchestrator-only, with user
        consent. Agents always report a suggested commit message in their output
        for the user/orchestrator to use if desired. -->
+- **PDF page-image cross-checking:** auto
+  <!-- Options: auto | all-pages | off. Governs how the pdf-reading skill uses
+       rendered page images when an agent reads a PDF (e.g., the Literature
+       Review mode's paper reader). "auto" (default) = render and visually
+       cross-check only the pages pdf_ingest flags (tables, figures,
+       numeric-dense, scanned, low extractor agreement). "all-pages" = render
+       and read every page (about +4k tokens per page; ~+120k for a 30-page
+       paper). Both "auto" and "all-pages" apply only when the reading agent's
+       exact model ID and route are on the skill's dated vision-validated list;
+       otherwise the agent reads the text layer only and marks the evidence
+       card "vision: unavailable". "off" = text layer only. A vision reading is
+       a second reading, never ground truth: text/vision disagreements are
+       logged in the card, never silently resolved. -->

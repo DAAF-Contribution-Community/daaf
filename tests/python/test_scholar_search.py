@@ -41,7 +41,13 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-import httpx
+# httpx is scholar_search's only third-party dependency. On a host without it
+# (a bare CI runner), skip the whole module with a reason instead of failing
+# discovery with an ImportError; CI installs the pinned httpx so these run.
+try:
+    import httpx
+except ModuleNotFoundError:
+    raise unittest.SkipTest("httpx not available on this host")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS = _REPO_ROOT / "scripts"

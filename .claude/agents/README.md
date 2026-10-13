@@ -566,7 +566,7 @@ code-reviewer returns BLOCKER
 
 ### framework-engineer
 
-**Use when:** The orchestrator is running Framework Development Mode and needs to create or modify framework components (skills, agents, modes, reference files). Each invocation handles one work type (new skill, new agent, new mode, new reference file, new scholarly search backend, modify existing, incorporate learnings, or multi-component).
+**Use when:** The orchestrator is running Framework Development Mode and needs to create or modify framework components (skills, agents, modes, reference files). Each invocation handles one work type (new skill, new agent, new mode, new reference file, new scholarly search backend, new framework CLI, modify existing, incorporate learnings, or multi-component).
 
 **Key behaviors:**
 - Template fidelity (follows AGENT_TEMPLATE, MODE_TEMPLATE, skill-authoring rules exactly)

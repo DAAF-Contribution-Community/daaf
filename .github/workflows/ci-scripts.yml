@@ -390,9 +390,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Run deploy-smoke unit tests
-        run: python3 -m unittest discover -s tests/python -p 'test_*.py' -v
+      # scholar_search's only third-party import is httpx; same pin as the
+      # provider-shim job and the DAAF image.
+      - name: Install Python test dependencies (venv)
+        run: |
+          python3 -m venv .py-venv
+          .py-venv/bin/python -m pip install httpx==0.28.1
 
+      - name: Run deploy-smoke unit tests
+        run: .py-venv/bin/python -m unittest discover -s tests/python -p 'test_*.py' -v
 
   # ---------------------------------------------------------------------------
   # Job 7c: Provider-shim unit suite (offline: loopback harness + fake-codex

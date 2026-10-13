@@ -98,6 +98,7 @@ When the user describes their framework need, classify it into one of these work
 | **New Mode** | "add a new mode for...", "create a workflow..." | `MODE_TEMPLATE.md` | FRAMEWORK_INTEGRATION_CHECKLIST.md § 3 |
 | **New Reference File** | "create a reference for...", "document the protocol for..." | Examine 2-3 existing exemplars | FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 |
 | **New Scholarly Search Backend** | "add a new scholarly source", "add PubMed as a backend", "can the lit search use CORE?" | `scholarly-search` skill `references/adding-a-backend.md` (procedure) + `references/_BACKEND_TEMPLATE.md` | FRAMEWORK_INTEGRATION_CHECKLIST.md § 8 |
+| **New Framework CLI** | "add a CLI tool for...", "build a framework script that ingests/verifies...", "a new `scripts/*.sh` command" | No template file: the existing framework CLIs (`scripts/scholar_search.sh` + `.py`, `scripts/web_fetch.sh` + `.py`) are the exemplars | FRAMEWORK_INTEGRATION_CHECKLIST.md § 9 |
 | **Modify Existing** | "update the X skill...", "change the Y agent..." | Read existing artifact + template | FRAMEWORK_INTEGRATION_CHECKLIST.md § modification subsection |
 | **Incorporate Learnings** | "incorporate learnings", "apply learnings", "process LEARNINGS.md", "update framework from learnings" | Existing LEARNINGS.md System Update Action Plans | FRAMEWORK_INTEGRATION_CHECKLIST.md (section varies by action item target) |
 | **Multi-Component** | Complex work touching multiple component types | All applicable | Multiple sections |
@@ -132,6 +133,11 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 1. **Source docs and terms:** Fetch the vendor's API documentation and terms of use with `web_fetch.sh` into the session workspace (a web-capable search-agent; this fetch is a required workflow step, checklist item SB2). Report auth, endpoints, limits, cost and storage terms with quotes.
 2. **Adapter landscape:** Read `adding-a-backend.md`, `_BACKEND_TEMPLATE.md` and the closest existing adapter in `scripts/scholar_backends/` (same capability, same access model). Note name, key and rate-lane collisions.
 3. **Registration surfaces:** Read the `scholarly-search` SKILL.md tables, `licensing.md`, the env template's scholarly block, and the `user_reference/01` key table. If the backend would join an existing command (`retractions`, `find`), grep for scripts that parse that command's output.
+
+**For New Framework CLI:**
+1. **Conventions and reuse:** Read the closest existing framework CLI (`scripts/scholar_search.sh` + `.py`, `scripts/web_fetch.sh` + `.py`) and `scripts/web_retrieval_common.py`. Report the wrapper shape, the exit-code table and its three copies, the MANIFEST row and `finish()` path, the untrusted-text order, and which shared helpers the new CLI can import.
+2. **Hook and permission constraints:** Grep `bash-safety.sh`, `enforce-file-first.sh` and `settings.json` for the CLI's name and any binary it will call. Confirm how its tests will run file-first (a captured `.py` that calls `unittest` through `subprocess`) and how CI runs them (`.github/workflows/ci-scripts.yml`).
+3. **Dependencies and registration surfaces:** List any new Python package or system binary (installed today or not; license; pin at or before the Dockerfile's frozen date) and every doc that will mention the CLI: the skill that documents it, existing text that should point to it, the CONTRIBUTING change-surface matrix, README acknowledgments. FRAMEWORK_INTEGRATION_CHECKLIST.md § 9 lists the points.
 
 **For Modify Existing:**
 1. **Current state:** Read the target artifact in full. Read files that reference it (grep for filename).
@@ -280,7 +286,7 @@ Before authoring a new framework artifact, the orchestrator proactively offers t
 
 **Why offer this.** LLM-authored specifications improve markedly when grounded in how practitioners and other frameworks have already solved the problem. Without external grounding, the author (framework-engineer) relies on ungrounded inference — the same "skill information awareness" concern raised in `CLAUDE.md` § Execution Philosophy: information an agent supplies beyond what is explicitly encoded in a skill is LLM-generated inference, not curated knowledge, and deserves verification. Pre-authoring research substitutes external evidence for that inference at the design stage, where it is cheapest to incorporate.
 
-**Trigger.** The offer fires when the work type is **New Skill**, **New Agent**, or **New Mode**. It is optional at orchestrator discretion for substantial **Modify Existing** or **Multi-Component** work (e.g., a major agent-protocol rewrite), and is skipped for trivial modifications (typo fixes, single count-word updates). The offer is **advisory, not a gate** — the user can decline it in one word and authoring proceeds without it. For **New Scholarly Search Backend**, fetching the vendor's docs and terms is not part of this offer: it is a required workflow step (checklist item SB2). A wider survey of how others use the source can still be offered.
+**Trigger.** The offer fires when the work type is **New Skill**, **New Agent**, or **New Mode**. It is optional at orchestrator discretion for substantial **Modify Existing** or **Multi-Component** work (e.g., a major agent-protocol rewrite), and is skipped for trivial modifications (typo fixes, single count-word updates). The offer is **advisory, not a gate** — the user can decline it in one word and authoring proceeds without it. For **New Scholarly Search Backend**, fetching the vendor's docs and terms is not part of this offer: it is a required workflow step (checklist item SB2). A wider survey of how others use the source can still be offered. For **New Framework CLI**, the offer is optional at orchestrator discretion, as for substantial Modify Existing work: a survey of candidate libraries, their licenses and known failure modes is usually worth offering when the CLI adds a dependency.
 
 **Three decisions (with defaults):**
 
@@ -350,7 +356,7 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 ```
 **Framework Development: Scope Review**
 
-**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 
 **Current State:**
 - [What exists today and how it connects]
@@ -375,7 +381,7 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 [If Complex:] I'll present a design for your review first, then proceed with authoring and a full 3-angle review pass.
 
 [Conditional block — include ONLY when the Pre-Authoring Research Offer trigger applies
-(New Skill / New Agent / New Mode, or substantial Modify/Multi-Component work):]
+(New Skill / New Agent / New Mode, or substantial Modify/Multi-Component/New Framework CLI work):]
 
 **Optional — Grounding Research:**
 Before we design this, I can run a quick online survey of how this kind of
@@ -444,7 +450,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 ## Task
 
-**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 **Scope:** [What to create or change, and why]
 
 ## Context
@@ -690,7 +696,7 @@ If the session remains purely conversational with no milestones, SESSION_NOTES.m
 
 **Started:** YYYY-MM-DD
 **Workspace:** {PROJECT_DIR}
-**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | Modify Existing | Incorporate Learnings | Multi-Component]
+**Work Type:** [New Skill | New Agent | New Mode | New Reference File | New Scholarly Search Backend | New Framework CLI | Modify Existing | Incorporate Learnings | Multi-Component]
 
 ## Accomplishments
 
@@ -764,6 +770,7 @@ Framework Development has variable outputs depending on the work:
 | New Mode | Mode reference .md file | SKILL.md updates, BOUNDARIES.md, user_reference, README.md, supporting references |
 | New Reference File | Reference .md file (structure from 2-3 exemplars) | Registration in the files that load it (checklist § 4) |
 | New Scholarly Search Backend | Adapter module + per-backend reference file + tests with live-wire fixtures (synthetic fixtures with the live shape for a `restricted` source; checklist SB7) | `scholarly-search` SKILL.md tables, licensing matrix, dated api-notes entry, env template and key docs (keyed sources) |
+| New Framework CLI | `.sh` wrapper + `.py` under `scripts/` + unit tests with synthetic fixtures (and the fixture generator) | Skill reference documenting the CLI, pointers from existing docs, CONTRIBUTING matrix row, README acknowledgments and Dockerfile additions when a dependency is added (checklist § 9) |
 | Modify Existing | Updated file(s) | Downstream updates if scope changed |
 | Incorporate Learnings | Updated framework file(s) per action plan items | Integration updates as needed per standard modification standards |
 | Multi-Component | Multiple of the above | Cross-component consistency verification |

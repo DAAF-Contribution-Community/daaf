@@ -1178,11 +1178,12 @@ EOF
 
     # Every apt layer calls the helper: snapshot layer x2 branches + 7 install
     # layers (system deps, universe self-heal, geospatial, DAAF_DEV
-    # shellcheck/bats, R runtime .deb, R system libs, nodejs) = 9. The helper's
-    # own COPY line is excluded, and the commented USER ADDITIONS example is
-    # excluded by matching active lines only. An exact count makes a dropped
-    # call site fail this test.
+    # shellcheck/bats, R runtime .deb, R system libs, nodejs) + 1 active USER
+    # ADDITIONS layer (tesseract-ocr, PDF reading layer, 2026-10-13) = 10. The
+    # helper's own COPY line is excluded, and the commented USER ADDITIONS
+    # example is excluded by matching active lines only. An exact count makes a
+    # dropped call site fail this test.
     run bash -c "grep -E '^[^#]*daaf-apt-update( |;|\$)' '${REPO_ROOT}/Dockerfile' | grep -vc '^COPY '"
     assert_success
-    [ "${output}" -eq 9 ]
+    [ "${output}" -eq 10 ]
 }
