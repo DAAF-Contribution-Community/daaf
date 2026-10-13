@@ -4,7 +4,8 @@ Astra's reasoning.effort enum is {low, medium, high, xhigh, max} — it rejects
 "none" (OpenAI Astra model page, primary source). The shim applies a single
 model-conditional floor at request build: an Astra-family request whose resolved
 effort is "none" is rewritten to "low"; every other model forwards its resolved
-effort unchanged. These are provider-free tests — a mock Responses backend
+effort unchanged. v1.4.9 extends the floor to GPT-6.1 Sol (live 400 on "none");
+gpt-6-sol is a control that stays unfloored. These are provider-free tests — a mock Responses backend
 captures the forwarded payload, no live network.
 """
 
@@ -130,7 +131,7 @@ class AstraEffortFloorTests(unittest.TestCase):
 
     def test_astra_1m_family_slug_none_clamped(self) -> None:
         # (g) The "[1m]" hint variant is a recognized Astra family slug
-        # (_ASTRA_FAMILY_SLUGS = {gpt-6-astra, gpt-6-astra[1m]}), matched on the
+        # (in _NO_NONE_EFFORT_SLUGS, formerly _ASTRA_FAMILY_SLUGS), matched on the
         # provider-prefix- and effort-suffix-stripped terminal slug, so "#none"
         # still clamps to "low" for the 1m family member.
         scenario = full_response_scenario()
@@ -141,6 +142,48 @@ class AstraEffortFloorTests(unittest.TestCase):
                 )
                 self.assertEqual(result.status, 200)
         self.assertEqual(self._forwarded_effort(backend), "low")
+
+    def test_gpt61_sol_none_effort_clamped_to_low(self) -> None:
+        # (h) v1.4.9: GPT-6.1 Sol also rejects "none" (live 400 unsupported_value),
+        # so every gpt-6.1-sol form in _NO_NONE_EFFORT_SLUGS is floored to "low".
+        # The -pro forms are included by family inference, not live evidence.
+        for model in (
+            "gpt-6.1-sol#none",
+            "gpt-6.1-sol[1m]#none",
+            "openai/gpt-6.1-sol#none",
+            "gpt-6.1-sol-pro#none",
+            "gpt-6.1-sol-pro[1m]#none",
+        ):
+            with self.subTest(model=model):
+                scenario = full_response_scenario()
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "openai") as shim:
+                        result = shim.post_messages(stream=False, model=model)
+                        self.assertEqual(result.status, 200)
+                self.assertEqual(self._forwarded_effort(backend), "low")
+
+    def test_gpt61_sol_non_none_effort_passes_through(self) -> None:
+        # (i) The floor is none-only for gpt-6.1-sol too: other levels are unchanged.
+        for effort in ("low", "max"):
+            with self.subTest(effort=effort):
+                scenario = full_response_scenario()
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "openai") as shim:
+                        result = shim.post_messages(
+                            stream=False, model=f"gpt-6.1-sol#{effort}"
+                        )
+                        self.assertEqual(result.status, 200)
+                self.assertEqual(self._forwarded_effort(backend), effort)
+
+    def test_gpt6_sol_none_effort_not_floored(self) -> None:
+        # (j) Control: gpt-6-sol is NOT in the set (no evidence either way), so its
+        # resolved "none" is forwarded unchanged.
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                result = shim.post_messages(stream=False, model="gpt-6-sol#none")
+                self.assertEqual(result.status, 200)
+        self.assertEqual(self._forwarded_effort(backend), "none")
 
 
 if __name__ == "__main__":

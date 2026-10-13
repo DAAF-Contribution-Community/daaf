@@ -61,15 +61,43 @@
 #     bodies). The manager script (start_shim.sh) redirects stderr to the log.
 #   * Backend-error diagnostics on every non-2xx: status, exact structured
 #     type/code, mapped Anthropic type, and allowlisted headers — never body prose.
+#   * Log contract (metadata only) covers response headers too: on backend-error and
+#     retry lines a header reaches the log only if its exact lowercased name is in
+#     DIAG_HEADER_ALLOWLIST (request IDs, retry-after, rate-limit numerics). There is
+#     no prefix rule (removed in v1.4.9), so opaque session tokens
+#     (x-codex-turn-state), cookies/set-cookie, auth-like headers and account credit
+#     fields are never written there. The separate 2xx quota_snapshot event still
+#     records plan and credit numerics (no tokens).
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
-#   v1.4.8 (2026-10-12): Two everyday GPT-route actions no longer fail hard.
-#     (1) PDF/document blocks, in user content and inside tool_result content, are
-#     translated: base64 PDF -> input_file (file_data data URL), URL PDF -> input_file
-#     (file_url, accepted only when it passes the same strict URL check as consulted
-#     search sources), text documents -> input_text. Any other document variant
-#     becomes a short text note instead of a 400 (logged once per variant at INFO,
+#   v1.4.9 (2026-10-13): Follow-ups from live verification of 1.4.8.
+#     (1) Effort floor extended: GPT-6.1 Sol also rejects effort:"none" (live: a
+#     "gpt-6.1-sol#none" request got backend 400 invalid_request_error /
+#     unsupported_value). The Astra-only set is renamed _NO_NONE_EFFORT_SLUGS and now
+#     also holds gpt-6.1-sol, gpt-6.1-sol-pro and their "[1m]" forms; a resolved
+#     "none" for any member is sent as "low". The -pro members are an inference from
+#     the shared model family, not a live observation. gpt-6-sol and every other
+#     model are unchanged. (2) Log hygiene: backend-error and retry log lines
+#     ("| headers: ...") no longer include every x-codex-* response header. That
+#     prefix rule let an opaque backend session token (x-codex-turn-state) and
+#     account credit fields into shim.log. Headers now pass an exact-name allowlist
+#     only (DIAG_HEADER_ALLOWLIST: request IDs, retry-after, x-ratelimit-* numerics,
+#     and the x-codex primary/secondary used-percent and reset-after-seconds
+#     numerics); everything else, including cookies, auth-like headers, credit
+#     balances and turn-state tokens, is never written. The 2xx quota_snapshot event
+#     is unchanged. Request translation and the /health schema are unchanged.
+#   v1.4.8 (2026-10-12): PDF document blocks, WebSearch edge cases and the whitespace
+#     guard no longer fail hard. (1) PDF/document blocks, in user content and inside tool_result content,
+#     are translated. Correction (v1.4.9, from live testing): Claude Code 2.1.281's
+#     Read tool on a PDF already worked before 1.4.8, because it renders pages and
+#     returns text plus images. Raw document blocks come from other paths, such as a
+#     PDF attached or @-mentioned directly in a message, or a client that sends
+#     document blocks; the shim used to reject those with a 400, and the block stayed
+#     in the history. Mapping: base64 PDF -> input_file (file_data data URL), URL PDF
+#     -> input_file (file_url, accepted only when it passes the same strict URL check
+#     as consulted search sources), text documents -> input_text. Any other document
+#     variant becomes a short text note instead of a 400 (logged once per variant at INFO,
 #     never the content). Base64 is checked with one flat character-class scan, so
 #     multi-megabyte PDFs validate quickly. SHIM_PDF_MODE=omit turns PDFs into a note
 #     that says they were omitted by configuration; an unrecognized SHIM_PDF_MODE
@@ -1159,10 +1187,10 @@
 #                           slug suffix (tier 2) and this env var (tier 3).
 #                           Valid values: none | low | medium | high | xhigh |
 #                           max. ("max"/"xhigh" are supported by both the gpt-5.6
-#                           family and gpt-6-astra. NOTE: gpt-6-astra does NOT
-#                           accept "none" — an Astra request resolving to "none" is
-#                           clamped to "low" at request build; see
-#                           _ASTRA_FAMILY_SLUGS.) "none" disables reasoning on the
+#                           family and gpt-6-astra. NOTE: gpt-6-astra and gpt-6.1-sol
+#                           do NOT accept "none" — such a request resolving to
+#                           "none" is clamped to "low" at request build; see
+#                           _NO_NONE_EFFORT_SLUGS.) "none" disables reasoning on the
 #                           gpt-5.6 family (and, per the API, re-enables temperature
 #                           — but this shim never sends temperature regardless). An
 #                           unrecognized value here is ignored with a WARNING and
@@ -1222,7 +1250,7 @@ import uvicorn
 # cancellation. Replay expires after 30 minutes or cache eviction/process restart.
 # Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
 # No new health fields, env controls, backend lanes or persistent search caches.
-SHIM_VERSION = "1.4.8"
+SHIM_VERSION = "1.4.9"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1407,7 +1435,8 @@ def _resolve_startup_verbosity():
 #   through IDENTITY. gpt-6-astra shares low|medium|high|xhigh|max but REJECTS
 #   "none" (primary source 2026-09-05); that one model-specific difference is not
 #   encoded in this generic value-set — it is handled by the Astra floor applied at
-#   request build (see _ASTRA_FAMILY_SLUGS). A value NOT in the set is "unknown"
+#   request build (see _NO_NONE_EFFORT_SLUGS; v1.4.9 adds gpt-6.1-sol). A value NOT
+#   in the set is "unknown"
 #   for the tier that carried
 #   it: we log ONE warning and IGNORE that tier (fall through) — never forward a
 #   value OpenAI would reject. The one deliberate exception is a known-but-LOW-
@@ -1449,7 +1478,16 @@ _EFFORT_CLAMP = {"minimal": "low"}
 # terminal slug (provider prefix + "#<effort>" suffix already stripped by the
 # caller); the "[1m]" window-hint form is included defensively even though it is
 # consumed client-side and normally never reaches the shim.
-_ASTRA_FAMILY_SLUGS = frozenset({"gpt-6-astra", "gpt-6-astra[1m]"})
+# v1.4.9: renamed from _ASTRA_FAMILY_SLUGS because it is no longer Astra-only.
+# GPT-6.1 Sol also rejects "none" (live 2026-10-13: "gpt-6.1-sol#none[1m]" ->
+# backend 400 invalid_request_error / unsupported_value). The gpt-6.1-sol-pro forms
+# are included by family inference (not live-observed). gpt-6-sol is deliberately
+# NOT a member: there is no evidence either way, so it keeps prior behavior.
+_NO_NONE_EFFORT_SLUGS = frozenset({
+    "gpt-6-astra", "gpt-6-astra[1m]",
+    "gpt-6.1-sol", "gpt-6.1-sol[1m]",
+    "gpt-6.1-sol-pro", "gpt-6.1-sol-pro[1m]",
+})
 
 # HARDENING: retry policy. Retry only on transient backend failures, and only
 # before any bytes have been emitted to the client (a partially-streamed
@@ -2555,18 +2593,27 @@ DIAG_HEADER_ALLOWLIST = (
     "x-ratelimit-limit-tokens",
     "x-ratelimit-remaining-tokens",
     "x-ratelimit-reset-tokens",
-    # v1.2.14 (D1): the chatgpt lane's request-id header (openai lane uses the
-    # x-*request-id family already captured for upstream correlation).
+    # v1.2.14 (D1): the chatgpt lane's request-id header.
     "x-oai-request-id",
+    # v1.4.9: the request-ID headers used for upstream correlation
+    # (_UPSTREAM_REQUEST_ID_HEADERS), so error lines carry them too.
+    "x-request-id",
+    "request-id",
+    "x-openai-request-id",
+    "openai-request-id",
+    # v1.4.9: chatgpt-lane rate-limit numerics only (percent used and seconds until
+    # reset). Plan, limit names, credit fields and window sizes stay in the 2xx
+    # quota_snapshot event and are not repeated here.
+    "x-codex-primary-used-percent",
+    "x-codex-primary-reset-after-seconds",
+    "x-codex-secondary-used-percent",
+    "x-codex-secondary-reset-after-seconds",
 )
-# v1.2.14 (D1): prefix-allowlisted diagnostic header families. The live chatgpt lane
-# emits a broad, evolving x-codex-* quota surface (used-percent, window-minutes,
-# reset-after, plan-type, credits, per-model-family buckets) that a fixed name list
-# cannot track, so it is matched by prefix. Authorization and any credential-bearing
-# header remain structurally unreachable — a prefix here is never "authorization".
-DIAG_HEADER_PREFIX_ALLOWLIST = (
-    "x-codex-",
-)
+# v1.4.9: the v1.2.14 prefix rule (DIAG_HEADER_PREFIX_ALLOWLIST = ("x-codex-",)) is
+# REMOVED. It matched every x-codex-* header, which on the live chatgpt lane includes
+# x-codex-turn-state (an opaque encrypted backend session token) and the credit
+# fields (has-credits, balance, unlimited), so those reached shim.log on error lines.
+# Exact names only now: a new upstream header is excluded until someone adds it here.
 # v1.2.14 (D1): the compact chatgpt-lane subscription quota snapshot. ONLY numeric and
 # enum x-codex-* fields are surfaced — never a free-text header such as a promo message
 # or limit name. Each pair maps one header to one stable grep-line key; an absent header
@@ -3643,8 +3690,10 @@ def _warn_once(key, message, *args):
 
 def _document_to_responses_parts(block, role):
     # INTENT: translate an Anthropic `document` block into Responses content parts.
-    #   Claude Code's Read tool emits these for PDFs, and the block stays in history,
-    #   so a hard 400 here would break every later turn of the session.
+    #   These arrive when a PDF is attached directly to a message or a client sends
+    #   document blocks (Claude Code's Read tool renders PDF pages as text + images
+    #   instead). The block stays in history, so a hard 400 here would break every
+    #   later turn of the session.
     # REASONING: Responses accepts PDFs as input_file with either a base64 data URL
     #   in file_data (plus a filename) or a file_url, per
     #   https://developers.openai.com/api/docs/guides/file-inputs (fetched
@@ -3858,7 +3907,7 @@ def _messages_to_input(messages):
                     block, message_index, block_index, role,
                 ))
             elif block_type == "document":
-                # v1.4.8: PDFs/text documents (Claude Code's Read tool). Never 400s.
+                # v1.4.8: PDFs/text documents (e.g. a directly attached PDF). Never 400s.
                 pending_parts.extend(_document_to_responses_parts(block, role))
             elif block_type in {"thinking", "redacted_thinking"}:
                 # Known Claude continuity blocks are intentionally consumed rather
@@ -4217,7 +4266,9 @@ def _anthropic_to_responses_request(
     #   any effort level (raine requests summary:"auto" only when effort is set,
     #   notes file 05 §3e; we are stricter for reliable thinking surfacing).
     effort_value, effort_source = _resolve_effort(body, slug_effort_raw)
-    # GPT-6 Astra floor: Astra rejects effort:"none" (see _ASTRA_FAMILY_SLUGS note).
+    # Effort floor: GPT-6 Astra and (v1.4.9) GPT-6.1 Sol reject effort:"none" (see
+    # the _NO_NONE_EFFORT_SLUGS note). Comments below say "Astra"; the same rule
+    # applies to every member of that set.
     # INTENT: for an Astra-family request whose resolved effort is "none" (e.g. an
     #   inbound thinking:{"type":"disabled"} or a "#none" slug suffix), rewrite to
     #   "low" — the lowest Astra-supported level — so the backend does not 400.
@@ -4231,7 +4282,7 @@ def _anthropic_to_responses_request(
     # ASSUMES: Astra's supported enum is {low, medium, high, xhigh, max} (primary
     #   source, 2026-09-05). If Astra later accepts "none", delete this branch.
     _terminal_slug = bare_model.rsplit("/", 1)[-1].strip().lower()
-    if _terminal_slug in _ASTRA_FAMILY_SLUGS and effort_value == "none":
+    if _terminal_slug in _NO_NONE_EFFORT_SLUGS and effort_value == "none":
         log.warning("reasoning effort 'none' not supported for %s; clamped to 'low'",
                     _terminal_slug)
         effort_value = "low"
@@ -5466,23 +5517,15 @@ def _scrub_and_trim_body(text):
 def _diag_headers(headers):
     # Extract the allowlisted diagnostic headers into a compact "k=v k=v" string.
     # INTENT: surface safe rate-limit / retry-after metadata without body prose.
-    # REASONING: allowlist-only lookup means credential headers (Authorization)
-    #   are structurally unreachable here — we never iterate all headers.
+    # REASONING: allowlist-only lookup means credential headers (Authorization),
+    #   cookies and opaque session tokens are structurally unreachable here — we
+    #   never iterate all headers (v1.4.9 removed the x-codex-* prefix loop that did).
     # ASSUMES: `headers` is an httpx.Headers (case-insensitive .get()).
     parts = []
     for name in DIAG_HEADER_ALLOWLIST:
         val = headers.get(name)
         if val is not None:
             parts.append(f"{name}={_sanitize_sensitive_text(val)}")
-    # v1.2.14 (D1): also surface any prefix-allowlisted header (e.g. x-codex-*). Iterate
-    # actual headers only for the prefix rule so the exact-match ordering above is
-    # unchanged; skip a name already emitted by the exact loop so it is never doubled.
-    for name, val in headers.items():
-        lname = name.lower()
-        if val is None or lname in DIAG_HEADER_ALLOWLIST:
-            continue
-        if lname.startswith(DIAG_HEADER_PREFIX_ALLOWLIST):
-            parts.append(f"{lname}={_sanitize_sensitive_text(val)}")
     return " ".join(parts) if parts else "(none)"
 
 

@@ -1541,7 +1541,8 @@ _DEFAULT_OPENAI_SUCCESS_HEADERS = {
 # x-oai-request-id (NOT x-request-id), and a 2xx carries the x-codex-* quota surface with
 # NO x-ratelimit-*. These are REPRESENTATIVE members of an evolving prefix FAMILY, not a
 # stable/exhaustive enumeration (map R8; notes/07:48-52 flags the live set drifting from
-# the survey) — the shim's allowlist is prefix-based (x-codex-*) precisely for this. The
+# the survey). (The shim's error-line allowlist was prefix-based (x-codex-*) until v1.4.9;
+# it is now exact names only, and the 2xx quota_snapshot reads fixed names.) The
 # secondary-window members are deliberately OMITTED: they were empty/absent on the live
 # capture (notes/07:44), and omitting them keeps the "absent header -> snapshot field
 # renders as '-'" contract that the quota tests pin (test_v131_quota_state.py,

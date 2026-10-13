@@ -1,7 +1,9 @@
-"""Shim v1.4.8: Anthropic `document` blocks (PDFs from Claude Code's Read tool).
+"""Shim v1.4.8: Anthropic `document` blocks (e.g. a PDF attached to a message).
 
 A document block used to be an "unsupported content block" 400, and because the
-block stays in history one PDF read broke every later turn. These tests pin the
+block stays in history every later turn failed too. (Claude Code's Read tool on a
+PDF renders pages as text and images, so it did not hit this; raw document blocks
+come from directly attached PDFs or clients that send them.) These tests pin the
 translation (base64 PDF -> input_file, URL PDF -> input_file file_url, text ->
 input_text), the never-400 degradation for every other variant (including unsafe
 URLs), the SHIM_PDF_MODE=omit wording and its unrecognized-value WARNING. All bytes,
