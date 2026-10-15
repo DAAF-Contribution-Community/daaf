@@ -26,7 +26,7 @@ The Common Core of Data consists of six major survey components, each collecting
 | `STATUS` | `school_status` | Operational status (1-8) | Continuing, Closed, New, Added, etc. |
 | `CHARTER` | `charter` | Charter school indicator | Portal: `0=No, 1=Yes` (NOT `1=Yes, 2=No`) |
 | `MAGNET` | `magnet` | Magnet school indicator | Portal: `0=No, 1=Yes` |
-| `VIRTUAL` | `virtual` | Virtual school indicator | Portal: `0-3` integers; Added 2014-15 |
+| `VIRTUAL` | `virtual` | Virtual school indicator | Portal: `0-3` integers; NCES yes/no flag from 2013-14 (categorical codes' start year not verified) |
 | `LOCALE` | `urban_centric_locale` | Urban-centric locale code | 11-43 codes (post-2006) |
 | `TITLEI` | `title_i_status` | Title I eligible status | |
 | `GSLO`, `GSHI` | `lowest_grade_offered`, `highest_grade_offered` | Lowest/highest grade offered | Portal: integers (see grade codes) |
@@ -139,7 +139,7 @@ Additional counts collected at school level:
 
 > **Note:** Portal uses lowercase with underscores. Original NCES variable names (FRELCH, REDLCH, etc.) are transformed.
 
-**FRPL Complexity**: Starting 2012-13, Community Eligibility Provision (CEP) allows high-poverty schools to provide free meals to all students. Schools participating in CEP may report 100% eligibility, making FRPL less useful as a poverty proxy. Use MEPS or SAIPE for poverty measurement instead.
+**FRPL Complexity**: The Community Eligibility Provision (CEP), phased in from 2011-12 and nationwide from 2014-15, allows high-poverty schools to provide free meals to all students. Schools participating in CEP may report 100% eligibility, making FRPL less useful as a poverty proxy. Use MEPS or SAIPE for poverty measurement instead.
 
 ---
 
@@ -323,8 +323,8 @@ Starting 2016-17, NCES CCD files are published in **long format** (one row per o
 ccd_[level]_[year]_[version].csv
 
 Examples:
-ccd_sch_029_2223_w_1a.csv  (School membership, 2022-23, version 1a)
-ccd_lea_052_2223_l_1a.csv  (LEA directory, 2022-23, long format, version 1a)
+ccd_sch_029_2223_w_1a.csv  (School directory, 2022-23, version 1a)
+ccd_lea_052_2223_l_1a.csv  (LEA membership, 2022-23, long format, version 1a)
 ```
 
 **NCES Version Codes**:
@@ -344,7 +344,5 @@ All data uses lowercase column names, integer-coded categoricals, and a consiste
 
 ### Release Schedule
 
-1. **Preliminary Directory**: ~6-8 months after school year end (e.g., July for previous fall data)
-2. **Preliminary Universe**: ~10-12 months after school year end
-3. **Provisional Files**: ~12-18 months after school year end
-4. **Finance Data**: ~24-30 months after fiscal year end
+1. **Nonfiscal Files**: Since SY 2022-23 (EDPass), states submit by about July after the school year and NCES releases within about 4 months (SY 2023-24 example; see `data-collection.md`)
+2. **Finance Data**: ~24-30 months after fiscal year end

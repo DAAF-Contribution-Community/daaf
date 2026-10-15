@@ -335,9 +335,9 @@ df |> filter(lep == 1)  # Correct
 ### Important Notes
 
 1. **Any absence counts** - Excused, unexcused, suspensions all count
-2. **15-day threshold is CRDC standard** - Some states use 10% of enrolled days
-3. **Added in 2015-16** - Not available in earlier collections
-4. **COVID impact** - 2020-21 definition complicated by remote learning
+2. **15-day threshold on the CRDC form (2013-14, 2015-16)** - From 2017-18 the data come from EDFacts (state-reported); some states use other definitions (e.g., 10% of enrolled days), and a uniform 15-day definition after 2016 was not verified
+3. **Added in 2013-14** - Collected on the CRDC form in 2013-14 and 2015-16; from 2017-18 on, OCR takes chronic-absenteeism data from EDFacts (state-reported) rather than the CRDC form, so treat the 2015 to 2017 change as a source change
+4. **COVID impact** - 2020-21 values come from EDFacts and reflect pandemic attendance disruption; compare with caution
 
 ### State Variation
 
@@ -346,7 +346,7 @@ Some states define chronic absenteeism as:
 - Different day thresholds
 - Different treatment of excused absences
 
-CRDC uses consistent 15-day definition across all states.
+The CRDC form used 15+ school days (2013-14, 2015-16). From 2017-18 the data come from EDFacts (state-reported); a uniform 15-day definition across states after 2016 was not verified.
 
 ---
 
@@ -441,7 +441,7 @@ df <- df |> filter(if_all(all_of(categorical_cols), \(x) x > 0 & x < 99))
 ### Suppression Rules
 
 Small cells are suppressed to protect student privacy:
-- Typically counts of 1-5 students
+- No fixed "1-5" threshold is documented by OCR; the method varies by collection (2011-12 rounding in groups of three, 2015-16 small-cell suppression plus rounding, 2020-21 onward perturbation plus data-quality suppression). See `data-quality.md` § Privacy Protection by Collection Year
 - Applied at subgroup level
 - More suppression in small schools
 - Complementary suppression to prevent back-calculation

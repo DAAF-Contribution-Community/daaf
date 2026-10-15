@@ -24,7 +24,7 @@ Before 2005:
 
 After 2005:
 - Models switched to ACS 1-year estimates
-- ACS sample size: ~3,000,000 addresses nationally
+- ACS sample size: ~3.5 million addresses per year
 - Much larger samples for most areas
 
 ### Why the Change
@@ -133,10 +133,8 @@ Generally improves data quality. May create minor year-to-year changes when:
 
 ### Significant Recent Changes
 
-2022 estimates incorporated:
-- Connecticut county equivalent changes
-- Chugach Census Area split (Alaska)
-- Copper River Census Area split (Alaska)
+- 2020 estimates: substantial county-equivalent changes in Alaska.
+- 2022 estimates: multiple substantial changes in Connecticut (see Census "Substantial Changes to Counties and County Equivalent Entities").
 
 ### How to Handle
 
@@ -165,7 +163,7 @@ Between 2008 and 2009, the method for calculating standard errors was modified:
 | 2006-2009 | Better | GQ included throughout |
 | 2010-present | Yes | Current methodology |
 
-**DO NOT compare across 2004/2005 or 2009/2010 boundaries.**
+**DO NOT compare across 2004/2005. Across 2009/2010, poverty *rates* are comparable for states/counties per Census; compare *counts* with caution (new decennial 2010 benchmark).**
 
 ### School District Estimates
 
@@ -217,9 +215,8 @@ Reasons:
 
 | Years | Available | Notes |
 |-------|-----------|-------|
-| 1989, 1993 | Limited | Early estimates |
-| 1995 | Yes | Regular series begins |
-| 1997-present | Annual | Continuous annual series |
+| 1995, 1997 | Yes | Biennial (Improving America's Schools Act of 1994); no 1996 or 1998 district estimates |
+| 1999-present | Annual | Continuous annual series |
 | 1999-present | Via Education Data Portal | Mirror data (parquet/CSV) |
 
 ### Counties

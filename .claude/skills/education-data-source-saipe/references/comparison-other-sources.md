@@ -24,14 +24,14 @@ Understanding how SAIPE relates to other poverty and income measures, and when t
 | **Population** | Residential (all children 5-17) | Enrolled students who apply |
 | **Geography** | School district | Individual schools |
 | **Source** | Model-based estimate | Administrative participation |
-| **Timing** | ~18-month lag | School year |
+| **Timing** | ~12-13 months after the income year ends (~18 months from its midpoint; DAAF inference) | School year |
 
 ### Why They Don't Match
 
 1. **Different thresholds**: FRPL uses higher income cutoffs
-   - Poverty (family of 4): ~$31,000
-   - Free lunch eligible: ~$40,560
-   - Reduced lunch eligible: ~$57,720
+   - Poverty (2024 SAIPE threshold, family of 4 with 2 children): $31,812
+   - Free lunch eligible (SY 2025-26): income ≤ $41,795
+   - Reduced lunch eligible (SY 2025-26): income < $59,478
 
 2. **Different populations**:
    - SAIPE: All children in district boundaries
@@ -145,7 +145,7 @@ But not used in current SAIPE production.
 | Aspect | SAIPE | CPS ASEC |
 |--------|-------|----------|
 | **Geography** | State, county, district | National, state (limited) |
-| **Sample size** | Via ACS (3M addresses) | ~100,000 addresses |
+| **Sample size** | Via ACS (~3.5 million addresses per year) | ~100,000 addresses |
 | **Income detail** | Limited (median only) | Detailed components |
 | **Historical depth** | 1989-present | 1960s-present |
 

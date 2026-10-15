@@ -115,7 +115,7 @@ Building a time series?
 | Membership | School, LEA, State | Enrollment by grade, race, sex | 1986+ | Annual |
 | Staffing | School, LEA, State | FTE teachers, staff by category | 1987+ | Annual |
 | Finance (State) | State | Revenue, expenditure by source/function | 1989+ | Annual (1-2 yr lag) |
-| Finance (District) | LEA | Revenue, expenditure, per-pupil | 1989+ | Annual (2 yr lag) |
+| Finance (District) | LEA | Revenue, expenditure, per-pupil | FY 1980+ (all LEAs annually FY 1995+) | Annual (2 yr lag) |
 | Dropout/Completers | LEA, State | Dropout counts, diploma recipients | 1991+ | Annual |
 
 > **Note:** Not all components listed above are available through the Portal mirrors. See the Data Access section for which datasets are mirrored.
@@ -240,7 +240,7 @@ Schools → Local Education Agencies (LEAs)
         CCD Public Data Files
 ```
 
-**Timeline**: Data for school year 20XX-YY typically submitted spring 20YY, released fall 20YY (preliminary) to spring 20YY+1 (provisional/final).
+**Timeline**: Since SY 2022-23 (EDPass), states submit by about July after the school year and NCES releases within about 4 months (SY 2023-24 example). See `./references/data-collection.md`.
 
 ## Data Access
 
@@ -340,7 +340,7 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Assuming `-1` is missing | In enrollment `grade` data, `-1` = Pre-K | Check variable format in codebook |
 | Reading `highest_grade_offered == -1` as a grade | In directory grade-span (GSLO/GSHI), `-1` = MISSING, not Pre-K/≥9 | Exclude `-1` before grade-span filters (see variable-definitions.md) |
 | Cross-state comparison | Different state definitions | Check state methodology first |
-| Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
+| Using FRPL as poverty measure | CEP schools may report all students as free-lunch eligible | Supplement with MEPS or SAIPE data |
 | Locale time series | 2006 code system change | Analyze pre/post-2006 separately |
 | Charter school counts | Early years incomplete | Verify against state records pre-2010 |
 | Dropout rate comparison | State definitions vary | Within-state comparisons only |

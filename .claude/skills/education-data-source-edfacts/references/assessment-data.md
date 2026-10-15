@@ -72,13 +72,15 @@ NCES periodically maps state proficiency standards onto the NAEP scale:
 
 | Finding | Implication |
 |---------|-------------|
-| State cut scores vary by 40+ NAEP points | Huge differences in what "proficient" means |
-| Some state "proficient" = NAEP "Basic" | States labeling students proficient at low levels |
-| Variation persists over time | Not converging to common standard |
+| 2019 grade 4 NAEP-equivalent standards ranged 38 points in reading (Virginia 200 to Tennessee 238) | Large differences in what "proficient" means |
+| Most states' "proficient" mapped to NAEP Basic in 2019 | States labeling students proficient at NAEP Basic levels |
+| Ranges narrowed 2009→2019 but remain large | Narrowing, but no common standard |
+
+> NCES 2019 mapping study: "Overall, in 2019, most state standards for both grades and both subjects mapped at the NAEP Basic achievement level." and "In all grades and subjects, the differences were smaller in 2019 than in 2009." Reading range from NCES Table 2019a (grade 4).
 
 ### Example: Mapping Results
 
-From NCES mapping studies (illustrative):
+Hypothetical illustration, not NCES values:
 
 | State | Grade 4 Reading "Proficient" | NAEP Equivalent |
 |-------|------------------------------|-----------------|

@@ -48,7 +48,7 @@ The Common Core of Data is the primary federal database on public elementary and
 
 ### CCD Data Quality Notes
 
-- **FRPL in CEP schools**: Often reported as 100%, unreliable as poverty measure
+- **FRPL in CEP schools**: CEP schools may report all students as free-lunch eligible (NCES); since SY 2016-17 states may report direct certification instead. Unreliable as a poverty measure
 - **Missing data**: Some schools have missing enrollment or FRPL counts
 - **Definitional changes**: School IDs can change with restructuring
 - **Input vintage**: Record the exact CCD vintage used by the selected MEPS release; do not infer a fixed MEPS publication lag from CCD timing
@@ -78,17 +78,17 @@ Uses a regression-based model to produce estimates for small areas where direct 
 
 | Variable | Description | Role in MEPS |
 |----------|-------------|--------------|
-| `population_5_17_poverty` | Children 5-17 in poverty (count) | District calibration |
+| `population_5_17_poverty` | Children 5-17 in poverty (count) | Model outcome after Urban's adjustment |
 | `population_5_17_poverty_pct` | Percent of 5-17 in poverty | Model target alignment |
 | `population_5_17` | Total children 5-17 | Denominator |
 | `median_household_income` | District median income | Model covariate |
 
 ### SAIPE in MEPS
 
-SAIPE serves as the **calibration anchor** for MEPS:
-1. MEPS model generates school-level estimates
-2. School estimates are adjusted so district totals match SAIPE
-3. This ensures MEPS aligns with Census poverty data at the district level
+SAIPE is the **model outcome** for MEPS (Gutierrez & Blagg 2025):
+1. Urban adjusts SAIPE's count of students in poverty for geographic districts enrolling 10,000 or more students, subtracting ACS-based estimates of non-public school students in poverty
+2. The district-level model predicts adjusted SAIPE poverty from district-aggregated free-lunch or direct-certification shares; its parameters are then applied to schools
+3. Only Modified MEPS is adjusted so district aggregates match adjusted SAIPE. Original MEPS is a model prediction
 
 ### SAIPE Data Quality Notes
 
@@ -101,11 +101,11 @@ SAIPE serves as the **calibration anchor** for MEPS:
 
 ### What is ISP?
 
-The Identified Student Percentage is the share of students directly certified for free meals through categorical eligibility programs.
+The Identified Student Percentage is identified students ÷ enrollment as of April 1 of the prior school year. Identified students are those certified for free meals without an application (directly certified via SNAP, TANF, FDPIR or, where USDA-approved, Medicaid, plus homeless, migrant, runaway, Head Start and non-application foster children). ISP is not identical to CCD's direct-certification count.
 
-- **Source**: State education agencies (via USDA/FNS)
-- **Used in**: MEPS 2.0 (December 2025)
-- **Coverage**: Schools participating in National School Lunch Program
+- **Source**: ISP: from FRAC's CEP database (state-posted ISPs, 2013-14 onward), used to fill missing direct-certification data. MEPS 1.0 used some; 2.0 uses all available.
+- **Coverage**: States must post school-level ISPs for schools with ISPs of at least 15 percent as of SY 2024-25 (30 percent for prior years), so lower-ISP schools are generally absent (Gutierrez & Blagg 2025, appendix A)
+- **Timing**: Posted ISP files report the previous school year's ISP (e.g., the 2022-23 file refers to spring 2022 data)
 
 ### ISP Components
 
@@ -133,10 +133,7 @@ Students are identified through participation in:
 
 ### ISP in MEPS 2.0
 
-MEPS 2.0 incorporates ISP as a key predictor:
-- Provides poverty signal even in CEP schools
-- More directly measures program participation
-- Less affected by form collection policies
+MEPS 2.0 uses ISP as a **proxy for missing direct-certification data**, not as a separate predictor. MEPS 1.0 used some ISP data; MEPS 2.0 uses all available ISPs for 2013-14 through 2022-23. ISP files are matched to CCD schools numerically (identifiers exist only from 2019-20) or by fuzzy name matching at a 90 percent threshold (Gutierrez & Blagg 2025, appendix A).
 
 ### ISP Data Quality Notes
 
@@ -176,8 +173,8 @@ ISP Data ────────┴──── Matched to schools via state/sc
 |-------------|----------------------------|-------------|
 | CCD | Verify the exact input years documented for the selected MEPS release | Federal source updates separately from MEPS |
 | SAIPE | Verify the exact input years documented for the selected MEPS release | Federal source updates separately from MEPS |
-| ISP | Used in MEPS 2.0 | State availability and linkage vary |
-| MEPS 1.0 | 2006-2019 | Original release |
+| ISP | MEPS 1.0 used some; MEPS 2.0 uses all available for 2013-14 through 2022-23 | State availability and linkage vary |
+| MEPS 1.0 | 2013-14 to 2018-19 (superseded) | Original release |
 | MEPS 2.0 | School years 2009-10 through 2022-23 | Released 2025-12-11; Urban states updates will occur annually |
 
 > **Portal status re-probed 2026-08-06:** Portal year 2022 returned rows (count 94,941); Portal year 2023 returned an empty result (count 0). This is a publication-vintage observation, not evidence of a fixed methodological lag or a causal delay attributable to CCD or SAIPE.
@@ -211,8 +208,8 @@ Also available directly from the Census Bureau:
 ### ISP Data
 
 - Not directly available via the Education Data Portal mirrors
-- Incorporated into MEPS 2.0 estimates
-- Raw data available through USDA Food and Nutrition Service
+- Incorporated into MEPS 2.0 estimates (as a proxy for missing direct certification)
+- Source: FRAC's national CEP database, compiled from state-posted ISPs. The public database shows only the most recent year; Urban obtained earlier years (from 2013) on request from FRAC (Gutierrez & Blagg 2025, appendix A)
 
 ## Data Quality Assessment
 
@@ -224,7 +221,7 @@ Also available directly from the Census Bureau:
 | School identifiers | High | NCES standards |
 | SAIPE district poverty | Moderate-High | Model-based but Census quality |
 | FRPL counts (non-CEP) | Moderate | Varies by state |
-| FRPL counts (CEP schools) | Low | Often 100%, meaningless |
+| FRPL counts (CEP schools) | Low | May report all students as eligible; not a poverty signal |
 | ISP | Moderate | Varies by state matching |
 
 ### Recommendations

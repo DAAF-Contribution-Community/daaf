@@ -149,7 +149,7 @@ After shrinkage estimation:
 | September-October | Administrative data processing |
 | October-November | Model fitting and estimation |
 | November | Quality review and disclosure |
-| December | Public release |
+| November-December (2024 estimates: January 27, 2026) | Public release |
 
 ### Quality Checks
 

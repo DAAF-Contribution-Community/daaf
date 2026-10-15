@@ -26,7 +26,7 @@ Understanding data quality limitations is essential for responsible analysis of 
 | **Definition variation** | High | Same term, different meanings |
 | **Underreporting** | Moderate-High | Counts may be understated |
 | **Suppression** | Moderate | Missing subgroup data |
-| **COVID impact (2020-21)** | High | Anomalous year |
+| **COVID impact (2020-21, Portal year 2020)** | High | Anomalous year |
 | **State variation** | Moderate | Cross-state comparison difficult |
 
 ### Quality Varies by Data Element
@@ -137,12 +137,18 @@ Small cell sizes are suppressed to protect student privacy:
 - Comply with FERPA requirements
 - Prevent stigmatization
 
-### Suppression Thresholds
+### Privacy Protection by Collection Year
 
-| Level | Typical Threshold |
-|-------|-------------------|
-| OCR direct suppression | Counts of 1-5 students |
-| Education Data Portal | Values of 1-5 typically suppressed |
+OCR's public-use files protect small counts with a method that changed across collections:
+
+| Collection | OCR method (public-use file) |
+|------------|------------------------------|
+| 2011-12 | Student counts rounded in groups of three (1-3 rounded to 2, 4-6 rounded to 5); true zeros revealed where possible |
+| 2015-16 | Small cells suppressed (OCR reserve code `-2`); other counts and numerical data elements rounded |
+| 2020-21 onward | Low-frequency perturbation (add or subtract one case, plus random data swapping; true zeros protected except for outcome data such as Algebra passing); data-quality suppression with OCR reserve code `-11` (a small pilot in 2017-18, applied broadly from 2020-21) |
+| Education Data Portal | `-3` = suppressed; check the codebook for how OCR reserve codes were mapped |
+
+No fixed "1-5" threshold is documented by OCR. Because rounding and perturbation alter small counts rather than blanking them, a non-suppressed small value is not necessarily the true count.
 
 ### Types of Suppression
 
@@ -400,13 +406,13 @@ interpretation
 
 ### Why 2020-21 Is Anomalous
 
-The 2020-21 school year was heavily impacted by COVID-19:
+The 2020-21 school year (Portal year 2020; Portal year 2021 is 2021-22) was heavily impacted by COVID-19:
 
 | Factor | Impact on Data |
 |--------|----------------|
 | **School closures** | Less opportunity for incidents |
 | **Remote learning** | Discipline in virtual settings unclear |
-| **Attendance tracking** | "Chronic absenteeism" redefined |
+| **Attendance tracking** | Chronic absenteeism (from EDFacts, state-reported) reflects pandemic attendance disruption |
 | **Course offerings** | Some courses not offered |
 | **Staffing disruptions** | High turnover, vacancies |
 
@@ -416,7 +422,7 @@ The 2020-21 school year was heavily impacted by COVID-19:
 |--------------|-----------------|
 | Discipline (all types) | Artificially low |
 | Restraint/seclusion | Very low (less in-person) |
-| Chronic absenteeism | Definition changed; not comparable |
+| Chronic absenteeism | 2020-21 values in the CRDC file come from EDFacts (state-reported) and reflect pandemic attendance disruption; compare with caution |
 | Course enrollment | Disrupted offerings |
 | Harassment | Mixed (less in-person, more cyber) |
 
@@ -425,7 +431,8 @@ The 2020-21 school year was heavily impacted by COVID-19:
 CRDC added temporary COVID-related variables:
 - Amount of remote instruction
 - Percentage of students receiving remote instruction
-- Internet and device access
+
+Internet and device access items are not COVID additions: they were new optional items in 2017-18 and were carried into 2020-21.
 
 ### Recommendations for 2020-21 Data
 
@@ -459,7 +466,7 @@ CRDC added temporary COVID-related variables:
 
 | Factor | Impact |
 |--------|--------|
-| **Coverage verification** | Collection scope must be checked by cycle; 2013-14 is an official universe collection |
+| **Coverage and response** | Every modern collection (2011-12 onward) is a universe collection per OCR; response rates and data-quality suppression still vary by cycle |
 | **Variable changes** | Variables added, removed, redefined |
 | **Definition changes** | Same variable, different definition |
 | **Form changes** | Collection instrument updates |
@@ -469,10 +476,10 @@ CRDC added temporary COVID-related variables:
 
 | Period | Comparability | Notes |
 |--------|---------------|-------|
-| 2011 vs. 2013 | Limited | Verify 2011-12 coverage separately; 2013-14 is universe |
+| 2011 vs. 2013 | Potentially usable | Both universe collections; harmonize definitions, and note the 2011-12 rounding method |
 | 2013-2015-2017 | Potentially usable | Universe collections; still harmonize definitions and variables |
 | Including 2020-21 | Poor | COVID impact |
-| 2021-22 onward | Good | Post-pandemic baseline |
+| 2021-22 onward | Generally good | Referrals to law enforcement and school-related arrests are not directly comparable to earlier years (2021-22 definition revisions) |
 
 ### Variable Availability by Year
 
@@ -480,11 +487,13 @@ CRDC added temporary COVID-related variables:
 |----------|------|------|------|------|------|------|
 | Basic discipline | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Restraint/seclusion | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Chronic absenteeism | - | - | ✓ | ✓ | ✓ | ✓ |
+| Chronic absenteeism | - | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Preschool discipline | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Computer science | - | - | - | ✓ | ✓ | ✓ |
-| Suspension instances | - | - | - | - | ✓ | ✓ |
-| School days missed | - | - | - | - | ✓ | ✓ |
+| Suspension instances | - | - | ✓ | ✓ | ✓ | ✓ |
+| School days missed | - | - | ✓ | ✓ | ✓ | ✓ |
+
+Columns are Portal year labels (fall year: 2020 = 2020-21). Suspension instances and school days missed were optional in 2013-14 and required from 2015-16; the Portal has them from 2015. Chronic absenteeism comes from EDFacts (state-reported) from 2017-18 on, so treat the 2015 to 2017 change as a source change.
 
 ---
 
@@ -534,7 +543,8 @@ def crdc_quality_checks(df, year):
         ).height / totals.height * 100
 
     # 6. Year-specific checks
-    if year == 2020 or year == 2021:
+    # Portal year is the fall year: 2020 = 2020-21 (COVID); 2021 = 2021-22 is not the COVID year
+    if year == 2020:
         checks['covid_year_warning'] = True
         checks['note'] = 'COVID-19 impacted year - interpret with caution'
 
@@ -587,7 +597,8 @@ if (nrow(totals) > 0) {
 }
 
 # 6. Year-specific checks
-if (year == 2020 || year == 2021) {
+# Portal year is the fall year: 2020 = 2020-21 (COVID); 2021 = 2021-22 is not the COVID year
+if (year == 2020) {
     checks$covid_year_warning <- TRUE
     checks$note <- "COVID-19 impacted year - interpret with caution"
 }
@@ -639,7 +650,7 @@ When analyzing CRDC data, document:
 
 ### For Time Series
 
-1. **Use verified universe collections** - 2013-14 is officially universe; verify each cycle and harmonize definitions
+1. **Use universe collections** - Every modern collection (2011-12 onward) is universe per OCR; harmonize definitions across cycles
 2. **Exclude or flag 2020-21** - COVID anomaly
 3. **Check variable consistency** - Same definition across years
 4. **Same schools if possible** - Panel approach

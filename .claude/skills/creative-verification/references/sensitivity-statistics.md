@@ -35,10 +35,10 @@ them into any report that uses the statistic.
 
 | Statistic | Challenges | Container status | Formula confidence |
 |-----------|-----------|------------------|--------------------|
-| E-value | Unobserved confounding (RR scale) | Executable (RR closed-form) | RR form secondary-corroborated; OR/HR/continuous verify-before-relying |
+| E-value | Unobserved confounding (RR scale) | Executable (RR closed-form) | RR form primary-source-verified (primary-author letter, Mathur et al. 2018); common-outcome OR/HR and continuous verify-before-relying |
 | Cinelli–Hazlett robustness value (RV_q) | Unobserved confounding (regression) | Executable (closed-form from t, df) | Primary-source-verified |
 | Rosenbaum Γ | Hidden bias in matched designs | Flag-and-describe | N/A (no installed route) |
-| Oster δ | Proportional selection on unobservables | Executable (needs 3 regressions + R²_max) | Formula standard; δ=1 benchmark caveat |
+| Oster δ | Proportional selection on unobservables | Executable (needs 3 regressions + R²_max) | Approximation primary-source-verified (Oster 2016 WP, p. 12); exact δ* = Prop. 3; δ=1 benchmark caveat |
 | DiD pre-trends / honest-DiD | Parallel trends | Event-study executable; honest-DiD flag-and-describe | Event-study standard; honest bounds flag |
 | McCrary / Cattaneo density | No manipulation (RD) | Flag-and-describe (`rddensity` absent); `rdrobust` estimate executable | N/A |
 | IV falsification | Exclusion restriction (untestable) | Executable (overid / placebo) | N/A — exclusion is never "tested" |
@@ -51,8 +51,9 @@ them into any report that uses the statistic.
 **What it quantifies.** The minimum strength of association — on the risk-ratio scale —
 that an unmeasured confounder would need with *both* the treatment and the outcome to
 fully explain away an observed association (VanderWeele & Ding 2017 —
-https://www.acpjournals.org/doi/10.7326/M17-1485 ; Stata/R `EValue` package —
-https://journals.sagepub.com/doi/10.1177/1536867X20909696). A large E-value means only
+https://doi.org/10.7326/M16-2607 ; Stata `evalue` — Linden, Mathur & VanderWeele
+(2020), https://doi.org/10.1177/1536867X20909696 ; R `EValue` — Mathur et al. (2018),
+https://doi.org/10.1097/EDE.0000000000000864). A large E-value means only
 a strong confounder could overturn the result; an E-value near 1 means a weak one
 could.
 
@@ -63,31 +64,36 @@ E = RR + sqrt(RR * (RR - 1))
 ```
 
 For RR < 1, invert first (RR' = 1/RR) and apply the same form. Apply it to the point
-estimate and, separately, to the confidence-limit nearer the null to get the E-value
-for the bound.
+estimate and, separately, to the confidence limit closest to the null to get the
+E-value for the CI. If the CI already includes 1, the CI E-value is 1: it is the
+confounding strength "capable of attenuating the confidence interval such that it
+includes the null" (Mathur et al. 2018), and no confounding is needed for that.
 
-> **Confidence: secondary-corroborated.** The RR closed form above is corroborated
-> across multiple independent secondary sources but was **not** verified against the
-> paywalled Annals of Internal Medicine primary text (the DOI returned HTTP 403). It
-> is a well-known, widely-reproduced result. The OR / HR / continuous-outcome
-> conversions (rare-outcome approximation, hazard-ratio and standardized-mean-
-> difference transforms in VanderWeele & Ding 2017 Table 2) are **inference /
-> verify-before-relying** — confirm each conversion constant against VanderWeele &
-> Ding 2017 Table 2 before a result depends on it.
+> **Confidence: primary-source-verified (primary-author letter).** The RR closed form
+> above and the invert-below-1 rule are read from the primary authors' open-access
+> letter (Mathur, Ding, Riddell & VanderWeele 2018, *Epidemiology* 29(5):e45): "If the
+> original risk ratio is below 1, then one first takes the inverse before applying the
+> E-value formula." The Annals of Internal Medicine paper itself was not read (the
+> publisher returned HTTP 403). The same letter says the formula "can also be used for
+> hazard ratios or odds ratios with outcomes that are rare at the end of follow-up".
+> The common-outcome OR / HR and continuous-outcome conversions (VanderWeele & Ding
+> 2017 Table 2) are **inference / verify-before-relying** — confirm each conversion
+> constant against VanderWeele & Ding 2017 Table 2 before a result depends on it.
 
 **Executable recipe (RR scale only).**
 
 ```python
 # INTENT: compute the E-value for a risk-ratio estimate and its near-null CI bound
 # REASONING: quantifies how strong an unmeasured confounder must be to nullify the finding
-# ASSUMES: `rr` and `rr_bound` are risk ratios; for RR<1, invert before calling
-# CONFIDENCE: RR closed form is secondary-corroborated (primary text paywalled)
+# ASSUMES: rr and rr_bound are risk ratios on the original scale; rr_bound is the CI limit closest to the null (the helper inverts RR<1 itself)
+# CONFIDENCE: RR closed form primary-source-verified (primary-author letter, Mathur et al. 2018)
 import numpy as np
 def _evalue(rr):
     rr = 1.0 / rr if rr < 1 else rr
     return rr + np.sqrt(rr * (rr - 1.0))
 rr, rr_bound = 1.8, 1.3
-print({"evalue_point": _evalue(rr), "evalue_bound": _evalue(rr_bound)})
+evalue_bound = 1.0 if (rr >= 1 and rr_bound <= 1) or (rr < 1 and rr_bound >= 1) else _evalue(rr_bound)  # rr_bound = CI limit closest to the null; CI E-value is 1 when the CI includes the null
+print({"evalue_point": _evalue(rr), "evalue_bound": evalue_bound})
 # INTENT: interpret against a benchmark — is a confounder this strong plausible here?
 ```
 
@@ -98,8 +104,9 @@ flat-script code style.)
 **Misuse caveats.** The E-value is a *threshold*, not a probability the result is
 confounded — it says nothing about whether such a confounder exists, only how strong
 it would have to be; always pair it with a substantive benchmark. Do **not** apply the
-RR formula directly to an odds ratio or hazard ratio without the documented
-conversion — treating an OR as an RR overstates the E-value for common outcomes.
+RR formula directly to an odds ratio or hazard ratio for a common outcome without the
+documented conversion — direct use is licensed only when the outcome is rare at the
+end of follow-up, and treating a common-outcome OR as an RR overstates the E-value.
 
 ---
 
@@ -110,9 +117,10 @@ robustness value RV_q is the strength of confounding — as a share of residual
 variance it would need to explain in *both* treatment and outcome — required to reduce
 the estimated effect by 100·q percent (Cinelli & Hazlett 2020, *Making Sense of
 Sensitivity* — https://carloscinelli.com/files/Cinelli%20and%20Hazlett%20(2020)%20-%20Making%20Sense%20of%20Sensitivity.pdf).
-Unlike the E-value it makes no assumption on the functional form of treatment
-assignment or the confounder's distribution, and it is computable from a standard
-regression table.
+Like the E-value it needs no assumption on the confounder's distribution (and none on
+the treatment-assignment functional form); unlike it, it is exact for linear regression
+and is parameterized in partial R² rather than risk ratios (Cinelli & Hazlett 2020,
+§6). It is computable from a standard regression table.
 
 **Formula (primary-source-verified — full-text read and quoted, Eq. 18).**
 
@@ -122,8 +130,9 @@ where f_q = q * |f_{Y~D|X}|  and  f_{Y~D|X} = |t| / sqrt(df)
 ```
 
 Here `t` is the treatment coefficient's t-statistic and `df` its residual degrees of
-freedom — nothing else is needed. The α-adjusted variant (Eq. 20) substitutes
-`f_{q,α} = f_q − t*_{α,df−1}/sqrt(df−1)` for `f_q`.
+freedom — nothing else is needed. The α-adjusted variant defines
+`f_{q,α} = f_q − |t*_{α,df−1}|/sqrt(df−1)` (Eq. 19) and substitutes it for `f_q` in the
+same form to give RV_{q,α} (Eq. 20); if `f_{q,α} < 0`, the robustness value is zero.
 
 **Executable recipe (closed-form from any statsmodels/pyfixest fit).**
 
@@ -147,7 +156,8 @@ print({"t": t, "df": dof, "RV_q": rv_q})
 **Misuse caveats.** RV_q assumes the *same* partial-R² strength on treatment and
 outcome (the "equal confounding" benchmark); a confounder much stronger on one side
 can overturn the result at a lower RV — report benchmark bounds against observed
-covariates (the paper's `bound_label` idea) rather than RV_q alone. It bounds bias
+covariates (the paper's formal bounds benchmarked on observed covariates, §4.4) rather
+than RV_q alone. It bounds bias
 from omitted *confounders*, not from measurement error or selection.
 
 ---
@@ -157,7 +167,8 @@ from omitted *confounders*, not from measurement error or selection.
 **What it quantifies.** In a matched observational design, the magnitude of departure
 from random assignment — expressed as Γ, the maximum odds-ratio by which two matched
 units could differ in treatment odds due to an unobserved covariate — at which the
-result's significance is lost (https://academic.oup.com/biometrics/article/80/4/ujae106/7821107).
+result's significance is lost (Rosenbaum 1987 — https://doi.org/10.1093/biomet/74.1.13;
+definition not re-checked against Rosenbaum's text).
 Γ = 1 is random assignment; the reported number is the smallest Γ that breaks
 significance.
 
@@ -186,7 +197,8 @@ unobservables is proportional to selection on observables — δ is the degree o
 proportionality required to drive the treatment effect to zero, given an assumption
 about the R² a hypothetical regression on *all* confounders would reach (R²_max).
 δ > 1 means unobservables would have to matter *more* than observables to nullify the
-effect (https://arxiv.org/html/2504.21106).
+effect (Oster 2019; Diegert, Masten & Poirier, arXiv:2504.21106 —
+https://arxiv.org/html/2504.21106).
 
 **Container status: executable** (three OLS fits + arithmetic; no special package).
 Requires the uncontrolled and controlled coefficients/R² and a chosen R²_max
@@ -196,22 +208,23 @@ Requires the uncontrolled and controlled coefficients/R² and a chosen R²_max
 # INTENT: compute Oster's delta for proportional selection
 # REASONING: delta is how much stronger selection on unobservables must be to zero the effect
 # ASSUMES: short = treatment-only model, full = treatment + controls; Rmax chosen explicitly
-# CONFIDENCE: coefficient-movement formula is standard; the delta=1 BENCHMARK is NOT automatic
+# CONFIDENCE: restricted approximation primary-source-verified (Oster 2016 WP, p. 12); the delta=1 BENCHMARK is NOT automatic
 import statsmodels.formula.api as smf
 short = smf.ols("y ~ treat", data=df.to_pandas()).fit()
 full = smf.ols("y ~ treat + x1 + x2", data=df.to_pandas()).fit()
 b0, r0 = short.params["treat"], short.rsquared
 b1, r1 = full.params["treat"], full.rsquared
 r_max = min(1.3 * r1, 1.0)
-# Oster (2019) approximation for beta*=0:
-delta = (b1 * (r1 - r0)) / ((b0 - b1) * (r_max - r1) - b1 * (r1 - r0) + 1e-12)
+# Oster (2019) restricted approximation (β* ≈ β̃ − δ(β̊−β̃)(Rmax−R̃)/(R̃−R̊)), solved for β*=0; for reported results use the exact δ* of Oster's Proposition 3 (needs τ̂x from a treatment-on-controls regression)
+delta = (b1 * (r1 - r0)) / ((b0 - b1) * (r_max - r1))
 print({"beta_full": b1, "R2_full": r1, "R2_max": r_max, "delta_for_zero_effect": delta})
 ```
 
 **Misuse caveats — the central trap.** δ = 1 is **not** an automatic "equal selection"
 benchmark: absent an exogeneity assumption δ can converge to any real number, so
 reporting "δ > 1, therefore robust" without justifying R²_max and the proportionality
-premise is misuse (https://arxiv.org/html/2504.21106). Always report the R²_max used
+premise is misuse (Diegert, Masten & Poirier, arXiv:2504.21106 —
+https://arxiv.org/html/2504.21106). Always report the R²_max used
 and its rationale; show sensitivity of δ to R²_max. δ is a coefficient-stability
 heuristic, not a proof of unconfoundedness.
 
@@ -221,12 +234,14 @@ heuristic, not a proof of unconfoundedness.
 
 **What it quantifies.** For difference-in-differences, the credibility of the parallel-
 trends assumption. Two tools: an **event-study** plot of pre-period lead coefficients
-(should be near zero), and **honest-DiD** (Rambachan & Roth) sensitivity bounds that
+(should be near zero), and **honest-DiD** (Rambachan & Roth 2023) sensitivity bounds that
 ask how large a post-period parallel-trends violation could be, disciplined by the
 observed pre-trend, before the effect loses significance.
 
-**Container status.** Event-study is **executable** via `pyfixest` (`sunab` /
-interacted leads-and-lags, Sun–Abraham for staggered adoption). Honest-DiD is
+**Container status.** Event-study is **executable** via `pyfixest`
+(`pf.event_study(..., estimator="saturated")` for Sun–Abraham under staggered adoption,
+or interacted leads-and-lags; pyfixest has no `sunab()` — see the `pyfixest` skill,
+`references/difference-in-differences.md`). Honest-DiD is
 **flag-and-describe**: `HonestDiD` (R) and `diff-diff` (Python) are both absent, and
 the underlying optimization over convex restriction sets is non-trivial — do not
 reimplement.
@@ -234,9 +249,11 @@ reimplement.
 ```python
 # INTENT: estimate an event-study to inspect pre-trend leads before any DiD claim
 # REASONING: near-zero, non-trending leads are necessary (not sufficient) for parallel trends
-# ASSUMES: `rel_time` is event-time centered at -1; Sun-Abraham handles staggered timing
+# ASSUMES: `cohort` = each unit's first treated period (gname); Sun-Abraham handles staggered timing
+# ASSUMES: argument names as in the pyfixest skill (references/difference-in-differences.md)
 import pyfixest as pf
-m = pf.feols("y ~ sunab(cohort, period) | unit + period", data=df.to_pandas())
+m = pf.event_study(data=df.to_pandas(), yname="y", idname="unit", tname="period",
+                   gname="cohort", estimator="saturated", att=False, cluster="unit")
 m.iplot()  # INTENT: visual inspection of leads/lags; save the figure to the workspace
 # FLAG-AND-DESCRIBE: for formal honest-DiD bounds (Rambachan-Roth), no installed route;
 #   describe the pre-trend magnitude qualitatively, cite the method, recommend a Dockerfile add.
@@ -245,8 +262,10 @@ m.iplot()  # INTENT: visual inspection of leads/lags; save the figure to the wor
 **Misuse caveats.** Naive pre-trend significance tests are **low-powered, biased, and
 under-cover** — a non-significant pre-trend is *not* proof of parallel trends, and
 conditioning the analysis on passing a pre-test induces its own distortions
-(https://arxiv.org/pdf/2510.26470). Report the pre-trend as an event-study picture
-plus honest-DiD-style reasoning, never as a pass/fail pre-test.
+(Roth 2022 — https://doi.org/10.1257/aeri.20210236). Report the pre-trend as an
+event-study picture plus honest-DiD-style reasoning, never as a conventional pass/fail
+pre-test (conditionally valid pre-tests exist — Mikhaeil & Harshaw, arXiv 2510.26470 —
+but are flag-and-describe here).
 
 ---
 
@@ -255,11 +274,11 @@ plus honest-DiD-style reasoning, never as a pass/fail pre-test.
 **What it quantifies.** For regression discontinuity, whether units *manipulated* their
 position around the cutoff — tested as a discontinuity in the density of the running
 variable at the threshold (a placebo test on the running-variable density), followed
-by covariate-as-placebo-outcome falsification
-(https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf).
+by covariate-as-placebo-outcome falsification.
 
-**Container status.** The formal density/manipulation test (`rddensity`,
-Cattaneo/Jansson/Ma/Masini) is **not installed** (OBSERVED). `rdrobust` 1.3.0 **is**
+**Container status.** The formal density/manipulation test (`rddensity`; Cattaneo,
+Jansson & Ma 2020, *JASA* 115(531):1449–1455,
+https://doi.org/10.1080/01621459.2019.1635480) is **not installed** (OBSERVED). `rdrobust` 1.3.0 **is**
 installed but implements RD *point estimation*, not the density test. Two options: (a)
 flag as missing tooling and recommend a `rddensity` Dockerfile addition; (b) a manual
 local-polynomial density comparison in `scipy`/`statsmodels`, which is a materially
@@ -276,7 +295,10 @@ print(res)  # point estimation only
 #   optionally report a coarse histogram-density comparison as a labeled approximation, not the test.
 ```
 
-**Misuse caveats.** A passed density test does not prove no manipulation — pair it with
+**Misuse caveats.** A passed density test does not prove no manipulation: researchers
+often misread a statistically insignificant density discontinuity as evidence of
+negligible manipulation, and equivalence testing is needed to bound it (Fitzgerald 2025 —
+https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf). Pair it with
 covariate-placebo falsification. `rdrobust`'s `rdplot()` is reported to fail in 1.3.0 (read-only
 array bug) — this claim is unverified in this container, so probe it before relying on
 it, or plot RD binned means manually. Reporting a home-rolled density comparison
@@ -287,11 +309,13 @@ as "the McCrary test" overstates rigor.
 ## IV Falsification
 
 **What it quantifies.** For instrumental variables, indirect evidence on the exclusion
-restriction — which is **fundamentally untestable**. Available falsifications:
-overidentification tests (with more instruments than endogenous regressors), placebo-
-outcome checks (the instrument should not affect an outcome it can only reach through
-the treatment), and balance of the instrument across pre-determined covariates
+restriction — which is **fundamentally untestable**; placebo-outcome falsification is
+the leverage the cited source names
 (https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html).
+Available falsifications: placebo-outcome checks (the instrument should not affect an
+outcome it can only reach through the treatment), overidentification tests (with more
+instruments than endogenous regressors), and balance of the instrument across
+pre-determined covariates — the last two are DAAF inference, not from the cited source.
 
 **Container status: executable** via `linearmodels` (`IV2SLS`, Sargan/Wooldridge overid
 where overidentified).
@@ -306,7 +330,8 @@ print(m.sargan)  # overidentification test (only informative if overidentified A
 ```
 
 **Misuse caveats.** Never describe the exclusion restriction as "tested" — overid tests
-assume at least one instrument is valid and can pass while all are invalid. A placebo
+assume at least one instrument is valid and can pass while all are invalid (DAAF
+inference, not from the cited source; check an IV text before relying on it). A placebo
 that runs through the treatment channel gives false comfort.
 
 ---
@@ -316,9 +341,10 @@ that runs through the treatment channel gives false comfort.
 **What it quantifies.** How far an estimate generalizes to a target population, framed
 as a selection-into-sample / trial-participation problem: compare effect-modifier
 distributions between sample and target, then reweight the sample to the target and
-re-estimate (Degtiar & Rose 2021 — https://arxiv.org/pdf/2102.11904 ; Pearl &
-Bareinboim selection-diagram transport —
-https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/External-Validity-From-Do-Calculus-to-Transportability-Across-Populations/10.1214/14-STS486.full).
+re-estimate (Degtiar & Rose 2023 — https://doi.org/10.1146/annurev-statistics-042522-103837 ;
+preprint 2021 — https://arxiv.org/pdf/2102.11904 ; Pearl &
+Bareinboim 2014 selection-diagram transport —
+https://doi.org/10.1214/14-STS486).
 
 **Container status: executable** (participation-propensity reweighting via
 `statsmodels` + `polars`). Recipes 12a–12c in `challenge-families.md` implement the
@@ -343,11 +369,16 @@ script and its output are quoted or linked (`interpretation-and-evidence.md`).
 
 ## References
 
-- VanderWeele & Ding (2017), E-value — https://www.acpjournals.org/doi/10.7326/M17-1485 ; `EValue` package — https://journals.sagepub.com/doi/10.1177/1536867X20909696
+- VanderWeele, T. J., & Ding, P. (2017). Sensitivity Analysis in Observational Research: Introducing the E-Value. *Annals of Internal Medicine*, 167(4), 268–274. https://doi.org/10.7326/M16-2607
+- Stata `evalue` — Linden, Mathur & VanderWeele (2020), *Stata Journal* 20(1):162–175, https://doi.org/10.1177/1536867X20909696; R `EValue` — Mathur et al. (2018), *Epidemiology* 29(5):e45, https://doi.org/10.1097/EDE.0000000000000864
 - Cinelli & Hazlett (2020), *Making Sense of Sensitivity* (robustness value) — https://carloscinelli.com/files/Cinelli%20and%20Hazlett%20(2020)%20-%20Making%20Sense%20of%20Sensitivity.pdf
-- Rosenbaum bounds (Γ) — https://academic.oup.com/biometrics/article/80/4/ujae106/7821107
-- Oster δ, benchmark caveat — https://arxiv.org/html/2504.21106
-- DiD pre-trend testing, caution — https://arxiv.org/pdf/2510.26470
-- RD manipulation (McCrary/Cattaneo) + covariate placebo — https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf
-- IV exclusion untestable, falsification only — https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html
-- Degtiar & Rose (2021), generalizability/transportability review — https://arxiv.org/pdf/2102.11904 ; Pearl & Bareinboim transportability — https://projecteuclid.org/journals/statistical-science/volume-29/issue-4/External-Validity-From-Do-Calculus-to-Transportability-Across-Populations/10.1214/14-STS486.full
+- Rosenbaum, P. R. (1987). Sensitivity analysis for certain permutation inferences in matched observational studies. *Biometrika*, 74(1), 13–26. https://doi.org/10.1093/biomet/74.1.13
+- Oster, E. (2019). Unobservable Selection and Coefficient Stability: Theory and Evidence. *Journal of Business & Economic Statistics*, 37(2), 187–204. https://doi.org/10.1080/07350015.2016.1227711
+- Oster, E. (2016). Unobservable Selection and Coefficient Stability: Theory and Evidence (working paper, August 9, 2016; source of the "Oster 2016 WP, p. 12" approximation). Archived copy: https://web.archive.org/web/20250401072627id_/https://emilyoster.net/wp-content/uploads/UnobservableSelectionandCoefficientStabilityTheoryandEvidence.pdf
+- Oster δ, benchmark caveat — Diegert, Masten & Poirier, *An Axiomatic Approach to Comparing Sensitivity Parameters*, arXiv:2504.21106 — https://arxiv.org/html/2504.21106
+- Rambachan, A., & Roth, J. (2023). A More Credible Approach to Parallel Trends. *Review of Economic Studies*, 90(5), 2555–2591. https://doi.org/10.1093/restud/rdad018
+- Roth, J. (2022). Pretest with Caution: Event-Study Estimates after Testing for Parallel Trends. *AER: Insights*, 4(3), 305–322. https://doi.org/10.1257/aeri.20210236 ; conditionally valid pre-tests — Mikhaeil & Harshaw, arXiv:2510.26470 — https://arxiv.org/pdf/2510.26470
+- `rddensity` — Cattaneo, Jansson & Ma (2020), *JASA* 115(531):1449–1455, https://doi.org/10.1080/01621459.2019.1635480
+- RD manipulation: a passed density test does not prove no manipulation (equivalence testing) — Fitzgerald (2025), *Manipulation Tests in Regression Discontinuity Design: The Need for Equivalence Testing* — https://jack-fitzgerald.github.io/files/RDD_Equivalence.pdf
+- IV exclusion untestable; placebo-outcome falsification (the overid and instrument-balance points are DAAF inference) — https://mike-data-analysis.share.connect.posit.cloud/sec-quasi-experimental.html
+- Degtiar & Rose (2023), A Review of Generalizability and Transportability, *Annual Review of Statistics and Its Application* 10:501–524 — https://doi.org/10.1146/annurev-statistics-042522-103837 (preprint 2021: https://arxiv.org/pdf/2102.11904) ; Pearl, J., & Bareinboim, E. (2014). External Validity: From Do-Calculus to Transportability Across Populations. *Statistical Science*, 29(4), 579–595. https://doi.org/10.1214/14-STS486

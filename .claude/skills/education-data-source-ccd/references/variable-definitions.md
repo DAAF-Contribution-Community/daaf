@@ -467,7 +467,7 @@ Similar to school status, indicating changes to LEA boundaries or jurisdiction.
 | `5` | Yes, under Provision 3 |
 | `-1` | Missing/not reported |
 
-> **CEP Note:** Schools using CEP (code 2) report 100% free lunch, making FRPL unreliable as a poverty measure. Use MEPS or SAIPE instead.
+> **CEP Note:** Schools using CEP (code 2) may report all students as free-lunch eligible; since SY 2016-17 states may report direct certification instead. This makes FRPL unreliable as a poverty measure. Use MEPS or SAIPE instead.
 
 ### Virtual School Status (Portal Integer Encoding)
 
@@ -548,7 +548,7 @@ Multiple per-pupil measures exist:
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
 
-### Virtual School (`virtual`, 2014-15+)
+### Virtual School (`virtual`; NCES yes/no flag from 2013-14; categorical codes below, start year not verified)
 
 | Code | Status |
 |------|--------|

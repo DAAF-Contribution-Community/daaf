@@ -22,9 +22,11 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 | Category | Subgroups |
 |----------|-----------|
 | All students | Total student population |
-| Race/Ethnicity | 7 racial/ethnic groups |
+| Race/Ethnicity | Each major racial and ethnic group (State-defined) |
 | Special populations | CWD, EL, economically disadvantaged |
 | Additional populations | Homeless, foster care, migrant, military |
+
+> ACGR disaggregation adds homeless and foster care; migrant and military-connected are not required for ACGR (ED January 2017 ACGR guidance, C-6).
 
 ### Subgroup Codes in EDFacts (Portal Integer Encoding)
 
@@ -146,7 +148,7 @@ Students from low-income families:
 | Era | Definition Issues |
 |-----|-------------------|
 | Pre-CEP | FRPL forms = good proxy |
-| CEP schools | 100% counted, inflating rates |
+| CEP schools | May be reported as 100% economically disadvantaged where the State's definition relies on meal eligibility (State definitions vary; inference) |
 | Alternative measures | States using different definitions |
 
 ```python

@@ -185,7 +185,7 @@ summarized by Roth et al. 2023).
 
 **Stata:**
 ```stata
-* Using fixest-style sunab() in Stata:
+* Using the eventstudyinteract command (fixest's R equivalent is sunab()):
 * eventstudyinteract y lead_lag_vars, absorb(unit year) cohort(first_treat) control_cohort(never_treat)
 
 * Or manual saturation:
@@ -211,8 +211,8 @@ fit.iplot()
 agg = fit.aggregate(weighting="shares")
 ```
 
-**Key difference:** Stata uses `sunab()` as a formula function or a separate
-command. Python uses `pf.event_study()` with `estimator="saturated"`.
+**Key difference:** Stata uses the `eventstudyinteract` command (fixest's
+equivalent is `sunab()`). Python uses `pf.event_study()` with `estimator="saturated"`.
 The underlying estimator is identical.
 
 ### Local Projections DiD (Dube et al., 2023)

@@ -9,18 +9,18 @@ This reference documents significant changes to CCD data collection, definitions
 | Year | Change | Impact |
 |------|--------|--------|
 | 1986-87 | CCD nonfiscal data begins | Historical baseline |
-| 1989-90 | Finance data collection begins | District finance available |
+| FY 1989 | State finance survey (NPEFS) major revision; district finance (F-33, first conducted FY 1980) covers all districts annually from FY 1995 | State and district finance available |
 | 1991-92 | Dropout/completer collection begins | Completion data available |
 | 1998-99 | English Language Learner variable added | ELL tracking starts |
 | 2002-03 | School status codes 6, 7 added | Inactive/future schools tracked |
 | 2005-06 | School status code 8 added | Reopened schools tracked |
+| 2005-06 | Nonfiscal collection via EDEN begins; EDFacts mandatory from 2007-08 | Data collection centralized |
 | 2006-07 | **Locale codes revised** | Major discontinuity |
-| 2006 | EDFacts system implemented | Data collection centralized |
 | 2007-08 | LEA type codes revised | Charter agencies distinguished |
 | 2007-08 | School type code 5 added | Reportable programs tracked |
-| 2007 | ACGR introduced | Graduation rate methodology change |
+| 2010-11 | ACGR first collected by ED (EDFacts) | Graduation rate methodology change |
 | 2010-11 | **Race/ethnicity categories revised** | Major discontinuity |
-| 2014-15 | Virtual school indicator added | Virtual schools tracked |
+| 2013-14 | Virtual school indicator added | Virtual schools tracked |
 | 2014-15 | CEP nationwide | FRPL interpretation affected |
 | 2016-17 | Long file format | Data structure changed |
 | 2017-18 | LEA membership guidance changed | LEA totals methodology |
@@ -119,12 +119,12 @@ In 2010, CCD adopted new OMB standards for race/ethnicity reporting, adding a "T
 3. **Asian/Pacific Islander split**: Separate categories for AS and HP
 4. **Collection order**: Hispanic status collected first
 
-### Transition Period (2007-2010)
+### Transition Period (2008-09 to 2010-11)
 
 States transitioned at different times:
-- Some early adopters in 2007-08
-- Most states by 2009-10
-- Full implementation by 2010-11
+- 2008-09: 7-category reporting optional; 5 states used it
+- 2009-10: still optional; 14 states used it
+- 2010-11: NCES asked all SEAs to report seven categories; all 50 states and DC complied
 
 **Data Issues During Transition**:
 - Inconsistent categories across states
@@ -281,7 +281,7 @@ When comparing school counts over time:
 
 ---
 
-## Graduation Rate Methodology (2007)
+## Graduation Rate Methodology (2010-11)
 
 ### AFGR (Averaged Freshman Graduation Rate)
 
@@ -314,8 +314,7 @@ ACGR = (Cohort who graduated) / (First-time 9th graders, adjusted for transfers)
 
 ### Transition
 
-- ACGR introduced 2007
-- Phased in through 2011
+- ACGR first collected by ED in 2010-11 (EDFacts)
 - Both measures available during transition
 - ACGR is now the standard measure
 
@@ -427,11 +426,11 @@ Some schools may be classified differently before and after this change. Check s
 
 | Year | Change |
 |------|--------|
-| Original | FRPL reported from applications |
+| Through 2015-16 | CCD published FRPL counts only |
 | 2011-12 | CEP pilot begins (some states) |
-| 2012-13 | Direct certification reported separately (optional) |
+| 2013-14+ | NSLP status (NSLPSTATUS) added; records the meal-program provision (CEP is one) |
 | 2014-15 | CEP nationwide |
-| 2016-17+ | States may report FRPL, Direct Cert, or both |
+| 2016-17+ | States may report FRPL and/or direct certification; CCD publishes both |
 
 ### Impact on Poverty Analysis
 
@@ -467,8 +466,8 @@ def prepare_longitudinal_data(df, variable, start_year, end_year):
         print("Two or More Races (TR) and HP categories not available pre-2010")
     
     # Check for FRPL issues
-    if variable in ["frpl", "free_lunch", "reduced_lunch"] and end_year >= 2014:
-        print("NOTE: CEP implementation affects FRPL interpretation post-2014")
+    if variable in ["frpl", "free_lunch", "reduced_lunch"] and end_year >= 2011:
+        print("NOTE: CEP phased in from SY 2011-12 (Portal year 2011) in 11 jurisdictions; nationwide from SY 2014-15 (Portal year 2014). FRPL interpretation affected")
     
     return df
 ```
@@ -488,8 +487,8 @@ if (variable %in% c("race", "enrollment_by_race") && start_year < 2010 && end_ye
 }
 
 # Check for FRPL issues
-if (variable %in% c("frpl", "free_lunch", "reduced_lunch") && end_year >= 2014) {
-  cat("NOTE: CEP implementation affects FRPL interpretation post-2014\n")
+if (variable %in% c("frpl", "free_lunch", "reduced_lunch") && end_year >= 2011) {
+  cat("NOTE: CEP phased in from SY 2011-12 (Portal year 2011) in 11 jurisdictions; nationwide from SY 2014-15 (Portal year 2014). FRPL interpretation affected\n")
 }
 ```
 

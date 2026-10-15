@@ -10,7 +10,7 @@ Understanding the limitations, uncertainty, and appropriate applications of Mode
 
 MEPS values are **statistical estimates**, not direct counts:
 
-- Generated from a linear probability model
+- Generated from a multilevel (mixed-effects) linear regression model
 - Subject to estimation error
 - Standard errors quantify uncertainty
 - Individual school estimates less reliable than aggregates
@@ -69,7 +69,7 @@ MEPS covers **only public schools**:
 
 | Version | Years Available | Notes |
 |---------|-----------------|-------|
-| MEPS 1.0 | 2006-2019 | Original release |
+| MEPS 1.0 | 2013-14 to 2018-19 (superseded) | Original release |
 | MEPS 2.0 | School years 2009-10 through 2022-23 | Released 2025-12-11; Urban states updates will occur annually |
 
 > **Portal status re-probed 2026-08-06:** The Portal's 2022 endpoint returned rows (count 94,941), while its 2023 endpoint returned an empty result (count 0). Portal `year=2022` corresponds to the terminal 2022-23 school year convention used in the release description. Re-probe the needed year before analysis.
@@ -93,18 +93,18 @@ MEPS measures **only students at or below 100% FPL**:
 
 ### 5. Model Assumptions
 
-The linear probability model assumes:
-- Relationships are approximately linear
-- Coefficients are stable across schools and time
+MEPS 2.0 fits a multilevel (mixed-effects) linear regression of adjusted SAIPE district poverty on district-aggregated free-lunch (or direct-certification) shares, with state random intercepts and slopes and district covariates, then applies the parameters to school-level data (Gutierrez & Blagg 2025). It assumes:
+- District-level relationships carry over to schools within the district (implied by applying district-level parameters to schools; DAAF reading, not an Urban statement)
+- The distribution of students across federal-poverty-level thresholds is relatively consistent across types of schools and districts (Urban's appendix B)
 - Available predictors capture relevant variation
 
 **Impact**: Estimates may be biased for schools with unusual characteristics not captured by the model.
 
-### 6. High-Poverty District Bias
+### 6. Race and Ethnicity Bias
 
-The original MEPS model **underestimates** poverty in very high-poverty districts:
-- Use `meps_mod_poverty_pct` for analyses focused on high-poverty contexts
-- Original `meps_poverty_pct` may undercount in districts >30% poverty
+Urban's bias analysis finds that differences from adjusted SAIPE are larger by district race and ethnicity than by the other district characteristics it examined (which are within about 2 percentage points on average). For every 10 percentage-point increase in a district's Black student share, original MEPS 2.0 underestimates by 0.42 percentage points on average; for every 10-point increase in the Asian student share, it overestimates by 0.31 points (Gutierrez & Blagg 2025):
+- Modified MEPS reallocates modeled poor students so each district matches adjusted SAIPE, preserving relative school differences, both up and down
+- Urban suggests `meps_mod_poverty_pct` for analyses only of schools within large-enrollment districts, and original `meps_poverty_pct` when smaller districts are included
 
 ### 7. Small School Uncertainty
 
@@ -120,11 +120,11 @@ Smaller schools have larger estimation errors:
 | Use Case | Why Appropriate |
 |----------|-----------------|
 | Cross-state poverty comparison | MEPS designed specifically for this |
-| Time trends (2006-2019) | Consistent methodology |
+| Time trends (2009-10 to 2022-23) | Consistent methodology |
 | Poverty-achievement gap analysis | Better control than FRPL |
-| Identifying high-poverty schools | More accurate than FRPL in CEP era |
+| Identifying high-poverty schools for research | More comparable than FRPL in CEP era; not for allocating resources within a state or district (Urban) |
 | Research on school resources and poverty | Consistent measure |
-| District-level aggregation | Calibrated to SAIPE |
+| District-level aggregation | Only Modified MEPS is adjusted so district aggregates match adjusted SAIPE. Original MEPS is a model prediction |
 
 ### Appropriate with Caveats
 
@@ -132,7 +132,7 @@ Smaller schools have larger estimation errors:
 |----------|---------|
 | Individual school analysis | Use standard errors; acknowledge uncertainty |
 | Small school analysis | High uncertainty; consider aggregation |
-| Very high-poverty districts | Consider `meps_mod_poverty_pct` instead |
+| Analyses limited to large-enrollment districts | Consider `meps_mod_poverty_pct` (Urban); SAIPE margins of error are wide in small districts |
 | Year-over-year changes for single school | Changes may be within uncertainty |
 | Near-poverty analysis | MEPS only captures 100% FPL |
 
@@ -141,11 +141,12 @@ Smaller schools have larger estimation errors:
 | Use Case | Why Not | Alternative |
 |----------|---------|-------------|
 | Private school poverty | Not covered | Use other measures |
-| Before 2006 | No data | Use FRPL (with caveats) |
+| Before 2009-10 | No data | Use FRPL (with caveats) |
 | Real-time monitoring | Latest published vintage may not cover the current school year | Use current local data and document the vintage difference |
 | 185% FPL threshold | Different threshold | Use FRPL (with CEP adjustment) |
 | Meal program planning | Wrong measure | Use FRPL/ISP |
 | Compliance with FRPL-based formulas | May not satisfy requirements | Use FRPL |
+| Allocating resources within a state or district | Urban: "It should not be used to allocate resources within a state or district" | Use the allocation data required by state/federal rules |
 
 ## Statistical Considerations
 
@@ -312,7 +313,11 @@ Always report:
 5. Acknowledgment that MEPS measures 100% FPL (not 185%)
 
 Example text:
-> "We measure school-level poverty using the Urban Institute's Model Estimates of Poverty in Schools (MEPS), which estimates the share of students from households with incomes at or below 100 percent of the federal poverty level. MEPS provides a consistent poverty measure across states and time, unlike FRPL data which is affected by policy variation and Community Eligibility Provision adoption (Gutierrez, Blagg, & Chingos, 2022)."
+> "We measure school-level poverty using the Urban Institute's Model Estimates of Poverty in Schools (MEPS), which estimates the share of students from households with incomes at or below 100 percent of the federal poverty level. MEPS provides a consistent poverty measure across states and time, unlike FRPL data which is affected by policy variation and Community Eligibility Provision adoption (Gutierrez, Blagg, & Chingos, 2022; Gutierrez & Blagg, 2025)."
+
+Full references for the example:
+- Gutierrez, Emily, Kristin Blagg, and Matthew Chingos. 2022. *Model Estimates of Poverty in Schools: A New School-Level Measure of Economic Need.* Washington, DC: Urban Institute.
+- Gutierrez, Emily, and Kristin Blagg. 2025. *Model Estimates of Poverty in Schools 2.0.* Washington, DC: Urban Institute.
 
 ### In Policy Reports
 
@@ -346,8 +351,8 @@ Clarify:
 
 ### 5. Ignoring Modified MEPS
 
-**Problem**: Using original MEPS for high-poverty analysis
-**Solution**: Use `meps_mod_poverty_pct` when focusing on high-poverty districts
+**Problem**: Choosing between original and Modified MEPS without considering district size
+**Solution**: Urban suggests `meps_mod_poverty_pct` for analyses only of schools within large-enrollment districts, and original `meps_poverty_pct` when smaller districts are included
 
 ## Quality Assurance Checklist
 
@@ -369,7 +374,7 @@ MEPS is a **high-quality, research-grade** poverty measure when used appropriate
 |----------|------------|
 | Cross-state comparable | Model-based (not direct counts) |
 | Time-consistent | Published release has a finite terminal school year; annual updates are stated but not guaranteed on a fixed lag |
-| Calibrated to Census | 100% FPL only (not 185%) |
+| Fit to adjusted Census SAIPE | 100% FPL only (not 185%) |
 | Accounts for CEP | Public schools only |
 | Standard errors provided | Some uncertainty for small schools |
 

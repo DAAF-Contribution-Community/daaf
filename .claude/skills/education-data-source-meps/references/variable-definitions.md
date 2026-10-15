@@ -51,7 +51,7 @@ Comprehensive definitions of all variables in the MEPS dataset, including identi
 | Portal Variable | Type | Range | Description |
 |-----------------|------|-------|-------------|
 | `meps_poverty_pct` | Float64 | 0.0-60.5 | Estimated share of students from households at or below 100% FPL |
-| `meps_mod_poverty_pct` | Float64 | 0.0-100.0 | Modified MEPS estimate (adjusted for high-poverty districts) |
+| `meps_mod_poverty_pct` | Float64 | 0.0-100.0 | Modified MEPS estimate (reallocated up or down so district aggregates match adjusted SAIPE) |
 | `meps_poverty_se` | Float64 | 0.5-3.8 | Standard error of the MEPS estimate |
 | `meps_poverty_ptl` | Int64 | 1-100 | National percentile of poverty (enrollment-weighted) |
 | `meps_mod_poverty_ptl` | Int64 | 1-100 | Modified percentile (enrollment-weighted) |
@@ -69,10 +69,11 @@ The primary poverty estimate. Interpretation:
 
 ### `meps_mod_poverty_pct`
 
-Modified estimate for schools in high-poverty districts:
-- Adjusts for systematic underestimation in the original model
-- Generally higher than `meps_poverty_pct` for high-poverty schools
-- Use when focusing on high-poverty populations
+Modified estimate whose district aggregates match adjusted SAIPE:
+- Modified MEPS reallocates modeled poor students so each district matches adjusted SAIPE, preserving relative school differences, both up and down
+- Created mainly to address the race and ethnicity bias in the original model (Gutierrez & Blagg 2025)
+- Missing where the geographic district has no SAIPE value that year
+- Urban suggests it for analyses only of schools within large-enrollment districts
 - Range: 0.0-100.0%
 
 ### `meps_poverty_se`
@@ -103,7 +104,7 @@ MEPS uses 100% of the Federal Poverty Level as its threshold:
 | 5 | $36,580 | $47,554 | $67,673 |
 | 6 | $41,960 | $54,548 | $77,626 |
 
-**Note**: FPL is updated annually by the Department of Health and Human Services.
+**Note**: HHS poverty guidelines (FRPL basis). MEPS targets SAIPE/Census poverty thresholds. The guidelines are updated annually by the Department of Health and Human Services; the 100% column above is the 2024 guideline for the 48 contiguous states and DC (ASPE).
 
 ### Comparison to Other Thresholds
 
@@ -184,7 +185,8 @@ df = df.with_columns([
     (pl.col("meps_poverty_pct") < 10.0).alias("low_poverty"),
 ])
 
-# Title I style categories
+# Illustrative poverty bands (analyst-chosen cut points; not Title I
+# eligibility -- Urban says MEPS should not be used to allocate resources)
 df = df.with_columns(
     pl.when(pl.col("meps_poverty_pct") >= 40.0).then(pl.lit("Very High"))
     .when(pl.col("meps_poverty_pct") >= 25.0).then(pl.lit("High"))
@@ -203,7 +205,8 @@ df <- df |> mutate(
   low_poverty = meps_poverty_pct < 10.0
 )
 
-# Title I style categories
+# Illustrative poverty bands (analyst-chosen cut points; not Title I
+# eligibility -- Urban says MEPS should not be used to allocate resources)
 df <- df |> mutate(
   poverty_level = case_when(
     meps_poverty_pct >= 40.0 ~ "Very High",
@@ -279,11 +282,11 @@ district_meps <- df |>
 
 | Other Measure | Relationship to MEPS | Correlation |
 |---------------|---------------------|-------------|
-| SAIPE (district) | MEPS calibrated to match | ~0.90 |
-| Census tract poverty | Similar but geographic | ~0.70 |
-| Title I status | Based on different criteria | ~0.65 |
-| FRPL (non-CEP schools) | Related but different threshold | ~0.75 |
-| FRPL (CEP schools) | Not comparable | Low/meaningless |
+| SAIPE (district) | Model outcome (adjusted SAIPE); only Modified MEPS matches district aggregates | District correlations with adjusted SAIPE in 2022: 0.80 (free-lunch model), 0.79 (direct-cert model) |
+| Census tract poverty | Similar but geographic | Not published (no sourced figure) |
+| Title I status | Based on different criteria | Not published (no sourced figure) |
+| FRPL (non-CEP schools) | Related but different threshold | Not published (no sourced figure) |
+| FRPL (CEP schools) | Not comparable | Not published (no sourced figure) |
 
 ## Data Type Specifications (Portal Actual Types)
 
@@ -375,7 +378,7 @@ df <- df |> mutate(
 | Portal Variable | What it tells you |
 |-----------------|-------------------|
 | `meps_poverty_pct` | Estimated share of students in poverty (100% FPL), as percentage |
-| `meps_mod_poverty_pct` | Adjusted estimate for high-poverty districts |
+| `meps_mod_poverty_pct` | Estimate adjusted so district aggregates match adjusted SAIPE |
 | `meps_poverty_se` | How confident you can be in the estimate |
 | `meps_poverty_ptl` | National percentile (enrollment-weighted, 1-100) |
 | `meps_mod_poverty_ptl` | Modified percentile (enrollment-weighted, 1-100) |

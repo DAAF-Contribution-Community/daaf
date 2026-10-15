@@ -1,17 +1,17 @@
 ---
 name: education-data-source-crdc
 description: >-
-  CRDC — OCR civil rights collection for U.S. public schools; Portal families have topic-specific coverage from 2011 through 2022. Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. Official evidence identifies 2013-14 as a universe collection; 2020-21 is COVID-impacted.
+  CRDC — OCR civil rights collection for U.S. public schools; Portal families have topic-specific coverage, with year labels from 2011 through 2023 (Portal year = fall of the school year, so 2020 = 2020-21). Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. OCR documents every collection since 2011-12 as a universe collection; 2020-21 (Portal year 2020) is COVID-impacted.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-08-06"
+  skill-last-updated: "2026-10-15"
 ---
 
 # CRDC Data Source Reference
 
-Civil Rights Data Collection (CRDC) — mandatory OCR collection measuring educational opportunity and civil rights compliance in U.S. public schools. Portal dataset families have topic-specific coverage from 2011 through 2022; use them for school discipline disparities, course access equity, harassment, restraint/seclusion, or chronic absenteeism by race, sex, disability, and English learner status. The 2013-14 collection was officially a universe collection covering 16,758 districts and 95,507 schools; this skill does not make an unverified coverage claim for 2011-12. The 2020-21 collection is COVID-impacted and not directly comparable to ordinary years.
+Civil Rights Data Collection (CRDC) — mandatory OCR collection measuring educational opportunity and civil rights compliance in U.S. public schools. Portal dataset families have topic-specific coverage, with year labels from 2011 through 2023; a Portal `year` is the fall (starting) year of the school year, so 2020 = 2020-21. Use them for school discipline disparities, course access equity, harassment, restraint/seclusion, or chronic absenteeism by race, sex, disability, and English learner status. OCR documents every collection since 2011-12 as a universe collection (the 2013-14 collection covered 16,758 districts and 95,507 schools). The 2020-21 collection (Portal year 2020) is COVID-impacted and not directly comparable to ordinary years.
 
 The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
 
@@ -35,11 +35,11 @@ The Civil Rights Data Collection is a **mandatory OCR collection** of public sch
 
 - **Collector**: U.S. Department of Education, Office for Civil Rights (OCR)
 - **Purpose**: Enforce civil rights laws, identify discrimination, monitor equity
-- **Coverage**: Collection-specific; official evidence establishes 2013-14 as a universe collection. Verify 2011-12 against its own authoritative documentation rather than applying a blanket early-year label.
+- **Coverage**: Universe. OCR documents every modern collection (2011-12, 2013-14, 2015-16, 2017-18, 2020-21, 2021-22, 2023-24) as a universe collection. Collections from 1968 to 2010 were samples, except 1976 and 2000.
 - **Cadence**: Usually organized by school-year collection cycles, historically often biennial, but not governed by an odd/even parity rule; 2020-21 and 2021-22 are consecutive collections
 - **Disaggregation**: Race/ethnicity, sex, disability status, English learner status
-- **History**: Collected since 1968 (as Elementary and Secondary School Civil Rights Survey)
-- **Portal coverage (v2 mirror, build validated 2026-08-06)**: Topic-specific families spanning **2011 through 2022** (content-based year range confirmed in the v2 build); year availability differs by topic
+- **History**: Collected since 1968; administered as the Elementary and Secondary School Civil Rights Report before the 2004 CRDC
+- **Portal coverage (v2 mirror, build validated 2026-08-06)**: Topic-specific families spanning **2011 through 2022** (content-based year range confirmed in the v2 build); year availability differs by topic. The live Portal catalog (checked 2026-10-15) also lists year 2023 (2023-24) for the offerings endpoint, so the live API can be ahead of the mirror
 - **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
@@ -107,7 +107,7 @@ Data quality issue?
 ├─ Missing or suppressed data → ./references/data-quality.md#suppression
 ├─ Definition inconsistencies → ./references/data-quality.md#definition-variation
 ├─ Year-to-year comparability → ./references/historical-changes.md
-├─ COVID-19 impact (2020-21) → ./references/data-quality.md#covid-impact
+├─ COVID-19 impact (2020-21, Portal year 2020) → ./references/data-quality.md#covid-impact
 ├─ Underreporting concerns → ./references/data-quality.md#underreporting
 └─ State-level variations → ./references/data-quality.md#state-variations
 ```
@@ -118,17 +118,17 @@ Data quality issue?
 
 | School Year | Coverage status | Scale / Portal note | Key Notes |
 |-------------|-----------------|---------------------|-----------|
-| 2011-12 | Not re-verified in this correction cycle | Portal families include 2011 for some topics | Consult collection-specific authoritative documentation before generalizing |
-| 2013-14 | **Universe** | 16,758 districts; 95,507 schools (First Look figure; the revised target population was 95,958 schools) | Official first-look evidence explicitly calls this a universe collection |
-| 2015-16 | Universe collection | ~96,000 schools | Chronic absenteeism added |
-| 2017-18 | Universe collection | ~96,000 schools | Expanded variables |
-| 2020-21 | Universe collection | ~97,500 schools | COVID-impacted year |
-| 2021-22 | Universe collection | ~98,000 schools; selected Portal topics reach 2022 | Consecutive collection after 2020-21 |
-| 2023-24 | No Portal data established | No Portal CRDC 2024 data as of the probes: original 2026-08-06 probe errored (HTTP 500; exact endpoint not recorded), and a 2026-08-07 re-probe of `https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2024/` returned HTTP 404 — either way zero rows | Do not infer 2024 data from the count of dataset families |
+| 2011-12 | **Universe** | All public schools and districts (response: 98.4% of districts, 99.2% of schools, 99.6% of students); Portal year 2011 | OCR's 2011-12 Data Snapshot: "included all public schools and public school districts" |
+| 2013-14 | **Universe** | 16,758 districts; 95,507 schools (First Look figure; the revised target population was 95,958 schools); Portal year 2013 | Chronic absenteeism first collected |
+| 2015-16 | Universe collection | 96,440 schools (final target); Portal year 2015 | Chronic absenteeism collected again; items optional in 2013-14 became required |
+| 2017-18 | Universe collection | ~97,600 schools (17,637 LEAs final target); Portal year 2017 | Expanded variables; Puerto Rico added; chronic absenteeism now taken from EDFacts |
+| 2020-21 | Universe collection | ~97,500 schools; Portal year 2020 | COVID-impacted year |
+| 2021-22 | Universe collection | ~98,000 schools; Portal year 2021 | Consecutive collection after 2020-21 |
+| 2023-24 | Universe collection | 17,591 LEAs; 97,094 schools; Portal exposes year 2023 for some topics (e.g., offerings, verified 2026-10-15); check per family | Public-use file and user's manual released August 31, 2026 |
 
-**Cadence:** CRDC is organized by school-year collection cycles and is often described as biennial, but there is no valid odd/even-year rule. Portal year labels represent the terminal year of the school year; 2020 and 2021 are consecutive available collection labels. Re-probed 2026-08-06: `chronic-absenteeism/2022/race/sex/` returned rows (HTTP 200), while a direct 2024 CRDC enrollment probe returned no rows (the original 2026-08-06 probe errored HTTP 500 with the exact endpoint not recorded; a 2026-08-07 re-probe of `https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2024/` returned HTTP 404).
+**Cadence and year labels:** CRDC is organized by school-year collection cycles and is often described as biennial, but there is no valid odd/even-year rule. Portal CRDC year labels are the **fall (starting) year** of the school year: 2011=2011-12, 2013=2013-14, 2015=2015-16, 2017=2017-18, 2020=2020-21 (COVID-impacted), 2021=2021-22, 2023=2023-24. This matches the Portal-wide convention in `education-data-context` (`year=2020` means the 2020-21 school year). 2020 and 2021 are consecutive collection labels. The chronic-absenteeism endpoints also list year 2022 (a 2026-08-06 probe of `chronic-absenteeism/2022/race/sex/` returned rows); 2022 = 2022-23, which is not a CRDC collection year, so these rows most likely come from EDFacts, OCR's source for chronic absenteeism since 2017-18 (inference, not verified). Probes of year 2024 on 2026-08-06/07 returned no rows (HTTP 500, then HTTP 404 for `https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2024/`); under the fall convention 2024 would be 2024-25, not a CRDC collection, so those probes do not bear on 2023-24.
 
-> **Source verification (accessed 2026-07-21):** [Official 2013-14 first look](https://www.ed.gov/about/offices/list/ocr/docs/crdc-2013-14.html), [Portal endpoint catalog](https://educationdata.urban.org/api/v1/api-endpoints/), and [Portal bulk manifest](https://educationdata.urban.org/api/v1/api-downloads/).
+> **Source verification (accessed 2026-07-21; First Look PDF fetched 2026-10-15):** [Official 2013-14 First Look](https://civilrightsdata.ed.gov/assets/downloads/2013-14-first-look.pdf), [Portal endpoint catalog](https://educationdata.urban.org/api/v1/api-endpoints/), and [Portal bulk manifest](https://educationdata.urban.org/api/v1/api-downloads/).
 
 ### Data Categories
 
@@ -315,9 +315,10 @@ df <- df |> filter(
 | **Using string codes** | Portal uses integers, not strings | `race == 2` not `race == "BL"` |
 | **Raw counts** | Different enrollment sizes | Use rates per 100/1000 students |
 | **Collection cadence** | Assuming annual data or applying an odd/even parity rule | Check topic-specific collection labels; 2020 and 2021 are consecutive |
-| **COVID year** | 2020-21 not comparable | Flag or exclude from trends |
+| **Year label** | Reading Portal `year` as the spring (terminal) year | Portal `year` is the fall year: 2020 = 2020-21, 2021 = 2021-22 |
+| **COVID year** | 2020-21 (Portal year 2020) not comparable | Flag or exclude from trends |
 | **Suppression** | Small cell suppression | Check suppression rates first |
-| **Coverage history** | Applying one sampling label to both early collections | 2013-14 is an official universe collection; verify 2011-12 separately |
+| **Coverage history** | Assuming the early modern collections were samples | OCR documents every collection since 2011-12 as universe; 1968-2010 collections were samples, except 1976 and 2000 |
 | **Definition drift** | Variables change over time | Check codebooks for each year |
 | **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
 | **CSV type inference** | Polars and readr infer `ncessch`/`leaid`/`crdc_id` as integer, destroying leading zeros | Python: `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}`; R: `readr::read_csv(..., col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character()))` |

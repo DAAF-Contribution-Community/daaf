@@ -6,7 +6,7 @@ This reference covers how CCD data is collected, processed, and released.
 
 ### EDFacts
 
-Since 2006, CCD nonfiscal data has been collected through the **EDFacts** system, which centralizes data collection across multiple Department of Education programs.
+CCD nonfiscal data has been collected via EDEN (the Education Data Exchange Network) from 2005-06; reporting it through **EDFacts** became mandatory from 2007-08, when EDFacts superseded EDEN. EDFacts centralizes data collection across multiple Department of Education programs.
 
 **EDFacts Features**:
 - Centralized data submission portal
@@ -14,14 +14,14 @@ Since 2006, CCD nonfiscal data has been collected through the **EDFacts** system
 - Automated validation checks
 - Single submission for multiple federal requirements
 
-**Submission Portal**: States submit through EDFacts Submission System (ESS), accessed via EDPass authentication.
+**Submission Portal**: Since the SY 2022-23 collection cycle, states submit through EDPass, 'a centralized data submission system used by ED to standardize data submissions across ED offices', which runs data-quality checks at upload.
 
-### Pre-EDFacts Collection (Before 2006)
+### Pre-EDFacts Collection (Before 2007-08)
 
-Prior to EDFacts, CCD data was collected directly by NCES through:
-- Paper forms
-- Direct electronic submission
-- State data extracts
+Through the 2005-06 collection, CCD data were voluntarily obtained from administrative records collected and edited by SEAs during their regular state reporting cycle (NCES Handbook of Survey Methods). Collection tools evolved:
+- Survey instruments distributed to states (early years)
+- Downloadable PC software from the 2001-02 collection
+- A web-based data collection application from 2004-05
 
 The transition to EDFacts improved standardization but created some discontinuities in historical data.
 
@@ -97,15 +97,14 @@ CCD does **not** include:
 | Activity | Timing | Notes |
 |----------|--------|-------|
 | Reference Date | October 1 | Snapshot date for counts |
-| State Submission Window | December - April | Following reference date |
-| Preliminary Release | July - August | ~9 months after reference |
-| Quality Review | Ongoing | NCES contacts states |
-| Provisional Release | December - January | ~14 months after reference |
+| State Submission | Due about July after the school year | Since SY 2022-23 via EDPass, which runs data-quality checks at upload |
+| Public Release | Within about 4 months of the due date | SY 2023-24 example (NCES) |
+
+Since SY 2022-23 (EDPass), states submit by about July after the school year and NCES releases within about 4 months (SY 2023-24 example). EDPass replaced the earlier post-submission data-quality review, which made release lags longer in prior years.
 
 **Example**: For school year 2023-24 (October 1, 2023 snapshot):
-- States submit: Winter/Spring 2024
-- Preliminary release: Summer 2024
-- Provisional release: Winter 2024-25
+- Submission due: July 2024
+- Public release: less than 4 months later
 
 ### Fiscal Data (Finance)
 
@@ -127,20 +126,20 @@ Finance data has a longer lag due to fiscal year-end reporting requirements.
 
 Each data element has detailed submission specifications including:
 - **Data Group**: Category of data (e.g., membership, staff FTE)
-- **File Number**: Unique identifier (e.g., FS029 for membership)
+- **File Number**: Unique identifier (e.g., FS052 for membership)
 - **Permitted Values**: Valid codes and ranges
 - **Business Rules**: Validation logic
 
-**Key File Specifications**:
+**Key File Specifications** (EDFacts files that provide CCD data; NCES CCD SY 2015-16 documentation, Exhibit 3):
 
 | File | Description | Level |
 |------|-------------|-------|
-| FS029 | Membership by Grade | School, LEA |
-| FS039 | Membership by Race/Ethnicity | School, LEA |
-| FS033 | Free/Reduced Lunch | School, LEA |
-| FS052 | Staff FTE | School, LEA |
-| FS059 | Dropout/Completers | LEA |
-| FS070 | Directory | School, LEA |
+| FS029 | Directory | SEA, LEA, School |
+| FS039 | Grades offered | LEA, School |
+| FS129 | School | School |
+| FS052 | Membership | SEA, LEA, School |
+| FS033 | Free & reduced-price lunch | School |
+| FS059 | Staff | SEA, LEA, School |
 
 ### Submission Modes
 
@@ -177,17 +176,16 @@ After submission, NCES performs:
 |------------|---------|--------|
 | Range | Enrollment > 0 for operational schools | Flag for review |
 | Consistency | Membership by grade ≈ Total | Investigate difference |
-| Year-to-Year | >20% change from prior year | Contact state |
+| Year-to-Year | Large change from prior years (e.g., >20%: an illustrative example, not an NCES threshold) | Contact state |
 | Cross-file | School counts match directory | Verify |
+
+> NCES's actual year-to-year check (since SY 2009-10) is a multi-year edit: it compares the current value with the prior 4 years, tests a related ratio (e.g., pupil/teacher ratio), and flags large variances for state review. Values that cannot be explained are suppressed.
 
 ### Imputation
 
-NCES may impute missing values using:
-- Prior year data
-- Similar school/district averages
-- State averages
+NCES imputes only state-level (State Nonfiscal) items. School and LEA values are edited or suppressed, not imputed.
 
-Imputation flags indicate which values were imputed.
+State-level files carry imputation flags (the letter `I` followed by the variable name) indicating which values were adjusted or imputed.
 
 ## State Coordinators
 
@@ -244,14 +242,14 @@ BIE schools are reported both by:
 ### Department of Defense Schools (DoDEA)
 
 DoDEA operates schools on military installations:
-- Domestic (DDESS)
-- Overseas (DoDDS)
+- Department of Defense, Domestic
+- Department of Defense, Overseas (Department of Defense Dependent Schools)
 
-Only domestic DoDEA schools are included in main CCD files.
+Since 2010-11, DoDEA (domestic and overseas) reports as a single unit.
 
 ### Virtual Schools
 
-Starting 2014-15, CCD includes virtual school indicator:
+Starting in SY 2013-14, all schools in the CCD have a VIRTUAL flag indicating whether the school is a virtual school (NCES SY 2015-16 documentation). The categorical status below comes from later collections; the year it started was not verified:
 - Full-time virtual
 - Supplemental virtual
 - Not virtual
@@ -284,11 +282,6 @@ Always check state notes before interpreting outliers or unexpected values.
 
 ## Contact Information
 
-**NCES CCD Staff**:
-- Nonfiscal data: Chen-Su Chen
-- Fiscal data: Stephen Cornman
-- Data tools: Patrick Keaton
-
-**EDFacts Partner Support Center (PSC)**: edfacts@ed.gov
+**EDFacts Partner Support Center (PSC)**: EDFacts@ed.gov (NCES's listed contact for nonfiscal CCD questions)
 
 **State Coordinators**: Contact information available on NCES CCD website.

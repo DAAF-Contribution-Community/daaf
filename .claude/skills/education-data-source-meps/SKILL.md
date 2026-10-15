@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-08-06"
+  skill-last-updated: "2026-10-15"
 ---
 
 # MEPS Data Source Reference
@@ -67,7 +67,7 @@ What is your research goal?
 ├─ Study CEP/universal meals impact → Use both
 │   └─ Compare MEPS (true poverty) vs FRPL (program participation)
 ├─ Match historical research (pre-2010) → Consider FRPL
-│   └─ MEPS only available 2006+, but FRPL was more reliable then
+│   └─ MEPS 2.0 begins in 2009-10; FRPL was more reliable before CEP
 ├─ Need 185% FPL threshold → Use FRPL with caveats
 │   └─ MEPS only measures 100% FPL
 └─ Federal funding formulas → Check formula requirements
@@ -80,8 +80,9 @@ What is your research goal?
 Which estimate type?
 ├─ Standard analysis → `meps_poverty_pct`
 │   └─ Original modeled estimate
-├─ High-poverty district adjustment → `meps_mod_poverty_pct`
-│   └─ Modified MEPS for districts where model underestimates
+├─ District totals must match adjusted SAIPE → `meps_mod_poverty_pct`
+│   └─ Modified MEPS reallocates modeled poor students up or down to match
+│      adjusted SAIPE; Urban suggests it for analyses limited to large districts
 ├─ Need confidence bounds → `meps_poverty_se`
 │   └─ Standard error for uncertainty analysis
 └─ Categorical analysis → Derive from `meps_poverty_pct`
@@ -207,7 +208,9 @@ df = df.filter(pl.col("meps_poverty_pct").is_not_null())
 # High-poverty schools (top quartile nationally)
 high_poverty = df.filter(pl.col("meps_poverty_ptl") >= 75)
 
-# Use modified MEPS for high-poverty districts
+# Prefer Modified MEPS (SAIPE-matched) where present, else original.
+# Modified MEPS is missing where the district has no SAIPE value; Urban
+# suggests original MEPS for analyses that include small districts.
 df = df.with_columns(
     pl.when(pl.col("meps_mod_poverty_pct").is_not_null())
     .then(pl.col("meps_mod_poverty_pct"))
@@ -225,7 +228,9 @@ df <- df |> filter(!is.na(meps_poverty_pct))
 # High-poverty schools (top quartile nationally)
 high_poverty <- df |> filter(meps_poverty_ptl >= 75)
 
-# Use modified MEPS for high-poverty districts
+# Prefer Modified MEPS (SAIPE-matched) where present, else original.
+# Modified MEPS is missing where the district has no SAIPE value; Urban
+# suggests original MEPS for analyses that include small districts.
 # (coalesce = take modified estimate when present, else original)
 df <- df |> mutate(
   poverty_pct_best = coalesce(meps_mod_poverty_pct, meps_poverty_pct)
@@ -247,18 +252,18 @@ df <- df |> mutate(
 
 | Issue | FRPL Problem | MEPS Solution |
 |-------|--------------|---------------|
-| **CEP schools** | All students counted as "free lunch" regardless of income | Uses modeled estimates independent of meal programs |
+| **CEP schools** | May report all students as free-lunch eligible regardless of income (NCES) | Models free-lunch or direct-certification shares against adjusted SAIPE poverty instead of using them as poverty rates |
 | **State variation** | Different states use different eligibility criteria | Standardized 100% FPL threshold nationwide |
-| **Direct certification** | Varies by state program participation | Calibrated to Census SAIPE data |
+| **Direct certification** | Varies by state program participation | Model fit to adjusted Census SAIPE district poverty, with state random slopes |
 | **Income threshold** | 130-185% FPL (varies) | Consistent 100% FPL |
-| **Time consistency** | Policy changes affect comparability over time | Methodology consistent across years |
+| **Time consistency** | Policy changes affect comparability over time | Same model framework each year (re-estimated annually; some covariates dropped in 2022-23) |
 
-**Critical insight**: As of 2020, ~60% of schools participate in CEP or other universal meal programs, making FRPL increasingly unreliable as a poverty proxy.
+**Critical insight**: CEP grew from 14,184 schools in SY 2014-15 to 55,362 in SY 2025-26 (FRAC), roughly 14% → 56% of U.S. public schools (DAAF calculation). Universal-meal waivers covered all schools in SY 2020-21 and 2021-22. FRPL is therefore an increasingly unreliable poverty proxy (see `references/comparison-to-frpl.md`).
 
 ## Key Methodological Points
 
-1. **Model-based**: MEPS uses a linear probability model, not direct counts
-2. **Calibrated to SAIPE**: District totals align with Census poverty estimates
+1. **Model-based**: MEPS 2.0 fits a multilevel (mixed-effects) linear regression of adjusted SAIPE district poverty on district-aggregated free-lunch (or direct-certification) shares, with state random intercepts and slopes and district covariates, then applies the parameters to school-level data (Gutierrez & Blagg 2025). It is an estimate, not a direct count
+2. **SAIPE-anchored**: Only Modified MEPS is adjusted so district aggregates match adjusted SAIPE. Original MEPS is a model prediction
 3. **School-specific**: Reflects enrolled students, not neighborhood demographics
 4. **100% FPL threshold**: Lower than FRPL (185%) - captures deeper poverty
 5. **Public schools only**: Does not cover private schools
@@ -272,7 +277,7 @@ df <- df |> mutate(
 | Poverty-achievement gaps | Join MEPS with EDFacts assessments on `ncessch` |
 | Resource allocation analysis | Join MEPS with CCD finance on `leaid` |
 | CEP impact research | Compare MEPS vs FRPL trends over time |
-| Title I targeting analysis | Use `meps_poverty_pct` to identify high-poverty schools |
+| Title I targeting or other resource allocation | Not for allocating resources within a state or district (Urban). Use for cross-state and longitudinal research. |
 
 ## Joining MEPS with Other Data
 
@@ -296,7 +301,7 @@ df <- df |> mutate(
 
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
-| `education-data-source-saipe` | District-level poverty (Census) | District-level analysis; MEPS calibration source |
+| `education-data-source-saipe` | District-level poverty (Census) | District-level analysis; adjusted SAIPE is the MEPS model outcome |
 | `education-data-source-ccd` | School/district characteristics | Join for enrollment, demographics, finance |
 | `education-data-source-crdc` | Civil rights/discipline data | Join on `ncessch` for poverty + discipline analysis |
 | `education-data-source-edfacts` | State assessment data | Join on `ncessch` for poverty + achievement analysis |
@@ -307,8 +312,8 @@ df <- df |> mutate(
 
 | Topic | Reference File |
 |-------|---------------|
-| Linear probability model | `./references/methodology.md` |
-| SAIPE calibration | `./references/methodology.md` |
+| Multilevel (mixed-effects) regression model | `./references/methodology.md` |
+| SAIPE as model outcome | `./references/methodology.md` |
 | Modified MEPS | `./references/methodology.md` |
 | Validation evidence | `./references/methodology.md` |
 | CEP impact on FRPL | `./references/comparison-to-frpl.md` |

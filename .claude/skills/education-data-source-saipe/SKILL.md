@@ -1,17 +1,17 @@
 ---
 name: education-data-source-saipe
 description: >-
-  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. ~18-month lag. No race/ethnicity disaggregation at district level — use ACS 5-year for that.
+  SAIPE — annual Census poverty estimates for school districts (Portal; county/state not in Portal). Use for district poverty, Title I context, or trends. Released ~12-13 months after the income year ends (DAAF inference). No race/ethnicity disaggregation at district level — use ACS 5-year for that.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-09-15"
+  skill-last-updated: "2026-10-15"
 ---
 
 # SAIPE Data Source Reference
 
-Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates have ~18-month lag and no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
+Census Bureau Small Area Income and Poverty Estimates (SAIPE) — annual model-based poverty estimates for school districts (Portal mirror; county and state data not in Portal). Use when district-level poverty is needed for Title I allocation interpretation, annual poverty trend analysis, or school-age children in poverty estimates. Estimates are released ~12-13 months after the end of the income year (~18 months from its midpoint; DAAF inference from Census release dates) and have no race/ethnicity disaggregation at district level — use ACS 5-year for race-disaggregated poverty.
 
 Reference for understanding Census Bureau poverty estimates for school districts, counties, and states. SAIPE is the only annual, district-level poverty source and the legally mandated basis for Title I education funding allocations.
 
@@ -36,7 +36,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Collector**: U.S. Census Bureau
 - **Coverage**: All 50 states, 3,100+ counties, 13,000+ school districts
 - **Key measure**: Related children ages 5-17 in families in poverty
-- **Update frequency**: Annual (released each December, ~18-month lag)
+- **Update frequency**: Annual (historically released November–December; the 2024 estimates were released January 27, 2026). That is ~12-13 months after the end of the income year (~18 months from its midpoint; DAAF inference from Census release dates)
 - **Available years**: 1995-2024 (gaps at 1996, 1998; annual from 1999). The v2 mirror (build validated 2026-08-06) extends `districts_saipe` through 2024.
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
@@ -167,7 +167,7 @@ Interpretation: We are 90% confident the true value falls
 between 4,200 and 5,800.
 ```
 
-**School district estimates do NOT have published confidence intervals** - use CV guidance:
+**School district estimates do NOT have published confidence intervals** - use CV guidance. From the Census Bureau evaluation for SAIPE 2009 (pre-ACS method); Census describes these as an approximate upper bound for SAIPE 2010 school-district estimates (applying them to later years is DAAF inference):
 
 | District Population | Median CV | Approximate 90% CI Width |
 |---------------------|-----------|--------------------------|
@@ -255,7 +255,7 @@ df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Model-based estimates | Not direct counts; contain model uncertainty | Always use confidence intervals; check CV for small districts |
-| ~18 month lag | e.g. 2023 estimates released Dec 2024; data never "current" (v2 mirror now reaches 2024) | Accept lag for federal allocations; document vintage |
+| ~12-13 month lag | e.g. 2023 estimates released Dec 17, 2024; 2024 estimates released Jan 27, 2026 (~12-13 months after the income year ends, ~18 months from its midpoint; DAAF inference); data never "current" (v2 mirror now reaches 2024) | Accept lag for federal allocations; document vintage |
 | No race/ethnicity | School district estimates are not disaggregated by demographics | Use ACS 5-year estimates for racial breakdowns |
 | Not enrollment | Population-based (residential), not enrolled students | Different from FRPL counts; do not equate with enrollment |
 | Boundary timing | May not reflect very recent district consolidations or splits | Check SDRP update cycle in `./references/historical-changes.md` |

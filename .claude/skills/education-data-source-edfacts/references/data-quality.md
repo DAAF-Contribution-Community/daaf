@@ -45,7 +45,7 @@ The 2020-21 school year had mixed testing:
 
 ### 2021-22 Onward
 
-Testing largely resumed, but considerations remain:
+Testing largely resumed, but considerations remain (these years are not in the Portal assessment files, which end at Portal year 2020 = SY 2020-21):
 
 | Issue | Guidance |
 |-------|----------|
@@ -59,20 +59,21 @@ Testing largely resumed, but considerations remain:
 def exclude_covid_years(df, assessment_col):
     """Exclude COVID-affected years from trend analysis."""
     
-    # 2020 (spring 2020 testing) is most affected
-    # 2021 has partial data
+    # Portal assessment `year` = fall of the school year.
+    # 2019 = SY 2019-20 (spring 2020 testing waived; no Portal assessment file)
+    # 2020 = SY 2020-21 (partial testing); the last Portal assessment year
     
     return df.filter(
-        ~pl.col("year").is_in([2020, 2021])
+        ~pl.col("year").is_in([2019, 2020])
     )
 
 def flag_covid_years(df):
     """Add flag for COVID-affected years."""
     
     return df.with_columns(
-        pl.when(pl.col("year") == 2020)
+        pl.when(pl.col("year") == 2019)
         .then(pl.lit("no_testing"))
-        .when(pl.col("year") == 2021)
+        .when(pl.col("year") == 2020)
         .then(pl.lit("partial_testing"))
         .otherwise(pl.lit("normal"))
         .alias("covid_status")
@@ -83,14 +84,16 @@ def flag_covid_years(df):
 library(dplyr)
 
 # Exclude COVID-affected years from trend analysis
-# 2020 (spring 2020 testing) is most affected; 2021 has partial data
-df_no_covid <- df |> filter(!year %in% c(2020, 2021))
+# Portal assessment `year` = fall of the school year:
+# 2019 = SY 2019-20 (spring 2020 testing waived; no Portal assessment file)
+# 2020 = SY 2020-21 (partial testing); the last Portal assessment year
+df_no_covid <- df |> filter(!year %in% c(2019, 2020))
 
 # Add flag for COVID-affected years
 df <- df |>
   mutate(covid_status = case_when(
-    year == 2020 ~ "no_testing",
-    year == 2021 ~ "partial_testing",
+    year == 2019 ~ "no_testing",
+    year == 2020 ~ "partial_testing",
     TRUE ~ "normal"
   ))
 ```
@@ -567,13 +570,13 @@ For any EDFacts analysis, document:
 - Access date: January 15, 2024
 
 ### Scope
-- Years: 2017-18 through 2022-23
+- Years: 2017-18 through 2020-21 (Portal years 2017, 2018, 2020; no Portal year 2019 assessment file)
 - States: All 50 states + DC
 - Grades: Grade 4 reading
 - Subgroups: All students, economically disadvantaged, students with disabilities
 
 ### Data Quality
-- 2019-20 data excluded due to COVID testing waivers
+- 2019-20 (Portal year 2019) absent from the Portal due to COVID testing waivers
 - 2020-21 has participation below 95% in many states
 - 12% of school-year-subgroup records suppressed (code -3)
 - 3% of records not reported (code -2)

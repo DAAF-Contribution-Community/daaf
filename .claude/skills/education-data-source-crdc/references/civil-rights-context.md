@@ -160,7 +160,7 @@ disparity <- list(
 - Discipline incidents by sex
 - Harassment/bullying allegations based on sex
 - Course enrollment by sex (especially STEM, AP)
-- Interscholastic athletics participation (2015-16, 2017-18 only)
+- Interscholastic athletics participation (collected 2013-14 onward, including 2025-26)
 - Single-sex classes
 
 ### Sexual Harassment Categories in CRDC
@@ -398,7 +398,7 @@ Disparity may indicate:
 ## Resources
 
 ### Official Resources
-- OCR website: https://www2.ed.gov/about/offices/list/ocr/
+- OCR website: https://www2.ed.gov/about/offices/list/ocr/ (blocks automated access; verified unreachable 2026-10-15)
 - CRDC data: https://civilrightsdata.ed.gov/
 - CRDC Resource Center: https://crdc.communities.ed.gov/
 

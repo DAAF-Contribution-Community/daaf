@@ -32,7 +32,7 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 - **Coverage**: All public schools and districts in 50 states + DC
 - **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates, accountability indicators
 - **Frequency**: Annual collection
-- **Available years**: Assessments 2009-10 to present; Graduation rates 2010-11 to present
+- **Available years (Portal)**: Assessments 2009–2018 and 2020 (no 2019); Graduation rates 2010–2019. For assessments, Portal `year` is the fall of the school year (2019 = SY 2019-20, 2020 = SY 2020-21)
 - **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
 - **Key limitation**: State assessment scores CANNOT be compared across states (different tests, different cut scores)
 - **Available through**: Education Data Portal mirrors
@@ -95,19 +95,18 @@ What are you comparing?
 
 | Data Element | Description | Available Years |
 |--------------|-------------|-----------------|
-| Proficiency rates | % meeting state standards in reading/math | 2009-10 to present |
-| Participation rates | % of students assessed | 2012-13 to present |
+| Proficiency rates | % meeting state standards in reading/math | Portal years 2009–2018, 2020 (no 2019) |
+| Participation rates | % of students assessed | From 2012-13; Portal assessment years end at 2020 (no 2019) |
 | Achievement levels | Below Basic, Basic, Proficient, Advanced | Varies by state |
-| Grade levels | Grades 3-8, high school (varies) | 2009-10 to present |
+| Grade levels | Grades 3-8, high school (varies) | Portal years 2009–2018, 2020 (no 2019) |
 
 ### Graduation Data
 
 | Data Element | Description | Available Years |
 |--------------|-------------|-----------------|
-| 4-year ACGR | Adjusted Cohort Graduation Rate | 2010-11 to present |
-| 5-year ACGR | Extended graduation rate | 2011-12 to present |
-| 6-year ACGR | Further extended rate | 2012-13 to present |
-| Diploma types | Regular diploma only in ACGR | All years |
+| 4-year ACGR | Adjusted Cohort Graduation Rate | Portal years 2010–2019 |
+| Extended-year ACGR (e.g., 5- or 6-year) | Optional and State-adopted; not present in the Portal grad-rates files | — |
+| Diploma types | Regular diploma; from 2017-18 also a State-defined alternate diploma for students with the most significant cognitive disabilities | 2017-18 onward |
 
 ### Key Identifiers
 
@@ -247,7 +246,7 @@ All EDFacts data is fetched via the **Education Data Portal mirror system**. The
 | District Assessments | `edfacts/districts_edfacts_assessments_{year}` | Yearly (2009-2018, 2020) | 23 cols |
 | District Grad Rates | `edfacts/districts_edfacts_grad_rates_{year}` | Yearly (2010-2019) | 15 cols |
 
-> **Note:** 2019 assessment data is NOT available (at any level) due to COVID testing waivers.
+> **Note:** 2019 assessment data (Portal year 2019 = SY 2019-20) is NOT available (at any level) due to COVID testing waivers. Portal year 2020 is SY 2020-21.
 
 ### Codebooks
 
