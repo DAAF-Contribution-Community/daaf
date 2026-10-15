@@ -271,6 +271,33 @@ class ShimLogScanTests(unittest.TestCase):
         self.assertEqual(sp.probe_shim_log_scan(rd.ROUTE_ANTHROPIC, log_path=log, tier="post").verdict,
                          Verdict.SKIP)
 
+    def test_quota_and_billing_codes_count_as_insufficient_quota(self):
+        # Shim 1.4.11 classifies usage_not_included and four OpenAI billing codes as
+        # "backend quota or plan limit reached", like insufficient_quota. Each one
+        # counts under the single insufficient_quota signal (name kept for evidence
+        # comparability) and fails the post-run scan.
+        start = "2026-10-14 09:00:00,000 INFO req_id=- phase=- shim v1.4.11 starting port=4141"
+        codes = ("insufficient_quota", "usage_not_included", "credit_balance_exhausted",
+                 "organization_spend_limit_exceeded", "project_spend_limit_exceeded",
+                 "organization_usage_limit_exceeded")
+        self.assertEqual(sp._SHIM_QUOTA_CODES, codes)
+        for code in codes:
+            with self.subTest(code=code):
+                line = ("2026-10-14 09:00:01,000 INFO req_id=q phase=terminal event=terminal "
+                        f"outcome=error model=gpt-6-sol stream=n attempts=1 retries=0 "
+                        f"backend_type=billing_fixture_type backend_code={code}")
+                counts = sp.scan_shim_log([start, line])
+                self.assertEqual(counts["insufficient_quota"], 1)
+                d = _scratch(self, "shimlogquota")
+                log = d / "shim.log"
+                log.write_text(start + "\n" + line + "\n")
+                r = sp.probe_shim_log_scan(rd.ROUTE_OPENAI_API, log_path=log, tier="post")
+                self.assertEqual(r.verdict, Verdict.FAIL, r.detail)
+                self.assertIn("insufficient_quota=1", r.detail)
+        other = ("2026-10-14 09:00:02,000 INFO req_id=r phase=terminal event=terminal outcome=error "
+                 "model=gpt-6-sol stream=n attempts=1 retries=0 backend_code=rate_limit_exceeded")
+        self.assertEqual(sp.scan_shim_log([start, other])["insufficient_quota"], 0)
+
     def test_tier0_history_is_info_only(self):
         # Pre-run history: stale header lines and Claude-slug fast-fails must never
         # FAIL or WARN a healthy install; the counts are reported, the verdict INFO.

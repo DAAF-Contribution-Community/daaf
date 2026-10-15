@@ -71,6 +71,170 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.11 (2026-10-14): Retry hints, a recognizable context-overflow message, failed
+#     JSON bodies and OpenAI's billing codes (four follow-ups from the F32 work).
+#     SOURCE EVIDENCE (installed Claude Code 2.1.281, binary
+#       ~/.local/share/claude/versions/2.1.281, read 2026-10-14 with grep -a -o -P):
+#       the retry predicate reads `let r=e.headers?.get("x-should-retry")` and
+#       `if(r==="false"){...return!1}` BEFORE `if(e.status===429)...` and
+#       `if(e.status&&e.status>=500)return!0`; earlier checks win over the header:
+#       `if(S6()&&ZPt(e))return!0` (S6 = CLAUDE_CODE_RETRY_WATCHDOG, retries a 429),
+#       the `"type":"overloaded_error"` message check and the max_tokens overflow
+#       parser nMt. The official TS SDK (client.ts:1606-1611) also obeys
+#       x-should-retry. Context overflow is recognized by text only:
+#       `function yHn(e){let n=e.toLowerCase();return n.includes("prompt is too
+#       long")||n.includes("input is too long for requested model")}`, with no
+#       status check, so it applies to non-stream errors and streamed SSE `error`
+#       events. Docs: OpenAI error-codes guide, fetched 2026-10-14
+#       (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/
+#       opus_audit_2026-10-12/2026-10-14T011301Z_developers-openai-com_error-codes-
+#       openai-api_2d8d8b97.md, lines 22-39): four 429 billing codes and "Retrying
+#       billing, spend, or quota errors won't restore API access"; openai-python
+#       response.py (status "failed", `error: Optional[ResponseError]`) and
+#       response_error.py (code literals incl. server_error, rate_limit_exceeded,
+#       invalid_prompt), same folder, 2026-10-14T011227Z_*_2a16abff.bin and
+#       *_4ac68258.bin; OpenRouter HTTP 200 + status "failed" + code server_error
+#       (inspect-robots #448, 2026-10-14T011251Z_api-github-com_untitled_f20ca7c0.json).
+#     FIXES:
+#       (A) A NON-STREAM error whose client-facing type is invalid_request_error now
+#         carries the header `x-should-retry: false` (_no_retry_headers_for). The
+#         case it is for: a backend 429 with code insufficient_quota /
+#         usage_not_included keeps its real 429 (v1.2.14 R2) but is not a throttle,
+#         and Claude Code retried it. Applied at the ChatGPT non-stream passthrough
+#         and in-band branches, the OpenAI-lane non-stream passthrough and (C)
+#         branch, both non-stream search branches, and (for uniformity) the local
+#         400s: request validation, translation and the claude-slug fast-fail. No
+#         header for api_error (code server_error is a transient 5xx the client
+#         should retry), rate_limit_error, overloaded_error or authentication_error
+#         (the 401 retry clears the client's credential cache and reaches the
+#         lazy-401 refresh). No header on a 408 or 409 either, whatever the type
+#         (review fix, same version): the status fallback types a bare 409 as
+#         invalid_request_error, but the client retries both statuses
+#         (`if(e.status===408)return!0;if(e.status===409)return!0;`) and reads the
+#         header first, so the header would have removed that retry. The helper
+#         takes the outgoing status for this reason. Streaming: a streamed
+#         response's HTTP 200 and headers go out before the outcome is known, so the
+#         header cannot ride on it. On the streaming main loop it still applies one
+#         step later (read from the 2.1.281 client source, not observed live): the
+#         SDK turns an SSE `error` event into an error with no status
+#         (`throw new vt(void 0,h,void 0,e.headers,g)`), so no status-based retry
+#         applies, and the main loop falls back once to a NON-streaming request
+#         ("Error streaming, falling back to non-streaming mode"; `stream:!1` inside
+#         the `_ne` retry wrapper, whose loop calls `Wpo`) unless
+#         CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK is set (DAAF does not set it) or
+#         a server-side flag turns the fallback off.
+#         That re-send carries this header and the v1.4.10 status, so a pre-content
+#         failure costs one streamed attempt plus one non-streamed re-send.
+#       (B) The fixed message for context_length_exceeded is now "Prompt is too long
+#         (backend context length exceeded)" (no digits: the client's gap parser
+#         /prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i would read them).
+#         Shared by streaming and non-stream paths. Claude Code now shows its own
+#         context-limit notice ("Context limit reached · /compact or /clear to
+#         continue") instead of a generic error, and replaces the message with its
+#         constant `cO="Prompt is too long"` (`if(oE(e)||sA(e))return Lo({content:cO,
+#         ...errorDetails:e.message})`), so the shim's text survives only as the error
+#         details (read from the 2.1.281 source). The Anthropic max_tokens wording is
+#         deliberately not imitated. DAAF ships auto-compaction off
+#         (.claude/settings.json `autoCompactEnabled: false`); a user who turns it on
+#         may see the client start a compaction on this error, which sends a
+#         summarization request to the same capped backend (unverified whether it fits).
+#       (C) OpenAI lane, HTTP 200 whose Responses object has status "failed": the
+#         ordinary non-stream path and the search JSON transport now classify the
+#         body's `error` (_normalize_backend_error, status=None, phase upstream_stream)
+#         and send the matching status (+ A's header): server_error -> 502 api_error,
+#         rate_limit_exceeded -> 429, invalid_prompt -> 400, context_length_exceeded
+#         -> 400 "Prompt is too long (...)". A failed body with no usable error stays
+#         502 api_error. Fixed messages only (v1.2.11).
+#       (D) credit_balance_exhausted, organization_spend_limit_exceeded,
+#         project_spend_limit_exceeded and organization_usage_limit_exceeded join
+#         _BACKEND_SIGNAL_CLASSIFICATION as invalid_request_error "backend quota or
+#         plan limit reached", non-retryable (as insufficient_quota). _plan_retry
+#         then stops the shim's own retry of such a 429 (one backend request), and
+#         (A) stops the client's.
+#     WHY: before 1.4.11 a quota 429 was retried by Claude Code as a throttle; a
+#       context overflow showed a generic "backend context length exceeded" error
+#       the client did not treat as context-related; and a failed 200 body on the
+#       OpenAI lane always became 502 "conversion failed", so a deterministic
+#       rejection was retried. (D) matters when error.type is not insufficient_quota:
+#       the guide says the type "can still be insufficient_quota", which the
+#       classifier has caught through its code-then-type lookup since v1.2.14 R2.
+#     UNOBSERVED LIVE: the D codes have never appeared in shim.log; (C) has never
+#       been seen on api.openai.com (fixture-tested only); (A)'s client behavior is
+#       read from the 2.1.281 source, not observed; (B)'s client rendering likewise.
+#     UNCHANGED: streaming status and headers (always HTTP 200; errors as SSE events);
+#       the v1.2.10 real-status passthrough and v1.4.10 in-band status mapping;
+#       retry policy for every other code; request translation; /health schema.
+#       SHIM_VERSION -> 1.4.11.
+#   v1.4.10 (2026-10-13): Non-streaming in-band failures get a matching HTTP status.
+#     LIVE EVIDENCE: probe_context_ceiling.py --model gpt-6.1-sol (2026-10-13 20:52)
+#       got HTTP 502 with "backend context length exceeded"; shim.log recorded
+#       phase=terminal outcome=error stream=n attempts=1
+#       backend_type=invalid_request_error backend_code=context_length_exceeded. The
+#       ChatGPT backend had answered HTTP 200 and then sent the failure inside the SSE
+#       stream (response.failed / error), so there was no backend status to pass
+#       through: the v1.2.10 passthrough never fired, and the classified type went out
+#       under a hard-coded 502. Claude Code retries server errors "up to 10 times with
+#       exponential backoff" when they "arrive before any of Claude's response has
+#       streamed" (Claude Code error reference, fetched 2026-10-12:
+#       research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/
+#       opus_audit_2026-10-12/2026-10-12T205221Z_code-claude-com_error-reference-claude-
+#       code-docs_f880e24c.md, lines 12-13), so one unsatisfiable request could be
+#       retried up to 10 times (up to 11 requests). CLIENT SOURCE (installed Claude
+#       Code 2.1.281, read 2026-10-14 with grep -a): the main-loop retry predicate ends
+#       `if(e.status===408)return!0;if(e.status===409)return!0;if(e.status===401)
+#       return bKe(),!0;...if(e.status&&e.status>=500)return!0;return!1`, after an
+#       `x-should-retry` header check ("false" -> no retry). A plain 400 matches no
+#       retry branch. Its context-limit special cases match only Anthropic wordings
+#       ("input length and `max_tokens` exceed context limit: N + N > N" for the
+#       max_tokens reduction; "prompt is too long" / "input is too long for requested
+#       model" for prompt-too-long), so this shim's fixed message triggers neither
+#       (superseded by 1.4.11 B).
+#     FIXES: a new helper, _client_status_for_anthropic_error_type, derives the client
+#       status from the recorded type. It is the exact inverse of
+#       _ANTHROPIC_ERROR_TYPE_BY_STATUS (invalid_request_error->400,
+#       authentication_error->401, permission_error->403, not_found_error->404,
+#       rate_limit_error->429, overloaded_error->529); api_error, "-" and anything else
+#       stay 502. It is applied at two sites: (a) the ChatGPT-lane non-stream adapter
+#       when no backend status was recorded (the in-band case); (b) the non-stream
+#       search path's error branch (search-bearing requests, both lanes; in practice
+#       the ChatGPT lane, because the OpenAI lane's JSON transport rejects a "failed"
+#       body before classification (until 1.4.11 C)). The body type and message are
+#       unchanged.
+#     WHY: an in-band failure has no backend status, so its status is derived from
+#       the recorded type. (On the v1.2.10 passthrough branch the real backend status
+#       still wins and can disagree with the classifier type, e.g. a 429
+#       insufficient_quota goes out as 429 invalid_request_error since v1.2.14 R2.) A
+#       context overflow now reaches the client as 400 invalid_request_error, which the
+#       2.1.281 retry predicate does not retry (see CLIENT SOURCE above). The shim
+#       side was confirmed live 2026-10-14 16:01 (a direct probe on gpt-6.1-sol,
+#       non-stream: upstream status=200, client got HTTP 400, attempts=1;
+#       research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/
+#       RESULTS_05a_confirm_1.4.10.md); Claude Code's handling of that 400 was not
+#       exercised (as for v1.2.10). 429 rate_limit_error and
+#       529 overloaded_error stay client-retryable by design, matching what the same
+#       failure gets as a real backend status. The shim's own retry loop never retries
+#       an in-band failure (it arrives after the 200), so the shim adds no attempt for
+#       an in-band failure (pre-200 retries still count).
+#     401 (user decision 2026-10-14): an in-band token_invalidated goes out as 401
+#       authentication_error "backend authentication failed", not _RELOGIN_MSG (that
+#       text says a refresh was attempted; none is on this path). Claude Code 2.1.281
+#       retries a 401 (`if(e.status===401)return bKe(),!0`; bKe clears its credential
+#       cache), as it retried the old 502, so the retry can still reach the pre-stream
+#       lazy-401 refresh in _open_backend_stream. Review-time inference that a 401 is
+#       not retried (error reference line 26 mentions only the apiKeyHelper case) was
+#       contradicted by the client source. The in-band case is unobserved
+#       live: the only recorded token_invalidated arrived as a pre-stream HTTP 401
+#       (research/2026-07-20_FrameworkDev_ShimRoadmap/output/preliminary_notes/
+#       04_tier0_ground_truth_findings.md:57,63). To spot one in shim.log: an
+#       upstream_headers line with status=200, then a terminal line with stream=n,
+#       outcome=error and backend_code=token_invalidated (a pre-stream rejection
+#       shows status=401 and a retry_reason=auth_401 refresh instead).
+#     UNCHANGED: streaming paths (HTTP 200 is already sent; the in-band event already
+#       carries the classified type); the v1.2.10 real-status passthrough; the
+#       OpenAI-lane ordinary (non-search) non-stream path (until 1.4.11 C); and 502 api_error for
+#       refusals, framing, protocol and recovery-validation failures, conversion
+#       failures and transport errors (none records a classifier type). Request
+#       translation and the /health schema are unchanged. SHIM_VERSION -> 1.4.10.
 #   v1.4.9 (2026-10-13): Follow-ups from live verification of 1.4.8.
 #     (1) Effort floor extended: GPT-6.1 Sol also rejects effort:"none" (live: a
 #     "gpt-6.1-sol#none" request got backend 400 invalid_request_error /
@@ -1250,7 +1414,7 @@ import uvicorn
 # cancellation. Replay expires after 30 minutes or cache eviction/process restart.
 # Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
 # No new health fields, env controls, backend lanes or persistent search caches.
-SHIM_VERSION = "1.4.9"
+SHIM_VERSION = "1.4.11"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -4715,6 +4879,14 @@ async def _collect_search_response(resp, disconnect_event, registry, json_mode=F
             response = json.loads(raw)
         except (ValueError, UnicodeDecodeError):
             raise _ProtocolError("search response contained malformed JSON") from None
+        if isinstance(response, dict) and response.get("status") == "failed":
+            # v1.4.11 (C): an HTTP 200 JSON body with status "failed" is the JSON
+            # form of a terminal response.failed. Route it through the same collector
+            # branch the SSE transport uses: it classifies the body's `error` with
+            # _normalize_backend_error (phase upstream_stream) and raises the fixed
+            # client message, so the caller sends the matching status. A body with
+            # no usable `error` classifies as api_error and stays 502.
+            collector.event({"type": "response.failed", "response": response})
         response = _validate_response_for_conversion(response)
         items = response.get("output")
         if not isinstance(items, list):
@@ -6491,6 +6663,86 @@ def _anthropic_error_type_for_status(status):
     return _ANTHROPIC_ERROR_TYPE_BY_STATUS.get(status, "api_error")
 
 
+# v1.4.10: the inverse direction, Anthropic error `type` -> client HTTP status.
+# INTENT: a NON-STREAM failure that arrives IN-BAND (the upstream answered HTTP 200,
+#   then sent response.failed or an `error` event) has a classified type but no real
+#   backend status. Sending it as a flat 502 made Claude Code retry a deterministic
+#   rejection (e.g. context_length_exceeded) up to 10 times. On the v1.2.10
+#   status-passthrough branch the real backend status wins (since v1.2.14 R2 it can
+#   disagree with the classifier type: 429 + insufficient_quota goes out as 429
+#   invalid_request_error); an in-band failure has no status, so it is derived here.
+# REASONING: built by inverting _ANTHROPIC_ERROR_TYPE_BY_STATUS, so the two
+#   directions share one source of truth and cannot drift. The forward map is
+#   one-to-one (pinned by test_v1410_inband_status), so the inverse is exact.
+#   permission_error->403 and not_found_error->404 are unreachable at the two call
+#   sites (no _BACKEND_SIGNAL_CLASSIFICATION entry maps to them, and the status
+#   fallback needs a real status); they are kept for map symmetry.
+#   authentication_error->401 (in-band token_invalidated) keeps a client retry:
+#   Claude Code 2.1.281 retries a 401, so the retry can reach the lazy-401 refresh
+#   (see the v1.4.10 header).
+# ASSUMES: api_error, "-" and any unknown type are a genuine shim/backend fault
+#   (refusal, framing, protocol, recovery-validation, conversion, post-200 transport)
+#   and keep the historical 502.
+_CLIENT_STATUS_BY_ANTHROPIC_ERROR_TYPE = {
+    error_type: status for status, error_type in _ANTHROPIC_ERROR_TYPE_BY_STATUS.items()
+}
+
+
+def _client_status_for_anthropic_error_type(error_type):
+    # v1.4.10: exact-type lookup; everything outside the map stays 502.
+    return _CLIENT_STATUS_BY_ANTHROPIC_ERROR_TYPE.get(error_type, 502)
+
+
+# v1.4.11 (A): the retry hint for a NON-STREAM error response.
+# INTENT: tell the client not to retry a rejection the shim has classified as
+#   deterministic. The case that matters is a backend 429 whose code is
+#   insufficient_quota / usage_not_included (or a v1.4.11 billing code): it keeps its
+#   real 429 status (v1.2.14 R2 passthrough) but carries invalid_request_error, and
+#   Claude Code retried it as a throttle.
+# REASONING: Claude Code 2.1.281 reads `x-should-retry` before its status rules
+#   (`if(r==="false"){...return!1}` precedes `if(e.status===429)...` and
+#   `if(e.status&&e.status>=500)return!0`); the official TS SDK obeys the same
+#   header. One rule, keyed on the client-facing TYPE, covers every status the type
+#   travels under: on a 400 it is harmless (a 400 matches no retry branch). Other
+#   types get no header: api_error (incl. code server_error) is a transient 5xx the
+#   client should retry; rate_limit_error and overloaded_error are retryable by
+#   design; authentication_error keeps Claude Code's 401 retry, which clears its
+#   credential cache and lets the shim's lazy-401 refresh run.
+#   Status exclusion (review fix): no header on a 408 or 409, whatever the type. The
+#   status fallback (_status_fallback_classification) types a bare 409 (and any
+#   other unrecognized 4xx except 401/408/429) as invalid_request_error, but Claude
+#   Code 2.1.281 retries both statuses (`if(e.status===408)return!0;
+#   if(e.status===409)return!0;`), and its header check runs before those status
+#   rules, so the header would have removed a retry the client grants. The caller
+#   passes the status it is about to send; None (unknown) applies the type rule only.
+# ASSUMES: the header is honored only where the client reads it. Two documented
+#   gaps in 2.1.281: with CLAUDE_CODE_RETRY_WATCHDOG set, `if(S6()&&ZPt(e))return!0`
+#   retries a 429 before the header is read; and the max_tokens overflow parser
+#   (nMt) also runs first. Streaming responses cannot carry it (their HTTP 200 and
+#   headers are sent before the outcome is known; errors travel as SSE events), but
+#   on the streaming main loop it still takes effect one step later. Read from the
+#   2.1.281 client source, not observed live: the SDK turns an SSE `error` event into
+#   an error with no status (`throw new vt(void 0,h,void 0,e.headers,g)`), so no
+#   status-based retry applies, and the main loop then falls back once to a
+#   NON-streaming request (`Error streaming, falling back to non-streaming mode`,
+#   made with `stream:!1` inside the `_ne` retry wrapper) unless
+#   CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK is set (DAAF does not set it) or a
+#   server-side flag turns the fallback off.
+#   That re-send is a non-stream request, so it gets this header and the v1.4.10
+#   status: a pre-content failure costs one streamed attempt plus one non-streamed
+#   re-send.
+_NO_RETRY_HEADERS = ((b"x-should-retry", b"false"),)
+_CLIENT_RETRIED_STATUSES_KEPT = frozenset((408, 409))
+
+
+def _no_retry_headers_for(error_type, status=None):
+    # v1.4.11 (A): extra_headers for _send_json; None (no header) for every other type,
+    # and for a 408/409 (Claude Code retries those; see the status exclusion above).
+    if status in _CLIENT_RETRIED_STATUSES_KEPT:
+        return None
+    return list(_NO_RETRY_HEADERS) if error_type == "invalid_request_error" else None
+
+
 _BACKEND_ERROR_MESSAGE_BY_STATUS = {
     400: "backend rejected the request",
     401: "backend authentication failed",
@@ -6580,11 +6832,27 @@ def _status_fallback_classification(status):
 # Ordered checks inside the classifier; a code match beats a type match, and both
 # beat the HTTP status. Fixed messages only (v1.2.11 no-prose rule).
 _BACKEND_SIGNAL_CLASSIFICATION = {
+    # v1.4.11 (B): "Prompt is too long" is the phrase Claude Code 2.1.281 recognizes
+    # as a context overflow (yHn: includes "prompt is too long"), for non-stream errors
+    # and streamed SSE error events alike. No digits: a gap parser
+    # (/prompt is too long[^0-9]*(\d+)\s*tokens?\s*>\s*(\d+)/i) would read them.
     "context_length_exceeded": (
-        "invalid_request_error", "backend context length exceeded", False),
+        "invalid_request_error", "Prompt is too long (backend context length exceeded)",
+        False),
     "insufficient_quota": (
         "invalid_request_error", "backend quota or plan limit reached", False),
     "usage_not_included": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    # v1.4.11 (D): OpenAI's billing codes (error-codes guide, fetched 2026-10-14: all
+    # four are 429s; "Retrying billing, spend, or quota errors won't restore API
+    # access"). Never observed in shim.log.
+    "credit_balance_exhausted": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "organization_spend_limit_exceeded": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "project_spend_limit_exceeded": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "organization_usage_limit_exceeded": (
         "invalid_request_error", "backend quota or plan limit reached", False),
     "invalid_prompt": ("invalid_request_error", "backend rejected the request", False),
     "bio_policy": ("invalid_request_error", "backend rejected the request", False),
@@ -6963,14 +7231,17 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 pass
     except _DuplicateTopLevelSpeedError:
         _mark_error(phase="request_validation", error_type="invalid_request_error")
+        # v1.4.11 (A): every local 400 carries x-should-retry: false (uniform rule;
+        # a 400 is not retried anyway).
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error",
             "message": "duplicate top-level speed field",
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
     except (ValueError, UnicodeDecodeError) as e:
         log.error("bad request json: %s", type(e).__name__)
-        await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})
+        await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}},
+                         extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     # Validate only the structural boundary the existing translator depends on.
@@ -7056,7 +7327,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error",
             "message": "invalid request structure",
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     # Validate the body/header Fast contract before authentication or any upstream call.
@@ -7071,7 +7342,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         _mark_error(phase="request_validation", error_type="invalid_request_error")
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error", "message": str(error),
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
 
     _set_phase("request_translation")
@@ -7093,7 +7364,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         _mark_error(phase="request_translation", error_type="invalid_request_error")
         await _send_json(send, 400, {"type": "error", "error": {
             "type": "invalid_request_error", "message": str(error),
-        }})
+        }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
         return
     search_bearing = bool(search_registry.search_name or any(
         item.get("type") == "web_search_call" for item in responses_payload["input"]))
@@ -7176,7 +7447,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     "haiku tier); or, if this is your session model, pick a GPT "
                     "model with /model"
                 ) % _safe_slug,
-            }})
+            }}, extra_headers=_no_retry_headers_for("invalid_request_error", 400))
             return
 
     # v1.2.5: build the backend auth headers by lane.
@@ -7275,7 +7546,11 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     error_type, message, _, _ = _normalize_backend_error(details, status=resp.status_code, phase="upstream_headers")
                     owned, search_cm = search_cm, None
                     await _settle_stream_context(owned)
-                    await _send_json(send, resp.status_code, {"type": "error", "error": {"type": error_type, "message": message}})
+                    # v1.4.11 (A): no-retry hint when the classified type is
+                    # invalid_request_error (e.g. a 429 insufficient_quota); never on a
+                    # 408/409, which the client retries.
+                    await _send_json(send, resp.status_code, {"type": "error", "error": {"type": error_type, "message": message}},
+                                     extra_headers=_no_retry_headers_for(error_type, resp.status_code))
                     return
                 terminal = await _collect_search_response(resp, disconnect_event, search_registry, json_mode, reject_refusals=True)
                 owned, search_cm = search_cm, None
@@ -7308,7 +7583,18 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 message = str(error) if isinstance(error, _ProtocolError) else "backend search transport or framing error"
                 state = _request_state()
                 error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
-                await _send_json(send, 502, {"type": "error", "error": {"type": error_type, "message": message}})
+                # v1.4.10: an in-band response.failed/error is classified by
+                # _SearchCollector.event before it raises; send the status that
+                # matches that type (400 for context_length_exceeded) so the client
+                # does not retry it. Unclassified failures (refusal, framing, limits,
+                # transport) record no type and keep 502 api_error.
+                # v1.4.11 (A): plus the no-retry hint for invalid_request_error. (C) A
+                # JSON-transport (OpenAI-lane) body with status "failed" reaches this
+                # branch classified, via _collect_search_response.
+                client_status = _client_status_for_anthropic_error_type(error_type)
+                await _send_json(send, client_status,
+                                 {"type": "error", "error": {"type": error_type, "message": message}},
+                                 extra_headers=_no_retry_headers_for(error_type, client_status))
             finally:
                 if search_cm is not None:
                     await _settle_stream_context(search_cm)
@@ -7332,8 +7618,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # v1.2.10: capture the real backend HTTP status for a rejection so the
             # final send can pass it through (mapped to an Anthropic error type)
             # instead of collapsing every 4xx/5xx to a flat, retryable-looking 502.
-            # Stays None for post-200 accumulation/conversion failures, which have
-            # no backend rejection status and correctly keep the 502 api_error path.
+            # Stays None for post-200 failures, which have no backend rejection
+            # status. v1.4.10: those derive their status from the recorded type
+            # instead (an in-band context_length_exceeded -> 400); unclassified
+            # accumulation/conversion failures still get 502 api_error.
             backend_status = None
             try:
                 try:
@@ -7443,8 +7731,9 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 # v1.2.10: if the failure was a backend HTTP rejection, pass the real
                 # status through (mapped to the matching Anthropic error type) so a
                 # deterministic 400 (e.g. context_length_exceeded) is not retried by
-                # the client. Accumulation/conversion failures after a 200 (no
-                # backend_status) retain the original 502 api_error shape.
+                # the client. v1.4.10: failures after a 200 (no backend_status) take
+                # the status that matches their recorded type (else branch below);
+                # only unclassified ones keep the 502 api_error shape.
                 if backend_status is not None:
                     # v1.2.14 (R2): surface the CLASSIFIER type (code/type precedence
                     # over status), set by _normalize_backend_error on the successful
@@ -7457,18 +7746,38 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                         if state is not None and state.anthropic_error_type != "-"
                         else _anthropic_error_type_for_status(backend_status)
                     )
+                    # v1.4.11 (A): a 429 classified invalid_request_error (quota or
+                    # billing code) keeps its 429 but tells the client not to retry.
+                    # A 408/409 gets no header (the client retries those).
                     await _send_json(send, backend_status, {"type": "error", "error": {
                         "type": passthrough_type,
-                        "message": safe_message}})
+                        "message": safe_message}},
+                        extra_headers=_no_retry_headers_for(passthrough_type, backend_status))
                 else:
+                    # v1.4.10: no backend HTTP status. The upstream answered 200 and
+                    # the failure came in-band (response.failed / error), or the
+                    # shim itself rejected the stream.
+                    # INTENT: send the status that matches the recorded type, so an
+                    #   in-band context_length_exceeded reaches Claude Code as a 400
+                    #   it does not retry (live 2026-10-13: it was sent as 502).
+                    # REASONING: _accumulate_terminal_response records the
+                    #   classifier type before returning; refusal, framing, protocol,
+                    #   recovery and conversion failures record none, so the
+                    #   fallback above records api_error and they keep 502.
+                    # ASSUMES: the first recorded type is this request's terminal
+                    #   cause (the non-stream path stops at its first failure).
                     state = _request_state()
                     normalized_type = (
                         state.anthropic_error_type
                         if state is not None and state.anthropic_error_type != "-"
                         else "api_error"
                     )
-                    await _send_json(send, 502, {"type": "error", "error": {
-                        "type": normalized_type, "message": safe_message}})
+                    client_status = _client_status_for_anthropic_error_type(normalized_type)
+                    await _send_json(
+                        send, client_status,
+                        {"type": "error", "error": {
+                            "type": normalized_type, "message": safe_message}},
+                        extra_headers=_no_retry_headers_for(normalized_type, client_status))
                 return
             usage = anth["usage"]
             cached = anth.pop("_cached_tokens", None)
@@ -7517,11 +7826,34 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     _scrub_metadata(backend_code), error_type,
                     _diag_headers(r.headers),
                 )
+                # v1.4.11 (A): no-retry hint when the classified type is
+                # invalid_request_error (e.g. a 429 insufficient_quota); never on a
+                # 408/409, which the client retries.
                 await _send_json(send, r.status_code, {"type": "error", "error": {
-                    "type": error_type, "message": client_msg}})
+                    "type": error_type, "message": client_msg}},
+                    extra_headers=_no_retry_headers_for(error_type, r.status_code))
                 return
+            # v1.4.11 (C): an HTTP 200 whose Responses object says status "failed".
+            # INTENT: classify the body's `error` like an in-band response.failed and
+            #   send the matching status, instead of the flat 502 "conversion failed".
+            # REASONING: the Responses object documents status "failed" with an
+            #   `error: {code, message}` (openai-python response.py / response_error.py,
+            #   fetched 2026-10-14), and OpenRouter returns exactly that on HTTP 200 for
+            #   a dropped upstream (inspect-robots #448: code server_error). Passing the
+            #   whole object lets _backend_error_fields descend into root["error"],
+            #   as the streaming response.failed handler does. status=None: the 200 is
+            #   not a rejection status, so only a recognized code/type classifies it.
+            # ASSUMES: a "failed" body with no usable error classifies as api_error
+            #   (unknown/unstructured envelope) and keeps 502 api_error. Fixed
+            #   messages only (v1.2.11); the backend's prose is never echoed. Never
+            #   observed on api.openai.com.
+            failed_body = None
             try:
-                anth = _responses_to_anthropic(r.json(), model)
+                response_body = r.json()
+                if isinstance(response_body, dict) and response_body.get("status") == "failed":
+                    failed_body = response_body
+                else:
+                    anth = _responses_to_anthropic(response_body, model)
             except (_ProtocolError, TypeError, AttributeError,
                     KeyError, ValueError) as error:
                 log.error("messages non-stream conversion error: %s",
@@ -7533,6 +7865,23 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 await _send_json(send, 502, {"type": "error", "error": {
                     "type": "api_error",
                     "message": "backend response conversion failed"}})
+                return
+            if failed_body is not None:
+                error_type, client_msg, backend_type, backend_code = \
+                    _normalize_backend_error(
+                        failed_body, status=None, phase="upstream_stream",
+                    )
+                log.error(
+                    "backend non-stream response status=failed retries=%d "
+                    "backend_type=%s backend_code=%s anthropic_type=%s",
+                    retries, _scrub_metadata(backend_type),
+                    _scrub_metadata(backend_code), error_type,
+                )
+                client_status = _client_status_for_anthropic_error_type(error_type)
+                await _send_json(
+                    send, client_status,
+                    {"type": "error", "error": {"type": error_type, "message": client_msg}},
+                    extra_headers=_no_retry_headers_for(error_type, client_status))
                 return
             usage = anth["usage"]
             cached = anth.pop("_cached_tokens", None)

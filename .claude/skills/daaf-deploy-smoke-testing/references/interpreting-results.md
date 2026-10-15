@@ -135,7 +135,7 @@ Selected with `D` in `--tiers` (with `--include-r-smoke` for TD.6, `--tier-d-all
 | **TD.4 safety-hook tests** | `scripts/test_safety_hooks.sh` exits 0 (the `bash-safety.sh` battery passes). | FAIL = a safety-hook regression — investigate before trusting the deployment's guardrails. |
 | **TD.5 single-command hook tests** | `scripts/test_enforce_single_command.sh` exits 0. | FAIL = an `enforce-single-command.sh` regression. |
 | **TD.6 R/Python skill smoke suite** | (opt-in) log-stripped copies of `scripts/smoke_tests/smoke_*` run clean via `SMOKE_DIR`. | FAIL = a library smoke failed. **SKIP by default** — pass `--include-r-smoke` to enable (it is slow). Mirrors the CI staging pattern; runs under `scripts/scratch/smoke_live/`, never `/tmp`. |
-| **TD.7 provider-shim unit suite** | The CI command `python3 -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py'` exits 0 (timeout at least 900 s). It tests the shim source on disk, not the running daemon; T0.8 compares those. Covers most shim failure-catalogue rows (see the map below). | FAIL = a shim test failed: read `evidence/tier_d/TD.7.log`; CI's provider-shim job runs the same command. **SKIP** off the shim routes unless `--tier-d-all`. |
+| **TD.7 provider-shim unit suite** | The CI command `python3 -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py'` exits 0 (timeout at least 900 s). It tests the shim source on disk, not the running daemon; T0.8 compares those. Covers most shim failure-catalogue rows (see the map below). | FAIL = a shim test failed: read `evidence/tier_d/TD.7.log`; CI's provider-shim job runs the same command, and also runs `scripts/provider_shim/probe_context_ceiling.py --self-test`, which TD.7 does not. **SKIP** off the shim routes unless `--tier-d-all`. |
 | **TD.8 core library imports** | A log-stripped copy of the latest `scripts/smoke_tests/smoke_imports*.py` revision, staged under `scripts/scratch/smoke_live_td8/`, runs clean. Always on, and fast; TD.6 stays the slow opt-in suite. | FAIL = a pinned library failed to import (rebuild the image; read `evidence/tier_d/TD.8.log`), no `smoke_imports*.py` exists, or staging failed. |
 
 ---
@@ -174,7 +174,7 @@ On a shim route (judged by the **stated** route; a detection mismatch is already
 
 | Probe | PASS means | FAIL / WARN interpretation |
 |-------|-----------|----------------------------|
-| **T0.20 Shim-log scan (post-run window)** | Counts only, never line text: no failure signal in this run's window. Recovered whitespace retries (`retry_reason=tool_argument_whitespace outcome=success`) are reported as INFO inside the detail. A `shim vX starting` line before the window resets the counters (the scan covers the daemon serving the run); a start **inside** the window, a mid-run restart, does not: the counts accumulate across it, `daemon_restarts_in_window` in the evidence counts it, and the detail adds "Daemon restarts inside the window: N". | **FAIL** = `x-codex-turn-state` lines written during the run (header leakage; shim 1.4.9 stops it; F28), or `insufficient_quota` (an unfunded API key; F22). **WARN** = Claude-slug fast-fails or Claude-named requests (map all aliases, T0.17; F2), unrecovered whitespace trips (`attempts=1 backend_code=excessive_json_whitespace`; F17), `unsupported_value` (for example a `#none` effort; F15) or `context_length_exceeded` (F21); also WARN when the log could not be read. Evidence in the package: `logs/shim.log`, the run window. Read the log around the signal without pasting header lines. |
+| **T0.20 Shim-log scan (post-run window)** | Counts only, never line text: no failure signal in this run's window. Recovered whitespace retries (`retry_reason=tool_argument_whitespace outcome=success`) are reported as INFO inside the detail. A `shim vX starting` line before the window resets the counters (the scan covers the daemon serving the run); a start **inside** the window, a mid-run restart, does not: the counts accumulate across it, `daemon_restarts_in_window` in the evidence counts it, and the detail adds "Daemon restarts inside the window: N". | **FAIL** = `x-codex-turn-state` lines written during the run (header leakage; shim 1.4.9 stops it; F28), or `insufficient_quota` (an unfunded API key or a spending cap; F22; the counter keeps that name but counts any of the six quota codes the shim classifies: `insufficient_quota`, `usage_not_included`, and since 1.4.11 `credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`, `organization_usage_limit_exceeded`). **WARN** = Claude-slug fast-fails or Claude-named requests (map all aliases, T0.17; F2), unrecovered whitespace trips (`attempts=1 backend_code=excessive_json_whitespace`; F17), `unsupported_value` (for example a `#none` effort; F15) or `context_length_exceeded` (a request over the context ceiling; shim 1.4.10 stops sending the non-streaming in-band case as a 502, and from 1.4.11 the user should see Claude Code's "Prompt is too long" / "Context limit reached" notice (read from client source, not yet seen live); F21, F32); also WARN when the log could not be read. Evidence in the package: `logs/shim.log`, the run window. Read the log around the signal without pasting header lines. |
 
 `POST.CRASH` (FAIL) and `POST.UNAVAILABLE` (SKIP) are the synthetic records for a scan that raised an exception or does not exist in the checkout (see Verdict Semantics).
 
@@ -309,7 +309,7 @@ A high `email` or `secret_assignment` count in a transcript usually means the mo
 
 ## Failure Catalogue → Probe Map
 
-The GPT-shim failure catalogue (F1-F31, `research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/scoping_2026-10-13/03_failure_catalogue_search-agent.md`) and the probes that now catch each row. TD.7 tests the shim source on disk; the Tier 0 shim probes look at the running daemon and its log. T0.20 below means the **post-run** scan of this run's window, which carries the verdict; the Tier 0 scan of earlier history is INFO.
+The GPT-shim failure catalogue (F1-F32: F1-F31 from `research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/scoping_2026-10-13/03_failure_catalogue_search-agent.md`, F32 from the 2026-10-13 live context-ceiling probe run recorded in that folder's `SESSION_NOTES.md`) and the probes that now catch each row. TD.7 tests the shim source on disk; the Tier 0 shim probes look at the running daemon and its log. T0.20 below means the **post-run** scan of this run's window, which carries the verdict; the Tier 0 scan of earlier history is INFO.
 
 | Failure | Caught by |
 |---------|-----------|
@@ -333,8 +333,8 @@ The GPT-shim failure catalogue (F1-F31, `research/2026-09-06_FrameworkDev_GPT_Sh
 | F18 Tool run with empty arguments | TD.7 |
 | F19 Strict validators reject the real wire format | T1.1, T2.2 |
 | F20 `role:system` message rejected | T1.1 |
-| F21 Context overflow retried as a 502 | TD.7, T0.20 (`context_length_exceeded`) |
-| F22 Instant 429 on an unfunded key | T0.20 (`insufficient_quota`), T1.1 |
+| F21 Context overflow retried as a 502 (shim 1.2.10 fixed the case rejected before the reply; the in-band non-streaming case is F32; since 1.4.11 the message reads "Prompt is too long (backend context length exceeded)") | TD.7, T0.20 (`context_length_exceeded`) |
+| F22 Instant 429 on an unfunded key (since shim 1.4.11 a non-streaming reply carries `x-should-retry: false`, so Claude Code stops retrying it, except with `CLAUDE_CODE_RETRY_WATCHDOG` set, which still retries a 429; a streamed reply cannot carry the header, but a streamed main-loop request that fails before any content is re-sent once without streaming and that re-send carries it, so the error costs one streamed attempt plus one non-streamed re-send; both read from the 2.1.281 client source, not observed live. OpenAI's newer billing codes such as `credit_balance_exhausted` are classified the same way) | T0.20 (`insufficient_quota`), T1.1 |
 | F23 `/model` switch to GPT fails | TD.7 |
 | F24 Stale reasoning blob after a restart | TD.7 |
 | F25 WebSearch rejected or failing | T2.3 (WARN on a fallback-only pass on shim routes) |
@@ -344,6 +344,7 @@ The GPT-shim failure catalogue (F1-F31, `research/2026-09-06_FrameworkDev_GPT_Sh
 | F29 Prompt cache near zero | T0.19, TD.7 |
 | F30 Pasted gateway URL fails | TD.7 |
 | F31 Claude Code inside the broken 2.1.265-2.1.275 window | T0.15 (2.1.276 floor), T0.5 |
+| F32 Non-streaming in-band context overflow sent as a 502 (fixed in shim 1.4.10, confirmed live 2026-10-14 with a direct probe: HTTP 400, attempts=1; 1.4.11 makes the message one Claude Code recognizes as a context overflow) | TD.7, T0.20 (`context_length_exceeded`) |
 
 ---
 

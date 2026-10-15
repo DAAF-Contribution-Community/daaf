@@ -1716,7 +1716,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.4.9 starting" in line
+                    if "req_id=- phase=process shim v1.4.11 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(
@@ -2241,9 +2241,10 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     parse_typed_sse(result.body),
                     expected_error_type="invalid_request_error",
                 )
+                # v1.4.11 (B): the client-recognizable "Prompt is too long" wording.
                 self.assertEqual(
                     failure.error["message"],
-                    "backend context length exceeded",
+                    "Prompt is too long (backend context length exceeded)",
                 )
                 self.assertLessEqual(len(failure.error["message"]), 200)
                 self.assertNotIn("raw_detail", failure.error["message"])
@@ -2308,12 +2309,14 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
                 result = shim.post_messages(stream=False)
-                self.assertEqual(result.status, 502, result.text)
+                # v1.4.10: an in-band context_length_exceeded on the non-stream path
+                # is sent with the status that matches its type (was 502).
+                self.assertEqual(result.status, 400, result.text)
                 error = result.json()["error"]
                 self.assertEqual(error["type"], "invalid_request_error")
                 self.assertEqual(
                     error["message"],
-                    "backend context length exceeded",
+                    "Prompt is too long (backend context length exceeded)",
                 )
                 lines = lifecycle_for_response(shim, result)
                 self.assertEqual(self._terminal_fields(lines)["outcome"], "error")
@@ -2392,10 +2395,12 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             "error",
             error_payload,
         )
+        # v1.4.10: the non-stream in-band case now gets the status matching its
+        # classified type (context_length_exceeded -> 400), not a flat 502.
         cases = (
             ("http-400", http_error, True, 200, "400"),
             ("inband-response-failed", inband_error, True, 200, "200"),
-            ("chatgpt-inbound-nonstream", accumulated_error, False, 502, "200"),
+            ("chatgpt-inbound-nonstream", accumulated_error, False, 400, "200"),
         )
 
         for name, scenario, inbound_stream, client_status, upstream_status in cases:

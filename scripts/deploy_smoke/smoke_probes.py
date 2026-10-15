@@ -2067,6 +2067,19 @@ SHIM_LOG_PATH = Path(BASE_DIR) / "scripts" / "provider_shim" / "logs" / "shim.lo
 _SHIM_LOG_STAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _SHIM_START_RE = re.compile(r"\bshim v[0-9A-Za-z._+-]+ starting\b")
 _CLAUDE_REQUEST_RE = re.compile(r"\bmodel=(?:openai/)?claude-")
+# Backend quota and billing codes the shim classifies as "backend quota or plan
+# limit reached" (anthropic_openai_shim.py _BACKEND_SIGNAL_CLASSIFICATION; the last
+# four since shim 1.4.11, from OpenAI's error-codes guide). Any of them counts
+# under the one "insufficient_quota" signal, whose name is kept so evidence from
+# earlier runs stays comparable.
+_SHIM_QUOTA_CODES = (
+    "insufficient_quota",
+    "usage_not_included",
+    "credit_balance_exhausted",
+    "organization_spend_limit_exceeded",
+    "project_spend_limit_exceeded",
+    "organization_usage_limit_exceeded",
+)
 # Counted signals. Each is (name, predicate over one line); the scan keeps
 # COUNTS ONLY — no line text ever leaves this function (the header incident of
 # RESULTS_01:85: opaque turn-state values were surfaced by a broad log query).
@@ -2078,7 +2091,7 @@ _SHIM_LOG_SIGNALS = (
     ("recovered_whitespace_retries", lambda ln: "event=terminal" in ln and "retry_reason=tool_argument_whitespace" in ln
      and "outcome=success" in ln),
     ("unsupported_value", lambda ln: "backend_code=unsupported_value" in ln),
-    ("insufficient_quota", lambda ln: "insufficient_quota" in ln),
+    ("insufficient_quota", lambda ln: any(code in ln for code in _SHIM_QUOTA_CODES)),
     ("context_length_exceeded", lambda ln: "context_length_exceeded" in ln),
     ("turn_state_header_lines", lambda ln: "x-codex-turn-state" in ln.lower()),
     # TA.1's Auto-mode classifier signature. UNCONFIRMED UNTIL FIRST LIVE RUN.
@@ -2140,7 +2153,8 @@ def scan_shim_log(lines, since=None, until=None) -> dict:
 
 def _evaluate_shim_log(counts: dict):
     """Pure T0.20 verdict: FAIL on header leakage (x-codex-turn-state after the
-    daemon start, F28) or insufficient_quota (F22); WARN on Claude-named requests
+    daemon start, F28) or a quota/billing code (the insufficient_quota counter,
+    any of _SHIM_QUOTA_CODES; F22); WARN on Claude-named requests
     or fast-fails (F2), unrecovered whitespace (F17), unsupported_value (F15),
     context_length_exceeded (F21); recovered whitespace retries are INFO."""
     fail = [k for k in ("turn_state_header_lines", "insufficient_quota") if counts.get(k)]
@@ -4809,7 +4823,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "T0.15": "Rebuild to the Dockerfile pins (CLAUDE_CODE_VERSION); on shim routes Claude Code must be >= 2.1.276. Commit or stash dirty files before a release run.",
     "T0.18": "Fix the DAAF_CODEX_CONFIG_<N> lines named in logs/codex_config.log (refused entries look like credentials), then start_shim.sh --restart.",
     "T0.19": "Low prompt-cache reuse drains quota: confirm the shim is >= 1.4.6 (per-session routing hint) and watch /health.prompt_cache over a longer session.",
-    "T0.20": "Read logs/shim.log around the counted signals (do not paste header lines): claude-* requests -> map all tier aliases (T0.17); whitespace -> shim >= 1.4.8; unsupported_value -> drop '#none' effort; insufficient_quota -> billing; a Codex turn-state header in the log -> shim >= 1.4.9 and rotate the log.",
+    "T0.20": "Read logs/shim.log around the counted signals (do not paste header lines): claude-* requests -> map all tier aliases (T0.17); whitespace -> shim >= 1.4.8; unsupported_value -> drop '#none' effort; insufficient_quota (counts any quota or billing code: insufficient_quota, usage_not_included, credit_balance_exhausted, organization_spend_limit_exceeded, project_spend_limit_exceeded, organization_usage_limit_exceeded) -> billing or plan limit; a Codex turn-state header in the log -> shim >= 1.4.9 and rotate the log.",
     "T0.21": "Run as the non-root appuser with /daaf writable; free disk space; for git errors add /daaf to safe.directory.",
     "T0.22": "Rebuild the image (missing tools come from the Dockerfile); dev-only tools need DAAF_DEV=1 at build time.",
     "T0.23": "Fix the named file: restore a hook's executable bit (git update-index --chmod=+x is not enough on disk: chmod +x), repair frontmatter, or remove Agent/Task from an agent's tools.",
