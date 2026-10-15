@@ -244,8 +244,12 @@ The underlying estimator is identical.
 
 Local projections estimated separately at each horizon (Jordà, 2005), combined with a "clean control" condition; can accommodate non-absorbing treatment (Dube et al., 2023).
 
-**R:** No widely adopted standalone R package; typically implemented manually
-using local projections (Jordà, 2005) applied to a DiD setting.
+**R:** No CRAN package (DAAF check 2026-10-13: no `lpdid` in CRAN's package
+list). The method's authors provide R example scripts for a manual
+implementation (github.com/danielegirardi/lpdid), and a GitHub-only R package,
+`lpdid` (Cardazzi, v0.6.1; github.com/alexCardazzi/lpdid), exists but is not
+installed in DAAF's image. Typically implemented manually using local
+projections (Jordà, 2005) on a clean-control sample.
 
 **Python (pyfixest):**
 ```python
@@ -906,7 +910,7 @@ exporting the completed datasets.
 | **did2s** | `did2s::did2s()` | `pf.did2s()` | Very High | Pre-installed | `cluster_var` vs `cluster` |
 | **Sun-Abraham** | `fixest::sunab()` | `pf.event_study(est="saturated")` | High | Pre-installed | Different API, same estimator |
 | **Callaway-Sant'Anna** | `did::att_gt()` | `csdid.att_gt()` | Medium | `pip install csdid` | Community port |
-| **LP-DiD** | Manual/emerging | `pf.lpdid()` | N/A | Pre-installed | Python has better wrapper |
+| **LP-DiD** | Manual (GitHub-only package; none on CRAN) | `pf.lpdid()` | N/A | Pre-installed | Python has better wrapper |
 | **Event study (iplot)** | `fixest::iplot()` | `fit.iplot()` | Very High | Pre-installed | Method vs function syntax |
 | **RD (sharp/fuzzy)** | `rdrobust::rdrobust()` | `rdrobust.rdrobust()` | Very High | Pre-installed | Same rdpackages project |
 | **RD plots** | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Very High | Pre-installed | Same rdpackages project |

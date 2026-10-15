@@ -24,8 +24,8 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 
 | Library | Canonical Citation | Cite When | Do NOT Cite When |
 |---------|-------------------|-----------|------------------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
-| pyfixest | Berge, L., Butts, K., & McDermott, G. (2026). pyfixest: Fast high-dimensional fixed effects estimation [Computer software]. Based on fixest (R). | Used for regression estimation or DiD | Only imported but not used for estimation |
+| DAAF | Kim, B.H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
+| pyfixest | The PyFixest Authors (2025). *pyfixest: Fast high-dimensional fixed effect estimation in Python* [Computer software]. https://github.com/py-econometrics/pyfixest | Used for regression estimation or DiD | Only imported but not used for estimation |
 | statsmodels | Seabold, S. & Perktold, J. (2010). "Statsmodels: Econometric and Statistical Modeling with Python." *Proceedings of the 9th Python in Science Conference*. | Used for GLM, time series, or statistical testing | Only used for post-estimation diagnostics supporting another library's estimation |
 | linearmodels | Sheppard, K. linearmodels: Econometric models for panel, IV, and system regression [Computer software]. https://bashtage.github.io/linearmodels/ | Used for panel, IV/GMM, or system estimation | — |
 | scikit-learn | Pedregosa, F. et al. (2011). "Scikit-learn: Machine Learning in Python." *Journal of Machine Learning Research*, 12, 2825-2830. | Used for ML models, clustering, or dimensionality reduction | Only used for a single preprocessing step |
@@ -124,9 +124,9 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 
 | Standard | Citation | Cite When |
 |----------|----------|-----------|
-| GUIDE-LLM | Feuerriegel, S. et al. (2026). "Generative AI Models in Science: Risks and Opportunities -- The GUIDE-LLM Checklist." | AI disclosure section present (always in DAAF reports) |
+| GUIDE-LLM | Feuerriegel, S. et al. (2026). "A Reporting Checklist for Large Language Models in Behavioural Science." *Nature Human Behaviour*, 10(7), 1182-1186. https://doi.org/10.1038/s41562-026-02492-7 | AI disclosure section present (always in DAAF reports) |
 | Do No Harm Guide | Schwabish, J. & Feng, A. (2021). *Do No Harm Guide: Applying Equity Awareness in Data Visualization.* Urban Institute. | Equity-sensitive visualizations or race/ethnicity data |
-| Causal language | Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2020-2028. | Causal claims made or explicitly hedged |
+| Causal language | Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research: A Systematic Evaluation." *American Journal of Epidemiology*, 191(12), 2084-2097. https://doi.org/10.1093/aje/kwac137 | Causal claims made or explicitly hedged |
 
 ---
 

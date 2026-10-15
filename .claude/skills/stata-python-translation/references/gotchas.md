@@ -376,7 +376,8 @@ predictions(result, newdata=datagrid(x1=[0, 1], model=result))
 avg_slopes(result, variables="x1", by="group")
 ```
 
-The Python `marginaleffects` package is described by its author as alpha-quality.
+When the Python `marginaleffects` port was announced in July 2023, its author
+called it an "alpha" release; it has matured since (pinned 0.5.0).
 Verify critical results against Stata for published research.
 
 ### 5. `outreg2` / `esttab` Become `pf.etable()`
@@ -552,7 +553,8 @@ range(1, 11)       # [1, 2, ..., 10] -- exclusive upper bound
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); pandas documentation, "Comparison with
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28); polars User Guide (docs.pola.rs,
 > accessed 2026-03-28); pyfixest documentation (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > statsmodels documentation (statsmodels.org, accessed 2026-03-28)

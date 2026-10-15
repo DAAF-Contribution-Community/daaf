@@ -167,7 +167,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Software & Tools
 
-> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B.H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 > *Cited because: Analysis framework*
 
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
@@ -258,7 +258,7 @@ This analysis has the following limitations that should be considered when inter
 **R execution:**
 - R 4.5.3
 - Key packages: tidyverse, ggplot2, arrow, quarto
-- Quarto 1.7.29
+- Quarto 1.10.18
 
 ---
 

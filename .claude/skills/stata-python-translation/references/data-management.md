@@ -17,7 +17,8 @@ in `pl.col()`, and (c) reassigning the result (`df = df.operation(...)`).
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); pandas documentation, "Comparison with
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28); polars 1.x User Guide and API
 > Reference (docs.pola.rs, accessed 2026-03-28); pyreadstat (github.com/Roche/pyreadstat,
 > accessed 2026-03-28); Stata manuals (stata.com/manuals, accessed 2026-03-28).
@@ -234,7 +235,8 @@ old name and the value is the new name.
 > `cast(pl.Float64, strict=False)` sets unparseable values to `null`.
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28);
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
 polars User Guide (docs.pola.rs, accessed 2026-03-28).
 
 ---
@@ -572,7 +574,8 @@ df = df.sort("state_id", "year").with_columns(
 ```
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28);
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
 polars User Guide, "Window functions" (docs.pola.rs, accessed 2026-03-28); Notre Dame
 Library, "by, _n, _N" (libguides.library.nd.edu, accessed 2026-03-28); Poverty Action,
 "Sort, by, bysort, egen" (povertyaction.github.io, accessed 2026-03-28).
@@ -1103,7 +1106,8 @@ df.group_by("state").len().sort("len", descending=True)
 >   original column name but can be renamed with `.alias()`.
 
 **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
-2026-03-28); Turrell, "Coming from Stata" (aeturrell.github.io, accessed 2026-03-28).
+2026-03-28); Turrell, "Coming from Stata"
+(https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28).
 
 ---
 

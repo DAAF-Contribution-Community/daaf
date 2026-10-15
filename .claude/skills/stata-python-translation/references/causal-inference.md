@@ -5,8 +5,8 @@ quantitative social science. Most influential methods papers ship Stata packages
 first — `reghdfe`, `did_multiplegt`, `rdrobust`, `synth` — and Python ports
 follow months to years later. Some never arrive. This creates a real translation
 challenge: Stata users working with DAAF's Python stack will encounter methods
-where the Python coverage ranges from "nearly identical API by the same authors"
-to "no equivalent exists."
+where the Python coverage ranges from "nearly identical API from the same
+package project" to "no equivalent exists."
 
 DAAF's Python stack covers the most common causal designs:
 - **Difference-in-differences:** pyfixest (TWFE, did2s, lpdid, Sun-Abraham event_study)
@@ -15,7 +15,7 @@ DAAF's Python stack covers the most common causal designs:
 - **Instrumental variables:** pyfixest (with FE) and linearmodels (LIML, GMM)
 - **Marginal effects / interpretation:** marginaleffects (same author as R version)
 - **Synthetic control:** scpi (one package implemented in Python, R, and Stata; not the authors of Stata `synth`), CausalPy (Bayesian)
-- **Binscatter:** binsreg (same authors as Stata version)
+- **Binscatter:** binsreg (same nppackages project as the Stata `binsreg`; not the author of Stata `binscatter`)
 
 This reference documents both what translates cleanly and where real gaps remain.
 
@@ -664,7 +664,7 @@ quantification using prediction intervals with random potential outcomes"
 
 ## 7. Binscatter
 
-### binsreg (Same Authors Across Languages)
+### binsreg (Same Project Across Languages)
 
 **Stata:**
 ```stata
@@ -691,8 +691,9 @@ binsreg.binsreg(
 )
 ```
 
-The `binsreg` package is maintained by Cattaneo, Crump, Farrell, and Feng across
-Stata, R, and Python. The Python API closely mirrors the Stata syntax. The main
+The `binsreg` package comes from one nppackages project across Stata, R, and
+Python (CRAN lists Cattaneo, Crump, Farrell, and Feng; PyPI also lists Ricardo
+Masini). The Python API closely mirrors the Stata syntax. The main
 difference is that Stata reads from the in-memory dataset while Python requires
 explicit numpy arrays.
 
@@ -819,14 +820,14 @@ correction, Sargan/Hansen tests for over-identification).
 | **IPW** | `teffects ipw` | Manual sklearn + weighting | Low | **SE gap** |
 | **AIPW** | `teffects aipw` | `econml.dr.DRLearner` | Medium | Different implementation |
 | **Synthetic control** | `synth` | `scpi` | High | Different authors from Stata `synth` |
-| **Binscatter** | `binsreg` / `binscatter` | `binsreg` | Very High | Same authors |
+| **Binscatter** | `binsreg` / `binscatter` | `binsreg` | Very High | Same nppackages project as Stata `binsreg` (`binscatter` is a different author's command) |
 | **Survival/Cox** | `stcox` | `lifelines.CoxPHFitter()` | High | Not installable in DAAF (needs pandas<3.0); use R `survival` |
 | **Dynamic panel GMM** | `xtabond2` | **No equivalent** | N/A | **Gap** |
 | **Marginal effects** | `margins` | `marginaleffects` | High | Same author (R version); Python port announced as "alpha" in July 2023 (pinned 0.5.0) |
 
 ### Fidelity Legend
 
-- **Very High:** Same or near-identical API, same authors, or results match to high precision
+- **Very High:** Same or near-identical API (for rdrobust/binsreg, the same rdpackages/nppackages project across languages), or results match to high precision
 - **High:** Reliable implementation with minor syntax differences; results match
 - **Medium:** Community port or different implementation; verify results for published work
 - **Low:** Partial coverage; significant feature gaps or SE issues

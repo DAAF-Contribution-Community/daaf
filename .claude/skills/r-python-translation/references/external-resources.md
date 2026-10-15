@@ -65,7 +65,7 @@ currency concerns should be cross-checked against current documentation.
 
 ### marginaleffects: Model to Meaning
 
-- **Author(s):** Vincent Arel-Bundock, Noah Greifer, Andrew Heiss
+- **Author(s):** Vincent Arel-Bundock (book; CRC Press, 2026); JSS article with Noah Greifer and Andrew Heiss (2024)
 - **URL:** https://marginaleffects.com/
 - **Type:** Documentation / Book
 - **Last verified:** 2026-03-28
@@ -98,16 +98,17 @@ currency concerns should be cross-checked against current documentation.
   format, parallelism, multiple engines, lazy evaluation, strict typing, and
   expression-based API. Includes code comparison patterns.
 - **Strengths:** Authoritative source on polars idioms. The emphasis on avoiding
-  pandas-style patterns ("if your Polars code looks like pandas code, it likely
-  runs slower than it should") helps R users avoid the pandas intermediate step.
+  pandas-style patterns ("If your Polars code looks like it could be pandas code,
+  it might run, but it likely runs slower than it should") helps R users avoid
+  the pandas intermediate step.
 - **Limitations:** Assumes familiarity with pandas, not R. R users benefit more
   from the tidyverse-to-polars guides listed below, then using this as a
   conceptual supplement.
 
 ### rdrobust: RD Packages
 
-- **Author(s):** Sebastian Calonico, Matias Cattaneo, Rocio Titiunik, and others
-- **URL:** https://rdpackages.github.io/rdrobust/
+- **Author(s):** Sebastian Calonico, Matias D. Cattaneo, Max H. Farrell, Rocio Titiunik (CRAN); author lists differ by package
+- **URL:** https://github.com/rdpackages/rdrobust
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
@@ -119,8 +120,9 @@ currency concerns should be cross-checked against current documentation.
   APIs and function names.
 - **Strengths:** Truly parallel implementation --- same function names, same
   arguments, same output structure across R and Python. The translation is
-  nearly mechanical. Academic references (Calonico, Cattaneo, Titiunik 2014,
-  2015) provide rigorous methodological grounding.
+  nearly mechanical. Academic references (Calonico, Cattaneo & Titiunik 2014,
+  *Econometrica*, 10.3982/ECTA11757; 2015, *JASA*, 10.1080/01621459.2015.1017578)
+  provide rigorous methodological grounding.
 - **Limitations:** Python version documentation is sparser than R's CRAN
   vignettes. Consult the R manual for detailed parameter explanations, then
   apply directly to the Python version.
@@ -219,7 +221,7 @@ currency concerns should be cross-checked against current documentation.
 
 ### R for Data Science (2nd Edition)
 
-- **Author(s):** Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund
+- **Author(s):** Hadley Wickham, Mine Çetinkaya-Rundel, Garrett Grolemund
 - **URL:** https://r4ds.hadley.nz/
 - **Type:** Book (free online)
 - **Last verified:** 2026-03-28
@@ -261,24 +263,25 @@ currency concerns should be cross-checked against current documentation.
 ### Causal Inference: The Mixtape
 
 - **Author(s):** Scott Cunningham
-- **URL:** https://mixtape.scunning.com/
+- **URL:** https://mixtape-1ed.netlify.app/ (1st ed.; the 2nd ed., *The Remix*, is in progress at mixtape.scunning.com)
 - **Type:** Book (free online)
 - **Last verified:** 2026-03-28
 - **Quality:** Good
 - **Relevance to DAAF:** Medium
-- **Currency concern:** Minor --- official code is R and Stata only; Python
-  translations are community-maintained
+- **Currency concern:** Minor --- the print edition (Yale, 2021) gives R and
+  Stata code; the online 1st edition adds Python code tabs
 - **Key content:** Causal inference textbook covering potential outcomes,
   matching, instrumental variables, regression discontinuity,
-  difference-in-differences, and synthetic control. The official book uses
+  difference-in-differences, and synthetic control. The print edition uses
   R and Stata code.
 - **Strengths:** Accessible writing style with real-world examples. The
-  companion Mixtape Sessions workshops (mixtapesessions.io) provide hands-on
-  training with Python and Stata implementations. Community Python translations
-  are available on GitHub (alexanderthclark/Causal-Inference-Mixtape).
-- **Limitations:** Official book does not include Python code --- the Python
-  notebooks are community-contributed and may not be fully maintained. Prefer
-  "The Effect" (above) for native three-language support.
+  companion Mixtape Sessions workshops (mixtapesessions.io) teach with R and
+  Stata code.
+- **Limitations:** Python code is in the online 1st edition
+  (https://mixtape-1ed.netlify.app/), not the print edition;
+  mixtape.scunning.com now hosts the work-in-progress 2nd edition, *Causal
+  Inference: The Remix*. Prefer "The Effect" (above) for native three-language
+  support.
 
 ---
 
@@ -321,8 +324,8 @@ currency concerns should be cross-checked against current documentation.
   row-wise operations, dynamic column selectors, window functions (`over()`
   as equivalent to grouped mutate), and nested data structures.
 - **Strengths:** Goes beyond surface syntax comparison to analyze *why* polars
-  feels natural to R users. The emphasis on "complex transformations precisely,
-  concisely, and expressively" captures what dplyr users actually value. Written
+  feels natural to R users. The emphasis on expressing "complex transformation
+  precisely, concisely, and expressively" captures what dplyr users actually value. Written
   by a well-known data science practitioner with deep R expertise.
 - **Limitations:** A single blog post, not a comprehensive reference. Best used
   as conceptual orientation alongside the DAAF polars-tidyverse reference file.
@@ -371,7 +374,7 @@ currency concerns should be cross-checked against current documentation.
 - **Author(s):** Christoph Scheuch (Tidy Intelligence)
 - **URL:** https://blog.tidy-intelligence.com/posts/dplyr-vs-polars/
 - **Type:** Blog
-- **Last verified:** 2026-03-28 (returned 403 on fetch; site appears intermittently restricted)
+- **Last verified:** 2026-10-13 (fetched successfully; earlier 403s were intermittent)
 - **Quality:** Good
 - **Relevance to DAAF:** High
 - **Currency concern:** Minor --- verify accessibility before relying on it
@@ -382,8 +385,8 @@ currency concerns should be cross-checked against current documentation.
 - **Strengths:** Methodical function-by-function comparison. Identifies the key
   conceptual difference that dplyr allows referencing new columns in the same
   mutate block while polars does not.
-- **Limitations:** Site returned 403 on some access attempts. Content may be
-  behind access restrictions intermittently.
+- **Limitations:** Earlier access attempts intermittently returned 403; the
+  2026-10-13 fetch succeeded.
 
 ### Comparing dplyr with polars
 
@@ -415,9 +418,10 @@ currency concerns should be cross-checked against current documentation.
   toward bilingual proficiency. Covers parallel structures, where each language
   excels, and practical examples of using both together.
 - **Strengths:** Well-organized, addresses the cultural differences between R
-  and Python communities. Some reviewers praise its clarity and balance.
-- **Limitations:** Reviews are mixed --- some find it "long on opinions and short
-  on well-supported arguments." The practical substance is concentrated in the
+  and Python communities. A *Journal of Statistical Software* review (Lortie,
+  2022, https://doi.org/10.18637/jss.v103.b02) praises its clarity and calls it
+  "an excellent example of balance between detail and big-picture thinking."
+- **Limitations:** The practical substance is concentrated in the
   final chapters. Predates polars and modern pyfixest. Not free. Not
   recommended as a primary resource for DAAF users.
 
@@ -452,7 +456,7 @@ currency concerns should be cross-checked against current documentation.
 - **Author(s):** Christoph Scheuch (Tidy Intelligence)
 - **URL:** https://blog.tidy-intelligence.com/posts/fixed-effects-regressions/
 - **Type:** Blog
-- **Last verified:** 2026-03-28 (site returned 403 on some attempts)
+- **Last verified:** 2026-10-13 (fetched successfully; earlier 403s were intermittent)
 - **Quality:** Good
 - **Relevance to DAAF:** High
 - **Currency concern:** Minor --- verify accessibility
@@ -461,7 +465,8 @@ currency concerns should be cross-checked against current documentation.
   and output formatting.
 - **Strengths:** Practical, focused comparison of the exact R-to-Python
   translation that DAAF users need most for econometric work.
-- **Limitations:** Site access may be intermittent (403 errors observed).
+- **Limitations:** Earlier access attempts intermittently returned 403; the
+  2026-10-13 fetch succeeded.
 
 ### Mixtape Sessions
 
@@ -473,19 +478,21 @@ currency concerns should be cross-checked against current documentation.
 - **Relevance to DAAF:** Medium
 - **Currency concern:** None --- workshops run regularly with updated materials
 - **Key content:** Multi-day workshops teaching causal inference methods with
-  hands-on coding in Python and Stata. The flagship Causal Inference I and II
+  hands-on coding in R and Stata. The flagship Causal Inference I and II
   courses cover potential outcomes, matching, IV, RD, DiD, and synthetic control.
   Materials are publicly available on GitHub (Mixtape-Sessions organization).
 - **Strengths:** Taught by leading applied econometricians. Workshop format
-  provides structured learning with real-world exercises. Python implementations
-  are actively maintained. Materials are open-access after the workshop.
-- **Limitations:** Paid workshops (materials free afterward). Python code uses
-  pandas, not polars. Focus is on methodology, not data manipulation workflow.
+  provides structured learning with real-world exercises. Materials are
+  open-access after the workshop.
+- **Limitations:** Paid workshops (materials free afterward). Code is R and
+  Stata, not Python. Focus is on methodology, not data manipulation workflow.
 
 ### Coding for Economists (Full Book)
 
 - **Author(s):** Arthur Turrell and contributors
-- **URL:** https://aeturrell.github.io/coding-for-economists/intro.html
+- **URL:** https://aeturrell.github.io/coding-for-economists/
+- **Archive:** Zenodo, https://zenodo.org/records/19535795 (v1.0.7, 2026-04-12;
+  DOI 10.5281/zenodo.19535795; all-versions DOI 10.5281/zenodo.10465358)
 - **Type:** Book (free online)
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent

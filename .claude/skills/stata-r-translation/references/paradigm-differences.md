@@ -382,5 +382,7 @@ one position, just like `x[_n-1]` in Stata.
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); Wickham & Grolemund, *R for Data
-> Science* 2e (r4ds.hadley.nz, accessed 2026-05-13); R documentation (r-project.org)
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> Wickham, Çetinkaya-Rundel, &
+> Grolemund, *R for Data Science* 2e (r4ds.hadley.nz, accessed 2026-05-13); R
+> documentation (r-project.org)

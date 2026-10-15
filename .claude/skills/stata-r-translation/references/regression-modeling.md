@@ -7,7 +7,7 @@ experience for the most common models.
 - **fixest** (primary): Closest to Stata `regress`/`reghdfe`/`ivreghdfe`; handles OLS, Poisson, IV, FE, DiD
 - **stats** (base R): `lm()`, `glm()` for basic OLS and GLM
 - **plm** (panel): Random effects, between, Fama-MacBeth
-- **marginaleffects** (post-estimation): Direct R equivalent of Stata `margins`; same author
+- **marginaleffects** (post-estimation): Direct R equivalent of Stata `margins`; not a Stata port (Arel-Bundock; results checked against Stata where possible)
 - **modelsummary** / fixest `etable()`: Publication tables replacing `esttab`
 
 > **Versions referenced:** R: fixest 0.14.0, stats (base), plm 2.6-7, marginaleffects 0.32.0

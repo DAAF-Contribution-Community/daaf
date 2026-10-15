@@ -176,11 +176,11 @@ Which Stata command?
 |   +-- ./references/visualization.md
 +-  svyset / svy: -> svy package
 |   +-- ./references/survey-spatial-ml.md
-+-  rdrobust -> rdrobust (Python, same authors)
++-  rdrobust -> rdrobust (Python, same rdpackages project)
 |   +-- ./references/causal-inference.md
-+-  binscatter -> binsreg (Python, same authors)
++-  binscatter / binsreg -> binsreg (Python; nppackages project, not the binscatter author)
 |   +-- ./references/causal-inference.md
-+-  synth -> scpi (Python, same authors)
++-  synth -> scpi (Python; different authors from Stata synth)
 |   +-- ./references/causal-inference.md
 +-- ado-file / ssc install -> pip install
     +-- ./references/workflow-environment.md
@@ -204,19 +204,19 @@ Which Stata command?
 | `reshape long/wide` | polars `.unpivot()`, `.pivot()` | Medium | No in-place reshape; column naming differs |
 | `graph twoway`, `histogram`, `graph bar` | plotnine / plotly | Low | Declarative grammar of graphics vs imperative graph syntax |
 | `svyset`, `svy:` | svy | Medium | Explicit `Design`/`Sample` objects instead of persistent `svyset` |
-| `rdrobust`, `rdplot` | rdrobust (Python) | Very High | Same authors; nearly identical API |
-| `binscatter`, `binsreg` | binsreg (Python) | Very High | Same authors; nearly identical API; not pre-installed |
-| `synth` | scpi | High | Same authors; includes prediction intervals; not pre-installed |
+| `rdrobust`, `rdplot` | rdrobust (Python) | Very High | Same rdpackages project (author lists differ by package); nearly identical API |
+| `binscatter`, `binsreg` | binsreg (Python) | Very High | Same nppackages project as Stata binsreg (binscatter is a different author's command); nearly identical API; not pre-installed |
+| `synth` | scpi | High | Different authors from Stata `synth` (scpi: Cattaneo, Feng, Palomba, Titiunik); includes prediction intervals; not pre-installed |
 | `local`, `global`, `foreach`, `forvalues` | Python variables, f-strings, for loops | Low | Fundamentally different paradigm (text substitution vs value binding) |
 
-**Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
+**Fidelity key:** Very High = near-identical API (for rdrobust/binsreg, the same rdpackages/nppackages project across languages). High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
 ## Library Versions
 
 Translations in this skill reference specific library versions. Python versions are
-pinned in DAAF's Docker environment (Python 3.12). Stata versions reference the
-current release as of March 2026. When syntax or behavior has changed between
-versions, the reference files note the change.
+pinned in DAAF's Docker environment (Python 3.12). Stata mappings target Stata 18
+as the reference version (written March 2026). When syntax or behavior has
+changed between versions, the reference files note the change.
 
 | Python Package | DAAF Version | Stata Equivalent | Stata Version |
 |---|---|---|---|
@@ -243,7 +243,7 @@ versions, the reference files note the change.
 > required, escalate to the user to add it to the Dockerfile (user additions
 > block) and rebuild before use. Translations reference the documented APIs as of March 2026.
 
-**Stata version note:** Stata 18 is the current release as of March 2026. Most command
+**Stata version note:** Mappings target Stata 18 as the reference version. Most command
 mappings apply to Stata 15+; version-specific features (frames, `hdidregress`) are noted
 in the reference files.
 

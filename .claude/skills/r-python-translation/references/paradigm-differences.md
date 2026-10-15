@@ -128,7 +128,7 @@ df.select(pl.col("x").fill_nan(None).mean())     # 1.0 (safe pattern)
 
 > **Sources:** R Language Definition -- NA (stat.ethz.ch/R-manual, accessed 2026-03-28);
 > Polars User Guide -- Missing Data (docs.pola.rs, accessed 2026-03-28);
-> Wickham, *Advanced R* 2nd ed., Ch. 3.5.1 (2019)
+> Wickham, *Advanced R* 2nd ed., §3.2.3 -- Missing values (2019)
 
 ---
 
@@ -205,7 +205,8 @@ LinearRegression().fit(X, pdf["wage"])
 
 ## Assignment and Mutability
 
-R's copy-on-modify semantics create independent copies by default.
+R's copy-on-modify semantics copy an object when it is modified through a
+second name, so the original is unaffected.
 Python's reference semantics create aliases to the same object.
 
 ```r
@@ -428,7 +429,7 @@ model = pf.feols("z ~ x", data=df)
 Pandas DataFrames carry an index (row labels) that polars lacks. When converting,
 `reset_index()` before `pl.from_pandas()` if the index contains meaningful data.
 
-> **Sources:** Wickham & Grolemund, *R for Data Science* 2nd ed. -- Tibbles (2023);
+> **Sources:** Wickham, *Advanced R* 2nd ed., §3.6 -- Data frames and tibbles (2019);
 > Polars User Guide -- Coming from Pandas (docs.pola.rs, accessed 2026-03-28)
 
 ---
@@ -465,7 +466,7 @@ df = df.with_columns(
 **Key difference:** R's `str_extract()` returns the full match. Polars'
 `.str.extract()` requires a capture group and group index.
 
-> **Sources:** Wickham, *R for Data Science* 2nd ed., Ch. 14 (2023);
+> **Sources:** Wickham, Çetinkaya-Rundel, & Grolemund, *R for Data Science* 2nd ed., Ch. 14 -- Strings (O'Reilly, 2023);
 > Polars API -- Expr.str (docs.pola.rs, accessed 2026-03-28)
 
 ---
@@ -506,7 +507,7 @@ df = df.with_columns(
 requires an explicit format string. Wrong format strings silently produce nulls --
 always validate parsed dates with a null check.
 
-> **Sources:** Grolemund & Wickham, *R for Data Science* 2nd ed., Ch. 17 (2023);
+> **Sources:** Wickham, Çetinkaya-Rundel, & Grolemund, *R for Data Science* 2nd ed., Ch. 17 -- Dates and times (O'Reilly, 2023);
 > Polars User Guide -- Temporal data (docs.pola.rs, accessed 2026-03-28)
 
 ---
@@ -579,5 +580,5 @@ model = pf.feols("y ~ x", data=pdf)
 | `.GlobalEnv` | Module-level scope | Top of script |
 
 > **Sources:** R Language Definition -- Scope (CRAN, accessed 2026-03-28);
-> Wickham, *R Packages* 2nd ed., Ch. 10 (2023);
+> Wickham & Bryan, *R Packages* 2nd ed., Ch. 10 -- Dependencies: Mindset and Background (O'Reilly, 2023);
 > Python docs -- The import system (docs.python.org, accessed 2026-03-28)

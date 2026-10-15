@@ -76,7 +76,7 @@ documentation.
 
 ### marginaleffects: Model to Meaning
 
-- **Author(s):** Vincent Arel-Bundock, Noah Greifer, Andrew Heiss
+- **Author(s):** Vincent Arel-Bundock (book; CRC Press, 2026); JSS article with Noah Greifer and Andrew Heiss (2024)
 - **URL:** https://marginaleffects.com/
 - **Type:** Documentation / Book
 - **Last verified:** 2026-03-28
@@ -87,14 +87,16 @@ documentation.
   `comparisons()` (contrasts, risk ratios, odds), `slopes()` (marginal effects),
   `hypotheses()` (test, lincom, nlcom equivalents). Every documentation page has
   an R/Python toggle showing equivalent code. Published in the Journal of
-  Statistical Software (v111, i09). Explicitly validated against Stata output.
+  Statistical Software (v111, i09). Numerical results are checked against
+  alternative software like Stata or other R packages when possible.
 - **Relevance to DAAF:** High -- Stata's `margins` command is one of the most
   heavily used post-estimation tools. This package is the direct Python
   equivalent, covering `margins`, `marginsplot`, `lincom`, and `nlcom`.
 - **Strengths:** The bilingual R/Python toggle is the gold standard for
   cross-language translation. Covers causal inference, experiments, categorical
   outcomes, and ML interpretation. Author royalties support charity.
-- **Limitations:** Described by the author as alpha for the Python version.
+- **Limitations:** When the Python port was announced in July 2023, its author
+  called it an "alpha" release; it has matured since (pinned 0.5.0).
   Python API coverage lags slightly behind R. Verify critical results against
   Stata for published research.
 
@@ -122,7 +124,7 @@ documentation.
 
 ### svy: Complex Survey Analysis in Python
 
-- **Author(s):** svy development team
+- **Author(s):** Mamadou S. Diallo
 - **URL:** https://svylab.com/docs/svy/
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
@@ -171,8 +173,8 @@ documentation.
 
 ### rdrobust: RD Packages
 
-- **Author(s):** Sebastian Calonico, Matias Cattaneo, Rocio Titiunik, and others
-- **URL:** https://rdpackages.github.io/rdrobust/
+- **Author(s):** Sebastian Calonico, Matias D. Cattaneo, Max H. Farrell, Rocio Titiunik (CRAN); author lists differ by package
+- **URL:** https://github.com/rdpackages/rdrobust
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
@@ -180,12 +182,13 @@ documentation.
 - **Key content:** Unified documentation hub for the rdrobust family providing
   local polynomial RD estimation, bandwidth selection (rdbwselect), and RD plots
   (rdplot). Available on SSC (Stata), CRAN (R), and PyPI (Python) with identical
-  APIs and function names. Academic references (Calonico, Cattaneo, Titiunik
-  2014, 2015) provide rigorous methodological grounding.
+  APIs and function names. Academic references (Calonico, Cattaneo & Titiunik
+  2014, *Econometrica*, 10.3982/ECTA11757; 2015, *JASA*,
+  10.1080/01621459.2015.1017578) provide rigorous methodological grounding.
 - **Relevance to DAAF:** High -- same function names, same arguments, same output
   across all three languages. The Stata-to-Python translation is mechanical.
 - **Strengths:** Truly parallel implementation across Stata, R, and Python.
-  Actively maintained by the original methodological authors.
+  Maintained by the rdpackages project (author lists differ by package).
 - **Limitations:** Python documentation is sparser than Stata's manual entries.
   Consult the Stata help file for detailed parameter explanations, then apply
   directly to the Python version.
@@ -193,20 +196,23 @@ documentation.
 ### binsreg: Binscatter Regressions
 
 - **Author(s):** Matias D. Cattaneo, Richard K. Crump, Max H. Farrell, Yingjie Feng
-- **URL:** https://nppackages.github.io/binsreg/
+- **URL:** https://github.com/nppackages/binsreg
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
 - **Currency concern:** None -- maintained across Stata, R, and Python
 - **Key content:** Identical methodology in all three languages. Includes
-  `binsreg` (least squares binscatter), `binslogit`/`binsprobit` (nonlinear),
+  `binsreg` (least squares binscatter), `binsqreg`/`binsglm` (quantile and GLM),
+  `binslogit`/`binsprobit` (Stata only),
   `binstest` (hypothesis testing), `binspwc` (pairwise comparison), and
   `binsregselect` (bin selection). Directly replaces Stata's older `binscatter`
   command with improved methodology and inference.
 - **Relevance to DAAF:** High -- binscatter is a standard visualization in
-  applied economics. Identical API across Stata and Python means near-zero
-  translation friction.
-- **Strengths:** Same authors, same methodology, same API across all languages.
+  applied economics. Near-identical API across Stata and Python
+  (binslogit/binsprobit are Stata-only) means low translation friction.
+- **Strengths:** Same nppackages project and methodology across languages (PyPI
+  also lists Ricardo Masini); same API across languages (except the Stata-only
+  `binslogit`/`binsprobit`).
   Proper inference (confidence intervals, hypothesis testing) unlike the original
   `binscatter` Stata command.
 - **Limitations:** Does not directly support `absorb()` for fixed effects in the
@@ -242,26 +248,29 @@ documentation.
 ### Causal Inference: The Mixtape
 
 - **Author(s):** Scott Cunningham
-- **URL:** https://mixtape.scunning.com/
+- **URL:** https://mixtape-1ed.netlify.app/ (1st ed.; the 2nd ed., *The Remix*, is in progress at mixtape.scunning.com)
 - **Type:** Book (free online)
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
-- **Currency concern:** Minor -- official code is R and Stata only; Python
-  translations are community-maintained
+- **Currency concern:** Minor -- the print edition (Yale University Press, 2021)
+  gives R and Stata code; the online 1st edition adds Python code tabs
 - **Key content:** Causal inference textbook covering potential outcomes, matching,
   instrumental variables, regression discontinuity, difference-in-differences, and
-  synthetic control. The official book uses R and Stata code. Community-contributed
-  Python Jupyter notebooks replicate all examples
-  (https://github.com/alexanderthclark/Causal-Inference-Mixtape).
+  synthetic control. The print edition uses R and Stata code; the online 1st
+  edition adds Python code tabs. A community repository
+  (https://github.com/alexanderthclark/Causal-Inference-Mixtape) holds Python
+  Jupyter notebooks; its README notes that Python code was added to the book soon
+  after the project started.
 - **Relevance to DAAF:** High -- alongside The Effect, one of the two most popular
   causal inference textbooks in economics. The Stata code in the book maps
   directly to Python equivalents documented in the DAAF skill.
 - **Strengths:** Accessible writing with real-world examples. The `causaldata`
-  package provides datasets in Python. Companion Mixtape Sessions workshops
-  (mixtapesessions.io) offer Python implementations.
-- **Limitations:** Official book does not include Python code. Community
-  translations may not be fully maintained. Prefer "The Effect" for native
-  three-language support.
+  package provides datasets in Python. The companion Mixtape Sessions workshops
+  (mixtapesessions.io) teach with R and Stata code.
+- **Limitations:** Python code is in the online 1st edition
+  (https://mixtape-1ed.netlify.app/), not the print edition; mixtape.scunning.com
+  now hosts the work-in-progress 2nd edition, *Causal Inference: The Remix*.
+  Prefer "The Effect" for native three-language support.
 
 ### Data Analysis for Business, Economics, and Policy
 
@@ -323,23 +332,24 @@ documentation.
   Callaway-Sant'Anna, Sun-Abraham, and imputation approaches.
 - **Relevance to DAAF:** Medium -- Python-only (no Stata code), but excellent for
   Stata users who need to understand how familiar causal inference methods are
-  implemented in Python. Free online and also published by O'Reilly.
+  implemented in Python. Free online; Facure's separate book *Causal Inference
+  in Python* (O'Reilly, 2023) covers related material.
 - **Strengths:** Modern methods coverage (heterogeneous DiD) surpasses most
   textbooks. Clear Python implementations. Free online version.
 - **Limitations:** No Stata code for direct comparison. Uses pandas.
 
 ### Tidy Finance with Python
 
-- **Author(s):** Christoph Scheuch, Stefan Voigt, Patrick Weiss
-- **URL:** https://www.tidy-finance.org/python/
+- **Author(s):** Christoph Frey, Christoph Scheuch, Stefan Voigt, Patrick Weiss
+- **URL:** https://www.tidy-finance.org/ (R and Python side by side)
 - **Type:** Online textbook
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
 - **Currency concern:** Low -- uses pyfixest, actively maintained
 - **Key content:** Finance-focused Python textbook with chapters on fixed effects,
   clustered standard errors, difference-in-differences, and asset pricing.
-  Demonstrates pyfixest alongside pandas. The fixed effects chapter explicitly
-  shows the equivalence between Stata's `areg`/`reghdfe` and pyfixest's `feols()`.
+  Demonstrates pyfixest (with polars) for firm and year fixed effects and
+  clustered standard errors.
 - **Relevance to DAAF:** Medium -- finance focus limits direct applicability to
   social science, but econometric techniques (FE, clustering, DiD) are identical.
 - **Strengths:** Uses pyfixest (same as DAAF). Clear practical examples.
@@ -380,19 +390,15 @@ documentation.
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
 - **Currency concern:** None -- actively maintained
-- **Key content:** Dedicated chapter for Stata users transitioning to Python for
-  economics work. Detailed package equivalency table mapping Stata packages to
-  Python counterparts. Side-by-side code comparisons for common operations.
-  Supplementary regression reference table covering fixed effects, categorical
-  variables, interaction terms, robust/clustered standard errors, and IV.
-  Recommends polars as the dplyr-like option.
-- **Relevance to DAAF:** High -- uses the same Python stack as DAAF (pyfixest,
-  statsmodels, binsreg, plotnine). The broader book covers the full Python data
-  analysis workflow.
-- **Strengths:** Written for economists, not generic data scientists. Covers the
-  exact package stack relevant to DAAF. Actively maintained.
-- **Limitations:** The broader book leans toward pandas in some chapters, though
-  the "Coming from Stata" section correctly identifies polars as dplyr-like.
+- **Key content:** Large Stata-to-pandas command translation table plus a
+  regression table (FE, categorical variables, robust/clustered SEs, IV) using
+  statsmodels and pyfixest; binsreg for binscatter.
+- **Relevance to DAAF:** High -- uses pyfixest, statsmodels, and binsreg like
+  DAAF. The broader book covers the full Python data analysis workflow.
+- **Strengths:** Written for economists, not generic data scientists. Covers much
+  of the package stack relevant to DAAF (pyfixest, statsmodels, binsreg), though
+  not polars. Actively maintained.
+- **Limitations:** Data examples use pandas, not polars.
 
 ### pandas Official Documentation: Comparison with Stata
 
@@ -417,7 +423,7 @@ documentation.
 ### UC Berkeley Econ 148: Python for Economists
 
 - **Author(s):** Rohan Jha
-- **URL:** https://www.econ148.org/textbook/content/01-python_v_stata/index.html
+- **URL:** https://www.econ148.org/textbook/content/python-v-stata/
 - **Type:** University course textbook
 - **Last verified:** 2026-03-28
 - **Quality:** Good
@@ -434,7 +440,7 @@ documentation.
 
 ### QuantEcon Statistics Cheatsheet
 
-- **Author(s):** Thomas J. Sargent, John Stachurski, and contributors
+- **Author(s):** Victoria Gregory, Andrij Stachurski, Natasha Watkins, and other QuantEcon collaborators
 - **URL:** https://cheatsheets.quantecon.org/stats-cheatsheet.html
 - **Type:** Cheat sheet / Quick reference
 - **Last verified:** 2026-03-28
@@ -519,21 +525,21 @@ documentation.
 - **Quality:** Excellent
 - **Currency concern:** None -- workshops run regularly with updated materials
 - **Key content:** Multi-day workshops teaching causal inference methods with
-  hands-on coding in Python and Stata. Flagship courses cover potential outcomes,
+  hands-on coding in R and Stata. Flagship courses cover potential outcomes,
   matching, IV, RD, DiD, and synthetic control. Materials publicly available on
   GitHub (Mixtape-Sessions organization).
 - **Relevance to DAAF:** Medium -- taught by leading applied econometricians.
-  Python implementations use pyfixest and modern packages. Materials are
-  open-access after workshops.
-- **Strengths:** Expert instruction. Practical exercises. Python materials
-  actively maintained. Open-access after the workshop.
-- **Limitations:** Paid workshops (materials free afterward). Python code uses
-  pandas, not polars.
+  Materials are open-access after workshops.
+- **Strengths:** Expert instruction. Practical exercises.
+- **Limitations:** Paid workshops (materials free afterward). Code is R and
+  Stata, not Python.
 
 ### Coding for Economists (Full Book)
 
 - **Author(s):** Arthur Turrell and contributors
-- **URL:** https://aeturrell.github.io/coding-for-economists/intro.html
+- **URL:** https://aeturrell.github.io/coding-for-economists/
+- **Archive:** Zenodo, https://zenodo.org/records/19535795 (v1.0.7, 2026-04-12;
+  DOI 10.5281/zenodo.19535795; all-versions DOI 10.5281/zenodo.10465358)
 - **Type:** Book (free online)
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
@@ -560,12 +566,12 @@ documentation.
 
 - **Author(s):** Chuck Huber (Director of Statistical Outreach, StataCorp)
 - **URL:** https://blog.stata.com/author/chuber/
-- **Type:** Blog series (8 parts)
+- **Type:** Blog series (9+ parts, 2020)
 - **Last verified:** 2026-03-28
 - **Quality:** Good
 - **Currency concern:** Moderate -- written 2020; core concepts valid but Stata
   17-19 may have evolved some APIs
-- **Key content:** Official 8-part series on using Python within Stata (introduced
+- **Key content:** Official multi-part series on using Python within Stata (introduced
   in Stata 16). Covers: installation/setup, three ways to call Python from Stata,
   installing packages, using packages, 3D surface plots, API/JSON data access,
   and the Stata Function Interface (SFI) for data exchange.
@@ -647,7 +653,7 @@ patterns that DAAF's Python stack translates from.
 - **URL:** https://www.stata.com/features/documentation/
 - **Type:** Official documentation hub
 - **Last verified:** 2026-03-28
-- **Key content:** Stata 18 documentation consists of over 19,000 pages organized
+- **Key content:** Stata's documentation consists of over 19,000 pages organized
   by command. Core manuals cover data management, graphics, functions, and
   reporting. 18+ subject-specific statistics manuals cover every domain from
   Bayesian analysis to survival models. Each entry follows a consistent format:
@@ -676,7 +682,7 @@ patterns that DAAF's Python stack translates from.
 - **URL:** https://www.stata.com/links/resources-for-learning-stata/
 - **Type:** Curated link collection
 - **Last verified:** 2026-03-28
-- **Key content:** StataCorp's curated collection of learning resources: 350+
+- **Key content:** StataCorp's curated collection of learning resources:
   video tutorials, NetCourses, Stata Blog, Statalist forum (60,000+ users), Stata
   Journal, and links to university tutorials.
 - **Why this matters for translation:** Understanding which resources Stata users

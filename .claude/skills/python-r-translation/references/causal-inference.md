@@ -168,7 +168,7 @@ statsmodels, pyfixest, and scikit-learn.
 | did2s | `did2s::did2s()` | `pf.did2s()` | Very High |
 | Callaway-Sant'Anna | `did::att_gt()` (not pre-installed) | `csdid` (`pip install csdid`) | Medium |
 | Sun-Abraham | `fixest::sunab()` | `pf.event_study(est="saturated")` | High |
-| LP-DiD | Manual | `pf.lpdid()` | Python has better wrapper |
+| LP-DiD | Manual (GitHub-only package; none on CRAN) | `pf.lpdid()` | Python has better wrapper |
 | RD | `rdrobust` | `rdrobust` (Python) | Very High (same rdpackages project) |
 | IV + FE | `fixest::feols()` | `pf.feols()` | Very High |
 | **Matching** | `MatchIt` | Manual | **Significant gap** |

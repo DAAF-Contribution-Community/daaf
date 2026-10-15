@@ -158,5 +158,5 @@ plotnine now supports patchwork-style composition with identical operators.
 | Combining plots | patchwork | plotnine `|` and `/` |
 | Spatial / map | ggplot2 + geom_sf | geopandas .plot() |
 
-> **Sources:** Wickham, *ggplot2: Elegant Graphics for Data Analysis*, 3rd ed. (2024);
+> **Sources:** Wickham, H., Navarro, D., & Pedersen, T. L., *ggplot2: Elegant Graphics for Data Analysis*, 3rd ed. (online work-in-progress edition, Springer; ggplot2-book.org, accessed 2026-10-13);
 > plotnine documentation (plotnine.org, accessed 2026-03-28)

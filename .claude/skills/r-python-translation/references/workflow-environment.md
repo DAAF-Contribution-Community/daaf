@@ -12,7 +12,7 @@ is different."
 
 > **Versions referenced:**
 > Python: marimo 0.19.11, Python 3.12
-> R: R 4.5.3, Quarto 1.7.29
+> R: R 4.5.3, Quarto 1.10.18
 > See SKILL.md § Library Versions for the complete version table.
 
 ---
@@ -525,4 +525,4 @@ continuation -- this is the standard Python idiom for pipeline-style code.
 > RStudio IDE documentation (docs.posit.co, accessed 2026-03-28);
 > Quarto documentation (quarto.org, accessed 2026-03-28);
 > polars documentation (docs.pola.rs, accessed 2026-03-28);
-> Wickham & Grolemund, *R for Data Science* (2e, 2023)
+> Wickham, Çetinkaya-Rundel, & Grolemund, *R for Data Science* 2nd ed. (O'Reilly, 2023)

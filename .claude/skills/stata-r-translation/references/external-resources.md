@@ -28,7 +28,7 @@ social science contexts. Each entry includes provenance and quality assessment.
 
 ### survey Package Documentation
 - **URL:** https://r-survey.r-forge.r-project.org/survey/
-- **Author:** Thomas Lumley
+- **Author:** Thomas Lumley (creator/maintainer; CRAN lists co-authors)
 - **Quality:** Excellent
 - **Key content:** The gold standard for design-based inference. `svydesign()`,
   `svymean()`, `svyglm()`, replicate weights. More comprehensive than both Stata's
@@ -36,8 +36,8 @@ social science contexts. Each entry includes provenance and quality assessment.
 - **Relevance:** High -- most mature survey analysis implementation across languages.
 
 ### rdrobust (R) Documentation
-- **URL:** https://rdpackages.github.io/rdrobust/
-- **Authors:** Cattaneo, Idrobo, Titiunik
+- **URL:** https://github.com/rdpackages/rdrobust
+- **Authors:** Calonico, Cattaneo, Farrell, Titiunik (CRAN; rdpackages project)
 - **Quality:** Excellent
 - **Key content:** Identical API across Stata, R, Python. Local polynomial RD.
 - **Relevance:** Very High -- mechanical translation from Stata.
@@ -54,8 +54,8 @@ social science contexts. Each entry includes provenance and quality assessment.
 
 ### Causal Inference: The Mixtape
 - **Author:** Scott Cunningham
-- **URL:** https://mixtape.scunning.com/
-- **Quality:** Excellent. Official code in R and Stata.
+- **URL:** https://mixtape-1ed.netlify.app/ (1st ed.; the 2nd ed., *The Remix*, is in progress at mixtape.scunning.com)
+- **Quality:** Excellent. Print edition code in R and Stata; the online 1st edition adds Python code tabs.
 - **Relevance:** High -- canonical causal inference textbook.
 
 ### Data Analysis for Business, Economics, and Policy
@@ -77,7 +77,7 @@ social science contexts. Each entry includes provenance and quality assessment.
 ### Coding for Economists: Coming from Stata
 - **Author:** Arthur Turrell
 - **URL:** https://aeturrell.github.io/coding-for-economists/coming-from-stata.html
-- **Quality:** Excellent. Actively maintained. Covers both R and Python.
+- **Quality:** Excellent. Actively maintained. Python only (Stata→pandas/pyfixest), useful for concepts; for Stata→R see https://stata2r.github.io/ (regression page: https://stata2r.github.io/fixest.html).
 
 ### LOST: Library of Statistical Techniques
 - **URL:** https://lost-stats.github.io/

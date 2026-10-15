@@ -704,8 +704,9 @@ into plotnine natively. Other ggforce geoms require matplotlib workarounds.
 | Formatted table | gt / kableExtra | great_tables / pf.etable() |
 | Label repulsion | ggrepel | geom_text() + adjustText |
 
-> **Sources:** Wickham, H., *ggplot2: Elegant Graphics for Data Analysis*, 3rd ed.
-> (Springer, 2024); plotnine documentation, v0.15.3 (plotnine.org, accessed
+> **Sources:** Wickham, H., Navarro, D., & Pedersen, T. L., *ggplot2: Elegant
+> Graphics for Data Analysis*, 3rd ed. (online work-in-progress edition, Springer;
+> ggplot2-book.org, accessed 2026-10-13); plotnine documentation, v0.15.3 (plotnine.org, accessed
 > 2026-03-28); plotnine feature parity guide (plotnine.org/guide/feature-coverage.html,
 > accessed 2026-03-28); Plotly R reference (plotly.com/r/, accessed 2026-03-28);
 > Plotly Python reference (plotly.com/python/, accessed 2026-03-28); pyfixest

@@ -107,7 +107,8 @@ ca_means = (
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
 > 2026-03-28); Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); StataCorp, "Data frames: multiple datasets
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> StataCorp, "Data frames: multiple datasets
 > in memory" (stata.com, accessed 2026-03-28); pandas documentation, "Comparison with
 > Stata" (pandas.pydata.org, accessed 2026-03-28)
 
@@ -240,7 +241,8 @@ df = df.with_columns(
 > accessed 2026-03-28); StataCorp, "Missing values -- Quick reference"
 > (stata.com/manuals/dmissingvalues.pdf, accessed 2026-03-28); UCLA Statistical Consulting,
 > "Missing Values" Stata Learning Modules (stats.oarc.ucla.edu, accessed 2026-03-28);
-> *Stata Journal*, "Stata Tip 86: The Missing() Function" (2010); polars documentation,
+> Rising, B., "Stata Tip 86: The Missing() Function," *Stata Journal* (2010),
+> https://doi.org/10.1177/1536867x1001000210; polars documentation,
 > "Handling Missing Values" (docs.pola.rs, accessed 2026-03-28); Poverty Action, "Missing
 > Values" (povertyaction.github.io, accessed 2026-03-28)
 

@@ -51,7 +51,7 @@ should be cross-checked against current documentation.
 
 ### marginaleffects: Model to Meaning
 
-- **Author(s):** Vincent Arel-Bundock, Noah Greifer, Andrew Heiss
+- **Author(s):** Vincent Arel-Bundock (book; CRC Press, 2026); JSS article with Noah Greifer and Andrew Heiss (2024)
 - **URL:** https://marginaleffects.com/
 - **Type:** Documentation / Book
 - **Last verified:** 2026-03-28
@@ -62,8 +62,8 @@ should be cross-checked against current documentation.
 
 ### rdrobust: RD Packages
 
-- **Author(s):** Calonico, Cattaneo, Titiunik et al.
-- **URL:** https://rdpackages.github.io/rdrobust/
+- **Author(s):** Calonico, Cattaneo, Farrell, Titiunik (CRAN; rdpackages project)
+- **URL:** https://github.com/rdpackages/rdrobust
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
 - **Quality:** Excellent
@@ -110,7 +110,7 @@ should be cross-checked against current documentation.
 
 ### R for Data Science (2nd Edition)
 
-- **Author(s):** Hadley Wickham, Mine Cetinkaya-Rundel, Garrett Grolemund
+- **Author(s):** Hadley Wickham, Mine Çetinkaya-Rundel, Garrett Grolemund
 - **URL:** https://r4ds.hadley.nz/
 - **Quality:** Excellent
 - **Key content:** The definitive tidyverse guide. Understanding dplyr patterns
@@ -120,11 +120,12 @@ should be cross-checked against current documentation.
 ### Causal Inference: The Mixtape
 
 - **Author(s):** Scott Cunningham
-- **URL:** https://mixtape.scunning.com/
+- **URL:** https://mixtape-1ed.netlify.app/ (1st ed.; the 2nd ed., *The Remix*, is in progress at mixtape.scunning.com)
 - **Quality:** Good
-- **Key content:** Causal inference with R and Stata code. Accessible writing with
-  real-world examples. The Mixtape Sessions workshops (mixtapesessions.io) provide
-  Python and Stata implementations.
+- **Key content:** Causal inference with R and Stata code in the print edition;
+  the online 1st edition also has Python code tabs. Accessible writing with
+  real-world examples. The Mixtape Sessions workshops (mixtapesessions.io) teach
+  with R and Stata.
 
 ---
 

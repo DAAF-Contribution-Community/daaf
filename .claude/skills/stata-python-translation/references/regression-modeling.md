@@ -26,7 +26,7 @@ as variables. There is no `estimates store` / `estimates restore` — every
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
 > Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
-> Turrell, "Coming from Stata" in *Coding for Economists* (aeturrell.github.io);
+> Turrell, "Coming from Stata" in *Coding for Economists* (https://aeturrell.github.io/coding-for-economists/);
 > pyfixest PR #897, "Show how to replicate Stata results";
 > Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09)
 
@@ -370,7 +370,7 @@ estat endogeneity
 **Python (pyfixest):**
 ```python
 fit = pf.feols("y ~ x_exog | 0 | x_endog ~ z1 + z2", data=df)
-fit.IV_Diag()                        # Comprehensive diagnostics (effective F, etc.)
+fit.IV_Diag()                        # First-stage F and effective F
 fit._model_1st_stage.summary()       # First-stage results
 ```
 
@@ -967,7 +967,7 @@ complexity in one command, Python requires manual assembly.
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
 > Correia, "A Feasible Estimator for Linear Models with Multi-Way Fixed Effects" (Preliminary Version, Duke University, March 2016; https://scorreia.com/research/hdfe.pdf);
-> Turrell, "Coming from Stata" (aeturrell.github.io);
+> Turrell, "Coming from Stata" (https://aeturrell.github.io/coding-for-economists/);
 > Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using marginaleffects for R and Python" (*Journal of Statistical Software*, 2024; https://doi.org/10.18637/jss.v111.i09);
 > Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022)

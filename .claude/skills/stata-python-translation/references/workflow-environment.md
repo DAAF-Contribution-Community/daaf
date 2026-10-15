@@ -721,6 +721,7 @@ fit = pf.feols("y ~ x1 + x2", data=pdf)
 > (stata.com/manuals, accessed 2026-03-28); StataCorp, "macro -- Macro definition
 > and manipulation" (stata.com/manuals/pmacro.pdf, accessed 2026-03-28);
 > Turrell, "Coming from Stata" in *Coding for Economists*
-> (aeturrell.github.io, accessed 2026-03-28); polars documentation
+> (https://aeturrell.github.io/coding-for-economists/, accessed 2026-03-28);
+> polars documentation
 > (docs.pola.rs, accessed 2026-03-28); marimo documentation (docs.marimo.io,
 > accessed 2026-03-28)

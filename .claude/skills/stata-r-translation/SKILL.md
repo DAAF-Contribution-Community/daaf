@@ -179,9 +179,9 @@ Which Stata command?
 |   +-- ./references/visualization.md
 +-  svyset / svy: -> survey package
 |   +-- ./references/survey-spatial-ml.md
-+-  rdrobust -> rdrobust (R, same authors)
++-  rdrobust -> rdrobust (R, same rdpackages project)
 |   +-- ./references/causal-inference.md
-+-  binscatter -> binsreg (R, same authors)
++-  binscatter / binsreg -> binsreg (R; nppackages project, not the binscatter author)
 |   +-- ./references/causal-inference.md
 +-  synth -> augsynth / Synth (R)
 |   +-- ./references/causal-inference.md
@@ -199,7 +199,7 @@ Which Stata command?
 | `ivregress`, `ivreg2`, `ivreghdfe` | fixest (`ivreg` not pre-installed) | Very High | Three-part formula for IV in fixest; `ivreg` is not pre-installed and runtime installs are blocked (see Package availability note below) |
 | `logit`, `probit`, `ologit`, `mlogit` | stats::glm / MASS / nnet | High | `family = binomial` for logit; separate packages for ordered/multinomial |
 | `poisson`, `ppmlhdfe` | fixest `fepois` / stats::glm | Very High | `fepois` for Poisson with multi-way FE |
-| `margins`, `marginsplot` | marginaleffects | Very High | Same author as R version; near-identical API |
+| `margins`, `marginsplot` | marginaleffects | High | Not a Stata port (Arel-Bundock); results checked against Stata where possible; function names differ from `margins` |
 | `esttab`, `outreg2` | fixest `etable()` / modelsummary | High | Publication-quality tables with flexible output formats |
 | `gen`, `replace`, `drop`, `keep`, `sort` | dplyr | Medium | Verb grammar (mutate, filter, select) vs imperative commands |
 | `merge`, `append` | dplyr joins, `bind_rows` | High | Named join types (left_join, inner_join) vs merge syntax |
@@ -207,21 +207,21 @@ Which Stata command?
 | `reshape long/wide` | tidyr `pivot_longer` / `pivot_wider` | High | More explicit column specification |
 | `graph twoway`, `histogram`, `graph bar` | ggplot2 | Medium | Grammar of graphics vs imperative graph syntax |
 | `svyset`, `svy:` | survey | Very High | `svydesign()` + `svymean()` etc.; mature, comprehensive |
-| `rdrobust`, `rdplot` | rdrobust (R) | Very High | Same authors; identical API |
-| `binscatter`, `binsreg` | binsreg (R) | Very High | Same authors; identical API |
+| `rdrobust`, `rdplot` | rdrobust (R) | Very High | Same rdpackages project; identical API |
+| `binscatter`, `binsreg` | binsreg (R) | Very High | Same nppackages project as Stata binsreg (binscatter is a different author's command); near-identical API (binslogit/binsprobit are Stata-only; use binsglm) |
 | `synth` | augsynth / Synth | High | Multiple implementations available |
 | `local`, `global`, `foreach`, `forvalues` | R variables, `for` loops | Low | Fundamentally different paradigm (text substitution vs value binding) |
 
-**Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
+**Fidelity key:** Very High = near-identical API (for rdrobust/binsreg, the same rdpackages/nppackages project across languages). High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
 > **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas or `plm` cover most cases), and runtime installs are blocked in DAAF (`install.packages()` is refused both at the command line and inside executed scripts — see CLAUDE.md § Runtime Package Installation). If one of these packages is genuinely required, escalate to the user to add it to the Dockerfile (user additions block) and rebuild before use.
 
 ## Library Versions
 
 Translations in this skill reference specific library versions. R versions are
-pinned in DAAF's Docker environment (R 4.5.3). Stata versions reference the
-current release as of May 2026. When syntax or behavior has changed between
-versions, the reference files note the change.
+pinned in DAAF's Docker environment (R 4.5.3). Stata mappings target Stata 18
+as the reference version (written May 2026). When syntax or behavior has
+changed between versions, the reference files note the change.
 
 | R Package | DAAF Version | Stata Equivalent | Stata Version |
 |---|---|---|---|
@@ -244,7 +244,7 @@ versions, the reference files note the change.
 | sf + terra | 1.1-0, 1.9-11 | spmap, spregress | Stata 18 |
 | tidymodels | 1.4.1 | (limited; teffects, psmatch2 partially) | Stata 18 |
 
-**Stata version note:** Stata 18 is the current release as of May 2026. Most command
+**Stata version note:** Mappings target Stata 18 as the reference version. Most command
 mappings apply to Stata 15+; version-specific features (frames, `hdidregress`) are noted
 in the reference files.
 

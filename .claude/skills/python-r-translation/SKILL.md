@@ -190,7 +190,7 @@ reference files note the change.
 | survey | survey 4.5 | svy | 0.19.0 |
 | marginaleffects (R) | 0.32.0 | marginaleffects | 0.5.0 |
 | rdrobust (R) | 3.0.0 | rdrobust | 1.3.0 |
-| Quarto / RMarkdown | Quarto 1.7.29 | marimo | 0.19.11 |
+| Quarto / RMarkdown | Quarto 1.10.18 | marimo | 0.19.11 |
 
 **Pinning note:** linearmodels, marginaleffects, and rdrobust are version-pinned in
 DAAF's Dockerfile (`linearmodels==7.0`, `marginaleffects==0.5.0`, `rdrobust==1.3.0`)
