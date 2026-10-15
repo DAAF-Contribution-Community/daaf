@@ -9,6 +9,7 @@ Framing analytical questions, balancing rigor with usefulness, and communicating
 - [Stakeholder Check-In Points](#stakeholder-check-in-points)
 - [Communicating Results](#communicating-results)
 - [Documenting Decisions](#documenting-decisions)
+- [References](#references)
 
 ## Question Formulation
 
@@ -19,8 +20,10 @@ Business questions are often vague. Your job is to translate them into precise, 
 | Business Question | Issues | Analytical Translation |
 |-------------------|--------|------------------------|
 | "How are sales doing?" | Vague time frame, no comparison | "What was total revenue in Q4 2024 compared to Q4 2023?" |
-| "Why are customers churning?" | Multiple possible answers | "What customer attributes predict churn in the next 90 days?" |
+| "Why are customers churning?" | Multiple possible answers; "why" asks for explanation, but a predictive model only identifies who is at risk | "What customer attributes predict churn in the next 90 days?" (predictive: who, not why; a causal "why" needs a causal design — see `supervised-ml.md` § The Explain-Predict Distinction (Shmueli, 2010)) |
 | "Is the new feature working?" | No success metric defined | "Did feature X increase user engagement (sessions/week) by >10%?" |
+
+The metrics, time frames, and the 10% threshold above are illustrative, not recommended values.
 
 ### Translation Framework
 
@@ -72,6 +75,8 @@ As you work, questions tend to expand. Guard against this:
 Different situations require different levels of rigor.
 
 ### Decision Matrix
+
+This matrix is a DAAF convention, not a sourced standard.
 
 | Scenario | Rigor Level | Rationale |
 |----------|-------------|-----------|
@@ -177,9 +182,9 @@ You SHOULD check in when:
 
 ### Causal vs. Correlational Language
 
-**Default to correlational language** unless you have experimental data:
+**Default to correlational language** unless the research design earns a causal claim (see the conditions below and `causal-inference.md` § Causal vs Descriptive: Knowing the Difference):
 
-| Causal (Avoid Unless Justified) | Correlational (Safer) |
+| Causal (Avoid Unless Justified) | Correlational |
 |--------------------------------|----------------------|
 | X causes Y | X is associated with Y |
 | X increases Y | Higher X corresponds to higher Y |
@@ -187,11 +192,17 @@ You SHOULD check in when:
 | X drives Y | X predicts Y |
 | X leads to Y | X tends to co-occur with Y |
 
-**Only use causal language when:**
-- Data comes from a randomized experiment
-- You've controlled for confounders (and can defend this)
-- Domain knowledge strongly supports causal mechanism
-- Stakeholder explicitly requests causal claims (with caveats documented)
+Swapping verbs is not enough. In a review of 1,170 articles from high-profile medical, public health, and epidemiology journals, Haber et al. (2022) found that "over half of reviewers rated 'association' as having at least some causal implication," and concluded that their research "undercuts the assumption that avoiding 'causal' words leads to clarity of interpretation in medical research." State explicitly that an estimate is not causal, and keep action recommendations no stronger than the design supports. "X predicts Y" implies out-of-sample predictive performance; use it only when held-out evaluation was done (see `supervised-ml.md` § Train/Test Discipline and Cross-Validation).
+
+**Only use causal language when** (following `causal-inference.md` § Causal vs Descriptive: Knowing the Difference):
+- Your research design credibly addresses the identification problem (e.g., a randomized experiment, DiD, RD, IV, or a selection-on-observables design that declares its causal estimand and whose conditional-independence assumption you can defend; see `causal-inference.md` § Method Selection Guide)
+- You can articulate the source of identifying variation
+- The assumptions required for a causal interpretation are defensible and transparent
+- You have tested (or bounded) the sensitivity of results to assumption violations
+
+A plausible mechanism from domain knowledge, or a stakeholder's request for a causal answer, does not by itself earn causal language (DAAF convention). If a stakeholder needs a causal answer the design cannot support, document the gap and name the design that would be needed.
+
+> **Note:** this section gives a general default, not DAAF's design-earned claim tiers: it does not scope claims to the estimand's population (e.g., ATT, LATE, local to the cutoff) or separate conditional-causal, causal, mechanism, and action-recommendation language. For manuscripts, the tiers in the `academic-manuscript` skill govern (`references/claims-ledger-and-coherence.md` § Language tiers; framing by question type in `references/question-types-and-claims.md`). For lay and policy audiences, use the causal-language table in the `science-communication` skill (`references/plain-language.md` § Causal vs. Correlational Language). Elsewhere, the default above still applies.
 
 ### Presenting Uncertainty
 
@@ -203,7 +214,7 @@ Always communicate uncertainty:
 **Point estimate**: Customer churn rate is 15%
 
 **Uncertainty**: 
-- 95% confidence interval: 13% - 17%
+- 95% confidence interval: 14.3% - 15.7% (Wald interval; p = 0.15, n = 10,000)
 - Based on sample of 10,000 customers
 - Assumes sample is representative of all customers
 
@@ -272,7 +283,7 @@ Track assumptions explicitly:
 | ID | Assumption | Justification | Risk if Wrong | Validated |
 |----|------------|---------------|---------------|-----------|
 | A1 | Customer IDs are unique | DW documentation states this | High - duplicates would inflate counts | Yes - checked |
-| A2 | Missing values are MCAR | No pattern observed in missingness | Medium - could bias results | Partially - visual inspection |
+| A2 | Missingness in key fields is MCAR | Complete vs. incomplete cases compared on observed covariates (Little 1988); no systematic differences found (see `descriptive-analysis.md` § Missing Data Characterization) | Medium - could bias results | Partially - consistent with MCAR on observed data; MCAR can be rejected but not confirmed |
 | A3 | Definitions consistent over time | Confirmed with data owner | High - trend analysis would be invalid | Yes - confirmed |
 ```
 
@@ -308,15 +319,22 @@ within the next quarter?
 ## Methodology
 - Logistic regression with L1 regularization
 - Features: demographics, behavioral, transactional
-- Train/test split: 80/20, stratified by churn
+- Train/test split: temporal hold-out (fit on earlier prediction dates, test on
+  the most recent ~20%), because deployment predicts future churn (see
+  `supervised-ml.md` § Cross-Validation Strategies for Social Science Data);
+  the 80/20 proportion is a DAAF convention
 - Chosen over random forest for interpretability
 
 ## Key Findings
-1. Days since last purchase (OR: 1.05 per day)
+1. Days since last purchase (OR: 1.05 per week)
 2. Support ticket count (OR: 1.3 per ticket)
 3. Product category diversity (OR: 0.85 per category)
 
-Model AUC: 0.78 (95% CI: 0.76-0.80)
+(Illustrative values. ORs from the L1-penalized model are shrunk toward 1 and
+describe predictive association in this model, not effects; see
+`supervised-ml.md` § Interpreting ML Models: The Causation Trap.)
+
+Model AUC: 0.78 (95% CI: 0.77-0.79; ~30,000 held-out observations)
 
 ## Limitations
 - Correlational only - cannot claim causation
@@ -344,3 +362,9 @@ Model AUC: 0.78 (95% CI: 0.76-0.80)
 - Data snapshot: `s3://bucket/snapshots/20241215/`
 - Environment: `requirements.txt` in repo
 ```
+
+## References
+
+Haber, N.A., Wieten, S.E., Rohrer, J.M., et al. (2022). "Causal and Associational Language in Observational Health Research: A Systematic Evaluation." *American Journal of Epidemiology*, 191(12), 2084-2097. https://doi.org/10.1093/aje/kwac137
+
+Little, R.J.A. (1988). "A Test of Missing Completely at Random for Multivariate Data with Missing Values." *Journal of the American Statistical Association*, 83(404), 1198-1202. https://doi.org/10.1080/01621459.1988.10478722

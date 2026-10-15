@@ -89,8 +89,8 @@ Two complementary frameworks formalize this reasoning:
    causal paths, back doors, and d-separation rules
 
 These frameworks are not competing -- they illuminate different aspects of the same
-problem. Following Cunningham (2021, Chs. 3-4) and Huntington-Klein (2022, Chs. 5-10),
-researchers benefit from fluency in both.
+problem. Following Cunningham (2021, Chs. 3-4) and Huntington-Klein (2022; online 2nd
+ed., Chs. 5-10), researchers benefit from fluency in both.
 
 ## The Potential Outcomes Framework
 
@@ -112,7 +112,7 @@ Ch. 2):
 | ATE | E[Y(1) - Y(0)] | Average effect across the entire population |
 | ATT | E[Y(1) - Y(0) \| D=1] | Average effect for those who actually received treatment |
 | ATU | E[Y(1) - Y(0) \| D=0] | Average effect for those who did not receive treatment |
-| LATE | Effect for compliers (IV) | Average effect for units whose treatment status is changed by the instrument |
+| LATE | Effect for compliers (IV) | Average effect for units whose treatment status is changed by the instrument (Imbens and Angrist 1994) |
 | CATE | E[Y(1) - Y(0) \| X=x] | Average effect conditional on characteristics -- heterogeneous effects |
 
 **The Simple Difference in Means (SDO) decomposition** (Cunningham 2021) reveals why
@@ -144,8 +144,8 @@ which randomization ensures by design.
 ## Directed Acyclic Graphs (DAGs)
 
 DAGs provide a visual language for encoding causal assumptions, following Pearl's
-framework as presented in Huntington-Klein (2022, Chs. 6-8) and Cunningham (2021,
-Ch. 3).
+framework as presented in Huntington-Klein (2022; online 2nd ed., Chs. 6-8) and
+Cunningham (2021, Ch. 3).
 
 **Core components:**
 - **Nodes** represent variables
@@ -180,10 +180,11 @@ when analyzing the effect of high school quality on earnings) or controlling for
 
 The practical implication: to identify the causal effect of X on Y, find a
 conditioning set that blocks all back-door paths (non-causal associations) while
-leaving causal paths open. For complex graphs with more than 5-6 nodes, use
-dagitty.net (a free web tool) to algorithmically determine valid adjustment sets.
+leaving causal paths open. For complex graphs with more than 5-6 nodes (a DAAF
+convention), use dagitty.net (a free web tool) to algorithmically determine valid
+adjustment sets.
 
-**Practical DAG construction** (Huntington-Klein 2022, Ch. 7):
+**Practical DAG construction** (Huntington-Klein 2022; online 2nd ed., Ch. 7):
 1. List all variables you believe are relevant to the treatment-outcome relationship
 2. Draw arrows based on theory, domain knowledge, and prior literature
 3. Simplify by removing variables that are redundant or pure mediators (unless
@@ -201,7 +202,8 @@ Angrist and Pischke (2010) named a paradigm shift in empirical economics: the mo
 from structural modeling toward **design-based research** that emphasizes transparent
 identification strategies.
 
-**The four fundamental questions** of empirical research (Angrist and Pischke 2009):
+**Four framing questions** for empirical research (paraphrasing Angrist and Pischke
+2009; not checked against the book):
 1. What is the causal relationship of interest?
 2. What is the ideal experiment to capture it?
 3. What is the identification strategy -- how does your observational data
@@ -213,9 +215,8 @@ matters more than mathematical sophistication**. A simple difference-in-differen
 with a clearly defended parallel trends assumption is more credible than a complex
 structural model with opaque identifying restrictions.
 
-As Angrist emphasized in his 2021 Nobel lecture, visual evidence is compelling:
-"You should be able to see the treatment effect in a well-designed figure." If you
-cannot, either the effect is small or the research design is not clean.
+Angrist's 2021 Nobel lecture illustrates design-based evidence graphically, for
+example with RD plots and "visual instrumental variable (VIV)" plots (Angrist 2021).
 
 This revolution produced the modern toolkit: regression discontinuity designs
 became standard for policy evaluation, DiD methods were formalized and improved,
@@ -224,16 +225,17 @@ thread is asking: "What is the source of identifying variation, and is it credib
 
 ## The Identification Problem
 
-Following Angrist and Pischke (2009), selection bias is "the principal enemy" of
-causal inference. Units that receive treatment typically differ systematically from
-those that do not, and these differences contaminate naive comparisons.
+Selection bias is the principal enemy of causal inference (paraphrasing Angrist and
+Pischke 2009; not checked against the book). Units that receive treatment typically
+differ systematically from those that do not, and these differences contaminate
+naive comparisons.
 
 **Identification** means isolating the meaningful variation in the data -- the
-variation that allows a causal interpretation. As Huntington-Klein (2022) frames it,
-every quasi-experimental method is a different strategy for approximating the
-conditions of a randomized experiment using observational data.
+variation that allows a causal interpretation. Huntington-Klein (2022; online 2nd
+ed., Ch. 5) frames identification as isolating the variation that answers the
+research question.
 
-**Hierarchy of evidence** (for internal validity):
+**Hierarchy of evidence** (for internal validity; a DAAF framing):
 
 | Design | Strength | Why |
 |--------|----------|-----|
@@ -259,7 +261,7 @@ threats. This is the central decision reference for Stage 8 analysis work.
 | **Matching / IPW** | Selection on observables, want nonparametric robustness | CIA + common support (overlap) | ATT (matching) or ATE (IPW) | Overlap violations, unobserved confounders | sklearn + statsmodels (see causal-matching.md) |
 | **Fixed effects / panel** | Repeated observations, time-invariant confounders | Strict exogeneity (no feedback from Y to future X) | ATE (within-unit) | Time-varying confounders, Nickell bias | pyfixest (`feols`) |
 | **Instrumental Variables** | Endogenous treatment, valid instrument exists | Relevance, independence, exclusion restriction, monotonicity | LATE (compliers only) | Weak instruments, exclusion restriction violations | pyfixest (IV formula) |
-| **Regression Discontinuity** | Treatment assigned by score crossing a cutoff | Continuity at cutoff, no manipulation | LATE (at the cutoff) | Sorting/manipulation, bandwidth sensitivity | rdrobust (installed) |
+| **Regression Discontinuity** | Treatment assigned by score crossing a cutoff | Continuity at cutoff, no manipulation | ATE at the cutoff (sharp); LATE for compliers at the cutoff (fuzzy) | Sorting/manipulation, bandwidth sensitivity | rdrobust (installed) |
 | **Difference-in-Differences** | Policy change affects some units but not others | Parallel trends, no anticipation | ATT | Parallel trends violations, anticipation | pyfixest (did2s, lpdid) |
 | **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | scipy manual or pip install (see causal-synth.md) |
 
@@ -291,8 +293,9 @@ specialized packages:
 ### Angrist's "Furious Five" Progression
 
 Angrist and Pischke (2015) organize quasi-experimental methods as a pedagogical
-progression, where each method is increasingly "clever" in how it approximates
-random assignment:
+progression, in which each method is an increasingly clever way to approximate
+random assignment (paraphrasing Angrist and Pischke 2015; not checked against the
+book):
 
 1. **Randomized trials** -- the gold standard, but often infeasible or unethical
 2. **Regression** -- controls for observables, but cannot handle unobserved confounders
@@ -309,9 +312,10 @@ variation in the data, not to pick a method and hope the assumptions hold.
 
 ### Huntington-Klein's "Template Matching" Approach
 
-Rather than asking "which method should I use?", Huntington-Klein (2022) suggests
-asking "which template matches my research design?" Each method corresponds to a
-pattern in the causal diagram:
+Rather than starting from which method to use, Huntington-Klein (2022; online 2nd
+ed., Ch. 12) describes "template" causal diagrams that can be solved easily; the
+task is to find the template that matches the research design. Each method
+corresponds to a pattern in the causal diagram:
 
 - **RCT**: Treatment is isolated from all back doors by randomization
 - **Regression/matching**: Close all back doors by conditioning on observed variables
@@ -333,10 +337,12 @@ the assumptions are strong and largely untestable:
 **First-stage strength:**
 - The first-stage F-statistic tests whether the instrument actually predicts
   treatment. The traditional rule of thumb (Staiger and Stock 1997) is F > 10;
-  modern practice prefers F > 100 or formal weak-instrument-robust inference.
+  a stricter rule of thumb, F > 100, is also used, as is formal
+  weak-instrument-robust inference.
 - With F < 10, IV estimates are biased toward OLS and confidence intervals are
   unreliable. Consider LIML (Limited Information Maximum Likelihood), which is
-  less biased than 2SLS with weak instruments.
+  less biased than 2SLS with weak instruments. (These are standard results stated
+  here without a checked source.)
 - Stock and Yogo (2005) provide critical values for testing weak instruments under
   specific bias tolerance thresholds.
 
@@ -352,9 +358,10 @@ the assumptions are strong and largely untestable:
   in the same direction (no "defiers" who do the opposite of what the instrument
   encourages). This is a substantive assumption that depends on the context.
 
-**Practical decision rule:** If the first-stage F < 10, **stop and reconsider the
-instrument** before interpreting IV results. Weak-instrument inference is an active
-research area but the simplest solution is often finding a stronger instrument.
+**Practical decision rule (DAAF convention):** If the first-stage F < 10, **stop and
+reconsider the instrument** before interpreting IV results. Weak-instrument
+inference is an active research area but the simplest solution is often finding a
+stronger instrument.
 
 ### Regression Discontinuity: Design Essentials
 
@@ -379,23 +386,30 @@ Titiunik (2020):
   cutoff to use. Too narrow = imprecise; too wide = biased.
 - Calonico, Cattaneo, and Titiunik (2014) provide data-driven optimal bandwidth
   selection with bias-corrected robust confidence intervals.
-- Always report results at multiple bandwidths (e.g., 50%, 100%, 200% of optimal)
-  to demonstrate robustness.
+- Report results at half and twice the chosen bandwidth (Imbens and Lemieux 2008,
+  Sec. 7.5). Cattaneo, Idrobo, and Titiunik (2020, Sec. 5.5) caution that such
+  checks are informative only over small ranges around the MSE-optimal bandwidth.
+  See `./causal-rd.md` for the full sensitivity grid.
 
 **Polynomial order:**
-- Local linear regression (polynomial order 1) is strongly preferred over
-  higher-order polynomials (Gelman and Imbens 2019), which can produce erratic
-  extrapolation near the cutoff.
-- Higher-order polynomials create a false sense of precision and are sensitive to
-  observations far from the cutoff.
+- Local linear regression (p=1) is the standard choice (Cattaneo, Idrobo, and
+  Titiunik 2020, Sec. 4.2). Gelman and Imbens (2019) show that global high-order
+  (third or higher) polynomials give noisy estimates, sensitivity to the degree,
+  and poor confidence-interval coverage; they recommend local linear or quadratic
+  fits.
 
 **Manipulation testing:**
-- The McCrary (2008) density test checks whether units sort around the cutoff
-  (bunching just above or below). If the density is discontinuous at the cutoff,
-  the design is compromised -- units are manipulating their score to receive
-  (or avoid) treatment.
-- **If the McCrary test rejects, the entire RD design is questionable.** This is
-  a hard stop, not a caveat to note in a robustness section.
+- The McCrary (2008) density test checks for a discontinuity in the running
+  variable's density at the cutoff (bunching just above or below), which suggests
+  units are sorting around the cutoff. It is most informative when manipulation
+  runs in one direction (McCrary 2008).
+- **A rejection is a serious red flag.** Applications with an abrupt change in the
+  number of observations at the cutoff "will tend to be less credible" (Cattaneo,
+  Idrobo, and Titiunik 2020, Sec. 5.2). A rejection does not by itself prove
+  identification fails: McCrary (2008) notes a continuous density is "neither
+  necessary nor sufficient for identification except under auxiliary
+  assumptions." If it rejects, investigate the source, report it prominently, and
+  consider a donut RD or an alternative design (see `./causal-rd.md`, Gotcha 15).
 
 **Visual presentation:**
 - The standard RD plot: scatter of outcomes against the running variable with
@@ -427,14 +441,19 @@ potential outcomes (the conditional independence assumption, CIA).
 - **Caliper matching**: Nearest neighbor with a maximum distance threshold --
   unmatched treated units are dropped if no good match exists.
 - **Coarsened exact matching (CEM)**: Coarsen continuous covariates into bins
-  and match exactly within bins. Guarantees balance but may discard many observations.
+  and match exactly within bins. The analyst fixes the maximum allowed imbalance
+  in advance and CEM guarantees it is not exceeded (Iacus, King, and Porro 2012),
+  but it may discard many observations.
 - **Kernel matching**: Weight all controls by their distance from each treated
   unit using a kernel function. Uses more data but requires bandwidth choice.
 
 **Balance diagnostics (critical step):**
-- After matching/weighting, check covariate balance between treated and control:
-  standardized mean differences should be < 0.1 (ideally < 0.05) for all covariates.
-- Variance ratios should be close to 1.
+- After matching/weighting, check covariate balance between treated and control.
+  |SMD| < 0.1 is a common convention (Austin 2011, citing Normand et al. 2001;
+  Austin notes there is no agreed threshold); < 0.05 is a DAAF convention.
+- Variance ratios should fall within 0.5-2 (Rubin 2001, as summarized by Stuart
+  2010, for the propensity score; applying the band to raw covariates is a DAAF
+  convention). See `./causal-matching.md`.
 - **If balance is not achieved, the matching has failed** -- do not proceed to
   outcome estimation without adequate balance.
 
@@ -459,8 +478,10 @@ the key identification assumption.
 Causal mediation analysis decomposes a total effect of treatment T on outcome Y
 into a **natural indirect effect** (NIE, also called ACME -- the effect operating
 through a mediator M) and a **natural direct effect** (NDE -- the effect through
-all other channels). The exact decomposition TE = NDE + NIE holds under the
-potential outcomes framework (Imai, Keele, and Tingley 2010; Pearl 2001).
+all other channels; Pearl 2001). The total effect decomposes as TE = NIE(t) + NDE(1 - t) for
+t = 0, 1. The familiar TE = NDE + NIE with a common t holds only with no
+treatment-mediator interaction (Imai, Keele, and Tingley 2010; see
+`./causal-mediation.md`).
 
 **When mediation is the right question:** Mediation is not an identification
 strategy -- it does not establish that T causes Y. Rather, it decomposes an
@@ -473,7 +494,8 @@ The critical assumption (SI-2) requires that there are no unobserved confounders
 of the mediator-outcome relationship, conditional on treatment and covariates.
 This assumption is **untestable** and **not guaranteed by randomizing treatment**
 -- even in an RCT, treatment randomization does not randomize the mediator.
-Sensitivity analysis for violations of SI-2 is mandatory, not optional.
+Sensitivity analysis for violations of SI-2 is mandatory, not optional (a DAAF
+stance).
 
 **Distinction from simple "controlling for M":** Adding a mediator to a regression
 (Y ~ T + M) does not estimate a well-defined causal mediation effect. The modern
@@ -547,7 +569,7 @@ between the treated unit and its synthetic counterfactual.
   no effect appears before the real treatment.
 
 **When to prefer synthetic control over DiD:**
-- Few treated units (1-5) where standard DiD inference is unreliable
+- Few treated units (1-5; rule of thumb) where standard DiD inference is unreliable
 - Long pre-treatment periods available for assessing fit quality
 - Treatment effect is large enough to be visible against placebo distribution
 
@@ -569,7 +591,8 @@ result increases rapidly. This is the multiple comparisons problem.
   the family-wise error rate. More powerful when testing many hypotheses and
   tolerating some false positives.
 - **Romano-Wolf**: Accounts for dependence among test statistics using resampling.
-  The gold standard for multiple testing in applied economics. Available in
+  DAAF's preferred choice for multiple testing in applied economics (a DAAF
+  opinion, not a sourced ranking). Available in
   pyfixest: `rwolf()`. This is a Python-side asymmetry in the DAAF environment:
   R's `fixest` has no Romano-Wolf routine and the `wildrwolf` package is not
   installed — in R, fall back to `stats::p.adjust` methods (holm, BH) or request
@@ -629,7 +652,7 @@ pyfixest) are documented in `./causal-ml.md`.
 
 This section covers the most active area of methodological development in applied
 econometrics. The material draws heavily from Sant'Anna's DiD lecture series,
-Callaway and Sant'Anna (2021), and the Baker et al. (forthcoming) practitioner's
+Callaway and Sant'Anna (2021), and the Baker et al. (2026) practitioner's
 guide. Understanding this section is important because DiD is the most common
 quasi-experimental design in applied research, and the traditional implementation
 (two-way fixed effects regression) has been shown to produce misleading results
@@ -654,18 +677,19 @@ be severely biased when treatment effects are heterogeneous. The core problems:
 Three key decomposition results formalize these problems:
 
 - **Goodman-Bacon (2021)** decomposed the TWFE estimator into all the implicit 2x2
-  DiD comparisons it combines, revealing that comparisons using already-treated units
-  as controls receive substantial weight
-- **de Chaisemartin and D'Haultfoeuille (2020)** showed directly that some individual
-  treatment effects receive negative weights in TWFE, so the aggregate is not a
-  convex combination of causal effects
+  DiD comparisons it combines, revealing that it includes "forbidden comparisons"
+  that use already-treated units as controls (Roth et al. 2023)
+- **de Chaisemartin and D'Haultfoeuille (2020)** showed directly that some
+  group-period average treatment effects receive negative weights in TWFE, so the
+  aggregate is not a convex combination of causal effects
 - **Sun and Abraham (2021)** demonstrated that event-study specifications using TWFE
   inherit the same contamination, so pre-trend tests from TWFE event studies can be
   misleading
 
 The implication, as Sant'Anna's lecture series emphasizes, is clear: **avoid TWFE
 entirely for staggered designs**. Use modern estimators that separate identification,
-estimation, and aggregation.
+estimation, and aggregation. Roth et al. (2023) state a less absolute version: "Use TWFE only
+if you're confident in treatment effect homogeneity."
 
 ### The Modern DiD Framework
 
@@ -686,7 +710,7 @@ Each ATT(g,t) can be estimated using:
   between treated and control groups
 - **Doubly robust (DR)**: combine both approaches -- consistent if *either* the outcome
   model or the propensity score model is correctly specified (Sant'Anna and Zhao 2020).
-  DR is generally preferred for its robustness properties.
+  DR is generally preferred for its robustness properties (Baker et al. 2026).
 
 **Step 3 -- Aggregation: How do we summarize heterogeneous effects?**
 The granular ATT(g,t) parameters are aggregated into interpretable summaries:
@@ -700,7 +724,7 @@ explicit choices (what controls to use, which model specification, what weights 
 aggregation), and making those choices transparent prevents the implicit, opaque
 weighting that makes TWFE unreliable.
 
-Baker et al. (forthcoming) reinforce this with a "forward-engineering" principle:
+Baker et al. (2026) reinforce this with a "forward engineering" principle:
 fix the target parameter first (e.g., ATT), then derive the appropriate estimator --
 rather than starting from a familiar TWFE regression and reverse-engineering the
 assumptions that would justify it.
@@ -709,19 +733,22 @@ assumptions that would justify it.
 
 | Estimator | Best For | Key Feature | Reference |
 |-----------|----------|-------------|-----------|
-| **Callaway-Sant'Anna** | General staggered DiD | Group-time ATT with flexible aggregation; doubly robust; the most general-purpose modern estimator | Callaway and Sant'Anna (2021) |
+| **Callaway-Sant'Anna** | General staggered DiD | Group-time ATT with flexible aggregation; doubly robust; the most general-purpose modern estimator (DAAF convention) | Callaway and Sant'Anna (2021) |
 | **Sun-Abraham** | Event studies with staggered timing | Saturated interaction-weighted estimator; corrects contamination in event-study coefficients | Sun and Abraham (2021) |
 | **Gardner (did2s)** | Simple imputation approach | Two-stage: estimate unit/time FE from untreated observations, impute counterfactuals, then estimate treatment effects | Gardner (2022) |
 | **Wooldridge ETWFE** | Regression-based approach | Extended TWFE with proper cohort-time interactions; familiar regression framework | Wooldridge (2021) |
-| **Borusyak-Jaravel-Spiess** | Imputation with efficiency | OLS imputation estimator; efficient under homoskedasticity | Borusyak, Jaravel, and Spiess (2024) |
-| **Local Projections DiD** | Flexible dynamics | Robust to model misspecification; allows non-absorbing (reversible) treatment | Dube et al. (2023) |
+| **Borusyak-Jaravel-Spiess** | Imputation with efficiency | OLS imputation estimator; efficient under homoskedastic, serially uncorrelated errors when its parallel-trends assumption holds (Roth et al. 2023) | Borusyak, Jaravel, and Spiess (2024) |
+| **Local Projections DiD** | Flexible dynamics | Local projections plus a "clean control" condition; can accommodate non-absorbing (reversible) treatment | Dube et al. (2023) |
 
 **Practical guidance on choosing:**
-1. **Start with Callaway-Sant'Anna** as the default -- it is the most general, supports
-   conditional parallel trends with covariates, and provides the clearest separation
-   of the three steps
-2. **Use did2s (Gardner)** when you want a simple, intuitive imputation approach and
-   are comfortable with the stronger homogeneity assumptions
+1. **Start with Callaway-Sant'Anna** as the default (DAAF convention) -- it is the
+   most general, supports conditional parallel trends with covariates, and provides
+   the clearest separation of the three steps. It requires `csdid`, which is not
+   installed (see the Implementation status note above)
+2. **Use did2s (Gardner 2022)** for a simple two-stage imputation approach. It is
+   robust to treatment-effect heterogeneity, but using all pre-treatment periods
+   requires a stronger parallel-trends assumption than Callaway-Sant'Anna's
+   (Sant'Anna lecture series; Roth et al. 2023)
 3. **Use Local Projections DiD** when treatment can turn on and off (non-absorbing
    treatment) or when you want minimal parametric assumptions on dynamics
 4. **Use Sun-Abraham** when your primary output is an event study and you want to
@@ -736,11 +763,15 @@ The parallel trends assumption is the linchpin of every DiD design: absent treat
 treated and control groups would have followed the same outcome trajectory.
 
 **Testing parallel trends:**
-- Pre-treatment event study coefficients should be jointly insignificant -- this is
-  the standard "pre-trends test"
-- But this is a **necessary, not sufficient** condition: failing to reject does not
-  mean parallel trends holds (it may simply reflect low statistical power)
-- As Roth et al. (2023) emphasize: "pre-tests are informative but not definitive"
+- Pre-treatment event study coefficients that are all insignificant are usually
+  read as support for the design -- the standard "pre-trends test" (Roth et al.
+  2023, Sec. 4.3); testing the leads jointly is a DAAF convention
+- Passing this test is **neither necessary nor sufficient** for parallel trends
+  (Sant'Anna, DiD lecture series): failing to reject may simply reflect low
+  statistical power (Roth 2022)
+- As Roth et al. (2023) note, "the absence of a significant pre-trend does not
+  necessarily imply that parallel trends holds; in fact, these tests often have
+  low power." (quoted from the arXiv version, arXiv:2201.01194v3)
 
 **Functional form sensitivity:**
 Roth and Sant'Anna (2023, *Econometrica*) demonstrated a critical subtlety: parallel
@@ -776,10 +807,10 @@ Key insights from this extension:
   identifiable under parallel trends
 - Comparing effects *across* treatment levels is more challenging and requires
   additional assumptions
-- TWFE with continuous treatment admits multiple problematic interpretations -- the
-  same negative-weighting issues apply, often more severely
-- The framework maintains the three-step separation: identify group-dose ATTs,
-  estimate them cleanly, and aggregate transparently
+- Popular TWFE estimands "admit multiple interpretations, depending on the
+  underlying causal building block, all having important limitations as
+  meaningful summaries of treatment effects"
+- The paper introduces alternative estimators that avoid these drawbacks
 
 ## Causal vs Descriptive: Knowing the Difference
 
@@ -800,11 +831,12 @@ and descriptive work is a matter of intellectual honesty.
 - Distribution questions: "What does the distribution of W look like?"
 - See `./descriptive-analysis.md` for comprehensive descriptive methodology guidance
 
-**The "Schrodinger's causal inference" pitfall:**
-Haber et al. (2022) identified a pervasive problem in observational research: studies
-that use associational methods but make action-oriented recommendations that *imply*
-causation. For example, concluding that a program "should be expanded" based on a
-cross-sectional correlation is making an implicit causal claim. Either commit to a
+**The "Schrödinger's causal inference" pitfall:**
+Haber et al. (2022) found that what they call "Schrödinger's causal inference"
+(studies that deny causal interest yet carry causal implications and
+recommendations) is common in observational health research. For example,
+concluding that a program "should be expanded" based on a cross-sectional
+correlation is making an implicit causal claim. Either commit to a
 causal design or be honest that descriptive findings are suggestive, not conclusive.
 
 **Descriptive subgroup analysis is not causal heterogeneity analysis:**
@@ -814,13 +846,17 @@ heterogeneous *treatment effects* (e.g., the effect of a training program differ
 gender) requires a causal design that identifies effects within each subgroup.
 
 **Know which parameter your design identifies:**
-Following Huntington-Klein's (2022, Ch. 10) five rules of thumb:
-1. Designs using random variation typically estimate ATE
-2. Designs using variation specific to a treated group typically estimate ATT
-3. IV estimates LATE -- the effect for compliers, not the full population
-4. RD estimates a local effect at the cutoff -- not a global treatment effect
-5. Variance-weighted averages from heterogeneous effects may not match any
-   policy-relevant population parameter
+Following Huntington-Klein's (2022; online 2nd ed., Ch. 10) five rules of thumb:
+1. Randomization in a representative sample, with no adjustment, gives the ATE
+2. Randomization within a group, isolating that group, gives a conditional ATE
+3. Closing back doors and using the remaining variation gives a weighted ATE
+   (e.g., variance-weighted)
+4. Using an untreated group as the treated group's counterfactual gives the ATT
+5. Isolating the variation driven by an exogenous variable gives the LATE
+
+Huntington-Klein adds that these are rules of thumb, and the estimation method
+also shapes which average is obtained. Separately (DAAF note): RD identifies an
+effect local to the cutoff (Cattaneo, Idrobo, and Titiunik 2020).
 
 For causal vs. correlational language guidance in communicating results, see
 `./research-questions.md` > "Causal vs. Correlational Language."
@@ -833,7 +869,7 @@ For causal vs. correlational language guidance in communicating results, see
 |--------|----------------|---------------|
 | RCT | Attrition, non-compliance, spillovers, experimenter demand effects | Balance tables, attrition analysis, ITT vs. LATE comparison |
 | Regression/matching | Unobserved confounders (the fundamental problem) | Sensitivity analysis (Oster 2019), robustness to specification |
-| IV | Weak instruments, exclusion restriction violations, defiers | First-stage F-statistic (>10, ideally >100), exclusion restriction arguments, monotonicity defense |
+| IV | Weak instruments, exclusion restriction violations, defiers | First-stage F-statistic (>10; >100 is a stricter rule of thumb), exclusion restriction arguments, monotonicity defense |
 | RD | Manipulation/sorting at cutoff, sensitivity to bandwidth and polynomial | McCrary density test, bandwidth sensitivity, multiple polynomial orders |
 | DiD | Parallel trends violations, anticipation effects, compositional changes | Pre-trend tests + sensitivity analysis (Rambachan and Roth 2023), event study plots, composition checks |
 | Synthetic control | No good match, interpolation bias, few donor units | Pre-treatment fit quality, donor pool restrictions, placebo tests |
@@ -889,11 +925,14 @@ robustness.
 **Rambachan and Roth (2023) -- Honest DiD for parallel trends:**
 Specific to difference-in-differences designs. Rather than assuming parallel trends
 holds exactly, this framework produces confidence sets that are valid under specified
-degrees of violation. The researcher specifies a "breakdown frontier" -- how far
-parallel trends could deviate from exact -- and the method reports whether the
-qualitative conclusion survives.
+degrees of violation. The researcher bounds how far post-treatment violations may
+exceed the observed pre-trends (e.g., at most M̄ times the largest pre-treatment
+violation), and the method reports confidence sets valid under that restriction.
+The "breakdown" value of M̄ is the largest such violation under which the
+conclusion survives (Roth et al. 2023).
 
-**Rosenbaum bounds for matching estimators:**
+**Rosenbaum bounds for matching estimators** (DAAF summary; Rosenbaum's own work is
+not cited or checked here):
 For designs based on matching or propensity scores, Rosenbaum bounds quantify how
 sensitive the conclusion is to a hidden confounder of a given strength. The "gamma"
 parameter represents the factor by which an unobserved confounder could change the
@@ -901,16 +940,22 @@ odds of treatment; the analysis reports the gamma at which the conclusion would
 be overturned.
 
 **When to use sensitivity analysis:**
-- For any observational study making causal claims (not optional -- this is a
-  baseline expectation in credible empirical work)
+- For any observational study making causal claims (not optional -- in DAAF's
+  stance, this is a baseline expectation in credible empirical work)
 - When assumptions are debatable (e.g., parallel trends, exclusion restriction)
 - When the policy stakes are high and conclusions need to be defensible
 - When reviewers or stakeholders are likely to question identifying assumptions
 
-See Huntington-Klein (2022, Ch. 21) for an accessible overview of sensitivity
-analysis across designs.
+See Huntington-Klein (2022; online 2nd ed., Ch. 21, "Partial Identification") for
+an accessible overview of sensitivity analysis across designs.
 
 ## References and Further Reading
+
+Section and chapter numbers cited in the text follow the versions read for this
+file: arXiv:2201.01194v3 for Roth et al. (2023); arXiv:1911.09511 for Cattaneo,
+Idrobo, and Titiunik (2020); the 2007 NBER working paper for Imbens and Lemieux
+(2008); and the online 2nd edition (theeffectbook.net) for Huntington-Klein
+(2022). Published numbering may differ.
 
 ### Textbooks (Open Access)
 
@@ -928,7 +973,7 @@ Angrist, J.D. and Pischke, J.-S. (2015). *Mastering 'Metrics: The Path from Caus
 
 Angrist, J.D. (2021). "Empirical Strategies in Economics: Illuminating the Path from Cause to Effect." Nobel Prize Lecture. https://www.nobelprize.org/prizes/economic-sciences/2021/angrist/lecture/
 
-Angrist, J.D. and Pischke, J.-S. (2010). "The Credibility Revolution in Empirical Economics." *Journal of Economic Perspectives*, 24(2), 3-30.
+Angrist, J.D. and Pischke, J.-S. (2010). "The Credibility Revolution in Empirical Economics: How Better Research Design is Taking the Con out of Econometrics." *Journal of Economic Perspectives*, 24(2), 3-30.
 
 Holland, P.W. (1986). "Statistics and Causal Inference." *Journal of the American Statistical Association*, 81(396), 945-960.
 
@@ -938,19 +983,21 @@ Pearl, J. (1995). "Causal Diagrams for Empirical Research." *Biometrika*, 82(4),
 
 ### Key Papers -- Difference-in-Differences
 
-Baker, A., Callaway, B., Cunningham, S., Goodman-Bacon, A., and Sant'Anna, P.H.C. (Forthcoming). "Difference-in-Differences Designs: A Practitioner's Guide." *Journal of Economic Literature*. arXiv:2503.13323.
+Baker, A., Callaway, B., Cunningham, S., Goodman-Bacon, A., and Sant'Anna, P.H.C. (2026). "Difference-in-Differences Designs: A Practitioner's Guide." *Journal of Economic Literature*, 64(2), 498-557. https://doi.org/10.1257/jel.20251650 (preprint: arXiv:2503.13323)
 
 Baker, A., Larcker, D.F., and Wang, C.C.Y. (2022). "How Much Should We Trust Staggered Difference-in-Differences Estimates?" *Journal of Financial Economics*, 144(2), 370-395.
 
 Borusyak, K., Jaravel, X., and Spiess, J. (2024). "Revisiting Event-Study Designs: Robust and Efficient Estimation." *Review of Economic Studies*, 91(6), 3253-3285.
 
-Caetano, C., Callaway, B., and Sant'Anna, P.H.C. (2024). "Difference-in-Differences with Time-Varying Covariates." arXiv:2202.02903.
+Caetano, C., Callaway, B., Payne, S., and Rodrigues, H.S. (2024). "Difference in Differences with Time-Varying Covariates." arXiv:2202.02903 (v3).
 
 Callaway, B. and Sant'Anna, P.H.C. (2021). "Difference-in-Differences with Multiple Time Periods." *Journal of Econometrics*, 225(2), 200-230. https://doi.org/10.1016/j.jeconom.2020.12.001
 
-Callaway, B., Goodman-Bacon, A., and Sant'Anna, P.H.C. (Forthcoming). "Difference-in-Differences with a Continuous Treatment." *American Economic Review*. arXiv:2107.02637.
+Callaway, B., Goodman-Bacon, A., and Sant'Anna, P.H.C. (forthcoming, 2026). "Difference-in-Differences with a Continuous Treatment." *American Economic Review*. arXiv:2107.02637. (Listed as forthcoming at the AER, 2026, on the first author's research page, checked 2026-10-12; no published journal record yet.)
 
 de Chaisemartin, C. and D'Haultfoeuille, X. (2020). "Two-Way Fixed Effects Estimators with Heterogeneous Treatment Effects." *American Economic Review*, 110(9), 2964-2996.
+
+Dube, A., Girardi, D., Jordà, Ò., and Taylor, A.M. (2023). "A Local Projections Approach to Difference-in-Differences." NBER Working Paper 31184. https://doi.org/10.3386/w31184
 
 Gardner, J. (2022). "Two-Stage Differences in Differences." arXiv:2207.05943.
 
@@ -972,6 +1019,8 @@ Wooldridge, J.M. (2021). "Two-Way Fixed Effects, the Two-Way Mundlak Regression,
 
 Abadie, A., Diamond, A., and Hainmueller, J. (2010). "Synthetic Control Methods for Comparative Case Studies." *Journal of the American Statistical Association*, 105(490), 493-505.
 
+Austin, P.C. (2011). "An Introduction to Propensity Score Methods for Reducing the Effects of Confounding in Observational Studies." *Multivariate Behavioral Research*, 46(3), 399-424. https://doi.org/10.1080/00273171.2011.568786
+
 Calonico, S., Cattaneo, M.D., and Titiunik, R. (2014). "Robust Nonparametric Confidence Intervals for Regression-Discontinuity Designs." *Econometrica*, 82(6), 2295-2326.
 
 Cattaneo, M.D., Idrobo, N., and Titiunik, R. (2020). *A Practical Introduction to Regression Discontinuity Designs: Foundations*. Cambridge University Press.
@@ -980,13 +1029,27 @@ Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W.
 
 Gelman, A. and Imbens, G.W. (2019). "Why High-Order Polynomials Should Not Be Used in Regression Discontinuity Designs." *Journal of Business & Economic Statistics*, 37(3), 447-456.
 
+Heckman, J.J. (1979). "Sample Selection Bias as a Specification Error." *Econometrica*, 47(1), 153-161. https://doi.org/10.2307/1912352
+
+Iacus, S.M., King, G., and Porro, G. (2012). "Causal Inference without Balance Checking: Coarsened Exact Matching." *Political Analysis*, 20(1), 1-24. https://doi.org/10.1093/pan/mpr013
+
+Imai, K., Keele, L., and Tingley, D. (2010). "A General Approach to Causal Mediation Analysis." *Psychological Methods*, 15(4), 309-334. https://doi.org/10.1037/a0020761
+
+Imbens, G.W. and Lemieux, T. (2008). "Regression Discontinuity Designs: A Guide to Practice." *Journal of Econometrics*, 142(2), 615-635. https://doi.org/10.1016/j.jeconom.2007.05.001
+
 McCrary, J. (2008). "Manipulation of the Running Variable in the Regression Discontinuity Design: A Density Test." *Journal of Econometrics*, 142(2), 698-714.
 
+Pearl, J. (2001). "Direct and Indirect Effects." *Proceedings of the Seventeenth Conference on Uncertainty in Artificial Intelligence (UAI)*, 411-420. arXiv:1301.2300. https://arxiv.org/abs/1301.2300
+
 Rosenbaum, P.R. and Rubin, D.B. (1983). "The Central Role of the Propensity Score in Observational Studies for Causal Effects." *Biometrika*, 70(1), 41-55.
+
+Rubin, D.B. (2001). "Using Propensity Scores to Help Design Observational Studies: Application to the Tobacco Litigation." *Health Services and Outcomes Research Methodology*, 2, 169-188. https://doi.org/10.1023/A:1020363010465
 
 Staiger, D. and Stock, J.H. (1997). "Instrumental Variables Regression with Weak Instruments." *Econometrica*, 65(3), 557-586.
 
 Stock, J.H. and Yogo, M. (2005). "Testing for Weak Instruments in Linear IV Regression." In Andrews, D.W.K. and Stock, J.H. (Eds.), *Identification and Inference for Econometric Models*, 80-108. Cambridge University Press.
+
+Stuart, E.A. (2010). "Matching Methods for Causal Inference: A Review and a Look Forward." *Statistical Science*, 25(1), 1-21. https://doi.org/10.1214/09-STS313
 
 Wager, S. and Athey, S. (2018). "Estimation and Inference of Heterogeneous Treatment Effects Using Random Forests." *Journal of the American Statistical Association*, 113(523), 1228-1242.
 
@@ -1000,7 +1063,7 @@ Rambachan, A. and Roth, J. (2023). "A More Credible Approach to Parallel Trends.
 
 ### Causal Language in Research
 
-Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research." *American Journal of Epidemiology*, 191(12), 2084-2097.
+Haber, N.A. et al. (2022). "Causal and Associational Language in Observational Health Research: A Systematic Evaluation." *American Journal of Epidemiology*, 191(12), 2084-2097.
 
 ### Teaching Resources
 
@@ -1008,4 +1071,4 @@ Angrist, J.D. "Mastering Econometrics." Marginal Revolution University. https://
 
 LOST (Library of Statistical Techniques). https://lost-stats.github.io/
 
-Sant'Anna, P.H.C. "DiD Resources: A 14-Lecture Course." https://psantanna.com/did-resources/
+Sant'Anna, P.H.C. "DiD Resources." Web page, including "A Comprehensive Course on DiD" (14 slide decks). https://psantanna.com/did-resources/ (accessed 2026-10-12)

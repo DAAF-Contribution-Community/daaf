@@ -1104,7 +1104,7 @@ Kish, L. (1965). *Survey Sampling*. John Wiley & Sons.
 
 Myers, J.A. et al. (2011). "Effects of Adjusting for Instrumental Variables on Bias and Precision of Effect Estimates." *American Journal of Epidemiology*, 174(11), 1213-1222. https://doi.org/10.1093/aje/kwr364
 
-Rubin, D.B. (2001). "Using Propensity Scores to Help Design Observational Studies: Application to the Tobacco Litigation." *Health Services and Outcomes Research Methodology*, 2, 169-188.
+Rubin, D.B. (2001). "Using Propensity Scores to Help Design Observational Studies: Application to the Tobacco Litigation." *Health Services and Outcomes Research Methodology*, 2, 169-188. https://doi.org/10.1023/A:1020363010465
 
 Abadie, A. and Spiess, J. (2022). "Robust Post-Matching Inference." *Journal of the American Statistical Association*, 117(538), 983-995.
 
