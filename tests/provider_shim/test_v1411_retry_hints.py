@@ -240,6 +240,27 @@ class RetryHintLoopbackTests(unittest.TestCase):
                         backend.assert_request_counts(responses=1)
                         shim.assert_offline_contract()
 
+    def test_bare_409_on_search_nonstream_keeps_status_and_has_no_header(self):
+        # v1.4.12 (1.4.11 review gap): the search non-stream status passthrough calls
+        # _no_retry_headers_for(error_type, resp.status_code); a bare 409 there is also
+        # typed invalid_request_error and must still reach the client without the
+        # header. Both lanes (SSE transport on chatgpt, JSON transport on openai).
+        body = json.dumps({"error": {"type": "fixture_conflict", "message": PROSE_SENTINEL}},
+                          separators=(",", ":")).encode("utf-8")
+        search_request = json.dumps(fx.search_request(False)).encode("utf-8")
+        for lane in ("chatgpt", "openai"):
+            with self.subTest(lane=lane):
+                scenario = backend_status_scenario("v1412-search-409", 409, error_body=body)
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, lane) as shim:
+                        result = shim.post_raw_messages(search_request)
+                        self._assert_error(
+                            result, status=409, error_type="invalid_request_error",
+                            message="backend request failed", header=False,
+                            marker="SEARCH_BARE_409_" + lane)
+                        backend.assert_request_counts(responses=1)
+                        shim.assert_offline_contract()
+
     # --- A: retryable types carry no header and keep the existing retry policy ---
 
     def test_rate_limit_429_has_no_header_and_is_still_retried(self):

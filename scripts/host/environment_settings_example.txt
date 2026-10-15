@@ -813,6 +813,9 @@
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=400000
 # Silences Claude Code's Auto-mode eligibility notice on shim routes (see 4.1).
 #CLAUDE_CODE_AUTO_MODE_SERVER=0
+# Slow gateway? Auto mode's safety checks run on the models above at their effort and
+# can time out at high effort (seen 2026-10-15, Claude Code 2.1.281). Adding #medium
+# to the model names helped (e.g. your-gateway-model#medium); see 07_faq_technical.md.
 #
 # With this preset, DAAF also sets up the Codex CLI (`codex`, preinstalled in the
 # container) to use the same gateway: it writes a "daaf_gateway" provider and your

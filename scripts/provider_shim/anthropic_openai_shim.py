@@ -71,6 +71,45 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.12 (2026-10-15): shim.log records why a failure happened.
+#     EVIDENCE: UM-GPT gateway, openai lane, 2026-10-15: two streaming web-search
+#       requests failed (shim.log lines 26995 at 16:13:24 and 27257 at 16:26:06).
+#       Their terminal lines read outcome=error failure_phase=upstream_stream
+#       backend_type=- backend_code=-, and the backend_error line only
+#       anthropic_type=api_error. The reason was sent to Claude Code but never
+#       written to the log: _finalize_stream_failure passed only the type to
+#       _record_backend_error, and the non-stream error sends did the same.
+#     FIXES: the backend_error lifecycle line gains one field, failure_reason (always
+#       present; "-" when no reason is known). It holds the shim's own short reason:
+#       the fixed message the client got (a local constant, a _ProtocolError literal
+#       such as "search inventory missing completed items or index coverage", or a
+#       classifier message such as "Prompt is too long (backend context length
+#       exceeded)"). Where the source text is not guaranteed shim-authored, a fixed
+#       category with the exception class is logged instead: "backend token refresh
+#       failed (RuntimeError)", "backend SSE framing error (ValueError)" (ChatGPT
+#       non-stream accumulator) and "backend search transport or framing error
+#       (<class>)" (search non-stream). Scrubbed (_scrub_metadata), capped at 160
+#       characters and percent-encoded like every lifecycle value, so it stays one
+#       token on one line. Every _record_backend_error site now passes a reason, so the
+#       first backend_error line carries the first cause; a later hop's reason is not
+#       written again (same first-cause rule as backend_type and failure_phase). The
+#       non-stream search error branch now writes a backend_error line for
+#       unclassified failures (protocol, framing, transport), which it never did.
+#       Privacy tightening (review fix, same version): the streaming
+#       "stream failure after response start" error line logged the scrubbed text of
+#       ANY caught exception since v1.2.8; a TypeError/KeyError/AttributeError/
+#       ValueError or httpx message can quote a backend value, so only a
+#       _ProtocolError's (literal) text is logged now and the others log the constant
+#       failure kind ("backend SSE framing error", "backend transport error",
+#       "backend stream translation error"). The accumulator's category record is
+#       skipped once the client has disconnected, so it cannot turn a disconnect
+#       outcome into error.
+#     WHY: the privacy rule (v1.2.11: no prompts, tool inputs, backend prose or
+#       credentials in the log) stands; only shim-authored text is logged, so the log
+#       can now say why a request failed without carrying anything new from the
+#       backend.
+#     UNCHANGED: client-visible bytes, statuses, headers and retry behaviour; every
+#       other lifecycle line; /health schema. SHIM_VERSION -> 1.4.12.
 #   v1.4.11 (2026-10-14): Retry hints, a recognizable context-overflow message, failed
 #     JSON bodies and OpenAI's billing codes (four follow-ups from the F32 work).
 #     SOURCE EVIDENCE (installed Claude Code 2.1.281, binary
@@ -1414,7 +1453,7 @@ import uvicorn
 # cancellation. Replay expires after 30 minutes or cache eviction/process restart.
 # Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
 # No new health fields, env controls, backend lanes or persistent search caches.
-SHIM_VERSION = "1.4.11"
+SHIM_VERSION = "1.4.12"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1713,6 +1752,8 @@ _UPSTREAM_REQUEST_ID_HEADERS = (
 _UPSTREAM_REQUEST_ID_MAXLEN = 200
 _CLIENT_ERROR_MESSAGE_MAXLEN = 200
 _MACHINE_FIELD_VALUE_MAXLEN = 1000
+# v1.4.12: cap (decoded characters) for the backend_error failure_reason field.
+_FAILURE_REASON_MAXLEN = 160
 _WIRE_DIVERGENCE_SUMMARY_INTERVAL = 100
 _WIRE_DIVERGENCE_COUNTS = {}
 _WIRE_DIVERGENCE_LAST_EMITTED = {}
@@ -2086,6 +2127,9 @@ class _RequestLifecycleState:
         self.backend_type = "-"
         self.backend_code = "-"
         self.anthropic_error_type = "-"
+        # v1.4.12: the shim's own short reason for the first recorded failure
+        # (shim-authored text or a fixed category; never backend prose).
+        self.failure_reason = "-"
         self.backend_error_logged = False
         self.outcome = None
         self.disconnect_observed = False
@@ -2424,7 +2468,23 @@ def _record_disconnect(phase):
 
 
 def _record_backend_error(error_type="api_error", backend_type="-", backend_code="-",
-                          phase=None):
+                          phase=None, failure_reason=None):
+    # v1.4.12: failure_reason is the shim's own short account of WHY the request
+    # failed, written as one more field on the backend_error line.
+    # INTENT: put the reason the client was told into shim.log as well, so a failure
+    #   such as "search inventory missing completed items or index coverage" can be
+    #   read from the log, not only from the client's screen.
+    # REASONING: callers pass ONLY shim-authored text: a local constant, a
+    #   _ProtocolError message (every raise site is a literal), a classifier fixed
+    #   message, or a fixed category with an exception class name where the source
+    #   text is not constant. Backend prose never reaches this parameter (v1.2.11
+    #   no-prose rule). The value is still scrubbed and capped at
+    #   _FAILURE_REASON_MAXLEN characters, and the lifecycle serializer percent-encodes
+    #   it, so it stays one token on one line. Like backend_type and failure_phase,
+    #   the reason belongs to the FIRST record: every recording site supplies one, so
+    #   the first backend_error line carries the first cause; a later hop's reason is
+    #   a consequence of that cause and is not written again.
+    # ASSUMES: the field is always present ("-" when a caller supplies no reason).
     state = _request_state()
     if state is None:
         return
@@ -2436,12 +2496,14 @@ def _record_backend_error(error_type="api_error", backend_type="-", backend_code
         state.backend_type = _scrub_metadata(backend_type)
         state.backend_code = _scrub_metadata(backend_code)
         state.anthropic_error_type = error_type
+        state.failure_reason = _scrub_metadata(failure_reason, _FAILURE_REASON_MAXLEN)
         state.phase = "backend_error"
         state.backend_error_logged = True
         _lifecycle_event(
             "backend_error", backend_type=state.backend_type,
             backend_code=state.backend_code, anthropic_type=error_type,
             failure_phase=state.failure_phase,
+            failure_reason=state.failure_reason,
         )
     # v1.2.14 (D5): a backend-classified invalid_request_error gets one
     # request-correlated shape line to aid 400 diagnosis. Guarded by its own flag
@@ -5990,7 +6052,8 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
                 await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
                 continue
             _record_backend_error("api_error", backend_type=type(e).__name__,
-                                  phase="upstream_request")
+                                  phase="upstream_request",
+                                  failure_reason="backend transport error")
             raise
         _record_upstream_headers(r)
         if r.status_code >= 400 and attempt < MAX_RETRIES:
@@ -6182,6 +6245,7 @@ async def _open_backend_stream(url, headers, payload, disconnect_event, *, searc
                 _record_backend_error(
                     "api_error", backend_type=type(e).__name__,
                     phase="upstream_request",
+                    failure_reason="backend transport error",
                 )
                 raise
             delay = _retry_delay(attempt, None)
@@ -6903,9 +6967,10 @@ def _normalize_backend_error(payload, status=None, phase=None):
     # here — A1 does not consume it; A2 threads it through to the retry loops.
     anthropic_type, client_message, _retryable = _classify_backend_error(
         status, backend_code, backend_type)
+    # v1.4.12: the classifier's fixed client message is the logged failure_reason.
     _record_backend_error(
         anthropic_type, backend_type=backend_type, backend_code=backend_code,
-        phase=phase,
+        phase=phase, failure_reason=client_message,
     )
     return anthropic_type, client_message, backend_type, backend_code
 
@@ -7194,6 +7259,17 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     except _ProtocolError as error:
         return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
     except ValueError as error:
+        # v1.4.12: a ValueError's text is not guaranteed shim-authored (a library
+        # ValueError can quote its input), so the log gets a fixed category with the
+        # class name, recorded here before the caller's generic record. The returned
+        # client message is unchanged. Skipped once the client has gone: the caller
+        # returns on disconnect without recording, and an error record here would
+        # turn that request's outcome from disconnect into error.
+        if not disconnect_event.is_set():
+            _record_backend_error(
+                "api_error", phase="upstream_stream",
+                failure_reason="backend SSE framing error (%s)" % type(error).__name__,
+            )
         return None, _scrub_and_trim_body(str(error))[:200] or "backend SSE framing error"
     return None, "backend stream ended without a terminal response"
 
@@ -7583,6 +7659,18 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 message = str(error) if isinstance(error, _ProtocolError) else "backend search transport or framing error"
                 state = _request_state()
                 error_type = state.anthropic_error_type if state and state.anthropic_error_type != "-" else "api_error"
+                # v1.4.12: write the reason to the log too. An in-band failure was
+                # already recorded by the classifier (with its fixed message), so this
+                # is a no-op there. Otherwise: a _ProtocolError message is a literal
+                # (shim-authored); ValueError/httpx text is not guaranteed to be, so it
+                # is logged as the fixed client message plus the exception class name.
+                # No phase: the first-cause phase is the current one, as _send_json's
+                # _mark_error would have fixed it.
+                _record_backend_error(
+                    error_type,
+                    failure_reason=(message if isinstance(error, _ProtocolError)
+                                    else "%s (%s)" % (message, type(error).__name__)),
+                )
                 # v1.4.10: an in-band response.failed/error is classified by
                 # _SearchCollector.event before it raises; send the status that
                 # matches that type (400 for context_length_exceeded) so the client
@@ -7723,10 +7811,15 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 )
                 state = _request_state()
                 if state is not None and not state.backend_error_logged:
+                    # v1.4.12: safe_message is shim-authored when this record is the
+                    # first one: a local constant, a _ProtocolError literal, or a
+                    # status-classifier message (classified and ValueError failures
+                    # were recorded earlier, so this branch is skipped for them).
                     _record_backend_error(
                         _anthropic_error_type_for_status(backend_status)
                         if backend_status is not None else "api_error",
                         phase="upstream_stream",
+                        failure_reason=safe_message,
                     )
                 # v1.2.10: if the failure was a backend HTTP rejection, pass the real
                 # status through (mapped to the matching Anthropic error type) so a
@@ -7861,6 +7954,7 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 _record_backend_error(
                     "api_error", backend_type=type(error).__name__,
                     phase="response_conversion",
+                    failure_reason="backend response conversion failed",
                 )
                 await _send_json(send, 502, {"type": "error", "error": {
                     "type": "api_error",
@@ -8325,12 +8419,19 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             # v1.2.14 (R6): stop the heartbeat before emitting any terminal-failure
             # frames so a ping can never interleave with the error/body-close sequence.
             await _stop_heartbeat()
-            _record_backend_error(error_type, phase="upstream_stream")
+            safe_message = (_scrub_and_trim_body(str(message or ""))[:200]
+                            or "backend stream failed")
+            # v1.4.12: the client's message is also the logged failure_reason. Every
+            # caller passes shim-authored text (audited for 1.4.12: local constants,
+            # _ProtocolError literals, classifier fixed messages; httpx failures
+            # arrive as the constant "backend transport error"). The one caller whose
+            # text is not a constant (a token-refresh RuntimeError) has already
+            # recorded a fixed category, so this record is a no-op for it.
+            _record_backend_error(error_type, phase="upstream_stream",
+                                  failure_reason=safe_message)
             if failure_finalized or disconnect_event.is_set():
                 return False
             failure_finalized = True
-            safe_message = (_scrub_and_trim_body(str(message or ""))[:200]
-                            or "backend stream failed")
             if text_block_open:
                 text_block_open = False
                 await emit("content_block_stop", {
@@ -8428,19 +8529,24 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 # Token refresh failed (the message carries the re-login command).
                 log.error("whitespace retry could not reopen the backend stream: %s",
                           type(error).__name__)
+                # v1.4.12: fixed category; the RuntimeError text is not logged here.
                 _record_backend_error("authentication_error", backend_type="token_refresh",
-                                      phase="backend_authentication")
+                                      phase="backend_authentication",
+                                      failure_reason="backend token refresh failed (%s)"
+                                      % type(error).__name__)
                 whitespace_retry_failure = (str(error) or _RELOGIN_MSG, "authentication_error")
                 return False
             except (_ProtocolError, httpx.HTTPError) as error:
                 # _open_backend_stream already recorded an exhausted transport failure.
                 log.error("whitespace retry could not reopen the backend stream: %s",
                           type(error).__name__)
+                reopen_message = ("backend transport error"
+                                  if isinstance(error, httpx.HTTPError) else str(error))
+                # v1.4.12: reopen_message is a constant or a _ProtocolError literal.
                 _record_backend_error("api_error", backend_type=type(error).__name__,
-                                      phase="upstream_request")
-                whitespace_retry_failure = ("backend transport error"
-                                            if isinstance(error, httpx.HTTPError)
-                                            else str(error), "api_error")
+                                      phase="upstream_request",
+                                      failure_reason=reopen_message)
+                whitespace_retry_failure = (reopen_message, "api_error")
                 return False
             if new_resp.status_code >= 400:
                 status = new_resp.status_code
@@ -8479,23 +8585,29 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         frames = None                # upstream SSE reader; a whitespace retry swaps it
         did_401_refresh = False
         precontent_failure_message = None
+        # v1.4.12: the logged reason for a pre-content failure. Equal to the client
+        # message when that is shim-authored; a fixed category for a RuntimeError.
+        precontent_failure_reason = None
         try:
             resp, stream_cm, headers, retries, did_401_refresh = \
                 await _open_backend_stream(
                     url, headers, responses_payload, disconnect_event, search_bearing=search_bearing)
         except _ProtocolError as error:
             precontent_failure_message = str(error)
+            precontent_failure_reason = precontent_failure_message
         except RuntimeError as e:
             # A permanent token-refresh failure is converted to a clean terminal
             # error stream below; no credential material is included.
             log.error("chatgpt stream lazy-401 refresh failed: %s", str(e))
             precontent_failure_message = str(e)
+            precontent_failure_reason = "backend token refresh failed (%s)" % type(e).__name__
         except httpx.HTTPError as e:
             if disconnect_event.is_set():
                 _record_disconnect("before_stream_start")
                 return
             log.error("backend stream connect error: %s", type(e).__name__)
             precontent_failure_message = "backend transport error"
+            precontent_failure_reason = precontent_failure_message
 
         # INTENT: fix a known backend HTTP rejection as the first causal error before
         #   attempting the downstream SSE response start.
@@ -8563,7 +8675,10 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     error_type = "api_error"
                     backend_type = "-"
                     backend_code = "-"
-                    _record_backend_error(error_type, phase="upstream_request")
+                    _record_backend_error(
+                        error_type, phase="upstream_request",
+                        failure_reason=precontent_failure_reason or client_failure,
+                    )
                 log.error(
                     "backend stream error status=%d retries=%d backend_type=%s "
                     "backend_code=%s anthropic_type=%s | headers: %s",
@@ -9253,9 +9368,11 @@ async def _handle_messages(body, receive, send, scope_headers=()):
             failure_type = "api_error"
             if isinstance(e, _ToolWhitespaceError):
                 if whitespace_retry_failure is None:
+                    # v1.4.12: str(e) is the _ToolWhitespaceError literal.
                     _record_backend_error("api_error", backend_type="tool_argument_guard",
                                           backend_code="excessive_json_whitespace",
-                                          phase="upstream_tool_arguments")
+                                          phase="upstream_tool_arguments",
+                                          failure_reason=str(e))
                 # Stop upstream before an error send can block on the downstream.
                 if stream_cm is not None:
                     owned, stream_cm = stream_cm, None
@@ -9276,8 +9393,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 failure_kind = "backend stream translation error"
             # v1.2.8: include the scrubbed message — the exception TYPE alone made
             # the v1.2.7 field-validation incident undiagnosable from the log.
+            # v1.4.12: only a _ProtocolError's text is logged (every raise site is a
+            # shim-authored literal). A TypeError/KeyError/AttributeError/ValueError
+            # or httpx message can quote a backend value, so those log the constant
+            # failure_kind chosen above instead.
             log.error("stream failure after response start: %s: %s",
-                      type(e).__name__, _scrub_and_trim_body(str(e))[:200])
+                      type(e).__name__,
+                      _scrub_and_trim_body(str(e))[:200]
+                      if isinstance(e, _ProtocolError) else failure_kind)
             if disconnect_event.is_set():
                 return
             if not started:
