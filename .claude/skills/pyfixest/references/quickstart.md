@@ -211,7 +211,7 @@ pyfixest also accepts PyArrow-backed pandas DataFrames, but explicit `.to_pandas
 
 ## References and Further Reading
 
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749. https://arxiv.org/abs/2601.21749
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749. https://arxiv.org/abs/2601.21749
 - pyfixest documentation: https://pyfixest.org
 - pyfixest GitHub: https://github.com/py-econometrics/pyfixest
 - R fixest documentation: https://lrberge.github.io/fixest/

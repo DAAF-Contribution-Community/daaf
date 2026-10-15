@@ -14,7 +14,7 @@ should be cross-checked against current documentation.
 
 ### fixest Documentation
 
-- **Author(s):** Laurent Berge
+- **Author(s):** Laurent Bergé
 - **URL:** https://lrberge.github.io/fixest/
 - **Type:** Documentation
 - **Last verified:** 2026-03-28

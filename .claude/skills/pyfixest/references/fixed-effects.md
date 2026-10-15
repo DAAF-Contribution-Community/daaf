@@ -55,7 +55,7 @@ fe_dict = fit.fixef()
 # To inspect: {name: vals[:5] for name, vals in fe_dict.items()}
 ```
 
-The `fixef()` method returns a **`dict`** mapping FE names to numpy arrays (not a DataFrame). It recovers the absorbed intercepts via the algorithm in Berge (2018). Parameters `atol` and `btol` control recovery precision.
+The `fixef()` method returns a **`dict`** mapping FE names to numpy arrays (not a DataFrame). It recovers the absorbed intercepts via the algorithm in Bergé (2018). Parameters `atol` and `btol` control recovery precision.
 
 ### When to Use Fixed Effects
 
@@ -241,7 +241,7 @@ The `solver` parameter separately controls the linear algebra solver for the reg
 
 ## References and Further Reading
 
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
 - Cameron, A.C. and Miller, D.L. (2015). "A Practitioner's Guide to Cluster-Robust Inference." *Journal of Human Resources*, 50(2), 317-372
 - Abadie, A., Athey, S., Imbens, G.W., and Wooldridge, J.M. (2023). "When Should You Adjust Standard Errors for Clustering?" *Quarterly Journal of Economics*, 138(1), 1-35
 - MacKinnon, J.G., Nielsen, M.Ø., and Webb, M.D. (2023). "Cluster-Robust Inference: A Guide to Empirical Practice." *Journal of Econometrics*, 232(2), 272-299

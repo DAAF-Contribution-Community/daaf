@@ -23,7 +23,7 @@ currency concerns should be cross-checked against current documentation.
 
 ### pyfixest Documentation
 
-- **Author(s):** Alexander Fischer, Styfen Schaer, and contributors
+- **Author(s):** Alexander Fischer, Styfen Schär, and contributors
 - **URL:** https://pyfixest.org/
 - **Type:** Documentation
 - **Last verified:** 2026-03-28
@@ -494,7 +494,7 @@ currency concerns should be cross-checked against current documentation.
 - **Archive:** Zenodo, https://zenodo.org/records/19535795 (v1.0.7, 2026-04-12;
   DOI 10.5281/zenodo.19535795; all-versions DOI 10.5281/zenodo.10465358)
 - **Type:** Book (free online)
-- **Last verified:** 2026-03-28
+- **Last verified:** 2026-03-28 (URL re-checked 2026-10-15)
 - **Quality:** Excellent
 - **Relevance to DAAF:** High
 - **Currency concern:** None

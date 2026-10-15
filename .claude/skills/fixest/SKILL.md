@@ -35,7 +35,7 @@ below to find the right guidance, then load detailed references.
 
 ## What is fixest?
 
-fixest (Berge, 2018) is the most widely-used R package for fast fixed effects
+fixest (Bergé, 2018) is the most widely-used R package for fast fixed effects
 estimation in applied economics and quantitative social science:
 
 - **Fast**: Multi-way FE demeaning via alternating projections (C++ backend)
@@ -307,9 +307,9 @@ iplot(fit)                              # Event study / interaction plot
 When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
-> Berge, L. (2018). "Efficient estimation of maximum likelihood models with
+> Bergé, L. (2018). "Efficient estimation of maximum likelihood models with
 > multiple fixed-effects: the R package FENmlm." CREA Discussion Paper 2018-13.
-> Updated as: Berge, L. (2026). fixest: Fast Fixed-Effects Estimations
+> Updated as: Bergé, L. (2026). fixest: Fast Fixed-Effects Estimations
 > [Computer software]. https://CRAN.R-project.org/package=fixest
 
 **Cite when:** fixest is used for regression estimation (OLS, Poisson, GLM, IV)
@@ -318,7 +318,7 @@ or difference-in-differences analysis.
 
 For the arXiv methods paper:
 
-> Berge, L., Butts, K., & McDermott, G. (2026). "Fast and User-Friendly
+> Bergé, L., Butts, K., & McDermott, G. (2026). "Fast and User-Friendly
 > Econometrics Estimations: The R Package fixest." arXiv:2601.21749.
 
 For method-specific citations (e.g., Sun-Abraham, individual DiD estimators),

@@ -248,7 +248,7 @@ statistical modeling.
 R's diagnostic functions are typically single-call convenience wrappers.
 Python often requires assembling the inputs manually.
 
-> **Sources:** Berge, Butts, & McDermott, *fixest* (CRAN);
+> **Sources:** Bergé, Butts, & McDermott, *fixest* (CRAN);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Croissant & Millo, *plm* (CRAN)

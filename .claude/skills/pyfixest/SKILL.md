@@ -17,7 +17,7 @@ Comprehensive skill for fixed effects regression, instrumental variables, and di
 
 ## What is pyfixest?
 
-pyfixest is a Python implementation of the R **fixest** package (Berge, Butts, & McDermott, 2026):
+pyfixest is a Python implementation of the R **fixest** package (Bergé, Butts, & McDermott, 2026):
 - **Fast**: Multi-way FE demeaning via alternating projections; since 0.60 the default backend is a compiled Rust extension shipped in the wheel (numba is now optional), with PyTorch/CuPy/SciPy LSMR backends available for GPU/large problems
 - **Concise formula syntax**: Fixed effects after `|`, IV after second `|`, multiple estimation via `sw()`/`csw()`
 - **Modern DiD**: Built-in did2s, local projections DiD (lpdid), and Sun-Abraham saturated estimator

@@ -493,7 +493,7 @@ van Smeden, M., de Groot, J.A.H., Moons, K.G.M., Collins, G.S., Altman, D.G., Ei
 
 ### Software Documentation
 
-Fischer, A. and Schar, S. pyfixest: Fast High-Dimensional Fixed Effects Estimation in Python. https://pyfixest.org
+The PyFixest Authors (2025). *pyfixest: Fast high-dimensional fixed effect estimation in Python* [Computer software]. https://github.com/py-econometrics/pyfixest
 
 Seabold, S. and Perktold, J. (2010). "Statsmodels: Econometric and Statistical Modeling with Python." *Proc. 9th Python in Science Conf.*
 

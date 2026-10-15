@@ -346,6 +346,6 @@ pyfixest sits within a broader Python econometrics ecosystem. These packages com
 
 - Correia, S., Guimarães, P., and Zylkin, T. (2020). "Fast Poisson Estimation with High-Dimensional Fixed Effects." *Stata Journal*, 20(1), 95-115
 - Arel-Bundock, V. (2024). "marginaleffects: Predictions, Comparisons, Slopes, Marginal Means, and Hypothesis Tests." https://marginaleffects.com/
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
 - Koenker, R. (2005). *Quantile Regression*. Cambridge University Press
 - pyfixest documentation: https://pyfixest.org

@@ -18,7 +18,7 @@ This reference provides side-by-side translations for every major regression tas
 > R: fixest 0.14.0, lmtest 0.9-40, sandwich 3.1-1, plm 2.6-7, lme4 2.0-1
 > See SKILL.md § Library Versions for the complete version table.
 
-> **Sources:** Berge, Butts, & McDermott, *fixest* (CRAN, v0.13);
+> **Sources:** Bergé, Butts, & McDermott, *fixest* (CRAN, v0.13);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (v7.0);
@@ -760,7 +760,7 @@ have the same convention — `I(x**2)` is required for squaring.
 - patsy: `C(x, Treatment('baseline'))`
 - formulaic: `i(x, ref='baseline')` or `C(x)` (default reference is first level)
 
-> **Sources:** Berge, *fixest* reference manual (lrberge.github.io/fixest/);
+> **Sources:** Bergé, *fixest* reference manual (lrberge.github.io/fixest/);
 > pyfixest documentation (pyfixest.org, accessed 2026-03-28);
 > statsmodels documentation (statsmodels.org, v0.14.6);
 > Sheppard, *linearmodels* documentation (bashtage.github.io/linearmodels/, v7.0);

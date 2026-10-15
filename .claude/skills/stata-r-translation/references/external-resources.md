@@ -9,7 +9,7 @@ social science contexts. Each entry includes provenance and quality assessment.
 
 ### fixest Documentation
 - **URL:** https://lrberge.github.io/fixest/
-- **Author:** Laurent Berge
+- **Author:** Laurent Bergé
 - **Quality:** Excellent
 - **Key content:** R implementation of high-dimensional FE estimation. Formula syntax:
   `Y ~ X1 + X2 | fe1 + fe2`. Includes `sunab()` for Sun-Abraham DiD, `etable()` for

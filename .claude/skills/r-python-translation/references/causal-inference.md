@@ -26,7 +26,7 @@ imputation (no mice equivalent). These are documented honestly in this reference
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (Chapman & Hall/CRC, 2022);
-> Berge, *fixest* (CRAN, v0.14.0, the version referenced above;
+> Bergé, *fixest* (CRAN, v0.14.0, the version referenced above;
 > https://cran.r-project.org/package=fixest);
 > Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
 > Calonico, Cattaneo, Farrell, & Titiunik, *rdrobust*

@@ -138,7 +138,7 @@ entity_fe <- data.frame(
 
 ### Recovery Precision
 
-FE recovery uses the algorithm from Berge (2018). For two-way FE, the recovered
+FE recovery uses the algorithm from Bergé (2018). For two-way FE, the recovered
 values are identified only up to a normalization (one FE group is set to zero as
 the reference). The `summary()` of `fixef()` shows convergence diagnostics:
 
@@ -224,7 +224,7 @@ For methodology guidance on when FE identification is credible, load the
 
 ## References
 
-- Berge, L. (2018). "Efficient estimation of maximum likelihood models with
+- Bergé, L. (2018). "Efficient estimation of maximum likelihood models with
   multiple fixed-effects: the R package FENmlm." CREA Discussion Paper 2018-13.
 - Correia, S. (2016). "A Feasible Estimator for Linear Models with Multi-Way
   Fixed Effects." Working Paper.

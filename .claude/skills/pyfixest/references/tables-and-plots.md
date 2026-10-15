@@ -296,7 +296,7 @@ For research pipeline scripts, save all figures to `output/figures/` following t
 
 ## References and Further Reading
 
-- Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
+- Bergé, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
 - pyfixest documentation — Visualization: https://pyfixest.org
 - great_tables Python package: https://posit-dev.github.io/great-tables/
 - maketables package (successor to dtable): check pyfixest changelog for migration guidance
