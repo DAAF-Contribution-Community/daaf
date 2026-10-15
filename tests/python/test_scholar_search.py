@@ -154,11 +154,22 @@ def oa_router(url, params, headers):
 # --- Guards -----------------------------------------------------------------
 class GuardTests(Base):
     def test_dest_guard_refuses_outside_and_sensitive_prefixes(self):
+        # The in-tree prefixes are built from the checkout root (not "/daaf"), so
+        # the forbidden-prefix branch is exercised on a CI checkout too.
         for bad in ("/tmp/x", "/var/tmp/x", "/dev/shm/x", "/host_data/x", "/etc",
-                    "/daaf/.claude/skills/x", "/daaf/.git/x"):
+                    str(_REPO_ROOT / ".claude" / "skills" / "x"), str(_REPO_ROOT / ".git" / "x")):
             with self.subTest(bad=bad):
                 self.assertIsNotNone(wrc.validate_dest_dir(bad)[1])
         self.assertIsNone(wrc.validate_dest_dir(str(self.dest))[1])
+
+    def test_allowed_root_is_the_checkout_root(self):
+        # The root is derived from the module's own location (no env/flag can move
+        # it): /daaf in the container, the runner's checkout in CI.
+        self.assertEqual(wrc.ALLOWED_ROOT, str(_REPO_ROOT.resolve()))
+        if Path("/daaf/CLAUDE.md").is_file() and _REPO_ROOT.resolve() == Path("/daaf"):
+            self.assertEqual(wrc.ALLOWED_ROOT, "/daaf")
+        self.assertIn(_REPO_ROOT.resolve().as_posix() + "/.claude", wrc.FORBIDDEN_DEST_PREFIXES)
+        self.assertIn(_REPO_ROOT.resolve().as_posix() + "/.git", wrc.FORBIDDEN_DEST_PREFIXES)
 
     def test_dest_refusal_exits_2_without_network(self):
         code, _, err, fake = self.run_cli(["find", "tutoring", "/tmp/nope"], oa_router)
@@ -532,10 +543,11 @@ class ReviewFixRegressionTests(Base):
                 self.assertEqual(code, 1)
 
     def test_qi3_state_dir_refuses_forbidden_prefixes(self):
-        os.environ["SCHOLAR_SEARCH_STATE_DIR"] = "/daaf/.claude/gate"
+        claude_dir = str(_REPO_ROOT.resolve() / ".claude")
+        os.environ["SCHOLAR_SEARCH_STATE_DIR"] = claude_dir + "/gate"
         with mock.patch.object(scholar_search.os, "makedirs") as mk:
             got = scholar_search.gate_dir()
-        self.assertFalse(got.startswith("/daaf/.claude"))
+        self.assertFalse(got.startswith(claude_dir))
         self.assertTrue(mk.called)
 
     def test_qi5_retry_after_capped(self):

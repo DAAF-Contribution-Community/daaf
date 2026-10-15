@@ -407,11 +407,12 @@ RUN daaf-apt-update && apt-get install -y --no-install-recommends \
 # ============================================
 # Several apt deps DAAF installs live in Ubuntu's `universe` component, and the
 # FIRST of them appears in the very next block: libgdal-dev and gdal-bin
-# (geospatial). More arrive later in the R system-libs block (libnode-dev,
-# libtbb-dev, libhdf5-dev, libnetcdf-dev, libglpk40). This guard therefore runs
-# BEFORE the geospatial block — its earliest consumer — so a base with universe
-# disabled fails here with a clear message instead of dying later inside an
-# apt-install with a cryptic "unable to locate package" error.
+# (geospatial), alongside tesseract-ocr (PDF OCR) in the same layer. More arrive
+# later in the R system-libs block (libnode-dev, libtbb-dev, libhdf5-dev,
+# libnetcdf-dev, libglpk40). This guard therefore runs BEFORE the geospatial
+# block — its earliest consumer — so a base with universe disabled fails here
+# with a clear message instead of dying later inside an apt-install with a
+# cryptic "unable to locate package" error.
 #
 # The official ubuntu:24.04 image ships universe enabled in
 # /etc/apt/sources.list.d/ubuntu.sources, so on the normal base this guard is a
@@ -440,14 +441,33 @@ RUN if grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
     fi
 
 # ============================================
-# Install Geospatial System Libraries (GDAL/GEOS/PROJ)
+# Install Geospatial System Libraries (GDAL/GEOS/PROJ) + PDF OCR (Tesseract)
 # ============================================
-# Required by fiona (rasterstats dep) and beneficial for rasterio, geopandas, osmnx
+# Geospatial: required by fiona (rasterstats dep) and beneficial for rasterio,
+# geopandas, osmnx.
+#
+# PDF OCR: the system half of the DAAF PDF reading layer (Literature Review
+# build session S3, decision D-20, 2026-10-13): scripts/pdf_ingest.sh runs OCR
+# only on pages it flags as scanned. poppler-utils (pdftotext, pdftoppm,
+# pdfinfo) is in the system-deps block above; the Python half is the "PDF
+# reading stack" block in the Python section below. tesseract-ocr lives in
+# Ubuntu's `universe` component, so it sits after the universe guard. CPU-only:
+# no GPU and no model downloads; at run time pdf_ingest caps Tesseract at one
+# thread (OMP_THREAD_LIMIT=1 in the subprocess environment), so OCR stays light.
+# License: Apache-2.0 (tesseract-ocr, -eng, -osd).
+# REASONING (why one layer, not a separate OCR block): each apt layer's
+# daaf-apt-update re-downloads the ~33 MB snapshot index. In CI run 38481261916
+# (2026-10-13, slow snapshot server) a separate Tesseract layer spent 133 s of
+# its 171 s on that index refresh and 34 s on the 8.4 MB of packages, so
+# sharing this layer's refresh removes most of the cost.
 RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
     libgeos-dev \
     libproj-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-osd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -843,15 +863,52 @@ RUN uv pip install --system \
 # per research/2026-08-08_FrameworkDev_WebRetrieval/DESIGN_SPEC.md. lxml is
 # pinned to the exact version already resolved in the image (no ownership
 # conflict); courlan/htmldate/justext are the genuinely new direct deps.
-# certifi/charset_normalizer/urllib3 are left to existing resolution to avoid
-# duplicate pin ownership. web_fetch.py degrades to a bs4 fallback if this
-# stack is absent, so the tool works pre-rebuild and gains fidelity post-rebuild.
+# certifi and urllib3 are left to existing resolution to avoid duplicate pin
+# ownership (urllib3 is pinned in the core block); charset_normalizer is pinned
+# once, in the PDF reading stack block below. web_fetch.py degrades to a bs4
+# fallback if this stack is absent, so the tool works pre-rebuild and gains
+# fidelity post-rebuild.
 RUN uv pip install --system \
     trafilatura==2.2.0 \
     lxml==6.1.1 \
     courlan==1.4.0 \
     htmldate==1.10.0 \
     justext==3.0.2
+
+# Install the DAAF PDF reading stack (scripts/pdf_ingest.py, scripts/lit_verify.py)
+# The Python half of the PDF reading layer (Literature Review build session S3,
+# decision D-20, 2026-10-13); Tesseract shares the geospatial apt layer above.
+# pdf_ingest uses poppler pdftotext as its anchor text lane, pypdfium2 as a
+# second lane and pdfplumber for table hints; lit_verify uses rapidfuzz for
+# quote matching. Every distribution these four packages install is pinned
+# here, and no other block pins any of them:
+#   pypdfium2 5.13.0            Apache-2.0 / BSD-3-Clause (+ bundled PDFium deps)
+#   pdfplumber 0.11.10          MIT
+#   pdfminer.six 20260107       MIT (pdfplumber dep)
+#   rapidfuzz 3.14.6            MIT
+#   cryptography 50.0.1         Apache-2.0 OR BSD-3-Clause (pdfminer.six dep)
+#   cffi 2.1.1                  MIT-0 (cryptography dep)
+#   pycparser 3.0               BSD-3-Clause (cffi dep)
+#   pillow 12.3.0               MIT-CMU (pdfplumber dep; also matplotlib, contextily)
+#   charset-normalizer 3.5.1    MIT (pdfminer.six dep; also requests, trafilatura)
+# pillow and charset-normalizer were already in the image with no explicit pin;
+# they are pinned at the versions already resolved (the lxml rule above), so
+# this block does not change them. A pin in this later block wins over what the
+# earlier blocks resolve, so re-check both against matplotlib, requests and
+# trafilatura whenever the environment date is bumped.
+# PyMuPDF is deliberately EXCLUDED: AGPL (decision D-2). CPU-only: prebuilt
+# wheels for x86_64 and aarch64, all at or before UV_EXCLUDE_NEWER (a dry-run
+# `uv pip compile` on 2026-10-13 resolved exactly these 9 on both).
+RUN uv pip install --system \
+    pypdfium2==5.13.0 \
+    pdfplumber==0.11.10 \
+    pdfminer.six==20260107 \
+    rapidfuzz==3.14.6 \
+    cryptography==50.0.1 \
+    cffi==2.1.1 \
+    pycparser==3.0 \
+    pillow==12.3.0 \
+    charset-normalizer==3.5.1
 
 # Install provider-shim direct runtime dependencies after all other framework
 # Python packages. Both arrive transitively today (httpx via svy; uvicorn via
@@ -1342,46 +1399,6 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # `uv pip install --user` / `pip install --user`, etc. Running these as root
 # would write into /root or leave root-owned files in /home/appuser.
 # RUN curl -fsSL https://example.com/install.sh | bash
-#
-# ---- DAAF ADDITION: PDF reading layer (ACTIVE, unlike the examples above) ----
-# Added 2026-10-13 with the user's approval (Literature Review build session S3,
-# decision D-20). Serves the planned framework CLIs scripts/pdf_ingest.sh (text
-# extraction, per-page flags, OCR of scanned pages) and scripts/lit_verify.sh
-# (fuzzy quote matching). poppler-utils (pdftotext, pdftoppm, pdfinfo) is
-# already installed in the system-deps layer above.
-# Licenses (all permissive):
-#   tesseract-ocr, -eng, -osd   Apache-2.0
-#   pypdfium2 5.13.0            Apache-2.0 / BSD-3-Clause (+ bundled PDFium deps)
-#   pdfplumber 0.11.10          MIT
-#   pdfminer.six 20260107       MIT
-#   rapidfuzz 3.14.6            MIT
-#   cryptography 50.0.1         Apache-2.0 OR BSD-3-Clause (pdfminer.six dep)
-#   cffi 2.1.1                  MIT-0 (cryptography dep)
-#   pycparser 3.0               BSD-3-Clause (cffi dep)
-# PyMuPDF is deliberately EXCLUDED: AGPL (decision D-2).
-# CPU-only: no GPU, no CUDA, no model downloads. The Python pins resolve to
-# prebuilt wheels for x86_64 and aarch64, and all are at or before
-# UV_EXCLUDE_NEWER, so no --exclude-newer-package override is needed.
-# tesseract-ocr is in Ubuntu's `universe` component, which the snapshot sources
-# above include. At run time pdf_ingest runs OCR only on pages it flags as
-# scanned and caps Tesseract at one thread (OMP_THREAD_LIMIT=1 in the
-# subprocess environment), so OCR stays light on CPU.
-USER root
-RUN daaf-apt-update && apt-get install -y --no-install-recommends \
-        tesseract-ocr \
-        tesseract-ocr-eng \
-        tesseract-ocr-osd \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-RUN uv pip install --system \
-    pypdfium2==5.13.0 \
-    pdfplumber==0.11.10 \
-    pdfminer.six==20260107 \
-    rapidfuzz==3.14.6 \
-    cryptography==50.0.1 \
-    cffi==2.1.1 \
-    pycparser==3.0
-USER appuser
 # ============================================
 
 # Install the DAAF entrypoint wrapper. It best-effort auto-starts the provider

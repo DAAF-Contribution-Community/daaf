@@ -9,10 +9,12 @@
 # (research/2026-10-02_FrameworkDev_ScholarlySearch/additional_scripts/) and
 # adapted to DAAF:
 #
-#   - destination guard: realpath must sit under /daaf; /tmp, /var/tmp,
-#     /dev/shm and /host_data are refused (CLAUDE.md § Provenance Boundary),
-#     as are /daaf/.claude and /daaf/.git (fetched content must never land
-#     where a file becomes configuration or instructions)
+#   - destination guard: realpath must sit under the DAAF checkout root
+#     (ALLOWED_ROOT: /daaf in the container, derived from this module's own
+#     location so CI checkouts work too); /tmp, /var/tmp, /dev/shm and
+#     /host_data are refused (CLAUDE.md § Provenance Boundary), as are
+#     <root>/.claude and <root>/.git (fetched content must never land where a
+#     file becomes configuration or instructions)
 #   - secret guard: DAAF's SECRET-NAME-VOCAB v1 segment match (the same
 #     vocabulary output-scanner.sh, audit-log.sh and run_with_capture.sh
 #     carry), applied to outgoing queries/URLs (refuse) and to saved raw
@@ -41,7 +43,17 @@ import unicodedata
 from urllib.parse import unquote
 
 # §§ CONSTANTS
-ALLOWED_ROOT = "/daaf"
+# INTENT: the allowed root is the DAAF checkout this module lives in, derived
+#   from the module's own real path: /daaf in the container, and the runner's
+#   checkout (e.g. /home/runner/work/daaf/daaf) in CI, where a hardcoded
+#   "/daaf" refused every test destination (CI run 38481261881, 2026-10-13).
+# REASONING: no environment variable or flag can move the root, so the guard
+#   gains no escape hatch. Fail closed: if the derived directory is not a DAAF
+#   root (no CLAUDE.md beside scripts/), or is "/", fall back to "/daaf".
+_DERIVED_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+ALLOWED_ROOT = (_DERIVED_ROOT
+                if _DERIVED_ROOT != "/" and os.path.isfile(os.path.join(_DERIVED_ROOT, "CLAUDE.md"))
+                else "/daaf")
 # INTENT: defense-in-depth. /tmp, /var/tmp, /dev/shm and /host_data already
 #   fail the ALLOWED_ROOT check; listing them documents the sensitive
 #   locations and survives a future relaxation of the root check. The two

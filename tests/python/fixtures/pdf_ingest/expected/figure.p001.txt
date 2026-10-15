@@ -1,0 +1,9 @@
+Figure Fixture
+The figure below shows invented bar heights for five imaginary harbours. It is an embedded raster
+image, so the text layer holds only this paragraph and the caption, and the ingest tool should flag the
+page as needing a visual check.
+
+Figure 1: Invented bar heights for five imaginary harbours
+The paragraph after the figure repeats that none of these values are real.
+
+

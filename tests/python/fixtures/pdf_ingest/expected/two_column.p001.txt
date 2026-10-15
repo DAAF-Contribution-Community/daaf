@@ -1,0 +1,21 @@
+Two-Column Fixture
+The left column describes a small study of tidal
+notebooks. The method relies on naturallanguage processing of short synthetic field notes
+written by imaginary surveyors, and an experimental tagging pass that marks each note with a
+weather label.
+The notes were sorted by harbour, by week and by the
+colour of the notebook cover. Each surveyor wrote in
+pencil, and the pencil marks were transcribed by hand
+before any counting began. The left column ends here.
+
+The right column reports what the imaginary
+surveyors found. Calm mornings were more common
+than stormy ones, and the notebooks with green
+covers held the longest entries. The right column
+closes with a planted phrase: “the lantern keeper filed
+every chart under a different constellation.”
+Nothing in this column is real data; it exists so that the
+two extractors can be compared on a page whose
+reading order depends on column detection.
+
+
