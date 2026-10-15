@@ -81,7 +81,7 @@ first_stage.summary()
 # (Staiger & Stock, 1997)
 ```
 
-Note: The first-stage model is accessed via the `_model_1st_stage` attribute. While this is a private attribute (underscore prefix), it is the documented access pattern. The comprehensive `IV_Diag()` method (below) is the preferred entry point for all IV diagnostics.
+Note: The first-stage model is accessed via the `_model_1st_stage` attribute. While this is a private attribute (underscore prefix), it is the documented access pattern. The `IV_Diag()` method (below) is the preferred entry point for pyfixest's weak-instrument diagnostics (first-stage F and effective F).
 
 ### Interpreting First Stage
 
@@ -98,36 +98,34 @@ Weak instruments produce unreliable IV estimates — biased toward OLS, with sev
 
 ### Effective F-Statistic and Weak Instrument Tests
 
-The preferred approach is to use the comprehensive `IV_Diag()` method, which reports all relevant diagnostics:
+The preferred approach is to use the `IV_Diag()` method, which computes pyfixest's weak-instrument diagnostics and stores them as attributes (it prints nothing):
 
 ```python
 fit = pf.feols("Y ~ 1 | fe | X_endog ~ Z1 + Z2", data=df)
 
-# Comprehensive diagnostic output — includes:
-# - Effective F-statistic (Olea & Pflueger 2013)
-# - Cragg-Donald F
-# - Kleibergen-Paap rk Wald F
+# IV_Diag() computes two weak-instrument statistics (pyfixest 0.60.0):
+# - fit._f_stat_1st_stage: first-stage F (vcov-adjusted unless vcov is "iid")
+# - fit._eff_F: effective F (Montiel Olea & Pflueger 2013)
 fit.IV_Diag()
 ```
 
-- **Effective F-statistic**: Generalizes Stock-Yogo to non-homoskedastic settings. Critical values depend on the desired maximal bias/size distortion — consult Olea & Pflueger (2013) tables.
-- **Cragg-Donald F**: Assumes iid errors — compare to Stock-Yogo critical values
-- **Kleibergen-Paap rk Wald F**: Robust to heteroskedasticity/clustering — preferred with non-iid errors
+- **Effective F-statistic**, from Montiel Olea & Pflueger (2013): a weak-instrument test for one endogenous regressor that is robust to heteroscedasticity, autocorrelation, and clustering, unlike the Staiger-Stock (1997) and Stock-Yogo (2005) pretests, which assume conditionally homoscedastic, serially uncorrelated errors. It tests whether the Nagar bias exceeds a fraction τ of a "worst-case" benchmark (bias only, not size distortion); critical values depend on τ, the significance level and the estimated covariance matrices, and differ for TSLS and LIML. Conservative TSLS rule of thumb: reject weak instruments when the effective F exceeds 23.1 (τ = 10%, 5% level).
+- **Not computed by pyfixest:** pyfixest 0.60.0 does not compute the Cragg-Donald F or the Kleibergen-Paap rk Wald F. R's fixest reports the Cragg-Donald F and the Kleibergen-Paap rank test with `fitstat(fit, ~ cd + kpr)` (checked with fixest 0.14.0: `kpr` returns `NA`, with a warning, for an over-identified model with a non-iid vcov; it is computed when the vcov is iid or the model is just-identified; see the `fixest` skill's `references/iv.md`). Use R or Stata if you need them.
 
 ### Anderson-Rubin Confidence Intervals
 
-For weak-instrument-robust inference, Anderson-Rubin (AR) confidence intervals remain valid regardless of instrument strength. These are wider than standard IV CIs but have correct coverage even with weak instruments.
+For weak-instrument-robust inference, Anderson-Rubin (AR) confidence intervals remain valid regardless of instrument strength. These are wider than standard IV CIs but have correct coverage even with weak instruments. pyfixest does not compute Anderson-Rubin intervals.
 
 ## IV Diagnostics Summary
 
 ```python
 fit = pf.feols("Y ~ 1 | fe | X_endog ~ Z1 + Z2", data=df)
 
-# Comprehensive IV diagnostic output
+# First-stage F and effective F
 fit.IV_Diag()
 ```
 
-`IV_Diag()` combines first-stage statistics, weak instrument tests, and other diagnostic information into a single summary.
+`IV_Diag()` computes the first-stage F and the effective F; pyfixest 0.60.0 has no other IV diagnostics.
 
 ## Common IV Designs
 
@@ -200,8 +198,9 @@ fit = pf.feols("Y ~ controls | court + year | incarcerated ~ judge_leniency",
 ## References and Further Reading
 
 - Staiger, D. and Stock, J.H. (1997). "Instrumental Variables Regression with Weak Instruments." *Econometrica*, 65(3), 557-586
-- Olea, J.L.M. and Pflueger, C. (2013). "A Robust Test for Weak Instruments." *Journal of Business & Economic Statistics*, 31(3), 358-369
-- Cunningham, S. (2021). *Causal Inference: The Mixtape*. Yale University Press. Ch. 7: Instrumental Variables. https://mixtape.scunning.com/
+- Montiel Olea, J.L. and Pflueger, C. (2013). "A Robust Test for Weak Instruments." *Journal of Business & Economic Statistics*, 31(3), 358-369. https://doi.org/10.1080/00401706.2013.806694
+- Stock, J.H. and Yogo, M. (2005). "Testing for Weak Instruments in Linear IV Regression." In Andrews, D.W.K. and Stock, J.H. (Eds.), *Identification and Inference for Econometric Models*, 80-108. Cambridge University Press
+- Cunningham, S. (2021). *Causal Inference: The Mixtape*. Yale University Press. Ch. 7: Instrumental Variables. https://mixtape-1ed.netlify.app/ (1st ed.; mixtape.scunning.com now hosts the 2nd ed., *The Remix*)
 - Angrist, J.D. and Pischke, J.-S. (2009). *Mostly Harmless Econometrics*. Princeton University Press. Ch. 4: Instrumental Variables in Action
 - Borusyak, K., Hull, P., and Jaravel, X. (2022). "Quasi-Experimental Shift-Share Research Designs." *Review of Economic Studies*, 89(1), 181-213
 - Goldsmith-Pinkham, P., Sorkin, I., and Swift, H. (2020). "Bartik Instruments: What, When, Why, and How." *American Economic Review*, 110(8), 2586-2624

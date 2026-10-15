@@ -112,7 +112,7 @@ fit = pf.did2s(
 )
 ```
 
-### lpdid — Local Projections DiD (Dube, Girardi, Jorda, & Taylor, 2023)
+### lpdid — Local Projections DiD (Dube, Girardi, Jordà, & Taylor, 2023)
 
 ```python
 result = pf.lpdid(
@@ -293,7 +293,7 @@ Failing to reject the null of no pre-trends does **not** confirm parallel trends
 ## References and Further Reading
 
 - Gardner, J. (2022). "Two-Stage Differences in Differences." arXiv:2207.05943
-- Dube, A., Girardi, D., Jorda, O., and Taylor, A.M. (2023). "A Local Projections Approach to Difference-in-Differences." NBER Working Paper 31184
+- Dube, A., Girardi, D., Jordà, Ò., and Taylor, A.M. (2023). "A Local Projections Approach to Difference-in-Differences." NBER Working Paper 31184. https://doi.org/10.3386/w31184
 - Sun, L. and Abraham, S. (2021). "Estimating Dynamic Treatment Effects in Event Studies with Heterogeneous Treatment Effects." *Journal of Econometrics*, 225(2), 175-199
 - Callaway, B. and Sant'Anna, P.H.C. (2021). "Difference-in-Differences with Multiple Time Periods." *Journal of Econometrics*, 225(2), 200-230
 - Roth, J. (2022). "Pretest with Caution: Event-Study Estimates after Testing for Parallel Trends." *American Economic Review: Insights*, 4(3), 305-322
