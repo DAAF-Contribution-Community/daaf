@@ -1857,13 +1857,11 @@ _write_main_transcript_raw_tokens() {
 # gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
 # Provenance: research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames.
 #
-# PATCH DEPENDENCE: .claude/hooks/context-reporter.sh is deny-protected, so the
-# change ships as the user-applied
+# PATCH DEPENDENCE (historical): .claude/hooks/context-reporter.sh is
+# deny-protected, so the change shipped as the user-applied
 # research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/context-reporter_dotted.patch.
-# Until it is applied, the cases in this block that need the new classifier fail
-# BY DESIGN against the live hook; all pass against the patched copy:
-#   CONTEXT_REPORTER_SH=research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/scripts/context-reporter.patched.sh \
-#     bats tests/bash/context_reporter.bats
+# It is applied and committed (98e0ba0), so every case in this block runs
+# against the live hook; no patched copy is needed.
 # =========================================================================
 
 SUBAGENT_BAR_FOR_LOCKSTEP="${REPO_ROOT}/.claude/scripts/subagent-bar.sh"

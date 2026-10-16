@@ -71,6 +71,26 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.4.13 (2026-10-15): login-failure sends write a backend_error line.
+#     GAP: three 401 authentication_error sends on a token-refresh RuntimeError
+#       never called _record_backend_error, so they logged no backend_error line
+#       and no failure_reason: the header-build failure before any backend call
+#       (auth store missing or a permanent refresh failure), the search non-stream
+#       lazy-401 refresh failure, and the ChatGPT non-stream lazy-401 refresh
+#       failure.
+#     FIX: each now records authentication_error, backend_type token_refresh,
+#       failure_phase backend_authentication and the fixed category "backend
+#       token refresh failed (RuntimeError)", like the streaming whitespace-retry
+#       site; never the RuntimeError text. The two lazy-401 sites record only
+#       while the client is still connected, so a disconnect stays a disconnect.
+#     ALSO: hosted-search responses no longer feed the count_tokens calibration.
+#       All 10 "count_tokens calibration rejected" lines in a live shim.log
+#       (2026-10-15) were hosted-search sub-requests at 9.6-16 tokens/byte (vs
+#       ~0.2 accepted): their usage counts server-fetched content len(body) cannot
+#       represent. The two search call sites (non-stream search branch, streaming
+#       search block) skip it with a DEBUG line; the ordinary sites are unchanged.
+#     UNCHANGED: client-visible bytes and statuses (401, same message); the
+#       existing human-readable error lines; /health schema. SHIM_VERSION -> 1.4.13.
 #   v1.4.12 (2026-10-15): shim.log records why a failure happened.
 #     EVIDENCE: UM-GPT gateway, openai lane, 2026-10-15: two streaming web-search
 #       requests failed (shim.log lines 26995 at 16:13:24 and 27257 at 16:26:06).
@@ -1453,7 +1473,7 @@ import uvicorn
 # cancellation. Replay expires after 30 minutes or cache eviction/process restart.
 # Domain/location mapping and the OpenAI lane are fixture-tested, not live-certified.
 # No new health fields, env controls, backend lanes or persistent search caches.
-SHIM_VERSION = "1.4.12"
+SHIM_VERSION = "1.4.13"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -7594,6 +7614,13 @@ async def _handle_messages(body, receive, send, scope_headers=()):
         # failure at header-build time. Fail fast with the actionable message; no
         # token value in the error (RuntimeError text is the re-login instruction).
         log.error("chatgpt auth unavailable: %s", str(e))
+        # v1.4.13: write the backend_error line (it had none): a fixed category,
+        # never the RuntimeError text. Before the send, so the auth phase is the
+        # first cause.
+        _record_backend_error("authentication_error", backend_type="token_refresh",
+                              phase="backend_authentication",
+                              failure_reason="backend token refresh failed (%s)"
+                              % type(e).__name__)
         try:
             await _send_json(send, 401, {"type": "error", "error": {
                 "type": "authentication_error", "message": str(e)}})
@@ -7643,13 +7670,28 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     state.cached_tokens = cached
                     state.usage_source = usage_source
                     state.stop_reason = anth["stop_reason"]
+                # v1.4.13: no count_tokens calibration here. This branch is reached
+                # only when search_bearing is true, and hosted-search usage counts
+                # server-fetched content that len(body) cannot represent (live
+                # ratios 9.6-16 vs ~0.2): the band guard rejected them with a WARNING
+                # on every search, and a large search-bearing body could be accepted
+                # at a skewed ratio. The ordinary call sites are unchanged.
                 if usage_source == "backend":
-                    _calibrate_count_ratio(anth["usage"]["input_tokens"] + (cached or 0), len(body))
+                    log.debug("count_tokens calibration skipped reason=hosted_search")
                 await _send_json(send, 200, anth)
-            except RuntimeError:
+            except RuntimeError as error:
                 if search_cm is not None:
                     owned, search_cm = search_cm, None
                     await _settle_stream_context(owned)
+                # v1.4.13: the backend_error line this branch never wrote; a fixed
+                # category, never the RuntimeError text. Skipped after a client
+                # disconnect, so a disconnect outcome is not turned into error (the
+                # send below is unchanged).
+                if not disconnect_event.is_set():
+                    _record_backend_error("authentication_error", backend_type="token_refresh",
+                                          phase="backend_authentication",
+                                          failure_reason="backend token refresh failed (%s)"
+                                          % type(error).__name__)
                 await _send_json(send, 401, {"type": "error", "error": {"type": "authentication_error", "message": _RELOGIN_MSG}})
             except (_ProtocolError, ValueError, httpx.HTTPError) as error:
                 # Release upstream BEFORE a downstream send can backpressure.
@@ -7719,6 +7761,14 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                 except RuntimeError as e:
                     log.error("chatgpt non-stream lazy-401 refresh failed: %s", str(e))
                     if not disconnect_event.is_set():
+                        # v1.4.13: the backend_error line this branch never wrote; a
+                        # fixed category, never the RuntimeError text. Skipped after a
+                        # disconnect, like the send, so a disconnect stays one.
+                        _record_backend_error("authentication_error",
+                                              backend_type="token_refresh",
+                                              phase="backend_authentication",
+                                              failure_reason="backend token refresh failed (%s)"
+                                              % type(e).__name__)
                         await _send_json(send, 401, {"type": "error", "error": {
                             "type": "authentication_error", "message": str(e)}})
                     return
@@ -8765,8 +8815,11 @@ async def _handle_messages(body, receive, send, scope_headers=()):
                     state.usage_source = usage_source
                     state.stop_reason = anth["stop_reason"]
                     state.tools_called = sum(b["type"] == "tool_use" for b in anth["content"])
+                # v1.4.13: no count_tokens calibration from a search-bearing response
+                # (this block runs only when search_bearing is true); see the
+                # non-stream search branch for the reason.
                 if usage_source == "backend":
-                    _calibrate_count_ratio(anth["usage"]["input_tokens"] + (cached or 0), len(body))
+                    log.debug("count_tokens calibration skipped reason=hosted_search")
                 await _stop_heartbeat()
                 await emit("message_delta", {"type": "message_delta", "delta": {
                     "stop_reason": anth["stop_reason"], "stop_sequence": None}, "usage": anth["usage"]})

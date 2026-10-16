@@ -2156,7 +2156,7 @@ def _evaluate_shim_log(counts: dict):
     daemon start, F28) or a quota/billing code (the insufficient_quota counter,
     any of _SHIM_QUOTA_CODES; F22); WARN on Claude-named requests
     or fast-fails (F2), unrecovered whitespace (F17), unsupported_value (F15),
-    context_length_exceeded (F21); recovered whitespace retries are INFO."""
+    context_length_exceeded (F21, F32); recovered whitespace retries are INFO."""
     fail = [k for k in ("turn_state_header_lines", "insufficient_quota") if counts.get(k)]
     warn = [k for k in ("claude_slug_fast_fail", "claude_named_requests", "unrecovered_whitespace",
                         "unsupported_value", "context_length_exceeded") if counts.get(k)]
@@ -3239,7 +3239,8 @@ _PERMISSION_DENY_READ_RE = re.compile(
 # assignments allowed). A grep, echo or --help that merely mentions the phrase
 # is not an attempt (review fix cycle 2). Segments split on ; & | ( ) and
 # newlines OUTSIDE quotes (shlex), so `grep -n "pip install" f` is one
-# grep segment.
+# grep segment. A shell wrapper's -c string (bash -c "pip install x") is
+# re-split and matched the same way (_shell_c_payload).
 _PIP_INSTALL_SEGMENT_RE = re.compile(
     r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:sudo\s+(?:-\S+\s+)*)?"
     r"(?:(?:\S*/)?(?:python3?(?:\.\d+)?|uv)\s+(?:-m\s+)?)?(?:\S*/)?pip3?(?:\.\d+)?\s+install\b")
@@ -3256,37 +3257,161 @@ _PIP_RAN_RE = re.compile(r"Collecting \S|Requirement already satisfied|Successfu
 
 
 _SHELL_SEPARATORS = ";&|()"
+# A shell wrapper whose -c string is itself a command: `bash -c "pip install x"`,
+# `sh -c '...'`, `bash -lc ...`, `bash --login -c ...`, optionally behind
+# command prefixes (sudo, env, exec, command, nohup, timeout, nice) and
+# VAR=value assignments. The -c string is re-split and matched like a top-level
+# command (bounded nesting), so `bash -c "pip list"` or
+# `sh -c 'grep "pip install" f'` stay non-attempts (review note, 2026-10-15: the
+# matcher missed bash -c). The same prefix skipping applies to a direct call
+# (`sudo -u root pip install x`, `timeout 30 pip install x`).
+# Prefix options that take an argument consume it (`sudo -u root`,
+# `env -u VAR`, `timeout -s KILL 30`, `nice -n 5`, `exec -a NAME`), whether it is
+# separate or attached (`-uroot`); a short cluster consumes the next token only
+# when its first argument-taking letter ends the cluster (`-Eu root`).
+# KNOWN GAPS (not unwrapped, so not counted): sudo/env long options with a
+# separate argument other than those listed below; `env -S 'bash -c ...'` (the
+# split string is not re-split); `xargs`, `eval`, `su -c`, `script -c` and
+# other command runners; more than 8 stacked prefixes.
+_SHELL_WRAPPER_NAMES = ("sh", "bash", "dash", "zsh", "ksh")
+_SHELL_WRAPPER_PREFIXES = ("sudo", "env", "exec", "command", "nohup", "timeout", "nice")
+# Short option letters that take an argument, per prefix.
+_PREFIX_ARG_LETTERS = {"sudo": "ughCDprtU", "env": "uCS", "timeout": "sk", "nice": "n", "exec": "a"}
+# Long options that take a SEPARATE argument (a `--opt=value` token is one token).
+_PREFIX_LONG_ARG_OPTIONS = {
+    "sudo": ("--user", "--group", "--host", "--prompt", "--role", "--type", "--other-user",
+             "--close-from", "--chdir"),
+    "env": ("--unset", "--chdir", "--split-string"),
+    "timeout": ("--signal", "--kill-after"),
+    "nice": ("--adjustment",),
+}
+# Positional arguments a prefix takes before the command (timeout's DURATION).
+_PREFIX_POSITIONALS = {"timeout": 1}
+_SHELL_LONG_ARG_OPTIONS = ("--rcfile", "--init-file")
+_SHELL_WRAPPER_MAX_DEPTH = 3
+_COMMAND_PREFIX_MAX_HOPS = 8
+_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
-def _command_segments(command):
+def _command_segment_tokens(command):
     """Split one Bash command into its simple-command segments on ; & | ( )
-    and newlines outside quotes. Quotes are removed (shlex posix mode), so a
-    quoted "pip install" stays inside its grep/echo segment. Unbalanced quotes
-    fall back to a plain split on the separators."""
+    and newlines outside quotes, each a list of tokens. Quotes are removed
+    (shlex posix mode), so a quoted "pip install" stays one token inside its
+    grep/echo segment. Unbalanced quotes fall back to a plain split on the
+    separators and on whitespace."""
     text = str(command or "")
     try:
         lex = shlex.shlex(text.replace("\n", " ; "), posix=True, punctuation_chars=_SHELL_SEPARATORS)
         lex.whitespace_split = True
         tokens = list(lex)
     except ValueError:
-        return [seg for seg in re.split(r"[;&|()\n]+", text) if seg.strip()]
+        return [seg.split() for seg in re.split(r"[;&|()\n]+", text) if seg.strip()]
     segments, current = [], []
     for tok in tokens:
         if tok and set(tok) <= set(_SHELL_SEPARATORS):
             if current:
-                segments.append(" ".join(current))
+                segments.append(current)
             current = []
         else:
             current.append(tok)
     if current:
-        segments.append(" ".join(current))
+        segments.append(current)
     return segments
 
 
-def _is_pip_install_command(command):
+def _command_segments(command):
+    """The simple-command segments of one Bash command as strings (tokens
+    joined by single spaces; see _command_segment_tokens)."""
+    return [" ".join(seg) for seg in _command_segment_tokens(command)]
+
+
+def _skip_command_prefixes(tokens):
+    """Index of the first token after leading VAR=value assignments and any
+    stacked command prefixes (sudo, env, exec, command, nohup, timeout, nice)
+    with their options, option arguments and positionals (see the comment
+    block above _SHELL_WRAPPER_NAMES for the rules and known gaps)."""
+    i = 0
+    while i < len(tokens) and _ASSIGNMENT_RE.match(tokens[i]):
+        i += 1
+    hops = 0
+    while i < len(tokens) and hops < _COMMAND_PREFIX_MAX_HOPS:
+        word = tokens[i].rsplit("/", 1)[-1]
+        if word not in _SHELL_WRAPPER_PREFIXES:
+            break
+        hops += 1
+        i += 1
+        arg_letters = _PREFIX_ARG_LETTERS.get(word, "")
+        long_args = _PREFIX_LONG_ARG_OPTIONS.get(word, ())
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok == "--":
+                i += 1
+                break
+            if tok.startswith("--"):
+                i += 2 if tok in long_args else 1
+                continue
+            if re.match(r"^-[A-Za-z0-9]+$", tok):
+                letters = tok[1:]
+                pos = next((k for k, ch in enumerate(letters) if ch in arg_letters), None)
+                # The first argument-taking letter takes the rest of the cluster
+                # as its argument, or the next token when it ends the cluster.
+                i += 2 if pos is not None and pos == len(letters) - 1 else 1
+                continue
+            if word in ("env", "sudo") and _ASSIGNMENT_RE.match(tok):
+                i += 1
+                continue
+            break
+        i += _PREFIX_POSITIONALS.get(word, 0)
+    return i
+
+
+def _shell_c_payload(tokens):
+    """The -c command string of a shell-wrapper segment (`bash -c "..."`,
+    `sudo -u root sh -lc '...'`, `env X=1 bash -o pipefail -c ...`,
+    `bash --login -c ...`), or None when the segment is not a shell wrapper
+    with -c."""
+    i = _skip_command_prefixes(tokens)
+    if i >= len(tokens) or tokens[i].rsplit("/", 1)[-1] not in _SHELL_WRAPPER_NAMES:
+        return None
+    i += 1
+    has_c = False
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("-o", "+o", "-O", "+O"):
+            i += 2
+            continue
+        if re.match(r"^--[A-Za-z][-A-Za-z]*$", tok):
+            # Long shell options (--login, --noprofile, --norc, --posix); two
+            # take a file argument.
+            i += 2 if tok in _SHELL_LONG_ARG_OPTIONS else 1
+            continue
+        if re.match(r"^-[A-Za-z]+$", tok):
+            has_c = has_c or "c" in tok
+            i += 1
+            continue
+        if re.match(r"^\+[A-Za-z]+$", tok) or tok == "--":
+            i += 1
+            continue
+        return tok if has_c else None
+    return None
+
+
+def _is_pip_install_command(command, _depth=0):
     """True when some segment of the Bash command actually invokes pip install
-    (see _PIP_INSTALL_SEGMENT_RE); a mention inside grep/echo/help is not."""
-    return any(_PIP_INSTALL_SEGMENT_RE.match(seg) for seg in _command_segments(command))
+    (see _PIP_INSTALL_SEGMENT_RE), directly or inside a shell wrapper's -c
+    string (bash -c "...", sh -c '...'); a mention inside grep/echo/help is
+    not."""
+    for seg in _command_segment_tokens(command):
+        if _PIP_INSTALL_SEGMENT_RE.match(" ".join(seg)):
+            return True
+        # Prefixes whose options take arguments (sudo -u root, timeout 30, nice -n 5)
+        # are skipped before matching the bare command.
+        if _PIP_INSTALL_SEGMENT_RE.match(" ".join(seg[_skip_command_prefixes(seg):])):
+            return True
+        payload = _shell_c_payload(seg)
+        if payload is not None and _depth < _SHELL_WRAPPER_MAX_DEPTH and _is_pip_install_command(payload, _depth + 1):
+            return True
+    return False
 
 
 def _tool_results_text(records):
@@ -4823,7 +4948,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "T0.15": "Rebuild to the Dockerfile pins (CLAUDE_CODE_VERSION); on shim routes Claude Code must be >= 2.1.276. Commit or stash dirty files before a release run.",
     "T0.18": "Fix the DAAF_CODEX_CONFIG_<N> lines named in logs/codex_config.log (refused entries look like credentials), then start_shim.sh --restart.",
     "T0.19": "Low prompt-cache reuse drains quota: confirm the shim is >= 1.4.6 (per-session routing hint) and watch /health.prompt_cache over a longer session.",
-    "T0.20": "Read logs/shim.log around the counted signals (do not paste header lines): claude-* requests -> map all tier aliases (T0.17); whitespace -> shim >= 1.4.8; unsupported_value -> drop '#none' effort; insufficient_quota (counts any quota or billing code: insufficient_quota, usage_not_included, credit_balance_exhausted, organization_spend_limit_exceeded, project_spend_limit_exceeded, organization_usage_limit_exceeded) -> billing or plan limit; a Codex turn-state header in the log -> shim >= 1.4.9 and rotate the log.",
+    "T0.20": "Read logs/shim.log around the counted signals (do not paste header lines): claude-* requests -> map all tier aliases (T0.17); whitespace -> shim >= 1.4.8; unsupported_value -> drop '#none' effort; insufficient_quota (counts any quota or billing code: insufficient_quota, usage_not_included, credit_balance_exhausted, organization_spend_limit_exceeded, project_spend_limit_exceeded, organization_usage_limit_exceeded) -> billing or plan limit; context_length_exceeded -> a request went over the backend context ceiling: check CLAUDE_CODE_MAX_CONTEXT_TOKENS against the lane ceiling (T0.4); below shim 1.4.10 a non-stream overflow came back as a 502, and from 1.4.11 the message reads 'Prompt is too long (backend context length exceeded)'; a Codex turn-state header in the log -> shim >= 1.4.9 and rotate the log.",
     "T0.21": "Run as the non-root appuser with /daaf writable; free disk space; for git errors add /daaf to safe.directory.",
     "T0.22": "Rebuild the image (missing tools come from the Dockerfile); dev-only tools need DAAF_DEV=1 at build time.",
     "T0.23": "Fix the named file: restore a hook's executable bit (git update-index --chmod=+x is not enough on disk: chmod +x), repair frontmatter, or remove Agent/Task from an agent's tools.",

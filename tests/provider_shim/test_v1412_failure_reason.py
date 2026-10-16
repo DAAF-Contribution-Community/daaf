@@ -28,6 +28,11 @@ Backend prose never reaches it (v1.2.11 no-prose rule).
    ValueError/httpx branch, the streaming post-start error line (TypeError) and the
    pre-content token-refresh RuntimeError log fixed categories, never the text;
    the accumulator does not record after a client disconnect.
+8. (1.4.13) the three 401 authentication_error sends on a token-refresh
+   RuntimeError (header build; search and ChatGPT non-stream lazy-401 refresh)
+   write one backend_error line (backend_type token_refresh) with the fixed
+   category reason, never the text; the client's 401 and message are unchanged;
+   the two lazy-401 sites write none after a client disconnect.
 
 Client-visible bytes are unchanged; existing modules pin them. Provider-free: a mock
 Responses backend on loopback (or the controlled in-process ASGI probe), fabricated
@@ -603,6 +608,136 @@ class CategoryPathTests(unittest.TestCase):
                 self.assertEqual(state.backend_error_logged, not disconnected)
                 self.assertEqual(state.outcome, "disconnect" if disconnected else "error")
         asyncio.run(shim._client.aclose())
+
+
+# --- 8: (1.4.13) login-failure sends write a backend_error line ---
+
+AUTH_REASON = "backend token refresh failed (RuntimeError)"
+
+
+class AuthFailureReasonTests(unittest.TestCase):
+    """Shim 1.4.13: the three 401 authentication_error sends on a token-refresh
+    RuntimeError (header build before any backend call; search non-stream and
+    ChatGPT non-stream lazy-401 refresh) wrote no backend_error line in 1.4.12.
+    Each now writes exactly one, with the fixed category reason and never the
+    RuntimeError text; the client response is unchanged."""
+
+    maxDiff = 8000
+
+    def _assert_auth_record(self, report, name, expected_message):
+        self.assertIsNone(report.raised, name)
+        self.assertEqual(report.messages[0]["status"], 401, name)
+        body = json.loads(b"".join(m.get("body", b"") for m in report.messages))
+        self.assertEqual(body, {"type": "error", "error": {
+            "type": "authentication_error", "message": expected_message}}, name)
+        backend_errors = _lines(report, "backend_error")
+        self.assertEqual(len(backend_errors), 1, (name, report.logs))
+        fields = backend_errors[0].fields
+        self.assertEqual(fields["anthropic_type"], "authentication_error", name)
+        self.assertEqual(fields["backend_type"], "token_refresh", name)
+        self.assertEqual(urllib.parse.unquote(fields["failure_reason"]), AUTH_REASON, name)
+        self.assertEqual(fields["failure_phase"], "backend_authentication", name)
+        terminal = _lines(report, "terminal")
+        self.assertEqual(len(terminal), 1, name)
+        self.assertEqual(terminal[0].fields["outcome"], "error", name)
+        self.assertEqual(terminal[0].fields["failure_phase"], "backend_authentication", name)
+        # The adjacent human-readable error lines (pre-1.4.12, unchanged) print the
+        # RuntimeError text, which in production is the shim's re-login
+        # instruction; the lifecycle lines must not carry it.
+        for line in report.lifecycle:
+            self.assertNotIn(EXCEPTION_SENTINEL, line.raw, (name, line.event))
+
+    def test_header_build_runtime_error_logs_a_category(self):
+        # Site 1: before any backend call; reached by stream and non-stream alike.
+        def configure(module):
+            async def raising_headers(*_args, **_kwargs):
+                raise RuntimeError(EXCEPTION_SENTINEL)
+            module._build_backend_headers = raising_headers
+
+        for stream in (False, True):
+            with self.subTest(stream=stream):
+                report = controlled_asgi_probe(stream=stream, backend_mode="chatgpt",
+                                               configure_module=configure)
+                # Client message is str(e), as before 1.4.13.
+                self._assert_auth_record(report, "header-build stream=%s" % stream,
+                                         EXCEPTION_SENTINEL)
+                self.assertEqual(report.upstream_calls, 0)
+
+    def test_search_nonstream_lazy_refresh_runtime_error_logs_a_category(self):
+        # Site 2: the client gets the fixed re-login message, as before 1.4.13.
+        search_body = json.dumps(fx.search_request(False)).encode("utf-8")
+        relogin = []
+
+        def configure(module):
+            relogin.append(module._RELOGIN_MSG)
+
+            async def raising_opener(*_args, **_kwargs):
+                raise RuntimeError(EXCEPTION_SENTINEL)
+            module._open_backend_stream = raising_opener
+
+        report = controlled_asgi_probe(stream=False, backend_mode="chatgpt",
+                                       raw_request_body=search_body,
+                                       configure_module=configure)
+        self._assert_auth_record(report, "search-nonstream", relogin[0])
+        self.assertNotIn(EXCEPTION_SENTINEL, b"".join(
+            m.get("body", b"") for m in report.messages).decode("utf-8"))
+
+    def test_chatgpt_nonstream_lazy_refresh_runtime_error_logs_a_category(self):
+        # Site 3: client message is str(e), as before 1.4.13.
+        def configure(module):
+            async def raising_opener(*_args, **_kwargs):
+                raise RuntimeError(EXCEPTION_SENTINEL)
+            module._open_backend_stream = raising_opener
+
+        report = controlled_asgi_probe(stream=False, backend_mode="chatgpt",
+                                       configure_module=configure)
+        self._assert_auth_record(report, "chatgpt-nonstream", EXCEPTION_SENTINEL)
+
+    def test_real_auth_seams_write_one_backend_error(self):
+        # The same sites driven by the harness's real auth seams (no patched
+        # function): an unavailable auth store (site 1) and a failed lazy-401
+        # refresh on a ChatGPT non-stream request (site 3).
+        unavailable = controlled_asgi_probe(stream=False, auth_store_unavailable=True)
+        lazy = controlled_asgi_probe(stream=False, attempt_outcomes=[401],
+                                     lazy_401_refresh_failure=True)
+        for name, report in (("auth-store", unavailable), ("lazy-401", lazy)):
+            with self.subTest(seam=name):
+                self.assertIsNone(report.raised)
+                self.assertEqual(report.messages[0]["status"], 401)
+                body = json.loads(b"".join(m.get("body", b"") for m in report.messages))
+                self.assertEqual(body["error"]["type"], "authentication_error")
+                backend_errors = _lines(report, "backend_error")
+                self.assertEqual(len(backend_errors), 1, report.logs)
+                self.assertEqual(backend_errors[0].fields["anthropic_type"],
+                                 "authentication_error")
+                self.assertEqual(backend_errors[0].fields["backend_type"], "token_refresh")
+                self.assertEqual(
+                    urllib.parse.unquote(backend_errors[0].fields["failure_reason"]),
+                    AUTH_REASON)
+
+    def test_lazy_refresh_sites_do_not_record_after_a_disconnect(self):
+        # Sites 2 and 3 record only while the client is connected, so a client that
+        # left during the refresh is not turned into an authentication failure. The
+        # patched opener receives the request's disconnect event as its fourth
+        # positional argument (the production call shape) and sets it before
+        # raising, as a disconnect observed during the refresh would.
+        search_body = json.dumps(fx.search_request(False)).encode("utf-8")
+
+        def configure(module):
+            async def disconnecting_opener(*args, **_kwargs):
+                args[3].set()
+                raise RuntimeError(EXCEPTION_SENTINEL)
+            module._open_backend_stream = disconnecting_opener
+
+        for name, body in (("search-nonstream", search_body), ("chatgpt-nonstream", None)):
+            with self.subTest(site=name):
+                report = controlled_asgi_probe(stream=False, backend_mode="chatgpt",
+                                               raw_request_body=body,
+                                               configure_module=configure)
+                self.assertEqual(_lines(report, "backend_error"), [], (name, report.logs))
+                self.assertEqual(len(_lines(report, "terminal")), 1, (name, report.logs))
+                for line in report.lifecycle:
+                    self.assertNotIn(EXCEPTION_SENTINEL, line.raw, (name, line.event))
 
 
 if __name__ == "__main__":

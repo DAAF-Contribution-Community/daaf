@@ -1689,15 +1689,20 @@ def import_packages(paths, inbox_dir=None):
 # --- MATRIX.md ---------------------------------------------------------------------------
 
 _TIER_RANK = {"0": 0, "N": 1, "D": 2, "1": 3, "2": 4, "A": 5, "3": 6}
+# report.json marks the post-run shim-log scan with tier "post"
+# (run_deploy_smoke.POST_RUN_TIER) while it keeps the Tier-0 probe_id T0.20.
+# The matrix keys rows on (probe_id, profile, phase) so the Tier-0 pre-run
+# history and the post-run verdict get a row each, never one "INFO/WARN" cell.
+_POST_RUN_TIER = "post"
 
 
 def _probe_sort_key(key):
     probe_id = key[0]
     m = re.match(r"^T([0-9A-Z]+)\.(\d+)?(.*)$", probe_id)
     if not m:
-        return (99, 0, probe_id, key[1])
+        return (99, 0, probe_id, key[1], key[2])
     tier, num, rest = m.groups()
-    return (_TIER_RANK.get(tier, 50), int(num) if num else 999, rest + probe_id, key[1])
+    return (_TIER_RANK.get(tier, 50), int(num) if num else 999, rest + probe_id, key[1], key[2])
 
 
 def _cell(text):
@@ -1743,7 +1748,8 @@ def write_matrix(inbox_dir=None):
     verdicts, names = {}, {}
     for i, c in enumerate(cols):
         for r in c["report"].get("results") or []:
-            key = (str(r.get("probe_id", "?")), str(r.get("profile") or ""))
+            phase = _POST_RUN_TIER if str(r.get("tier") or "") == _POST_RUN_TIER else ""
+            key = (str(r.get("probe_id", "?")), str(r.get("profile") or ""), phase)
             names.setdefault(key, str(r.get("name", "")))
             cell = verdicts.setdefault(key, {})
             prev = cell.get(i)
@@ -1781,7 +1787,8 @@ def write_matrix(inbox_dir=None):
             if hit:
                 pattern = f"common {bad}" if len(hit) == len(cell) and len(cell) > 1 else f"{bad} on: {', '.join(hit)}"
                 break
-        label = f"{key[0]} {names.get(key, '')}" + (f" [{key[1]}]" if key[1] else "")
+        post = " (post-run)" if key[2] and not key[0].startswith("POST.") else ""
+        label = f"{key[0]}{post} {names.get(key, '')}" + (f" [{key[1]}]" if key[1] else "")
         lines.append(f"| {_cell(label)} | " + " | ".join(_cell(cell.get(i, "-")) for i in range(len(cols)))
                      + f" | {_cell(pattern)} |")
     lines.append("")

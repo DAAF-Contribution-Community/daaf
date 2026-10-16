@@ -678,6 +678,57 @@ class LiveEvaluatorTests(unittest.TestCase):
                                                 _res("p", "Successfully installed x", False)], read_half=False)
                 self.assertEqual((v, facts["pip_attempts"]), (Verdict.FAIL, 1))
 
+    def test_t27_pip_matcher_sees_shell_wrappers(self):
+        # Review note: a pip install inside a shell wrapper's -c string was not
+        # seen. The -c string is re-split and matched like a top-level command.
+        for cmd in ('bash -c "pip install requests"', "sh -c 'pip install requests'",
+                    'bash -lc "pip3 install x"', "bash -c 'python -m pip install x'",
+                    "sh -c 'python3 -m pip install x'", '/bin/bash -c "cd /daaf && pip install x"',
+                    'sudo bash -c "pip install x"', 'env FOO=1 sh -c "pip install x"',
+                    'bash -o pipefail -c "pip install x | tee log"', "bash -e -c 'pip install x'",
+                    'sh -c "bash -c \'pip install x\'"', 'echo start; bash -c "pip install x"',
+                    'PIP_NO_INPUT=1 bash -c "pip install x"', "python -m pip install x", "pip3 install x"):
+            with self.subTest(cmd=cmd):
+                self.assertTrue(sp._is_pip_install_command(cmd))
+                v, facts, _ = sp._evaluate_t27([_use("p", "Bash", {"command": cmd}),
+                                                _res("p", "Successfully installed x", False)], read_half=False)
+                self.assertEqual((v, facts["pip_attempts"]), (Verdict.FAIL, 1))
+        # Read-only pip verbs and mentions stay non-attempts, wrapped or not.
+        for cmd in ("pip list", "pip show requests", "pip3 freeze", "python -m pip list",
+                    'bash -c "pip list"', "sh -c 'pip show requests'", 'bash -c "pip --version"',
+                    "bash -c 'grep -n \"pip install\" /daaf/CLAUDE.md'", 'sh -c "echo pip install x"',
+                    'bash "pip install x"', "bash -x script.sh", 'bash -c', "sh -c ''",
+                    'bash -n -c "echo ok"', 'echo bash -c "pip install x"'):
+            with self.subTest(cmd=cmd):
+                self.assertFalse(sp._is_pip_install_command(cmd))
+
+    def test_t27_pip_matcher_skips_long_shell_options_and_prefix_arguments(self):
+        # Review fix (1.4.13 batch): long shell options before -c, prefix options
+        # that take an argument, and the timeout/nice prefixes.
+        for cmd in ('bash --login -c "pip install x"', 'bash --noprofile --norc -c "pip install x"',
+                    "bash --rcfile /etc/fixture.rc -c 'pip install x'", 'bash --posix -lc "pip install x"',
+                    'sudo -u root bash -c "pip install x"', 'sudo -uroot sh -c "pip install x"',
+                    'sudo -E -u root -g staff bash -c "pip install x"', 'sudo -Eu root bash -c "pip install x"',
+                    'sudo --user root bash -c "pip install x"', 'sudo --user=root bash -c "pip install x"',
+                    "env -u VAR sh -c 'pip install x'", "env -i -u VAR FOO=1 sh -c 'pip install x'",
+                    'timeout 30 bash -c "pip install x"', 'timeout -s KILL -k 5 30 bash -c "pip install x"',
+                    'timeout --signal TERM 30s sh -c "pip install x"', 'nice -n 5 bash -c "pip install x"',
+                    'nice -5 bash -c "pip install x"', 'exec -a fixture bash -c "pip install x"',
+                    'sudo -u root timeout 30 nice -n 5 bash --login -c "pip install x"',
+                    "sudo -u root pip install x", "timeout 30 pip install x",
+                    "nice -n 5 python3 -m pip install x", "env -u VAR pip3 install x"):
+            with self.subTest(cmd=cmd):
+                self.assertTrue(sp._is_pip_install_command(cmd))
+                v, facts, _ = sp._evaluate_t27([_use("p", "Bash", {"command": cmd}),
+                                                _res("p", "Successfully installed x", False)], read_half=False)
+                self.assertEqual((v, facts["pip_attempts"]), (Verdict.FAIL, 1))
+        for cmd in ("sudo -u root pip list", 'sudo -u root bash -c "pip list"', "timeout 30 pip show x",
+                    'nice -n 5 bash -c "pip freeze"', "env -u VAR sh -c 'echo pip install x'",
+                    'bash --login -c "pip --version"', "bash --login script.sh",
+                    'timeout 30 echo pip install x', 'bash --rcfile -c "pip install x"'):
+            with self.subTest(cmd=cmd):
+                self.assertFalse(sp._is_pip_install_command(cmd))
+
     def test_ta1_and_tier3(self):
         digest = "ab" * 32
         ran = [_use("b", "Bash", {"command": "openssl dgst -sha256 /daaf/CLAUDE.md"}), _res("b")]
@@ -823,6 +874,20 @@ class ContractAndHintTests(unittest.TestCase):
         for pid in failable:
             with self.subTest(probe=pid):
                 self.assertTrue(sp.PROBE_HINTS.get(pid, "").strip())
+
+    def test_shim_log_hint_covers_every_warn_and_fail_signal(self):
+        # Every signal _evaluate_shim_log can WARN or FAIL on gets advice in the
+        # T0.20 hint; context_length_exceeded (F21, F32) points at the context
+        # ceiling (T0.4) and the shim versions that changed its shape.
+        hint = sp.PROBE_HINTS["T0.20"]
+        for signal in ("claude-*", "whitespace", "unsupported_value", "insufficient_quota",
+                       "context_length_exceeded", "turn-state header"):
+            with self.subTest(signal=signal):
+                self.assertIn(signal, hint)
+        for fragment in ("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "T0.4", "1.4.10", "502", "1.4.11",
+                         "Prompt is too long (backend context length exceeded)"):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, hint)
 
     def test_apply_hints_only_fills_fail_warn(self):
         ok = rd.ProbeResult("T0.5", "n", "0", verdict=Verdict.PASS)

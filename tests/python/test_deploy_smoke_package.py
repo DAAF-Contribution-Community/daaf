@@ -886,6 +886,31 @@ class ImporterTests(_ScratchCase):
         self.assertIn("| - |", rows["T0.8"])
         self.assertIn("2.1.281 (Claude Code)", text)
 
+    def test_matrix_splits_pre_run_and_post_run_shim_scan(self):
+        # The Tier-0 pre-run history and the post-run scan share probe_id T0.20;
+        # report.json tells them apart by tier ("post"). Each gets its own row,
+        # so no cell reads "INFO/WARN".
+        gpt = [_pr("T0.20", "Shim-log scan", "0", Verdict.INFO),
+               _pr("T0.20", "Shim-log scan (post-run window)", "post", Verdict.WARN)]
+        api = [_pr("T0.20", "Shim-log scan", "0", Verdict.INFO),
+               _pr("T0.20", "Shim-log scan (post-run window)", "post", Verdict.PASS)]
+        r1, _ = self.make_report("rep_gpt", gpt, route="chatgpt-subscription")
+        r2, _ = self.make_report("rep_api", api, route="openai-api")
+        inbox = self.root / "inbox"
+        smoke_package.import_packages([self.build(r1, gpt, route="chatgpt-subscription")["zip_path"],
+                                       self.build(r2, api, route="openai-api")["zip_path"]], inbox)
+        text = smoke_package.write_matrix(inbox).read_text()
+        rows = [ln for ln in text.splitlines() if ln.startswith("| T0.20")]
+        self.assertEqual(len(rows), 2, rows)
+        pre, post = rows  # pre-run sorts first
+        self.assertTrue(pre.startswith("| T0.20 Shim-log scan |"), pre)
+        self.assertTrue(post.startswith("| T0.20 (post-run) Shim-log scan (post-run window) |"), post)
+        for row in rows:
+            cells = [c.strip() for c in row.split("|")[2:4]]
+            self.assertTrue(all("/" not in c for c in cells), row)
+        self.assertEqual([c.strip() for c in pre.split("|")[2:5]], ["INFO", "INFO", ""])
+        self.assertEqual([c.strip() for c in post.split("|")[2:5]], ["WARN", "PASS", "WARN on: chatgpt-subscription"])
+
     def test_matrix_same_route_columns_are_distinguishable(self):
         report_dir, results = self.make_report()
         inbox = self.root / "inbox"
