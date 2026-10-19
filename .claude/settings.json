@@ -11,6 +11,9 @@
     "allow": [
       "Bash(marimo run *)",
       "Bash(marimo edit *)",
+      "Bash(marimo check *)",
+      "Bash(marimo export html *)",
+      "Bash(jq *)",
       "Bash(pip list)",
       "Bash(python *)",
       "Bash(python3 *)",

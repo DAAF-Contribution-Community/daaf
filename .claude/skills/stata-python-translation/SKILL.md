@@ -232,7 +232,7 @@ changed between versions, the reference files note the change.
 | binsreg | not pre-installed | binsreg, binscatter | binsreg (SSC) |
 | scpi | not pre-installed | synth, synth_runner | synth (SSC) |
 | scikit-learn | 1.8.0 | (limited; teffects, psmatch2 partially) | Stata 18 |
-| marimo | 0.19.11 | (no equivalent; replaces do-file + log workflow) | N/A |
+| marimo | 0.25.0 | (no equivalent; replaces do-file + log workflow) | N/A |
 
 > **Package availability:** The core mappings above (`polars`, `pyfixest`, `statsmodels`,
 > `plotnine`, `svy`) plus `linearmodels` (7.0), `marginaleffects` (0.5.0), and

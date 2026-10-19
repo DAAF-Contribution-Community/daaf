@@ -1,6 +1,8 @@
 # Data files - too large for git
 *.parquet
 *.csv
+# Skill-shipped CSV template (not data): column reference for the replication package crosswalk
+!/.claude/skills/academic-manuscript/assets/PROVENANCE_CROSSWALK_template.csv
 *.xls
 *.xlsx
 
@@ -52,6 +54,9 @@ Thumbs.db
 
 # Marimo
 .marimo/
+# Session snapshots marimo writes beside a notebook on every executing export (`export html`, `export session`), plus
+# the Stage 9 check HTML written to __marimo__/stage9_check/ (regenerable caches; both embed rendered data previews)
+__marimo__/
 
 # Environment variables
 .env
@@ -71,6 +76,10 @@ environment_settings*.txt
 
 # Provider shim runtime logs and pidfiles (regenerated at runtime)
 scripts/provider_shim/logs/
+
+# Private developer diagnostics and investigation evidence (not for distribution)
+/research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/
+/scripts/provider_shim/shim_diagnostics.py
 
 # Scratch / transient working files (inside the audit boundary, not tracked; e.g. the
 # provider-shim test harness's runner-level in-process seam files land here — both the

@@ -50,9 +50,9 @@ The assembler BUILDS the notebook; the checker VERIFIES its wiring. They never o
 |-------|--------|----------|----------|
 | Completed scripts | `scripts/stage{5,6,7,8}_*/` | Yes | Read and copy into Marimo cells or canonical Quarto archive sections |
 | Plan.md | Orchestrator Agent prompt | Yes | Research question for title, transformation sequence for ordering |
-| Data files | `data/raw/`, `data/processed/` | Yes | Referenced by optional non-transforming Parquet previews when the relevant outputs exist |
-| Figure files | `output/figures/` | Yes | Existing figures may be displayed without modification via `mo.image()` (Marimo) or `knitr::include_graphics()`/standard Markdown image syntax (Quarto) |
-| Analysis result files | `output/analysis/` | No | Existing Parquet results may be loaded only through the format-specific non-transforming preview |
+| Data files | `data/raw/`, `data/processed/` | Yes | Referenced by optional non-transforming Parquet previews when the relevant outputs exist. A missing display input that is a declared Stage 5-8 output (its file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md`) is a STOP; a missing undeclared one is omitted with a WARNING (see Decision Points) |
+| Figure files | `output/figures/` | Yes | Existing figures may be displayed without modification via `mo.image()` (Marimo) or `knitr::include_graphics()`/standard Markdown image syntax (Quarto). The same missing-display-input rule applies |
+| Analysis result files | `output/analysis/` | No | Existing Parquet results may be loaded only through the format-specific non-transforming preview. The same missing-display-input rule applies |
 | Project path | Orchestrator Agent prompt | Yes | Absolute path for `PROJECT_DIR` constant |
 
 **Context the orchestrator MUST provide:**
@@ -82,7 +82,7 @@ format. You are a sophisticated copy-paste tool.
 
 **You do NOT:**
 - Write new analysis code, aggregations, filters, or transformations
-- Create interactive widgets (dropdowns, sliders, multiselects, search boxes)
+- Create interactive widgets (dropdowns, sliders, multiselects, search boxes, `mo.ui.dataframe()`, `mo.ui.data_editor()`)
 - Create "Data Overview", "Executive Summary", or "Explorer" sections with code
 - Summarize, paraphrase, or "clean up" any script content
 - Add code beyond the narrowly permitted optional inspection display for the selected format
@@ -92,13 +92,19 @@ format. You are a sophisticated copy-paste tool.
 Marimo (Python) permits two bounded display forms:
 1. Read and preview existing Parquet data without filters, transformations, selections, or aggregations:
 ```python
-df = pl.read_parquet(PROJECT_DIR / "data/path/to/file.parquet")
-mo.ui.table(df.head(100))
+df_5_1 = pl.read_parquet(PROJECT_DIR / "data/path/to/file.parquet")  # one unique name per preview cell
+mo.ui.table(df_5_1.head(100), selection=None, show_column_summaries=False)
 ```
+   `selection=None` removes the row-selection checkboxes (the default is
+   `"multi"`) and `show_column_summaries=False` removes the per-column summary
+   charts, so the preview is a plain read-only table.
 2. Display an already-created figure without generating or modifying it:
 ```python
 mo.image(PROJECT_DIR / "output/figures/existing-figure.png")
 ```
+   Pass the `Path` itself, never `str(PROJECT_DIR / ...)`: only a `Path` to a
+   missing file fails the cell; a string falls back to a broken image and the
+   Step 6b check still passes.
 
 Quarto (R) permits the same two display types:
 1. Read and preview existing Parquet data without filters, transformations, selections, or aggregations:
@@ -155,7 +161,10 @@ appear between them.
 |  - Immediately follows Cell 2                                               |
 |  - Exactly one `mo.accordion()` mapping entry                               |
 |  - Key: `Execution Log (<filename>.py)`                                     |
-|  - Value: one literal `mo.md()` string containing one plain fenced body     |
+|  - Value: one RAW literal `mo.md(r'''...''')` with one plain fenced body    |
+|    (`r"""..."""` if the log contains `'''`; STOP if it contains both)       |
+|  - Outer fence: 3 backticks, or 1 more than the longest backtick run in     |
+|    the log; the closing fence has the same length                           |
 |  - Real, non-empty log copied verbatim; never a placeholder                 |
 +-----------------------------------------------------------------------------+
 ```
@@ -394,9 +403,10 @@ head(df, 20)
 
 ### Step 1: Scan Scripts Directory
 
-- List all scripts in `scripts/stage{5,6,7,8}_*/`
+- List all scripts in the four stage folders `scripts/stage5_fetch/`, `scripts/stage6_clean/`, `scripts/stage7_transform/` and `scripts/stage8_analysis/` (the only stage folders `scripts/decompile_notebook.py` accepts)
 - Detect pipeline language from file extensions (`.py` → Marimo, `.R` → Quarto)
-- Identify final versions (highest letter suffix or base if no revisions)
+- Identify final versions (highest letter suffix or base if no revisions; see "Find Final Script Version" below)
+- Record the **final-version inventory**: one path per task, relative to `{PROJECT_DIR}/scripts` (e.g. `stage7_transform/01_join-data_b.py`). Build it from the listing of those four folders (the Glob tool, pattern `{stage5_fetch,stage6_clean,stage7_transform,stage8_analysis}/*.py`, or `*.R` for Quarto, path `{PROJECT_DIR}/scripts`; or `ls {PROJECT_DIR}/scripts/stage5_fetch {PROJECT_DIR}/scripts/stage6_clean {PROJECT_DIR}/scripts/stage7_transform {PROJECT_DIR}/scripts/stage8_analysis`), never from the notebook. For Marimo, Step 6c checks the notebook against this list
 - Note version history for each task
 - If scripts directory is empty or missing: STOP immediately
 
@@ -424,7 +434,7 @@ head(df, 20)
 1. Read the script file and separate code from its appended execution log; if the boundary or log is missing, empty, ambiguous, or placeholder-only, stop for correction
 2. Create a literal `mo.md()` header cell whose `**Script:**` path is canonical and matches the archive source
 3. Create the immediately following archive cell with the exact `# SOURCE: scripts/<stage>/<filename>.py` header, comment-prefix every source line, and end with the one canonical `pass` statement
-4. Create the immediately following accordion cell with the matching filename and real log in one literal plain-fenced `mo.md()` string
+4. Before writing the accordion cell, run the Grep checks in "Marimo: Check the Log Before Emitting Cell 3" below on the script's EXECUTION LOG section. They choose the delimiter and the outer fence length `{N}`. Then create the immediately following accordion cell with the matching filename and real log in one raw plain-fenced `mo.md()` literal, with the delimiter the checks chose (`r'''` by default, `r"""` when the log contains `'''`, STOP when it contains both) and an opening and closing fence of `{N}` backticks (see "Marimo: Format the Log Literal")
 5. Only after the bundle, optionally add either a non-transforming Parquet preview or an existing-figure display with `mo.image()`
 
 **For Quarto (R), apply the canonical archive-section pattern:**
@@ -446,6 +456,16 @@ assembly. Quarto assembly uses the declarative heading + archive chunk + log
 callout + optional inspection pattern above; do not run R content through these
 Python helpers.
 
+**The helpers are reference logic, not code to run.** They state exactly what
+each cell must contain: which lines are copied, how they are prefixed, which
+banner lines are dropped, and which delimiter the log literal uses. You produce
+that text yourself with Read, Write and Edit; you do not execute these
+functions. Two parts of that work use tools. The delimiter and the outer fence
+length are chosen with the Grep tool on the script file ("Marimo: Check the Log
+Before Emitting Cell 3"). The executed proof that the cells match the
+scripts is the Step 6c fidelity check, which rebuilds every archived script from
+the notebook and compares it with the original.
+
 ##### Marimo: Extract Script Code (Commented Out)
 
 ```python
@@ -456,8 +476,11 @@ def extract_script_code_commented(script_path: Path) -> str:
     if script_path.is_absolute() or len(script_path.parts) != 3 or script_path.parts[0] != "scripts":
         raise ValueError(f"Noncanonical archive source path: {script_path}")
 
-    with open(script_path) as f:
-        lines = f.read().splitlines()
+    # newline="" and split("\n"): no newline translation, and lines break only
+    # at "\n", as in Python source and the decompiler. splitlines() would also
+    # break at form feed, U+2028, U+0085 and similar characters.
+    with open(script_path, encoding="utf-8", newline="") as f:
+        lines = f.read().split("\n")
 
     marker_indices = [
         index for index, line in enumerate(lines)
@@ -491,9 +514,12 @@ def extract_script_code_commented(script_path: Path) -> str:
 ```python
 # When creating Cell 2 for a script:
 commented_code = extract_script_code_commented(script_path)
+# Indent each "\n" line; textwrap.indent() splits with splitlines() and would
+# insert indentation after a U+2028 or form feed inside a line.
+indented_code = "\n".join("    " + line for line in commented_code.split("\n"))
 cell_content = f"""@app.cell
 def _():
-{textwrap.indent(commented_code, '    ')}
+{indented_code}
 """
 ```
 
@@ -502,8 +528,8 @@ def _():
 ```python
 def extract_execution_log(script_path: Path) -> str:
     """Extract one real log payload; fail closed on missing or ambiguous evidence."""
-    with open(script_path) as f:
-        lines = f.read().splitlines()
+    with open(script_path, encoding="utf-8", newline="") as f:  # see above
+        lines = f.read().split("\n")
 
     marker_indices = [
         index for index, line in enumerate(lines)
@@ -517,22 +543,145 @@ def extract_execution_log(script_path: Path) -> str:
         line[2:] if line.startswith("# ") else "" if line == "#" else line
         for line in log_lines
     ]
-    while clean_lines and set(clean_lines[0].strip()) <= {"="}:
+    # Drop only the `=====` banner lines under the marker. Keep the blank line
+    # that follows the banner: the decompiler then rebuilds the original log
+    # block line for line, which the Step 6c fidelity check relies on.
+    while clean_lines and clean_lines[0].strip() and set(clean_lines[0].strip()) <= {"="}:
         clean_lines.pop(0)
-    log_text = "\n".join(clean_lines).strip()
-    normalized = log_text.casefold()
-    placeholder_signals = (
-        "no execution log found",
-        "placeholder",
-        "paste execution log",
-        "verbatim copy from script",
-        "todo",
-        "tbd",
-    )
-    if not log_text or any(signal in normalized for signal in placeholder_signals):
+    log_text = "\n".join(clean_lines).rstrip()
+    # The placeholder test is the decompiler's own rule,
+    # is_placeholder_execution_log() in scripts/decompile_notebook.py.
+    if not log_text.strip() or is_placeholder_execution_log(log_text):
         raise ValueError(f"Missing or placeholder execution log: {script_path}")
     return log_text
 ```
+
+The function returns plain text. It is placed in the notebook only through
+`format_log_literal()` below, never pasted into a non-raw string.
+
+**What counts as a placeholder** is decided by the same rule the decompiler
+applies, so Step 6c can never reject a log this step accepted, or the other way
+round. The rule looks at the whole log, not at words inside it. It ignores `#`
+prefixes, lines made only of `=`, `-`, `_` or `*`, punctuation, and letter
+case. A log is a placeholder when what remains, with or without a leading
+`execution log`, is a placeholder phrase (`No execution log found`, `TODO`,
+`TBD`, `placeholder`, `generic placeholder`, `execution log placeholder`,
+`verbatim copy from script`, and the other forms in the decompiler's
+`PLACEHOLDER_LOG_FORMS`), or when it is made only of placeholder-instruction
+words (`PLACEHOLDER_INSTRUCTION_WORDS`: `please`, `paste`, `the`, `here`,
+`later`, and so on) and contains `placeholder`, or `verbatim copy from script`,
+or `paste`, `copy` or `add` together with `execution` and `log` (as in `Please
+paste the execution log here later`). A real log that merely contains such a
+word, for example `TODO checks completed successfully`, is not a placeholder.
+
+##### Marimo: Check the Log Before Emitting Cell 3
+
+Run these Grep tool searches on each final script file, with line numbers
+(`-n`). First find the marker line with the pattern `^# EXECUTION LOG$`: it
+must match exactly one line, else STOP (the same rule as the helpers' marker
+check: a missing or ambiguous log boundary). Only matches *below* that line
+count; matches above it are in the script's code, such as docstrings, and do
+not matter here. In the file, each log line still carries the `# ` prefix that
+`run_with_capture.sh` added.
+
+1. Pattern `'''`, then pattern `"""`. These choose the delimiter: no `'''` in
+   the log, use `r'''`; `'''` but no `"""`, use `r"""`; both, STOP (no raw
+   delimiter can hold the log).
+2. The outer fence length `{N}`. Search for runs of backticks of growing
+   length, starting at three: pattern ```` `{3} ```` (three backticks in a
+   row), then ```` `{4} ````, ```` `{5} ````, and so on. `{N}` is the first
+   length with no match below the marker. Most logs have no run of three
+   backticks, so `{N}` is 3 and the fence is ```` ``` ````; a log containing
+   ```` ``` ```` and ````` ```` ````` gets a fence of five backticks. Open and
+   close the log with `{N}` backticks.
+
+Why the fence length: Cell 3 shows the log inside a fenced code block, and a
+log line that is itself a fence can close that block early. The rest of the log
+then renders as ordinary Markdown instead of verbatim text. Under CommonMark a
+backtick fence of `{N}` is closed by a line of `{N}` or more backticks indented
+at most three spaces; marimo 0.25.0 renders with `pymdownx.superfences`, which
+closes it at a line of exactly `{N}` backticks. A tilde line never closes a
+backtick fence, and a backtick run inside a line never closes one. A fence one
+backtick longer than every backtick run in the log satisfies both rules and
+any renderer that follows either, so no log line can close it. Probed on marimo
+0.25.0 (`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_03_fence_render.py`):
+with a five-backtick fence, a log holding ```` ``` ````, ````` ````python `````,
+````` ```` `````, `~~~` and an inline ```` ``` ```` displayed as one intact block,
+while the same log in a three-backtick fence was cut into three blocks, and a
+log line equal to the fence cut the log off. `scripts/decompile_notebook.py`
+accepts any fence of three or more backticks whose closing fence has the same
+length, and warns (Step 6c condition (i)) when a log line can still close the
+fence early. Never edit the log to fit a fence: lengthen the fence.
+
+##### Marimo: Format the Log Literal
+
+The log goes into a **raw** triple-quoted literal. A raw literal's value is its
+source text, so backslashes in a log (Windows paths such as `C:\new\table`,
+regexes such as `\d+`, `\U`, `\x`) are archived exactly. In a non-raw literal
+Python decodes them: `\n` and `\t` silently become a line break and a tab with
+every check passing, and `\U` or `\N` make the cell unparsable.
+
+```python
+def format_log_literal(log_text: str, script_path: Path) -> str:
+    """Wrap one verbatim log in the canonical raw fenced literal for mo.md()."""
+    # Outer fence: one backtick longer than the longest backtick run anywhere
+    # in the log, and at least three (the Grep procedure gives the same {N}).
+    longest_run = max((len(run) for run in re.findall(r"`+", log_text)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    fenced = fence + "\n" + log_text + "\n" + fence
+    if "'''" not in log_text:
+        literal = "r'''" + fenced + "'''"
+    elif '"""' not in log_text:
+        literal = 'r"""' + fenced + '"""'
+    else:
+        # Neither raw delimiter can hold this log: STOP (see STOP Conditions).
+        raise ValueError(f"Log contains both ''' and \"\"\": {script_path}")
+    # The parsed literal must give back the fenced log byte for byte.
+    if ast.literal_eval(literal) != fenced:
+        raise ValueError(f"Log literal does not round-trip: {script_path}")
+    return literal
+```
+
+**Usage in cell generation:**
+```python
+# When creating Cell 3 for a script:
+log_literal = format_log_literal(extract_execution_log(script_path), script_path)
+cell_content = f"""@app.cell
+def _(mo):
+    mo.accordion({{"Execution Log ({script_path.name})": mo.md({log_literal})}})
+    return
+"""
+```
+
+**Why the delimiter rule is enough** (probed on marimo 0.25.0 / Python 3.12,
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/fix2_raw_literal_probe.py`):
+in a raw literal a backslash only stops the quote right after it from closing
+the string, and keeps both characters. So `\'`, `\"`, a backslash at the end
+of a line, and a backslash at the end of the last log line are all archived
+unchanged. None of them can sit next to the closing delimiter, because the
+literal always ends with a newline and the closing fence (three or more
+backticks). A log that
+contains the chosen delimiter would end the literal early, which is why `'''`
+switches to `r"""` and a log with both is a STOP.
+
+**Line breaks.** The reference helpers read the script with `newline=""` (no
+newline translation) and split it at `\n` only, which is how the Python parser
+and `scripts/decompile_notebook.py` read the notebook. Form feed, vertical tab,
+U+0085, U+2028, U+2029 and similar characters are ordinary characters to Python,
+also inside a raw literal, so a log line holding one is archived and decompiled
+unchanged (probes
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_01_python_newline_probe.py`
+and the `phc_e2e` notebook: 6a, 6b and 6c clean, display intact). Do not use
+`splitlines()` or `textwrap.indent()` on script text: both also break lines at
+these characters. A carriage return (`\r`, e.g. a progress bar) cannot be
+archived: the Python parser reads both `\r\n` and a lone `\r` in the notebook as
+a line break, including inside a string. A carriage return in the middle of a
+line therefore becomes an extra line break, which Step 6c reports, so the
+assembly STOPs. A carriage return directly before a line break (a CRLF line
+ending) is dropped without a trace: the archived line just ends without it, and
+6c shows no difference (probe
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/r3_literal_edges.py`,
+cases c05 and c06). That loss is an accepted residual risk.
 
 ##### Marimo Helper: Find Final Script Version
 
@@ -575,7 +724,7 @@ def create_data_inspection_cell(output_path: str, cell_var_suffix: str) -> str:
 def _(pl, mo, PROJECT_DIR):
     # OPTIONAL DISPLAY ONLY - existing Parquet read/head; no analysis
     df_{cell_var_suffix} = pl.read_parquet(PROJECT_DIR / "{output_path}")
-    mo.ui.table(df_{cell_var_suffix}.head(100))
+    mo.ui.table(df_{cell_var_suffix}.head(100), selection=None, show_column_summaries=False)
 """
 ```
 
@@ -596,7 +745,7 @@ Generated by notebook-assembler agent.
 
 import marimo
 
-__generated_with = "0.10.19"
+__generated_with = "0.25.0"
 app = marimo.App(width="medium")
 
 
@@ -610,6 +759,16 @@ def _():
     import polars as pl
     from pathlib import Path
     return mo, pl, Path
+
+
+# ============================================================
+# PROJECT_DIR - absolute project path (Step 3); every display path builds on it
+# ============================================================
+
+@app.cell
+def _(Path):
+    PROJECT_DIR = Path("/daaf/research/2026-01-24_Example_Project")  # substitute the absolute project path
+    return (PROJECT_DIR,)
 
 
 # ============================================================
@@ -681,10 +840,14 @@ def _():
 def _(mo):
     # ILLUSTRATIVE BODY ONLY: replace every line inside the fence with the
     # source script's real log. Never emit this example as project evidence.
-    # Keep the matching key and literal fenced mo.md structure exactly.
-    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md('''```
+    # Keep the matching key and the RAW fenced mo.md literal exactly
+    # (r''' ... '''; r""" ... """ when the log contains '''), with an outer
+    # fence one backtick longer than any backtick run in the log (min. 3).
+    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md(r'''```
+
 Executed: 2026-01-24 14:32:05
 Exit code: 0
+Validated leaid pattern: ^\d{7}$
 Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
 CP1 VALIDATION: PASSED
 ```''')})
@@ -692,10 +855,10 @@ CP1 VALIDATION: PASSED
 
 
 @app.cell
-def _(pl, mo):
+def _(pl, mo, PROJECT_DIR):
     # OPTIONAL DISPLAY ONLY - existing Parquet read/head; no analysis
-    df_5_1 = pl.read_parquet("data/raw/2026-01-24_ccd_schools.parquet")
-    mo.ui.table(df_5_1.head(100))
+    df_5_1 = pl.read_parquet(PROJECT_DIR / "data/raw/2026-01-24_ccd_schools.parquet")
+    mo.ui.table(df_5_1.head(100), selection=None, show_column_summaries=False)
 
 
 # ============================================================
@@ -736,7 +899,7 @@ if __name__ == "__main__":  # marimo framework boilerplate (auto-generated)
 ```
 
 **MARIMO KEY POINTS:**
-1. The canonical archive bundle is three contiguous cells: matching literal `mo.md()` header, comment/pass source archive, and matching non-placeholder log accordion
+1. The canonical archive bundle is three contiguous cells: matching literal `mo.md()` header, comment/pass source archive, and matching non-placeholder log accordion whose log sits in a raw `mo.md(r'''...''')` literal (`r"""..."""` when the log contains `'''`)
 2. The source archive uses the exact canonical header, comments every source line with `# `, ends with one canonical `pass`, and contains no other executable content
 3. An optional post-bundle display cell may either preview existing Parquet data or display an already-created figure with `mo.image()`; it is not decompiled
 4. NO aggregations, NO filters, NO widgets, NO dashboards, and NO figure generation
@@ -751,11 +914,68 @@ if __name__ == "__main__":  # marimo framework boilerplate (auto-generated)
 
 ### Step 6: Test Notebook
 
-**For Marimo (Python):**
-- Run as a single Bash call: `marimo run {PROJECT_DIR}/notebook.py --host 0.0.0.0 --port 2718 --headless` (no `cd` or command chaining)
-- Verify all cells execute without errors
-- Verify data loads work (parquet files exist and load)
-- Fix any import issues (max 2 fix attempts, then STOP)
+**For Marimo (Python):** three checks, in order, each step a single tool call
+with absolute paths (a Bash call unless the step names the Glob tool; no `cd`
+or command chaining). `{notebook}` is the notebook file
+name (e.g. `2026-01-24_Title.py`); `{notebook-stem}` is the same name without `.py`.
+
+**6a. Structural gate (`marimo check`):**
+```
+marimo check {PROJECT_DIR}/{notebook} --format json --select MB
+```
+- `--select MB` reports only marimo's breaking rules (MB001-MB005; e.g. MB001 unparsable cells, MB002 a variable defined in more than one cell, MB003 a dependency cycle). Formatting rules (every archive cell triggers `MF004 empty-cells`) would bury them and do not fail the gate.
+- **PASS** only when all three hold: exit code 0, `summary.errored` is `false`, and `summary.files_with_issues` is 0. Never judge by `summary.total_issues` alone: a missing or unreadable file reports `total_issues: 0` with `errored: true` and exit 1.
+- **On FAIL:** report each issue's `code`, `name`, `line` and `cell_id` (MB001 has no `cell_id`; its `line` locates it), then find which cell the `line` falls in:
+  - **Scaffolding** (imports, `PROJECT_DIR`, display cells): fix the assembly and re-run 6a. MB002 usually means two preview cells assign the same name: give each its own (`df_5_1`, `df_5_2`, ...).
+  - **A Cell 2 archive cell:** a correctly built one is comments plus `pass` and cannot cause a breaking issue, so look for an archive line that lost its `# ` prefix and restore the prefix. The copied text itself does not change.
+  - **A Cell 3 log accordion:** with the canonical raw literal, backslashes in a log are harmless, and a delimiter chosen by the Grep rule ("Marimo: Check the Log Before Emitting Cell 3") cannot appear in the log. So first re-run that rule's `'''` and `"""` searches on the script. If the cell's delimiter is not the one the rule picks, re-emit that Cell 3 with the right delimiter: one fix attempt, which changes only the quoting, never the log text. If the delimiter already follows the rule, MB001 means the log cannot be archived verbatim (a NUL byte in the log is the known case): STOP, not something to fix (next bullet).
+- **Never change verbatim content to pass 6a, 6b or 6c.** Archived script code and execution-log text are copied exactly. If the only fix would alter either one (escaping, dropping or rewording a log line), STOP and report the script path and the offending log line. The only quoting changes allowed are restoring the canonical raw form (`r'''` or `r"""` per "Marimo: Format the Log Literal") to a Cell 3 that lacks it, and switching a Cell 3 to the delimiter or the outer fence length the Grep rule picks. Do not invent any other escaping scheme: the canonical bundle format is a user decision, and `scripts/decompile_notebook.py` validates the bundle strictly.
+- Never add `--fix` or `--unsafe-fixes`: marimo offers an unsafe fix for MF004 on every archive cell, and applying it deletes archived script code. Never add `--strict`: on marimo 0.25.0, `--strict --format json` crashes (`UnboundLocalError`) and exits 1 even on a clean notebook.
+
+**6b. Execution check (`marimo export html`)**, only after 6a passes:
+```
+marimo export html {PROJECT_DIR}/{notebook} -o {PROJECT_DIR}/__marimo__/stage9_check/{notebook-stem}.html --no-sandbox -f
+```
+- The export runs every cell once and exits. **PASS** requires exit 0. Do not test with `marimo run … --headless`: it starts a server that runs no cells until a browser connects, so it never exits on its own and reports no cell failure.
+- `-o` writes the check HTML into the project's `__marimo__/` folder, beside marimo's own session snapshot (see the side effect below). Both are regenerable caches that embed the rendered data previews, and `.gitignore` excludes `__marimo__/` at any depth. Do not write it to the project's `scripts/scratch/`: the `.gitignore` rule `scripts/scratch/` matches only the repository root's `scripts/scratch/`, so a project's `scripts/scratch/` is not ignored. Never write it to `/tmp`. marimo creates `stage9_check/` if it is absent; `-f` overwrites an earlier check file. `--no-sandbox` keeps the run in the Dockerfile-defined environment.
+- **On exit 1** (`Export was successful, but some cells failed to execute`): stderr prints one error line per failing cell (for example `MarimoExceptionRaisedError: ...` or `MultipleDefinitionError: ...`). To locate the cells, read the session snapshot (see the side effect below): `jq -c '.cells | to_entries[] | select(any(.value.outputs[]?; .type == "error")) | {index: .key, id: .value.id, error: [.value.outputs[] | select(.type == "error") | .evalue]}' {PROJECT_DIR}/__marimo__/session/{notebook}.json`. `index` is the cell's 0-based position in the notebook file. Then sort each failure:
+  - **Missing display input** (`No such file or directory` for a Parquet that a preview cell reads or a figure that an `mo.image()` cell shows, and `ls` confirms the file is absent): follow the two "Display input missing" Decision Points. If the file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md`, the file is a declared Stage 5-8 output and its absence is an upstream failure: STOP and report it, because removing the display would hide it. Otherwise remove each such display cell in one pass, log a WARNING per cell, and re-run 6a-6c. Do not create the file or point the display at a different one. If `ls` shows the file exists, the path is wrong: treat it as the next case.
+  - **Anything else** (an import error, a `NameError`, a wrong path to a file that exists, an exception in scaffolding) is an assembly defect: fix it under the Autonomous Deviation Rules and re-run 6a-6c.
+- Preview and figure paths must be absolute `Path`s built from `PROJECT_DIR`. The export resolves a relative path against the shell's working directory, not the notebook's folder, so a relative preview path fails even when the file exists. For figures the `Path` matters a second time: `mo.image(PROJECT_DIR / "...")` reads the file, so a missing figure fails the cell (`[Errno 2] No such file or directory`) and the export exits 1. A plain string path that is not a file instead falls through to marimo's URL fallback and renders a broken image with exit 0 (marimo 0.25.0, `marimo/_plugins/stateless/image.py`). So pass the `Path` itself, never `str(PROJECT_DIR / "...")`: the `str()` wrapper defeats the missing-figure check.
+- **Expected side effect, leave it in place:** every executing export (`export html`, `export session`) also writes a session snapshot, `{PROJECT_DIR}/__marimo__/session/{notebook}.json` (e.g. `2026-01-24_Title.py.json`), beside the notebook; marimo 0.25.0 has no flag to turn this off. It is a regenerable cache of the rendered outputs, data previews included, and `.gitignore` excludes `__marimo__/`. Neither the snapshot nor the check HTML is part of the notebook deliverable: do not delete, move or edit them, and do not list them as project outputs. At Stage 12, data-verifier reads this snapshot as the evidence that 6b passed, without re-running the export.
+- A clean export shows that the notebook's scaffolding and optional displays run. Archive cells are comments plus `pass`, so it does not re-run the Stage 5-8 analysis; that is Reproducibility Verification's job.
+
+**6c. Verbatim fidelity check (decompile and compare)**, only after 6a and 6b pass, so it checks the notebook as delivered after every fix pass. 6a and 6b cannot see a transcription error, a silently altered log, a missing script or an archived earlier version; this check can, because it rebuilds each archived script from the notebook and compares the result with the Step 1 final-version inventory and with the scripts on disk. Below, `{folder}` is `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_{n}`. Four single tool calls:
+1. `ls {PROJECT_DIR}/__marimo__/stage9_check/` and pick the lowest `{n}` (1, 2, ...) for which `decompiled_{notebook-stem}_{n}` is not listed. The decompiler refuses an existing output folder ("output directory already exists"); if that happens, take the next `{n}`.
+2. Decompile. `scripts/decompile_notebook.py` is a standalone framework utility, so this direct `python3` call is an intentional exception to file-first execution, the same one Reproducibility Verification RV-1 uses:
+   ```
+   python3 /daaf/scripts/decompile_notebook.py {PROJECT_DIR}/{notebook} {folder}
+   ```
+   Note its exit code, its `Validated {N} source/log bundle(s)` line, and any line containing `legacy non-raw execution-log literal` or `can close its code fence early`. An `Error:` line (exit 1) is an assembly defect in the bundle it names. A `WARNING: <script> — dangling references: …` line is not a 6c failure: it lists names the decompiler's static scan cannot resolve, and the original script has the same names.
+3. List the decompiled scripts: the Glob tool, pattern `stage*/*.py`, path `{folder}` (or `ls -R {folder}`). Write each as `<stage>/<file>.py`.
+4. Compare every archived script with its original:
+   ```
+   git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts {folder}
+   ```
+   Each output line names one file that differs; an archived script that matches its original prints no line.
+
+**PASS only when all four conditions hold:**
+- **(i) Clean decompile:** call 2 exited 0 and printed no `legacy non-raw execution-log literal` warning and no `can close its code fence early` warning. The first means the named script's Cell 3 lacks the `r` prefix; the second means its outer fence is too short for the log, so the display cuts the log off at the named log line. Either way, re-emit that Cell 3 from the source script in the canonical form (raw literal, fence length from the Grep procedure) and re-run 6a-6c (one fix attempt).
+- **(ii) Bundle count:** `{N}` equals the number of paths in the Step 1 final-version inventory. That inventory comes from the scripts directory and the "Find Final Script Version" rule, not from the notebook, so it is an independent expectation.
+- **(iii) Same scripts:** the call 3 paths are exactly the Step 1 final-version paths (relative to `{PROJECT_DIR}/scripts`). A final path that is missing is an omitted script; an extra path is an earlier version archived instead of the final one, or a script archived under another name.
+- **(iv) Only expected numstat lines:** every call 4 line is one of two kinds:
+  - a line whose path ends in ` => dev/null}`: an original that is not archived. This is expected only for superseded versions and files outside the stage folders (`cr/`, `debug/`, `scratch/`); a final script listed here is caught by (iii);
+  - exactly one line whose path starts with `/{dev/null => ` and ends in `/MANIFEST.md}`: the decompiler's manifest.
+
+  Any other line fails, including a script present on both sides with changes (`N M …/{scripts => __marimo__/stage9_check/decompiled_…}/<stage>/<file>.py`), any other `dev/null => …` line such as a `.py` file, and a git rename line `{<old path> => <new path>}` that pairs two different files.
+- `git diff --no-index` exits 1 whenever the two folders differ, which is always, because `MANIFEST.md` exists only on the decompiled side. Judge 6c by the four conditions, never by that exit code.
+
+**On a failure of (ii), (iii) or (iv):** the notebook does not hold the final scripts verbatim. Report the missing, extra or differing paths. For a script that differs, show the lines with `git diff --no-index --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts/<stage>/<file>.py {folder}/<stage>/<file>.py`. Then STOP: this is a verbatim fidelity failure. Typical causes: an omitted final script, an earlier version archived, a transcription slip in Cell 2 or 3, a log with a character the decompiler cannot rebuild (see STOP Conditions), or a script rerun or edited after the notebook was built.
+
+**What the two whitespace flags absorb.** `--ignore-space-at-eol` hides changes in whitespace at line ends, and `--ignore-blank-lines` hides added or removed blank lines. They are needed because the decompiler normalizes two things in every notebook (verified on marimo 0.25.0 with real `run_with_capture.sh` logs): a blank captured output line, archived in the script as `# ` (hash and space), comes back as `#`; and blank lines or trailing spaces at the end of the code section collapse to the two blank lines before the log banner. Without the flags, a faithful notebook whose log has a blank output line would fail. The flags also hide differences 6c is meant to find, so 6c cannot see: a blank line added or removed anywhere in a script, including inside a multi-line string, where it changes the string's value; trailing spaces or tabs added or dropped on any code or log line; and a CRLF line ending dropped from a log line (see "Line breaks" under "Marimo: Format the Log Literal"). These are accepted residual risks. The helper rules never add or drop blank lines or trailing whitespace, so a slip in copying produces the first two, with one known exception: **trailing whitespace does not survive the Write and Edit tools.** In a probe on 2026-10-19 (`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_ws_write_probe.txt`, inspected with `cat -A`), lines written with Write or added with Edit that ended in two spaces, a tab, or space-tab-space all came out with no trailing whitespace, while a tab inside a line survived and the same lines written with `printf` kept their trailing whitespace. Whether the tool or the model's output drops it was not determined. So a notebook written with these tools cannot archive a code or log line's trailing spaces or tabs, and 6c does not see the loss. To disclose it, run the Grep tool with pattern `[ \t]$` and line numbers on each final script; for each script with matches, add an INFO under Issues Found naming the script and the line numbers whose trailing whitespace the archive drops. This is disclosure, not a STOP: the visible text of every line is still archived verbatim.
+
+- `git diff --no-index` is used rather than `diff` because the shipped allow list has `Bash(git diff *)`; it compares any two paths and writes nothing. Leave the `decompiled_*` folder in place: like the check HTML it sits under the gitignored `__marimo__/` and is not a project output. At Stage 12, data-verifier re-checks it read-only: it takes the `decompiled_{notebook-stem}_[0-9]*` folder whose MANIFEST.md is newest, and that MANIFEST's `**Source Notebook:**` line must name this notebook, else NOT VERIFIED (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` § Verification Execution Protocol, step 5).
+- Max 2 fix attempts across 6a-6c, then STOP. A display-removal pass, a re-emitted raw Cell 3 and a Cell 3 switched to the right delimiter or fence length each count as one of the two. A failure of 6c (ii)-(iv) is never a fix attempt: it is a STOP.
 
 **For Quarto (R):**
 - Run as a single Bash call: `quarto render {PROJECT_DIR}/notebook.qmd` (no `cd` or command chaining)
@@ -774,9 +994,10 @@ Return findings using the Output Format below.
 |-----------|--------|
 | Script has no non-placeholder execution log | BLOCK canonical assembly for that script; surface the exact script path for correction. Never emit `No execution log found` or an empty callout as archive evidence |
 | Script has revision versions | Show version history in Marimo Cell 1 or Quarto heading metadata; archive only the final successful version |
-| Output parquet file missing | Omit the optional inspection display and log a WARNING; do not create a broken preview |
-| Stage 8.2 script produces figure, not data | Display the existing figure with `mo.image()` (Marimo) or `knitr::include_graphics()`/Markdown image syntax (Quarto); do not create a new visualization |
-| Stage 8.1 script produces analysis results, not figure | Use `pl.read_parquet()` + `mo.ui.table()` (Marimo) or the canonical `arrow::read_parquet()` + `dplyr::glimpse()` + `head()` inspection chunk (Quarto) |
+| Display input missing, declared: a Parquet preview input or a displayed figure is absent (found before assembly or by the Step 6b export check), and its file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md` | STOP and report the path: an expected Stage 5-8 output is missing, which is an upstream failure; omitting the display would hide it |
+| Display input missing, undeclared: a Parquet preview input or a displayed figure is absent, and its file name appears in none of those files | Omit that display cell/chunk and log a WARNING; do not create a broken display, the file, or a substitute path. When Step 6b finds it, the removal pass counts as one of the two fix attempts |
+| Stage 8.2 script produces figure, not data | Display the existing figure with `mo.image(PROJECT_DIR / "...")`, passing the `Path` itself and never `str(...)` (Marimo), or `knitr::include_graphics()`/Markdown image syntax (Quarto); do not create a new visualization. A missing figure file follows the two "Display input missing" rows above |
+| Stage 8.1 script produces analysis results, not figure | Use `pl.read_parquet()` + `mo.ui.table(df_<step>.head(100), selection=None, show_column_summaries=False)` (Marimo) or the canonical `arrow::read_parquet()` + `dplyr::glimpse()` + `head()` inspection chunk (Quarto) |
 
 ---
 
@@ -810,7 +1031,7 @@ Return findings in this structure:
 - Summary/metadata sections: [count]
 
 ### Verification
-- [ ] Marimo notebook runs without errors (`marimo run`) OR Quarto notebook renders without errors (`quarto render`)
+- [ ] Marimo: the `marimo check --select MB` gate passed (exit 0, `errored: false`, `files_with_issues: 0`), `marimo export html` exited 0, and the Step 6c fidelity check passed all four conditions: (i) decompiler exit 0 with no legacy-literal or early-fence warning, (ii) `Validated {N}` equals the Step 1 final-version count, (iii) the decompiled paths equal the Step 1 final-version paths, (iv) every numstat line is an ` => dev/null}` line or the single `MANIFEST.md` line, OR Quarto notebook renders without errors (`quarto render`)
 - [ ] For Quarto, rendering evaluated only explicitly enabled previews and did not re-run archived Stage 5-8 scripts
 - [ ] All data file references resolve
 - [ ] All figure references exist and use the format-appropriate display mechanism
@@ -822,10 +1043,10 @@ Return findings in this structure:
 | Aspect | Confidence | Rationale |
 |--------|------------|-----------|
 | Script coverage | [H/M/L] | [Evidence: all N scripts found and assembled, or gaps identified] |
-| Verbatim fidelity | [H/M/L] | [Evidence: copy verified against source, or truncation risk] |
+| Verbatim fidelity | [H/M/L] | [Evidence: Marimo: Step 6c conditions (i)-(iv) each shown: the decompiler's `Validated {N}` line, the Step 1 final-version list beside the decompiled path list, and the `git diff --numstat` output quoted; Quarto: copy verified against source, or truncation risk] |
 | Execution logs | [H/M/L] | [Evidence: all logs found with markers, or missing markers noted] |
 | Data file references | [H/M/L] | [Evidence: all parquet files verified to exist, or missing files] |
-| Notebook validation | [H/M/L] | [Evidence: `marimo run` succeeded, or `quarto render` validated assembly and enabled previews] |
+| Notebook validation | [H/M/L] | [Evidence: `marimo check` gate JSON summary quoted and `marimo export html` exit 0, or `quarto render` validated assembly and enabled previews] |
 
 **Confidence Levels:**
 - **HIGH:** Evidence directly confirms correctness
@@ -869,7 +1090,7 @@ If nothing novel, emit "None" — this is the expected common case.
 |----------|----------|-----------------|
 | Orchestrator | Status + Structure summary | Gate G9 decision (proceed to Stage 10 or revise) |
 | integration-checker | Notebook file | Verifies data/figure references resolve |
-| data-verifier (Stage 12) | Notebook file | Confirms existence, substantive archive content, and format-specific validation (`marimo run` or Quarto render evidence) |
+| data-verifier (Stage 12) | Notebook file + Step 6b session snapshot + Step 6c decompiled folder | Confirms existence, substantive archive content, and format-specific validation (Marimo: re-runs the read-only `check` gate, reads the `export html` session snapshot without re-executing, and re-checks the newest `decompiled_{notebook-stem}_[0-9]*` folder read-only against the scripts, NOT VERIFIED unless its MANIFEST `**Source Notebook:**` line names this notebook; Quarto: render evidence) |
 | User | Notebook file | Audit trail review; Marimo may be viewed as an app, while Quarto is a rendered static archive document |
 
 **Severity-to-Action Mapping:**
@@ -893,7 +1114,8 @@ If nothing novel, emit "None" — this is the expected common case.
 - (Quarto) Preserve R code literally and un-commented beneath the exact decompiler marker; set `#| code-fold: false` and `#| eval: false` on every archive chunk, with global `execute: eval: false`
 - Require a real, non-placeholder execution log for every archived script; put it in the format-specific collapsed container, immediately following its archive chunk for Quarto
 - Treat a missing, empty, or placeholder log (including `No execution log found`) as a BLOCKER requiring correction before canonical assembly
-- Validate before reporting completion (`marimo run` for Python; `quarto render` for R assembly and enabled previews)
+- (Marimo) Put every execution log in a raw `mo.md(r'''...''')` literal (`r"""..."""` when the log contains `'''`)
+- Validate before reporting completion (Python: the `marimo check --select MB` gate, then the `marimo export html` execution check, then the Step 6c verbatim fidelity check; R: `quarto render` for assembly and enabled previews)
 
 ### Ask First Before
 - Omitting any final successful script from the notebook (even if it appears redundant)
@@ -902,7 +1124,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 ### Never Do
 - Write new analysis code (Python: group_by, agg, pivot, filter, with_columns; R: group_by, summarise/summarize, mutate, filter, pivot_wider/pivot_longer)
-- Create interactive widgets (dropdown, slider, multiselect, text input)
+- Create interactive widgets (dropdown, slider, multiselect, text input, `mo.ui.dataframe()`, `mo.ui.data_editor()`)
 - Summarize or paraphrase script code or execution logs
 - Modify the original script files in `scripts/`
 - Leave Marimo Python archive code uncommented, or comment out/rewrite Quarto R archive code
@@ -911,9 +1133,9 @@ If nothing novel, emit "None" — this is the expected common case.
 ### Autonomous Deviation Rules
 
 You MAY deviate without asking for:
-- **RULE 1:** Import fixes — Add missing imports to the imports cell if `marimo run` fails (Marimo); add missing namespace qualifications (e.g., `dplyr::glimpse`) in inspection chunks if `quarto render` fails (Quarto)
-- **RULE 2:** Path fixes — Correct data file paths if the absolute path has changed but the file exists elsewhere in the project (applies to both `marimo run` and `quarto render` failures)
-- **RULE 3:** Cell ordering — Reorder cells to satisfy marimo's dependency graph if execution fails (Marimo); deduplicate colliding `#| label:` values if `quarto render` fails (Quarto — labels must be unique)
+- **RULE 1:** Import fixes — Add missing imports to the imports cell if the Step 6 `marimo check` gate or `marimo export html` check fails (Marimo); add missing namespace qualifications (e.g., `dplyr::glimpse`) in inspection chunks if `quarto render` fails (Quarto)
+- **RULE 2:** Path fixes — Correct data file paths if the absolute path has changed but the file exists elsewhere in the project (applies to both Marimo Step 6 check/export and `quarto render` failures)
+- **RULE 3:** Cell scaffolding — Rename a name defined in two display cells (MB002) or break a dependency cycle (MB003) in scaffolding cells if the Step 6 gate or export fails (Marimo); deduplicate colliding `#| label:` values if `quarto render` fails (Quarto — labels must be unique)
 
 You MUST ask before:
 - Adding code beyond the selected format's optional load-and-display inspection or existing-figure display
@@ -928,8 +1150,10 @@ Immediately stop and escalate when:
 |-----------|--------|
 | Scripts directory empty or missing | STOP — cannot assemble without scripts |
 | Any final script lacks a non-placeholder execution log | STOP — canonical Stage 9 requires complete code/log evidence for every archive bundle; identify the script for correction and do not emit a placeholder |
-| Critical data files missing | STOP — notebook data inspection will fail |
-| `marimo run` or `quarto render` fails after 2 fix attempts | STOP — Marimo cannot run, or Quarto assembly/enabled previews cannot render; Quarto rendering does not test archived analysis re-execution |
+| A display input (Parquet or figure) that is a declared Stage 5-8 output is missing (its file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md`) | STOP — an expected pipeline output is absent, an upstream failure that omitting the display would hide. A missing undeclared display input is a WARNING, not a STOP: omit its display (see Decision Points) |
+| A log cannot be archived verbatim: it contains both `'''` and `"""` (no raw delimiter can hold it), Step 6a reports MB001 inside a Cell 3 log accordion whose delimiter already follows the Grep rule, or the Step 6c fidelity check fails condition (ii), (iii) or (iv) (a script missing, an earlier or renamed version archived, or an archived script that differs from its original) | STOP — report the script path and the offending log line, the missing or extra paths, or the differing lines. Backslashes in a log are not a reason to stop: the canonical raw literal archives them verbatim. Nor are code-fence lines in a log: the outer fence is made longer than any backtick run in the log. Never alter archived code or log text to pass a check (the only quoting changes allowed are restoring the canonical raw form and switching to the delimiter or fence length the Grep rule picks); the canonical bundle format is a user decision, and `scripts/decompile_notebook.py` validates it strictly |
+| A log holds content the canonical bundle cannot carry or `scripts/decompile_notebook.py` cannot rebuild: a NUL byte (6a MB001; the decompiler rejects the notebook), bytes that are not valid UTF-8 (the script cannot be read as text), or a carriage return inside a line (the Python parser reads it as a line break, so 6c reports a difference). Form feed, U+2028, U+0085 and printed `# ====` or `# EXECUTION LOG` lines are not on this list: they archive and decompile unchanged | STOP — these cases are rare and the STOP is deliberate: the notebook cannot be shown to match the script, and fixing it means changing the bundle format or the decompiler (a user decision), never editing the log. Report the script path, the line, and which case it is |
+| Marimo `marimo check` gate or `marimo export html` check, or `quarto render`, fails after 2 fix attempts | STOP — Marimo has a breaking structural issue or a cell that fails to execute, or Quarto assembly/enabled previews cannot render; neither check re-executes archived Stage 5-8 analysis |
 | Plan.md missing or has no research question | STOP — cannot create notebook title/context |
 
 **STOP Format:**
@@ -982,9 +1206,9 @@ Awaiting guidance before proceeding.
 1. [ ] Every script from `scripts/stage{5,6,7,8}_*/` is represented in the notebook
 2. [ ] Each script follows the canonical archive pattern (three contiguous matching header/source/log cells for Marimo; literal R archive chunk + immediately adjacent canonical log callout for Quarto); any display follows the complete bundle/pair
 3. [ ] Script code is properly archived (exact canonical SOURCE/header + comment/pass-only body for Marimo; literal and un-commented R for Quarto, with exactly one `#| code-fold: false`, exactly one per-chunk `#| eval: false`, global `execute: eval: false`, and the exact `# --- VERBATIM COPY of scripts/... ---` marker)
-4. [ ] Every final script has a real, non-placeholder execution log copied verbatim (not summarized) into the immediately adjacent matching Marimo accordion or canonical Quarto Execution Log callout
+4. [ ] Every final script has a real, non-placeholder execution log copied verbatim (not summarized) into the immediately adjacent matching Marimo accordion (as a raw `mo.md()` literal) or canonical Quarto Execution Log callout
 5. [ ] Version history is documented for all revised scripts
-6. [ ] Marimo runs without errors, or Quarto renders its assembly and explicitly enabled previews without errors; Quarto rendering is not claimed as archived Stage 5-8 reproduction
+6. [ ] Marimo passes the Step 6 `marimo check --select MB` gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check, or Quarto renders its assembly and explicitly enabled previews without errors; neither is claimed as archived Stage 5-8 reproduction
 7. [ ] All data file and figure references resolve to existing files and use format-appropriate display syntax
 
 **This notebook assembly is INCOMPLETE if:**
@@ -994,7 +1218,7 @@ Awaiting guidance before proceeding.
 - Any execution log is missing, empty, ambiguous, a placeholder such as `No execution log found`, or summarized rather than verbatim
 - The notebook contains new analysis code not from the original scripts
 - The notebook contains new interactive widgets or controls
-- `marimo run` fails, or `quarto render` fails to validate assembly and enabled previews
+- The Marimo `marimo check` gate or `marimo export html` check fails (or was replaced by `marimo run`, which cannot show that cells execute), the Step 6c fidelity check fails any of its conditions (i)-(iv) (a decompiled script that differs from its original, a final script missing, an earlier version or a renamed script archived) or was skipped, or `quarto render` fails to validate assembly and enabled previews
 
 ### Self-Check
 
@@ -1007,9 +1231,10 @@ Before returning output, verify:
 | 3 | Are logs real, non-placeholder, verbatim, and immediately attached in the exact matching Marimo accordion or canonical Quarto callout? | Stop on missing/ambiguous evidence; otherwise re-copy the log and restore the exact container |
 | 4 | Are there ZERO new widgets, transformations, summaries, or visualizations? | Remove all non-inspection additions |
 | 5 | Is optional new content limited to simple load/display or display of an existing figure, using format-appropriate syntax? | Remove any other new code |
-| 6 | Did `marimo run` succeed, or did `quarto render` validate assembly and enabled previews without implying archived analysis reproduction? | Fix errors or claims (max 2 attempts, then STOP) |
+| 6 | Did the Marimo `marimo check` gate pass (exit 0, `errored: false`, `files_with_issues: 0`), `marimo export html` exit 0 and the Step 6c fidelity check pass all four of its conditions (clean decompile, bundle count, same scripts as the Step 1 final-version inventory, only expected numstat lines), with every `[ \t]$` Grep match in a final script reported as an INFO (trailing whitespace the archive drops), or did `quarto render` validate assembly and enabled previews, without altering archived code or log text and without implying archived analysis reproduction? | Fix scaffolding or claims (max 2 attempts across 6a-6c, a display-removal pass, re-emitted raw Cell 3 or delimiter or fence switch included, then STOP); STOP at once on a 6c (ii)-(iv) failure or if the only fix would alter verbatim content |
 | 7 | Is version history documented for all revised scripts? | Add version tables to Marimo headers or Quarto heading metadata |
 | 8 | Did I detect the correct format from script extensions? | Verify `.py` → Marimo, `.R` → Quarto |
+| 9 | Does every display input exist? For each missing one, did I STOP if it is a declared Stage 5-8 output (named in `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md`), and otherwise omit its display with a WARNING? | STOP and report a missing declared output; remove the display of a missing undeclared input |
 
 ---
 
@@ -1076,7 +1301,7 @@ def _(pl, DATA_DIR):
 - Implements new features not in the scripts
 - Builds a "dashboard" instead of compiling scripts
 
-**The notebook should have ZERO `group_by()`, ZERO `pivot()`, ZERO `mo.ui.dropdown()`, ZERO `mo.ui.slider()`, ZERO `mo.ui.multiselect()`, ZERO filtering logic.**
+**The notebook should have ZERO `group_by()`, ZERO `pivot()`, ZERO `mo.ui.dropdown()`, ZERO `mo.ui.slider()`, ZERO `mo.ui.multiselect()`, ZERO `mo.ui.dataframe()`, ZERO `mo.ui.data_editor()`, ZERO filtering logic.**
 
 ### RIGHT: Verbatim script compilation *(education domain example -- substitute actual script names)*
 
@@ -1133,10 +1358,11 @@ def _():
     #
     pass  # Cell must have executable statement
 
-# RIGHT: VERBATIM copy of execution log in accordion (opener on ONE line)
+# RIGHT: VERBATIM copy of execution log in accordion (opener on ONE line), in a
+# RAW literal so backslashes in the log stay exactly as printed
 @app.cell
 def _(mo):
-    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md('''```
+    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md(r'''```
 Executed: 2026-01-24 14:32:05
 Duration: 12.5s
 
@@ -1150,11 +1376,13 @@ Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
 CP1 VALIDATION: PASSED
 ```''')})
 
-# RIGHT: Optional post-bundle existing-Parquet preview (one of two display forms)
+# RIGHT: Optional post-bundle existing-Parquet preview (one of two display forms);
+# PROJECT_DIR-anchored path and a per-step name (df_5_1) so the Step 6 checks pass;
+# a read-only table without selection checkboxes or column summaries
 @app.cell
-def _(pl, mo):
-    df = pl.read_parquet("data/raw/2026-01-24_ccd_schools.parquet")
-    mo.ui.table(df.head(100))
+def _(pl, mo, PROJECT_DIR):
+    df_5_1 = pl.read_parquet(PROJECT_DIR / "data/raw/2026-01-24_ccd_schools.parquet")
+    mo.ui.table(df_5_1.head(100), selection=None, show_column_summaries=False)
 ```
 
 ---

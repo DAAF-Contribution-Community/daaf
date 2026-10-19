@@ -826,12 +826,23 @@ RUN uv pip install --system \
     osmnx==2.1.0
 
 # Install visualization packages
+# NOTE: marimo pinned 0.25.0 (2026-10-16; was 0.19.11) for security: 0.19.11 is
+#       affected by CVE-2026-39987 (critical pre-auth RCE via the edit-mode
+#       /terminal/ws endpoint, fixed 0.23.0), CVE-2026-54386 (XSS, fixed 0.23.9)
+#       and CVE-2026-67618 / CVE-2026-75149 (malicious-notebook PEP 723 and MCP
+#       config injection, fixed 0.23.15). 0.25.0 was uploaded inside
+#       UV_EXCLUDE_NEWER, so no per-package override. It adds two transitive deps,
+#       pyzmq 27.2.0 and python-multipart 0.0.32 (wheels on x86_64 and aarch64,
+#       resolved under the freeze), and its pymdown-extensions bound (>=10.21.2,<12)
+#       lets that marimo-only dep resolve to 11.0.2 (was 10.21.3; observed in the
+#       post-rebuild freeze). Transitive deps are left to resolution under the
+#       freeze, not pinned. See research/2026-10-16_FrameworkDev_MarimoUpgrade/.
 RUN uv pip install --system \
     matplotlib==3.10.8 \
     seaborn==0.13.2 \
     plotnine==0.15.3 \
     plotly==6.5.2 \
-    marimo==0.19.11
+    marimo==0.25.0
 
 # Install ML interpretation & fairness packages
 RUN uv pip install --system \

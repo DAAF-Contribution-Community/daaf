@@ -2,7 +2,7 @@
 
 Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
-> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer for Stage 11, then data-verifier for Stage 12), not parallel waves. Under async dispatch, each returns via a completion notification rather than a synchronous tool return. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
+> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer for Stage 11, then data-verifier for Stage 12), not parallel waves. Under async dispatch (without DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, or on other Claude Code versions; with it, on the pinned 2.1.281, returns come back inline), each returns via a completion notification rather than a synchronous tool return. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
 
 ---
 
@@ -350,9 +350,51 @@ Execute verification in this order:
    └─ Verify Plan.md commitments fulfilled
    └─ Check checkpoint statuses in STATE.md
 
-5. EXECUTION CHECK
-   └─ Load notebook: `marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless` (Python) or `quarto render [notebook].qmd` (R)
+5. EXECUTION CHECK (Python: read-only; data-verifier never runs `marimo export`)
+   └─ Python 6a: `marimo check {PROJECT_DIR}/{notebook} --format json --select MB` (reads only; never
+      `--fix`, `--unsafe-fixes` or `--strict`). PASS: exit 0, `summary.errored` false,
+      `summary.files_with_issues` 0
+   └─ Python 6b evidence, without re-executing: the session snapshot
+      `{PROJECT_DIR}/__marimo__/session/{notebook}.json` that Stage 9's `marimo export html` wrote
+      ├─ exists and is newer than the notebook:
+      │  `ls -l --time-style=full-iso {PROJECT_DIR}/{notebook} {PROJECT_DIR}/__marimo__/session/{notebook}.json` (quote it)
+      └─ `jq -c '{cells: (.cells | length), no_output: ([.cells[] | select((.outputs | length) == 0)] | length), errors: ([.cells[] | select(any(.outputs[]?; .type == "error"))] | length)}' {PROJECT_DIR}/__marimo__/session/{notebook}.json`
+         prints `errors` 0, `no_output` 0, and `cells` equal to the notebook's cell count: the Grep
+         tool in count mode (`output_mode: "count"`), pattern `^@app.cell`, path `{PROJECT_DIR}/{notebook}`
+         (the Grep tool, not shell `grep`, which the shipped allow list does not cover)
+   └─ Snapshot missing or older than the notebook, `no_output` > 0, or the cell count differs: NOT VERIFIED.
+      The orchestrator has Stage 9 Step 6 re-run; data-verifier does not run the export.
+      Any `errors` > 0: the Stage 9 execution check did not pass (report the failing cells)
+   └─ Python 6c evidence, read-only (data-verifier never runs the decompiler): the folder Stage 9's
+      verbatim fidelity check wrote, `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_{n}`
+      ├─ exists, and its MANIFEST.md is newer than the notebook:
+      │  `ls -l --time-style=full-iso {PROJECT_DIR}/{notebook} {PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_[0-9]*/MANIFEST.md`
+      │  (quote it; the folder names end in a number, so `[0-9]*` skips folders of a notebook whose name
+      │  only starts with `{notebook-stem}`, such as `{notebook-stem}_draft.py`). Use the folder whose
+      │  MANIFEST.md is newest; call it `{folder}`
+      ├─ belongs to this notebook: the Grep tool, pattern `^\*\*Source Notebook:\*\* `, path
+      │  `{folder}/MANIFEST.md`, prints one line whose file name, between its backticks, is exactly
+      │  `{notebook}` (quote it). Any other name is NOT VERIFIED: `[0-9]*` still matches the folders of a notebook named
+      │  `{notebook-stem}_2.py`, so the newest folder can belong to another notebook
+      ├─ (i) + (ii): the Grep tool, pattern `Validated source/log associations|Legacy non-raw|can close their code fence`,
+      │  path `{folder}/MANIFEST.md`: the legacy-literal count and the early-fence count are 0, and the
+      │  validated count equals the number of final-version scripts found in (iii)
+      ├─ (iii): the decompiled paths (Glob tool, pattern `stage*/*.py`, path `{folder}`; or `ls -R {folder}`)
+      │  are exactly the final versions in the four stage folders of `{PROJECT_DIR}/scripts`
+      │  (`stage5_fetch`, `stage6_clean`, `stage7_transform`, `stage8_analysis`; per task the
+      │  highest letter suffix wins, `_b` over `_a` over the base name)
+      └─ (iv): `git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts {folder}`
+         (reads only; exits 1 because MANIFEST.md differs, so judge by the lines): every line is an
+         ` => dev/null}` line or the single line whose path starts with `/{dev/null => ` and ends in
+         `/MANIFEST.md}`
+   └─ No such folder, every MANIFEST.md older than the notebook, or a newest MANIFEST.md that names
+      another notebook: NOT VERIFIED. The orchestrator has Stage 9 Step 6 re-run (a re-run writes a
+      new, newest folder for this notebook). Any failed condition: the notebook does not archive the
+      final scripts verbatim (report the missing, extra or differing paths)
+   └─ R: `quarto render {PROJECT_DIR}/{notebook}` (the `.qmd`)
 ```
+
+`{notebook}` is the notebook file name (e.g. `2026-01-24_Title.py`); `{notebook-stem}` is the same name without `.py`. See notebook-assembler Step 6 for all three checks; `marimo run --headless` is a server and executes nothing. data-verifier derives the 6c final-version list itself from the scripts listing rather than taking it from the notebook or the MANIFEST, so (ii) and (iii) are checked against an independent expectation; the MANIFEST's legacy-literal and early-fence counts are the only read-only record of condition (i), and a notebook with a non-raw log literal, or with a log line that cuts its displayed log off, can pass (ii)-(iv).
 
 ---
 

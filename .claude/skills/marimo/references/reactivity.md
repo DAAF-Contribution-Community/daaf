@@ -156,6 +156,8 @@ mo.stop(not data_loaded, mo.md("Please load data first"))
 process(data)
 ```
 
+`mo.stop()` also skips every cell that reads a name the stopped cell defines, directly or through other cells; those cells show "This cell wasn't run because an ancestor was stopped with `mo.stop`". Cells that do not depend on the stopped cell still run. Since marimo 0.20, a cell that depends on several stopped cells runs only once all of them are unblocked. See `validation-patterns.md` for using this as a gate.
+
 ### Caching
 
 For expensive operations:
@@ -209,5 +211,5 @@ Use the **dependency graph** view in the editor to see how cells connect:
 | `_variable` | Local to cell, can be reused |
 | Mutations | Not tracked, keep in same cell |
 | Lazy mode | Cells marked stale, manual run |
-| `mo.stop()` | Conditionally halt execution |
+| `mo.stop()` | Halt this cell and the cells that depend on it |
 | `@mo.cache` | Cache expensive results |

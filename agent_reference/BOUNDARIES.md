@@ -777,7 +777,9 @@ These conditions trigger an immediate STOP with escalation to user.
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
-| `marimo run` or `quarto render` fails after 2 fix attempts | Stage 9 | STOP, report error details; Quarto rendering validates document assembly and enabled previews, not archived Stage 5-8 re-execution |
+| Marimo `marimo check` gate or `marimo export html` check, or `quarto render`, fails after 2 fix attempts | Stage 9 | STOP, report error details; the checks validate notebook structure, assembly and enabled previews, not archived Stage 5-8 re-execution |
+| Stage 9 display input (Parquet or figure, Marimo or Quarto) is missing and is a declared Stage 5-8 output: its file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md` | Stage 9 | STOP, report the missing path as an upstream failure; never drop the display to hide it |
+| Marimo execution log cannot be archived verbatim: it contains both `'''` and `"""`, Step 6a reports MB001 inside a log accordion whose delimiter is already the one notebook-assembler's Grep rule picks, the log holds a character the bundle or decompiler cannot carry (a NUL byte, bytes that are not valid UTF-8, a carriage return inside a line), or the Step 6c fidelity check fails (a final script missing, an earlier or renamed version archived, or a decompiled archived script that differs from its original). Backslashes and code-fence lines alone are fine: logs sit in a raw literal inside an outer fence longer than any backtick run in the log | Stage 9 | STOP, report the script path and the offending line, missing or extra paths, or differing lines; never edit archived code or log text |
 | Data unavailable in data skills | Stage 2-3 | STOP, escalate immediately |
 | LOW confidence finding unresolved | Any | Cannot proceed |
 

@@ -11,7 +11,7 @@ DAAF, framed as "here is what you are used to, here is the equivalent, and here 
 is different."
 
 > **Versions referenced:**
-> Python: marimo 0.19.11, Python 3.12
+> Python: marimo 0.25.0, Python 3.12
 > R: R 4.5.3, Quarto 1.10.18
 > See SKILL.md § Library Versions for the complete version table.
 

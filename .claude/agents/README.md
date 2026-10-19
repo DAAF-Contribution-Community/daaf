@@ -10,7 +10,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 All code-producing agents support both Python and R. The execution language is determined by the user's `Primary execution language` preference in CLAUDE.md and propagated by the orchestrator to each agent's prompt; the separate `Primary analysis language background` preference drives cross-language annotation direction, not which language the pipeline runs in. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
 
-Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
+Read-only agents (search-agent, plan-checker, data-verifier, integration-checker, manuscript-reviewer) and planning/synthesis agents (source-researcher, research-synthesizer, report-writer, manuscript-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
 
 | Agent | Python Support | R Support |
 |-------|---------------|-----------|
@@ -59,7 +59,7 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path; also re-derives the CPS-INTAKE / CPS-GEN script verdicts), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output files; RV-2: original/reproduction paths, declared artifacts, path-audit MATCH, data strategy/scope exclusions, preliminary notes, and frozen-hash context | QA scripts + severity report; RV-2: per-script status with separate log metrics and direct-artifact evidence, helper JSON/dimensions, deviations, and evidence gaps |
 | **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
 | **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3, Manuscript Preparation (MP-3b section scope, MP-4 full scope; Manuscript override) | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
@@ -68,6 +68,8 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6, DS-4 synthetic path) | `opus` | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Standard pipeline artifacts; RV-4: complete Reproduction Report plus persisted full-fidelity RV-3 findings | Report.md; RV-4 synthesis with derived gap/exclusion counts and canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict |
+| **manuscript-writer** | Draft (Path A) or integrate the author's own text (Path B) for one academic manuscript unit per dispatch, bound to the claims ledger, values manifest, journal profile, and voice directive | `manuscript-writer` | Manuscript Preparation Mode (MP-2 outline, MP-3b section loop, MP-4 letters/tables, MP-R revisions) | `opus` | Unit + Path + target path, BRIEF.md, journal profile, claims_ledger.yaml, CONSTRAINTS.md, `manuscript/_context/` extracts, references.bib, section reference, voice directive | One unit file + ledger appearances, new-claim proposals, flags, self-check results, reverse outline (never writes ledgers) |
+| **manuscript-reviewer** | Simulated pre-submission peer review: editor desk screen plus 2-3 reviewer personas scored against the journal's stated criteria (advisory, never a fidelity gate) | `manuscript-reviewer` | Manuscript Preparation Mode (MP-4 round R0; optional per-round stress test) | `opus` | Assembled manuscript (rendered text + source), journal profile, BRIEF.md, optional ledger/constraints/Lit Review extracts, prior round matrix (stress test) | Desk screen + persona reports + pre-filled R0 response matrix rows + fidelity concerns for the verifier |
 | **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
 
 ### Commonly Confused Pairs
@@ -86,6 +88,8 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **framework-engineer** vs **data-ingest** | Engineer creates/modifies *framework* artifacts (skills, agents, modes, config); ingest *profiles data* to produce findings for skill authoring |
 | **search-agent** vs **source-researcher** | Search-agent explores *broadly* across any information space with flexible output; source-researcher examines a *single known data source* in depth using an existing DAAF skill, producing a fixed five-section deliverable |
 | **search-agent** vs **plan-checker** | Search-agent *gathers information* before or during work (exploration); plan-checker *validates* an existing plan against six dimensions (verification) |
+| **report-writer** vs **manuscript-writer** | Report-writer produces the *stakeholder* Analysis Report from *one* pipeline project in one pass, following REPORT_TEMPLATE.md (Stage 11); manuscript-writer drafts or integrates *one academic manuscript unit at a time* with user consent, drawing on *multiple* verified sources and bound to the claims ledger, var keys, and a journal profile (Manuscript Preparation) |
+| **data-verifier** vs **manuscript-reviewer** | Verifier (Manuscript override) asks "is every claim true to the evidence?" and is a *blocking* fidelity gate (V1-V20 against ledger and values manifest); reviewer asks "would a skeptical editor and expert be persuaded, and what would they demand?" and is *advisory*, feeding the R0 response matrix for user triage |
 
 ---
 
@@ -261,6 +265,12 @@ Shows which agents produce output consumed by other agents:
 | **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
 | **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
 | **framework-engineer** | Review subagents (Plan) | Created/modified files for multi-angle review | Framework Development Mode Phase 4 |
+| **Orchestrator** | manuscript-writer | Unit assignment (unit, Path A/B, target path), brief, journal profile, claims ledger, `_context/` extracts, section reference, voice directive | Manuscript Preparation (MP-2, MP-3b, MP-4, MP-R) |
+| **manuscript-writer** | Orchestrator | Unit file path + ledger appearances + new-claim proposals + flags + reverse outline (orchestrator records the ledger as single writer) | Manuscript Preparation (per unit) |
+| **manuscript-writer** | data-verifier (Manuscript override) | Drafted unit file + appearances (via orchestrator) for the section-scope fidelity pass | MP-3b (before user consent) |
+| **data-verifier** (Manuscript override) | Orchestrator | Per-claim MATCH/DIVERGED/NOT DIRECTLY VERIFIED + V1-V20 rubric findings with severity and suggested fix | MP-3b (section scope), MP-4 and each MP-R round (full scope) |
+| **Orchestrator** | manuscript-reviewer | Assembled manuscript, journal profile, brief, optional ledger/constraints/Lit Review extracts, review mode (R0 or stress test) | MP-4 step 5; optional per MP-R round |
+| **manuscript-reviewer** | Orchestrator | Editor desk screen + persona reports + pre-filled R0 response matrix rows + fidelity concerns for the verifier (advisory) | MP-4 (R0); MP-R stress test |
 | **Orchestrator** | search-agent | Search prompts with scope constraints and output expectations | Any mode/stage |
 | **search-agent** | data-planner | Stage 2 exploration findings (data landscape, variables, endpoints) | Full Pipeline Stage 2 |
 | **search-agent** | research-synthesizer | Exploration baseline findings across sources | Full Pipeline Stage 3.5 |
@@ -331,6 +341,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Stub detection and silent failure audit
 
 **Reproducibility Verification (RV-3):** In RV mode, data-verifier compares persisted original and reproduced claims, tables, supported Parquet artifacts, and side-by-side figures using MATCH / DIVERGED / NOT DIRECTLY VERIFIED; logs alone are insufficient. It returns per-claim/figure/finding evidence sources and derived coverage counts, keeps exact pre-RV-2 scope exclusions separate, and RETURNS findings to the orchestrator (read-only) rather than writing the Reproduction Report.
+
+**Manuscript Preparation (override):** In Manuscript Preparation mode, data-verifier runs a Manuscript override (parallel to the RV-3 override) as the blocking fidelity gate: section scope at MP-3b (V1, V2, V3, V5, V6, V7, V8, V11, V12, V15, V16 plus appearances coherence) after each manuscript-writer draft, and full scope at MP-4 and every revision round (V1-V20 from the `academic-manuscript` skill's `references/verification-rubric.md`). It reads the claims ledger, values manifest, Markdown `_context/` extracts, and citation-verify output, returns per-claim MATCH / DIVERGED / NOT DIRECTLY VERIFIED plus rubric findings, and never edits prose or ledgers. The override's protocol lives in `data-verifier.md`.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -442,7 +454,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 **PROHIBITIONS (agent FAILED if output contains):**
 - New analysis code (aggregations, pivots, filters, transforms) not from original scripts
-- Interactive widgets (Marimo: `mo.ui.dropdown()`, `mo.ui.slider()`, etc.)
+- Interactive widgets (Marimo: `mo.ui.dropdown()`, `mo.ui.slider()`, `mo.ui.dataframe()`, `mo.ui.data_editor()`, etc.)
 - New visualizations not from original scripts
 
 **Verification:** If output contains interactive widgets, new aggregations outside scripts, or new analysis code -> REJECT and re-run
@@ -465,6 +477,40 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 **Reproducibility Verification (RV-4):** In RV mode, report-writer reads the complete Reproduction Report and persisted full-fidelity RV-3 findings, derives all completion/evidence-gap counts, reports exact scope-design exclusions separately, and assigns only FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED. Any in-scope evidence gap caps the verdict at PARTIALLY REPRODUCED.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
+
+---
+
+### manuscript-writer
+
+**Use when:** Manuscript Preparation mode needs one manuscript unit drafted or integrated: the argument outline (MP-2), a section in the MP-3b loop, a response letter or cover letter, or a reporting-checklist location table (MP-4, MP-R). Drafting is always staged one unit per dispatch, with user consent between units.
+
+**Key behaviors:**
+- Path A drafts from the brief, claims ledger, `_context/` extracts, journal profile, section reference, and voice directive; Path B integrates the author's own text without rewriting their voice
+- Never types a quantity: `{{< var key >}}` or `[[NEEDS VALUE: …]]`
+- Never adds a citekey absent from `references.bib` (`[[NEEDS CITATION: …]]`), never exceeds a claim's ledger tier (`[[ABOVE TIER: …]]`), never inserts novelty or strong claims (`[[AUTHOR CLAIM: …]]`), never attests for the author (`[[AUTHOR INPUT: …]]` for COI, IRB, CRediT, funding, data rights, and cover-letter originality/approval); cover letters carry no numbers or citations
+- Never writes ledgers or the response matrix: returns appearances, new-claim proposals, and proposed matrix text for the orchestrator (single writer)
+- Returns self-check rubric results, the writer pre-return checklist, and a reverse outline; no Bash, so word counts are estimates pending the MP-4 render scan
+
+**Preloaded skills:** `academic-manuscript`; loads the voice skill named by the standing directive (`daaf-default-voice`, a user voice skill, or none).
+
+**Invocation template:** See the Manuscript Preparation mode reference (mode registration pending) for the invocation pattern.
+
+---
+
+### manuscript-reviewer
+
+**Use when:** Manuscript Preparation mode reaches MP-4 step 5 (simulated pre-submission review, round R0), or a revised draft needs a "reviewer 2" stress test before resubmission.
+
+**Key behaviors:**
+- Editor desk screen first (scope fit against quoted aims, introduction clarity, compliance with every journal-profile instruction, desk-reject risks)
+- Two or three independent personas (methodologist, substantive field expert, skeptical generalist) scored against the journal's stated review criteria, each stating its strongest objection considered
+- Every concern quoted and located; literature asks stay topic-level, and any named paper is labeled unverified recall
+- Returns a pre-filled R0 response matrix (Decision and Response left blank for the user) and a separate list of fidelity concerns for the data-verifier
+- Advisory and read-only: never certifies fidelity and never describes R0 as peer review
+
+**Preloaded skills:** `academic-manuscript`
+
+**Invocation template:** See the Manuscript Preparation mode reference (mode registration pending) for the invocation pattern.
 
 ---
 

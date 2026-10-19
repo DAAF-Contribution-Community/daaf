@@ -630,7 +630,7 @@ Stage 9 notebooks are audit documents compiled from the final successful, alread
 7. **Optional Inspection/Display Chunk** — Non-transforming `arrow::read_parquet()` + `dplyr::glimpse()`/`head()` preview or existing figure display only
 8. **Metadata** — Script count and notebook format
 
-**Validation semantics:** Python notebooks must pass `marimo run`. R notebooks must pass `quarto render`; that render validates the document and explicitly enabled previews while archived Stage 5-8 script chunks remain unevaluated. Full analysis reproduction is a separate Reproducibility Verification workflow.
+**Validation semantics:** Python notebooks must pass the `marimo check --select MB` structural gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check, which decompiles the notebook and confirms it archives exactly the final script versions, each matching its original (notebook-assembler Step 6); archive cells are comments plus `pass`, so none of the three re-runs archived scripts. R notebooks must pass `quarto render`; that render validates the document and explicitly enabled previews while archived Stage 5-8 script chunks remain unevaluated. Full analysis reproduction is a separate Reproducibility Verification workflow.
 
 **Interactive UI elements:** Not part of a Full Pipeline Stage 9 audit notebook in either format. Build a separately scoped application if interactive controls are required.
 
@@ -738,7 +738,7 @@ See `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stag
 | Outputs match Plan commitments | Yes | Deviation in data sources, years, geography, or methodology |
 | Research Outcomes addressed with evidence | All | Any outcome unaddressed |
 | Hypotheses transparently assessed | All (if any) | Any hypothesis silently dropped |
-| Stage 9 notebook validates successfully | Yes | `marimo run` failure (Python) or `quarto render` failure (R); Quarto rendering validates assembly and enabled previews, not archived analysis re-execution |
+| Stage 9 notebook validates successfully | Yes | `marimo check` gate, `marimo export html` or Step 6c verbatim fidelity failure (Python), or `quarto render` failure (R); Quarto rendering validates assembly and enabled previews, not archived analysis re-execution |
 
 ### QA Tolerance Decisions
 

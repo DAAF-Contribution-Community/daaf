@@ -2,6 +2,8 @@
 
 Verify that an existing analysis can be mechanically reproduced from its delivered notebook (marimo `.py` for Python, or a canonical DAAF Stage 9 Quarto `.qmd` for R—or an archive exactly compatible with that contract). The orchestrator decompiles the notebook into individual scripts, re-executes each one, compares log-level and available artifact-level evidence, and cross-references the original Report's claims against the reproduced results.
 
+A **package-intake variant (RV-P)** instead proves that a manuscript replication package regenerates every manuscript claim from a fresh, isolated copy, and classifies the result on the AEA Data Editor scale. It has its own intake, stages, gate, and invocation templates — see § RV-P: Package Intake Variant. Everything in the notebook-intake workflow below (RV-1 … RV-4) applies only where RV-P explicitly reuses it.
+
 ## User Orientation
 
 After mode confirmation, briefly orient the user. Key points:
@@ -155,7 +157,7 @@ User points to existing analysis folder
    - `Original Output` — list every declared project-relative output path found in header metadata or script save calls; use `—` only when no output is declared
    - `Repro Status` — initialize all rows to `PENDING`
    Reconcile these script declarations against the step 5 artifact inventory. For any newly identified output artifact under the original project's `output/` tree, inventory and copy it to `original_files/<same project-relative path>`, verify count/size, and update the Reproduction Report before Gate RV-1.
-10. **Check for dangling references** — inspect the decompiler's `MANIFEST.md` for a "Dangling Reference Warnings" section. If present, these scripts may reference variables defined in other marimo cells or Quarto chunks and may fail during RV-2 re-execution. Record the warnings in the Reproduction Report's **Runtime Notes** and flag affected scripts in the PSU-RV1 checkpoint so the user is aware before re-execution begins.
+10. **Check for dangling references** — inspect the decompiler's `MANIFEST.md` for a "Dangling Reference Warnings" section. If present, these scripts may reference variables defined in other marimo cells or Quarto chunks and may fail during RV-2 re-execution. Record the warnings in the Reproduction Report's **Runtime Notes** and flag affected scripts in the PSU-RV1 checkpoint so the user is aware before re-execution begins. Also check for an "Execution-Log Literal Warnings" section (Python only). It lists scripts whose archived log sits in a legacy non-raw `mo.md('''...''')` string containing backslashes; Python decodes those escapes (`\n` in a Windows path becomes a line break), so the decompiled log may differ from what the script printed. Current Stage 9 notebooks store logs in a raw `mo.md(r'''...''')` literal and never trigger it. Record each listed script in **Runtime Notes** and treat its archived log as not verified verbatim: compare it with the original script's log where the original project still has it. An "Execution-Log Fence Warnings" section (Python only) lists scripts whose log has a line that can close the log's code fence early, so the notebook's display may cut that log off; the decompiled log is unaffected. Note it in **Runtime Notes** as a display defect of the archive, not a fidelity problem.
 11. Populate the Source Artifacts, Original Artifact Inventory, Evidence Coverage Summary, Scope Decisions, and Reproduction Environment sections. The inventory must distinguish copied evidence from missing evidence and retain the pre-copy and post-copy file counts/sizes.
 12. **Language-aware Environment Compatibility Check** — Extract the DAAF version from the original Report's AI Use Disclosure (commit and/or semver), retrieve the original public build specification when available, and capture current installed evidence for the script language. When a project-local diagnostic is needed, write it under the reproduction project's `scripts/repro_checks/` directory and execute it through `run_with_capture.sh`; this is verification instrumentation, not new analysis. Keep every diagnostic and its appended log as provenance.
     - **Environment-date inputs (both languages):** from the original commit's Dockerfile (`original_files/Dockerfile.original`) and the current `/daaf/Dockerfile`, extract and record side by side `ARG UV_EXCLUDE_NEWER`, `ARG UBUNTU_SNAPSHOT`, the base-image digest (`ARG UBUNTU_BASE_IMAGE`, or the bare `FROM` line in older files), `ARG P3M_SNAPSHOT_DATE`, and every per-package `--exclude-newer-package PKG=DATE` override on a `uv pip install` line. Quote the matched lines, which are the evidence. Record an input the original Dockerfile does not declare as `ABSENT (pre-freeze)`, never as a guessed value; a tag-only `FROM` (e.g. `FROM ubuntu:24.04`, no digest) is recorded as `TAG ONLY`. Inside the current container, `echo $UV_EXCLUDE_NEWER` and `cat /etc/daaf/ubuntu-snapshot` confirm what the running image was actually built with.
@@ -515,6 +517,331 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 
 ---
 
+## RV-P: Package Intake Variant
+
+RV-P verifies a **replication package** rather than a Stage 9 notebook. It answers one question: does the package, run once from a clean copy with no help from DAAF's upstream research projects, regenerate every manuscript claim? The bar is the AEA Data Editor's: "Re-run… in a clean environment… (a) reproducible with minimal interaction (b) the results are numerically identical." The package's own anatomy (`main.py` entry point, `code/00_setup.*`, `requirements.txt` / `requirements-lock.txt` when the Python code imports third-party packages, and for R programs `renv.lock` with `.Rprofile` / `renv/activate.R`, `DATA_RIGHTS.md`, the SSDE README, the SC-01–SC-15 self-check) is defined by `.claude/skills/academic-manuscript/references/replication-package.md` and its assets (`main_template.py`, `package_selfcheck_template.py`, `DATA_RIGHTS_template.md`). This section defines only how RV verifies it.
+
+**Why a variant, not a new mode:** RV already owns clean re-execution, the comparators, evidence-gap discipline, and the MATCH / DIVERGED / NOT DIRECTLY VERIFIED vocabulary. A package changes the intake and the unit of comparison (claims, not scripts). It does not change what counts as evidence.
+
+### Trigger
+
+- **Manuscript Preparation MP-4 hand-off.** After the package is assembled, the orchestrator proposes a transition to RV-P and the user confirms it. The Mode Confirmation Protocol still applies. The Manuscript Preparation mode file (`manuscript-preparation-mode.md`, MP-4 step 7b and § Transitions) defines its side of the transition. The orchestrator SKILL.md escalation rows between RV and Manuscript Preparation are **deferred** until Manuscript Preparation registers as a mode. Until then, the hand-off is described only here and in the Manuscript Preparation mode file, not in SKILL.md.
+- **Direct user request.** The user asks to verify a DAAF replication package (e.g., "check that my replication package reproduces the paper"). The same intake applies. If the user has no claims ledger or values manifest, RV-P cannot check claims. Stop and offer notebook-intake RV (if a Stage 9 notebook exists) or Manuscript Preparation (to build the missing ledger).
+
+### What Is Reused vs. New
+
+| Component | RV-P use |
+|-----------|----------|
+| `run_with_capture.sh` | **Reused unchanged.** Wraps `main.py` once. It accepts `.py`/`.R` only, which is why the entry point is `main.py`, not a shell script |
+| `compare_reproduction_artifacts.py` (parquet / exact modes, bounds, exit semantics) | **Reused unchanged** for table data, figure data, and rendered table includes. **Not** for figure image files: it classes `.png`/`.svg` as "figure visuals" and returns "Artifact class is outside this helper's scope" before checking the requested mode (observed in source: `scripts/compare_reproduction_artifacts.py:65-70, 137-146`). Figure-file hashes come from the snapshot inventory or a `sha256sum` probe (RV-P2 step 4) |
+| `compare_execution_logs.py` | **Reused unchanged** for original DAAF logs vs. the proof-run log. Same exit semantics; exit 3 is `NOT DIRECTLY VERIFIED` |
+| Comparison Standards, tolerances, MATCH / DIVERGED / NOT DIRECTLY VERIFIED vocabulary, "missing evidence is never a match" | **Reused unchanged** |
+| Read-tool visual figure review | **Reused unchanged** |
+| Reproduction Report as sole state document; Session Continuity; restart prompt | **Reused** with the template's Package Verification variant |
+| `decompile_notebook.*`, `normalize_project_dir.py`, `audit_reproduction_paths.py` | **Not used.** There is no notebook to decompile. Package scripts set their root dynamically (`Path(__file__).resolve().parent`), so the path audit's single static `PROJECT_DIR` assignment does not apply (inferred from its documented contract in RV-1 step 7). RV-P uses the isolation audit below instead |
+| Per-script `_repro_a` / `_repro_b` modifications | **Not permitted.** The package must run unchanged. Any fix is a package defect that goes back to Manuscript Preparation |
+| Isolation audit; output deletion; environment-equivalence check; per-claim comparison at two precisions; SC-01–SC-15 hygiene results; AEA classification, reason codes, and priority tags; data-rights status summary; submission-ready gate | **New** |
+
+### User Decisions (Confirm at Mode Confirmation and at Gate RV-P1)
+
+| Decision | Default | Options | Why |
+|----------|---------|---------|-----|
+| Data path for the proof run | Package default (frozen extracts) | Package default / from-raw | `run_with_capture.sh` passes no arguments to the script (observed: line 390 runs `"$INTERPRETER" "$SCRIPT_PATH"`). The proof run can therefore only exercise `main.py`'s argument-free default. A from-raw proof is possible only if the package ships a separate argument-free entry script for it. Otherwise record acquisition as untested, as in RV frozen mode |
+| Restricted-claims acknowledgement | Required when any source is not shipped | Confirm list | Claims built on non-shipped data cannot be regenerated. They can only be flagged restricted with a synthetic test path. The user confirms the list before the run |
+
+### RV-P Workflow
+
+```
+Manuscript MP-4 hand-off  OR  user points to a replication package
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│ RV-P1: Intake, Isolation & Environment  (orchestr.) │
+│  1. Create YYYY-MM-DD_[ShortTitle]_PackageVerif./   │
+│  2. Snapshot package + manuscript evidence          │
+│     → original_files/ (sha256 inventory)            │
+│  3. Copy original DAAF logs per crosswalk           │
+│     → original_files/original_logs/                 │
+│  4. Fresh copy → package_run/; delete outputs       │
+│  5. Isolation audit + child-script install scan     │
+│  6. Env. equivalence (Python lock + renv.lock)      │
+│  7. Map claims → evidence → data rights             │
+│  PSU-RVP1 · GATE: user confirms                     │
+└──────────────────────┬──────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│ RV-P2: Proof Run & Comparison  (code-reviewer)      │
+│  run main.py ONCE via run_with_capture.sh           │
+│  claims at printed + full precision · tables ·      │
+│  figures · logs · self-check SC-01–SC-15            │
+└──────────────────────┬──────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│ RV-P3: Claims Verification  (data-verifier)         │
+│  adversarial per-claim cross-check; returns only    │
+└──────────────────────┬──────────────────────────────┘
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│ RV-P4: Classification, Gate & Hand-off              │
+│  (report-writer) SC-14/SC-15 · AEA class · reason   │
+│  codes · priority-tagged action items · gate        │
+│  PSU-RVP4 · return artifact paths to Manuscript     │
+└─────────────────────────────────────────────────────┘
+```
+
+### RV-P Project Folder Structure
+
+```
+research/YYYY-MM-DD_[ShortTitle]_PackageVerification/
+├── Reproduction_Report.md              # Package Verification variant (sole state document)
+├── original_files/                     # Immutable evidence; never executed, never edited
+│   ├── package_snapshot/               # Byte-for-byte copy of the package AS DELIVERED (incl. authors' outputs)
+│   ├── PACKAGE_INVENTORY.md            # Per-file relative path, bytes, sha256 of the snapshot
+│   ├── manuscript_evidence/            # claims_ledger.yaml, _values_manifest.json, _variables.yml,
+│   │                                   #   references.bib, data_citations.bib, DATA_RIGHTS.md, DEPOSIT_METADATA.md,
+│   │                                   #   DCAF_prefill.md, table/figure manifests, rendered PDF/DOCX
+│   └── original_logs/                  # Upstream final-version scripts with appended DAAF logs,
+│                                       #   copied per PROVENANCE_CROSSWALK.csv (log comparison only)
+├── package_run/                        # Fresh working copy; outputs deleted; the ONLY tree main.py runs in
+│   └── main.py                         # Receives run_with_capture.sh's appended log (copy, not the package)
+├── scripts/
+│   └── repro_checks/                   # Verification instrumentation, each with its appended log:
+│       ├── 01_env-equivalence.py       #   installed versions vs requirements-lock.txt
+│       ├── 01b_r-env-equivalence.R     #   R packages only: installed.packages() vs renv.lock
+│       ├── 02_claims-comparison.py     #   per-claim printed + full precision → output/analysis/
+│       └── 03_package-selfcheck.py     #   instantiated from package_selfcheck_template.py
+├── output/
+│   ├── analysis/claims_comparison.parquet
+│   ├── analysis/selfcheck_03_package-selfcheck/   # self-check run 2 output (folder named after the script's
+│   │                                   #   own stem: selfcheck_results.parquet, selfcheck_summary.md, pii_scan_hits.parquet)
+│   └── preliminary_notes/              # Lossless RV-P2 / RV-P3 returns
+└── logs/                               # collect_session_logs.sh
+```
+
+A re-verification after the package changes is a **new** project folder, using the date-suffix convention (`YYYY-MM-DDa_…`). Never reuse `package_run/`: its `main.py` already carries an execution log, and `run_with_capture.sh` refuses to run it again.
+
+### RV-P1: Intake, Isolation & Environment
+
+**Actor:** Orchestrator (directly). Verification diagnostics are written under `scripts/repro_checks/` and executed through `run_with_capture.sh`.
+
+1. **Intake set.** Require all of the following. If any is missing, STOP and name it:
+   - the package directory (Manuscript hub default: `{HUB}/replication/{PACKAGE_LABEL}/`, with `PACKAGE_LABEL = YYYY-MM-DD[a]_package`, plus `_run{K}` when an assembler run copy built it);
+   - the manuscript evidence: `{HUB}/ledgers/claims_ledger.yaml`, `{HUB}/manuscript/_values_manifest.json`, `{HUB}/manuscript/_variables.yml`, every bibliography listed under `bibliography:` in `{HUB}/manuscript/_quarto.yml` (`references.bib` and `data_citations.bib`; self-check run 2 reads every `.bib` in `manuscript_evidence/` for SC-03), the table and figure manifests, and the rendered manuscript;
+   - `DATA_RIGHTS.md`, `DEPOSIT_METADATA.md`, and `DCAF_prefill.md` (MP-4 step 7 drafts the last two before self-check run 1; the post-proof self-check reads these copies, step 6 of RV-P2, and its SC-07 fails without them);
+   - `PROVENANCE_CROSSWALK.csv`.
+   Refuse a ledger that still contains `is_example` rows. Exclude `superseded` claims, and list them separately.
+2. **Create the project.** Create `research/YYYY-MM-DD_[ShortTitle]_PackageVerification/`. It must not already exist.
+3. **Snapshot evidence.** Copy the package byte-for-byte to `original_files/package_snapshot/` and the manuscript evidence to `original_files/manuscript_evidence/`. Write `PACKAGE_INVENTORY.md` (relative path, bytes, sha256 per file). Verify the copied counts and sizes against the source, as in RV-1 step 5c. The delivered package and the hub are never modified.
+4. **Copy original logs.** For each crosswalk row, copy the upstream final-version script (with its appended DAAF log) to `original_files/original_logs/<package script path>`. This is the only upstream read in RV-P, and it lands outside the run tree. Missing rows are recorded as `NOT DIRECTLY VERIFIED` log evidence.
+5. **Fresh copy and clean slate.**
+   - Copy the snapshot to `package_run/`.
+   - Delete every declared output from `package_run/`: regenerated results, tables, figures, the values manifest and `_variables.yml` the package rebuilds, and any shipped `main.log`. The declared outputs come from the package's list of tables and programs plus `main.py`'s own clear-outputs list.
+   - Never delete shipped inputs (`data/raw/`, frozen extracts, synthetic test data).
+   - Record each deleted path. The authors' versions survive in `package_snapshot/` as the comparison baseline.
+6. **Isolation audit.** The requirement is that the run has **no read access to upstream research projects**. The container cannot revoke read permission without changing upstream projects, which is forbidden. So enforce isolation by evidence and state its bound. Quote each probe and its output:
+   - (a) Absolute-path scan of every executable or config file in `package_run/` (`.py`, `.R`, `.sh`, `.ps1`, `.yml`, `.yaml`, `.toml`, `.json`). Scan for `/daaf/`, for each upstream project root listed in SOURCES/crosswalk, and for Windows drive or backslash paths. Documentation files that legitimately name original paths, such as the crosswalk and README provenance notes, are listed but excluded; so are full-line comments and Python module docstrings in shipped programs (provenance text such as the hub build templates' run command, never executed; the assembler's own `/daaf` check skips them for the same reason, `replication-package.md` § 6 step 3). Shipped JSON/YAML manifests are not excluded: the assembler rewrites their paths to package paths, so a `/daaf/` hit there is a real finding. Two further known hits are listed but excluded, with the reason: the DAAF-container marker `/etc/daaf/ubuntu-snapshot`, in `code/00_setup.*` (a refusal check) and in `main.py` (`DAAF_MARKER`, the renv autoloader guard); both only test whether the file exists and never read upstream; and renv's generated `renv/activate.R`, which names user cache folders such as `~/.cache/R/renv` (observed in the installed template `renv/resources/activate.R:1220-1222`) and which the proof never executes because the autoloader is off (step 8).
+   - (b) `find package_run -type l` must print nothing (no symlinks out of the tree).
+   - (c) Flag every `../` that would resolve above the package root.
+   - (d) After the run (RV-P2), list upstream files modified since the run start (`find <upstream_root> -newermt "<run start>"`). This must be empty.
+   **Bounded assurance:** (a)–(c) prove that no static path reaches upstream. (d) proves that no upstream write happened. Neither proves the absence of dynamically constructed reads. Recommend that the user also run the package on a clean machine outside DAAF; the AEA "strongly encourage[s] running in batch" there.
+7. **Child-script install and secret scan.** `run_with_capture.sh` scans only the script it wraps (`main.py`). It cannot see `code/**` children, which `main.py` launches with `subprocess`. Grep every shipped `.py`/`.R`, except `code/00_setup.*` and renv's generated `renv/activate.R`, with the wrapper's own `SCAN_TOKENS` patterns (reference them from `scripts/run_with_capture.sh`; do not copy them here). Any hit blocks the run. `renv/activate.R` is excluded because the proof never runs it (step 8) and because it carries a restore hint inside a message string that the R tokens would match (observed: `renv/resources/activate.R:1038` in the installed renv; the shipped file is generated from that template, inferred). `main.py` itself must not contain install tokens even in docstrings or strings: the wrapper ignores only full-line `#` comments and would refuse with exit 3. Setup instructions belong in the README and `00_setup.*`.
+8. **Environment equivalence. Never run setup or install scripts in DAAF.** `code/00_setup.sh`/`.ps1`/`.R` are recorded as **not executed** (they would install packages at runtime). A package whose Python code imports no third-party module ships no `requirements-lock.txt` and no `code/00_setup.sh`/`.ps1` (`replication-package.md` § 8); record Python package equivalence as N/A with that reason, and check only the Python version. Otherwise write `scripts/repro_checks/01_env-equivalence.py` and run it through `run_with_capture.sh`. It:
+   - parses `package_run/requirements-lock.txt` (`name==version` plus environment markers);
+   - evaluates the markers with `packaging.markers` (installed: `packaging` 26.3, observed via `uv pip list` on 2026-10-03);
+   - normalizes names per PEP 503;
+   - compares each locked version with `importlib.metadata.version()`;
+   - checks the Python version against the README's stated version.
+   Status vocabulary: MATCH / PATCH / MINOR / MAJOR / REMOVED (locked but absent) / NOT DIRECTLY VERIFIED (unparseable line, marker error). Locked-but-inapplicable-marker lines are listed separately.
+
+   **R packages (when the package ships `renv.lock`).** The R pin evidence is `renv.lock`, written at assembly by `renv::snapshot()` from the image's R library (`replication-package.md` § 8). Write `scripts/repro_checks/01b_r-env-equivalence.R` and run it through `run_with_capture.sh`. It reads `package_run/renv.lock` with `renv::lockfile_read()` (not an install call; the wrapper's R tokens block only renv's install, restore, update, and rebuild), compares each locked version with `installed.packages()`, and compares the lockfile's R version with `getRversion()` and with the README's stated version. Status vocabulary: MATCH / DIFFERS / REMOVED (locked but absent). It must never call renv's restore: the wrapper would refuse the script (exit 3), and DAAF never installs. Also confirm that `package_run/main.py` carries the template's renv autoloader guard, and quote the probe: `grep -n "RENV_CONFIG_AUTOLOADER_ENABLED\|DAAF_MARKER" {PROJECT_DIR}/package_run/main.py` must show the `DAAF_MARKER` definition and the assignment inside the marker check (RV-P2 step 1). A `main.py` without it is a package defect: STOP and return the package to Manuscript Preparation for re-assembly.
+
+   Two bounds apply. First, the checks prove that the proof run used the locked versions. They do **not** prove that `00_setup` installs them on a replicator's machine, so the setup programs (`code/00_setup.sh`/`.ps1`, and `code/00_setup.R` with its `renv::restore()`) stay `NOT DIRECTLY VERIFIED (never executed in DAAF by design)`. Second, the proof uses the image's R library, not a restored project library: inside DAAF, `main.py`'s guard sets `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` for its R children, so `.Rprofile` does not bootstrap renv (RV-P2 step 1).
+9. **Claim → evidence → rights map.** For every in-scope claim (`kind` of own-analysis or descriptive-context), resolve each `evidence` entry: values-manifest key → producer script → source parquet → S-id → `DATA_RIGHTS.md` record.
+   - **Literature claims** are out of package scope by design. They are verified by MP-4's citation-integrity step and listed as scope-design exclusions, outside the denominators.
+   - **Literature and prior-round values keys** (`lit_*`, `prev_*`; `source_kind` `lit_claim` / `prev_round`) are out of package scope by design too: the package contains no literature or prior-round content, its values script has those specs emptied, and its README lists the keys as scope-design exclusions (`replication-package.md` § 6 step 1). They are not compared, are not rows in `claims_comparison.parquet`, and do not lower the assessment of a claim that also cites package-scope keys. A claim whose evidence is only such keys is a scope-design exclusion.
+   - **Restricted claims** are claims whose evidence needs data with `ship_raw` and `ship_derived` both false and no frozen extract. Mark them RESTRICTED and identify their synthetic test path. A restricted claim with no synthetic test path is a gate failure.
+10. **Populate** the Package Verification variant of `Reproduction_Report.md`: intake inventory, deleted outputs, isolation audit, environment equivalence, claim map, data-rights status, and scope decisions.
+
+**Gate RV-P1 (user-blocking):** The following must all hold, and then the user reconfirms the decisions and the restricted-claims list at PSU-RVP1:
+- intake set complete and snapshot verified;
+- outputs deleted and recorded;
+- isolation probes (a)–(c) clean;
+- child-script scan clean;
+- environment equivalence recorded;
+- every in-scope claim mapped.
+
+**STOP if:** the intake is incomplete, the destination exists, the ledger has example rows, an isolation probe hits, the child-script scan hits, or a restricted claim lacks a synthetic test path.
+
+### RV-P2: Proof Run & Comparison
+
+**Actor:** code-reviewer (the RV-2 reproducer role, with the RV-P differences stated in the prompt).
+
+1. **Run once.** `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/package_run/main.py`, with no environment prefix, also when the package ships `renv.lock`. Record the run start timestamp, the wrapper exit code, and the runtime.
+   - Why no prefix is needed: `main.py` starts each R program in the package root, where `.Rprofile` loads `renv/activate.R`; with renv's autoloader on, it would try to bootstrap renv into the package's project library, a runtime install (inferred; that path was deliberately not run). The template's `main.py` guards against this itself: when the DAAF marker `/etc/daaf/ubuntu-snapshot` exists, it sets `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` in its children's environment and logs `DAAF container detected -> renv autoloader disabled for R programs (image library used)` (observed: `main_template.py`, Run section). With that variable set, a child R in a modelled package used only the image library and did not load renv (observed, `replication-package.md` § 8). Replicator machines lack the marker, so there the autoloader stays on and the restored library is used. RV-P1 step 8 confirmed the guard is present; if that evidence is absent, STOP without execution (do not add a prefix or edit `main.py`).
+   - The wrapper runs from the caller's working directory, not the package root, so this also tests that `main.py` does not depend on the working directory.
+   - Exit 74 follows `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes.
+   - A non-zero exit is not retried with edits. Compare whatever was produced, and record the failure with its reason code.
+   - The Bash tool's maximum timeout is 600000 ms (tool contract). DAAF ships `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so a longer package cannot complete inside DAAF. Record `Insufficient time available to replicator`, and recommend an outside-DAAF run.
+2. **Claims at two precisions.** Write `scripts/repro_checks/02_claims-comparison.py` and run it through `run_with_capture.sh`. It reads the ledger, the original `_values_manifest.json` (from `manuscript_evidence/`), and the regenerated manifest (in `package_run/`). For each values-manifest key behind each claim it compares:
+   - (a) the **printed** formatted string, exactly;
+   - (b) the **full-precision** raw value: exact for integer, string, boolean, and temporal values; 1e-6 relative tolerance for floats, per Comparison Standards.
+   A key is MATCH only when both match. A printed match with a full-precision divergence is DIVERGED, with the note "printed value unchanged". A missing key on either side is NOT DIRECTLY VERIFIED. A key whose source the RV-P1 map marks restricted is RESTRICTED (its own status here; for the overall RV assessment it counts as `NOT DIRECTLY VERIFIED`, RV-P4). `lit_*` / `prev_*` keys are skipped (RV-P1 step 9). The script prints every row to its log and saves `output/analysis/claims_comparison.parquet` with exactly this schema, which the post-proof self-check (step 6) enforces:
+
+   | Column | Content |
+   |--------|---------|
+   | `key` | values-manifest key (package scope only) |
+   | `claim_ids` | list of the claims-ledger IDs whose evidence cites the key |
+   | `status` | one of `MATCH`, `DIVERGED`, `NOT DIRECTLY VERIFIED`, `RESTRICTED` (uppercase, exactly) |
+
+   Further columns (printed and full-precision values, notes) are allowed. A claim's assessment is the worst of its evidence entries.
+3. **Tables.**
+   - Run `compare_reproduction_artifacts.py --mode parquet` on each table's underlying data, and `--mode exact` on each rendered include (`tbl-*.md` or equivalent). Compare the snapshot's authors' version with the regenerated file.
+   - Preserve the JSON and the exit codes. Exit semantics are unchanged.
+4. **Figures.** Use the strongest evidence available:
+   - (a) the underlying figure data, via parquet mode;
+   - (b) the figure file's sha256: the authors' version from `PACKAGE_INVENTORY.md`, the regenerated file from a `sha256sum` probe (quote both). Not the comparator's exact mode: it rejects `.png`/`.svg` as "figure visuals" before checking the mode (§ What Is Reused vs. New);
+   - (c) if the hashes differ, side-by-side Read-tool review of the PNG.
+   A figure is MATCH when its data matches (or no data artifact is declared) and either its bytes or the visual review match. If the bytes differ and no viewable PNG exists, the image dimension is NOT DIRECTLY VERIFIED.
+5. **Logs.** For each `original_files/original_logs/` script, run `compare_execution_logs.py <original_script> {PROJECT_DIR}/package_run/main.py`. `main.py`'s appended log holds every child's output, so duplicate metric identities across scripts will often return exit 3 (INCONCLUSIVE). That is `NOT DIRECTLY VERIFIED`, never success.
+   - Logs are **supporting** evidence. A DIVERGED log metric must be investigated and recorded.
+   - A NOT DIRECTLY VERIFIED log metric does not by itself fail a claim, because claims are verified directly through the values manifest.
+   - Separately, scan the shipped proof-run `main.log` (teed by `main.py`) for absolute `/daaf/` paths. It ships with the package (the AEA publishes proof-run logs), so it must use package-relative paths only.
+6. **Hygiene: self-check run 2 (SC-01–SC-15), after the proof.** Instantiate `package_selfcheck_template.py` as `scripts/repro_checks/03_package-selfcheck.py` with the run-2 Config (`replication-package.md` § 11): `SELFCHECK_RUN = 2`, `PACKAGE_LABEL` (the delivered label), and `RV_PROJECT_DIR = {PROJECT_DIR}`; the template derives the rest. It reads the shipped files from `original_files/package_snapshot/` (the package as delivered, never the regenerated outputs in `package_run/`), the proof log from `package_run/logs/main.log`, the rights, bib, deposit-metadata, and DCAF copies from `original_files/manuscript_evidence/`, the per-key results from `output/analysis/claims_comparison.parquet`, and writes its output folder under `output/analysis/`. Run it through `run_with_capture.sh` after step 2. SC-13 then reads `package_run/logs/main.log`; SC-14 reads the per-key results and stops with an error on a missing column or an unknown status label. The pre-proof run 1 at assembly reported SC-13/SC-14 as NOT RUN by design. SC-15 is provisional; RV-P4 assigns the final AEA class and reason codes. A self-check exit 1 (CRITICAL) is a recorded gate result, never fixed in RV-P.
+7. **Write-isolation probe.** Run probe 6(d) from RV-P1 and record the result. When the package ships `renv.lock`, also run `find {PROJECT_DIR}/package_run/renv -mindepth 1 -maxdepth 1 -type d` and quote it: it must print nothing (no `renv/library` or other renv-built folder). Also quote the `DAAF container detected` line from `package_run/logs/main.log` (for example, `grep -n "DAAF container detected" {PROJECT_DIR}/package_run/logs/main.log`). Together they are the evidence that the autoloader stayed off.
+8. **Update the report.** Fill in the Proof Run, Per-Claim, Table, Figure, Log, and Hygiene sections, and Session Continuity.
+
+**Gate RV-P2 (automated):** single run completed or failed with evidence, every in-scope claim/table/figure assessed, hygiene results recorded, write-isolation probe recorded.
+
+### RV-P3: Claims Verification
+
+**Actor:** data-verifier (read-only; RV-3 override applies with the input substitutions below). It reads execution logs and Markdown, not parquet: it relies on the claims-comparison script's printed rows and the preserved helper JSON. The orchestrator persists the full return to `output/preliminary_notes/{date}_rvp3_claims-verification.md`, then transcribes the results into the report.
+
+### RV-P4: Classification, Gate & Hand-off
+
+**Actor:** report-writer (synthesis). The orchestrator derives all counts from the report's tables before dispatch, never from memory.
+
+**AEA classification (verbatim levels and thresholds; REPLICATION.md, AEA Data Editor replication-template):**
+- **Full reproduction**
+- **Full reproduction with minor issues**
+- **Partial reproduction**: "a significant number (>25%) of programs and/or numbers are different"; also, "if some data is confidential and not available, then a partial reproduction applies."
+- **Not able to reproduce**: "only a small number of numbers were successfully generated (<25%)."
+
+Two DAAF operationalizations are inference, not AEA text, and must be labeled as such in the report:
+- **Denominators.** "Numbers" are the in-scope claims-ledger evidence entries. "Programs" are the shipped `code/**` scripts that `main.py` runs.
+- **The 0–25% band.** A differing share at or below 25% (and above zero) is classified "with minor issues". Any RESTRICTED claim forces at least "partial", per the confidential-data rule.
+
+**Reason codes (verbatim; mark each that applies, with evidence):** `Discrepancy in output` · `Bugs in code` · `Code missing` (sub-code `Data preparation code missing`) · `Code not functional` · `Software not available to replicator` · `Insufficient time available to replicator` · `Insufficient computing resources available to replicator` · `Data missing` · `Data not available` · `Missing README`.
+
+**Action-item priority (verbatim order): `CRITICAL` > `CODE` > `FILES` > `METADATA`.** Rights violations are CRITICAL: "legally/rights-restricted content… data the authors do not have the right to redistribute. These block acceptance outright." Each item is routed `m` (manuscript), `d` (deposit), or `both`. A shipped file with no attested `DATA_RIGHTS.md` record (SC-02) or an unconfirmed PII hit (SC-09) is CRITICAL.
+
+**Overall RV assessment:** FULLY / PARTIALLY / NOT REPRODUCED. These use the RV-4 criteria unchanged, applied to in-scope claims, tables, figures, and required dimensions. RESTRICTED claims are `NOT DIRECTLY VERIFIED` and cap the verdict at PARTIALLY, consistent with the AEA confidential-data rule.
+
+**Submission-ready gate (Gate RV-P4):** the package is **SUBMISSION-READY** only when **every in-scope claim is MATCH**, or **is RESTRICTED with a synthetic test path that executed successfully** and is flagged in the README's list of tables. In addition, **no CRITICAL action item may be open**: the D4 rights gate and the AEA block acceptance outright on rights violations. Any other outcome is **BLOCKED**, with the action items as the fix list. The gate is deliberately stricter than the AEA classification: a "with minor issues" package with any DIVERGED claim is still BLOCKED.
+
+**Hand-off to Manuscript Preparation (by artifact path).** RV-P never edits the package, the hub, or the ledger; Manuscript Preparation's orchestrator is the single writer of its ledgers. The return names:
+- `{PROJECT_DIR}/Reproduction_Report.md` (verdict, AEA classification, gate result, action items);
+- `{PROJECT_DIR}/output/analysis/claims_comparison.parquet` and `{PROJECT_DIR}/scripts/repro_checks/02_claims-comparison.py` (its log holds per-claim rows for non-Bash agents);
+- `{PROJECT_DIR}/package_run/logs/main.log` (the proof-run log; MP-4 copies it into the package, because the AEA publishes proof-run logs). The MP-4 step 7b close-out is the only post-proof change allowed without a new RV-P run: copy in the proof run's `logs/`, fill the README `RUNTIME` and `HARDWARE` blocks from it, and re-render `README.pdf` (`replication-package.md` § 6, Immutability);
+- the RV-P3 preliminary note.
+
+MP-4 then updates each claim's `verification` field from the report, routes action items (code/files back to package assembly, metadata to README/DEPOSIT_METADATA, manuscript-routed items to MP-3), and, after any package change, requests a new RV-P run.
+
+### RV-P Invocation Templates
+
+**RV-P2 (code-reviewer):**
+
+```python
+Agent({
+    description: "RV-P2: Package proof run and comparison",
+    prompt: """[prompt below]""",
+    subagent_type: "code-reviewer"
+})
+```
+
+```
+**BASE_DIR:** /daaf
+**PROJECT_DIR:** {absolute_verification_project_path}
+All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolve from BASE_DIR.
+
+**TASK:** Run the replication package's entry point once and compare every regenerated claim, table, figure, and log against the delivered package.
+
+**MODE:** Reproducibility Verification — RV-P2 (Package Proof Run & Comparison). Apply your RV-2 reproducer overrides EXCEPT: no `_repro_a`/`_repro_b` modifications — the package must run unchanged; any failure is a package defect to record, not fix.
+
+**RUN TREE:** `{PROJECT_DIR}/package_run/` (outputs already deleted at RV-P1). Do not read or write any upstream research project.
+**DELIVERED BASELINE:** `{PROJECT_DIR}/original_files/package_snapshot/` (authors' outputs; immutable)
+**MANUSCRIPT EVIDENCE:** `{PROJECT_DIR}/original_files/manuscript_evidence/` (claims_ledger.yaml, _values_manifest.json, _variables.yml, references.bib, data_citations.bib, DATA_RIGHTS.md, DEPOSIT_METADATA.md, DCAF_prefill.md, table/figure manifests)
+**SELF-CHECK OUTPUT:** `{PROJECT_DIR}/output/analysis/selfcheck_03_package-selfcheck/` (written by step 5; named after the script's own stem)
+**ORIGINAL LOGS:** `{PROJECT_DIR}/original_files/original_logs/`
+**IN-SCOPE CLAIMS:** [claim IDs and evidence entries from the RV-P1 map; restricted claims with their synthetic test paths; scope-design exclusions listed separately]
+**RV-P1 EVIDENCE:** isolation probes (a)–(c) clean [cite]; child-script scan clean [cite]; environment equivalence [overall + mismatches]; when `renv.lock` ships, main.py renv autoloader guard present [cite the RV-P1 step 8 grep]. If any is absent or not clean, STOP without execution.
+
+**INSTRUCTIONS:**
+1. Execute once: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/package_run/main.py` — the plain command, no environment prefix, also when `package_run/renv.lock` exists (main.py's own DAAF guard switches renv's autoloader off inside the container; RV-P1 confirmed the guard). Record run start, wrapper exit code, runtime. Exit 74 → ERROR_RECOVERY.md § Execution Wrapper Evidence Outcomes. Do not edit and re-run.
+2. Write and run `{PROJECT_DIR}/scripts/repro_checks/02_claims-comparison.py` (file-first, IAT): per values-manifest key, printed string exact AND full-precision raw value (exact; floats 1e-6 relative). MATCH needs both; printed-only match is DIVERGED ("printed value unchanged"); missing either side is NOT DIRECTLY VERIFIED; restricted keys (RV-P1 map) are RESTRICTED; skip `lit_*`/`prev_*` keys (scope-design exclusions). Print every row; save `{PROJECT_DIR}/output/analysis/claims_comparison.parquet` with columns `key`, `claim_ids`, `status` (status exactly one of MATCH / DIVERGED / NOT DIRECTLY VERIFIED / RESTRICTED; extra columns allowed).
+3. Tables: `compare_reproduction_artifacts.py --mode parquet` on table data and `--mode exact` on rendered includes (snapshot vs regenerated). Figures: data (parquet) → file sha256 (authors' version from `original_files/PACKAGE_INVENTORY.md`, regenerated file from a quoted `sha256sum` probe; NOT the comparator, which rejects `.png`/`.svg`) → Read-tool visual review of PNGs when hashes differ. Preserve all JSON and exit codes.
+4. Logs: `compare_execution_logs.py <original_logs script> {PROJECT_DIR}/package_run/main.py`; exit 3 is NOT DIRECTLY VERIFIED. Scan `package_run/logs/main.log` for absolute `/daaf/` paths.
+5. After step 2, instantiate `{BASE_DIR}/.claude/skills/academic-manuscript/assets/package_selfcheck_template.py` as `{PROJECT_DIR}/scripts/repro_checks/03_package-selfcheck.py` with the post-proof (run 2) Config: `SELFCHECK_RUN = 2`, `PACKAGE_LABEL = "[delivered label]"`, `RV_PROJECT_DIR = Path("{PROJECT_DIR}")`; the template derives the rest (shipped files from `original_files/package_snapshot/`, proof log from `package_run/`, rights/bib/deposit-metadata/DCAF from `original_files/manuscript_evidence/`, `claims_comparison.parquet`, output under `output/analysis/`); run it; carry SC-01–SC-15 results (SC-15 provisional). Exit 1 is a recorded gate result, not a defect to fix.
+6. Run `find <each upstream root> -newermt "<run start>"`; quote the command and output (must be empty). If the package ships `renv.lock`, also run `find {PROJECT_DIR}/package_run/renv -mindepth 1 -maxdepth 1 -type d` and quote it (must be empty: no renv-built project library), and quote `grep -n "DAAF container detected" {PROJECT_DIR}/package_run/logs/main.log` (must show the autoloader-disabled line).
+7. Update `{PROJECT_DIR}/Reproduction_Report.md` (Package Verification variant): Proof Run, Per-Claim Verification, Tables, Figures, Logs, Hygiene, Session Continuity. Derive counts from the rows.
+
+**OUTPUT FORMAT (2000-word hard cap):** run status + exit code + runtime; counts (claims, tables, figures, log metrics) MATCH / DIVERGED / NOT DIRECTLY VERIFIED; every DIVERGED item with likely cause; SC-01–SC-15 failures with AEA tag; candidate reason codes; write-isolation result; files created.
+```
+
+**RV-P3 (data-verifier):**
+
+```python
+Agent({
+    description: "RV-P3: Verify manuscript claims against package proof run",
+    prompt: """[prompt below]""",
+    subagent_type: "data-verifier"
+})
+```
+
+```
+**BASE_DIR:** /daaf
+**PROJECT_DIR:** {absolute_verification_project_path}
+
+**TASK:** Adversarially verify every in-scope manuscript claim against the package proof-run evidence.
+
+**MODE:** Reproducibility Verification — RV-P3. Apply your RV-3 override with these input substitutions: the claims ledger replaces the original Report; the delivered package snapshot replaces the original artifact root; `package_run/` replaces the reproduced artifact root.
+
+**CLAIMS LEDGER:** `{PROJECT_DIR}/original_files/manuscript_evidence/claims_ledger.yaml`
+**PER-CLAIM ROWS:** execution log appended to `{PROJECT_DIR}/scripts/repro_checks/02_claims-comparison.py`
+**HELPER EVIDENCE + REPORT:** `{PROJECT_DIR}/Reproduction_Report.md` (preserved comparator JSON, figure reviews, hygiene results, data-rights status)
+**DATA RIGHTS:** `{PROJECT_DIR}/original_files/manuscript_evidence/DATA_RIGHTS.md`
+
+**INSTRUCTIONS:**
+1. For each in-scope claim, confirm every evidence entry was compared at printed AND full precision, and that the assessment is the worst of its entries.
+2. Confirm RESTRICTED claims trace to non-shipped sources in DATA_RIGHTS.md and have a synthetic test path that executed; otherwise they are gate failures.
+3. Check each shipped data file traces to an attested DATA_RIGHTS record (CRITICAL otherwise).
+4. Challenge every MATCH whose evidence is indirect; an absent side is never a match.
+
+**OUTPUT FORMAT (2000-word hard cap):** per-claim rows (claim | evidence | printed orig/repro | full orig/repro | assessment | restricted? | notes); counts; CRITICAL findings; disagreements with RV-P2 assessments.
+```
+
+**RV-P4 (report-writer):** use the RV-4 prompt template with these substitutions: TASK "Write the Package Verification synthesis"; inputs add the RV-P3 preliminary note; instructions replace step 6 with "determine the overall RV assessment, the AEA classification (verbatim levels; label the DAAF denominator and 0–25% band operationalizations as inference), applicable reason codes, priority-tagged action items (CRITICAL > CODE > FILES > METADATA, each routed m/d/both), SC-14/SC-15, and the submission-ready gate (SUBMISSION-READY only if every in-scope claim is MATCH or RESTRICTED with an executed synthetic test path, and no CRITICAL item is open)". Output: the gate result, the classification, and a 3-sentence summary.
+
+### RV-P PSU Templates
+
+**PSU-RVP1** (after RV-P1, before the run): package and snapshot inventory (files, bytes, inventory path); outputs deleted (count); isolation probes (a)–(c) with the commands and the bounded-assurance statement; child-script scan result; environment equivalence (overall, mismatches, setup program not executed); claims in scope / restricted (with synthetic paths) / excluded by design (literature, superseded); data-rights status per source; the data-path decision. Close with: **"Shall I run the package's entry point once with these settings?"**
+
+**PSU-RVP4** (after RV-P4): **Gate: SUBMISSION-READY / BLOCKED**; overall RV assessment; AEA classification; claims / tables / figures MATCH / DIVERGED / NOT DIRECTLY VERIFIED of N; restricted claims; reason codes; action items grouped by priority tag; the hand-off artifact paths; next step ("return to Manuscript Preparation MP-4" or "fix and re-verify").
+
+### RV-P Boundaries
+
+- **Always:** snapshot before touching anything; run `main.py` exactly once per verification project, with the plain wrapper command (when the package ships `renv.lock`, confirm `main.py`'s renv autoloader guard at RV-P1 and its `DAAF container detected` log line after the run); compare both precisions; keep logs as supporting evidence; quote every isolation probe; record setup programs as not executed; derive every count from report rows; keep literature-claim exclusions outside denominators.
+- **Never:**
+  - execute `code/00_setup.*` or any install;
+  - edit the package, the hub, the ledger, or `DATA_RIGHTS.md`;
+  - attest data rights on the user's behalf;
+  - re-run `package_run/main.py`;
+  - read upstream projects except the crosswalk-listed log copies at RV-P1 step 4;
+  - count a RESTRICTED claim as MATCH;
+  - mark SUBMISSION-READY with any DIVERGED claim or open CRITICAL item.
+- **Ask first:** expanding scope beyond the ledger; running a from-raw proof (network acquisition); treating any CRITICAL finding as resolved.
+
+---
+
 ## Boundaries
 
 ### Infrastructure vs. Substantive Modifications
@@ -569,6 +896,7 @@ The path normalization performed during RV-1 (step 7) is the canonical example o
 | Divergence found, user wants to fix original | Revision & Extension mode | User requests fixing the original analysis |
 | Original analysis is fundamentally broken | Full Pipeline mode | Multiple structural failures across stages |
 | Data source has changed substantially | User decision | Data mirror returns different schema or >5% row count difference |
+| RV-P package verification complete (either gate result) | Manuscript Preparation (MP-4) | Return by artifact path per § RV-P4 Hand-off; orchestrator SKILL.md escalation row deferred until Manuscript Preparation registers |
 
 When escalation is appropriate, propose it explicitly and await user confirmation.
 

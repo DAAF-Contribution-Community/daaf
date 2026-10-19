@@ -21,6 +21,7 @@
 # Exit codes:
 #   0 — success (or server stopped by Ctrl+C)
 #   1 — usage error, invalid directory, or port conflict
+#   30 — marimo is not installed (the image needs rebuilding)
 
 set -euo pipefail
 
@@ -121,7 +122,8 @@ fi
 
 if ! command -v marimo >/dev/null 2>&1; then
     echo "ERROR: marimo is not installed." >&2
-    echo "  Install with: pip install marimo" >&2
+    echo "  marimo ships in the DAAF image, so a missing marimo means the image needs rebuilding:" >&2
+    printf '%s\n' "  exit the container, then run 'bash rebuild_daaf.sh' ('.\\rebuild_daaf.ps1' on Windows) from the daaf-docker folder." >&2
     exit 30
 fi
 

@@ -38,6 +38,8 @@ result2 = process(_x)
 
 3. Combine into one cell if they're related.
 
+`marimo check notebook.py` finds this (MB002) and cycles (MB003) without running the notebook; see `quickstart.md` > Check (Lint).
+
 ### "Cycle Detected" Error
 
 **Cause**: Circular dependency between cells.

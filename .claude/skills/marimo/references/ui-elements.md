@@ -192,12 +192,42 @@ result = expensive_analysis()
 ```python
 table = mo.ui.table(
     data=df,                    # DataFrame or list of dicts
-    selection="multi",          # "single", "multi", or None
+    selection="multi",          # "single", "multi", "single-cell", "multi-cell", or None
     pagination=True,
     page_size=10
 )
-# table.value is list of selected rows
+# table.value is the selected rows, in the same format as the input data
 ```
+
+### Display-Only Table Options
+
+Defaults in 0.25.0 (`marimo/_plugins/ui/_impl/table.py`), with the switch for a plain preview:
+
+| Option | Default | For a plain preview |
+|--------|---------|---------------------|
+| `selection` | `"multi"` (row checkboxes) | `selection=None` |
+| `pagination` | on above 10 rows | leave on, or set `page_size` |
+| `page_size` | 10 | e.g. `page_size=25` |
+| `show_column_summaries` | on for up to 40 columns and more than 10 rows (per-column stats and charts) | `show_column_summaries=False` (`"stats"` or `"chart"` keep one part) |
+| `show_download` | on for DataFrames | `show_download=False` |
+| `show_search` | on (keyword-only) | `show_search=False` |
+| `show_data_types` | on | `show_data_types=False` |
+| `max_height` | none | pixels; scrolls with a sticky header |
+| `hidden_columns` / `visible_columns` | none | mutually exclusive column subsets |
+| `column_widths` | none | `{column: pixels}` |
+
+```python
+# A preview with no selection checkboxes, column summaries, or download button
+mo.ui.table(df.head(100), selection=None, show_column_summaries=False, show_download=False)
+
+# Reuse one set of display options (mo.ui.table.Display is a TypedDict)
+cfg = mo.ui.table.Display(show_search=False, show_download=False)
+mo.ui.table(df.head(100), **cfg)
+```
+
+Column summaries compute statistics and charts over the rows passed in. In a DAAF Stage 9 notebook the canonical preview is the form `.claude/agents/notebook-assembler.md` emits; change it there, not cell by cell.
+
+`mo.ui.table.lazy(lazy_frame, page_size=None, preload=False)` shows a Polars LazyFrame (or Ibis table, DuckDB relation) without loading it, then loads the first rows on request; lazy tables have no pagination or selection.
 
 ### Data Editor
 
