@@ -63,7 +63,7 @@ Net price and many aid statistics use only FTFT students who:
 - Started full-time
 - Are degree/certificate-seeking
 
-**At community colleges**, this may be <25% of students.
+Full-time, first-time students "make up fewer than half of all college students, or even less in some sectors of institutions (e.g., community colleges)" (College Scorecard Technical Documentation, Oct 2026). Figures such as "<25% at community colleges" are illustrative — compute from IPEDS for your sample.
 
 ## Aid Types
 
@@ -127,13 +127,13 @@ This represents what students actually pay after grants (but before loans).
 ### Calculation Population
 
 Net price is calculated ONLY for:
-- First-time, full-time degree/certificate-seeking undergraduates
-- Who were awarded any Title IV aid
+- **Average net price**: full-time, first-time degree/certificate-seeking undergraduates awarded grant or scholarship aid from federal, state or local governments, or the institution (public institutions: in-state/in-district students only)
+- **Net price by income level**: the subset of those students awarded Title IV aid (grants, work-study, or federal loans)
 
 **Excludes**:
 - Part-time students
 - Transfer students
-- Students receiving no Title IV aid (full-pay students)
+- Students awarded no grant aid (average net price) or no Title IV aid (by-income net price), e.g., full-pay students
 - Non-degree students
 
 ### Net Price by Income Level
@@ -177,7 +177,7 @@ net_price_high_income <- 22000  # Little grant aid
 | Limitation | Implication |
 |------------|-------------|
 | FTFT only | Not representative of all students |
-| Title IV recipients only | Excludes full-pay students |
+| Grant recipients (average net price) or Title IV recipients (by income) only; in-state only at publics | Excludes full-pay students |
 | Published vs actual | Individual packages vary widely |
 | Excludes loans | Not total cost |
 | Prior year data | May not reflect current prices |
@@ -309,13 +309,13 @@ avg_b <- 15000  # Same average, very different experience
 
 ### Issue 3: Full-Pay Students Not Included
 
-**Problem**: Students not receiving Title IV aid are excluded.
+**Problem**: Students awarded no grant aid are excluded from average net price, and students awarded no Title IV aid are excluded from net price by income.
 
 | Group | Excluded Because |
 |-------|-----------------|
-| Wealthy families | Don't file FAFSA |
-| International students | Not Title IV eligible |
-| Undocumented students | Not Title IV eligible |
+| Wealthy families | Don't file FAFSA; often no grant aid |
+| International students | Not Title IV eligible (excluded from by-income net price; in average net price only if awarded grant aid) |
+| Undocumented students | Not Title IV eligible (excluded from by-income net price; in average net price only if awarded grant aid) |
 
 **Impact**: At wealthy institutions, net price may overstate what the full student body pays.
 

@@ -37,7 +37,7 @@ The Clery Act requires reporting of specific categories of crimes. These categor
 
 ### Sex Offenses
 
-Sex offense definitions were significantly updated in 2014 to align with the FBI's updated UCR definitions.
+Sex offense definitions were significantly updated by the VAWA final regulations (79 FR 62752, Oct. 20, 2014; effective July 1, 2015) to align with the FBI's updated UCR definitions. The final definitions apply from CY2015 statistics; CY2013–2014 statistics were transitional and did not have to be revised.
 
 #### Rape
 
@@ -51,7 +51,7 @@ Sex offense definitions were significantly updated in 2014 to align with the FBI
   - Temporary or permanent mental or physical incapacity
   - Intoxication
 
-**Note**: Prior to 2014, rape was defined differently (forcible sexual intercourse, female victims only). This definitional change affects trend analysis.
+**Note**: Before the final-rule definitions (CY2015; CY2013–2014 transitional), rape was defined differently (forcible sexual intercourse, female victims only). This definitional change affects trend analysis.
 
 #### Fondling
 
@@ -205,11 +205,12 @@ When multiple offenses occur in a single incident, generally only the most serio
 - Hate crimes
 - VAWA offenses (dating violence, domestic violence, stalking)
 - Weapons, drug, and liquor law violations
+- Sex offense occurring with murder (668.46(c)(9)(vii))
 
 **Examples**:
 - Robbery + Arson = Both counted
 - Rape + Arson = Both counted
-- Murder + Rape = Only murder counted (hierarchy applies)
+- Murder + Rape (or fondling, incest, statutory rape) = Both counted (34 CFR 668.46(c)(9)(vii))
 - Robbery during Burglary = Only robbery counted (hierarchy applies)
 
 ## Classification Rules
@@ -242,7 +243,7 @@ When multiple offenses occur in a single incident, generally only the most serio
 |----------|-------------|
 | `murder` | Murder and non-negligent manslaughter |
 | `neg_manslaughter` | Manslaughter by negligence |
-| `rape` | Rape (2014+ definition) |
+| `rape` | Rape (79 FR 62752 final-rule definition; CY2015+, CY2013–2014 transitional) |
 | `fondling` | Fondling |
 | `incest` | Incest |
 | `statutory_rape` | Statutory rape |
@@ -262,7 +263,7 @@ Variables may have suffixes indicating geographic category:
 
 ## Historical Changes
 
-### 2014 Changes (VAWA Implementation)
+### VAWA Implementation (final rule 79 FR 62752; final definitions from CY2015, CY2013–2014 transitional)
 
 **Sex Offense Definitions**:
 - Rape definition expanded significantly
@@ -271,7 +272,7 @@ Variables may have suffixes indicating geographic category:
 - Previous categories: Forcible sex offenses (rape, sodomy, sexual assault with object, fondling) and Non-forcible (incest, statutory rape)
 
 **Impact on Trend Analysis**:
-- Pre-2014 and post-2014 sex offense data are not directly comparable
+- Sex offense data before and after the transition (CY2013–2014 transitional; final definitions from CY2015) are not directly comparable
 - Expanded rape definition generally resulted in higher rape counts
 - Reclassification of fondling may affect counts
 
@@ -294,5 +295,5 @@ Variables may have suffixes indicating geographic category:
 
 - Crimes **reported** to Campus Security Authorities or local law enforcement
 - That occurred within **Clery geography**
-- During the **calendar year**
+- Reported during the **calendar year**
 - Classified according to **Clery definitions** (not state law)

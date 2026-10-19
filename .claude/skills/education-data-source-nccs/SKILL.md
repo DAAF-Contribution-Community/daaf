@@ -11,7 +11,7 @@ metadata:
 
 # NCCS Data Source Reference
 
-National Center for Charitable Statistics (NCCS) Form 990 data for private nonprofit colleges and universities (Portal mirror: IPEDS-matched institutions, 1993-2016). Use when IRS-based financial data — revenue, expenses, assets, endowment details — or governance information (board composition, executive compensation) is needed beyond what IPEDS provides. Portal data ends at 2016; for newer direct-source data, use the official NCCS Core catalog, whose merged Core currently covers 1987-2024 and whose SOI-current panel covers 2012-2024. Tax year 2024 is provisional, and recent years remain in progress as late and amended returns arrive. Public institutions do not file Form 990 and are excluded.
+National Center for Charitable Statistics (NCCS) Form 990 data for private nonprofit colleges and universities (Portal mirror: IPEDS-matched institutions, 1993-2016). Use when IRS-based financial data — revenue, expenses, assets, endowment details — or governance information (board composition, executive compensation) is needed beyond what IPEDS provides. Portal data ends at 2016; for newer direct-source data, use the official NCCS Core catalog. As verified on 2026-10-19, the Core catalog lists a merged panel (1987-2024), SOI-current (2012-2024), and legacy (1987-2011) harmonized tiers plus a 'Classic NCCS format'; recent tax years are in progress as the IRS continues to release returns. Public institutions do not file Form 990 and are excluded.
 
 The NCCS (National Center for Charitable Statistics) is the principal U.S. repository for empirical data on the nonprofit sector, derived from IRS Form 990 filings. It provides financial depth, governance detail, and historical coverage for private nonprofit colleges and universities that goes well beyond what IPEDS collects.
 
@@ -30,10 +30,10 @@ The NCCS (National Center for Charitable Statistics) is the principal U.S. repos
 ## What is NCCS?
 
 - **Operator**: Urban Institute, Center on Nonprofits and Philanthropy
-- **Coverage**: All U.S. tax-exempt nonprofit organizations (~3.8M in BMF)
+- **Coverage**: All U.S. tax-exempt nonprofit organizations (NCCS Unified BMF: 3,698,197 unique EINs, 1989–2026, build of 2026-09-15)
 - **Primary data source**: IRS Form 990 tax filings
 - **Frequency**: Annual (with filing lag)
-- **Available years**: Portal 1993-2016; direct merged Core 1987-2024; direct SOI-current 2012-2024 (2024 provisional and recent years in progress, catalog verified 2026-07-21)
+- **Available years**: Portal 1993-2016; direct merged Core 1987-2024; direct SOI-current 2012-2024; direct legacy 1987-2011 (recent tax years in progress as the IRS continues to release returns, catalog verified 2026-10-19)
 - **Primary identifier**: EIN (Employer Identification Number, 9-digit)
 - **Education relevance**: Private nonprofit colleges/universities are 501(c)(3) orgs filing Form 990; NTEE codes B40-B50 cover higher education
 
@@ -67,9 +67,9 @@ Research need?
 │   ├─ Tax-exempt type → BMF (SUBSECCD)
 │   └─ NTEE classification → BMF (NTEECC)
 └─ Identify institutions → ./references/ntee-codes.md
-    ├─ All higher education → NTEE B40-B50
-    ├─ Universities → B40, B41, B42, B43
-    └─ Community colleges → B44
+    ├─ All higher education (NTEEV2 'UNI') → B40, B41, B42, B43, B50
+    ├─ Universities → B43
+    └─ Two-year / community colleges → B41
 ```
 
 ### Which NCCS dataset should I use?
@@ -81,9 +81,9 @@ Dataset selection?
 ├─ Need detailed financial variables?
 │   ├─ Large organizations (full 990 filers) → Core PC files
 │   ├─ All organizations (990 + 990EZ) → Core PZ files
-│   └─ Maximum detail (2000+ fields) → Efile database
+│   └─ Maximum detail (125 parsed tables) → Efile database
 ├─ Need private foundations?
-│   └─ Core PF or 990-PF Efile data
+│   └─ Core PF (Efile database has no 990-PF)
 └─ Need small grassroots orgs?
     └─ 990-N ePostcard database
 ```
@@ -99,7 +99,7 @@ Linking NCCS to education data?
 ├─ Want institutional comparisons?
 │   └─ Filter by NTEE codes B40-B50 for higher ed
 └─ Analyzing trends over time?
-    └─ Use the official Core catalog; choose merged Core (1987-2024) or SOI-current (2012-2024) and record provisional/in-progress status
+    └─ Use the official Core catalog; choose merged Core (1987-2024) or SOI-current (2012-2024) and record in-progress status
 ```
 
 ## Quick Reference: NCCS Datasets and Variables
@@ -121,7 +121,7 @@ Linking NCCS to education data?
 | Business Master File (BMF) | Tax-exempt organization registry | Verify in current BMF catalog | Sampling frame, basic information |
 | IRS 990 Efile | Full electronic filings with detailed fields | Verify in current Efile catalog | Detailed governance and programs |
 
-> **Direct-source status (verified 2026-07-21):** Tax year 2024 is provisional, and recent tax years remain in progress as late and amended returns arrive. Start at the official Core catalog, `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`, and record the selected product, tax years, retrieval date, and provisional/in-progress status.
+> **Direct-source status (verified 2026-10-19):** As verified on 2026-10-19, the Core catalog lists a merged panel (1987-2024), SOI-current (2012-2024), and legacy (1987-2011) harmonized tiers plus a 'Classic NCCS format'; recent tax years are in progress as the IRS continues to release returns. Start at the official Core catalog, `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`, and record the selected product, tax years, retrieval date, and in-progress status.
 >
 > **Scope note:** The Portal mirror contains only Form 990 data matched to IPEDS institutions (~2,600 institutions), fixed at 1993-2016. It does NOT include the broader nonprofit universe or NTEE fields. For non-education nonprofits, NTEE-based filtering, or newer tax years, select the appropriate direct product from the official NCCS catalogs rather than treating "NCCS" as one undifferentiated dataset.
 
@@ -132,7 +132,7 @@ Linking NCCS to education data?
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `unitid` | Integer | Institution | `110635` | IPEDS institution ID (Portal addition) |
-| `ein` | Integer | Organization | `10211484` | Employer Identification Number |
+| `ein` | String | Organization | `042103580` | Employer Identification Number (String, 9 characters with leading zeros, e.g. `042103580`; verify mirror dtype and zero-pad to 9 before joining) |
 | `fips` | Integer | State | `6` (California) | State FIPS code |
 
 **Full NCCS** (direct download, outside Portal):
@@ -140,7 +140,7 @@ Linking NCCS to education data?
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `EIN` | 9-digit number | Organization | `123456789` | Unique to each nonprofit |
-| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%); NOT in Portal data |
+| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%) (NCCS, NTEE codes page: 'roughly one organization in four'); NOT in Portal data |
 | `SUBSECCD` | 2-digit code | Tax subsection | `03` (501(c)(3) charity) | NOT in Portal data |
 | `FIPS` | 5-digit code | Geography | `06037` (LA County) | State + county; Portal uses state-level integer |
 
@@ -165,8 +165,8 @@ The Portal dataset has 161 columns. Key mappings from original NCCS/990 names to
 
 | Portal Name | Original NCCS/990 | Description |
 |-------------|-------------------|-------------|
-| `year` | `FISYR` | Academic year (fall semester) — Portal-aligned year (1993-2016) |
-| `fiscal_year` | — | IRS fiscal year ending year from 990 filing (1994-2017); typically `year` + 1 |
+| `year` | — (Portal-derived) | Academic year (fall semester) — Portal-aligned year (1993-2016) |
+| `fiscal_year` | `FISYR` (fiscal year ending year) | IRS fiscal year ending year from 990 filing (1994-2017); typically `year` + 1 |
 | `unitid` | — | IPEDS institution ID (Portal addition) |
 | `ein` | `EIN` | Employer Identification Number |
 | `fips` | `FIPS` | State FIPS code (integer) |
@@ -187,9 +187,9 @@ The Portal dataset has 161 columns. Key mappings from original NCCS/990 names to
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Data unavailable | Not collected for this form/year |
+| `-1` | Missing | Generic Portal label (not defined in NCCS source files) |
 | `-2` | Not applicable | Field doesn't apply to this entity |
-| `-3` | Suppressed | Confidentiality restriction |
+| `-3` | Suppressed | Generic Portal label (not defined in NCCS source files); rare in NCCS columns |
 | `null` | Not reported | Organization did not report (may have data) |
 | `0` | Zero value | Explicitly reported as zero |
 
@@ -263,10 +263,10 @@ df <- df |> mutate(
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Using string codes | Portal uses integer FIPS (`6`), not string (`"CA"` or `"06"`) | Always use integer comparisons; filter `>= 1` to exclude missing codes |
-| Filing threshold confusion | Organizations under $200K revenue may file 990-EZ with fewer variables | Check form type; use Core PZ files for combined 990/990-EZ coverage |
+| Filing threshold confusion | Organizations with gross receipts < $200K **and** total assets < $500K may file 990-EZ with fewer variables | Check form type; use Core PZ files for combined 990/990-EZ coverage |
 | Fiscal year variation | Nonprofits have different fiscal year ends (June 30 common for colleges) | `year` = Portal academic year (fall semester); `fiscal_year` = IRS fiscal year end (typically `year` + 1). Filter on `year` for IPEDS joins. |
 | No NTEE in Portal data | Portal dataset does not include NTEE codes; pre-filtered to higher ed institutions | Cannot filter by NTEE code; use full NCCS BMF for NTEE-based filtering |
-| NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise | Use NCCS-corrected codes (`NTEE_NCCS`) over IRS-assigned codes when available |
+| NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise (NCCS, NTEE codes page: 'roughly one organization in four') | Use NCCS-corrected codes (`NTEE_NCCS`) over IRS-assigned codes when available |
 | Consolidated filings | Some university systems file consolidated 990s covering multiple campuses | Check `mult_ein_flag`; one EIN may represent multiple institutions |
 | Form version changes | Form 990 was redesigned in 2008; variable definitions changed | Be cautious comparing pre-2008 and post-2008 data for governance variables |
 | Missing vs. zero | `0` means explicitly reported zero; `null` means not reported | Distinguish between zero-value and not-reported before aggregating |
@@ -314,8 +314,8 @@ df <- df |> mutate(
    - Use the BMF or Efile catalog only when registry fields or filing-level detail is required
 
 3. **Record release status before downloading**
-   - Tax year 2024 is provisional as verified on 2026-07-21
-   - Recent years remain in progress while late and amended returns arrive
+   - As verified on 2026-10-19, recent tax years are in progress as the IRS continues to release returns
+   - The catalog also lists a legacy (1987-2011) tier and a 'Classic NCCS format'
    - Capture product name, tax years, retrieval date, and any catalog status note
 
 4. **Identify and validate organizations**

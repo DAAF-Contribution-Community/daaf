@@ -16,7 +16,7 @@ Any building or property owned or controlled by an institution within the same r
 
 #### Key Terms
 
-**Owned or Controlled**:
+**Owned or Controlled** (illustrative, from the rescinded 2016 Handbook; ED's 2020 Appendix removed this definition because it is not found in regulation or statute):
 - Owned: Institution holds title to property
 - Controlled: Institution has significant control through lease, rental agreement, written agreement (including email), or other arrangement
 
@@ -66,7 +66,7 @@ Any student housing facility that is owned or controlled by the institution, or 
 - Statistics are reported separately to highlight residential crime
 - On-campus student housing is reported as a **subset**, not a separate category
 
-**Owned or Controlled**:
+**Owned or Controlled** (illustrative, from the rescinded 2016 Handbook; ED's 2020 Appendix removed this definition because it is not found in regulation or statute):
 - Institution owns the facility
 - Institution leases or has written agreement for the facility
 - Institution has significant control over the facility
@@ -184,10 +184,7 @@ All public property, including thoroughfares, streets, sidewalks, and parking fa
 
 #### Practical Determination
 
-**General Rule**: One "block" from campus boundary
-- Public property immediately bordering campus
-- Streets directly in front of campus
-- Does NOT extend indefinitely into the community
+**No measurable-distance rule**: Public property is property "within the campus, or immediately adjacent to and accessible from the campus" (34 CFR 668.46(a)); ED's 2020 Appendix dropped the 2016 Handbook's distance and "sidewalk, street, sidewalk" conventions.
 
 ## Reporting by Geographic Category
 
@@ -227,6 +224,8 @@ Institutions with multiple separate campuses report statistics separately for ea
 ## Classification Challenges
 
 ### Determining "Controlled"
+
+(illustrative, from the rescinded 2016 Handbook; ED's 2020 Appendix removed this definition because it is not found in regulation or statute)
 
 **Factors Indicating Control**:
 - Written agreement (lease, contract, MOU)

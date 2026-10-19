@@ -22,11 +22,10 @@ The BMF is the universe of all organizations granted tax-exempt status by the IR
 
 | Attribute | Value |
 |-----------|-------|
-| **Coverage** | ~3.8 million organizations (all-time) |
-| **Active orgs** | ~1.8 million currently active |
+| **Coverage** | 3,698,197 unique EINs, 1989–2026 (NCCS Unified BMF build of 2026-09-15) |
 | **Update frequency** | Monthly from IRS |
 | **Time span** | Historical coverage varies by BMF product; verify the current BMF catalog before use |
-| **File size** | ~1.3 GB (unified version) |
+| **File size** | ~3.1 GB (Unified BMF; geocoded variant ~3.6 GB) |
 
 ### Key Variables
 
@@ -48,7 +47,7 @@ The BMF is the universe of all organizations granted tax-exempt status by the IR
 
 The NCCS Unified BMF adds:
 
-- **Geocoded addresses**: Matched to Census Block level
+- **Geocoded variant**: latitude/longitude, with optional county/metro crosswalks (TIGER 2023 / OMB 2023)
 - **Census FIPS codes**: State, county, tract identifiers
 - **Metro area codes**: CBSA metropolitan/micropolitan definitions
 - **First/last year indicators**: When organization appears in Core data
@@ -56,23 +55,27 @@ The NCCS Unified BMF adds:
 
 ### Foundation Codes (FNDNCD)
 
+IRS EO BMF codes (IRS `eo_info.pdf`, Wayback capture 2022-12-18):
+
 | Code | Description |
 |------|-------------|
-| 00 | All organizations (most common) |
-| 02 | Private operating foundation |
-| 03 | Private non-operating foundation |
-| 04 | Private non-operating foundation (4947(a)(1) trust) |
-| 10 | Church (170(b)(1)(A)(i)) |
-| 11 | School (170(b)(1)(A)(ii)) |
-| 12 | Hospital (170(b)(1)(A)(iii)) |
-| 13 | Government unit support org |
-| 14 | Public safety testing organization |
-| 15 | Publicly supported charity (170(b)(1)(A)(vi)) |
-| 16 | Organization supporting public charities |
-| 17 | Agricultural research organization |
-| 21 | Publicly supported charity (509(a)(2)) |
+| 00 | All organizations except 501(c)(3) |
+| 02 | Private operating foundation exempt from excise tax on investment income |
+| 03 | Private operating foundation (other) |
+| 04 | Private non-operating foundation |
+| 09 | Suspense |
+| 10 | Church 170(b)(1)(A)(i) |
+| 11 | School 170(b)(1)(A)(ii) |
+| 12 | Hospital or medical research organization 170(b)(1)(A)(iii) |
+| 13 | Organization operated for benefit of a college or university owned/operated by a governmental unit 170(b)(1)(A)(iv) |
+| 14 | Governmental unit 170(b)(1)(A)(v) |
+| 15 | Publicly supported (government/general public) 170(b)(1)(A)(vi) |
+| 16 | 509(a)(2) organization |
+| 17 | 509(a)(3) supporting organization |
+| 18 | Public safety testing 509(a)(4) |
+| 21-24 | 509(a)(3) Type I, II, III functionally integrated, III non-functionally integrated |
 
-**For higher education**: Most private colleges have FNDNCD = 11 (School) or 15/21 (publicly supported charity).
+**For higher education**: FNDNCD = 11 (school); other affiliates 15/16 or 17/21-24 (supporting organizations). Code 21 is a 509(a)(3) Type I supporting organization, not a publicly supported charity.
 
 ### Download
 
@@ -115,9 +118,11 @@ nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$form
 ```python
 import polars as pl
 
-# BMF universe file (large — ~1.3 GB)
-url = "https://nccsdata.s3.amazonaws.com/harmonized/bmf/unified/BMF_UNIFIED_V1.1.csv"
+# BMF universe file (large — ~3.1 GB)
+url = "https://nccsdata.s3.us-east-1.amazonaws.com/unified/bmf/bmf_unified.csv"
 bmf = pl.read_csv(url)
+# Unified BMF column names differ (e.g., nteev2, nteev2_code); verify the
+# upper-case names below against the Unified BMF dictionary before use
 
 # Filter to higher education by NTEE code (NOT available in Portal data)
 higher_ed = bmf.filter(pl.col("NTEECC").str.starts_with("B4"))
@@ -127,9 +132,11 @@ higher_ed = bmf.filter(pl.col("NTEECC").str.starts_with("B4"))
 library(dplyr)
 library(stringr)
 
-# BMF universe file (large — ~1.3 GB)
-url <- "https://nccsdata.s3.amazonaws.com/harmonized/bmf/unified/BMF_UNIFIED_V1.1.csv"
+# BMF universe file (large — ~3.1 GB)
+url <- "https://nccsdata.s3.us-east-1.amazonaws.com/unified/bmf/bmf_unified.csv"
 bmf <- read.csv(url)
+# Unified BMF column names differ (e.g., nteev2, nteev2_code); verify the
+# upper-case names below against the Unified BMF dictionary before use
 
 # Filter to higher education by NTEE code (NOT available in Portal data)
 higher_ed <- bmf |> filter(str_starts(NTEECC, "B4"))
@@ -150,16 +157,18 @@ The Core Data Series provides standardized financial information from Form 990 f
 | **Coverage** | Form 990 and 990-EZ records; exact inclusion depends on the selected Core product |
 | **Merged Core** | 1987-2024 |
 | **SOI-current** | 2012-2024 |
-| **Release status** | Tax year 2024 provisional; recent years in progress as late and amended returns arrive |
+| **Release status** | As verified on 2026-10-19, the Core catalog lists a merged panel (1987-2024), SOI-current (2012-2024), and legacy (1987-2011) harmonized tiers plus a 'Classic NCCS format'; recent tax years are in progress as the IRS continues to release returns |
 | **Variables** | Vary by product and file; verify the current catalog documentation |
 
 ### Data File Types
 
 | Type | Form Scope | Description | Variable Count |
 |------|------------|-------------|----------------|
-| **PC** | Full 990 only | Larger organizations, more detail | ~300 |
-| **PZ** | 990 + 990-EZ | Broader coverage, fewer variables | ~150 |
-| **PF** | 990-PF | Private foundations only | ~200 |
+| **PC** | Full 990 only | Larger organizations, more detail | 251 (990, 2024) |
+| **PZ** | 990 + 990-EZ | Broader coverage, fewer variables | 76 (990-EZ) / 53 shared (990 combined) |
+| **PF** | 990-PF | Private foundations only | 187 (990-PF) |
+
+Variable counts per NCCS Core catalog SOI-current tier.
 
 ### Organizational Scope
 
@@ -252,24 +261,24 @@ Start at the official Core catalog rather than constructing or copying a legacy 
 
 `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`
 
-The catalog currently distinguishes merged Core (1987-2024) from SOI-current (2012-2024), marks 2024 provisional, and warns that recent tax years remain in progress. Select the product and file linked by the catalog, then record the product name, tax year, retrieval date, and status note in project provenance. Use this stable official catalog as the sole documented Core navigation route.
+The catalog currently distinguishes merged Core (1987-2024) from SOI-current (2012-2024) and legacy (1987-2011), and warns that recent tax years are in progress as the IRS continues to release returns. Select the product and file linked by the catalog, then record the product name, tax year, retrieval date, and status note in project provenance. Use this stable official catalog as the sole documented Core navigation route.
 
 ---
 
 ## IRS 990 Efile Database
 
-The most comprehensive source with 2000+ fields from electronic filings.
+The most comprehensive source: electronic filings parsed into 125 relational tables.
 
 ### Overview
 
 | Attribute | Value |
 |-----------|-------|
-| **Coverage** | Electronic filers (mandatory for large orgs since 2022) |
-| **Time span** | 2012-present |
-| **Variables** | 2000+ fields across forms and schedules |
+| **Coverage** | 990 and 990-EZ e-filers (e-filing mandatory for most organizations from tax year 2021); no 990-PF or 990-T |
+| **Time span** | 2009-2023 (2024 partial) |
+| **Variables** | Fields across forms and schedules (count not verified; see the efile data dictionary) |
 | **Format** | XML → converted to relational tables |
 
-### Coverage Growth
+### Coverage Growth (e-filed returns in the 990 Data Commons by form type, Oct. 2025; NCCS parsed tables include only 990 and 990-EZ)
 
 | Year | 990 | 990EZ | 990PF | 990T |
 |------|-----|-------|-------|------|
@@ -278,11 +287,11 @@ The most comprehensive source with 2000+ fields from electronic filings.
 | 2019 | 284,515 | 152,689 | 87,790 | 0 |
 | 2022 | 348,034 | 205,532 | 122,533 | 22,611 |
 
-**Note**: E-filing became mandatory in 2022, so coverage is now comprehensive.
+**Note**: E-filing became mandatory for most tax-exempt organizations beginning in the 2021 tax year (the 2022 calendar year), so coverage is now comprehensive.
 
 ### Data Organization
 
-Efile data is organized into 126 relational tables corresponding to Form 990 sections:
+Efile data is organized into 125 relational tables corresponding to Form 990 sections:
 
 | Table Category | Examples |
 |----------------|----------|
@@ -299,16 +308,15 @@ Efile data is organized into 126 relational tables corresponding to Form 990 sec
 
 ### Variable Naming Convention
 
-Variables use a standardized prefix: `XX_XX_XX_NAME`
+Variables use the convention `FF_PP_NAME` (form, two-digit part, name), e.g. `F9_01_REV_TOT_CY` = Form 990 Part I total revenue, current year; table files are `FF-PPP-TTT-NAME` (e.g. `F9-P00-T00-HEADER`)
 
 | Position | Meaning | Examples |
 |----------|---------|----------|
 | 1-2 | Form | F9 (990), SA-SR (Schedules A-R) |
-| 4-5 | Scope | PC, EZ, PZ, PF, HD (header) |
-| 7-8 | Part/Location | 01-12 (Part I-XII), 00 (header) |
-| 10+ | Variable name | Descriptive name |
+| 4-5 | Part/Location | 01-12 (Part I-XII), 00 (header) |
+| 7+ | Variable name | Descriptive name |
 
-Example: `F9_PC_08_TOTREV` = Form 990, Full 990 filers, Part VIII, Total Revenue
+Any other efile variable names in this skill are illustrative; look up actual names in the efile data dictionary.
 
 ### Access via R Package (Direct NCCS, Not Portal)
 
@@ -384,7 +392,7 @@ The SOI produces statistical samples and extracts used for official IRS statisti
 
 ### Historical Context
 
-Before the Efile era, SOI extracts were the primary source of 990 data for researchers. The NCCS Core files were built from these extracts combined with paper filing digitization.
+Before the Efile era, SOI extracts were the primary source of 990 data for researchers. NCCS's SOI-current Core panel (2012–2024) is built directly from IRS SOI extract files; the legacy panel (1987–2011) is harmonized from the historical NCCS CORE files.
 
 ---
 
@@ -442,13 +450,13 @@ Use the official catalogs as the navigation and provenance layer; do not assume 
 - **BMF by State**: `https://urbaninstitute.github.io/nccs/catalogs/catalog-bmf.html`
 - **Efile**: `https://urbaninstitute.github.io/nccs/catalogs/catalog-efile-v2_1.html`
 
-As verified on 2026-07-21, the Core catalog reports merged Core 1987-2024 and SOI-current 2012-2024; tax year 2024 is provisional, and recent years remain in progress as late and amended returns arrive.
+As verified on 2026-10-19, the Core catalog lists a merged panel (1987-2024), SOI-current (2012-2024), and legacy (1987-2011) harmonized tiers plus a 'Classic NCCS format'; recent tax years are in progress as the IRS continues to release returns.
 
 ### Sector in Brief Dashboard
 
 Interactive dashboard for exploring and downloading nonprofit data with filtering:
 
-https://nccs-urban.shinyapps.io/sector-in-brief/
+https://urban-main.shinyapps.io/sector-in-brief/
 
 ### R Package: nccsdata
 
@@ -482,7 +490,7 @@ https://github.com/UrbanInstitute/nccs
 | Identify universe of nonprofits | BMF |
 | Historical financial trends | Core PZ (broad) or PC (detailed) |
 | Governance and compensation | Efile |
-| Private foundation grants | Core PF or Efile 990-PF |
+| Private foundation grants | Core PF |
 | Geographic analysis | BMF (geocoded) + Census crosswalks |
 | Maximum variable detail | Efile |
 | Quick sampling frame | BMF or Pub78 |

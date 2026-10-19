@@ -30,7 +30,7 @@ The live API disaggregates by URL path segment; the mirror packs the same disagg
 
 The two serving surfaces (live API, bulk-download manifest) can list **different year sets or different objects**, and both can differ from what the mirror build actually produced. Real example: `ipeds/colleges_ipeds_completions-2digcip_2023` and `ipeds/colleges_ipeds_completions-6digcip_2023` exist as parquet files in the v2 mirror build but were **absent from the 2026-07-21 api-downloads manifest snapshot** (present-but-unbridged shards). Treat a mirror file with no matching bridge entry as real-but-unbridged rather than dropping it.
 
-> **Correction — do NOT use the finance coverage example.** Older session notes cited "`ipeds/finance` API 1979-2017 vs mirror reaching 2021" as a coverage-divergence example. A 2026-08-08 probe of the pinned mirror parquet proved the finance content is exactly **1979, 1983-2017** — matching the API — so there is *no* post-2017 mirror overhang. That example is refuted; the completions-2023 shards above are the correct coverage-class illustration.
+> **Correction — do NOT use the finance coverage example.** Older session notes cited "`ipeds/finance` API 1979-2017 vs mirror reaching 2021" as a coverage-divergence example. A 2026-08-08 probe of the pinned mirror parquet proved the finance content is exactly **1979, 1983-2017**, so there is *no* post-2017 mirror overhang; the live API now lists 1979, 1983-2023 (endpoint metadata fetched 2026-10-19), so the mirror lags the API rather than exceeding it. That example is refuted; the completions-2023 shards above are the correct coverage-class illustration.
 
 ### 3. Representation
 

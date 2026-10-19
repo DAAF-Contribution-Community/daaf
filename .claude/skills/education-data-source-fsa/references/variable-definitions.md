@@ -60,11 +60,13 @@ Canonical path: `fsa/colleges_fsa_grants` | Codebook: `fsa/codebook_colleges_fsa
 
 | Code | Grant Type |
 |------|------------|
-| `1` | Federal Pell Grant |
-| `2` | Federal Supplemental Educational Opportunity Grant (FSEOG) |
-| `3` | TEACH Grant |
-| `4` | Iraq and Afghanistan Service Grant |
-| `5` | Children of Fallen Heroes Grant |
+| `1` | Academic Competitiveness Grant |
+| `2` | Iraq and Afghanistan Service Grant |
+| `3` | National SMART Grant |
+| `4` | Federal Pell Grant |
+| `5` | TEACH Grant |
+
+> FSEOG is not a grants-dataset code; it appears only in the campus-based dataset as `award_type` 1.
 
 ### Grant Amount Variables
 
@@ -89,7 +91,7 @@ df = fetch_from_mirrors("fsa/colleges_fsa_grants")
 
 # Get Pell Grant data for California in 2020
 df_pell_ca = df.filter(
-    (pl.col("grant_type") == 1) &  # 1 = Pell Grant
+    (pl.col("grant_type") == 4) &  # 4 = Pell Grant
     (pl.col("fips") == 6) &         # 6 = California
     (pl.col("year") == 2020)
 )
@@ -113,7 +115,7 @@ df <- arrow::read_parquet(url)
 
 # Get Pell Grant data for California in 2020
 df_pell_ca <- df |> filter(
-    (grant_type == 1) &  # 1 = Pell Grant
+    (grant_type == 4) &  # 4 = Pell Grant
     (fips == 6) &         # 6 = California
     (year == 2020)
 )
@@ -128,7 +130,7 @@ Canonical path: `fsa/colleges_fsa_loans` | Codebook: `fsa/codebook_colleges_fsa_
 | Variable | Type | Description |
 |----------|------|-------------|
 | `unitid` | Int64 | IPEDS institution identifier |
-| `year` | Int64 | Academic award year |
+| `year` | Int64 | Award year, fall start year (2018 = 2018-19) |
 | `fips` | Int64 | State FIPS code (integer) |
 | `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
 | `inst_name_fsa` | String | Institution name (FSA) |
@@ -224,7 +226,7 @@ Canonical path: `fsa/colleges_fsa_campus_based_volume` | Codebook: `fsa/codebook
 | Variable | Type | Description |
 |----------|------|-------------|
 | `unitid` | Int64 | IPEDS institution identifier |
-| `year` | Int64 | Academic award year |
+| `year` | Int64 | Award year, fall start year (2018 = 2018-19) |
 | `fips` | Int64 | State FIPS code (integer) |
 | `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
 | `inst_name_fsa` | String | Institution name (FSA) |
@@ -235,7 +237,7 @@ Canonical path: `fsa/colleges_fsa_campus_based_volume` | Codebook: `fsa/codebook
 |------|------------|
 | `1` | Federal Supplemental Educational Opportunity Grants (FSEOG) |
 | `2` | Federal Work-Study (FWS) |
-| `3` | Perkins Loans (discontinued after 2017) |
+| `3` | Perkins Loans (no new loans after September 30, 2017; final disbursements permitted through June 30, 2018, so Portal campus-based `year`=2017 (2017-18) can still contain Perkins disbursements) |
 
 ### Campus-Based Amount Variables
 
@@ -252,7 +254,7 @@ Canonical path: `fsa/colleges_fsa_campus_based_volume` | Codebook: `fsa/codebook
 | `combined_flag` | Int64 | Combined from multiple OPEIDs (0=No, 1=Yes) | Code |
 | `other_assoc_opeids` | String | Other associated OPEIDs | Text |
 
-**Note**: Perkins Loan program discontinued; no new loans after September 30, 2017.
+**Note**: Perkins Loan program discontinued; no new loans after September 30, 2017; final disbursements permitted through June 30, 2018, so Portal campus-based `year`=2017 (2017-18) can still contain Perkins disbursements.
 
 ### Example Query
 
@@ -309,7 +311,7 @@ Canonical path: `fsa/colleges_fsa_composite_scores` | Codebook: `fsa/codebook_co
 | Variable | Type | Description |
 |----------|------|-------------|
 | `unitid` | Int64 | IPEDS institution identifier |
-| `year` | Int64 | Fiscal year |
+| `year` | Int64 | Award year (fall start year) in which the institution's fiscal year ended, e.g., `year`=2015 covers fiscal years ending 2015-07-01 through 2016-06-30, so a June-2016 fiscal year end is `year`=2015, not 2016 |
 | `fips` | Int64 | State FIPS code (integer) |
 | `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
 | `inst_name_fsa` | String | Institution name (FSA) |
@@ -327,7 +329,7 @@ Canonical path: `fsa/colleges_fsa_composite_scores` | Codebook: `fsa/codebook_co
 | Composite Score | Classification |
 |-----------------|----------------|
 | ≥ 1.5 | Financially Responsible |
-| 1.0 - 1.49 | In the Zone |
+| 1.0 - 1.4 | In the Zone (scores are reported to one decimal) |
 | < 1.0 | Not Financially Responsible |
 
 ### Example Query
@@ -338,7 +340,7 @@ import polars as pl
 # Fetch financial responsibility data via mirror system
 df = fetch_from_mirrors("fsa/colleges_fsa_composite_scores")
 
-# Get institutions in the "zone" (1.0 to 1.49)
+# Get institutions in the "zone" (1.0 to 1.4)
 df_zone = df.filter(
     (pl.col("financial_resp_score") >= 1.0) &
     (pl.col("financial_resp_score") < 1.5)
@@ -364,7 +366,7 @@ mirror <- config$mirrors[[1]]
 url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
-# Get institutions in the "zone" (1.0 to 1.49)
+# Get institutions in the "zone" (1.0 to 1.4)
 df_zone <- df |> filter(
     (financial_resp_score >= 1.0) &
     (financial_resp_score < 1.5)
@@ -385,7 +387,7 @@ Canonical path: `fsa/colleges_fsa_90_10_revenue_percentages` | Codebook: `fsa/co
 | Variable | Type | Description |
 |----------|------|-------------|
 | `unitid` | Int64 | IPEDS institution identifier |
-| `year` | Int64 | Fiscal year |
+| `year` | Int64 | Award year (fall start year) in which the institution's fiscal year ended, e.g., `year`=2015 covers fiscal years ending 2015-07-01 through 2016-06-30, so a June-2016 fiscal year end is `year`=2015, not 2016 |
 | `fips` | Int64 | State FIPS code (integer) |
 | `opeid` | Int64 | 8-digit Office of Postsecondary Education ID |
 | `inst_name_fsa` | String | Institution name (FSA) |
@@ -413,8 +415,8 @@ rev_pct_90_10 = numerator_90_10 / denominator_90_10
 | Title IV Proportion | Equivalent Percentage | Status |
 |--------------------|----------------------|--------|
 | <= 0.90 | <= 90% | Compliant |
-| > 0.90 (1 year) | > 90% | Provisional |
-| > 0.90 (2 consecutive years) | > 90% | Ineligible |
+| > 0.90 (1 year) | > 90% | Provisionally certified for the two fiscal years after the failing year; must notify students (34 CFR 668.28(c)) |
+| > 0.90 (2 consecutive years) | > 90% | Loses eligibility for at least two fiscal years (34 CFR 668.28(c)) |
 
 ### Example Query
 
@@ -461,7 +463,7 @@ df_violations <- df |> filter(rev_pct_90_10 > 0.90)
 | Identifier | Format | Description | Example |
 |------------|--------|-------------|---------|
 | `unitid` | 6-digit integer | IPEDS institution ID | 110635 |
-| `year` | 4-digit integer | Academic/fiscal year | 2018 |
+| `year` | 4-digit integer | Award year, fall start year (2018 = 2018-19); for 90/10 and composite scores, the award year in which the institution's fiscal year ended | 2018 |
 
 ### Geographic Identifiers
 

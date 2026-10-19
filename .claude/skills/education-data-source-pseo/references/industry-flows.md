@@ -261,8 +261,9 @@ Some programs have clear industry matches; others are more diffuse:
 
 ### Missing Data
 
-Industry data suppressed when:
-- Fewer than 30 graduates in industry-program cell
+Flows counts are noise-infused (geometric mechanism) and post-processed rather than suppressed by a fixed <30 rule; Census documents the <30 suppression rule for earnings cells, and division-level flows may be suppressed when too much of the flow comes from states with missing data.
+
+Industry data can also be missing when:
 - Program or institution has insufficient coverage
 
 ### Example: Complete Industry Profile

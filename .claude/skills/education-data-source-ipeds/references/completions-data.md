@@ -31,8 +31,8 @@ Fall collection (August-October) for the prior academic year (July 1 - June 30).
 ### Key Distinction: Academic Year
 
 Completions are for the academic year, not calendar year:
-- 2022-23 completions = Awards conferred July 1, 2022 - June 30, 2023
-- Data available fall 2023 (provisional), spring 2024 (final)
+- 2022-23 completions = Awards conferred July 1, 2022 - June 30, 2023 (Portal `year` = 2023 under the inferred end-year convention in SKILL.md § Year Field Meanings; confirm against the codebook)
+- Collected in the Fall 2023 (2023-24) collection; provisional ~9 months after collection closes, final released September 23, 2025 (NCES Data Release Schedule)
 
 ## Completions vs Completers
 
@@ -112,21 +112,32 @@ stem_completions <- bio_completions + chem_completions + physics_completions
 
 ### Portal Award Level Codes
 
-> **CRITICAL:** The Portal uses DIFFERENT award level codes than NCES raw documentation. The codes below are from actual observed data in the Portal `completions-2digcip` dataset. Always verify against the codebook.
+> **CRITICAL:** The Portal uses DIFFERENT award level codes than NCES raw documentation. Labels below are the Portal codebook labels for `award_level` in `completions-2digcip` and `completions-6digcip` (as transcribed in `education-data-explorer/references/variable-dictionary-ipeds.md`). Spot-checked 2026-10-19: UC Berkeley (unitid 110635) Portal `year`=2023, `award_level`=7, `cipcode_6digit`=99, first major, all races and sexes = 9,207 awards, close to College Navigator's 9,216 bachelor's degrees. Always verify against the codebook.
 
-| Code | Level | Typical Duration |
-|------|-------|------------------|
-| 4 | Postsecondary certificate (<1 year) | <1 academic year |
-| 7 | Postsecondary certificate (1-<2 years) | 1-2 academic years |
-| 8 | Associate's degree | 2 years |
-| 9 | Postsecondary certificate (2-<4 years) | 2-4 years |
-| 22 | Bachelor's degree | 4 years |
-| 23 | Postbaccalaureate certificate | Post-bachelor's |
-| 24 | Master's degree | 1-2 years post-bachelor's |
-| 30 | Post-master's certificate | Post-master's |
-| 31 | Doctor's degree - research/scholarship | PhD, EdD (research) |
-| 32 | Doctor's degree - professional practice | MD, JD, DDS, etc. |
-| 33 | Doctor's degree - other | Other doctoral |
+| Code | Level (codebook label) |
+|------|------------------------|
+| 1 | Award of less than one academic year |
+| 2 | Award of less than two academic years |
+| 3 | Award of at least one but less than two academic years |
+| 4 | Associate's degree |
+| 5 | Award of at least one but less than four academic years |
+| 6 | Award of at least two but less than four academic years |
+| 7 | Bachelor's degree |
+| 8 | Postbaccalaureate or post-master's certificate |
+| 9 | Master's degree |
+| 20 | Doctor's degree (until 2008) |
+| 21 | First-professional degree (until 2008) |
+| 22 | Doctor's degree, research/scholarship (starting 2007) |
+| 23 | Doctor's degree, professional practice (starting 2007) |
+| 24 | Doctor's degree, other (starting 2007) |
+| 30 | Certificate of less than 12 weeks |
+| 31 | Certificates of at least 12 weeks but less than 1 year |
+| 32 | Certificate of at least 1 year but less than 2 years |
+| 33 | Certificate of at least 2 years but less than 4 years |
+| 99 | Total |
+| -1 / -2 / -3 | Missing/not reported / Not applicable / Suppressed data |
+
+> **Overlapping certificate codes.** The codebook labels overlap: codes 2 and 5 span the ranges of other codes, and codes 1/3/6 and 30-33 describe overlapping certificate lengths. The codebook does not say which codes occur in which years, or whether 2 and 5 are subtotals (inference: they may be). Tabulate `award_level` by `year` in your extract before summing certificate codes, and never add code 99 to its components.
 
 > Verify these codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`:
 > ```python
@@ -141,48 +152,60 @@ stem_completions <- bio_completions + chem_completions + physics_completions
 
 #### NCES Raw File Award Level Codes (for reference only)
 
-NCES documentation and raw IPEDS data files use a different numbering system. The table below shows the mapping:
+NCES documentation and raw IPEDS data files use a different numbering system (`AWLEVEL`). The Portal column below matches each NCES level to the Portal code with the same codebook label — a label match (inference), not a published crosswalk. Certificate rows have two candidate Portal code families; check which one your extract uses.
 
-| NCES Code | Portal Code | Level |
+| NCES `AWLEVEL` Code | Portal Code (label match) | Level |
 |-----------|-------------|-------|
-| 1 | 4 | Certificate (<1 year) |
-| 2 | 7 | Certificate (1-<2 years) |
-| 3 | 8 | Associate's |
-| 4 | 9 | Certificate (2-<4 years) |
-| 5 | 22 | Bachelor's |
-| 6 | 23 | Postbaccalaureate certificate |
-| 7 | 24 | Master's |
-| 8 | 30 | Post-master's certificate |
-| 17 | 31 | Doctor's - research/scholarship |
-| 18 | 32 | Doctor's - professional practice |
-| 19 | 33 | Doctor's - other |
+| 1 | 1 (or 30/31) | Certificate (<1 year) |
+| 2 | 3 (or 32) | Certificate (1-<2 years) |
+| 3 | 4 | Associate's |
+| 4 | 6 (or 33) | Certificate (2-<4 years) |
+| 5 | 7 | Bachelor's |
+| 6 | 8 (shared with post-master's) | Postbaccalaureate certificate |
+| 7 | 9 | Master's |
+| 8 | 8 (shared with postbaccalaureate) | Post-master's certificate |
+| 17 | 22 | Doctor's - research/scholarship |
+| 18 | 23 | Doctor's - professional practice |
+| 19 | 24 | Doctor's - other |
 
 ### Award Level Groupings (Portal Codes)
 
 ```python
-# Common groupings using PORTAL codes (not NCES codes)
-certificates = [4, 7, 9, 23, 30]  # All certificate levels
-associate = [8]
-bachelor = [22]
-master = [24]
-doctoral = [31, 32, 33]
+# Common groupings using PORTAL codes (not NCES codes); labels per the Portal codebook.
+# Drop 99 (Total) and negative codes before summing.
+# Sub-baccalaureate certificate codes overlap (2 and 5 span other ranges; 1/3/6 vs 30-33):
+# tabulate award_level by year in your extract and use ONE non-overlapping set.
+subbacc_certs_ay = [1, 3, 6]          # by academic-year length
+subbacc_certs_wk = [30, 31, 32, 33]   # by weeks/years length
+associate = [4]
+bachelor = [7]
+grad_certificates = [8]               # postbaccalaureate or post-master's certificate
+master = [9]
+doctoral = [22, 23, 24]               # from 2007; codes 20/21 cover years until 2008
+doctoral_pre2008 = [20, 21]           # until 2008 (21 = first-professional); 2007-2008 may also carry 22-24 — tabulate by year, never sum both families for one year
 
-# Undergraduate vs graduate
-undergraduate = [4, 7, 8, 9, 22]  # Through bachelor's
-graduate = [23, 24, 30, 31, 32, 33]  # Post-bachelor's
+# Undergraduate vs graduate (pick the certificate set your extract actually uses)
+undergraduate = subbacc_certs_ay + associate + bachelor
+graduate = grad_certificates + master + doctoral  # add doctoral_pre2008 for years before 2007
 ```
 
 ```r
-# Common groupings using PORTAL codes (not NCES codes)
-certificates <- c(4, 7, 9, 23, 30)  # All certificate levels
-associate <- c(8)
-bachelor <- c(22)
-master <- c(24)
-doctoral <- c(31, 32, 33)
+# Common groupings using PORTAL codes (not NCES codes); labels per the Portal codebook.
+# Drop 99 (Total) and negative codes before summing.
+# Sub-baccalaureate certificate codes overlap (2 and 5 span other ranges; 1/3/6 vs 30-33):
+# tabulate award_level by year in your extract and use ONE non-overlapping set.
+subbacc_certs_ay <- c(1, 3, 6)          # by academic-year length
+subbacc_certs_wk <- c(30, 31, 32, 33)   # by weeks/years length
+associate <- c(4)
+bachelor <- c(7)
+grad_certificates <- c(8)               # postbaccalaureate or post-master's certificate
+master <- c(9)
+doctoral <- c(22, 23, 24)               # from 2007; codes 20/21 cover years until 2008
+doctoral_pre2008 <- c(20, 21)           # until 2008 (21 = first-professional); 2007-2008 may also carry 22-24 — tabulate by year, never sum both families for one year
 
-# Undergraduate vs graduate
-undergraduate <- c(4, 7, 8, 9, 22)  # Through bachelor's
-graduate <- c(23, 24, 30, 31, 32, 33)  # Post-bachelor's
+# Undergraduate vs graduate (pick the certificate set your extract actually uses)
+undergraduate <- c(subbacc_certs_ay, associate, bachelor)
+graduate <- c(grad_certificates, master, doctoral)  # add doctoral_pre2008 for years before 2007
 ```
 
 ## CIP Codes
@@ -246,6 +269,7 @@ CIP codes are updated periodically:
 DHS designates STEM fields for OPT purposes. Common STEM 2-digit CIPs:
 
 ```python
+# 2-digit values; Portal `cipcode` may hold 6-digit-style values (110000) — tabulate before filtering (unverified)
 stem_cips = [
     1,   # Agriculture (some)
     3,   # Natural Resources
@@ -260,6 +284,7 @@ stem_cips = [
 ```
 
 ```r
+# 2-digit values; Portal `cipcode` may hold 6-digit-style values (110000) — tabulate before filtering (unverified)
 stem_cips <- c(
     1,   # Agriculture (some)
     3,   # Natural Resources
@@ -283,16 +308,16 @@ Completions are reported by:
 
 ```python
 # Demographic breakdown
-completions_by_race = df.group_by(["cip", "race"]).agg(pl.col("awards").sum())
-completions_by_gender = df.group_by(["cip", "sex"]).agg(pl.col("awards").sum())
+completions_by_race = df.group_by(["cipcode", "race"]).agg(pl.col("awards").sum())
+completions_by_gender = df.group_by(["cipcode", "sex"]).agg(pl.col("awards").sum())
 ```
 
 ```r
 library(dplyr)
 
 # Demographic breakdown
-completions_by_race <- df |> group_by(cip, race) |> summarise(awards = sum(awards), .groups = "drop")
-completions_by_gender <- df |> group_by(cip, sex) |> summarise(awards = sum(awards), .groups = "drop")
+completions_by_race <- df |> group_by(cipcode, race) |> summarise(awards = sum(awards), .groups = "drop")
+completions_by_gender <- df |> group_by(cipcode, sex) |> summarise(awards = sum(awards), .groups = "drop")
 ```
 
 ### Race/Ethnicity Categories (Portal Integer Encoding)
@@ -342,6 +367,7 @@ For each CIP code and award level:
 ### Analysis Considerations
 
 ```python
+# Illustrative: no `distance_ed` column exists in Portal completions files (explorer dictionary); the 1/2/3 flag table is unverified
 # Filter to programs with DE option
 de_programs = completions.filter(
     pl.col("distance_ed").is_in([1, 2])
@@ -356,6 +382,7 @@ online_only = completions.filter(
 ```r
 library(dplyr)
 
+# Illustrative: no `distance_ed` column exists in Portal completions files (explorer dictionary); the 1/2/3 flag table is unverified
 # Filter to programs with DE option
 de_programs <- completions |> filter(distance_ed %in% c(1, 2))
 
@@ -370,23 +397,25 @@ online_only <- completions |> filter(distance_ed == 1) |> summarise(total = sum(
 Estimate graduates entering workforce:
 
 ```python
+# 2-digit CIP column is `cipcode`; codebook labels use 6-digit-style values (110000 = Computer and information sciences) — tabulate `cipcode` before filtering (11 vs 110000 unverified)
 # CS graduates available
 cs_grads = completions.filter(
-    pl.col("cip2") == 11
+    pl.col("cipcode") == 11
 ).select(pl.col("awards").sum())
 
 # By degree level
 cs_by_level = completions.filter(
-    pl.col("cip2") == 11
-).group_by("awlevel").agg(pl.col("awards").sum())
+    pl.col("cipcode") == 11
+).group_by("award_level").agg(pl.col("awards").sum())
 ```
 
 ```r
+# 2-digit CIP column is `cipcode`; codebook labels use 6-digit-style values (110000 = Computer and information sciences) — tabulate `cipcode` before filtering (11 vs 110000 unverified)
 # CS graduates available
-cs_grads <- completions |> filter(cip2 == 11) |> summarise(total = sum(awards))
+cs_grads <- completions |> filter(cipcode == 11) |> summarise(total = sum(awards))
 
 # By degree level
-cs_by_level <- completions |> filter(cip2 == 11) |> group_by(awlevel) |> summarise(total = sum(awards))
+cs_by_level <- completions |> filter(cipcode == 11) |> group_by(award_level) |> summarise(total = sum(awards))
 ```
 
 ### Program Growth Analysis
@@ -395,13 +424,13 @@ Track field trends over time:
 
 ```python
 # Year-over-year change
-field_trend = completions.group_by(["year", "cip2"]).agg(
+field_trend = completions.group_by(["year", "cipcode"]).agg(
     pl.col("awards").sum().alias("total")
-).sort(["cip2", "year"])
+).sort(["cipcode", "year"])
 
 # Calculate growth rate
 field_trend = field_trend.with_columns(
-    (pl.col("total") / pl.col("total").shift(1) - 1).over("cip2").alias("growth")
+    (pl.col("total") / pl.col("total").shift(1) - 1).over("cipcode").alias("growth")
 )
 ```
 
@@ -410,13 +439,13 @@ library(dplyr)
 
 # Year-over-year change
 field_trend <- completions |>
-  group_by(year, cip2) |>
+  group_by(year, cipcode) |>
   summarise(total = sum(awards), .groups = "drop") |>
-  arrange(cip2, year)
+  arrange(cipcode, year)
 
 # Calculate growth rate
 field_trend <- field_trend |>
-  group_by(cip2) |>
+  group_by(cipcode) |>
   mutate(growth = total / lag(total) - 1) |>
   ungroup()
 ```
@@ -429,6 +458,7 @@ Analyze representation:
 import polars as pl
 
 # Percent women in engineering (sex=2 is Female in Portal integer encoding)
+# `cipcode` value coding (14 vs 140000) unverified — tabulate `cipcode` before filtering
 eng_by_gender = completions.filter(
     (pl.col("cipcode") == 14) &
     (pl.col("race") == 99)  # Total across races
@@ -443,6 +473,7 @@ pct_women = female_awards / total_awards * 100
 library(dplyr)
 
 # Percent women in engineering (sex=2 is Female in Portal integer encoding)
+# `cipcode` value coding (14 vs 140000) unverified — tabulate `cipcode` before filtering
 eng_by_gender <- completions |>
   filter(cipcode == 14, race == 99) |>
   group_by(sex) |>
@@ -461,7 +492,7 @@ Understand institutional focus:
 # Programs by field at institution
 inst_mix = completions.filter(
     pl.col("unitid") == 110635
-).group_by("cip2").agg(
+).group_by("cipcode").agg(
     pl.col("awards").sum().alias("completions")
 ).sort("completions", descending=True)
 ```
@@ -470,7 +501,7 @@ inst_mix = completions.filter(
 # Programs by field at institution
 inst_mix <- completions |>
   filter(unitid == 110635) |>
-  group_by(cip2) |>
+  group_by(cipcode) |>
   summarise(completions = sum(awards), .groups = "drop") |>
   arrange(desc(completions))
 ```
@@ -550,9 +581,9 @@ The `completions-2digcip` (yearly) dataset contains disaggregated rows by race, 
 | Portal Variable | Description |
 |-----------------|-------------|
 | `unitid` | Institution identifier |
-| `year` | Data year |
-| `cipcode` | CIP code (2-digit integer) |
-| `award_level` | Award level code (Portal codes: 4, 7, 8, 9, 22-24, 30-33) |
+| `year` | Data year (inferred: academic year ending in `year`; see SKILL.md § Year Field Meanings) |
+| `cipcode` | CIP code (2-digit family, integer; values may be 6-digit-style, e.g. 110000 — unverified, tabulate before filtering) |
+| `award_level` | Award level code (Portal codes 1-9, 20-24, 30-33, 99; see Award Levels) |
 | `majornum` | Major number (1=first major, 2=second major) |
 | `awards` | Count of awards conferred |
 | `race` | Race/ethnicity (integer codes: 1-9, 99=Total) |
@@ -567,7 +598,7 @@ The following variable names appear in NCES documentation and raw IPEDS data fil
 
 | NCES Name | Portal Equivalent | Notes |
 |-----------|-------------------|-------|
-| `AWLEVEL` | `award_level` | NCES uses codes 1-19; Portal uses codes 4-33 |
+| `AWLEVEL` | `award_level` | Different code sets — see Award Levels above (e.g., bachelor's = NCES 5, Portal 7) |
 | `CTOTALT` | `awards` (filtered to totals) | Portal uses disaggregated rows |
 | `CIPCODE` | `cipcode` | Same name, but 2-digit vs 6-digit depends on dataset |
 | `MAJORNUM` | `majornum` | Same concept |

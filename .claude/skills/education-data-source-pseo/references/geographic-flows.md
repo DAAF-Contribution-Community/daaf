@@ -231,8 +231,9 @@ Computer Science (CIP=11) Bachelor's, Y1 Employment by Division:
 
 ### Missing Data
 
-Flows data can be missing when:
-- Fewer than 30 graduates in a cell (suppressed)
+Flows counts are noise-infused (geometric mechanism) and post-processed rather than suppressed by a fixed <30 rule; Census documents the <30 suppression rule for earnings cells, and division-level flows may be suppressed when too much of the flow comes from states with missing data.
+
+Flows data can also be missing when:
 - Institution recently joined PSEO
 - Program has insufficient completers
 

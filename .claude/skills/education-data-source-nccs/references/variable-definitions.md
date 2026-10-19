@@ -25,10 +25,10 @@ This reference provides definitions for key variables in NCCS datasets, includin
 
 | Portal Name | NCCS Name | Description |
 |-------------|-----------|-------------|
-| `year` | `FISYR` | Academic year — the Portal-aligned year corresponding to the fall semester of the academic year the filing is associated with (range 1993-2016). The codebook labels this "Academic year (fall semester)." |
-| `fiscal_year` | — | Fiscal year — the IRS fiscal year ending year from the Form 990 filing (range 1994-2017). Typically differs from `year` by +1 because a fiscal year ending in e.g. June 2015 corresponds to the 2014-2015 academic year (`year`=2014, `fiscal_year`=2015). |
+| `year` | — (Portal-derived) | Academic year — the Portal-aligned year corresponding to the fall semester of the academic year the filing is associated with (range 1993-2016). The codebook labels this "Academic year (fall semester)." |
+| `fiscal_year` | `FISYR` (fiscal year ending year) | Fiscal year — the IRS fiscal year ending year from the Form 990 filing (range 1994-2017). Typically differs from `year` by +1 because a fiscal year ending in e.g. June 2015 corresponds to the 2014-2015 academic year (`year`=2014, `fiscal_year`=2015). |
 | `unitid` | — | IPEDS institution ID (Portal addition) |
-| `ein` | `EIN` | Employer Identification Number (Int64) |
+| `ein` | `EIN` | Employer Identification Number (String, 9 characters with leading zeros, e.g. `042103580`; verify mirror dtype and zero-pad to 9 before joining) |
 | `fips` | `FIPS` | State FIPS code (integer in Portal, 1-78) |
 | `inst_name_nccs` | `NAME` | Organization name from 990 filing (String) |
 | `mult_ein_flag` | — | Multiple-EIN indicator (0=No, 1=Yes) |
@@ -73,23 +73,22 @@ Core data variables use abbreviated names that evolved over time. Common pattern
 
 ### Efile Database
 
-Efile variables follow a structured naming convention:
+Efile variables follow the convention `FF_PP_NAME` (form, two-digit part, name), e.g. `F9_01_REV_TOT_CY` = Form 990 Part I total revenue, current year; table files are `FF-PPP-TTT-NAME` (e.g. `F9-P00-T00-HEADER`):
 
 ```
-XX_XX_XX_VARIABLE_NAME
-│  │  │  └── Descriptive name
-│  │  └───── Part number (00-12)
-│  └──────── Scope (PC, EZ, PZ, PF, HD)
-└─────────── Form (F9, SA-SR for schedules)
+FF_PP_VARIABLE_NAME
+│  │  └── Descriptive name
+│  └───── Part number (00-12)
+└──────── Form (F9, SA-SR for schedules)
 ```
 
 **Examples**:
 | Variable | Meaning |
 |----------|---------|
-| `F9_HD_00_EIN` | Form 990, Header, EIN |
-| `F9_PC_01_TOTREV` | Form 990, Full filers, Part I, Total Revenue |
-| `F9_PC_08_CONT` | Form 990, Full filers, Part VIII, Contributions |
-| `SD_PC_05_ENDOW_EOY` | Schedule D, Full filers, Part V, Endowment End of Year |
+| `F9_00_TAX_YEAR` | Form 990, header, tax year |
+| `F9_01_REV_TOT_CY` | Form 990, Part I, total revenue, current year |
+
+Other efile variable names in this skill are illustrative; look up actual names in the efile data dictionary.
 
 ---
 
@@ -140,13 +139,13 @@ XX_XX_XX_VARIABLE_NAME
 | `CONT` | Contributions and grants | Part VIII, Line 1 |
 | `PROGREV` | Program service revenue | Part VIII, Line 2 |
 | `DUES` | Membership dues | Part VIII, Line 1b |
-| `INVINC` | Investment income | Part VIII, Lines 3-5 |
-| `DIVID` | Dividend income | Part VIII, Line 4 |
+| `INVINC` | Investment income | Part VIII, Line 3 (Part I line 10 = lines 3, 4, 7d) |
+| `DIVID` | Dividend income | Part VIII, Line 3 (dividends and interest combined on 2008+ form) |
 | `INTINC` | Interest income | Part VIII, Line 3 |
 | `NETRENT` | Net rental income | Part VIII, Line 6 |
-| `SALESEXP` | Net gain/loss from sales | Part VIII, Lines 7-8 |
+| `SALESEXP` | Net gain/loss from sales | Part VIII, Line 7 |
 | `OTHREV` | Other revenue | Part VIII, Line 11 |
-| `GRSRCPTS` | Gross receipts | Part I, Line 6 |
+| `GRSRCPTS` | Gross receipts | Header item G |
 
 ### Expense Variables
 
@@ -175,8 +174,8 @@ XX_XX_XX_VARIABLE_NAME
 | `TOTASSBEG` | Total assets (BOY) | Part X, Line 16 |
 | `TOTLIAB` | Total liabilities (EOY) | Part X, Line 26 |
 | `TOTLIABBEG` | Total liabilities (BOY) | Part X, Line 26 |
-| `NETASS` | Net assets (EOY) | Part X, Line 33 |
-| `NETASSBEG` | Net assets (BOY) | Part X, Line 33 |
+| `NETASS` | Net assets (EOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018) |
+| `NETASSBEG` | Net assets (BOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018) |
 | `FUNDSBAL` | Fund balance (BOY) | |
 | `CASH` | Cash | Part X, Lines 1-2 |
 | `SECUR` | Securities | Part X, Lines 11-12 |
@@ -270,16 +269,6 @@ XX_XX_XX_VARIABLE_NAME
 | `SO_` | Schedule O (Supplemental Information) |
 | `SR_` | Schedule R (Related Organizations) |
 
-### Scope Codes
-
-| Code | Meaning |
-|------|---------|
-| `HD` | Header (common across forms) |
-| `PC` | Full Form 990 filers only |
-| `EZ` | Form 990-EZ filers only |
-| `PZ` | Both PC and EZ filers |
-| `PF` | Form 990-PF (private foundations) |
-
 ### Part Numbers
 
 | Part | Content |
@@ -320,8 +309,7 @@ XX_XX_XX_VARIABLE_NAME
 - Fee-for-service activities
 
 **Investment Income** (`INVINC`):
-- Interest, dividends, royalties
-- Does NOT include capital gains (separate line)
+- Part I line 10 investment income = Part VIII lines 3, 4 and 7d (includes net gains from asset sales); royalties are line 5. Core `INVINC` definition: check the Core dictionary
 
 ### Expense Measures
 
@@ -350,9 +338,8 @@ XX_XX_XX_VARIABLE_NAME
 **Net Assets** (`NETASS`):
 - Assets minus liabilities
 - Equivalent to "fund balance" or "equity"
-- Two categories:
-  - Without donor restrictions (unrestricted)
-  - With donor restrictions (restricted)
+- Through tax year 2017 (all Portal years): unrestricted, temporarily restricted, permanently restricted
+- From 2018 forms: without / with donor restrictions
 
 ### Derived Ratios
 
@@ -362,19 +349,21 @@ XX_XX_XX_VARIABLE_NAME
 | Admin Ratio | MGTEXP / TOTEXP | Lower = less overhead |
 | Fundraising Efficiency | FUNDEXP / CONT | Lower = more efficient fundraising |
 | Revenue Concentration | Max source / TOTREV | Higher = more dependent |
-| Liquidity | Cash / TOTEXP | Months of operating reserves |
+| Liquidity | Cash / TOTEXP × 12 | Months of operating reserves |
 
 ---
 
 ## Missing Data Codes
 
-### NCCS Standard Codes (Integer in Portal)
+### Portal Codes (Integer in Portal)
+
+In the Education Data Portal (not NCCS source files): -1 Missing, -2 Not applicable, -3 Suppressed (generic Portal labels; rare in NCCS columns).
 
 | Code | Meaning |
 |------|---------|
-| `-1` | Data unavailable (not collected) |
-| `-2` | Not applicable (field doesn't apply) |
-| `-3` | Suppressed (confidentiality) |
+| `-1` | Missing |
+| `-2` | Not applicable |
+| `-3` | Suppressed |
 | `null` | Not reported by organization |
 | `0` | Zero value (explicitly reported) |
 
@@ -388,7 +377,7 @@ XX_XX_XX_VARIABLE_NAME
 |-------------|----------------|
 | `invest_inc_total = 0` | Organization reported zero investment income |
 | `invest_inc_total = null` | Organization did not report (may have income) |
-| `invest_inc_total = -1` | Variable not available for this form/year |
+| `invest_inc_total = -1` | Generic Portal "missing" code (rare in NCCS columns) |
 
 ### Handling Missing Data
 
@@ -569,7 +558,7 @@ unusual <- df |> filter(abs(rev_change) > 1.0)  # >100% change
 ### Known Data Issues
 
 **Form version changes (2008)**:
-- Governance questions added
+- The 2008 redesign added Part VI (independent board members, whistleblower and document-retention policies, compensation-review process); the 2007 form already asked board size, family/business relationships, and whether a written conflict-of-interest policy existed
 - Compensation reporting expanded
 - Some variable definitions changed
 
@@ -588,5 +577,5 @@ unusual <- df |> filter(abs(rev_change) > 1.0)  # >100% change
 
 - **NCCS Data Guide**: https://nccs.urban.org/pubs/nccs-data-guide.pdf
 - **Core Data Dictionary**: https://nccsdata.s3.amazonaws.com/harmonized/core/CORE-HRMN_dd.csv
-- **Efile Data Dictionary**: https://nonprofit-open-data-collective.github.io/irs990efile/data-dictionary/
+- **Efile Data Dictionary**: https://nonprofit-open-data-collective.github.io/irs990efile/data-dictionary/data-dictionary.html
 - **Master Concordance File**: https://github.com/Nonprofit-Open-Data-Collective/irs-efile-master-concordance-file

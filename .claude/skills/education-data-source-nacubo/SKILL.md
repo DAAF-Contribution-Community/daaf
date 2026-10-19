@@ -13,7 +13,7 @@ metadata:
 
 NACUBO endowment data for U.S. college and university endowments (~650 institutions). Portal mirror provides only 7 market-value columns (total endowment, per-FTE endowment, year-over-year change; 2012-2022). Use when analyzing institution-level endowment size or trends. Full investment returns, asset allocations, spending rates, and governance data require separate NACUBO study access. For comprehensive endowment coverage across all institutions, use IPEDS finance data.
 
-The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annual survey of U.S. college and university endowments, covering ~650 institutions representing over $870 billion in assets. The Education Data Portal mirrors a limited subset (7 market-value columns); full investment, allocation, spending, and governance data requires direct NACUBO access.
+The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annual survey of U.S. college and university endowments, covering ~650 institutions (FY2025: 657 participants, $944.3 billion). The Education Data Portal mirrors a limited subset (7 market-value columns); full investment, allocation, spending, and governance data requires direct NACUBO access.
 
 > **CRITICAL: Portal Mirror Scope**
 >
@@ -29,7 +29,7 @@ The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annua
 > | Variable | Portal Format | Notes |
 > |----------|---------------|-------|
 > | `fips` | Integer (`6` = California) | Not string abbreviations ("CA") |
-> | `year` | Integer (`2022`) | Fiscal year ending year |
+> | `year` | Integer (`2022`) | Fiscal-year START year: `year`=2020 is FY2021 (July 1, 2020-June 30, 2021) |
 > | `endow_total` | Float64 (USD) | Full dollar amount, NOT thousands |
 > | `endow_chg_mktval` | Float64 (decimal fraction) | `0.059` = 5.9% change, NOT `5.9` |
 > | Missing data | `null` | NOT -1, -2, -3 |
@@ -44,9 +44,9 @@ The National Association of College and University Business Officers (NACUBO) is
 - **Coverage**: ~650 participating colleges, universities, and affiliated foundations (voluntary)
 - **Scope**: Investment returns, asset allocations, spending rates, governance practices, market values
 - **Frequency**: Annual survey (September-December collection, February publication)
-- **Available years**: 1974-present (50+ years of study); Portal mirror covers 2012-2022 (11 years)
+- **Available years**: 1974-present (50+ years of study); Portal mirror covers 2012-2022 (11 years; Portal `year` = fiscal-year start year, so FY2013-FY2023)
 - **Primary identifier**: `unitid` (IPEDS 6-digit institution ID)
-- **FY2024 total**: 658 participants representing $873.7 billion in assets
+- **FY2025 total**: 657 participants representing $944.3 billion in assets (2025 NCSE, released Feb. 12, 2026); FY2024: 658, $873.7 billion
 
 ## Reference File Structure
 
@@ -120,7 +120,7 @@ These are the **only** columns available in the Portal mirror (`nacubo/colleges_
 
 | Column | Type | Description | Nulls |
 |--------|------|-------------|-------|
-| `year` | Int64 | Fiscal year ending year (2012-2022) | 0 |
+| `year` | Int64 | Fiscal-year start year (2012-2022 = FY2013-FY2023) | 0 |
 | `unitid` | Int64 | IPEDS 6-digit institution ID | 0 |
 | `inst_name_nacubo` | String | NACUBO institution name | 0 |
 | `fips` | Int64 | State FIPS code (1-56, territories: 72, 78) | 1 |
@@ -175,7 +175,9 @@ df |> filter(endow_total > 1e9)
 | `inst_name_nacubo` | String | Institution | `Harvard University` | NACUBO version of name |
 | `fips` | Integer (1-56) | State | `25` (Massachusetts) | State FIPS code |
 
-### Endowment Size Categories
+### Endowment Size Categories (FY2024 study; FY2025 study now available)
+
+FY24 counts and shares below are illustrative; not from a published NACUBO table.
 
 | Category Code | Range | FY24 Count | % of Participants |
 |---------------|-------|------------|-------------------|
@@ -270,10 +272,10 @@ Use NACUBO's year-neutral Endowment Management page as the stable navigation lan
 
 `https://www.nacubo.org/Topics/Endowment-Management`
 
-Follow that page to the current NACUBO-Commonfund Study of Endowments and its public tables. Public-table URLs are year-specific and should be treated as dated examples, not permanent routes. For example, as verified on 2026-07-21:
+Follow that page to the current NACUBO-Commonfund Study of Endowments and its public tables. Public-table URLs are year-specific and should be treated as dated examples, not permanent routes. For example, as verified on 2026-10-19 (the `/Research/2025/` paths now return 404):
 
-- 2025 study: `https://www.nacubo.org/Research/2025/NACUBO-Commonfund-Study-of-Endowments`
-- 2025 public tables: `https://www.nacubo.org/Research/2025/Public-NCSE-Tables`
+- Current study page (FY2026 collection; FY2025 results): `https://www.nacubo.org/Research/2026/NACUBO-Commonfund-Study-of-Endowments`
+- Public tables: `https://www.nacubo.org/Research/2026/Public-NCSE-Tables`
 
 Public tables may include participating institutions by market value and selected return, allocation, or spending summaries. Verify the current year's contents before claiming a specific table is available.
 
@@ -289,10 +291,10 @@ Public availability is **not** an open-data or unrestricted-republication licens
 | Expecting coded missing values | NACUBO in Portal uses nulls, not -1/-2/-3 | Check for null, not negative codes |
 | Treating `endow_chg_mktval` as percentage | Column is a decimal fraction (0.059), not a percentage (5.9) | Multiply by 100 for display: `pl.col("endow_chg_mktval") * 100` |
 | Treating `endow_total` as thousands | Column is in full USD (1.05e9 = $1.05B) | No division needed; value is already in dollars |
-| Comparing to IPEDS values | NACUBO is voluntary (~650-813), IPEDS is mandatory (~6,000+) | Note sample differences in analysis |
-| Year interpretation | FY2024 = July 2023 - June 2024 | Align fiscal year definitions carefully |
+| Comparing to IPEDS values | NACUBO is voluntary (~650-813), IPEDS is mandatory (~5,800 Title IV institutions and administrative offices) | Note sample differences in analysis |
+| Year interpretation | FY2024 = July 2023 - June 2024 = Portal `year` 2023 (Portal `year` is the fiscal-year start year) | Align fiscal year definitions carefully |
 | Assuming comprehensive coverage | Only ~650-813 of ~4,000+ institutions participate | Use IPEDS for population-level analysis |
-| Ignoring partner changes | TIAA (2018-22) vs Commonfund (other years) may change methodology | Check methodology for specific years |
+| Ignoring partner changes | Portal years 2017-2021 = FY2018-FY2022 (NACUBO-TIAA); Portal 2012-2016 and 2022 = FY2013-FY2017 and FY2023 (NACUBO-Commonfund) | Check methodology for specific years |
 | Expecting investment returns in Portal | Portal only has market values, not returns/allocations/spending | Use full NCSE study for investment analysis |
 
 ## Key Caveats
@@ -303,9 +305,9 @@ Public availability is **not** an open-data or unrestricted-republication licens
 | Voluntary participation | ~650-813 of ~4,000+ institutions per year | Use IPEDS for comprehensive coverage |
 | Self-reported data | Unverified accuracy | Cross-reference with IPEDS where possible |
 | Selection bias | Larger, well-resourced institutions overrepresented | Analyze by size category |
-| Partner changes | TIAA (2018-22), Commonfund (other years) | Check methodology changes |
+| Partner changes | TIAA = Portal years 2017-2021 (FY2018-22) | Check methodology changes |
 | Fiscal year timing | July 1 - June 30 | Match to other data sources carefully |
-| Declining participation | 813 in 2012 to 652 in 2021 in Portal data | Account for sample size changes in trend analysis |
+| Declining participation | 813 in Portal 2012 (FY2013) to 652 in Portal 2021 (FY2022) | Account for sample size changes in trend analysis |
 
 ## Common Use Cases
 

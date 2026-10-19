@@ -4,7 +4,7 @@
 
 ### Origin
 
-The Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act (Clery Act) originated from a tragic incident:
+The Jeanne Clery Campus Safety Act (Clery Act; renamed by Pub. L. 118-173, Dec. 23, 2024; formerly the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act) originated from a tragic incident:
 
 - **April 5, 1986**: Jeanne Clery, a 19-year-old freshman at Lehigh University, was raped and murdered in her residence hall
 - **Discovery**: Her parents later learned this was one of 38 violent crimes at Lehigh over three years—information not disclosed to prospective students
@@ -21,8 +21,7 @@ The Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistic
 | 2000 | Campus Sex Crimes Prevention Act | Sex offender registry notification |
 | 2008 | Higher Education Opportunity Act (HEOA) | Added fire safety, emergency notification |
 | 2013 | Violence Against Women Reauthorization Act (VAWA) | Added dating violence, domestic violence, stalking |
-| 2022 | VAWA Reauthorization | Updated training requirements |
-| 2024 | Stop Campus Hazing Act | Added hazing transparency requirements |
+| 2024 | Pub. L. 118-173 (hazing statistics; renamed the Act) | Added hazing transparency requirements |
 
 ## Applicability
 
@@ -141,6 +140,8 @@ A CSA is an official with significant responsibility for student and campus acti
 
 ### CSA Examples
 
+(illustrative, from the rescinded 2016 Handbook; ED's 2020 Appendix leaves CSA designation to institutional judgment)
+
 **Always CSAs**:
 - Campus police officers
 - Security guards
@@ -180,7 +181,7 @@ The Clery Act is enforced by the Department of Education's Clery Act Compliance 
 - Program reviews (desk and on-site)
 - Complaint investigations
 - Compliance agreements
-- Fines up to **$67,544 per violation** (as of 2023, adjusted annually for inflation)
+- Fines up to **$71,545 per violation** (34 CFR 36.2, as adjusted Jan. 21, 2025; adjusted annually for inflation)
 - Suspension or termination of Title IV eligibility
 
 ### Notable Enforcement Actions
@@ -224,7 +225,7 @@ Many states have enacted additional campus safety laws:
 | Deadline | Requirement |
 |----------|-------------|
 | October 1 | Annual Security Report publication and distribution |
-| October 15 | Web-based survey submission to Department of Education |
+| Date set annually by ED | CSS web-survey submission (34 CFR 668.41(e)(5)) |
 | Within 2 business days | Crime log entries for reported crimes |
 | Immediately | Emergency notifications (when warranted) |
 | As soon as pertinent information available | Timely warnings (when warranted) |
@@ -232,6 +233,6 @@ Many states have enacted additional campus safety laws:
 ## Resources
 
 - **Federal Register Regulations**: 34 CFR 668.46
-- **Handbook for Campus Safety and Security Reporting**: https://www2.ed.gov/admins/lead/safety/handbook.pdf
+- **Guidance**: The 2016 Handbook for Campus Safety and Security Reporting was rescinded and archived on October 9, 2020 and replaced by the Clery Act Appendix to the FSA Handbook (updated Jan. 19, 2021): https://fsapartners.ed.gov/knowledge-center/library/electronic-announcements/2020-10-09/rescission-and-replacement-2016-handbook-campus-safety-and-security-reporting-updated-jan-19-2021
 - **Clery Center**: https://www.clerycenter.org/
 - **Department of Education Campus Safety**: https://www2.ed.gov/admins/lead/safety/campus.html

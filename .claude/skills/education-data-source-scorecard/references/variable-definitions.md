@@ -115,7 +115,7 @@ The sections below document the original Scorecard naming patterns. These names 
 |--------|---------|---------|
 | `MD_` | Median | `MD_EARN_WNE_P6` |
 | `MN_` | Mean | `MN_EARN_WNE_P6` |
-| `PCT_` | Percent/Proportion | `PCT_PELL` |
+| `PCT_` / `PCT` | Percent/Proportion | `PCT_WHITE`; Pell share is `PCTPELL` (no underscore) |
 | `NUM_` | Count | `NUM4_PUB` |
 | `C_` | Completion | `C150_4` |
 | `RPY_` | Repayment | `RPY_3YR_RT` |
@@ -170,11 +170,11 @@ The sections below document the original Scorecard naming patterns. These names 
 | `_NRA` | Non-resident alien |
 | `_UNKN` | Unknown |
 
-### Flag Suffixes (Original Scorecard)
+### Suffixes (Original Scorecard)
 
 | Suffix | Meaning |
 |--------|---------|
-| `_SUPP` | Suppression flag |
+| `_SUPP` | Suppressed version of the base element (small-n cells blanked; consumer-site variant) — a value, not a flag |
 | `_N` | Count/denominator |
 | `_POOLED` | Pooled cohort |
 
@@ -505,8 +505,8 @@ valid_default <- default_df |> filter(!is.na(default_rate))
 
 | Original Format | Portal Parquet |
 |-----------------|----------------|
-| `"PrivacySuppressed"` | `-3` (earnings) or `null` (other datasets) |
-| `"NULL"` | `null` |
+| `"PS"` (`"PrivacySuppressed"` before May 2024) | `-3` (earnings) or `null` (other datasets) |
+| `"NA"` (`"NULL"` before May 2024) | `null` |
 | Mixed-case column names | All lowercase |
 | Wide format (time in name) | Long format (time as column) |
 | String categories | Integer codes |

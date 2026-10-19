@@ -15,7 +15,7 @@ How the Longitudinal Employer-Household Dynamics (LEHD) program produces PSEO ta
 
 The Longitudinal Employer-Household Dynamics (LEHD) program is part of the U.S. Census Bureau's Center for Economic Studies. LEHD creates public-use information by combining multiple administrative data sources:
 
-- **Local Employment Dynamics (LED) partnership** (established 1999): State unemployment insurance wage records
+- **Local Employment Dynamics (LED) partnership**: State unemployment insurance wage records
 - **Federal employment data**: Office of Personnel Management records
 - **Census Bureau surveys**: Demographic and business data
 - **Partner institution data**: University transcript records
@@ -113,7 +113,7 @@ State unemployment insurance (UI) wage records include:
 
 ### What's Covered
 
-LEHD covers approximately **96% of U.S. employment**:
+LEHD covers **over 96%** of U.S. employment (PSEO Technical Documentation):
 
 **Private sector** (covered by state UI):
 - All wage and salary workers
@@ -127,7 +127,7 @@ LEHD covers approximately **96% of U.S. employment**:
 
 **Federal government** (from OPM data):
 - Most civilian federal workers
-- Coverage: 2000-2022
+- Coverage: 2000-2020 per the PSEO Technical Documentation (updated June 12, 2023); later releases may extend this
 
 ### What's NOT Covered
 
@@ -178,7 +178,7 @@ Differential privacy provides **mathematically provable** privacy guarantees reg
 
 ### Suppression Rules
 
-Cells with protected count < 30 are suppressed due to low quality:
+Earnings cells with protected count < 30 are suppressed due to low quality (flows counts are instead noise-infused and post-processed):
 - Status flag = 5 indicates suppression
 - Suppression is for data quality, not privacy (differential privacy already protects)
 
@@ -194,17 +194,12 @@ Cells with protected count < 30 are suppressed due to low quality:
 
 | Year | Milestone |
 |------|-----------|
-| 1999 | LED partnership established |
-| 2002 | LEHD program launched |
-| ~2014 | University of Texas System pilot partnership |
 | 2018 | First PSEO data released (March) |
-| 2019 | Employment flows tabulations added |
-| 2020 | First public release (September 30) |
-| 2022 | Expanded to 29 states |
-| 2024 | State-level aggregations added |
+| R2022Q4 | Partners in 24 states (Census pseo_all_partners.txt for that release) |
 | V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+| V4.14.1 (2026Q2) | 1,117 institution rows; partners in 37 states plus D.C. |
 
-PSEO coverage changes by release. The V4.13.0 count was verified on 2026-07-21 from the Census latest-release institution, partner, and version files; those files should be rechecked before reporting current coverage. No national graduate-coverage percentage is asserted here.
+PSEO coverage changes by release. The V4.14.1 count was verified on 2026-10-19 from the Census latest-release institution, partner, and version files (V4.13.0, now the prior release, was first counted on 2026-07-21); those files should be rechecked before reporting current coverage. No national graduate-coverage percentage is asserted here.
 
 ### PSEO Coalition
 
@@ -221,4 +216,4 @@ Members include state higher education agencies, university systems, and individ
 - [PSEO Technical Documentation (PDF)](https://lehd.ces.census.gov/doc/PSEOTechnicalDocumentation.pdf)
 - [PSEO Protection System Appendix (PDF)](https://lehd.ces.census.gov/doc/pseo_appendix_tech_doc.pdf)
 - [LEHD Public Use Schema](https://lehd.ces.census.gov/data/schema/latest/lehd_public_use_schema.html)
-- Abowd et al. (2009). "The LEHD Infrastructure Files and the Creation of the Quarterly Workforce Indicators." NBER.
+- Abowd, J. M., Stephens, B. E., Vilhuber, L., Andersson, F., McKinney, K. L., Roemer, M., & Woodcock, S. (2009). The LEHD Infrastructure Files and the Creation of the Quarterly Workforce Indicators. In *Producer Dynamics: New Evidence from Micro Data* (NBER Chapters, pp. 149–230). National Bureau of Economic Research.

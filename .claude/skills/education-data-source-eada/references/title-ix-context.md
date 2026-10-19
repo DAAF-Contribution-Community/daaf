@@ -12,7 +12,7 @@ Title IX of the Education Amendments of 1972 prohibits sex discrimination in edu
 - Applies to ALL educational programs, not just athletics
 - Athletics is one of the most visible and litigated areas
 - Enforced by the Department of Education's Office for Civil Rights (OCR)
-- Affects ~2,000+ coeducational colleges and ~11,400+ high schools
+- Affects ~2,000+ coeducational colleges and high schools
 
 ## Title IX in Athletics: Three Compliance Areas
 
@@ -22,7 +22,7 @@ Institutions must provide equitable opportunities for participation. OCR uses a 
 
 | Prong | Description | How to Demonstrate |
 |-------|-------------|-------------------|
-| **Prong 1: Proportionality** | Athletic participation substantially proportionate to enrollment | Female athletes % ≈ Female undergrad % |
+| **Prong 1: Proportionality** | Athletic participation substantially proportionate to enrollment | Female athletes % ≈ Female full-time undergraduate % |
 | **Prong 2: History & Continuing Practice** | History of expanding opportunities for underrepresented sex | Adding women's teams over time |
 | **Prong 3: Full Accommodation** | Fully accommodating interests and abilities | Surveys, demonstrated interest met |
 
@@ -41,7 +41,7 @@ Then women should receive ≈ 45% of athletic scholarship dollars
 
 ### 3. Treatment and Benefits (The "Laundry List")
 
-Equal treatment across 13+ program components:
+Equal treatment across the nine treatment factors in 34 CFR 106.41(c)(2)–(10) plus recruitment and support services (1979 Policy Interpretation):
 
 | Component | Examples |
 |-----------|----------|
@@ -66,46 +66,33 @@ The most commonly used compliance test is **substantial proportionality** (Prong
 ### Calculation
 
 ```python
-female_enrollment_pct = female_undergrads / total_undergrads
+female_enrollment_pct = female_fulltime_undergrads / total_fulltime_undergrads
 female_participation_pct = female_athletes / total_athletes
 participation_gap = female_enrollment_pct - female_participation_pct
 ```
 
 ```r
-female_enrollment_pct <- female_undergrads / total_undergrads
+female_enrollment_pct <- female_fulltime_undergrads / total_fulltime_undergrads
 female_participation_pct <- female_athletes / total_athletes
 participation_gap <- female_enrollment_pct - female_participation_pct
 ```
 
 ### What is "Substantial"?
 
-No fixed percentage, but OCR and courts have considered:
-- Gaps of 1-3% often considered substantially proportionate
-- Gaps of 5%+ often considered disproportionate
-- Context matters (institution size, resources)
-
-### National Statistics (Approximate)
-
-| Metric | Value |
-|--------|-------|
-| Female undergraduate enrollment | ~57% |
-| Female athletic participation | ~44% |
-| National participation gap | ~13 percentage points |
-| Institutions meeting Prong 1 | ~15-20% |
+No fixed percentage: OCR (1996 Clarification) asks whether the number of additional opportunities needed for proportionality would be enough to sustain a viable team, considering natural enrollment fluctuations.
 
 ## Historical Context
 
 | Year | Event |
 |------|-------|
 | 1972 | Title IX enacted |
-| 1975 | Athletics regulations effective |
+| 1975 | Title IX athletics regulations issued (HEW) |
 | 1979 | Policy Interpretation issued (three-prong test) |
 | 1994 | EADA enacted |
-| 1996 | Policy clarification on Prong 3 |
+| 1996 | Clarification of the three-part test (Jan 16, 1996) |
 | 2003 | Further clarification of compliance standards |
-| 2005 | Additional clarification (controversial) |
-| 2010 | 2005 clarification rescinded |
-| 2024 | Ongoing enforcement and policy updates |
+| 2005 | Additional Clarification on Part Three (Mar 17, 2005) |
+| 2010 | 2005 Additional Clarification withdrawn (Apr 20, 2010) |
 
 ## EADA's Role in Title IX
 
@@ -130,8 +117,8 @@ EADA was passed to:
 | Aspect | EADA Reporting | Title IX Compliance |
 |--------|----------------|---------------------|
 | **Purpose** | Public disclosure | Legal compliance |
-| **Counting** | Day of first contest | Continuously enrolled |
-| **Duplicates** | Counted once | May vary by sport |
+| **Counting** | As of each team's first scheduled contest | Generally, athletes on the squad list as of the team's first competitive event (1996 Clarification) |
+| **Duplicates** | Per-team (duplicated) plus an unduplicated head count | Multi-sport athletes counted in each sport |
 | **Walk-ons** | Included | Included |
 | **Verification** | Self-reported | OCR investigation |
 | **Scope** | Limited data points | Comprehensive review |
@@ -141,17 +128,18 @@ EADA was passed to:
 
 ### EADA Counting Rules
 
-- Count as of first day of first scheduled contest
+- Count as of the day of each varsity team's first scheduled contest of the reporting year (34 CFR 668.47(c)(2)(i))
 - Each student counted once (unduplicated for total)
 - Multi-sport athletes: counted for each sport, once for institution total
 
 ### Title IX Counting Rules
 
-- Count all participants during competitive season
+- Generally, athletes on the squad or eligibility list as of the team's first competitive event (1996 Clarification)
+- Multi-sport athletes counted as a participant in each sport (1996 Clarification)
 - Different guidance for roster management
 - Focus on "opportunities" not just participants
 
-**Result**: EADA counts may differ from Title IX participation analysis.
+**Result**: The count date is similar; EADA counts may still differ from Title IX participation analysis because the participant definitions and the scope of review differ.
 
 ## Using EADA Data for Equity Analysis
 

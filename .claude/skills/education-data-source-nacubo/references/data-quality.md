@@ -2,7 +2,7 @@
 
 Reference for understanding coverage gaps, selection bias, and data quality issues in NACUBO endowment data.
 
-> **Portal Scope Note:** These quality considerations apply to both the Portal mirror subset (7 market-value columns) and the full NCSE study. The Portal mirror inherits all limitations of the underlying NACUBO data, including voluntary participation, selection bias, and self-reporting. The Portal mirror covers 2012-2022 (8,197 rows, 652-813 institutions per year with a declining trend).
+> **Portal Scope Note:** These quality considerations apply to both the Portal mirror subset (7 market-value columns) and the full NCSE study. The Portal mirror inherits all limitations of the underlying NACUBO data, including voluntary participation, selection bias, and self-reporting. The Portal mirror covers 2012-2022 (Portal `year` = fiscal-year start year, so FY2013-FY2023; 8,197 rows, 652-813 institutions per year with a declining trend).
 
 ## Coverage Limitations
 
@@ -14,10 +14,10 @@ Reference for understanding coverage gaps, selection bias, and data quality issu
 |--------|-------|
 | U.S. degree-granting institutions | ~4,000+ |
 | Institutions with endowments (IPEDS) | ~2,500+ |
-| NACUBO survey invitations | ~1,500 |
+| NACUBO survey invitations | ~1,500 (NCSE FAQ) |
 | Typical NCSE respondents | 650-700 |
-| Coverage rate (of institutions) | ~15-20% |
-| Coverage rate (of endowed assets) | ~90%+ |
+| Coverage rate (of institutions) | ~15-20% (illustrative; not from a NACUBO table) |
+| Coverage rate (of endowed assets) | ~90%+ (illustrative; not from a NACUBO table) |
 
 **Key Insight**: NACUBO covers most endowed *assets* but a minority of *institutions* due to asset concentration at large institutions.
 
@@ -68,7 +68,7 @@ This can make historical returns appear better than actual experience.
 
 ### Size-Based Selection
 
-Participation rates vary significantly by endowment size:
+Participation rates vary significantly by endowment size (illustrative; not from a NACUBO table):
 
 | Size Category | Estimated Participation Rate |
 |---------------|------------------------------|
@@ -178,7 +178,7 @@ IPEDS Finance survey also collects endowment market values:
 | Attribute | NACUBO | IPEDS |
 |-----------|--------|-------|
 | Mandatory | No | Yes (Title IV) |
-| Coverage | ~650 institutions | ~6,500 institutions |
+| Coverage | ~650 institutions | ~5,800 Title IV institutions and administrative offices (5,829 in the 2024-25 collection) |
 | Asset detail | Yes | No |
 | Returns | Yes | No |
 | Spending | Yes | Limited |
@@ -234,7 +234,7 @@ Watch for:
 
 ### Public Data
 
-Available at no cost:
+Free (Public NCSE Tables page; full free table download requires current NACUBO membership — NCSE FAQ):
 - Institution names and market values
 - Aggregate averages by size/type
 - Historical summary tables

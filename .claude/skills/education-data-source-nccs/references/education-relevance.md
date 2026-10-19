@@ -26,7 +26,7 @@ Private nonprofit colleges and universities operate as tax-exempt organizations 
 
 Most private colleges are classified as:
 - **IRS Subsection**: 501(c)(3)
-- **Foundation Code**: 11 (School under 170(b)(1)(A)(ii)) or 15/21 (publicly supported)
+- **Foundation Code**: 11 (School under 170(b)(1)(A)(ii)); other affiliates 15/16 or 17/21-24 (supporting organizations)
 - **NTEE Codes**: B40-B50 (higher education)
 
 ### What's Included in NCCS
@@ -187,7 +187,7 @@ higher_ed <- higher_ed |> filter(INCOME_AMT > 1000000)
 | NCCS/IRS | EIN | 9-digit number (e.g., 123456789) |
 | IPEDS | UNITID | 6-digit number (e.g., 110635) |
 
-There is **no official crosswalk** between EIN and UNITID. Linking requires:
+IPEDS Institutional Characteristics (Portal `ipeds/directory`, column `ein`) carries an institution-reported EIN, which is the first-choice EIN-UNITID link. It is not a validated crosswalk: system offices, foundations, and consolidated filers make many-to-one matches common, so validate before relying on it. Linking options:
 
 ### Linking Methods
 
@@ -234,7 +234,7 @@ combined <- nccs |>
 
 **2. Full NCCS Data (Fuzzy Matching Required)**
 
-When working with the full NCCS universe (outside Portal), linking requires fuzzy name/location matching since there is no official EIN-UNITID crosswalk:
+When working with the full NCCS universe (outside Portal), start from the IPEDS `ein` column (institution-reported, not a validated crosswalk) and fall back to fuzzy name/location matching for unmatched or many-to-one cases:
 
 ```python
 # Fuzzy matching on name and location (uses rapidfuzz or fuzzywuzzy)
@@ -272,7 +272,7 @@ same_location = ipeds_df.filter(
 same_location <- ipeds_df |> filter(CITY == nccs_city, STABBR == nccs_state)
 ```
 
-**3. Published Crosswalks**
+**4. Published Crosswalks**
 
 Some researchers have created EIN-UNITID crosswalks:
 - Check data repositories (ICPSR, Dataverse)
@@ -336,6 +336,7 @@ Schedule D provides endowment details not in IPEDS:
 
 ```python
 # Endowment data from Schedule D Part V
+# Illustrative names; look up actual names in the efile data dictionary
 endowment_cols = [
     'F9_SD_05_ENDOWMENT_BOY',      # Beginning balance
     'F9_SD_05_ENDOWMENT_CONTRIB',   # Contributions
@@ -348,6 +349,7 @@ endowment_cols = [
 
 ```r
 # Endowment data from Schedule D Part V
+# Illustrative names; look up actual names in the efile data dictionary
 endowment_cols <- c(
   "F9_SD_05_ENDOWMENT_BOY",      # Beginning balance
   "F9_SD_05_ENDOWMENT_CONTRIB",  # Contributions
@@ -369,6 +371,7 @@ NCCS uniquely provides governance data:
 
 ```python
 # Governance indicators from Part VI
+# Illustrative names; look up actual names in the efile data dictionary
 governance_vars = [
     'F9_PC_06_VOTING_MEMBERS',          # Board size
     'F9_PC_06_INDEP_VOTING_MEMBERS',    # Independent members
@@ -381,6 +384,7 @@ governance_vars = [
 
 ```r
 # Governance indicators from Part VI
+# Illustrative names; look up actual names in the efile data dictionary
 governance_vars <- c(
   "F9_PC_06_VOTING_MEMBERS",          # Board size
   "F9_PC_06_INDEP_VOTING_MEMBERS",    # Independent members
@@ -404,6 +408,7 @@ Functional expense allocation enables efficiency analysis:
 import polars as pl
 
 # Calculate fundraising efficiency
+# Illustrative names; look up actual names in the efile data dictionary
 df = df.with_columns(
     (pl.col("F9_PC_09_FUNC_EXP_FUNDRAISING")
      / pl.col("F9_PC_08_CONTRIBUTIONS")).alias("fundraising_ratio"),
@@ -417,6 +422,7 @@ df = df.with_columns(
 library(dplyr)
 
 # Calculate fundraising efficiency
+# Illustrative names; look up actual names in the efile data dictionary
 df <- df |>
   mutate(
     fundraising_ratio = F9_PC_09_FUNC_EXP_FUNDRAISING / F9_PC_08_CONTRIBUTIONS,
@@ -575,7 +581,7 @@ combined <- nccs |>
 import polars as pl
 
 # Load BMF
-bmf = pl.read_csv("BMF_UNIFIED_V1.1.csv")
+bmf = pl.read_csv("bmf_unified.csv")
 
 # Filter to California private universities
 ca_universities = bmf.filter(
@@ -593,7 +599,7 @@ library(dplyr)
 library(stringr)
 
 # Load BMF
-bmf <- read.csv("BMF_UNIFIED_V1.1.csv")
+bmf <- read.csv("bmf_unified.csv")
 
 # Filter to California private universities
 ca_universities <- bmf |>
@@ -739,7 +745,7 @@ summary(presidents$TOTAL_COMP)
 
 ### For Governance Research
 
-1. Note that governance questions were added in 2008 redesign
+1. The 2008 redesign added Part VI (independent board members, whistleblower and document-retention policies, compensation-review process); the 2007 form already asked board size, family/business relationships, and whether a written conflict-of-interest policy existed.
 2. Board composition data is self-reported
 3. Policy existence doesn't indicate implementation quality
 4. Compare across similar institution types

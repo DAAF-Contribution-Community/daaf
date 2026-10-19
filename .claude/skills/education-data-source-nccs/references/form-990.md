@@ -30,9 +30,9 @@ Form 990, "Return of Organization Exempt From Income Tax," is required annually 
 
 | Organization Type | Gross Receipts | Assets | Required Form |
 |-------------------|----------------|--------|---------------|
-| Most 501(c) | < $50,000 | N/A | 990-N (e-Postcard) |
+| Most 501(c) | normally ≤ $50,000 | N/A | 990-N (e-Postcard) |
 | Most 501(c) | < $200,000 | < $500,000 | 990-EZ |
-| Most 501(c) | ≥ $200,000 | ≥ $500,000 | 990 (full form) |
+| Most 501(c) | ≥ $200,000 **or** | ≥ $500,000 | 990 (full form) |
 | Private foundations | Any | Any | 990-PF |
 
 ### 2008 Form Redesign
@@ -41,10 +41,10 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 
 | Pre-2008 | Post-2008 |
 |----------|-----------|
-| 8 pages | 11 pages + schedules |
+| 9 pages (2007) | 11 pages (2008); 12 pages from at least 2016 |
 | Basic governance questions | Detailed governance section |
 | Limited compensation detail | Extensive compensation reporting |
-| Functional expense info optional | Required for most |
+| Functional columns (B)-(D) required for 501(c)(3)/(4) (unchanged) | Same requirement, now Part IX |
 
 **Important**: When analyzing pre-2008 vs. post-2008 data, be aware of definitional and structural changes.
 
@@ -55,7 +55,7 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 ### Form 990 (Full Form)
 
 - **Filers**: Larger organizations (gross receipts ≥ $200K or assets ≥ $500K)
-- **Length**: 11 pages + applicable schedules
+- **Length**: 12 pages (2025 form) + applicable schedules
 - **Detail level**: Comprehensive financial and governance information
 - **In NCCS**: Core PC files, Efile database
 
@@ -115,7 +115,7 @@ Narrative descriptions of the three largest program services with associated exp
 
 ### Part IV: Checklist of Required Schedules
 
-Yes/No questions determining which schedules must be attached (26 questions).
+Yes/No questions determining which schedules must be attached (38 numbered lines, many with sub-questions).
 
 ### Part V: Statements Regarding Other IRS Filings
 
@@ -160,11 +160,16 @@ Detailed breakdown of all revenue sources.
 
 | Line | Category |
 |------|----------|
-| 1a-1f | Federated campaigns, membership dues, fundraising events, related organizations, government grants, other contributions |
-| 2a-2g | Program service revenue by activity |
-| 3-7 | Investment income (interest, dividends, royalties, rental) |
-| 8a-8c | Net gain/loss from sales (securities, other assets) |
-| 9-10 | Fundraising events, gaming |
+| 1a-1h | Contributions (federated campaigns, membership dues, fundraising events, related organizations, government grants, all other; 1h total) |
+| 2a-2g | Program service revenue |
+| 3 | Investment income (dividends, interest, similar) |
+| 4 | Income from investment of tax-exempt bond proceeds |
+| 5 | Royalties |
+| 6a-6d | Rents |
+| 7a-7d | Gain/loss from sales of assets (securities, other) |
+| 8a-8c | Fundraising events |
+| 9a-9c | Gaming |
+| 10a-10c | Sales of inventory |
 | 11a-11e | Other revenue |
 | 12 | Total revenue |
 
@@ -191,7 +196,7 @@ Expenses broken down by function (program, management, fundraising).
 | 15 | Royalties |
 | 16 | Occupancy |
 | 17 | Travel |
-| 18 | Payments to affiliates |
+| 18 | Travel/entertainment payments for public officials |
 | 19 | Conferences and meetings |
 | 20 | Interest |
 | 21 | Payments to affiliates |
@@ -244,6 +249,8 @@ Assets, liabilities, and net assets at beginning and end of year.
 | 25 | Other liabilities |
 | 26 | Total liabilities |
 
+> Line numbers below are for the 2018+ form. Forms through 2017 (all Portal years) used 27 Unrestricted, 28 Temporarily restricted, 29 Permanently restricted, 30-32 capital stock / paid-in / retained earnings, 33 Total net assets, 34 Total liabilities and net assets.
+
 **Net Assets**:
 | Line | Category |
 |------|----------|
@@ -290,11 +297,14 @@ Required for 501(c)(3) public charities.
 | 1b | Contributions |
 | 1c | Net investment earnings |
 | 1d | Grants or scholarships |
-| 1e | Other expenditures |
+| 1e | Other expenditures for facilities and programs |
 | 1f | Administrative expenses |
 | 1g | End of year balance |
-| 2 | Land, buildings, equipment held for investment |
-| 3 | Qualifying distributions from endowment |
+| 2a-2c | % of year-end balance held as board-designated/quasi-, permanent, and term endowment |
+| 3a-3b | Endowment funds held by unrelated/related organizations |
+| 4 | Intended uses (described in Part XIII) |
+
+Part V reports five columns: current year through four years back.
 
 Other Parts:
 - Part I: Donor advised funds
@@ -332,11 +342,12 @@ Information about related entities (common for university systems).
 
 | Part | Content |
 |------|---------|
-| I | Related exempt organizations |
-| II | Related taxable corporations/trusts |
-| III | Related partnerships |
-| IV | Unrelated organizations taxable as partnership |
+| I | Disregarded entities |
+| II | Related tax-exempt organizations |
+| III | Related organizations taxable as a partnership |
+| IV | Related organizations taxable as a corporation or trust |
 | V | Transactions with related organizations |
+| VI | Unrelated organizations taxable as a partnership |
 
 ---
 
@@ -356,17 +367,17 @@ Total Revenue
 │   ├── Tuition and fees
 │   ├── Auxiliary enterprises
 │   └── Other program revenue
-├── Investment Income
-│   ├── Interest
-│   ├── Dividends
-│   ├── Royalties
-│   └── Rental income
-├── Net Gain/Loss from Sales
+├── Investment Income (lines 3-4)
+│   ├── Dividends, interest, similar (line 3)
+│   └── Tax-exempt bond proceeds investment (line 4)
+├── Royalties (line 5)
+├── Rents (line 6)
+├── Net Gain/Loss from Sales (line 7)
 │   ├── Securities
 │   └── Other assets
 └── Other Revenue
-    ├── Special events
-    └── Miscellaneous
+    ├── Fundraising events, gaming, inventory sales (lines 8-10)
+    └── Miscellaneous (line 11)
 ```
 
 ### Expense Categories (Part IX)
@@ -430,8 +441,9 @@ This allocation is important for calculating efficiency ratios.
 **Who is reported**:
 - Current officers, directors, trustees
 - Key employees (>$150K compensation with organizational responsibility)
-- Highest compensated employees (>$100K)
+- Five highest compensated employees (>$100K reportable)
 - Former officers/employees receiving >$100K
+- Former directors/trustees receiving >$10K in that capacity
 - Independent contractors receiving >$100K
 
 **What is reported**:
@@ -459,12 +471,12 @@ This allocation is important for calculating efficiency ratios.
 
 ### Missing Data Codes
 
-In NCCS data:
+In the Education Data Portal (not NCCS source files): -1 Missing, -2 Not applicable, -3 Suppressed (generic Portal labels; rare in NCCS columns).
 | Code | Meaning |
 |------|---------|
-| -1 | Data unavailable |
+| -1 | Missing |
 | -2 | Not applicable |
-| -3 | Suppressed (confidentiality) |
+| -3 | Suppressed |
 | `null` | Not reported (blank in CSV, null in parquet) |
 
 > **Portal note:** In the Portal dataset, most missing data appears as `null` rather than negative codes. The `-1`/`-2`/`-3` codes exist but are rare (only a few financial columns). Always check for both `null` and negative codes when cleaning.

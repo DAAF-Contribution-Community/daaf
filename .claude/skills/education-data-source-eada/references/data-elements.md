@@ -46,13 +46,9 @@ Comprehensive guide to data collected through the Equity in Athletics Disclosure
 
 **Unduplicated Count**: A student who plays multiple sports is counted once for the institution total, but counted for each sport in sport-level data.
 
-**Timing**: Count taken as of the first day of the first scheduled contest of the sport's season.
+**Timing**: Count taken as of the day of each varsity team's first scheduled contest of the reporting year (34 CFR 668.47(c)(2)(i)).
 
-**Who Counts**:
-- Varsity athletes only
-- Walk-ons included
-- Redshirts if on roster
-- Practice squad if varsity designated
+**Who Counts**: See the regulatory definition of "participant" (34 CFR 668.47(b)(3)) in `variable-definitions.md` > Definition: "Participant".
 
 ### Example Calculation
 
@@ -115,7 +111,7 @@ Same naming pattern with `ascoach` replacing `hdcoach`:
 | `{team}_ft/ptascoach_{gender}` | Assistant coaches by team, status, coach gender |
 | `ascoach_salary_{team}` | Average assistant coach salary by team gender |
 
-Employment Status:
+Coaching-assignment status (not employment status; see `variable-definitions.md` > Definition: Full-Time vs. Part-Time):
 - `ft` = Full-time
 - `pt` = Part-time
 
@@ -156,9 +152,9 @@ pct_female <- female_coaches_womens / total_coaches_womens
 ### Salary Reporting Rules
 
 Institutions report:
-- **Institutional compensation only**: W-2 wages and bonuses from the institution
+- **Institutional compensation only**: wages and bonuses from the institution
 - **Excludes**: Media income, camps, endorsements, outside income
-- **Calculated as average**: Total salaries / Number of paid positions
+- **Calculated as average**: Institutional salary ÷ number of non-volunteer coaches (per person) and ÷ FTE positions (per FTE) — 34 CFR 668.47(c)(9)–(10)
 
 | Variable | Description |
 |----------|-------------|
@@ -287,8 +283,6 @@ Athletic aid should be proportional to participation:
 # Aid should be approximately:
 aid_women / (aid_men + aid_women) ≈ 0.45
 ```
-
-Small deviations (1-2%) acceptable; larger gaps raise concerns.
 
 ## Derived Metrics
 

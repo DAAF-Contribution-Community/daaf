@@ -19,16 +19,14 @@ The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annua
 | Fiscal Year | July 1 - June 30 |
 | Target Population | ~1,500 institutions |
 | Typical Respondents | 650-700 institutions |
-| Assets Represented | $800B+ (FY24: $873.7B) |
+| Assets Represented | $800B+ (FY25: $944.3B) |
 
 ### What NACUBO Is
 
 The National Association of College and University Business Officers (NACUBO):
 
-- Founded 1962
 - Nonprofit professional organization
 - Represents chief administrative and financial officers
-- 1,700+ member institutions
 - Headquarters: Washington, DC
 
 ## Partnership History
@@ -133,6 +131,7 @@ Institutions less likely to participate:
 
 | Year | Respondents | Total Assets |
 |------|-------------|--------------|
+| FY2025 | 657 | $944.3B |
 | FY2024 | 658 | $873.7B |
 | FY2023 | 688 | $839B |
 | FY2022 | 678 | $807B |
@@ -161,21 +160,21 @@ Includes:
 - Executive summary and analysis
 - Additional tables and figures
 
-**Pricing**:
+**Pricing** (NCSE FAQ, retrieved 2026-10-19):
 - Participants: Free
 - NACUBO Members: $250
 - Non-members: $1,500
 
 ### Institution-Level Dataset (Paid)
 
-Anonymized dataset available for 2019-2024:
+Anonymized dataset available for 2019-2025 (NCSE FAQ, retrieved 2026-10-19); as of 2026-10-19 the 2025 institution-specific dataset is sold as an add-on to the report (current NCSE page via `https://www.nacubo.org/Topics/Endowment-Management`):
 - Individual institution data (coded)
 - Returns, allocations, spending rates
 - **Note**: Institution identities are hidden
 
 ### Academic Research Access
 
-Researchers can request access by contacting:
+Researchers can request access by contacting (NCSE FAQ, retrieved 2026-10-19):
 - Commonfund Institute: Allison.Kaspriske@commonfund.org
 - Subject to approval and data use agreements
 
@@ -244,13 +243,10 @@ The 2023 NCSE marked the study's 50th anniversary. NACUBO published a retrospect
 
 ## Contact Information
 
+Contacts below are from the NCSE FAQ (retrieved 2026-10-19).
+
 **Study Questions**:
 - Email: NCSE@nacubo.org
 
-**Research Director**:
-- Ken Redd, Senior Director, Research and Policy Analysis
-- Phone: 202.861.2527
-
 **Commonfund Institute**:
-- George Suttles, Executive Director
 - For academic data requests: Allison.Kaspriske@commonfund.org

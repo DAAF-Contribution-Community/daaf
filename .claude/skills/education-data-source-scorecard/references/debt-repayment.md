@@ -34,9 +34,9 @@ NSLDS is the central database for Title IV loans, tracking:
 |-----------|----------|
 | Direct Subsidized | Yes |
 | Direct Unsubsidized | Yes |
-| Direct PLUS (Parent) | Conditional |
+| Direct PLUS (Parent) | No — excluded from cumulative debt metrics; reported separately (`PLUS_DEBT_INST_MD`, `PLUS_DEBT_ALL_MD`) |
 | Direct PLUS (Graduate) | Yes |
-| Perkins Loans | Yes (while active) |
+| Perkins Loans | No — excluded from cumulative debt since the merged 2017-18 file and from repayment-rate metrics |
 | FFEL Loans | Yes (federally held) |
 
 ### Federal Loans Reported
@@ -50,7 +50,7 @@ NSLDS is the central database for Title IV loans, tracking:
 
 | Excluded | Impact |
 |----------|--------|
-| **Private student loans** | 10-20% of total borrowing at some schools missing |
+| **Private student loans** | Not in NSLDS-based debt metrics; the share of borrowing missed varies by school (no published range cited here) |
 | **Institutional loans** | School-issued loans not tracked |
 | **State loans** | State-specific programs missing |
 | **Credit card debt** | Used for education expenses |
@@ -78,7 +78,7 @@ NSLDS is the central database for Title IV loans, tracking:
 |----------|-------------|
 | `GRAD_DEBT_MDN` | Median debt for completers |
 | `WDRAW_DEBT_MDN` | Median debt for withdrawals |
-| `GRAD_DEBT_MDN10YR_SUPP` | Suppression flag |
+| `GRAD_DEBT_MDN10YR_SUPP` | Median completer debt as 10-year monthly payment, suppressed for n < 30 (a value, not a flag) |
 
 ### Debt by Income Level
 
@@ -165,13 +165,14 @@ The official federal accountability metric:
 | `default_rate` | Default rate (Float64) | `CDR2`, `CDR3` |
 | `default_rate_denom` | Borrowers in cohort | `CDR3_DENOM` |
 | `years_since_entering_repay` | 2 or 3 years | Was in variable name |
+| `year` | Year of measurement (end of the default window), not the repayment-entry cohort (e.g., FY2013 entry cohort, cohort 2012, has its 3-year rate at `year` 2015) | — |
 
-**CDR Definition:** Share of borrowers who enter repayment and default within 3 years.
+**CDR3 definition:** share of borrowers who entered repayment during a federal fiscal year (Oct 1–Sep 30) and defaulted before the end of the second following fiscal year (e.g., FY2016 cohort: entered repayment Oct 1, 2015–Sep 30, 2016; defaulted before Sep 30, 2018).
 
 ### What Counts as Default
 
-- 270+ days delinquent on payments
-- Formal default status in NSLDS
+- Scorecard repayment-rate categories classify a loan as in default after more than 360 days of nonpayment (31–360 days = delinquent)
+- CDR uses the Department's official default determination (threshold not restated here; verify against FSA CDR guidance)
 
 ### CDR Limitations
 
@@ -260,6 +261,8 @@ Low debt might indicate:
 Used for program-level accountability.
 
 ### Interpreting Debt-to-Earnings
+
+(Illustrative; thresholds echo past Gainful Employment rules — not verified here.)
 
 | Ratio | Interpretation |
 |-------|---------------|

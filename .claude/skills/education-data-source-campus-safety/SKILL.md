@@ -6,12 +6,12 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-10-19"
 ---
 
 # Campus Safety Data Source Reference
 
-Campus Safety and Security (CSS) — annual Clery Act crime and fire safety reporting for all Title IV postsecondary institutions. Full dataset covers primary offenses, VAWA offenses, hate crimes, arrests/referrals, and fire safety. Portal mirror provides only hate crimes data (2005-2021); primary offenses, VAWA, arrests, and fire safety require direct access to ope.ed.gov/campussafety. Use when analyzing campus hate crimes via Portal or understanding Clery Act reporting structure. Identified by IPEDS unitid.
+Campus Safety and Security (CSS) — annual Clery Act crime and fire safety reporting for all Title IV postsecondary institutions. Full dataset covers primary offenses, VAWA offenses, hate crimes, arrests/referrals, and fire safety. Portal mirror provides only hate crimes data (2005-2021); primary offenses, VAWA, arrests, and fire safety require direct access to ope.ed.gov/campussafety. Use when analyzing campus hate crimes via Portal or understanding Clery Act reporting structure. Identified by IPEDS unitid. Hazing statistics were added by Pub. L. 118-173 (applies to annual security reports from calendar year 2026 onward, per the Act's 2-years-after-enactment effective-date provision); they are not in the Portal mirror.
 
 Guide to understanding and using campus crime and fire safety data collected under the Clery Act.
 
@@ -22,7 +22,7 @@ Guide to understanding and using campus crime and fire safety data collected und
 > | Variable | Example Code | Meaning |
 > |----------|--------------|---------|
 > | `bias` | `1` | Race-based bias |
-> | `crime_type` | `14` | Intimidation |
+> | `crime_type` | `13` | Intimidation |
 > | `fips` | `6` | California |
 >
 > See `./references/variable-definitions.md` for complete code mappings.
@@ -38,13 +38,13 @@ Guide to understanding and using campus crime and fire safety data collected und
 
 ## What is Campus Safety and Security Data?
 
-The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act:
+The Campus Safety and Security (CSS) data comes from the annual survey required by the Jeanne Clery Campus Safety Act (renamed by Pub. L. 118-173, Dec. 23, 2024; formerly the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act):
 
 - **Federal mandate**: All Title IV institutions must report crime and fire statistics annually
 - **Consumer protection**: Designed to inform students, parents, and employees about campus safety
 - **Primary source**: U.S. Department of Education Office of Postsecondary Education
 - **Coverage**: All postsecondary institutions receiving federal financial aid
-- **Reporting period**: Calendar year (January 1 - December 31)
+- **Reporting period**: Calendar year (January 1 - December 31) in which the crime was reported (34 CFR 668.46(c)(3)); the Portal `year` is that calendar year
 - **Available years**: 2005-2021 (hate crimes in Portal mirrors)
 - **Primary identifier**: `unitid` (IPEDS institution ID, 6-digit integer)
 - **Official portal**: https://ope.ed.gov/campussafety/
@@ -120,55 +120,63 @@ Planning institutional comparisons?
 
 ### Crime Type Codes (Portal Integer Encoding)
 
-| Code | Crime Type | Category |
-|------|------------|----------|
-| `1` | Murder/Non-negligent Manslaughter | Primary Offense |
-| `2` | Manslaughter by Negligence | Primary Offense |
-| `3` | Rape | Sex Offense |
-| `4` | Fondling | Sex Offense |
-| `5` | Incest | Sex Offense |
-| `6` | Statutory Rape | Sex Offense |
-| `7` | Robbery | Primary Offense |
-| `8` | Aggravated Assault | Primary Offense |
-| `9` | Burglary | Property Crime |
-| `10` | Motor Vehicle Theft | Property Crime |
-| `11` | Arson | Property Crime |
-| `12` | Larceny-Theft | Hate Crime Only |
-| `13` | Simple Assault | Hate Crime Only |
-| `14` | Intimidation | Hate Crime Only |
-| `15` | Destruction/Damage/Vandalism | Hate Crime Only |
-| `16` | Domestic Violence | VAWA (2014+) |
-| `17` | Dating Violence | VAWA (2014+) |
-| `18` | Stalking | VAWA (2014+) |
+Labels are the Portal variable-metadata labels for endpoint 130 (fetched 2026-10-19). The era column records which codes were **observed in the UC Berkeley (unitid 110635) 2010/2016 Portal probes**; it is an observation, not a documented rule.
 
-> **Note:** Crime type code `99` (Total) is documented in some references but does NOT appear in the actual Portal mirror data. The data contains individual crime types 1-18 only.
+| Code | Portal label | Category | Observed in UC Berkeley 2010/2016 Portal probes |
+|------|--------------|----------|-------------------------------------------------|
+| `1` | Murder | Criminal offense | 2010 and 2016 |
+| `2` | Rape | Sex offense (2014+ category) | 2016 only |
+| `3` | Fondling | Sex offense (2014+ category) | 2016 only |
+| `4` | Aggravated Assault | Criminal offense | 2010 and 2016 |
+| `5` | Incest | Sex offense (2014+ category) | 2016 only |
+| `6` | Statutory Rape | Sex offense (2014+ category) | 2016 only |
+| `7` | Robbery | Criminal offense | 2010 and 2016 |
+| `8` | Burglary | Criminal offense | 2010 and 2016 |
+| `9` | Motor Vehicle Theft | Criminal offense | 2010 and 2016 |
+| `10` | Arson | Criminal offense | 2010 and 2016 |
+| `11` | Simple Assault | Hate crime only | 2010 and 2016 |
+| `12` | Larceny | Hate crime only | 2010 and 2016 |
+| `13` | Intimidation | Hate crime only | 2010 and 2016 |
+| `14` | Destruction, Damage, or Vandalism | Hate crime only | 2010 and 2016 |
+| `15` | Forcible Sex Offense | Sex offense (pre-2014 category) | 2010 only |
+| `16` | Neglient Manslaughter [sic] (negligent manslaughter) | Criminal offense | 2010 only |
+| `17` | Nonforcible Sex Offense | Sex offense (pre-2014 category) | 2010 only |
+| `18` | Body Injury | Undocumented | Not observed |
+
+> **Note:** Crime type code `99` (Total) is documented in some references but does NOT appear in the actual Portal mirror data. The data contains individual crime types 1-18 only. VAWA offenses (domestic violence, dating violence, stalking) are **not** in the hate-crimes file and have no `crime_type` code. `crime_type == 16` is negligent manslaughter; it appeared in the 2010 probe but not the 2016 probe (the 2019 CSS hate-crime form has no negligent-manslaughter item, so code 16 likely appears only in pre-2014 data — inference from one form year).
 
 ### Bias Category Codes (Portal Integer Encoding)
 
-| Code | Bias Category | Notes |
-|------|---------------|-------|
-| `1` | Race | Most common category |
-| `2` | Religion | Anti-Jewish, Anti-Islamic, etc. |
-| `3` | Sexual Orientation | Anti-Gay, Anti-Lesbian, etc. |
-| `4` | Gender | Based on perceived gender |
-| `5` | Gender Identity | Added 2014 |
-| `6` | Ethnicity | Separated from National Origin in 2014 |
-| `7` | National Origin | Based on country of birth |
-| `8` | Disability | Physical or mental |
-| `9` | Unknown/Other | |
-| `99` | Total | All bias categories combined |
+Portal labels as above; the parenthesized meanings come from matching Portal 2017 rows to UC Berkeley's CY2017 Annual Security Report hate-crime table. Code order 1-8 matches the column order of ED's CSS hate-crime form (Race, Religion, Sexual orientation, Gender, Gender Identity, Disability, Ethnicity, National Origin; 2019 CSS form), and code 2 = Religion also matched UC Riverside CY2015 and CY2016 ASR rows. Row-level Portal/ASR disagreements occur (UC Berkeley CY2016: two bias codes; LSU CY2017: one on-campus intimidation hate crime absent from the Portal); treat these as institution submission or revision differences, not a code change.
 
-### VAWA Offenses (Added 2013)
+| Code | Portal label | Meaning | Observed in UC Berkeley 2010/2016 Portal probes |
+|------|--------------|---------|-------------------------------------------------|
+| `1` | Race | Race | 2010 and 2016 |
+| `2` | Religion | Religion | 2010 and 2016 |
+| `3` | Sex | Sexual orientation (ASR match) | 2010 and 2016 |
+| `4` | Gender | Gender | 2010 and 2016 |
+| `5` | Gender Identity | Gender identity | 2016 only |
+| `6` | Disability | Disability | 2010 and 2016 |
+| `7` | Ethnicity | Ethnicity (ASR match) | 2016 only |
+| `8` | Nationality | National origin (ASR match) | 2016 only |
+| `9` | Ethnicity (Pre 2014) | Pre-2014 ethnicity category | 2010 only |
+| `99` | Total | All bias categories combined | 2010 and 2016 |
 
-| Code | Offense | Definition |
-|------|---------|------------|
-| `16` | Domestic Violence | Violence by current/former spouse, cohabitant, or similar |
-| `17` | Dating Violence | Violence by person in romantic/intimate relationship |
-| `18` | Stalking | Course of conduct causing fear for safety |
+VAWA 2013 (Pub. L. 113-4) added national origin and gender identity to the statutory bias categories (ethnicity was already listed). The Portal carries pre-2014 ethnicity as code 9 and post-2014 ethnicity/national origin as codes 7/8 — do not splice 9 with 7 without documenting the break.
+
+### VAWA Offenses (full CSS data only; not in the Portal mirror)
+
+| Offense | Definition |
+|---------|------------|
+| Domestic Violence | Violence by current/former spouse, cohabitant, or similar |
+| Dating Violence | Violence by person in romantic/intimate relationship |
+| Stalking | Course of conduct causing fear for safety |
+
+VAWA 2013 (Pub. L. 113-4) required good-faith reporting of these offenses starting with calendar-year 2013 statistics in the October 1, 2014 ASR; the final regulations (79 FR 62752, Oct. 20, 2014) took effect July 1, 2015. See `./references/vawa-offenses.md`.
 
 ### Hate Crime-Only Offenses
 
-Codes 12-15 are only reported as hate crimes. They are not standalone Clery crimes unless bias-motivated.
+Codes 11-14 (Simple Assault, Larceny, Intimidation, Vandalism) are hate-crime-only offenses. They are not standalone Clery crimes unless bias-motivated.
 
 ### Arrests and Disciplinary Referrals
 
@@ -259,8 +267,8 @@ df_2021 = df.filter(pl.col("year") == 2021)
 # Filter by bias category (1 = Race)
 race_crimes = df.filter(pl.col("bias") == 1)
 
-# Filter by crime type (14 = Intimidation)
-intimidation = df.filter(pl.col("crime_type") == 14)
+# Filter by crime type (13 = Intimidation)
+intimidation = df.filter(pl.col("crime_type") == 13)
 
 # Filter by institution
 institution = df.filter(pl.col("unitid") == 100654)
@@ -291,8 +299,8 @@ df_2021 <- df |> filter(year == 2021)
 # Filter by bias category (1 = Race)
 race_crimes <- df |> filter(bias == 1)
 
-# Filter by crime type (14 = Intimidation)
-intimidation <- df |> filter(crime_type == 14)
+# Filter by crime type (13 = Intimidation)
+intimidation <- df |> filter(crime_type == 13)
 
 # Filter by institution
 institution <- df |> filter(unitid == 100654)
@@ -315,13 +323,14 @@ For data NOT available in Portal mirrors (primary offenses, VAWA, arrests, fire 
 |---------|-------|----------|
 | Using string codes | Portal uses integer codes for `bias`, `crime_type`, etc. | Always map integers via `./references/variable-definitions.md` |
 | Ranking schools by crime counts | Higher numbers may indicate better reporting, not worse safety | Normalize by enrollment; note reporting culture differences in `./references/limitations.md` |
-| Comparing across years naively | Crime definitions changed over time (especially sex offenses in 2014, VAWA added 2013) | Restrict comparisons to consistent-definition periods; document breaks |
+| Comparing across years naively | Crime definitions changed over time (VAWA 2013: CY2013–2014 statistics transitional, final-rule definitions from CY2015; Portal `crime_type`/`bias` codes differ between pre-2014 and 2014+ rows) | Restrict comparisons to consistent-definition periods; document breaks |
+| Summing `total_hate_crimes` | Appears to add the residence-hall subset to on-campus (double-counting housing incidents — verified against UC Berkeley CY2016–2017 and UC Riverside CY2015 ASRs) | Recompute as on_campus + non_campus + public_property (+ other) |
 | Treating zero as missing | Zero means explicitly reported zero incidents; missing means not reported | Check for `null` (missing) vs `0` (zero incidents) before analysis |
 | Comparing CSS to FBI UCR data | Different definitions, scope, and reporting requirements | Never equate CSS and FBI statistics; see `./references/limitations.md` |
 | Assuming all crime data in mirror | Mirror only has hate crimes | Use Department of Education portal for primary offenses, VAWA, arrests, fire safety |
 | Using `instnm` as column name | Hate crimes data uses `inst_name`, not `instnm` (which is the IPEDS convention) | Check actual column names with `df.columns` |
 | Expecting `-1`/`-2` missing codes | Hate crimes data uses `null` for missing, not negative integer codes | Check for nulls with `pl.col("bias").is_null()`, not `pl.col("bias") == -1` |
-| Ignoring multi-campus institutions | Branch campuses report separately; aggregating incorrectly inflates/deflates | Use `branch` field to distinguish campuses; see `./references/campus-geography.md` |
+| Ignoring multi-campus institutions | Separate CSS campuses can appear as duplicate unitid × year × crime_type × bias row sets with no campus identifier (Portal API: UC Berkeley 2016, UC Riverside 2017); there is no `branch` column | Sum counts over duplicate keys per unitid-year before analysis (verify duplication in the mirror file); for campus-level detail use the full CSS download (see `./references/campus-geography.md`) |
 | Ignoring underreporting | Many crimes go unreported; CSS captures only reported incidents | Acknowledge underreporting as a limitation in all analyses |
 
 ## Reporting Timeline
@@ -330,7 +339,7 @@ For data NOT available in Portal mirrors (primary offenses, VAWA, arrests, fire 
 |------|--------|
 | Calendar year | Data collection period |
 | October 1 | Annual Security Report (ASR) due |
-| October 15 | CSS survey submission deadline |
+| Date set annually by ED | CSS web-survey submission (34 CFR 668.41(e)(5)) |
 | Following spring | Data available publicly |
 
 ## Related Data Sources

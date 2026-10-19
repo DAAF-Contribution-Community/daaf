@@ -31,7 +31,7 @@ Detailed definitions for key EADA variables available through the Education Data
 |----------|------|-------------|
 | `unitid` | Integer | IPEDS institution identifier (6 digits) |
 | `opeid` | String | OPE ID (null for early years, e.g., 2002) |
-| `year` | Integer | Reporting year (fiscal year ending) |
+| `year` | Integer | Start year of the reporting year (e.g., 2021 = reporting year 2021-22; Portal convention) |
 | `inst_name` | String | Name of institution |
 | `fips` | Integer | State FIPS code (see FIPS codes below) |
 
@@ -122,26 +122,13 @@ Detailed definitions for key EADA variables available through the Education Data
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `enrollment_men` | Integer | Male undergraduate enrollment |
-| `enrollment_women` | Integer | Female undergraduate enrollment |
-| `enrollment_total` | Integer | Total undergraduate enrollment |
+| `enrollment_men` | Integer | Male full-time undergraduate enrollment (pre-filled from IPEDS Fall Enrollment) |
+| `enrollment_women` | Integer | Female full-time undergraduate enrollment (pre-filled from IPEDS Fall Enrollment) |
+| `enrollment_total` | Integer | Total full-time undergraduate enrollment (pre-filled from IPEDS Fall Enrollment) |
 
 ### Definition: "Participant"
 
-A participant is a student who:
-- Is listed on the varsity team roster
-- As of the first day of the first scheduled contest
-- During the reporting year
-
-**Includes**:
-- Scholarship athletes
-- Walk-ons
-- Redshirts (if on roster)
-
-**Excludes**:
-- Practice players not on varsity roster
-- Club sport participants
-- Junior varsity (unless no varsity)
+A participant (34 CFR 668.47(b)(3)) is a student who, as of the day of a varsity team's first scheduled contest, (A) is listed on the varsity roster, (B) receives athletically related student aid, or (C) practices with the varsity team and receives coaching from one or more varsity coaches. Students meeting any criterion count, including those on teams the institution designates as junior varsity, freshman, or novice, and students withheld from competition (redshirts, academic, medical or other reasons). Club-sport-only participants are not varsity participants.
 
 ### Unduplicated vs. Duplicated
 
@@ -159,8 +146,8 @@ The Portal naming convention for coach counts is `{team}_{status}{role}_{gender}
 - `{gender}`: `_male`, `_fem`
 
 Additional categories exist for university employment status:
-- `{team}_hdcoach_ftuniemp_{gender}`: Full-time university employee, head coaching assignment
-- `{team}_hdcoach_ptuniemp_{gender}`: Part-time university employee, head coaching assignment
+- `{team}_hdcoach_ftuniemp_{gender}`: Head coach assigned part-time who is a full-time university employee (Portal label: "...Head Coaches and Full-Time University Employees")
+- `{team}_hdcoach_ptuniemp_{gender}`: Head coach assigned part-time who is a part-time university employee or volunteer (Portal label: "...Head Coaches and Part-Time University Employees or Volunteers")
 
 | Variable | Type | Description |
 |----------|------|-------------|
@@ -209,10 +196,10 @@ Same structure as head coaches with `ascoach` replacing `hdcoach` in variable na
 
 | Status | Definition |
 |--------|------------|
-| **Full-time** | Employed by institution on a full-time basis (regardless of coaching assignment) |
-| **Part-time** | Not full-time employees; may include graduate assistants |
+| **Full-time (`ft`)** | Assigned to the team on a full-time coaching basis |
+| **Part-time (`pt`)** | Assigned part-time; the `_ftuniemp`/`_ptuniemp` columns split part-time-assigned coaches by institutional employment status (part-time employees or volunteers) |
 
-**Note**: A full-time employee who coaches part-time is counted as full-time.
+**Note**: A full-time employee assigned part-time to coaching counts as part-time assigned (in `_ftuniemp`), not full-time. Graduate assistants and volunteers who coach count as coaches (668.47(c)(2)(iv)(B)).
 
 ## Salary Variables
 
@@ -261,11 +248,7 @@ Same structure as head coaches with `ascoach` replacing `hdcoach` in variable na
 
 ### Calculation Method
 
-```
-Average Salary = Total Salaries Paid / Number of Paid Coaching Positions
-```
-
-**Note**: Volunteer coaches (0 salary) may or may not be excluded from denominator depending on reporting practice.
+Average = institutional salary (all wages and bonuses paid for coaching) ÷ number of non-volunteer coaches (per person) and ÷ FTE positions (per FTE) — 34 CFR 668.47(c)(9)–(10); volunteers are excluded by rule.
 
 ## Expense Variables
 
@@ -364,10 +347,7 @@ Average Salary = Total Salaries Paid / Number of Paid Coaching Positions
 - Concessions (if tracked by sport)
 - Donations restricted to specific sports
 
-**Excludes**:
-- Student fees (typically)
-- General institutional support
-- Unrestricted donations
+**Also included** (34 CFR 668.47(b)(5)): contributions from alumni and others, institutional support, State or other government support, student activity fees, royalties, sponsorships, sports camps. Revenues not attributable to a sport (e.g., untargeted alumni gifts, investment interest income, student activity fees) appear only in total (and, if appropriate, men's/women's combined) revenues.
 
 ### Revenue Attribution Challenges
 
@@ -512,7 +492,7 @@ df_clean <- df |> mutate(
 - **Integers**: Count variables (participants, coaches)
 - **Decimals**: Financial variables (may have cents)
 - **Strings**: Names, identifiers
-- **Years**: Fiscal year ending (e.g., 2022 = FY2021-22)
+- **Years**: Start year of the reporting year (e.g., 2021 = 2021-22, typically July 1–June 30); EADA lets each institution designate its 12-month period (34 CFR 668.47(b)(4)). Portal convention: `year` is the year the reporting year begins (Portal metadata description "Year that the academic year begins", label "Academic year (fall semester)"; cross-checked 2026-10-19 against one institution's FY2021-22 revenue, so treat as medium confidence)
 
 ## Joining with Other Data
 
@@ -527,17 +507,17 @@ Use `unitid` to join with IPEDS data for:
 ```python
 import polars as pl
 
-# Example join with IPEDS
+# Example join with IPEDS (same-year join suits non-enrollment characteristics; for enrollment see Year Alignment below: IPEDS fall year Y-1)
 eada_df.join(ipeds_df, on=["unitid", "year"], how="left")
 ```
 
 ```r
 library(dplyr)
 
-# Example join with IPEDS
+# Example join with IPEDS (same-year join suits non-enrollment characteristics; for enrollment see Year Alignment below: IPEDS fall year Y-1)
 eada_df |> left_join(ipeds_df, by = c("unitid", "year"))
 ```
 
 ### Year Alignment
 
-EADA reporting year may not align perfectly with IPEDS year. Check documentation for specific alignment requirements.
+EADA enrollment is pre-filled from IPEDS Fall Enrollment for the fall before the reporting year starts: the 2023 survey (reporting period 7/1/2022-6/30/2023; Portal year 2022 under the start-year convention) used fall 2021 IPEDS. To reproduce EADA enrollment from IPEDS, join EADA year Y to IPEDS fall-enrollment year Y-1 (verified for the 2023 User's Guide only; Portal-year mapping rests on EA1, medium confidence). Characteristics that do not vary by year can join on the same year.

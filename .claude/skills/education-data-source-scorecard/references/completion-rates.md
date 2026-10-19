@@ -1,32 +1,22 @@
 # Completion Rates
 
-College Scorecard provides completion metrics that differ significantly from IPEDS graduation rates. Understanding these differences is critical for valid analysis.
+College Scorecard provides completion metrics from several sources: some reproduce IPEDS graduation rates, while NSLDS-based measures differ significantly from them. Understanding these differences is critical for valid analysis.
 
 > **Portal note:** Completion rate variables (e.g., `C150_4`, `C150_4_POOLED`) are from the original Scorecard naming scheme. The Portal mirror datasets do not include a separate completion rates dataset. Completion data may be embedded in other Scorecard bulk downloads available at `collegescorecard.ed.gov`. The Portal's 6 Scorecard datasets focus on earnings, default, repayment, institutional characteristics, and student body characteristics. For completion rates, consider using the IPEDS graduation rates dataset (`ipeds/colleges_ipeds_grad-rates`).
 
-## Scorecard vs IPEDS: Key Differences
+## Scorecard Completion Measures Come From Different Sources
 
-| Aspect | College Scorecard | IPEDS Graduation Rate |
-|--------|------------------|----------------------|
-| **Population** | Title IV aid recipients | First-time, full-time degree-seeking |
-| **Part-time students** | Included | Excluded |
-| **Transfer students** | Included (at receiving institution) | Excluded (counted at origin) |
-| **Entry timing** | Any entry during year | Fall cohort only |
-| **Data source** | NSLDS tracking | Institution-reported |
-| **Completion anywhere** | Can track to any institution | Same institution only |
+| Measure family | Source | Population |
+|---|---|---|
+| `C100_*`, `C150_*`, `C200_*` (incl. `_POOLED`, race and Pell/loan splits) | IPEDS Graduation Rates / 200% GR | Full-time, first-time degree/certificate-seekers — the same cohort as IPEDS GR |
+| `OMAWDP8_*`, `OMENRAP8_*`, `OMENRYP8_*`, `OMENRUP8_*` | IPEDS Outcome Measures | FT/PT × first-time/non-first-time entering cohorts |
+| NSLDS-based completion/transfer outcomes (e.g., `COMP_ORIG_YR*_RT` — mapping is inference; verify in the data dictionary) | NSLDS | Title IV aid recipients; enrollment dates estimated from FAFSA |
 
-### Why This Matters
-
-**IPEDS tends to undercount success** for:
-- Transfer students (success at new school doesn't count)
-- Part-time students (not in cohort)
-- Spring/summer entrants (not in fall cohort)
-
-**Scorecard captures these students** but only tracks Title IV recipients.
+`C150_4` is NOT a Title IV-recipient rate and excludes part-time and transfer-in students; it should equal the IPEDS 150% graduation rate for the same cohort.
 
 ## Scorecard Completion Cohorts
 
-### Who Is Included
+### Who Is Included (NSLDS-based measures only)
 
 Students in Scorecard completion cohorts:
 - Received Title IV aid
@@ -34,7 +24,7 @@ Students in Scorecard completion cohorts:
 - Both full-time AND part-time
 - All entry terms (not just fall)
 
-### Who Is Excluded
+### Who Is Excluded (NSLDS-based measures only)
 
 | Excluded Group | Why |
 |----------------|-----|
@@ -80,7 +70,7 @@ Students in Scorecard completion cohorts:
 | `C150_4` | 150% completion rate, 4-year |
 | `C150_L4` | 150% completion rate, <4-year |
 | `C150_4_POOLED` | Pooled 150% rate, 4-year |
-| `C150_4_POOLED_SUPP` | Suppression indicator |
+| `C150_4_POOLED_SUPP` | Pooled 150% rate, 4-year, suppressed for small n (a rate, not a flag) |
 
 ### By Student Characteristics
 
@@ -91,7 +81,7 @@ Students in Scorecard completion cohorts:
 | `C150_4_BLACK` | Black students |
 | `C150_4_2MOR` | Two or more races |
 | `C150_4_PELL` | Pell Grant recipients |
-| `C150_4_LOAN` | Loan recipients |
+| `C150_4_LOANNOPELL` | Direct Subsidized Loan recipients that did not receive a Pell Grant (first-year status) |
 | `C150_4_NRA` | Non-resident aliens |
 
 ### By Completion Status
@@ -123,9 +113,9 @@ Students in Scorecard completion cohorts:
 
 ### Transfer Tracking
 
-Scorecard can track completion at ANY institution because NSLDS follows students:
+Scorecard's NSLDS-based measures can track completion at ANY institution because NSLDS follows students (the IPEDS-sourced `C150_*`/`C200_*` rates cannot):
 
-| Scenario | IPEDS | Scorecard |
+| Scenario | IPEDS | Scorecard NSLDS-based measures |
 |----------|-------|-----------|
 | Start at CC, complete at 4-year | Counts as non-completer at CC, not counted at 4-year | Counted as completion |
 | Start at School A, transfer to School B, complete | Non-completer at A, not in cohort at B | Counted as completion |
@@ -144,8 +134,11 @@ Critical for equity analysis:
 | Variable | Description |
 |----------|-------------|
 | `C150_4_PELL` | Completion rate, Pell recipients |
-| `C150_4_NOPELL` | Completion rate, non-Pell |
+| `C150_4_LOANNOPELL` | Completion rate, Direct Subsidized Loan recipients without a Pell Grant |
+| `C150_4_NOLOANNOPELL` | Completion rate, students who received neither a Direct Subsidized Loan nor a Pell Grant |
 | `PELL_COMP_ORIG_YR*_RT` | Pell completion by year |
+
+The data dictionary (fetched 2026-10-19) has no single non-Pell `C150_4` variable; non-Pell students are split across `C150_4_LOANNOPELL` and `C150_4_NOLOANNOPELL`.
 
 ### Pell Completion Gap
 
@@ -203,13 +196,13 @@ Most institutions show completion gaps:
 - Similar institution types (4-year public to 4-year public)
 - Similar missions (open-access to open-access)
 - Same time frame (150% to 150%)
-- Same cohort definition (Scorecard to Scorecard)
+- Same cohort definition (NSLDS-based to NSLDS-based; Scorecard `C150_*` to IPEDS GR is the same cohort)
 
 ### Invalid Comparisons
 
 | Comparison | Problem |
 |------------|---------|
-| Scorecard to IPEDS | Different cohort definitions |
+| Scorecard NSLDS-based measures to IPEDS GR | Different cohort definitions (`C150_*` is the IPEDS GR cohort) |
 | 4-year to 2-year | Different time expectations |
 | Selective to open-access | Different student preparation |
 | Annual to pooled | Different aggregation |
@@ -220,7 +213,7 @@ Most institutions show completion gaps:
 
 | Condition | Action |
 |-----------|--------|
-| < 30 students in cohort | Rate suppressed |
+| < 30 students in the combined (pooled) cohort | `*_POOLED_SUPP` versions suppressed; the base `_POOLED` measure uses a four-year cohort instead (see `POOLYRS*`) |
 | Small subgroup cells | Disaggregated rates suppressed |
 | Very small programs | May lack any completion data |
 
@@ -238,11 +231,11 @@ Most institutions show completion gaps:
 
 ### For Completion Analysis
 
-1. **Know your cohort** - Scorecard ≠ IPEDS
+1. **Know your cohort** - `C150_*`/`C200_*` = IPEDS GR cohort; NSLDS-based measures differ
 2. **Use pooled rates** when available for stability
 3. **Consider transfers** - Low completion may mean high transfer
 4. **Check suppression** - Small cohorts may lack data
-5. **Note Title IV limitation** - Only aid recipients included
+5. **Note Title IV limitation** - NSLDS-based measures include only aid recipients
 
 ### For Equity Analysis
 
@@ -256,20 +249,21 @@ Most institutions show completion gaps:
 ```
 Adequate: "The 6-year graduation rate is 65%"
 
-Better: "The 6-year completion rate for Title IV aid recipients 
-        (150% time) is 65%, per College Scorecard"
+Better: "The 6-year completion rate for full-time, first-time students 
+        (150% time) is 65%, per College Scorecard (C150_4)"
 
-Best: "The 6-year completion rate for Title IV aid recipients is 65% 
-      (150% of normal time). This differs from IPEDS graduation rates 
-      which track first-time, full-time students only. Completion rates 
-      for Pell recipients (55%) trail non-Pell recipients (72%)."
+Best: "The 6-year completion rate for full-time, first-time students is 65% 
+      (150% of normal time; Scorecard C150_4, which reports the IPEDS 
+      graduation-rate cohort and excludes part-time and transfer-in 
+      students). Completion rates for Pell recipients (55%) trail students 
+      who received neither a Pell Grant nor a Direct Subsidized Loan (72%)."
 ```
 
 ## Common Pitfalls
 
 | Pitfall | Why It's Wrong |
 |---------|---------------|
-| Comparing Scorecard to IPEDS rates | Different populations tracked |
+| Comparing Scorecard NSLDS-based rates to IPEDS rates | Different populations tracked (Scorecard `C150_*` is the IPEDS GR cohort) |
 | Ignoring transfer-out rates | Students may complete elsewhere |
 | Treating all institutions equally | Mission and selectivity vary |
 | Using annual rates for small schools | High volatility, suppression |

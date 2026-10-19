@@ -141,7 +141,7 @@ Interpretation question?
 |----|--------|-------|---------|-------|
 | `unitid` | 6-digit integer | Institution | `110635` | Same as IPEDS; primary join key |
 | `opeid` | String | Institution | `"00123400"` | OPE ID (may be null for early years) |
-| `year` | 4-digit integer | Reporting year | `2021` | Fiscal year ending |
+| `year` | 4-digit integer | Reporting year | `2021` | Start year of the 12-month reporting year (2021 = 2021-22; Portal convention) |
 | `fips` | Integer | State | `6` (California) | Federal FIPS code |
 | `inst_name` | String | Institution | `"University of..."` | Institution name |
 
@@ -279,9 +279,10 @@ df_clean <- df |> filter(
 EADA Data                          Title IX Compliance
 ──────────────────────────────────────────────────────────
 Self-reported                      OCR investigation
-Snapshot (Oct 15)                  Continuous obligation
+Snapshot (first scheduled contest) Continuous obligation
 Participation counts only          Participation + interest + ability
-No "laundry list" items           13+ treatment areas
+No "laundry list" items            9 treatment factors (34 CFR 106.41(c)(2)-(10))
+                                     + recruitment, support services (1979 PI)
 Public disclosure                  Enforcement mechanism
 ```
 

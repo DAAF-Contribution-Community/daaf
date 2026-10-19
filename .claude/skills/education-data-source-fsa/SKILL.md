@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-10-19"
 ---
 
 # FSA Data Source Reference
@@ -21,7 +21,7 @@ Reference guide for FSA data available through the Urban Institute Education Dat
 >
 > | Variable | Example Value | Meaning |
 > |----------|---------------|---------|
-> | `grant_type` | `1` | Federal Pell Grant |
+> | `grant_type` | `4` | Federal Pell Grant |
 > | `loan_type` | `1` | Subsidized Direct Loan - Undergraduate |
 > | `award_type` | `1` | Federal Supplemental Educational Opportunity Grants |
 > | `fips` | `6` | California |
@@ -124,8 +124,8 @@ FSA research topic?
 
 ```
 FSA dataset selection?
-├─ Need grant data (Pell, FSEOG)
-│   └─ fsa/colleges_fsa_grants (single-file, 1999-2021)
+├─ Need grant data (Pell, TEACH, Iraq and Afghanistan Service Grant)
+│   └─ fsa/colleges_fsa_grants (single-file, 1999-2021; FSEOG is campus-based)
 ├─ Need loan data (Direct, PLUS)
 │   └─ fsa/colleges_fsa_loans (single-file, 1999-2021)
 ├─ Need campus-based program data
@@ -159,13 +159,13 @@ FSA dataset selection?
 
 ### Title IV Programs
 
-| Program | Type | Eligibility | Max Amount (2025-26) |
+| Program | Type | Eligibility | Max Amount (2025-26; see 2026-27 changes) |
 |---------|------|-------------|----------------------|
 | Federal Pell Grant | Need-based grant | Undergrad with financial need | $7,395 |
 | Direct Subsidized Loan | Need-based loan | Undergrad with financial need | $3,500-$5,500/yr |
 | Direct Unsubsidized Loan | Non-need loan | Undergrad/Grad students | $5,500-$20,500/yr |
-| Parent PLUS Loan | Credit-based loan | Parents of dependent undergrads | Cost of attendance |
-| Graduate PLUS Loan | Credit-based loan | Graduate/professional students | Cost of attendance |
+| Parent PLUS Loan | Credit-based loan | Parents of dependent undergrads | Cost of attendance minus other aid (from 7/1/2026: $20,000/yr, $65,000 aggregate per dependent student) |
+| Graduate PLUS Loan | Credit-based loan | Graduate/professional students | Cost of attendance (new Grad PLUS ended 7/1/2026) |
 | FSEOG | Need-based grant | Undergrad with exceptional need | $100-$4,000/yr |
 | Federal Work-Study | Employment program | Students with financial need | Varies by school |
 | Perkins Loan | Need-based loan | Discontinued (no new loans after 2017) | N/A |
@@ -175,19 +175,19 @@ FSA dataset selection?
 | Score Range | Classification | Meaning |
 |-------------|----------------|---------|
 | 1.5 to 3.0 | Financially Responsible | Meets all standards |
-| 1.0 to 1.49 | In the Zone | Provisionally certified, monitoring required |
-| Below 1.0 | Not Financially Responsible | Must post letter of credit or face sanctions |
+| 1.0 to 1.4 | In the Zone | May participate as financially responsible under the zone alternative for up to 3 consecutive years, with mandatory heightened cash monitoring or reimbursement and extra reporting (34 CFR 668.175(d)) |
+| Below 1.0 | Not Financially Responsible | May participate only under an alternative: letter of credit ≥ 50% of prior-FY Title IV funds (668.175(c)) or provisional certification with letter of credit ≥ 10% (668.175(f)) |
 | -1.0 | Minimum score | Lowest possible composite score |
 
 ### Grant Type Codes (grants dataset)
 
 | Code | Grant Type |
 |------|------------|
-| `1` | Federal Pell Grant |
-| `2` | Federal Supplemental Educational Opportunity Grant (FSEOG) |
-| `3` | TEACH Grant |
-| `4` | Iraq and Afghanistan Service Grant |
-| `5` | Children of Fallen Heroes Grant |
+| `1` | Academic Competitiveness Grant |
+| `2` | Iraq and Afghanistan Service Grant |
+| `3` | National SMART Grant |
+| `4` | Federal Pell Grant |
+| `5` | TEACH Grant |
 
 ### Loan Type Codes (loans dataset)
 
@@ -263,8 +263,8 @@ import polars as pl
 # Using fetch_from_mirrors() from fetch-patterns.md
 df_grants = fetch_from_mirrors("fsa/colleges_fsa_grants", years=[2019, 2020, 2021])
 
-# Filter by grant type (1 = Federal Pell Grant)
-df_pell = df_grants.filter(pl.col("grant_type") == 1)
+# Filter by grant type (4 = Federal Pell Grant)
+df_pell = df_grants.filter(pl.col("grant_type") == 4)
 
 # Filter by institution
 df_inst = df_grants.filter(pl.col("unitid") == 110635)
@@ -290,8 +290,8 @@ url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_grants", ".", mirror$forma
 df_grants <- arrow::read_parquet(url) |>
   filter(year %in% c(2019, 2020, 2021))
 
-# Filter by grant type (1 = Federal Pell Grant)
-df_pell <- df_grants |> filter(grant_type == 1)
+# Filter by grant type (4 = Federal Pell Grant)
+df_pell <- df_grants |> filter(grant_type == 4)
 
 # Filter by institution
 df_inst <- df_grants |> filter(unitid == 110635)
@@ -304,14 +304,14 @@ df_recent <- df_grants |> filter(between(year, 2015, 2021))
 
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
-| Using string codes | Portal encodes categoricals as integers; original FSA docs may reference string labels | Always use integer codes (e.g., `grant_type == 1` not `"Pell"`) |
+| Using string codes | Portal encodes categoricals as integers; original FSA docs may reference string labels | Always use integer codes (e.g., `grant_type == 4` not `"Pell"`) |
 | Ignoring missing data codes | `-1`, `-2`, `-3` in numeric columns are sentinel values, not real amounts | Filter or handle missing codes before aggregation; exclude negative values from sums/means |
 | Stale financial responsibility data | `colleges_fsa_composite_scores` only covers 2006-2016 | Check year coverage before analysis; do not assume current availability |
 | 90/10 percentage is a proportion | `rev_pct_90_10` is stored as 0-1 (e.g., 0.87), NOT 0-100 | Multiply by 100 for display; compare to 0.90 threshold, not 90 |
-| Perkins Loan discontinuation | Perkins Loans ended after 2017; campus-based data still includes historical records | Filter by year or award_type to avoid mixing discontinued and active programs |
+| Perkins Loan discontinuation | No new Perkins Loans after September 30, 2017; final disbursements permitted through June 30, 2018, so campus-based `year`=2017 (2017-18) can still contain Perkins disbursements | Filter by year or award_type to avoid mixing discontinued and active programs |
 | Data lag | FSA data typically lags 1-2 years behind the current award year | Verify latest available year before planning analysis |
 | Mixing aggregate and detail loan types | Loan type codes include both individual types (1-8, 10-13) and aggregate totals (3, 6, 9, 14) | Filter to specific types or aggregates, never sum both together |
-| Pell recipient counts unavailable for 2020+ | `grant_recipients_unitid` is 100% NULL for Pell grants (`grant_type==1`) in the 2020-2021 data year. Disbursement amounts also appear null | Use IPEDS SFA (`sfa_grants_and_net_price`) as a proxy for grant recipient counts. Note that SFA `type_of_aid=9` captures all grant/scholarship aid, not Pell-specific (see IPEDS skill) |
+| Pell is code 4, not 1 | `grant_type == 1` is the Academic Competitiveness Grant and is null in recent years (e.g., UC Berkeley, `unitid` 110635, in 2019 and 2020) | Filter Pell with `grant_type == 4` |
 
 ## Joining FSA Data with Other Sources
 

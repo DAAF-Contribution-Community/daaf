@@ -23,7 +23,7 @@ This is the single most important limitation to understand. EADA was designed fo
 
 | Aspect | EADA | Title IX |
 |--------|------|----------|
-| Counting method | First day of first contest | Throughout competitive season |
+| Counting date | As of each team's first scheduled contest | Generally as of the team's first competitive event (1996 Clarification) — similar timing; differences are in participant definitions and review scope |
 | Verification | Self-reported | OCR investigation |
 | Scope | Limited data points | Comprehensive program review |
 | Standards | Report what is | Meet legal requirements |
@@ -67,10 +67,10 @@ Institutions may have incentives to:
 
 ### EADA Counting ≠ Title IX Counting
 
-EADA counts participants on a specific date. Title IX evaluates opportunities across the competitive season.
+The timing rules are similar: EADA counts participants as of each varsity team's first scheduled contest, and OCR generally counts athletes on the squad list as of the team's first competitive event (1996 Clarification). The differences lie in the participant definitions and the scope of review, not the count date.
 
 **Example**:
-- EADA: 100 women on rosters October 15
+- EADA: 100 women on rosters as of each team's first scheduled contest
 - Title IX: May consider opportunities available, interest surveys, ability assessments
 
 ### Multi-Sport Athletes

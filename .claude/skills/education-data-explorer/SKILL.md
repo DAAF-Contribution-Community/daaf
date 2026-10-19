@@ -94,7 +94,7 @@ Need a variable?
 |-------------|-----|-------------|
 | School sources (CCD ↔ CRDC ↔ EDFacts ↔ MEPS ↔ NHGIS) | `ncessch` (+ `year`) | Enrollment + discipline + poverty |
 | District sources (CCD ↔ SAIPE ↔ EDFacts) | `leaid` (+ `year`) | Directory + poverty + outcomes |
-| College sources (IPEDS ↔ Scorecard ↔ FSA ↔ PSEO ↔ EADA ↔ NACUBO ↔ NCCS ↔ csafety) | `unitid` (+ `year`) | Characteristics + earnings + aid |
+| College sources (IPEDS ↔ Scorecard ↔ FSA ↔ PSEO ↔ EADA ↔ NACUBO ↔ NCCS ↔ csafety) | `unitid` (+ `year`; PSEO repeats each cohort under every `year` in its span, so de-duplicate first) | Characteristics + earnings + aid |
 | School → district rollup | `leaid` present on school files | Aggregate schools to their LEA |
 | Any level → census geography | `ncessch`/`unitid` via NHGIS crosswalk | Link to tract/CBSA/region |
 
@@ -112,7 +112,7 @@ Verified ranges from the endpoint-file bridge and route reconciliation. Non-cont
 | EDFacts assessments | 2009-2018, 2020 | 2019 absent (COVID testing waivers) |
 | EDFacts grad rates | 2010-2019 | — |
 | IPEDS directory / inst-characteristics | 1980, 1984-2024 | — |
-| IPEDS finance | 1979, 1983-2017 | Mirror ends 2017 (API reaches further back, differently packaged) |
+| IPEDS finance | 1979, 1983-2017 | Mirror ends 2017; live Portal API lists 1979, 1983-2023 (endpoint metadata fetched 2026-10-19) — mirror-vintage lag |
 | IPEDS grad-rates (150%) | 1996-2023 | Wholesale-revalued in v0.26.1 — re-run any pre-2026q3 analysis |
 | IPEDS completions (2-/6-dig CIP) | 1991-2023 / 1983-2023 | Yearly shards |
 | Scorecard earnings | 2003-2014, 2018 | Sparse; other Scorecard families 1996-2020 |

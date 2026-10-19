@@ -58,7 +58,7 @@ Field of study data links outcomes to specific academic programs:
 |-------|---------------------|----------------|
 | Reference point | Entry (first enrollment) | Completion |
 | Includes non-completers | Yes | No |
-| Time frame meaning | "6 years after entry" | "1-2 years after completion" |
+| Time frame meaning | "6 years after entry" | "1 year after completion" in the current field-of-study files; the dictionary also defines later horizons (`EARN_MDN_4YR`, `EARN_MDN_5YR`) — check which are populated in your release |
 
 ### Field-Level Time Frames
 
@@ -92,7 +92,7 @@ Field of study data links outcomes to specific academic programs:
 
 | Variable | Description |
 |----------|-------------|
-| `NUM_AWARDS` | Number of awards conferred |
+| `NUM_AWARDS` | Number of awards conferred (illustrative variable name; verify in the data dictionary) |
 | `IPEDSCOUNT1` | IPEDS completions count |
 | `IPEDSCOUNT2` | IPEDS completions, alternate count |
 
@@ -101,14 +101,16 @@ Field of study data links outcomes to specific academic programs:
 | Variable | Description |
 |----------|-------------|
 | `MAIN` | Main campus indicator |
-| `BRANCH` | Branch campus indicator |
-| `DISTONLY` | Distance-only program |
+| `BRANCH` | Branch campus indicator (illustrative variable name; verify in the data dictionary) |
+| `DISTANCE` | Distance education indicator for the field of study (not reported to IPEDS / no / some / all credentials completable via distance education; check value codes in the data dictionary) |
 
 ## Suppression in Field Data
 
 ### High Suppression Rates
 
 Field-level data has much higher suppression than institution-level:
+
+(Illustrative, unsourced ranges — measure suppression in your extract.)
 
 | Data Type | Typical Suppression |
 |-----------|-------------------|
@@ -131,7 +133,7 @@ import polars as pl
 
 # Count suppressed/missing records
 # Note: Field-of-study data is from Scorecard bulk downloads, not Portal mirrors.
-# Suppression may use null, -3, or "PrivacySuppressed" depending on file format.
+# Suppression may use null, -3, "PS", or (pre-May-2024 files) "PrivacySuppressed" depending on file format.
 suppressed = df.filter(
     pl.col("earn_mdn_hi_2yr").is_null() |
     (pl.col("earn_mdn_hi_2yr") == -3)
@@ -227,6 +229,7 @@ field_summary = (
     .group_by("cipcode")
     .agg([
         pl.col("earn_mdn_hi_2yr").median().alias("median_earnings"),
+        # num_awards: illustrative variable name; verify in the data dictionary
         pl.col("num_awards").sum().alias("total_completers")
     ])
 )
@@ -240,6 +243,7 @@ field_summary <- df |>
   group_by(cipcode) |>
   summarise(
     median_earnings = median(earn_mdn_hi_2yr),
+    # num_awards: illustrative variable name; verify in the data dictionary
     total_completers = sum(num_awards)
   )
 ```
@@ -293,7 +297,7 @@ Better: "Computer Science bachelor's degree graduates at School X
 Best: "Computer Science bachelor's degree graduates at School X 
       who received federal aid earn a median of $75,000 two years 
       after graduation. This excludes graduates who continued to 
-      graduate school, are self-employed, or are not working. 
+      graduate school or are not working. 
       Based on XX completers in the cohort."
 ```
 
@@ -339,4 +343,4 @@ combined <- field_df |> left_join(
 | Completers only | Excludes program non-completers |
 | Title IV only | Same selection bias as institution level |
 | Working only | Excludes grad school, unemployed |
-| 1-2 year earnings | Very early career only |
+| Early-career earnings | 1 year after completion in current files (later horizons may be available) |

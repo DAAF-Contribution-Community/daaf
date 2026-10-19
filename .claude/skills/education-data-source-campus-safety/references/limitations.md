@@ -11,7 +11,7 @@
 CSS data represents:
 - Crimes **reported** to Campus Security Authorities or local law enforcement
 - That occurred within **Clery geography**
-- During a specific **calendar year**
+- Reported during a specific **calendar year**
 - Classified according to **Clery definitions**
 
 ### What CSS Data Does NOT Capture
@@ -28,7 +28,7 @@ CSS data represents:
 
 Research consistently shows significant underreporting of crimes, especially:
 
-**Sexual Assault**: Studies suggest 80-90% of campus sexual assaults go unreported
+**Sexual Assault**: Victimization and campus climate surveys indicate most campus sexual assaults are not reported to authorities (specific percentage omitted: unsourced)
 - National Crime Victimization Survey data
 - Campus climate surveys
 - Title IX office data (often higher than Clery data)
@@ -131,15 +131,15 @@ Even calculating crimes per 1,000 students doesn't resolve comparability issues:
 
 ### Definitional Changes
 
-**2014 Sex Offense Changes**:
+**VAWA Final-Rule Sex Offense Changes** (79 FR 62752; final definitions from CY2015, CY2013–2014 transitional):
 - Rape definition significantly expanded
-- Pre-2014 and post-2014 data are NOT comparable for sex offenses
-- Expect apparent increases after 2014 due to definition changes
+- Sex offense data before and after the transition are NOT comparable
+- Expect apparent increases after the transition due to definition changes
 
 **2013 VAWA Amendments**:
-- Dating violence, domestic violence, stalking added
-- No baseline data before 2014
-- Hate crime bias categories changed
+- Dating violence, domestic violence, stalking added (good-faith reporting from CY2013 statistics)
+- No baseline data before CY2013
+- Hate crime bias categories changed (national origin and gender identity added; Portal `bias` codes differ between pre-2014 and 2014+ rows)
 
 **2008 HEOA Changes**:
 - Fire safety reporting added
@@ -222,7 +222,7 @@ Campus climate surveys often show higher numbers than Clery data:
 1. **Never rank institutions** by crime statistics
 2. **Consider context**: Institution type, size, location, residential status
 3. **Acknowledge underreporting**: Statistics are floor, not ceiling
-4. **Note definitional changes**: Especially around 2014
+4. **Note definitional changes**: Especially the VAWA transition (CY2013–2015) and the Portal's pre-2014/2014+ code break
 5. **Use multi-year averages**: Reduce noise from single-year variation
 6. **Combine with other information**: Climate surveys, policies, resources
 7. **Report limitations**: Always acknowledge data constraints
@@ -275,7 +275,7 @@ The Department of Education advises using CSS data to:
 |------------|--------|
 | Underreporting | Statistics are floor, not ceiling |
 | Reporting culture | Higher numbers may mean better reporting |
-| Definitional changes | Pre/post 2014 data not comparable |
+| Definitional changes | Pre/post VAWA-transition (CY2013–2015) data not comparable |
 | Geography complexity | Different footprints, different numbers |
 | Population differences | Per-capita still problematic |
 | Institutional variation | No apples-to-apples comparison |

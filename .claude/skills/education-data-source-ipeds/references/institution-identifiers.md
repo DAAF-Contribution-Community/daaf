@@ -29,7 +29,7 @@ IPEDS uses two main institutional identifiers:
 | Granularity | Each IPEDS reporting unit | Institution + branches |
 | Stability | Changes with major restructuring | More stable |
 | Branch handling | Separate UNITIDs possible | Same OPEID6, different suffix |
-| Other data sources | IPEDS, some Scorecard | FSA, NSLDS, College Scorecard |
+| Other data sources | IPEDS, College Scorecard (primary key) | FSA, NSLDS, College Scorecard |
 
 ## UNITID
 
@@ -49,7 +49,7 @@ IPEDS uses two main institutional identifiers:
 ### When UNITID Changes
 
 UNITID may change when:
-- Institution merges with another
+- Institution merges with another (the merged-away unit is deleted, `inst_status` = 3, and `newid` points to the receiving UNITID — do not assume a new UNITID is created)
 - Institution closes and reopens
 - Major restructuring of multi-campus system
 - Change in reporting structure (e.g., branches become separate)
@@ -140,6 +140,7 @@ branch2 <- "00131202"  # opeid6 = "001312"
 
 - One UNITID may have one OPEID (most common)
 - Multiple UNITIDs may share one OPEID6 (branches)
+- One UNITID may aggregate several 8-digit OPEIDs, or (rarely) cover only part of one (College Scorecard Institution Data Documentation)
 - Rare: UNITID without OPEID (non-Title IV)
 
 ### Crosswalk
@@ -196,7 +197,7 @@ merged <- directory |> inner_join(scorecard, by = "unitid")
 | Address change | No change | No change |
 | Sector change | May change | Usually no change |
 | Control change | May change | Usually changes |
-| Merger | New UNITID for merged entity | New OPEID usually |
+| Merger | Merged-away unit gets inst_status 3 and newid = receiving UNITID; do not assume a new UNITID | New OPEID usually (unverified) |
 | Acquisition | May get new UNITID | New OPEID usually |
 | Closure | UNITID discontinued | OPEID discontinued |
 | Reopening | New UNITID | New OPEID |
@@ -206,11 +207,13 @@ merged <- directory |> inner_join(scorecard, by = "unitid")
 
 Institutions sometimes change sector:
 
-| Direction | Example | Frequency |
-|-----------|---------|-----------|
-| For-profit to nonprofit | Conversion to avoid scrutiny | Increasing |
-| Private to public | State takeover | Rare |
-| Public to private | Privatization | Very rare |
+(Illustrative; unsourced.)
+
+| Direction | Example |
+|-----------|---------|
+| For-profit to nonprofit | Conversion (e.g., sale to a nonprofit) |
+| Private to public | State takeover |
+| Public to private | Privatization |
 
 **Important**: Sector changes affect finance data comparability (GASB to FASB).
 
@@ -218,8 +221,9 @@ Institutions sometimes change sector:
 
 | Portal Variable | Description |
 |-----------------|-------------|
-| `inst_category` | Institution status category |
-| `year_deleted` | Year institution closed |
+| `inst_category` | Institutional category (degree-granting level, codes 1-6) — not a status |
+| `year_deleted` | Year deleted from IPEDS (closure, merger, or out of scope; -2 = not applicable) |
+| `newid` | UNITID the institution was merged into |
 | `currently_active_ipeds` | Currently active flag |
 | `date_closed` | Close date (string) |
 | `inst_status` | Institution status |
@@ -233,7 +237,7 @@ import polars as pl
 active = df.filter(pl.col("currently_active_ipeds") == 1)
 
 # Find closures
-closed = df.filter(pl.col("year_deleted").is_not_null())
+closed = df.filter(pl.col("year_deleted") > 0)
 ```
 
 ```r
@@ -243,7 +247,7 @@ library(dplyr)
 active <- df |> filter(currently_active_ipeds == 1)
 
 # Find closures
-closed <- df |> filter(!is.na(year_deleted))
+closed <- df |> filter(year_deleted > 0)
 ```
 
 ## Tracking Institutions Over Time
@@ -285,12 +289,13 @@ closed <- df |> filter(!is.na(year_deleted))
    suspicious <- yoy_change |> filter(abs(change) > 0.5)
    ```
 
-3. **Use institution history files**
-   - IPEDS provides institutional history
+3. **Use institution history fields**
+   - IPEDS HD fields `inst_status`, `newid`, `year_deleted`, `date_closed` record changes
    - Check for mergers, name changes
 
 4. **Document exclusions**
    ```python
+   # Illustrative: `status_change_flag`, `merge_flag` and `history` are user-constructed, not Portal variables; build them from `inst_status`, `newid`, `year_deleted`
    # Exclude institutions with status changes
    analysis_sample = df.filter(
        pl.col("status_change_flag") == 0
@@ -299,6 +304,7 @@ closed <- df |> filter(!is.na(year_deleted))
    ```
 
    ```r
+   # Illustrative: `status_change_flag`, `merge_flag` and `history` are user-constructed, not Portal variables; build them from `inst_status`, `newid`, `year_deleted`
    # Exclude institutions with status changes
    analysis_sample <- df |> filter(status_change_flag == 0)
    cat("Excluded", original_n - nrow(analysis_sample), "institutions\n")
@@ -307,8 +313,8 @@ closed <- df |> filter(!is.na(year_deleted))
 ### Merger Handling
 
 When institutions merge:
-- Old UNITIDs discontinued
-- New UNITID created for merged entity
+- Merged-away UNITID is deleted (`inst_status` = 3) and `newid` points to the UNITID it combined into
+- Check `newid` rather than assuming a new UNITID
 - Historical data under old UNITIDs
 
 **Options for analysis**:
@@ -317,6 +323,7 @@ When institutions merge:
 3. Analyze as separate entities pre-merger
 
 ```python
+# Illustrative: `status_change_flag`, `merge_flag` and `history` are user-constructed, not Portal variables; build them from `inst_status`, `newid`, `year_deleted`
 # Example: Identify merged institutions
 mergers = history.filter(pl.col("merge_flag") == 1)
 
@@ -330,6 +337,7 @@ data = data.with_columns(
 ```
 
 ```r
+# Illustrative: `status_change_flag`, `merge_flag` and `history` are user-constructed, not Portal variables; build them from `inst_status`, `newid`, `year_deleted`
 # Example: Identify merged institutions
 mergers <- history |> filter(merge_flag == 1)
 
@@ -546,15 +554,16 @@ cat("Added:", length(added), ", Removed:", length(removed), "\n")
 |----------|-------------|
 | `unitid` | IPEDS institution identifier |
 | `opeid` | 8-digit OPEID |
-| `opeflag` | OPEID status flag |
+| `title_iv_indicator` (NCES `OPEFLAG`) | Title IV eligibility indicator (e.g., 1 = participates; 2 = branch campus of a participating main campus; 6 = not participating, no OPE ID; codes 3-5 and 7-8 also exist — see codebook) |
 
 ### Status Variables
 
 | Portal Variable | NCES Name | Description |
 |-----------------|-----------|-------------|
 | `currently_active_ipeds` | `CYACTIVE` | Currently active |
-| `inst_category` | `INSTCAT` | Institutional category |
-| `year_deleted` | `DEATHYR` | Year closed |
+| `inst_category` | `INSTCAT` | Institutional category (degree-granting level, codes 1-6) — not a status |
+| `year_deleted` | `DEATHYR` | Year deleted from IPEDS (closure, merger, or out of scope; -2 = not applicable) |
+| `newid` | — | UNITID the institution was merged into |
 | `date_closed` | `CLOSEDAT` | Close date |
 | `inst_status` | — | Institution status |
 

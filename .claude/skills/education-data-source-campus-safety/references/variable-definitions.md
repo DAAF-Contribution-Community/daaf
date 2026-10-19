@@ -153,57 +153,56 @@ Hate crimes are reported by:
 
 ### Bias Category Codes (Portal Integer Encoding)
 
-| Code | Bias Category | Notes |
-|------|---------------|-------|
-| `1` | Race | Anti-Black, Anti-White, Anti-Asian, etc. |
-| `2` | Religion | Anti-Jewish, Anti-Islamic, Anti-Catholic, etc. |
-| `3` | Sexual Orientation | Anti-Gay, Anti-Lesbian, Anti-Bisexual, etc. |
-| `4` | Gender | Bias based on actual or perceived gender |
-| `5` | Gender Identity | Anti-Transgender, Anti-Gender Non-Conforming (2014+) |
-| `6` | Ethnicity | Anti-Hispanic/Latino, etc. (separated from National Origin in 2014) |
-| `7` | National Origin | Based on country of birth (separated from Ethnicity in 2014) |
-| `8` | Disability | Anti-Physical Disability, Anti-Mental Disability |
-| `9` | Unknown/Other | Bias category not specified |
-| `99` | Total | All bias categories combined |
-| `null` | Missing | Data not reported |
+Labels are the Portal variable-metadata labels for endpoint 130 (Education Data Portal API variable list, fetched 2026-10-19). Parenthesized meanings come from matching Portal 2017 rows to UC Berkeley's CY2017 Annual Security Report (ASR) hate-crime table. Code order 1-8 matches the column order of ED's CSS hate-crime form (Race, Religion, Sexual orientation, Gender, Gender Identity, Disability, Ethnicity, National Origin; 2019 CSS form), and code 2 = Religion also matched UC Riverside CY2015 and CY2016 ASR rows. Row-level Portal/ASR disagreements occur (UC Berkeley CY2016: two bias codes; LSU CY2017: one on-campus intimidation hate crime absent from the Portal); treat these as institution submission or revision differences, not a code change. The era column records which codes were **observed in the UC Berkeley (unitid 110635) 2010/2016 Portal probes**; it is an observation, not a documented rule.
 
-> **Historical Note:** Prior to 2014, National Origin (7) and Ethnicity (6) were combined. Gender Identity (5) was added in 2014.
+| Code | Portal label | Meaning / notes | Observed in UC Berkeley 2010/2016 Portal probes |
+|------|--------------|-----------------|-------------------------------------------------|
+| `1` | Race | Anti-Black, Anti-White, Anti-Asian, etc. | 2010 and 2016 |
+| `2` | Religion | Anti-Jewish, Anti-Islamic, Anti-Catholic, etc. | 2010 and 2016 |
+| `3` | Sex | Sexual orientation (ASR match): Anti-Gay, Anti-Lesbian, Anti-Bisexual, etc. | 2010 and 2016 |
+| `4` | Gender | Bias based on actual or perceived gender | 2010 and 2016 |
+| `5` | Gender Identity | Anti-Transgender, Anti-Gender Non-Conforming | 2016 only |
+| `6` | Disability | Anti-Physical Disability, Anti-Mental Disability | 2010 and 2016 |
+| `7` | Ethnicity | Ethnicity (ASR match): Anti-Hispanic/Latino, etc. | 2016 only |
+| `8` | Nationality | National origin (ASR match): based on country of birth | 2016 only |
+| `9` | Ethnicity (Pre 2014) | Pre-2014 ethnicity category | 2010 only |
+| `99` | Total | All bias categories combined | 2010 and 2016 |
+| `null` | Missing | Data not reported | — |
+
+> **Historical Note:** VAWA 2013 (Pub. L. 113-4) added national origin and gender identity to the statutory bias categories (ethnicity was already listed). The Portal carries pre-2014 ethnicity as code 9 and post-2014 ethnicity/national origin as codes 7/8 — do not splice 9 with 7 without documenting the break.
 
 ### Crime Type Codes (Portal Integer Encoding)
 
-| Code | Crime Type | Category |
-|------|------------|----------|
-| `1` | Murder/Non-negligent Manslaughter | Primary Offense |
-| `2` | Manslaughter by Negligence | Primary Offense |
-| `3` | Rape | Sex Offense |
-| `4` | Fondling | Sex Offense |
-| `5` | Incest | Sex Offense |
-| `6` | Statutory Rape | Sex Offense |
-| `7` | Robbery | Primary Offense |
-| `8` | Aggravated Assault | Primary Offense |
-| `9` | Burglary | Property Crime |
-| `10` | Motor Vehicle Theft | Property Crime |
-| `11` | Arson | Property Crime |
-| `12` | Larceny-Theft | Hate Crime Only |
-| `13` | Simple Assault | Hate Crime Only |
-| `14` | Intimidation | Hate Crime Only |
-| `15` | Destruction/Damage/Vandalism | Hate Crime Only |
-| `16` | Domestic Violence | VAWA Offense (2014+) |
-| `17` | Dating Violence | VAWA Offense (2014+) |
-| `18` | Stalking | VAWA Offense (2014+) |
+Labels are the Portal variable-metadata labels for endpoint 130; era column as above.
 
-> **Note:** Crime types 12-15 (Larceny-Theft, Simple Assault, Intimidation, Vandalism) are only reported as hate crimes. They are not standalone Clery crimes unless bias-motivated.
+| Code | Portal label | Category | Observed in UC Berkeley 2010/2016 Portal probes |
+|------|--------------|----------|-------------------------------------------------|
+| `1` | Murder | Criminal offense | 2010 and 2016 |
+| `2` | Rape | Sex offense (2014+ category) | 2016 only |
+| `3` | Fondling | Sex offense (2014+ category) | 2016 only |
+| `4` | Aggravated Assault | Criminal offense | 2010 and 2016 |
+| `5` | Incest | Sex offense (2014+ category) | 2016 only |
+| `6` | Statutory Rape | Sex offense (2014+ category) | 2016 only |
+| `7` | Robbery | Criminal offense | 2010 and 2016 |
+| `8` | Burglary | Criminal offense | 2010 and 2016 |
+| `9` | Motor Vehicle Theft | Criminal offense | 2010 and 2016 |
+| `10` | Arson | Criminal offense | 2010 and 2016 |
+| `11` | Simple Assault | Hate crime only | 2010 and 2016 |
+| `12` | Larceny | Hate crime only | 2010 and 2016 |
+| `13` | Intimidation | Hate crime only | 2010 and 2016 |
+| `14` | Destruction, Damage, or Vandalism | Hate crime only | 2010 and 2016 |
+| `15` | Forcible Sex Offense | Sex offense (pre-2014 category) | 2010 only |
+| `16` | Neglient Manslaughter [sic] (negligent manslaughter) | Criminal offense | 2010 only |
+| `17` | Nonforcible Sex Offense | Sex offense (pre-2014 category) | 2010 only |
+| `18` | Body Injury | Undocumented | Not observed |
+
+> **Note:** Codes 11-14 (Simple Assault, Larceny, Intimidation, Vandalism) are hate-crime-only offenses. They are not standalone Clery crimes unless bias-motivated. VAWA offenses (domestic violence, dating violence, stalking) are **not** in the hate-crimes file and have no `crime_type` code. `crime_type == 16` is negligent manslaughter; it appeared in the 2010 probe but not the 2016 probe (the 2019 CSS hate-crime form has no negligent-manslaughter item, so code 16 likely appears only in pre-2014 data — inference from one form year).
 
 > **Empirically verified:** The Portal mirror data contains crime_type values 1-18 only. Code `99` (Total) does NOT appear in the actual data, despite being documented in some references. Verify codes against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`.
 
 ### Hate Crime-Only Offenses
 
-| Variable | Description |
-|----------|-------------|
-| `larceny_theft_hate` | Larceny-theft (hate crime only) |
-| `simple_assault_hate` | Simple assault (hate crime only) |
-| `intimidation_hate` | Intimidation (hate crime only) |
-| `vandalism_hate` | Destruction/damage/vandalism of property (hate crime only) |
+> Earlier versions of this file listed `larceny_theft_hate`, `simple_assault_hate`, `intimidation_hate`, `vandalism_hate`; these are not Portal/mirror columns. The hate-crimes file encodes these offenses as crime_type 11 (Simple Assault), 12 (Larceny), 13 (Intimidation), 14 (Destruction, Damage, or Vandalism); location counts are on_campus_/residence_hall_/non_campus_/public_property_/other_/total_hate_crimes.
 
 ## Fire Safety Variables
 
@@ -241,10 +240,10 @@ Hate crimes are reported by:
 
 | Variable | Description | Format | In Mirror Data? |
 |----------|-------------|--------|-----------------|
-| `year` | Calendar year of data | YYYY (Int64) | Yes |
+| `year` | Calendar year in which the crime was reported (34 CFR 668.46(c)(3)); Portal metadata's generic label "Academic year (fall semester)" does not apply | YYYY (Int64) | Yes |
 | `survey_year` | Year survey was submitted | YYYY | No (full CSS only) |
 
-**Note**: Crime statistics are for calendar years (Jan 1 - Dec 31). The survey submitted in fall of year X contains data for year X-1. The Portal mirror data contains `year` (2005-2021) but not `survey_year`.
+**Note**: Crime statistics are recorded for the calendar year (Jan 1 - Dec 31) in which the crime was reported (34 CFR 668.46(c)(3)). The survey submitted in fall of year X contains data for year X-1. The Portal mirror data contains `year` (2005-2021) but not `survey_year`.
 
 ## Missing Data Codes
 
@@ -261,19 +260,20 @@ Hate crimes are reported by:
 
 ## Historical Variable Changes
 
-### 2014 Changes (VAWA)
+### VAWA 2013 Changes (CY2013–2014 transitional; final definitions from CY2015)
+
+VAWA 2013 (Pub. L. 113-4) required good-faith reporting of these offenses starting with calendar-year 2013 statistics in the October 1, 2014 ASR; the final regulations (79 FR 62752, Oct. 20, 2014) took effect July 1, 2015, and statistics for 2013–2014 did not have to be revised to the final definitions.
 
 **Added Variables**:
 - `dating_violence`
 - `domestic_violence`
 - `stalking`
-- Hate crime bias: `gender_identity`
-- Separate `national_origin` and `ethnicity`
+- Hate crime bias: gender identity and national origin added to the statutory list (ethnicity was already listed). In the Portal, pre-2014 ethnicity is `bias` code 9; 2014+ ethnicity and national origin are codes 7 and 8
 
 **Changed Variables**:
 - Sex offense definitions changed
 - `rape` definition expanded
-- Previous categories (forcible/non-forcible) restructured
+- Previous categories (forcible/non-forcible) replaced by rape, fondling, incest, statutory rape (79 FR 62752). In the Portal hate-crimes file, codes 15/17 (forcible/nonforcible) were observed in the UC Berkeley 2010 probe and codes 2/3/5/6 in the 2016 probe
 
 ### 2008 Changes (HEOA)
 
@@ -283,7 +283,7 @@ Hate crimes are reported by:
 
 ### Pre-2014 Sex Offense Variables
 
-Prior to 2014, sex offenses were categorized as:
+Before the VAWA final regulations (79 FR 62752; final definitions apply from CY2015, with CY2013–2014 transitional), sex offenses were categorized as:
 
 **Forcible Sex Offenses**:
 - Forcible rape
@@ -295,7 +295,7 @@ Prior to 2014, sex offenses were categorized as:
 - Incest
 - Statutory rape
 
-**Note**: These categories are not directly comparable to post-2014 categories.
+**Note**: These categories are not directly comparable to the final-rule categories (rape, fondling, incest, statutory rape; CY2015+, CY2013–2014 transitional).
 
 ## Common Filters (Portal Mirror Data)
 
@@ -304,7 +304,7 @@ Prior to 2014, sex offenses were categorized as:
 | `year` | Calendar year | `pl.col("year") == 2021` |
 | `unitid` | Institution ID (IPEDS) | `pl.col("unitid") == 110635` |
 | `fips` | State FIPS code | `pl.col("fips") == 6` (California) |
-| `crime_type` | Crime type code (1-18) | `pl.col("crime_type") == 14` (Intimidation) |
+| `crime_type` | Crime type code (1-18) | `pl.col("crime_type") == 13` (Intimidation) |
 | `bias` | Bias category code (1-9, 99) | `pl.col("bias") == 1` (Race) |
 
 ### Sector Codes (Portal Integer Encoding)
@@ -355,7 +355,7 @@ College Scorecard (outcomes data)
 | Criminal offenses | 2001 |
 | Arrests/referrals | 2001 |
 | Hate crimes | 2001 (expanded 2008) |
-| VAWA offenses | 2014 |
+| VAWA offenses | 2013 (good-faith reporting; final-rule definitions from 2015) |
 | Fire safety | 2009 |
 
 **Note**: Data coverage and quality may vary in earlier years.

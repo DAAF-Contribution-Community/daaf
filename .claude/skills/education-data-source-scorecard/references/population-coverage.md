@@ -69,24 +69,7 @@ To receive Title IV aid, students must:
 
 ## Coverage Rates by Institution Type
 
-### Approximate Title IV Coverage
-
-| Institution Type | Typical Coverage | Why |
-|-----------------|------------------|-----|
-| For-profit colleges | 80-95% | Aid-dependent enrollment |
-| Community colleges | 60-80% | Mixed, some don't apply |
-| Public 4-year (non-flagship) | 60-75% | State aid available |
-| Public flagship | 50-70% | More full-pay students |
-| Private non-profit | 50-70% | Institutional aid common |
-| Elite/selective private | 30-50% | Many full-pay families |
-
-### Extreme Cases
-
-| Institution | Coverage | Implications |
-|-------------|----------|--------------|
-| For-profit with >90% | Near-complete | Data fairly representative |
-| Elite college with 35% | Large gap | Data excludes most students |
-| School with 50% | Half missing | Significant selection bias |
+Coverage varies widely by sector and selectivity; no published national ranges are cited here. Compute coverage for your sample (e.g., IPEDS SFA share of undergraduates receiving Pell or federal loans, or Scorecard `PCTPELL`/`PCTFLOAN`).
 
 ## Selection Bias
 
@@ -114,9 +97,9 @@ Students receiving Title IV aid systematically differ from those who don't:
 - Full-pay students have **zero** federal debt
 - Selection bias direction: **Scorecard debt overstated** for whole institution
 
-**Completion Data:**
+**Completion Data (NSLDS-based measures only; `C150_*`/`C200_*` are IPEDS graduation rates, not Title IV-recipient rates):**
 - Lower-income students face more completion barriers
-- Selection bias direction: **Scorecard completion likely understated** for whole institution
+- Selection bias direction: **Scorecard NSLDS-based completion likely understated** for whole institution
 
 ## Implications for Analysis
 
@@ -274,8 +257,8 @@ For more complete institutional pictures:
 ## Key Takeaways
 
 1. **Scorecard = Title IV recipients only** - never claim it represents all students
-2. **Coverage varies dramatically** - from 30% to 95% by institution
+2. **Coverage varies widely** — compute it for your sample
 3. **Selection bias is systematic** - lower-income students overrepresented
-4. **Direction depends on metric** - earnings understated, debt overstated, completion understated
+4. **Direction depends on metric** - earnings understated, debt overstated, NSLDS-based completion understated
 5. **Compare carefully** - only between institutions with similar coverage
 6. **State limitations** - in every analysis and report

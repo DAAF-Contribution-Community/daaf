@@ -73,9 +73,9 @@ median_earnings <- year1 |> select(p50_earnings)
 |------|---------|
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
-| `-3` | Suppressed (cell count < 30) |
+| `-3` | Suppressed (Portal-wide code; not observed in PSEO earnings columns) |
 
-> **Note:** Portal uses standard negative codes. Census API uses separate STATUS_* variables.
+> **Note:** Portal uses standard negative codes. Census API uses separate STATUS_* variables. Census suppresses earnings cells with protected counts below 30, but in the Portal probe checked on 2026-10-19 (UT Austin, `year` 2016) every unavailable earnings value was `-1`, never `-3`. Treat any negative earnings value as non-reportable rather than testing for `-3`.
 
 ## Labor Force Attachment
 
@@ -85,9 +85,8 @@ Not all graduates are included in earnings statistics. PSEO applies labor force 
 
 A graduate is included if they meet BOTH requirements:
 
-1. **Minimum earnings threshold**: Annual earnings ≥ full-time federal minimum wage equivalent
-   - Calculated as: Federal minimum wage × 40 hours × 52 weeks
-   - Example: At $7.25/hour = $15,080/year minimum
+1. **Minimum earnings threshold**: Annual earnings above a full-time-equivalent amount at the prevailing federal minimum wage, defined by Census as 35 hours a week for 50 weeks (PSEO Technical Documentation, updated June 12, 2023)
+   - Example (illustrative arithmetic): at $7.25/hour, 35 × 50 × $7.25 = $12,687.50/year
 
 2. **Employment continuity**: Earnings in at least 3 of 4 quarters in the reference year
 
@@ -156,7 +155,7 @@ In Census Bureau source data, `GRAD_COHORT=0000` spans all available cohorts, wi
 
 ### Inflation Adjustment
 
-All earnings are converted to **2022 dollars** using the Consumer Price Index for All Urban Consumers (CPI-U).
+All earnings are converted to **2022 dollars** using the Consumer Price Index for All Urban Consumers (CPI-U). This is the Portal snapshot's unit (Portal label "Earnings 50th Percentile (2022 Dollars)"); current Census PSEO releases since V4.13.0 are in 2023 dollars — do not mix sources without re-deflating.
 
 Example conversion:
 ```

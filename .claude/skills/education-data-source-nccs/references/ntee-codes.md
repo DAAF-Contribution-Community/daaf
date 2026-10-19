@@ -17,7 +17,7 @@ The National Taxonomy of Exempt Entities (NTEE) is the classification system use
 
 ## NTEE Overview
 
-The NTEE system was developed by NCCS in the late 1980s to provide a standardized classification for nonprofit organizations. It replaced the earlier IRS Activity Code system.
+NCCS helped create the NTEE; the IRS adopted it in January 1995, replacing its Activity Code system.
 
 ### Key Characteristics
 
@@ -26,7 +26,7 @@ The NTEE system was developed by NCCS in the late 1980s to provide a standardize
 | **Purpose** | Descriptive taxonomy for statistical analysis |
 | **Maintained by** | IRS (official), NCCS (enhanced version) |
 | **Format** | Letter + 2-digit number (e.g., B42) |
-| **Categories** | 10 major groups, ~400 specific codes |
+| **Categories** | 26 major groups (A–Z); NTEEV2 groups them into 12 industry groups; specific-code count varies by IRS list version |
 | **Assignment** | Self-selected or IRS-assigned |
 
 ### Important Caveat
@@ -35,7 +35,7 @@ NTEE codes are **descriptive**, not **prescriptive**:
 - They categorize organizations for analysis purposes
 - They do NOT restrict what activities an organization can conduct
 - Many organizations have missions spanning multiple categories
-- ~25% of codes are estimated to be imprecise
+- ~25% of codes are estimated to be imprecise (NCCS, NTEE codes page: 'roughly one organization in four')
 
 **Do not** use NTEE codes as the sole criterion for:
 - Excluding organizations from funding consideration
@@ -84,8 +84,8 @@ Codes 01-19 represent organizational types that exist across all major groups:
 |--------|-------------|----------|
 | **A** | Arts, Culture, and Humanities | Museums, performing arts, historical societies |
 | **B** | Education | Schools, colleges, libraries, educational support |
-| **C** | Environment and Animals | Conservation, zoos, animal welfare |
-| **D** | Animal-Related | (Merged with C in some versions) |
+| **C** | Environment | Conservation, natural resources |
+| **D** | Animal-Related | Animal protection/welfare, zoos (NTEEV2 groups C and D as ENV) |
 | **E** | Health | Hospitals, clinics, health support |
 | **F** | Mental Health, Crisis Intervention | Mental health centers, addiction services |
 | **G** | Diseases, Disorders, Medical Disciplines | Disease-specific organizations |
@@ -194,7 +194,7 @@ NCCS developed NTEEV2 (NTEE Version 2.0) to improve the taxonomy for data analys
 
 | Aspect | Original NTEE | NTEEV2 |
 |--------|---------------|--------|
-| Format | Letter + 2 digits (B42) | Industry-Code-Type (EDU-B42-RG) |
+| Format | Letter + 2 digits (B42) | Industry-Code-Type (UNI-B42-RG) |
 | Org type | Mixed into code | Explicit suffix |
 | Industry | Implied by letter | Explicit prefix |
 | Readability | Requires lookup | More self-documenting |
@@ -242,7 +242,7 @@ XXX-Xxx-XX
 
 | Original | NTEEV2 | Description |
 |----------|--------|-------------|
-| B42 | EDU-B42-RG | Undergraduate college (regular) |
+| B42 | UNI-B42-RG | Undergraduate college (regular) |
 | B43 | UNI-B43-RG | University (regular) |
 | B01 | EDU-B00-AA | Education advocacy organization |
 | B82 | EDU-B82-RG | Scholarship organization |
@@ -291,7 +291,7 @@ education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
 
 ### Sources of Inaccuracy
 
-**~25% of NTEE codes are estimated to be incomplete or inaccurate.**
+**~25% of NTEE codes are estimated to be incomplete or inaccurate** (NCCS, NTEE codes page: 'roughly one organization in four').
 
 | Source | Description |
 |--------|-------------|
@@ -333,13 +333,14 @@ When applying for 501(c)(3) status, organizations:
 
 Per IRS Publication 557:
 
-> Organizations wishing to modify their NTEE code should send a written request to:
+> Organizations that wish to modify or obtain a National Taxonomy of Exempt Entities (NTEE) Code should send a written request to the Correspondence Unit with the relevant facts, including the Code currently assigned, if any, and the requested Code, as well as who selected the currently assigned Code initially, if known. (IRS Pub. 557, rev. January 2025)
 
 ```
 Internal Revenue Service
 Attn: Correspondence Unit
 P.O. Box 2508, Room 6403
 Cincinnati, Ohio 45201
+Fax: (855) 204-6184
 ```
 
 Include:
@@ -384,7 +385,7 @@ Developed by Candid (Foundation Center + GuideStar):
 Generic industry taxonomy used for economic analysis:
 - More granular in some areas
 - Used by Census Bureau and BLS
-- NCCS provides [NTEE-NAICS crosswalk](https://nccs.urban.org/nccs/widgets/ntee_tables/ntee-naics_table.html)
+- NCCS provides [NTEE-NAICS crosswalk](https://nccs.urban.org/nccs/datasets/ntee/browse/)
 
 ### ICNPO Codes
 

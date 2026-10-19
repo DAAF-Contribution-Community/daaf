@@ -13,13 +13,13 @@ Participating states, coverage rates, data partners, and experimental data statu
 
 ## Coverage Overview
 
-PSEO coverage is **partner-based and release-specific**. Census release **V4.13.0 (2025Q4)** contains:
+PSEO coverage is **partner-based and release-specific**. Census release **V4.14.1 (2026Q2, posted 2026-08-25)** contains:
 
-- **952 institutions**
-- Partners in **32 states plus the District of Columbia**
+- **1,117 institution rows** (1,116 eight-digit OPEIDs plus `0033290W`, Penn State World Campus)
+- Partners in **37 states plus the District of Columbia** (Maryland, New Jersey, New Mexico, Tennessee and Vermont added since V4.13.0)
 - Western Governors University as an online-only participating institution
 
-These counts were verified from Census latest-release files on 2026-07-21. They do **not** establish a national percentage of all U.S. graduates, so this reference does not quote one.
+These counts were verified from Census latest-release files on 2026-10-19. The prior release, V4.13.0 (2025Q4), listed 952 institutions and partners in 32 states plus D.C. They do **not** establish a national percentage of all U.S. graduates, so this reference does not quote one.
 
 Coverage varies because institutions and systems enter the product through separate data partnerships. Partner composition, institution counts, cohorts, and available outcomes can change between releases.
 
@@ -168,11 +168,9 @@ Partners must provide for each graduate:
 
 | Release / Year | Milestone |
 |----------------|-----------|
-| ~2014 | University of Texas System pilot |
 | 2018 | First PSEO data released |
-| 2020 | Public release, initial partners |
-| 2022 | Expansion to 29 states |
-| 2024 | State-level aggregations added |
+| R2022Q4 | Partners in 24 states (Census pseo_all_partners.txt for that release) |
 | V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+| V4.14.1 (2026Q2) | 1,117 institution rows; partners in 37 states plus D.C. |
 
-The final row is release-specific, verified on 2026-07-21 from the Census institution, partner, and version files. Recheck those files before reusing the count.
+The last two rows are release-specific, verified on 2026-10-19 from the Census institution, partner, and version files for each release (V4.13.0 was first counted on 2026-07-21). Recheck those files before reusing the count.

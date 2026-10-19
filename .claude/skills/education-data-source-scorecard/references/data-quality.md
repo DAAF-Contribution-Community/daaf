@@ -6,14 +6,7 @@ College Scorecard data has important quality considerations and limitations that
 
 ### Suppression Rules
 
-Scorecard suppresses data when cell sizes are too small:
-
-| Metric Type | Suppression Threshold |
-|-------------|----------------------|
-| Earnings | < 30 students with positive earnings |
-| Completion | < 30 students in cohort |
-| Debt | < 30 borrowers |
-| Disaggregations | Additional suppression for small cells |
+Scorecard suppresses NSLDS and Treasury elements (shown as `PS`) when cell sizes do not meet privacy standards, and adds differential-privacy noise to earnings counts and medians (small differences of 1–3 in counts are expected). For consumer-site elements, separate `*_SUPP` versions suppress institutions with fewer than 30 students in the denominator (e.g., `C150_4_POOLED_SUPP`, `RPY_3YR_RT_SUPP`). The base-element cell-size thresholds are not stated in the October 2026 technical documentation.
 
 ### Why Suppression Exists
 
@@ -33,6 +26,8 @@ Scorecard suppresses data when cell sizes are too small:
 | **Student Body** (percentages) | `null` | Float64 percentages with nulls |
 
 ### Suppression Rates by Data Type
+
+(Illustrative, unsourced ranges — measure suppression in your extract.)
 
 | Data Element | Typical Suppression Rate |
 |--------------|-------------------------|
@@ -69,7 +64,6 @@ Earnings only measured for those working:
 |-------------|-----------|-----------|
 | Excludes grad students | Overstates earnings for fields with high grad attendance | High for pre-med, pre-law |
 | Excludes unemployed | Overstates earnings | Moderate |
-| Excludes self-employed | Understates for entrepreneurial fields | High for arts, business |
 | Excludes those abroad | Unknown | Low |
 
 ### Completers vs Non-Completers
@@ -82,12 +76,9 @@ Earnings only measured for those working:
 
 ## Known Data Errata
 
-### Cohort Alignment Issues (2022-2023)
+### Entry-Cohort Earnings Methodology Change
 
-Entry-cohort earnings calculations were misaligned in some releases:
-- Affected: `merged_2018_19` and `merged_2019_20` files
-- Impact: Earnings measured for wrong cohort years
-- Status: Check official errata document
+The October 2026 technical documentation notes that previously published entry-cohort earnings differ from the current methodology, as described in the Scorecard data errata document; check the errata for affected files and variables.
 
 ### Historical Changes
 
@@ -159,7 +150,7 @@ Entry-cohort earnings calculations were misaligned in some releases:
 
 | Comparison | Problem |
 |------------|---------|
-| Scorecard vs IPEDS completion | Different populations |
+| Scorecard NSLDS-based completion vs IPEDS graduation rates | Different populations (Scorecard `C150_*`/`C200_*` are IPEDS GR rates and should match IPEDS) |
 | Scorecard vs BLS wages | Different measurement |
 | Scorecard vs Census income | Different populations, definitions |
 | Scorecard vs LinkedIn data | Different selection |
@@ -190,7 +181,7 @@ Entry-cohort earnings calculations were misaligned in some releases:
 
 | Issue | Impact |
 |-------|--------|
-| W-2 only | Self-employment excluded |
+| Tax-record earnings (W-2 + Schedule SE) | Unreported and non-labor income excluded |
 | Point-in-time | Doesn't capture trajectory |
 | Gross earnings | Taxes, benefits not considered |
 | Cost of living | Not adjusted for location |
@@ -219,7 +210,7 @@ Entry-cohort earnings calculations were misaligned in some releases:
 | Check | Variables |
 |-------|-----------|
 | Sample size | `COUNT_WNE_P6`, `NUM4_PUB` |
-| Suppression | `*_SUPP` flags |
+| Suppression | `*_SUPP` variants (values suppressed for small n; not flags) |
 | Coverage | Compare to IPEDS enrollment |
 | Completeness | NULL counts by variable |
 
@@ -311,7 +302,7 @@ Standard caveat template:
 "This analysis uses College Scorecard data with the following 
 limitations: (1) Only Title IV aid recipients are included, 
 representing approximately X% of students at these institutions; 
-(2) Earnings data excludes self-employed and non-working individuals; 
+(2) Earnings data exclude non-working and currently enrolled individuals; 
 (3) X% of [institutions/programs] had suppressed earnings data 
 due to privacy thresholds; (4) Earnings reflect students who 
 entered approximately Y years ago and may not reflect current 
@@ -325,7 +316,7 @@ conditions."
 | Title IV only | Systematic selection bias | Note coverage, compare similar |
 | Suppression | Missing small programs/schools | Report suppression rates |
 | Data lag | Outdated information | Note cohort years |
-| W-2 only | Missing self-employment | Acknowledge in interpretation |
+| Tax-record earnings only | Unreported income excluded | Acknowledge in interpretation |
 | Federal debt only | Understates total borrowing | Note private loans excluded |
 | Working only | Excludes non-workers | Note who is excluded |
 | Pandemic effects | 2020-2023 data unusual | Use pre-pandemic for trends |

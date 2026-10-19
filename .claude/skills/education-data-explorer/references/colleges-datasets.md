@@ -8,7 +8,7 @@ College/university-level mirror dataset families for the Urban Institute Educati
 
 ## IPEDS (Integrated Postsecondary Education Data System)
 
-IPEDS is the primary federal postsecondary source (~6,500 institutions). Its 32 mirror families are grouped thematically below — one entry per family. Every family carries `unitid`, `year`, `fips`; join any two on `unitid` (+ `year`).
+IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions, administrative offices, and U.S. service academies; 5,829 in the 2024-25 collection). Its 32 mirror families are grouped thematically below — one entry per family. Every family carries `unitid`, `year`, `fips`; join any two on `unitid` (+ `year`).
 
 ### Directory & Institutional Profile
 
@@ -256,7 +256,7 @@ IPEDS is the primary federal postsecondary source (~6,500 institutions). Its 32 
 - **Grain:** one row per `unitid` × `year` (institutional revenues, expenditures, assets, endowment).
 - **Key variables:** `rev_total_current`, `rev_tuition_fees_net`, `rev_appropriations_state`, `rev_investment_return`, `exp_total_current`, `exp_instruc_total`, `endowment_end`, `assets`, `liabilities`, `reporting_form`, `form_type` (full 141-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_finance`).
 - **Join keys:** `unitid` (+ `year`).
-- **Caveats:** **GASB/FASB care** — public institutions report under GASB, private under FASB; the two accounting standards define revenue/expense categories differently, so cross-standard comparisons and pooled aggregates require reconciling via `reporting_form`/`form_type`/`gasb_alternative_accounting`. **Year coverage (settled by observation):** a 2026-08-08 probe of the pinned mirror parquet (`inspect_finance_mirror_years.py`) returned `year_min=1979`, `year_max=2017`, distinct years {1979, 1983-2017}, `contains_2018_plus=False`, over 227,000 rows — so mirror finance coverage is **1979, 1983-2017** at the pinned revision, matching the live API. There is no post-2017 overhang; the old docs' "1987-2022" coverage claim was fabricated. Re-derive coverage at any later mirror vintage.
+- **Caveats:** **GASB/FASB care** — public institutions report under GASB, private under FASB; the two accounting standards define revenue/expense categories differently, so cross-standard comparisons and pooled aggregates require reconciling via `reporting_form`/`form_type`/`gasb_alternative_accounting`. **Year coverage (settled by observation):** a 2026-08-08 probe of the pinned mirror parquet (`inspect_finance_mirror_years.py`) returned `year_min=1979`, `year_max=2017`, distinct years {1979, 1983-2017}, `contains_2018_plus=False`, over 227,000 rows — so mirror finance coverage is **1979, 1983-2017** at the pinned revision. The live Portal API now lists finance years 1979, 1983-2023 (endpoint metadata fetched 2026-10-19), so the 2017 cutoff is a mirror-vintage lag, not a Portal limit. There is no post-2017 overhang in the mirror; the old docs' "1987-2022" coverage claim was fabricated. Re-derive coverage at any later mirror vintage.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_finance`
 - **Portal endpoint(s):** `/college-university/ipeds/finance/{year}/`
 
@@ -471,7 +471,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 ### PSEO Earnings & Flows — `pseo/colleges_pseo_{year}`
 
 - **Type / years:** Yearly · 2001-2021
-- **Grain:** one row per `unitid` × `year` × `pseo_cohort` × `degree_level` × `cipcode` × `years_after_grad` × `industry`/`census_division` (Census LEHD-linked graduate earnings).
+- **Grain:** one row per `unitid` × `year` × `pseo_cohort` × `degree_level` × `cipcode` × `years_after_grad` × `industry`/`census_division` (Census LEHD-linked graduate earnings). Each `pseo_cohort` repeats, with identical values, under every `year` in its span — de-duplicate before aggregating across years.
 - **Key variables:** `p25_earnings`, `p50_earnings`, `p75_earnings`, `employed_grads_count_e`, `total_grads_count`, `employed_instate_grads_count`, `degree_level`, `cipcode` (full 18-var family: `variable-dictionary-pseo.md` § `pseo/colleges_pseo_{year}`).
 - **Join keys:** `unitid` (+ `year`, `degree_level`, `cipcode`); `opeid`.
 - **Caveats:** Yearly. Earnings are LEHD wage-record-based (broader universe than Scorecard's Title-IV-only earnings). **Partner-state coverage varies by release** — institutions in non-partner states are absent, and the covered set changes across vintages; do not treat missing institutions as zero. Earnings in 2022 dollars.
@@ -484,7 +484,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 ### EADA Institutional Characteristics — `eada/colleges_eada_inst_characteristics`
 
-- **Type / years:** Single-file · 2002-2021
+- **Type / years:** Single-file · 2002-2021 (`year` = start year of the reporting year: 2021 = 2021-22; medium confidence — see EADA skill)
 - **Grain:** one row per `unitid` × `year` (institution-level athletics participation, staffing, and finances by gender).
 - **Key variables:** `enrollment_men`, `enrollment_women`, `num_sports`, `athpartic_men`, `athpartic_women`, `ath_stuaid_total`, `hdcoach_salary_men`, `hdcoach_salary_women`, `ath_grnd_total_rev`, `ath_grnd_total_exp`, `ath_classification_name` (full 168-var list: `variable-dictionary-eada.md` § `eada/colleges_eada_inst_characteristics`).
 - **Join keys:** `unitid` (+ `year`) — see caveat on sector.
@@ -502,7 +502,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 - **Grain:** one row per `unitid` × `year` (endowment size and change).
 - **Key variables:** `endow_total`, `endow_per_fte`, `endow_chg_mktval`, `inst_name_nacubo` (complete 7-var family: `variable-dictionary-nacubo.md` § `nacubo/colleges_nacubo_endow`).
 - **Join keys:** `unitid` (+ `year`).
-- **Caveats:** **7 columns only** and ~650 institutions (NACUBO/TIAA study participants). For endowment *detail* (investment/spending policy) go to NACUBO directly; for **all-institution** endowment coverage use IPEDS `finance` (`endowment_beg`/`endowment_end`).
+- **Caveats:** **7 columns only** and ~650 institutions (NACUBO-Commonfund FY2013-17, NACUBO-TIAA FY2018-22, NACUBO-Commonfund FY2023 participants; Portal `year` = fiscal-year start year). For endowment *detail* (investment/spending policy) go to NACUBO directly; for **all-institution** endowment coverage use IPEDS `finance` (`endowment_beg`/`endowment_end`).
 - **Codebook:** `nacubo/codebook_colleges_nacubo_endowments`
 - **Portal endpoint(s):** `/college-university/nacubo/endowments/{year}/`
 
@@ -561,7 +561,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 | Degrees by field | `ipeds/colleges_ipeds_completions-2digcip_{year}` (or `-6digcip`) | `unitid` + `year` + `cipcode` |
 | Revenue/expenditure structure | `ipeds/colleges_ipeds_finance` | `unitid` + `year` (GASB/FASB care) |
 | Aid volume + default/repayment | `fsa/colleges_fsa_loans` + `scorecard/colleges_scorecard_repayment_fsa` | `unitid`/`opeid` + `year` |
-| Graduate earnings | `pseo/colleges_pseo_{year}` (LEHD) or `scorecard/colleges_scorecard_earnings` (Title IV) | `unitid` + `year` |
+| Graduate earnings | `pseo/colleges_pseo_{year}` (LEHD) or `scorecard/colleges_scorecard_earnings` (Title IV) | `unitid` + `year` (PSEO: each `pseo_cohort` repeats under every `year` in its span; de-duplicate before aggregating) |
 | Endowment wealth | `ipeds/colleges_ipeds_finance` (all inst.) or `nacubo/colleges_nacubo_endow` (~650) | `unitid` + `year` |
 | Athletics gender equity | `eada/colleges_eada_inst_characteristics` + `ipeds/colleges_ipeds_directory` (for sector) | `unitid` + `year` |
 | Link institutions to census geography | `nhgis/colleges_nhgis_geog_{year}` | `unitid` + `year` → `geoid_block`/`tract` |

@@ -1,17 +1,17 @@
 ---
 name: education-data-source-ipeds
 description: >-
-  IPEDS — primary federal postsecondary data (~6,500 institutions, 1979-present in the mirror; the IPEDS program dates from 1980): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
+  IPEDS — primary federal postsecondary data (~5,800 Title IV institutions, administrative offices, and U.S. service academies, 5,829 in the 2024-25 collection; 1979-present in the mirror; IPEDS replaced its predecessor HEGIS in 1986, so the earliest mirror years predate IPEDS): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-08-06"
+  skill-last-updated: "2026-10-19"
 ---
 
 # IPEDS Data Source Reference
 
-IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~6,500 U.S. postsecondary institutions, comprising 12+ annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1979-present in the mirror — the IPEDS program dates from 1980; varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
+IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~5,800 Title IV institutions, administrative offices, and U.S. service academies (5,829 in the 2024-25 collection), comprising 12 annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1979-present in the mirror — IPEDS replaced its predecessor HEGIS in 1986, so the earliest mirror years predate IPEDS; varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 
@@ -28,10 +28,10 @@ Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is th
 
 ## What is IPEDS?
 
-IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interrelated survey components:
+IPEDS (Integrated Postsecondary Education Data System) is a system of 12 interrelated survey components:
 
 - **Administered by**: National Center for Education Statistics (NCES)
-- **Coverage**: ~6,500 Title IV-participating postsecondary institutions
+- **Coverage**: ~5,800 Title IV institutions, administrative offices, and U.S. service academies (5,829 in 2024-25), plus voluntary non-Title IV reporters
 - **Frequency**: Annual collection in three periods (Fall, Winter, Spring)
 - **Mandate**: Required for Title IV federal student aid participation
 - **Available years**: content spans **1979-2024** in the v2 mirror (build validated 2026-08-06), varies by component. Note the content minimum is 1979 (not 1980); most series now reach 2023-24, while Finance lags (see Data Availability & Lag Times).
@@ -42,7 +42,7 @@ IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interr
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
-| `survey-components.md` | All 12+ IPEDS surveys with collection periods | Understanding data structure |
+| `survey-components.md` | All 12 IPEDS survey components (plus Academic Libraries) with collection periods | Understanding data structure |
 | `graduation-rates.md` | **CRITICAL** GRS limitations and who is tracked | Any graduation rate analysis |
 | `enrollment-data.md` | Fall vs 12-month, FTE calculations | Enrollment comparisons |
 | `finance-data.md` | GASB vs FASB accounting standards | Cross-sector finance analysis |
@@ -97,7 +97,7 @@ Need variable definitions?
 
 | Component | Abbrev | Collection | Key Content |
 |-----------|--------|------------|-------------|
-| Institutional Characteristics | IC | Fall | Directory, tuition, mission |
+| Institutional Characteristics | IC | Fall | Directory, mission; tuition through 2023-24 (moved to CST from 2024-25) |
 | 12-Month Enrollment | E12 | Fall | Unduplicated headcount, FTE |
 | Completions | C | Fall | Degrees by CIP, demographics |
 | Cost | CST | Fall/Winter | Cost of attendance, net price |
@@ -109,13 +109,13 @@ Need variable definitions?
 | Fall Enrollment | EF | Spring | Point-in-time enrollment |
 | Finance | F | Spring | Revenue, expenses, assets |
 | Human Resources | HR | Spring | Employees, salaries |
-| Academic Libraries | AL | Spring | Library resources (biennial) |
+| Academic Libraries | AL | Spring | Library resources (annual from 2014-15; not in current NCES component list) |
 
 ### Key Identifiers
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
-| `unitid` | 6-digit integer | Institution | `100654` | Unique, persistent across years; changes on merger |
+| `unitid` | 6-digit integer | Institution | `100654` | Unique, persistent across years; on a merger the merged-away unit is deleted and `newid` points to the receiving UNITID |
 | `opeid` | 8-digit string | Institution (Title IV) | `00100200` | Links to FSA/NSLDS; shared across branches |
 
 ### Institution Type Codes
@@ -183,7 +183,7 @@ Need variable definitions?
 | `-2` | Not applicable | |
 | `-3` | Suppressed | Privacy protection |
 
-> **Historical note:** Prior to 2010, Asian included Pacific Islanders (code 6 did not exist), and "Two or more races" (code 7) was not collected.
+> **Historical note:** New race/ethnicity categories were phased in from the 2008-09 collection and became mandatory in 2010-11 (Fall Enrollment, HR) and 2011-12 (all other components). Before adoption, Asian included Pacific Islanders (code 6 did not exist) and Two or more races (code 7) was not collected; 2008-09 to 2010-11 data can mix old and new reporting.
 
 ### Sex Codes (Portal Integer Encoding)
 
@@ -217,9 +217,9 @@ Need variable definitions?
 | Institutional characteristics | As of fall of indicated year |
 | Fall enrollment | As of fall census date |
 | 12-month enrollment | July 1 to June 30 academic year |
-| Completions | Awarded during academic year |
-| Graduation rates | **Cohort entered** in indicated year |
-| Finance | Fiscal year ending in indicated year |
+| Completions | Academic year ENDING in the indicated year (awards July 1 of `year`−1 through June 30 of `year`; e.g., `year`=2022 = 2021-22 awards). Inferred 2026-10-19 from national bachelor's totals vs NCES Digest Table 318.10; confirm against the codebook before relying on it. |
+| Graduation rates | NOT the entry year. `year` = the academic year (fall-labeled) at whose end (Aug 31 of `year`+1) completion status is measured. 150% GR: 4-year institutions `cohort_year` = `year` − 5 (e.g., `year`=2023 → fall 2018 entrants); less-than-4-year `cohort_year` = `year` − 2. GR200 and Outcome Measures (4-year): `cohort_year` = `year` − 7. Always use the `cohort_year` column. (Verified 2026-10-19 against College Navigator for unitid 110635.) |
+| Finance | Fiscal year that BEGINS in the indicated year (e.g., `year`=2017 = FY2018, ending June 30, 2018 for June fiscal-year institutions). Verified 2026-10-19: Harvard `year`=2017 endowment beginning/end values equal NCES Digest Table 333.90 "Fiscal year 2018". |
 | Student financial aid | For indicated academic year |
 
 ## Data Access
@@ -241,7 +241,7 @@ Datasets for IPEDS are available via the mirror system. See `datasets-reference.
 > **Known Portal gaps:**
 > - **Distance education enrollment variables** (`efdeexc`, `efdesom`, `efdenom`) are not in Portal mirror datasets. Use the NCES IPEDS Data Center for these.
 > - **Open-admissions policy variable** (`OPENADMP`) is not in Portal mirror datasets. Note: `open_public` is NOT the same thing — see Common Pitfalls below.
-> - **Finance data** may have a year lag relative to NCES releases (last verified through 2017 in some datasets).
+> - **Finance data** in the pinned mirror ends at 2017 (probed 2026-08-08), while the live Portal API lists finance years through 2023 (endpoint metadata fetched 2026-10-19) — a mirror-vintage lag; see the Finance cutoff warning under Data Availability & Lag Times.
 >
 > For data not available through Portal mirrors, access NCES directly at https://nces.ed.gov/ipeds/.
 
@@ -315,12 +315,12 @@ IPEDS data becomes available with significant lag. Always verify year availabili
 | **Admissions-Enrollment** | ~2 years | 2024 |
 | **Fall Enrollment** | ~2-3 years | 2024 (race and age files extended through 2024) |
 | **Completions** | ~2 years | 2023 (2-digit and 6-digit CIP completions; the `completers` file itself drops 2022, reaching 2021) |
-| **Finance** | ~4+ years | **2017** (not re-verified against the v2 mirror; see warning below) |
+| **Finance** | ~1.5 years from fiscal-year end to NCES provisional release (e.g., FY ending June 2024 released Jan 6, 2026; final ~1 year later); mirror lags further | **2017** in the pinned mirror (live Portal lists through 2023) |
 | **Graduation Rates** | ~2-3 years | 2023 (grad-rates-pell reaches 2023; the 150% grad-rates file reaches 2023 — see the dedup+revaluation note in `education-data-query/references/vintage-drift.md`) |
 
 > **New in the v2 mirror (2026-08-06):** the directory gained the 2023-24 year and seven Carnegie-2025 classification columns (`cc_*_2025`); fall-enrollment-race and fall-enrollment-age each gained 2023 and 2024 files; 2-digit/6-digit CIP completions gained 2023. The 150% graduation-rates file was de-duplicated and wholesale-revalued (10.69M → 6.14M rows) — any pre-2026q3 analysis of it must be fully re-run. See the vintage-drift reference for the complete change map.
 
-> **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017** in the Portal mirrors. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
+> **CRITICAL: IPEDS Finance mirror cutoff.** At the pinned mirror revision (probed 2026-08-08), IPEDS Finance covers 1979 and 1983-2017 only. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. The live Portal API lists finance years 1979, 1983–2023 (endpoint metadata fetched 2026-10-19) and returns 2023 rows, so the gap is a mirror-vintage lag, not a Portal limit. Options: (1) limit analysis to mirrored years, (2) use a newer mirror vintage, (3) use NCCS 990 data for private institutions, or (4) forward-fill with a documented caveat and indicator column.
 
 ### Variable Name Mappings
 
@@ -334,7 +334,7 @@ The Portal uses different names than NCES raw file documentation. The table belo
 | `ICLEVEL` | `institution_level` | Level of institution |
 | `DEGGRANT` | `degree_granting` | Degree-granting status |
 | `CYACTIVE` | `currently_active_ipeds` | Currently active flag |
-| `DEATHYR` | `year_deleted` | Year institution closed |
+| `DEATHYR` | `year_deleted` | Year deleted from IPEDS (closure, merger, or out of scope; -2 = not applicable) |
 | `APPLCN` | `number_applied` | Total applicants |
 | `ADMSSN` | `number_admitted` | Total admitted |
 | `EFTOTLT` | `enrollment_fall` | Fall enrollment (in fall-enrollment-race dataset) |
@@ -361,17 +361,17 @@ IPEDS has multiple enrollment-related datasets in the Portal:
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Using string codes | Portal uses integer encodings, not NCES string codes | Always verify against Portal codebooks; see encoding table above |
-| Grad rates as sole quality metric | IPEDS tracks only first-time, full-time, fall-entering students; excludes ~40% transfers, ~40% part-time | Use Outcome Measures (OM) for part-time/transfer data; note limitations |
+| Grad rates as sole quality metric | IPEDS tracks only first-time, full-time, fall-entering students; excludes transfer-in and part-time students (shares vary by institution — compute from IPEDS Fall Enrollment for your sample) | Use Outcome Measures (OM) for part-time/transfer data; note limitations |
 | Cross-sector finance comparison | Public (GASB) and private (FASB) use different accounting standards | Compare within sector only; see `./references/finance-data.md` for crosswalk |
-| Net price for all students | Net price covers only first-time, full-time students who received Title IV aid | Document population limitation; excludes full-pay students |
+| Net price for all students | Average net price covers only FTFT students awarded grant/scholarship aid (in-state only at publics); by-income net price covers only those awarded Title IV aid | Document population limitation; excludes full-pay students |
 | Admissions without sex filter | Admissions data disaggregated by sex — unfiltered data has duplicates | Filter to `sex == 99` for institution totals |
 | No `institution_level` 3 | Codes are 1, 2, 4 — not sequential 1, 2, 3 | Use exact codes: 1=less-than-2yr, 2=2yr, 4=4yr+ |
-| Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted`; track UNITID changes; see `./references/institution-identifiers.md` |
+| Ignoring mergers/closures | Institutions merge, close, or change sector over time | Check `currently_active_ipeds` and `year_deleted` (`year_deleted` > 0 marks a deletion; -2 = not applicable, observed on active institutions — do not test for null); follow `newid` for merged-away units; see `./references/institution-identifiers.md` |
 | `inst_size` as enrollment | `inst_size` is a 1-5 category code, not an enrollment count | Use enrollment endpoints for actual counts |
 | Distance education variables missing | `efdeexc`, `efdesom`, `efdenom` are not in Portal mirror datasets | Use the NCES IPEDS Data Center directly for distance education enrollment |
 | GRS duplicate rows per institution | Graduation rates data has multiple rows per `unitid` within the same subcohort/year, differing in `cohort_rev` and count columns | Filter to target subcohort first (e.g., `subcohort == 2` for bachelor's-seeking at 4-yr), then deduplicate: sort by `completion_rate_150pct` descending (nulls last), then `unique(subset=["unitid"], keep="first")` |
 | `open_public` is not open admissions | `open_public` (from `openpubl`) means "open to the general public" (i.e., a currently operating institution) — Harvard has `open_public=1`. The actual open-admissions policy variable (`OPENADMP`) is not available in the Portal mirror | Do not use `open_public` to identify open-admissions institutions. Use admissions data (admit rate near 100%) as a proxy, or access `OPENADMP` via the IPEDS API directly |
-| SFA `type_of_aid=9` is all grants, not Pell | `type_of_aid=9` in `sfa_grants_and_net_price` captures ALL grant/scholarship recipients (Pell + institutional + state/local). The median ratio to total students is ~0.98 — nearly universal. This dramatically overestimates "Pell share" if used as a Pell proxy | For Pell-specific data, use FSA (pre-2020) or College Scorecard bulk download. SFA `type_of_aid=9` is appropriate for total grant aid analysis but not for Pell isolation |
+| SFA `type_of_aid=9` is all grants, not Pell | `type_of_aid=9` in `sfa_grants_and_net_price` captures ALL grant/scholarship recipients (Pell + institutional + state/local). The median ratio to total students is ~0.98 — nearly universal. This dramatically overestimates "Pell share" if used as a Pell proxy | For Pell-specific data, use FSA (`grant_type == 4`, 1999-2021) or College Scorecard bulk download. SFA `type_of_aid=9` is appropriate for total grant aid analysis but not for Pell isolation |
 
 ## Critical Limitations
 
@@ -379,14 +379,14 @@ IPEDS has multiple enrollment-related datasets in the Portal:
 
 **CRITICAL**: IPEDS graduation rates track ONLY first-time, full-time, fall-entering students.
 
-| Excluded Population | Approximate % of Undergrads |
-|---------------------|----------------------------|
-| Transfer students | ~40% |
-| Part-time students | ~40% |
+| Excluded Population | Note |
+|---------------------|------|
+| Transfer students | Share varies by institution; compute from IPEDS Fall Enrollment (part-time share, transfer-in counts) |
+| Part-time students | Share varies by institution; compute from IPEDS Fall Enrollment (part-time share, transfer-in counts) |
 | Spring/summer starts | Varies |
 | Students who transfer OUT | Counted as non-completers |
 
-**At community colleges, IPEDS grad rates may represent <25% of students.**
+**Full-time, first-time students — the only students in the GR cohort — "make up fewer than half of all college students, or even less in some sectors of institutions (e.g., community colleges)"** (College Scorecard Technical Documentation, Oct 2026). Figures such as "<25% at community colleges" are illustrative — compute from IPEDS for your sample.
 
 See `./references/graduation-rates.md` for complete details.
 
@@ -406,7 +406,7 @@ See `./references/finance-data.md` for crosswalk guidance.
 
 Net price is calculated ONLY for:
 - First-time, full-time students
-- Who received Title IV aid
+- Who were awarded grant/scholarship aid (average net price) or Title IV aid (net price by income); public institutions: in-state students only
 - Excludes full-pay students
 
 See `./references/financial-aid.md` for details.

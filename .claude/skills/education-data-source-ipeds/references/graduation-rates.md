@@ -19,7 +19,7 @@
 
 IPEDS graduation rates track a **narrow subset of students** that does not represent the full undergraduate population at most institutions.
 
-**Key Fact**: At many institutions, IPEDS graduation rates represent **less than 25% of their students**.
+**Key Fact**: Full-time, first-time students — the only students in the GR cohort — "make up fewer than half of all college students, or even less in some sectors of institutions (e.g., community colleges)" (College Scorecard Technical Documentation, Oct 2026). Figures such as "<25% at many institutions" are illustrative — compute from IPEDS for your sample.
 
 This is not a data quality issue—it's by design. The Student Right-to-Know Act (1990) established this cohort definition, and while it made sense for traditional 4-year residential colleges, it fails to capture the reality of modern higher education.
 
@@ -39,14 +39,18 @@ The IPEDS Graduation Rates (GR) cohort includes ONLY students who are:
 
 ## Who Is NOT Tracked
 
-### Transfer Students (~40% of undergraduates nationally)
+### Transfer Students
+
+(Illustrative magnitude — unsourced: often put at ~40% of undergraduates nationally; compute from IPEDS for your sample.)
 
 - Students who transfer IN from another institution are excluded
 - Students who transfer OUT count as **non-completers**, even if they graduate elsewhere
 - Community college transfers to 4-year schools: NOT in 4-year school's cohort
 - "Swirling" students who attend multiple institutions: poorly captured
 
-### Part-Time Students (~40% of undergraduates nationally)
+### Part-Time Students
+
+(Illustrative magnitude — unsourced: often put at ~40% of undergraduates nationally; compute from IPEDS for your sample.)
 
 - Students who begin part-time are excluded entirely
 - Even if they later switch to full-time
@@ -78,11 +82,11 @@ The IPEDS Graduation Rates (GR) cohort includes ONLY students who are:
 | Factor | Impact |
 |--------|--------|
 | Transfer mission | Students who transfer to 4-year school before graduating = non-completers |
-| Part-time majority | ~65% of CC students attend part-time; excluded from cohort |
+| Part-time majority | Many CC students attend part-time (illustrative ~65% — unsourced; compute from IPEDS); excluded from cohort |
 | Non-fall starts | Many CCs enroll year-round |
 | Swirling students | Students attending multiple schools |
 
-**Real-world example**: A community college might have a 15% IPEDS graduation rate, but:
+**Illustrative example** (hypothetical magnitudes — unsourced; compute from IPEDS for your sample): A community college might have a 15% IPEDS graduation rate, but:
 - 30% of students transfer before completing (counted as failures)
 - 65% started part-time (not in cohort at all)
 - Actual success rate when including transfers could be 50%+
@@ -148,7 +152,7 @@ Captures additional completers but:
 
 **How Many Additional Completers?**
 
-Typically 2-5 percentage points more than 150% rate for 4-year institutions.
+(Illustrative magnitude — unsourced; compute from IPEDS for your sample.) Typically 2-5 percentage points more than 150% rate for 4-year institutions.
 
 ## Transfer-Out Rates
 
@@ -191,6 +195,8 @@ adjusted_success <- graduation_rate + transfer_out_rate
 
 ### Transfer-Out Rate Patterns
 
+(Illustrative magnitudes — unsourced; compute from IPEDS for your sample.)
+
 | Institution Type | Typical Transfer-Out Rate |
 |-----------------|---------------------------|
 | Community colleges | 20-40% |
@@ -200,20 +206,20 @@ adjusted_success <- graduation_rate + transfer_out_rate
 
 ## Pell and Loan Cohorts
 
-Since 2017, IPEDS reports graduation rates disaggregated by:
+Beginning with the 2016-17 collection (Portal `year` 2015; 2010 cohort at 4-year institutions), IPEDS reports graduation rates disaggregated by:
 
 ### Pell Grant Recipients
 
-Students who received a Pell Grant at any point during cohort tracking.
+Students who received a Pell Grant (recipient status as of entry/first year; confirm in the GR instructions for your year).
 
 **Why It Matters**:
-- Pell = low-income proxy (family income typically <$60K)
-- Pell recipient graduation rates often 5-15 percentage points lower
+- Pell = low-income proxy (family income typically <$60K — illustrative, unsourced)
+- Pell recipient graduation rates often 5-15 percentage points lower (illustrative magnitude — unsourced; compute from IPEDS for your sample)
 - Shows equity gaps
 
 ### Subsidized Stafford Loan Recipients
 
-Students who received subsidized Direct Loans.
+Students who received a subsidized Stafford/Direct Subsidized Loan but did not receive a Pell Grant.
 
 **Why It Matters**:
 - Indicates financial need (not Pell level, but need-based)
@@ -249,14 +255,17 @@ The **Outcome Measures (OM)** survey addresses GR limitations by tracking:
 3. **Non-first-time, full-time** (transfers - NEW)
 4. **Non-first-time, part-time** (transfers, part-time - NEW)
 
-### Eight-Year Outcomes
+Beginning with the 2017-18 collection, each cohort is further split by Pell Grant recipient status (eight cohorts; Portal `year` ≥ 2016).
 
-At 8 years from entry, reports:
-- Received award at this institution
-- Received award at another institution
-- Still enrolled at this institution
-- Still enrolled at another institution
-- Not enrolled anywhere (known)
+### Status Points and Outcomes
+
+Status is measured as of August 31 at 4, 6, and 8 years after entry (the 4-year point was added with the 2017-18 collection). At the 8-year point each cohort is reported as:
+- Received award
+- Did not receive award, still enrolled at reporting institution
+- Did not receive award, subsequently enrolled at another institution
+- Did not receive award, subsequent enrollment status unknown
+
+Awards earned at other institutions are not reported (inference from the NCES category list: other-institution outcomes appear only as subsequent enrollment).
 
 ### Key Advantages
 
@@ -264,12 +273,12 @@ At 8 years from entry, reports:
 |---------------|-------------|
 | Excludes part-time | Includes PT cohort |
 | Excludes transfers | Includes transfer cohort |
-| Transfers-out = failure | Tracks awards elsewhere |
-| 6-year max (4-year schools) | 8-year window |
+| Transfers-out = failure | Reports subsequent enrollment at another institution (not awards earned there) |
+| 6-year max (4-year schools) | Status at 4, 6, and 8 years |
 
 ### Key Limitation
 
-- First collected in 2015-16 (for 2007-08 cohort)
+- First collected in 2015-16 (for 2007-08 cohort); the Portal `outcome-measures` file begins at `year`=2015 (2008 cohort), so the first (2007-cohort) collection is not in the Portal.
 - Less historical data than GR
 - More complex to analyze
 - Less widely used in rankings/accountability
@@ -374,11 +383,12 @@ transfer_adjusted <- grad_rate_150 + transfer_out_rate
 
 | Term | Meaning | Example |
 |------|---------|---------|
-| Cohort year | Year students entered | 2018 |
-| Outcome year | Year outcomes measured | 2024 (for 6-yr) |
-| Data release year | Year data published | 2025 |
+| Cohort year (`cohort_year`) | Fall students entered | 2018 |
+| Status date | 150% status measured (Aug 31) | Aug 31, 2024 (4-year, 6-yr window) |
+| Portal `year` | Academic year ending at the status date | 2023 |
+| IPEDS collection / release | Winter collection / provisional release | 2024-25 / Dec 2025 |
 
-**GR data labeled "2024" refers to the 2018 entering cohort** (6 years earlier for 4-year schools).
+**Portal GR rows labeled `year`=2023 are the fall 2018 entering cohort** (4-year: `cohort_year` = `year` − 5; less-than-4-year: `year` − 2). Verified 2026-10-19: unitid 110635 `year`=2023 carries `cohort_year`=2018 and `completion_rate_150pct`=0.93, matching College Navigator's 6-year rate of 93% for students who began in fall 2018.
 
 ## Variable Reference
 
@@ -390,7 +400,7 @@ transfer_adjusted <- grad_rate_150 + transfer_out_rate
 | Portal Variable | Description |
 |-----------------|-------------|
 | `unitid` | Institution identifier |
-| `year` | Data year |
+| `year` | Data year — NOT the entry year (4-year 150% GR: `cohort_year` = `year` − 5; see Cohort Year vs Data Year) |
 | `fips` | State FIPS code |
 | `cohort_year` | Year the cohort entered |
 | `cohort_adj_150pct` | Adjusted cohort count (at 150% time) |
@@ -412,11 +422,14 @@ transfer_adjusted <- grad_rate_150 + transfer_out_rate
 
 The `subcohort` variable identifies which student population is tracked:
 
-| Code | Meaning | Notes |
+| Code | Meaning (codebook label) | Notes |
 |------|---------|-------|
-| 1 | Degree/certificate-seeking at less-than-4-year institutions | 2-year and less-than-2-year programs |
-| 2 | Degree/certificate-seeking at 4-year institutions (bachelor's-seeking cohort) | Standard cohort for 4-year graduation rate analysis; ~2,010 institutions |
-| 99 | Total cohort (all subcohorts combined) | Aggregate across subcohort types |
+| 1 | Degree/certificate nonbachelor's seeking subcohort of four-year institutions | Other-than-bachelor's seekers at 4-year institutions |
+| 2 | Bachelor's or equivalent subcohort of four-year institutions | Standard cohort for 4-year graduation rate analysis (institution count unsourced; compute from your extract) |
+| 99 | Total | Aggregate across subcohort types |
+| -2 | Not applicable | Less-than-4-year institutions: observed on every 2-year row of a Portal `grad-rates` probe (Wyoming, `year`=2015, `institution_level`=2), 2026-10-19 |
+
+> Labels follow the Portal codebook (`education-data-explorer/references/variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_grad-rates`). Code 1 is NOT the less-than-4-year cohort; select 2-year institutions by `institution_level`, not `subcohort == 1`.
 
 For standard 4-year bachelor's graduation rate analysis, filter to `subcohort == 2`. Note that multiple rows per institution may exist within a subcohort due to `cohort_rev` variants. To get one row per institution, sort by `completion_rate_150pct` descending (nulls last) and deduplicate:
 
@@ -520,8 +533,8 @@ url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_outcome-measu
 
 | Portal Column | Type | Description |
 |---------------|------|-------------|
-| `transfer_8yr` | Int64 | Transferred out within 8 years |
-| `transfer_rate_8yr` | Float64 | Transfer-out rate at 8 years |
+| `transfer_8yr` | Int64 | Number of adjusted cohort who enrolled subsequently at another institution at 8 years (codebook label) |
+| `transfer_rate_8yr` | Float64 | Percent of adjusted cohort enrolled subsequently at another institution at 8 years (codebook label) |
 | `still_enroll_8yr` | Int64 | Still enrolled at 8 years |
 | `still_enroll_rate_8yr` | Float64 | Still-enrolled rate at 8 years |
 | `still_enroll_transfer_rate_8yr` | Float64 | Still enrolled or transferred rate at 8 years |

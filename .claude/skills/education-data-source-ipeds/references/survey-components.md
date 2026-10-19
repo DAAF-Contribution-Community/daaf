@@ -18,7 +18,7 @@ IPEDS collects data in three periods annually. Each collection opens ~2 months b
 
 | Collection | Opens | Closes | Data Release |
 |------------|-------|--------|--------------|
-| Fall | August | October | Following September |
+| Fall | August–early September (2024-25: Sept 4) | Mid-October | Following summer (2025-26 Fall: July 28, 2026) |
 | Winter | December | February | Following December |
 | Spring | December | April | Following January |
 
@@ -39,8 +39,8 @@ The foundational survey that must be completed first. Establishes institution id
 - Student services offered
 - Special institutional characteristics (HBCU, tribal, women's, religious)
 - Open admission policy
-- Tuition and fees
-- Room and board charges
+- Tuition and fees (through 2023-24; moved to the Cost (CST) component from 2024-25)
+- Room and board charges (through 2023-24; moved to the Cost (CST) component from 2024-25)
 
 **Key Variables** (NCES names shown; Portal uses different names — see note at top):
 
@@ -106,12 +106,7 @@ Provides unduplicated headcount for the full academic year.
 
 **FTE Calculation Methods**:
 
-Credit hour institutions:
-- Undergrad FTE = (FT undergrad) + (PT undergrad credit hours / 30)
-- Graduate FTE = (FT grad) + (PT grad credit hours / 24)
-
-Clock hour institutions:
-- FTE = Total contact hours / 900
+**12-month FTE (E12)**: total 12-month instructional activity ÷ a standard full-time load. For semester-calendar institutions, undergraduate credit hours ÷ 30 and graduate credit hours ÷ 24 (Portal enrollment-full-time-equivalent documentation). Divisors differ for quarter-calendar and clock-hour reporting; check the E12 instructions for the reporting year. Institutions may report their own FTE instead (`rep_fte` vs derived `est_fte`).
 
 ### Completions (C)
 
@@ -124,9 +119,9 @@ Degrees and certificates awarded during the academic year.
 - Completers (unduplicated count of individuals)
 - Distance education program indicator
 
-**Award Levels**:
+**Award Levels** (NCES `AWLEVEL` codes used in NCES raw files — NOT the Portal `award_level` codes; for Portal codes see `completions-data.md` § Award Levels):
 
-| Code | Award Level |
+| NCES `AWLEVEL` Code | Award Level |
 |------|-------------|
 | 1 | Postsecondary certificate (<1 year) |
 | 2 | Postsecondary certificate (1-2 years) |
@@ -270,12 +265,13 @@ Expanded success metrics including part-time and transfer students.
 3. Non-first-time, full-time entering (transfers)
 4. Non-first-time, part-time entering
 
+Beginning with the 2017-18 collection, each cohort is further split by Pell Grant recipient status (eight cohorts; Portal `year` ≥ 2016).
+
 **Outcomes Tracked at 8 years**:
-- Award at reporting institution
-- Award at another institution
-- Still enrolled at reporting institution
-- Still enrolled elsewhere
-- No longer enrolled anywhere
+- Received award
+- Did not receive award, still enrolled at reporting institution
+- Did not receive award, subsequently enrolled at another institution
+- Did not receive award, subsequent enrollment status unknown
 
 **Key Advantage**: Tracks students IPEDS graduation rates miss.
 
@@ -390,7 +386,7 @@ Institutional finances - see `finance-data.md` for GASB/FASB details.
 | Portal Variable | Type | Description | Values |
 |-----------------|------|-------------|--------|
 | `unitid` | Int64 | Unique institution ID | 6-digit integer |
-| `year` | Int64 | Fiscal year | 1979-2021 |
+| `year` | Int64 | Fiscal year that BEGINS in `year` (e.g., 2017 = FY2018; see SKILL.md § Year Field Meanings) | 1979, 1983-2017 in the pinned mirror (live Portal: 1979, 1983-2023) |
 | `fips` | Int64 | State FIPS code | Integer |
 | `form_type` | Int64 | Finance reporting form | 1-5 (see below) |
 | `reporting_form` | Int64 | Detailed reporting form | -2=Not applicable, -1=Missing, 1-6 |
@@ -463,7 +459,7 @@ Institutional finances - see `finance-data.md` for GASB/FASB details.
 | `heca` | Float64 | Higher Education Cost Adjustment |
 | `hepi` | Float64 | Higher Education Price Index |
 
-> **`form_type` values:** 1=Public GASB, 2=Private nonprofit FASB, 3=Private for-profit, 4=Public FASB (rare, ~20 institutions), 5=Other. Not all columns are populated for all form types; see `finance-data.md` for which revenue/expense categories apply to which form.
+> **`form_type` values (Portal codebook labels):** 1=Common form, 2=Form 1, 3=Form 1A, 4=Form 2, 5=Form 3. Code 4 is not limited to public FASB reporters: Harvard (unitid 166027) and Cornell (unitid 190415), both private nonprofits, carry `form_type` 4 (with `reporting_form` 5) in Portal `year` 2017 (probed 2026-10-19). For the accounting standard itself, use `reporting_form` (codebook: 4 = FASB reporting standards, 5 = FASB reporting standards (aligned), 6 = Modified FASB (private for-profit institutions); 1-3 = GASB variants). Not all columns are populated for all form types; see `finance-data.md` for which revenue/expense categories apply to which form.
 
 > **NCES form-field codes** (e.g., `f1a01`=GASB total current assets, `f2a01`=FASB total current assets) do not appear in the Portal. The Portal uses the descriptive names listed above. See the codebook (`ipeds/codebook_colleges_ipeds_finance`) for complete column documentation.
 
@@ -542,9 +538,9 @@ Employees and compensation.
 
 ### Academic Libraries (AL)
 
-Library resources and services. **Collected biennially**.
+Library resources and services. **Collected annually in the spring from the 2014-15 collection** (the predecessor Academic Libraries Survey was biennial, odd-numbered years). Current NCES component lists (fetched 2026-10-19) no longer include AL; confirm whether collection continues.
 
-**Collection Period**: December-April (odd years)
+**Collection Period**: Spring collection (December-April)
 
 **Data Collected**:
 - Library expenditures
@@ -554,21 +550,14 @@ Library resources and services. **Collected biennially**.
 
 ## Data Release Schedule
 
-Data releases occur in three types:
+Data releases occur in two types (provisional and revised/final, released together but for different collection years):
 
 | Release Type | Timing | Use Case |
 |--------------|--------|----------|
-| Provisional | Shortly after collection closes | Initial analysis |
-| Final | ~6 months after provisional | Most analysis |
-| Revised | As needed | Corrections |
+| Provisional | ~9 months after the collection period closes | Initial analysis |
+| Revised/Final | ~9 months after the next year's Prior Year Revision (PYR) system closes, usually alongside the following year's provisional release | Most analysis |
 
-**Typical Release Calendar**:
-
-| Collection | Provisional | Final |
-|------------|-------------|-------|
-| Fall 2024 | September 2025 | March 2026 |
-| Winter 2024-25 | December 2025 | June 2026 |
-| Spring 2025 | January 2026 | July 2026 |
+**Recent releases (NCES Data Release Schedule, fetched 2026-10-19):** 2024-25 Winter provisional Dec 9, 2025; 2024-25 Spring provisional Jan 6, 2026; 2025-26 Fall provisional Jul 28, 2026; 2024-25 Fall final Sep 8, 2026.
 
 ## Title IV Requirement
 
@@ -581,13 +570,8 @@ All institutions participating in Title IV federal student financial aid program
 - Federal Perkins Loan (discontinued)
 - TEACH Grant
 
-**Non-Title IV institutions** are not in IPEDS (e.g., some religious institutions, purely non-credit vocational schools).
+**Non-Title IV institutions** are not required to report; they may report voluntarily, so IPEDS coverage of non-Title IV providers is partial (NCES Handbook of Survey Methods, IPEDS chapter).
 
 ## Survey Response Rates
 
-IPEDS achieves ~99% response rate because:
-1. Reporting is mandatory for Title IV participation
-2. Non-response can result in fine and loss of Title IV eligibility
-3. Extensive follow-up by NCES
-
-Imputation is used for remaining missing data.
+IPEDS unit response rates are very high (greater than 99 percent for each component in the Spring 2018 collection; about 89 to over 99 percent for Title IV institutions since web collection began; NCES Handbook of Survey Methods) because reporting is mandatory for Title IV participants and NCES follows up extensively. Nonrespondents are imputed.

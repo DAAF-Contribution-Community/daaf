@@ -10,6 +10,8 @@ Endowment asset allocation describes how investment portfolios are divided acros
 
 ### Evolution of Endowment Investing
 
+(illustrative; not from a NACUBO table)
+
 | Era | Dominant Strategy | Alternatives Allocation |
 |-----|-------------------|------------------------|
 | Pre-1980s | Stocks and bonds | <5% |
@@ -37,7 +39,7 @@ Pioneered by David Swensen at Yale, the "endowment model" emphasizes:
 |-----------|-------------|
 | Definition | Publicly traded U.S. stocks |
 | Typical allocation | 10-15% |
-| FY24 average | 13.0% |
+| FY24 average (dollar-weighted) | 13.0% |
 | Liquidity | High |
 | Role | Growth, market exposure |
 
@@ -54,7 +56,7 @@ Includes:
 |-----------|-------------|
 | Definition | Developed market international stocks |
 | Typical allocation | 5-10% |
-| FY24 average | ~8% |
+| FY24 average (dollar-weighted) | ~8% (illustrative; not from a NACUBO table) |
 | Liquidity | High |
 | Role | International diversification |
 
@@ -66,7 +68,7 @@ Regions: Europe, Japan, Australia, Canada
 |-----------|-------------|
 | Definition | Developing market stocks |
 | Typical allocation | 3-8% |
-| FY24 average | ~5% |
+| FY24 average (dollar-weighted) | ~5% (illustrative; not from a NACUBO table) |
 | Liquidity | Medium-High |
 | Role | Higher growth exposure |
 
@@ -88,7 +90,7 @@ May overlap with U.S. and international categories.
 |-----------|-------------|
 | Definition | Bonds and debt securities |
 | Typical allocation | 8-15% |
-| FY24 average | 10.2% |
+| FY24 average (dollar-weighted) | 10.2% |
 | Liquidity | High |
 | Role | Income, stability, diversification |
 
@@ -110,13 +112,15 @@ Alternatives are non-traditional assets that typically offer:
 
 **FY24 Total Alternatives**: 55.7% (average across all participants)
 
+FY25 (dollar-weighted): alternatives 54.5%, PE 16.8%, marketable alternatives 15.4%, U.S. equities 13.7%, VC 12.2%, fixed income 10.7% (NACUBO, Feb. 12, 2026).
+
 #### Private Equity
 
 | Attribute | Description |
 |-----------|-------------|
 | Definition | Equity in private companies |
 | Typical allocation | 10-20% |
-| FY24 average | 17.1% |
+| FY24 average (dollar-weighted) | 17.1% |
 | Liquidity | Very Low (7-12 year locks) |
 | Role | Highest return potential |
 
@@ -132,7 +136,7 @@ Sub-categories:
 |-----------|-------------|
 | Definition | Investment in early-stage companies |
 | Typical allocation | 5-15% |
-| FY24 average | 11.7% |
+| FY24 average (dollar-weighted) | 11.7% |
 | Liquidity | Very Low (10+ year locks) |
 | Role | High growth, innovation exposure |
 
@@ -148,7 +152,7 @@ Sub-categories:
 |-----------|-------------|
 | Definition | Liquid alternative strategies |
 | Typical allocation | 10-20% |
-| FY24 average | 16.1% |
+| FY24 average (dollar-weighted) | 16.1% |
 | Liquidity | Medium (quarterly to annual) |
 | Role | Diversification, risk management |
 
@@ -165,7 +169,7 @@ Sub-categories:
 |-----------|-------------|
 | Definition | Physical assets and commodities |
 | Typical allocation | 8-15% |
-| FY24 average | 10.8% |
+| FY24 average (dollar-weighted) | 10.8% |
 | Liquidity | Low to Medium |
 | Role | Inflation hedge, diversification |
 
@@ -212,7 +216,7 @@ Catch-all for assets not fitting standard categories:
 
 ## Asset Allocation by Size
 
-### FY24 Allocation by Endowment Size
+### FY24 Allocation by Endowment Size (illustrative; not from a NACUBO table)
 
 | Asset Class | Under $50M | $50M-$1B | Over $1B |
 |-------------|------------|----------|----------|
@@ -236,7 +240,7 @@ Catch-all for assets not fitting standard categories:
 
 ## Asset Allocation by Institution Type
 
-### FY24 Allocation by Type
+### FY24 Allocation by Type (illustrative; not from a NACUBO table)
 
 | Asset Class | Private | Public | IRF |
 |-------------|---------|--------|-----|
@@ -276,7 +280,7 @@ Treats each institution equally:
 
 ## Allocation Trends
 
-### Historical Shifts
+### Historical Shifts (1990-2020 rows illustrative; unsourced)
 
 | Period | Traditional | Alternatives |
 |--------|-------------|--------------|
@@ -284,7 +288,7 @@ Treats each institution equally:
 | 2000 | 65% | 35% |
 | 2010 | 55% | 45% |
 | 2020 | 45% | 55% |
-| 2024 | 42% | 58% |
+| 2024 | 44.3% | 55.7% (NACUBO FY24, dollar-weighted) |
 
 ### Recent Trends (2020-2024)
 
@@ -305,13 +309,7 @@ Treats each institution equally:
 
 ### ESG by Size
 
-Larger endowments more likely to have formal ESG policies:
-
-| Size | ESG Policy Adoption |
-|------|---------------------|
-| Over $1B | 35-45% |
-| $100M-$1B | 20-30% |
-| Under $100M | 10-20% |
+ESG adoption ranged from 15.8% to 43.8% across the seven size cohorts (NACUBO FY24 press release); per-cohort values are in the full NCSE report.
 
 ### Common Exclusions
 
@@ -324,7 +322,7 @@ Negative screening often excludes:
 
 ## Performance by Asset Class
 
-### One-Year Returns (FY24)
+### One-Year Returns (FY24) (illustrative; not NACUBO values)
 
 | Asset Class | Return | Notes |
 |-------------|--------|-------|
@@ -363,7 +361,7 @@ How institutions maintain target allocations:
 
 ### Target vs Actual
 
-Most institutions set **target allocations** in their Investment Policy Statement (IPS) and allow ranges around targets:
+Most institutions set **target allocations** in their Investment Policy Statement (IPS) and allow ranges around targets (illustrative; not NACUBO values):
 
 | Asset Class | Target | Range |
 |-------------|--------|-------|

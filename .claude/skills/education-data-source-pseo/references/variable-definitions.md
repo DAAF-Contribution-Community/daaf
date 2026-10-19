@@ -13,10 +13,10 @@ Complete reference for PSEO variables, codes, and status flags.
 >
 > **Key Points:**
 > - All variable names are **lowercase** in Portal data
-> - `opeid` is an **integer**, not an 8-digit string
+> - `opeid` is an **8-character string** (zero-padded, e.g. `"00182600"`; may contain letters), not an integer
 > - `cipcode` is a **2-digit integer** (e.g., `11` for Computer Science)
 > - `industry` is a **String**, not an integer (e.g., `"54"`, `"31-33"`)
-> - Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed)
+> - Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed) — but PSEO earnings columns were observed as `-1` only, never `-3` (see Missing Data Codes below)
 >
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the parquet) -- this IS the truth
@@ -43,10 +43,12 @@ Complete reference for PSEO variables, codes, and status flags.
 | Variable | Description | Type |
 |----------|-------------|------|
 | `unitid` | IPEDS Unit ID | Integer |
-| `opeid` | Office of Postsecondary Education ID | Integer (not 8-digit string) |
+| `opeid` | Office of Postsecondary Education ID | String (8 characters, zero-padded) |
 | `fips` | State FIPS code of institution | Integer |
 
-> **Note:** Portal uses `unitid` and `opeid` as integers. Census API uses `INSTITUTION` as 8-digit string (e.g., "00365800").
+> **Note:** Portal stores `unitid` as an integer and `opeid` as an 8-character string; the Census API uses `INSTITUTION` in the same 8-character form (e.g., "00365800").
+>
+> **Provenance (`opeid` dtype):** observed in an executed mirror load of `pseo/colleges_pseo_2018` on 2026-07-16 (Hugging Face `main`, not the pinned revision; values `00182600` and `0033290W`, run log `research/2026-07-16_institutional_predictors_1/scripts/stage5_fetch/02_gate-pseo-testfile_b_b.R`), and in a Portal API probe of 2026-10-19 returning `"opeid":"00365800"` (UT Austin). Same dtype on the pinned vintage is inference.
 
 ### Program Identifiers (Portal Integer Encoding)
 
@@ -60,7 +62,7 @@ Complete reference for PSEO variables, codes, and status flags.
 | Variable | Description | Type |
 |----------|-------------|------|
 | `pseo_cohort` | Graduation cohort | String (e.g., `"2016-2020"`, `"2019-2021"`) |
-| `year` | Academic year (fall semester) | Integer |
+| `year` | Graduation year within the cohort span (Portal shard key). Each `pseo_cohort` row is repeated, with identical values, under every year in its span (e.g., cohort "2016-2018" appears under year 2016, 2017 and 2018); the Portal metadata label "Academic year (fall semester)" does not describe PSEO | Integer |
 | `years_after_grad` | Years post-graduation | Integer (1, 5, or 10) |
 
 ## Earnings Variables (Portal Schema)
@@ -111,7 +113,9 @@ Complete reference for PSEO variables, codes, and status flags.
 |------|---------|-----------|
 | `-1` | Missing/not reported | Value unknown or not submitted |
 | `-2` | Not applicable | Item doesn't apply to this record |
-| `-3` | Suppressed | Data suppressed for privacy |
+| `-3` | Suppressed | Data suppressed for privacy (Portal-wide code) |
+
+> **PSEO observation (2026-10-19):** In the Portal probe for UT Austin, `year` 2016 (690 rows), every unavailable earnings value (`p25_earnings`/`p50_earnings`/`p75_earnings`, `employed_grads_count_e`) was `-1` and none was `-3`; `-3` appeared only in `jobless_m_emp_grads_count` on Census-division breakdown rows. Census suppresses earnings cells with protected counts below 30, so treat any negative earnings value as non-reportable; in that probe a `== -3` filter on earnings returns no rows.
 
 ### Handling Missing Data in Portal PSEO Data
 
@@ -124,8 +128,8 @@ df = pl.read_parquet("colleges_pseo_2020.parquet")
 # Filter out missing earnings data
 valid_earnings = df.filter(pl.col("p50_earnings") > 0)
 
-# Check for suppressed values
-suppressed = df.filter(pl.col("p50_earnings") == -3)
+# Unavailable earnings (missing or suppressed): observed as -1 in PSEO, not -3
+unavailable = df.filter(pl.col("p50_earnings") < 0)
 
 # Convert coded missing to null
 df_clean = df.with_columns(
@@ -145,8 +149,8 @@ df <- read_parquet("colleges_pseo_2020.parquet")
 # Filter out missing earnings data
 valid_earnings <- df |> filter(p50_earnings > 0)
 
-# Check for suppressed values
-suppressed <- df |> filter(p50_earnings == -3)
+# Unavailable earnings (missing or suppressed): observed as -1 in PSEO, not -3
+unavailable <- df |> filter(p50_earnings < 0)
 
 # Convert coded missing to NA
 df_clean <- df |> mutate(
@@ -177,7 +181,7 @@ df_clean <- df |> mutate(
 - Master's and Doctoral-Research only have 2-digit CIP codes
 - Cohort years affects valid cohort values
 
-> **Census API comparison:** API uses string codes like "05", "1C", "07". Portal uses integers 1-10.
+> **Census API comparison:** Census uses string codes `01`-`08`, `17` (Doctoral - Research/Scholarship) and `18` (Doctoral - Professional Practice) per the LEHD public-use schema. Portal uses integers 1-10 (by label, Portal `9`/`10` correspond to Census `17`/`18`).
 
 ## CIP Codes (Portal Integer Encoding)
 
@@ -234,14 +238,14 @@ Full reference: [CIPCODE Labels (CSV)](https://lehd.ces.census.gov/data/schema/l
 
 ### Portal Format
 
-In the Education Data Portal, institution identifiers use integers:
+In the Education Data Portal, `unitid` is an integer and `opeid` an 8-character string:
 
 | Variable | Type | Example |
 |----------|------|---------|
 | `unitid` | Integer | `100751` (University of Alabama) |
-| `opeid` | Integer | `105100` (not "00105100") |
+| `opeid` | String | `"00105100"` (8 characters, zero-padded) |
 
-> **Note:** Census API uses 8-digit OPEID strings (e.g., "00365800"). Portal stores as integer.
+> **Note:** The Census API and the Portal both use 8-character OPEID strings (e.g., "00365800").
 
 ### Example UNITID Values
 
