@@ -30,7 +30,7 @@ School Districts (overlay - may cross county lines)
 |-----------|-------|
 | Target population | ~4,000 (range: 1,200-8,000) |
 | First defined | 1910 (8 cities) |
-| Full U.S. coverage | 1990 |
+| Full U.S. coverage | 1990, with block numbering areas (BNAs) standing in for tracts in counties without them |
 | Typical area | Urban: few blocks; Rural: large |
 | Stability | Designed to be stable; split when population grows |
 
@@ -52,7 +52,7 @@ School Districts (overlay - may cross county lines)
 | Attribute | Value |
 |-----------|-------|
 | Target population | ~1,500 (range: 600-3,000) |
-| First defined | 1970 (as "enumeration districts") |
+| First defined | 1970 (as the block-numbered-area counterpart of the enumeration district; originally called "quarter tracts") |
 | Current form | 1990 |
 | Identifier | Single digit (1-9) appended to tract |
 
@@ -88,11 +88,11 @@ School Districts (overlay - may cross county lines)
 
 **Definition**: Administrative units responsible for public education. Three types in Census data.
 
-| Type | Description | Count (2020) |
+| Type | Description | Count (2020 Census, U.S.) |
 |------|-------------|--------------|
-| Unified | K-12 in single district | ~10,000 |
-| Elementary | Elementary only | ~3,500 |
-| Secondary | Secondary only | ~500 |
+| Unified | K-12 in single district | 10,869 |
+| Elementary | Elementary only | 1,945 |
+| Secondary | Secondary only | 473 |
 
 **Geographic characteristics**:
 - May cross county boundaries (unlike tracts)
@@ -127,8 +127,8 @@ School Districts (overlay - may cross county lines)
 
 | Type | States | Example |
 |------|--------|---------|
-| Minor Civil Division | 28 states | Townships (OH, PA) |
-| Census County Division | 22 states | Statistical areas |
+| Minor Civil Division | 29 states (plus Puerto Rico and the Island Areas) | Townships (OH, PA) |
+| Census County Division | 20 states | Statistical areas |
 
 **Education use**: Useful in states with township-based school governance (e.g., Pennsylvania).
 
@@ -240,7 +240,7 @@ Used in 1990-2000 sample data. Smallest unit for long-form variables.
 |-------|------|------|------|------|------|------|
 | State | Full | Full | Full | Full | Full | Full |
 | County | Full | Full | Full | Full | Full | Full |
-| Tract | Major metros | Most metros | Full U.S. | Full | Full | Full |
+| Tract | Major metros | Most metros | Full U.S. (tracts + BNAs) | Full | Full | Full |
 | Block Group | Limited | Limited | Full U.S. | Full | Full | Full |
 | Block | Urban only | Urban only | Full U.S. | Full | Full | Full |
 | School District | N/A | N/A | N/A | Available | Full | Full |

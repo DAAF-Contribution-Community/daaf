@@ -11,7 +11,7 @@ EDFacts provides state-reported data on assessment results, graduation rates, an
 | Mandate | ESEA/ESSA accountability requirements |
 | Coverage | Public schools and districts |
 | Primary Use | Assessment proficiency, graduation rates |
-| Available Years | 2010+ (varies by indicator) |
+| Available Years | Portal: assessments 2009–2018 and 2020 (no 2019); graduation rates 2010–2019 |
 
 ## Critical Limitation: State Assessments Not Comparable
 
@@ -94,7 +94,7 @@ But labels and cut scores vary by state.
 **Critical**: Most states did not test in spring 2020 due to COVID-19:
 - 2019-20 assessment data largely missing
 - States received federal waivers
-- Cannot calculate 2020 proficiency for most states
+- Cannot calculate SY 2019-20 proficiency for most states (Portal assessment year 2019 is absent; Portal year 2020 = SY 2020-21)
 
 ### Other Missing Data
 
@@ -148,33 +148,32 @@ EDFacts reports ACGR, the federal accountability measure:
 | Cohort | First-time 9th graders |
 | Adjustments | Transfer in/out, emigration, death |
 | Denominator | Adjusted cohort (original - out + in) |
-| Numerator | Graduate with regular diploma in 4 years |
+| Numerator | Graduate with a regular diploma (from 2017-18, or a State-defined alternate diploma; see Diploma type below) in 4 years |
 
 ### Extended Graduation Rates
 
 | Rate | Definition |
 |------|------------|
 | 4-year | Within 4 years of 9th grade |
-| 5-year | Within 5 years |
-| 6-year | Within 6 years |
-| 7-year | Within 7 years (some states) |
+
+Extended-year ACGRs (e.g., 5- or 6-year) are optional and State-adopted; they are not present in the Portal grad-rates files.
 
 ### Graduation Rate Caveats
 
 | Issue | Impact |
 |-------|--------|
-| Diploma type | Regular diploma only; excludes alternative credentials |
+| Diploma type | Regular diploma; from 2017-18 also a State-defined alternate diploma for students with the most significant cognitive disabilities; other alternative credentials excluded |
 | GED completers | Counted as non-graduates in ACGR |
 | Late graduates | Not counted in 4-year rate |
-| Special education | May take longer; extended rates more appropriate |
+| Special education | May take longer; State extended-year rates (not in the Portal) may be more appropriate |
 | Transfer tracking | States may lose track of transfers |
 
 ### Cohort Timing
 
-For `year=2019` graduation data:
-- Cohort entered 9th grade in fall 2015
-- 4-year graduation measured in 2019
-- Data released in 2020
+For `year=2019` graduation data (Portal grad-rates `year` = fall of the school year in which the cohort graduates):
+- School year 2019-20, class of 2020
+- Cohort entered 9th grade in fall 2016 (`year` − 3)
+- (Verified: Hawaii Portal `year` 2010/2012 = 80/82 matches NCES ACGR 2010-11/2012-13 = 80/82)
 
 ## Suppression
 
@@ -219,7 +218,7 @@ df |>
 ### Why So Much Suppression?
 
 - Small schools have small subgroups
-- 10-student minimum for many indicators
+- (Illustrative/unsourced — verify) 10-student minimum for many indicators
 - Complementary suppression to prevent calculation
 - Rural areas particularly affected
 
@@ -263,7 +262,7 @@ Some states have had testing irregularities in specific years:
 ### Assessment System Changes
 
 States periodically change assessments:
-- New standards (Common Core transition ~2015)
+- New standards (Common Core transition; timing illustrative/unsourced — verify)
 - New test vendors
 - New cut scores
 
@@ -302,10 +301,10 @@ large_changes <- state_data |> filter(abs(yoy_change) > 10)
 
 | Event | Years Affected |
 |-------|----------------|
-| Common Core standards | 2014-2016 |
-| PARCC/SBAC implementation | 2015-2017 |
+| Common Core standards | (Illustrative/unsourced — verify) 2014-2016 |
+| PARCC/SBAC implementation | (Illustrative/unsourced — verify) 2015-2017 |
 | ESSA transition | 2017-2018 |
-| COVID waivers | 2019-2020 |
+| COVID waivers | SY 2019-20 (Portal assessment year 2019, absent) |
 
 ## Using Scale Scores
 
@@ -342,8 +341,8 @@ Some EDFacts data includes scale score information:
 ### For Graduation Rate Analysis
 
 1. Use ACGR for federal comparability
-2. Note extended rates for complete picture
-3. Remember cohort timing (entry year)
+2. Extended-year rates are optional and State-adopted, and not in the Portal; source them from the State if needed
+3. Remember cohort timing (Portal `year` = fall of the graduating school year; 9th-grade entry = `year` − 3)
 4. Account for transfer tracking limitations
 
 ### For Subgroup Analysis

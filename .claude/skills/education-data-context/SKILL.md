@@ -67,7 +67,7 @@ For comprehensive understanding beyond the quick context files above, load the d
 | CCD | `education-data-source-ccd` | Survey components, EDFacts submission, state variations, historical changes |
 | CRDC | `education-data-source-crdc` | Civil rights legal context, underreporting issues, year-to-year evolution |
 | EDFacts | `education-data-source-edfacts` | ESSA/NCLB context, why states aren't comparable, ACGR methodology |
-| IPEDS | `education-data-source-ipeds` | All 12+ surveys, graduation rate population limits, GASB vs FASB |
+| IPEDS | `education-data-source-ipeds` | All 12 survey components, graduation rate population limits, GASB vs FASB |
 | Scorecard | `education-data-source-scorecard` | IRS earnings methodology, Title IV selection bias, suppression rules |
 | SAIPE | `education-data-source-saipe` | Model-based estimation, no district confidence intervals |
 | FSA | `education-data-source-fsa` | Title IV programs, financial responsibility scores, 90/10 rule |
@@ -147,7 +147,7 @@ What type of analysis are you doing?
 ├─ Time series
 │   ├─ Check for definition changes
 │   ├─ Check for ID changes (schools/districts merge/split)
-│   └─ Check COVID-19 impact (2020-2021)
+│   └─ Check COVID-19 impact (SY 2019-20 and 2020-21; Portal `year` 2019 and 2020 in fall-labeled families)
 ├─ Subgroup analysis
 │   ├─ Check suppression rates
 │   ├─ Smaller groups = more suppression
@@ -285,23 +285,24 @@ df |> filter(enrollment >= 0) |> pull(enrollment) |> mean()
 
 ### Year Definitions
 
-- `year` refers to the **FALL** of the academic year
-- `year=2020` means the **2020-21 school year**
-- Graduation rates use cohort entry year (cohort started 4-6 years prior)
-- Finance data may use fiscal year (varies by institution)
+- `year` usually refers to the **FALL** of the academic year (`year=2020` = 2020-21), but several families differ; check the source skill's year table:
+  - IPEDS graduation rates: `year` is NOT the entry year; status is measured at the end of the `year` academic year. Use `cohort_year` (4-year 150%: `year` − 5; less-than-4-year: `year` − 2; GR200/Outcome Measures 4-year: `year` − 7)
+  - EDFacts graduation rates: `year` = fall of the graduating school year (9th-grade entry = `year` − 3)
+  - IPEDS finance: fiscal year BEGINNING in `year` (`year`=2017 = FY2018)
+  - Scorecard earnings: calendar year of measurement (`year` = `cohort_year` + `years_after_entry`)
 
 | Data Type | Year Interpretation |
 |-----------|---------------------|
 | Fall enrollment | Fall of indicated year |
-| Academic year totals | Full year starting fall of indicated year |
-| Graduation rates | Cohort entry year (outcomes measured later) |
-| Completions | Degrees awarded during indicated academic year |
+| Academic-year totals | Varies by family (IPEDS completions: year ENDING in `year`, inferred; 12-month enrollment not verified — check the codebook) |
+| Graduation rates | NOT the entry year. IPEDS: use the `cohort_year` column (4-year 150%: `year` − 5). EDFacts (no `cohort_year` column): `year` = fall of the graduating school year; 9th-grade entry = `year` − 3 |
+| Completions (IPEDS) | Academic year ENDING in `year` (`year`=2022 = 2021-22 awards; inferred, medium confidence) |
 
 ### Suppression
 
 Data is suppressed to protect student privacy:
 
-- **Small cell sizes**: Typically fewer than 5-10 students
+- **Small cell sizes**: thresholds vary by source and year (e.g., CRDC uses rounding/perturbation, not a fixed cutoff)
 - **Affects disaggregated data**: Race, disability, gender breakdowns
 - **More suppression in smaller schools**: Rural areas most affected
 - **Cannot be imputed accurately**: Do not attempt to recover
@@ -321,13 +322,13 @@ State education agencies interpret federal definitions differently:
 Before analyzing any Education Data Portal data:
 
 - [ ] **Check coded values**: Filter out -1, -2, -3 before calculations
-- [ ] **Understand year definition**: Fall of academic year vs. cohort year
+- [ ] **Understand year definition**: Fall of academic year vs. family-specific conventions (`cohort_year`, fiscal year, measurement year; see Year Definitions)
 - [ ] **Note suppression rates**: Calculate % suppressed by variable
 - [ ] **Check definition changes**: Compare codebooks across years
 - [ ] **Verify identifier consistency**: NCES IDs can change when schools/districts merge
 - [ ] **Document state anomalies**: Note any state-specific reporting issues
 - [ ] **Check coverage**: Not all schools appear in all sources
-- [ ] **Consider COVID-19**: 2020-2021 data may not be comparable to prior years
+- [ ] **Consider COVID-19**: SY 2019-20 and 2020-21 data (Portal `year` 2019 and 2020 in fall-labeled families) may not be comparable to prior years
 
 ### Quick Coverage Check
 
@@ -384,14 +385,12 @@ made available under the ODC Attribution License.
 Use for visualizations, dashboards, and space-constrained contexts:
 
 ```
-Source: [Dataset name(s)], Education Data Portal v.X.X.X, 
-Urban Institute, ODC-By License.
+[Dataset name(s)], via Education Data Portal v. X.X.X, Urban Institute, under ODC Attribution License.
 ```
 
 **Example:**
 ```
-Source: CCD School Directory, Education Data Portal v.0.26.1,
-Urban Institute, ODC-By License.
+CCD School Directory, via Education Data Portal v. 0.26.1, Urban Institute, under ODC Attribution License.
 ```
 
 ### License Terms
@@ -400,7 +399,7 @@ Urban Institute, ODC-By License.
 
 Key requirements:
 - Must attribute the Urban Institute as data source
-- Must indicate if data was modified
+- Must keep license notices intact and, when publicly using a work produced from the data, state that content was obtained from the Portal and is available under ODC-By (ODC-By 1.0 §4.2–4.3)
 - May use for any purpose including commercial
 - May redistribute with attribution
 
@@ -414,7 +413,7 @@ Key requirements:
 |--------|---------------|--------------|-----------------|-----------|
 | CCD | Public schools only; state reporting varies | K-12 enrollment, demographics | `./references/ccd-context.md` | `education-data-source-ccd` |
 | IPEDS | First-time full-time students only for grad rates | College graduation analysis | `./references/ipeds-context.md` | `education-data-source-ipeds` |
-| CRDC | Biennial; self-reported; underreporting | Equity/discipline analysis | `./references/crdc-context.md` | `education-data-source-crdc` |
+| CRDC | Generally biennial; self-reported; underreporting | Equity/discipline analysis | `./references/crdc-context.md` | `education-data-source-crdc` |
 | Scorecard | Title IV recipients only; earnings suppressed | Earnings/outcomes analysis | `./references/scorecard-context.md` | `education-data-source-scorecard` |
 | EDFacts | State assessments NOT comparable across states | Achievement analysis | `./references/edfacts-context.md` | `education-data-source-edfacts` |
 | SAIPE | Model-based estimates; no district CIs | District poverty | — | `education-data-source-saipe` |
@@ -431,28 +430,28 @@ Key requirements:
 |--------|----------|------------------|
 | CCD | All public schools and districts | Annual |
 | IPEDS | All Title IV postsecondary institutions | Annual |
-| CRDC | Sample/universe of public schools | Biennial |
+| CRDC | All public schools and districts (universe since 2011-12) | Generally biennial (2020-21 and 2021-22 consecutive) |
 | Scorecard | Title IV aid recipients | Annual |
 | EDFacts | Public schools with state assessments | Annual |
 
 ## Data Lag Reference
 
-Data availability lags behind the current year. As of January 2026:
+Latest Portal `year` per family (mirror vintage 0.26.1 per `education-data-explorer`; live Portal endpoint metadata fetched 2026-10-19):
 
-| Source | Survey Component | Typical Lag | Latest Available |
-|--------|------------------|-------------|------------------|
-| **IPEDS** | Directory | ~1 year | 2023 |
-| **IPEDS** | Admissions-Enrollment | ~2 years | 2022 |
-| **IPEDS** | Fall Enrollment | ~2-3 years | 2021 |
-| **IPEDS** | Finance | ~2-3 years | Varies |
-| **CCD** | Directory/Enrollment | ~1-2 years | 2022 |
-| **CCD** | Finance | ~2-3 years | 2020 |
-| **CRDC** | All (biennial) | ~1-2 years | 2021 |
-| **EDFacts** | Assessments | ~1-2 years | 2020 |
-| **EDFacts** | Graduation Rates | ~1-2 years | 2020 |
-| **SAIPE** | Poverty estimates | ~18 months | 2023 |
-| **Scorecard** | Earnings/outcomes | ~2-3 years | 2020 |
-| **MEPS** | School poverty | ~2-3 years | 2019 |
+| Source | Component | Latest in mirror 0.26.1 | Live Portal API |
+|--------|-----------|-------------------------|-----------------|
+| **IPEDS** | Directory | 2024 | 2025 |
+| **IPEDS** | Admissions-Enrollment | 2024 | 2024 |
+| **IPEDS** | Fall Enrollment | 2024 | 2024 |
+| **IPEDS** | Finance | 2017 | 2023 |
+| **CCD** | Directory/Enrollment | 2024 | 2024 |
+| **CCD** | District finance | 2020 | 2020 |
+| **CRDC** | Most topics | 2021 (chronic absenteeism 2022) | 2021 (offerings 2023; chronic absenteeism 2022) |
+| **EDFacts** | Assessments | 2020 (no 2019) | 2020 (no 2019) |
+| **EDFacts** | Graduation Rates | 2019 | 2019 |
+| **SAIPE** | Poverty estimates (released ~12-13 months after the income year ends; DAAF inference) | 2024 | 2024 |
+| **Scorecard** | Earnings | 2018 | 2018 |
+| **MEPS** | School poverty | 2022 | 2022 |
 
 **Always verify year availability** before building pipelines. Use mirror discovery endpoints (see mirrors.yaml) or filter downloaded data to confirm which years are present. See `education-data-query` skill for mirror-based fetch patterns.
 
@@ -472,7 +471,7 @@ Data availability lags behind the current year. As of January 2026:
 4. **Calculate statistics without filtering coded values**
    - -1, -2, -3 are not zeros; they corrupt calculations
 
-5. **Compare 2020-2021 data to prior years without noting COVID**
+5. **Compare SY 2019-20 and 2020-21 data (Portal `year` 2019 and 2020 in fall-labeled families) to prior years without noting COVID**
    - Testing waivers, discipline changes, enrollment shifts
 
 6. **Merge data across years assuming stable identifiers**

@@ -58,13 +58,7 @@ Sometimes entire county's tracts are renumbered:
 
 ## Quantifying Changes: 1990-2020
 
-| Transition | Approximate Scale |
-|------------|-------------------|
-| 1990 to 2000 | ~15% of tracts changed |
-| 2000 to 2010 | ~18% of tracts changed |
-| 2010 to 2020 | ~20% of tracts changed |
-
-**Net growth**: ~62,000 tracts (1990) → ~74,000 tracts (2010) → ~85,000 tracts (2020)
+**Net growth**: 62,276 census tracts and BNAs (1990, incl. Puerto Rico and Outlying Areas; GARM ch. 10) → 85,528 census tracts (2020, incl. Puerto Rico and Island Areas; Census 2020 tallies)
 
 ## Block Group Changes
 
@@ -95,11 +89,11 @@ Counties rarely change, but notable exceptions:
 
 **Major change**: Census Bureau switched from 8 historical counties to 9 planning regions.
 
-- Affects all Connecticut tract and block group codes
+- Affects all Connecticut tract and block group codes, but not their land extents
 - GEOID changed for every CT tract (new county code embedded)
-- Requires crosswalks for any pre-2022 to post-2022 comparison
+- Pre-2022 to post-2022 comparisons need an ID crosswalk
 
-NHGIS provides crosswalks for this change in the 2022 non-census year crosswalks.
+NHGIS crosswalks cover this change only between different decades (e.g., 2012 to 2022 units); NHGIS has no 2020-to-2022 crosswalk and recommends CTData's 2020-2022 crosswalks or Geocorr 2022 for that pair.
 
 ## TIGER/Line Improvements
 
@@ -170,7 +164,7 @@ import polars as pl
 # If tract count in area changed, boundaries changed
 tracts_1990 = df_1990.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
 tracts_2020 = df_2020.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
-# LA County: ~1,600 in 1990 → ~2,300 in 2020
+# Illustrative (unsourced): any change in the count signals boundary changes
 ```
 
 ```r
@@ -179,7 +173,7 @@ library(dplyr)
 # If tract count in area changed, boundaries changed
 tracts_1990 <- df_1990 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
 tracts_2020 <- df_2020 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
-# LA County: ~1,600 in 1990 → ~2,300 in 2020
+# Illustrative (unsourced): any change in the count signals boundary changes
 ```
 
 ### Method 2: Check Crosswalk
@@ -254,12 +248,11 @@ When merging Portal data with direct NHGIS downloads:
 
 | Event | Year | Scope | Notes |
 |-------|------|-------|-------|
-| Full U.S. tract coverage | 1990 | National | First complete tract system |
+| Full U.S. tract/BNA coverage | 1990 | National | Counties without tracts had block numbering areas |
 | TIGER accuracy improvement | 2008 | National | Shapefile alignment changed |
 | Connecticut county dissolution | 2022 | Connecticut | Major ID changes |
 | Alaska borough changes | Various | Alaska | Ongoing adjustments |
 | Virginia independent cities | Various | Virginia | Cities separate from counties |
-| Post-Katrina tract changes | 2006 | Louisiana | Special census area changes |
 
 ## Resources
 

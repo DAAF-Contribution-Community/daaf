@@ -49,7 +49,7 @@ District/LEA-level mirror dataset families for the Urban Institute Education Dat
 - **Grain:** one row per `leaid` × `year` (Census model-based district poverty estimate).
 - **Key variables:** `district_id`, `district_name`, `est_population_total`, `est_population_5_17`, `est_population_5_17_pct`, `est_population_5_17_poverty`, `est_population_5_17_poverty_pct` (complete 10-var family: `variable-dictionary-saipe.md`).
 - **Join keys:** `leaid` (+ `year`) to CCD district directory/finance and EDFacts.
-- **Caveats:** `est_population_5_17_poverty_pct` is on a **0-1 scale despite the `_pct` suffix** — verify scale before treating as a percentage. No race/ethnicity disaggregation at district level (use ACS 5-year for that). ~18-month release lag. `saipe/districts_saipe` is a Polars-written parquet with `string_view` columns — the R arrow reader needs the view-safe pattern (see `education-data-query`).
+- **Caveats:** `est_population_5_17_poverty_pct` is on a **0-1 scale despite the `_pct` suffix** — verify scale before treating as a percentage. No race/ethnicity disaggregation at district level (use ACS 5-year for that). Released ~12-13 months after the income year ends (DAAF inference from Census release dates; 2024 estimates released Jan 27, 2026). `saipe/districts_saipe` is a Polars-written parquet with `string_view` columns — the R arrow reader needs the view-safe pattern (see `education-data-query`).
 - **Codebook:** `saipe/codebook_districts_saipe`
 - **Portal endpoint(s):** `/school-districts/saipe/{year}/`
 

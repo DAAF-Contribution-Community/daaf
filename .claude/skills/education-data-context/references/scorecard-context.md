@@ -35,19 +35,15 @@ Scorecard data covers ONLY students who received federal financial aid (Title IV
 
 ### Size of the Gap
 
-At some institutions, Title IV recipients may represent:
-- **Selective private colleges**: 30-50% of students
-- **Community colleges**: 60-80% of students
-- **For-profit colleges**: 80-90%+ of students
-- **Public flagships**: 50-70% of students
+Coverage varies widely by sector and selectivity; no published national ranges are cited here. Compute coverage for your sample (e.g., Scorecard `PCTPELL`/`PCTFLOAN` or IPEDS SFA shares).
 
-**The data systematically overrepresents lower-income students** who are more likely to need federal aid.
+**(DAAF inference) The data likely overrepresents lower-income students**, who are more likely to receive federal aid (follows from Title IV-only coverage; no published magnitude cited).
 
 ## Earnings Data
 
 ### What Earnings Data Shows
 
-Scorecard reports earnings from IRS W-2 records:
+Scorecard reports earnings from Treasury/IRS tax records (W-2 wages and deferred compensation plus positive Schedule SE self-employment earnings):
 - Median earnings
 - Earnings by percentile (25th, 75th)
 - Earnings thresholds (above $25K, $28K, etc.)
@@ -56,17 +52,16 @@ Scorecard reports earnings from IRS W-2 records:
 
 | Issue | Impact |
 |-------|--------|
-| Title IV only | Lower-income students overrepresented |
-| W-2 income only | Excludes self-employment, gig work |
+| Title IV only | Lower-income students likely overrepresented (DAAF inference) |
+| Tax-record earnings only | Unreported (cash) and non-labor income excluded |
 | Working students only | Non-employed excluded from earnings |
-| Suppression | <30 working students = suppressed |
+| Suppression | `PS` when privacy standards not met; DP noise; `*_SUPP` versions use a <30-student rule |
 | Time lag | 6-10 years after enrollment |
 
 ### What Earnings Excludes
 
-- Self-employment income (1099)
-- Gig economy earnings
-- Non-reported income
+- Unreported (cash-economy) income
+- Self-employment or gig income not reported on Schedule SE (inference)
 - Graduate school students (not working)
 - Stay-at-home parents
 - Deceased individuals
@@ -76,7 +71,7 @@ Scorecard reports earnings from IRS W-2 records:
 
 | Metric | Timing |
 |--------|--------|
-| Entry earnings | 1-2 years after entry (if available) |
+| Completer earnings (exit cohorts) | 1 and 5 years after completion (`MD_EARN_WNE_1YR`/`_5YR`; the Portal earnings rows probed carry only 6/8/10 years after entry) |
 | 6-year earnings | 6 years after entry |
 | 8-year earnings | 8 years after entry |
 | 10-year earnings | 10 years after entry |
@@ -92,7 +87,7 @@ def interpret_earnings(earnings_6yr, earnings_10yr, pct_employed):
     Context for earnings interpretation:
     - These are Title IV recipients only
     - Only employed individuals included
-    - Self-employment excluded
+    - Self-employment counted only via Schedule SE
     """
     notes = []
     
@@ -110,7 +105,7 @@ def interpret_earnings(earnings_6yr, earnings_10yr, pct_employed):
 # Context for earnings interpretation:
 # - These are Title IV recipients only
 # - Only employed individuals included
-# - Self-employment excluded
+# - Self-employment counted only via Schedule SE
 
 if (!is.null(pct_employed) && pct_employed < 0.7) {
   cat("WARNING: <70% employed; earnings may not be representative\n")
@@ -124,8 +119,9 @@ if (!is.null(earnings_10yr) && earnings_10yr < 30000) {
 ### Earnings Suppression
 
 Earnings are suppressed when:
-- Fewer than 30 students with positive earnings
-- Privacy thresholds not met
+- Cell sizes do not meet privacy standards (shown as `PS`; base-element threshold not stated in the October 2026 technical documentation)
+- Separate `*_SUPP` versions of consumer-site elements suppress institutions with fewer than 30 students in the denominator
+- Counts and medians also carry differential-privacy noise
 
 This particularly affects:
 - Small programs
@@ -139,14 +135,15 @@ This particularly affects:
 Scorecard debt data includes ONLY federal loans:
 - Direct Subsidized Loans
 - Direct Unsubsidized Loans
-- Perkins Loans
-- PLUS Loans
+- Grad PLUS (in graduate-student [LOAN]=FED metrics only)
+- Not Perkins: excluded from cumulative debt since the merged 2017-18 file (and from repayment-rate metrics)
+- Not Parent PLUS: excluded from cumulative debt metrics (reported separately)
 
 ### What Debt Excludes
 
 | Excluded | Why It Matters |
 |----------|----------------|
-| Private student loans | Often 10-20% of total borrowing |
+| Private student loans | Not tracked (share of borrowing varies; no figure cited) |
 | Institutional loans | Not tracked federally |
 | Credit card debt | Used for education expenses |
 | Family loans | Informal borrowing |
@@ -178,7 +175,7 @@ Complexities:
 | Scorecard default | May use different windows |
 
 Default rate limitations:
-- Only counts formal default (270+ days delinquent)
+- CDR counts a Direct Loan borrower as defaulted after 360 days of delinquency (270 days if delinquency began before Oct 7, 1998) and an FFEL borrower once a default claim is paid (FFEL statutory default: 270 days for monthly-installment loans, 20 U.S.C. §1085(l)) — 34 CFR 668.202(c)(1); Scorecard repayment-rate categories treat >360 days of nonpayment as default
 - Income-driven plans prevent default but may not build equity
 - Strategic behavior affects timing
 
@@ -186,19 +183,21 @@ Default rate limitations:
 
 ### Scorecard vs. IPEDS
 
-| Aspect | Scorecard | IPEDS |
+| Aspect | Scorecard NSLDS/Treasury-based measures | IPEDS |
 |--------|-----------|-------|
 | Who's tracked | Title IV recipients | First-time full-time |
 | Includes part-time | Yes | No |
 | Includes transfers | Entering transfers | No (at origin) |
 | Entry point | Any entry | Fall entry |
 
+Scorecard `C150_*`/`C200_*` completion rates are the IPEDS full-time, first-time rates, not Title IV-recipient cohorts.
+
 ### Cohort Year Meaning
 
-For `year=2014` earnings data:
-- Students who entered around 2008-2014
-- 6-year earnings measured in 2020
-- 10-year earnings measured in 2024
+For `year=2014` earnings data (Portal `year` = calendar year earnings are measured = `cohort_year` + `years_after_entry`):
+- 6-year earnings: students who entered in 2008
+- 8-year earnings: entered in 2006
+- 10-year earnings: entered in 2004
 
 Cohort definitions can be complex; check documentation.
 
@@ -211,8 +210,8 @@ Scorecard data has inherent lag:
 | Data Point | Typical Lag |
 |------------|-------------|
 | Enrollment cohort | 6-10 years ago |
-| Earnings measurement | 1-2 years for processing |
-| Data release | 1 year after measurement |
+| Earnings measurement | (Illustrative/unsourced — verify) 1-2 years for processing |
+| Data release | (Illustrative/unsourced — verify) 1 year after measurement |
 
 **Earnings for "newest" data may reflect students who entered 7+ years ago.**
 

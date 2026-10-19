@@ -529,7 +529,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 - **Type / years:** Yearly · file-year/linkage coverage 1980, 1984-2023 (census-geography vintages 1990-2020)
 - **Grain:** one row per `unitid` × `year` (institution geocoded to census geography).
 - **Key variables:** `county_fips`, `tract`, `block_group`, `geoid_block`, `census_region`, `census_division`, `cbsa`, `cbsa_name`, `puma`, `state_leg_district_upper`, `geo_latitude`, `geo_longitude` (full 39-var list: `variable-dictionary-nhgis.md` § `nhgis/colleges_nhgis_geog_{year}`).
-- **Join keys:** `unitid` (+ `year`) → downstream census-geography identifiers (`geoid_block`, `tract`, `cbsa`).
+- **Join keys:** `unitid` (+ `year`) → downstream census-geography identifiers (`geoid_block` (12-char block-group GEOID), `tract`, `cbsa`).
 - **Caveats:** **geography linkage ONLY** — provides crosswalks from institutions to census tracts/block groups/CBSAs, not census demographics. To attach demographics, browse the public NHGIS Data Finder and submit an extract with a free IPUMS NHGIS account (retrieval concern, not discovery). Four Portal census-vintage routes (1990/2000/2010/2020) feed the one mirror family; pick the geography vintage matching the analysis.
 - **Codebook:** `nhgis/codebook_colleges_nhgis_census1990` (also `_census2000`, `_census2010`, `_census2020` per geography vintage)
 - **Portal endpoint(s):** `/college-university/nhgis/census-1990/{year}/` (also `census-2000`, `census-2010`, `census-2020`)
@@ -564,4 +564,4 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 | Graduate earnings | `pseo/colleges_pseo_{year}` (LEHD) or `scorecard/colleges_scorecard_earnings` (Title IV) | `unitid` + `year` (PSEO: each `pseo_cohort` repeats under every `year` in its span; de-duplicate before aggregating) |
 | Endowment wealth | `ipeds/colleges_ipeds_finance` (all inst.) or `nacubo/colleges_nacubo_endow` (~650) | `unitid` + `year` |
 | Athletics gender equity | `eada/colleges_eada_inst_characteristics` + `ipeds/colleges_ipeds_directory` (for sector) | `unitid` + `year` |
-| Link institutions to census geography | `nhgis/colleges_nhgis_geog_{year}` | `unitid` + `year` → `geoid_block`/`tract` |
+| Link institutions to census geography | `nhgis/colleges_nhgis_geog_{year}` | `unitid` + `year` → `geoid_block` (12-char block-group GEOID)/`tract` |

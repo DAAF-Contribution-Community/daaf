@@ -19,7 +19,7 @@ df = fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
 df_colleges = fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
 
 # Available census years: 1990, 2000, 2010, 2020
-# All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
+# All files contain ALL data years (schools: 1986-2023, colleges: 1980, 1984-2023)
 # The census year determines which boundary vintage is used for geographic assignment
 ```
 
@@ -42,7 +42,7 @@ df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020",
 df_colleges <- read_parquet(paste0(mirror$root_url, "/", "nhgis/colleges_nhgis_geog_2020", ".", mirror$format))
 
 # Available census years: 1990, 2000, 2010, 2020
-# All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
+# All files contain ALL data years (schools: 1986-2023, colleges: 1980, 1984-2023)
 # The census year determines which boundary vintage is used for geographic assignment
 ```
 
@@ -84,7 +84,7 @@ https://data2.nhgis.org/main
 
 1. **Filter data** using sidebar options:
    - Geographic Levels (State, County, Tract, etc.)
-   - Years (1790-2023)
+   - Years (1790-2024 as of the February 2026 ACS release; check the live filter)
    - Topics (Population, Housing, etc.)
    - Datasets (Decennial, ACS periods)
 
@@ -99,7 +99,7 @@ https://data2.nhgis.org/main
 
 4. **Configure extract** (Continue button):
    - Select geographic levels for tables
-   - Choose output format (CSV, fixed-width)
+   - Choose output format (CSV; optional SAS/SPSS/Stata control files)
    - Select layout for time series
 
 5. **Submit extract**:
@@ -112,13 +112,14 @@ https://data2.nhgis.org/main
 | Format | Extension | Best For |
 |--------|-----------|----------|
 | CSV | .csv | General use, Excel, Python, R |
-| Fixed-width | .dat | Legacy systems, Stata |
 | Shapefile | .shp | GIS software |
+
+> NHGIS discontinued fixed-width table extracts on 2026-02-11; table data are delivered as CSV only, with optional control files for SAS, SPSS, or Stata (NHGIS Revision History).
 
 ### Extract Contents
 
 Each extract includes:
-- Data file(s) (.csv or .dat)
+- Data file(s) (.csv)
 - Codebook (.txt) - variable descriptions
 - For GIS: multiple shapefile components
 
@@ -128,13 +129,13 @@ Each extract includes:
 
 RESTful API for programmatic data requests.
 
-**Documentation**: https://developer.ipums.org/docs/apiprogram/
+**Documentation**: https://developer.ipums.org/docs/v2/apiprogram/
 
 ### Authentication
 
 ```bash
 # API key in header
-curl -X GET "https://api.ipums.org/metadata/nhgis/datasets" \
+curl -X GET "https://api.ipums.org/metadata/datasets?collection=nhgis&version=2" \
   -H "Authorization: YOUR_API_KEY"
 ```
 
@@ -142,9 +143,9 @@ curl -X GET "https://api.ipums.org/metadata/nhgis/datasets" \
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/metadata/nhgis/datasets` | List available datasets |
-| `/metadata/nhgis/data_tables` | List tables |
-| `/metadata/nhgis/time_series_tables` | List time series |
+| `/metadata/datasets?collection=nhgis&version=2` | List available datasets |
+| `/metadata/data_tables?collection=nhgis&version=2` | List tables |
+| `/metadata/time_series_tables?collection=nhgis&version=2` | List time series |
 | `/extracts/` | Create and manage extracts |
 
 ### Creating Extract via API
@@ -159,17 +160,17 @@ headers = {"Authorization": api_key}
 extract_def = {
     "datasets": {
         "2016_2020_ACS5a": {
-            "data_tables": ["B01001"],
-            "geog_levels": ["tract"]
+            "dataTables": ["B01001"],
+            "geogLevels": ["tract"]
         }
     },
-    "data_format": "csv_no_header",
+    "dataFormat": "csv_no_header",
     "description": "Population by age, tract level"
 }
 
-# Submit extract
+# Submit extract (IPUMS API Version 2)
 response = requests.post(
-    "https://api.ipums.org/extracts/?collection=nhgis&version=v1",
+    "https://api.ipums.org/extracts/?collection=nhgis&version=2",
     headers=headers,
     json=extract_def
 )
@@ -186,16 +187,16 @@ api_key <- "YOUR_API_KEY"
 extract_def <- list(
   datasets = list(
     `2016_2020_ACS5a` = list(
-      data_tables = list("B01001"),
-      geog_levels = list("tract")
+      dataTables = list("B01001"),
+      geogLevels = list("tract")
     )
   ),
-  data_format = "csv_no_header",
+  dataFormat = "csv_no_header",
   description = "Population by age, tract level"
 )
 
 # Submit extract
-resp <- request("https://api.ipums.org/extracts/?collection=nhgis&version=v1") |>
+resp <- request("https://api.ipums.org/extracts/?collection=nhgis&version=2") |>
   req_headers(Authorization = api_key) |>
   req_body_json(extract_def) |>
   req_perform()
@@ -206,35 +207,35 @@ extract_id <- resp_body_json(resp)$number
 ### Checking Extract Status
 
 ```python
-status_url = f"https://api.ipums.org/extracts/{extract_id}?collection=nhgis&version=v1"
+status_url = f"https://api.ipums.org/extracts/{extract_id}?collection=nhgis&version=2"
 response = requests.get(status_url, headers=headers)
 status = response.json()["status"]
-# "queued", "started", "completed", "failed"
+# "queued", "started", "produced", "canceled", "failed", "completed"
 ```
 
 ```r
 status_url <- paste0(
   "https://api.ipums.org/extracts/", extract_id,
-  "?collection=nhgis&version=v1"
+  "?collection=nhgis&version=2"
 )
-response <- GET(status_url, add_headers(Authorization = api_key))
-status <- content(response)$status
-# "queued", "started", "completed", "failed"
+response <- request(status_url) |> req_headers(Authorization = api_key) |> req_perform()
+status <- resp_body_json(response)$status
+# "queued", "started", "produced", "canceled", "failed", "completed"
 ```
 
 ### Downloading Extract
 
 ```python
 if status == "completed":
-    download_links = response.json()["download_links"]
-    for link in download_links:
+    download_links = response.json()["downloadLinks"]
+    for name, link in download_links.items():
         data = requests.get(link["url"], headers=headers)
         # Save to file
 ```
 
 ```r
 if (status == "completed") {
-  download_links <- content(response)$download_links
+  download_links <- resp_body_json(response)$downloadLinks
   for (link in download_links) {
     download.file(link$url, destfile = basename(link$url),
                   headers = c(Authorization = api_key))
@@ -412,12 +413,12 @@ downloaded <- download_extract(submitted)
 
 ## Accessing Geographic Crosswalks
 
-Crosswalks are not available via API. Download directly:
+Crosswalk files require a signed-in IPUMS account: `secure-assets.ipums.org` crosswalk links redirect to the IPUMS login page (observed 2026-10-19). They are also available through the IPUMS API (Version 2 supplemental-data endpoints, added October 2024): replace `https://secure-assets.ipums.org/` with `https://api.ipums.org/supplemental-data/` and send the API key in the `Authorization` header.
 
-### Web Download
+### Web Download (login required)
 https://www.nhgis.org/geographic-crosswalks#download
 
-### Direct URLs (Examples)
+### Direct URLs (Examples; login or API key required)
 
 ```
 # 2000 blocks to 2010 tracts
@@ -510,7 +511,7 @@ Universe:    Total population
 
 - Select specific states (geographic extent) when possible
 - Request only needed geographic levels
-- Use fixed-width format for very large files
+- Request only the tables and years you need (fixed-width output was discontinued 2026-02-11)
 
 ### Efficient API Usage
 

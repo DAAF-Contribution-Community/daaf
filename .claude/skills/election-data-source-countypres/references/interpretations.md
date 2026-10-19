@@ -42,11 +42,12 @@ confirmed 1:1 state_po mapping via `county_fips // 1000`.
 ### mode Column Behavior Change
 
 [PRELIMINARY] The `mode` column represents a structural change in how election data was
-reported starting in 2020. States that report by voting method provide both the breakdown
-rows AND a TOTAL row, meaning naive row-level analysis would double-count votes.
+reported starting in 2020. Some states report breakdown rows AND a TOTAL row (naive
+row-level summing double-counts), while others report ONLY breakdown rows (a naive
+`mode == "TOTAL"` filter drops them) — see `mode-reconstruction.md`.
 
-**Basis:** 2000-2016 have only "TOTAL"; 2020 has 16 modes across 11 states plus TOTAL
-for all states; 2024 continues the pattern with different states and modes.
+**Basis:** 2000-2016 have only "TOTAL"; 2020 has 15 breakdown modes across 11 states, 10 of
+which have no TOTAL rows; 2024 continues the pattern with different states and modes.
 
 ### Non-Candidate Entries
 

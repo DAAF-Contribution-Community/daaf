@@ -9,7 +9,7 @@ Connecting schools to census demographics requires establishing geographic relat
 | Point-in-polygon | School coordinates | Tract/BG assignment | Custom analysis |
 | NCES EDGE files | NCES school ID | District-to-tract relationships | District-level work |
 | Education Data Portal | NCES school ID | Pre-linked tract data | Quick lookups |
-| SABINS | SABINS boundary ID | Attendance area demographics | 2009-2012 only |
+| SABINS | SABINS boundary ID | Attendance area demographics | 2009-10 and 2010-11 (2011-12 Minnesota only) |
 | Geocoding | School address | Coordinates or tract | When coordinates missing |
 
 ## Method 1: Point-in-Polygon Spatial Join
@@ -102,11 +102,12 @@ NCES provides pre-computed relationships between school districts and census uni
 
 The EDGE School District Geographic Relationship Files show how census tracts relate to school districts.
 
-**Key fields**:
+**Key fields** (`grfxx_lea_tract`, per the NCES GRF technical documentation):
 - `LEAID`: NCES district ID (7 characters)
-- `GEOID`: Census tract ID (11 characters)
-- `LANDAREA`: Land area in square meters
-- `AESSION`: Allocation session
+- `NAME_LEAXX`: District name
+- `TRACT`: Census tract ID (11 characters: state + county + tract)
+- `COUNT`: Total number of tracts in the LEA
+- `LANDAREA`: Land area in square miles
 
 **Types of relationships**:
 1. **Tract fully in district**: Tract entirely within district boundaries
@@ -118,8 +119,8 @@ The EDGE School District Geographic Relationship Files show how census tracts re
 ```python
 import polars as pl
 
-# Load EDGE relationship file (from NCES download, not Portal)
-edge = pl.read_csv("EDGE_GEOCODE_PUBLICSCH_2223.csv")
+# Load the EDGE GRF LEA-to-tract file (grfxx_lea_tract; xx = vintage; NCES download, not Portal)
+edge = pl.read_csv("grfxx_lea_tract.csv", schema_overrides={"LEAID": pl.Utf8, "TRACT": pl.Utf8})  # placeholder name/format: match your download; keep IDs as strings
 
 # Filter to specific district
 district_tracts = edge.filter(pl.col("LEAID") == "0622710")
@@ -132,8 +133,8 @@ tracts_in_district = district_tracts.select("TRACT").unique()
 library(dplyr)
 library(readr)
 
-# Load EDGE relationship file (from NCES download, not Portal)
-edge <- read_csv("EDGE_GEOCODE_PUBLICSCH_2223.csv")
+# Load the EDGE GRF LEA-to-tract file (grfxx_lea_tract; xx = vintage; NCES download, not Portal)
+edge <- read_csv("grfxx_lea_tract.csv", col_types = cols(LEAID = col_character(), TRACT = col_character()))  # placeholder name/format
 
 # Filter to specific district
 district_tracts <- edge |> filter(LEAID == "0622710")
@@ -167,7 +168,9 @@ See `datasets-reference.md` for all canonical paths. Key paths:
 | Colleges Census 2010 | `nhgis/colleges_nhgis_geog_2010` |
 | Colleges Census 2020 | `nhgis/colleges_nhgis_geog_2020` |
 
-Each file contains ALL data years (schools: 1986-2023, colleges: 1980-2023). The census year in the file name determines which boundary vintage is used for geographic assignment.
+Each file contains ALL data years (schools: 1986-2023, colleges: 1980, 1984-2023). The census year in the file name determines which boundary vintage is used for geographic assignment.
+
+The `year` column follows the CCD/IPEDS directory year (a 2016 NHGIS schools record carries the same coordinates as the 2016 CCD directory record; the 2017 D.C. colleges NHGIS records match the 2017 IPEDS directory institution set, not the 2016 set; Portal API, observed 2026-10-19).
 
 ### Key Variables (Schools)
 
@@ -177,12 +180,12 @@ Each file contains ALL data years (schools: 1986-2023, colleges: 1980-2023). The
 | `leaid` | NCES district ID | Int64 |
 | `tract` | Census tract number | Int64 |
 | `block_group` | Block group number (1-9; 0 = unassigned) | Int64 |
-| `geoid_block` | Full block FIPS identifier | Int64 |
+| `geoid_block` | Block-group GEOID (12 characters; not a 15-character block ID despite the name) | Int64 |
 | `census_region` | Census region (1-4, 9 for territories) | Int64 |
 | `census_division` | Census division (1-9) | Int64 |
 | `cbsa` | CBSA code (2000+ census files only) | Int64 |
 | `cbsa_type` | 1=Metropolitan, 2=Micropolitan (2000+ only) | Int64 |
-| `geocode_accuracy` | Match score (0-100; -2=not geocoded) | Float64 |
+| `geocode_accuracy` | Match score (0-100; -2=not applicable per codebook) | Float64 |
 
 ### Querying via Mirror
 
@@ -248,8 +251,8 @@ SABINS provides actual school attendance boundaries (catchment areas) for select
 |-------------|--------|
 | 2009-10 | Available |
 | 2010-11 | Available |
-| 2011-12 | Available |
-| After 2012 | Not available (funding ended) |
+| 2011-12 | Boundary files for Minnesota only |
+| After 2011-12 | Not available |
 
 ### Geographic Coverage
 
@@ -283,7 +286,7 @@ Crosswalk tables available for each grade:
 
 ### Limitations
 
-- **Historical only**: No data after 2011-12 school year
+- **Historical only**: No boundaries after 2011-12, and 2011-12 covers Minnesota only
 - **Incomplete coverage**: Many districts not included
 - **Grade-specific**: Boundaries vary by grade level
 - **No current equivalent**: No national source for current attendance boundaries

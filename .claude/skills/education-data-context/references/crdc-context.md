@@ -9,14 +9,14 @@ The CRDC collects data on equity indicators and civil rights compliance from pub
 | Collector | U.S. Department of Education, Office for Civil Rights |
 | Respondents | Public schools and districts |
 | Focus | Educational equity and civil rights |
-| Frequency | Biennial (every 2 years) |
-| Available Years | 2011, 2013, 2015, 2017, 2020, 2021 |
+| Frequency | Generally biennial (2020-21 and 2021-22 were consecutive) |
+| Available Years | Portal: 2011, 2013, 2015, 2017, 2020, 2021 for most topics; chronic absenteeism also 2022 (EDFacts-sourced); some topics (e.g., offerings) also 2023 |
 | Primary Use | Discipline, course access, resource equity |
 
 ### Historical Context
 
 - First collected 1968 as part of civil rights enforcement
-- Modern collection began 2009-10 (released 2011)
+- Collections from 1968 to 2010 were samples (except 1976 and 2000); every collection from 2011-12 on is a universe collection
 - Scope and variables have expanded over time
 - Focus on identifying discrimination and inequity
 
@@ -24,19 +24,21 @@ The CRDC collects data on equity indicators and civil rights compliance from pub
 
 ### Available Years
 
-| School Year | Release Year | Notes |
+| School Year (Portal `year`) | Data Released | Notes |
 |-------------|--------------|-------|
-| 2011-12 | 2012 | Sampled subset of schools |
-| 2013-14 | 2014 | Expanded universe |
-| 2015-16 | 2016 | Near-universe |
-| 2017-18 | 2018 | Universe collection |
-| 2020-21 | 2021 | COVID-19 impacted year |
+| 2011-12 (2011) | 2014 (Data Snapshot, March 21, 2014) | Universe collection (all public schools and districts) |
+| 2013-14 (2013) | 2016 (First Look, June 7, 2016) | Universe |
+| 2015-16 (2015) | 2018 (OCR brief, April 2018) | Universe |
+| 2017-18 (2017) | 2020 (user's manual dated June 2020) | Universe; chronic absenteeism taken from EDFacts |
+| 2020-21 (2020) | 2023 (user's manual dated September 19, 2023) | Universe; COVID-19 impacted year |
+| 2021-22 (2021) | 2025 (January 17, 2025) | Universe; consecutive with 2020-21 |
+| 2023-24 (2023) | 2026 (August 31, 2026) | Universe; Portal exposes 2023 for some topics only (e.g., offerings) |
 
 ### NOT Annual Data
 
-**Critical**: CRDC is collected every TWO years.
+**Critical**: CRDC is generally collected every other school year (2020-21 and 2021-22 were consecutive).
 - Cannot interpolate between collection years
-- No data for 2012, 2014, 2016, 2018, 2019
+- No collections for school years 2012-13, 2014-15, 2016-17, 2018-19, 2019-20, 2022-23 (chronic-absenteeism files nonetheless reach Portal 2022 via EDFacts)
 
 ### Timing Within Year
 
@@ -51,18 +53,19 @@ Data reflects the full school year (not point-in-time):
 
 | Collection | Approach |
 |------------|----------|
-| 2011-12 | Sample of ~7,000 districts |
-| 2013-14 | Expanded sample |
-| 2015-16 | Near-universe (~96,000 schools) |
-| 2017-18 | Universe (all public schools) |
-| 2020-21 | Universe |
+| 2011-12 | Universe (all public schools and districts; 98.4% of districts, 99.2% of schools responded) |
+| 2013-14 | Universe (16,758 districts; 95,507 schools) |
+| 2015-16 | Universe (96,440 schools, final target) |
+| 2017-18 | Universe (~97,600 schools; 17,637 LEAs final target) |
+| 2020-21 | Universe (~97,500 schools) |
+| 2021-22 | Universe (~98,000 schools) |
+| 2023-24 | Universe (17,591 LEAs; 97,094 schools) |
 
 ### Coverage Implications
 
-- Early years: Not all schools represented
-- Cannot aggregate early samples to national totals
-- Sample weights not provided
-- Comparisons across years require same schools
+- Every collection from 2011-12 on is a universe collection (OCR); 1968-2010 collections were samples, except 1976 and 2000
+- Nonresponse and suppression still apply — check coverage against CCD
+- Cross-year comparisons still need attention to openings/closures and definition changes
 
 ### Verifying Coverage
 
@@ -171,9 +174,9 @@ disparity_ratio <- rate1 / rate2
 |-------------------|-----------------|
 | Basic discipline | 2011 |
 | Restraint/seclusion | 2011 |
-| Chronic absenteeism | 2015 |
-| Preschool suspension | 2015 |
-| Sexual harassment | 2015 |
+| Chronic absenteeism | 2013 (CRDC form 2013-14 and 2015-16; taken from EDFacts from 2017-18) |
+| Preschool suspension | 2011 (first collected 2011-12); Portal exposes preschool suspension instances from 2015 (discipline-instances) |
+| Harassment or bullying (incl. on the basis of sex) | 2011 (Portal student counts; allegation counts from 2013) |
 | Advanced coursework access | 2011 (expanded later) |
 
 ### Definition Changes
@@ -190,8 +193,8 @@ Check that variables exist for your year:
 # Verify variable availability
 def check_variable_availability(variable, year):
     availability = {
-        "chronic_absent": [2015, 2017, 2020],
-        "preschool_suspend": [2015, 2017, 2020],
+        "chronic_absent": [2013, 2015, 2017, 2020, 2021, 2022],  # Portal years; 2017+ sourced from EDFacts
+        "preschool_suspend": [2015, 2017, 2020, 2021],  # Portal discipline-instances years
         # Add more as needed
     }
     if year not in availability.get(variable, []):
@@ -201,15 +204,15 @@ def check_variable_availability(variable, year):
 ```r
 # Verify variable availability
 availability <- list(
-  chronic_absent = c(2015, 2017, 2020),
-  preschool_suspend = c(2015, 2017, 2020)
+  chronic_absent = c(2013, 2015, 2017, 2020, 2021, 2022),  # Portal years; 2017+ sourced from EDFacts
+  preschool_suspend = c(2015, 2017, 2020, 2021)
 )
 if (!(year %in% availability[[variable]])) {
   cat(sprintf("WARNING: %s not available for %s\n", variable, year))
 }
 ```
 
-## COVID-19 Impact (2020-2021)
+## COVID-19 Impact (2020-21 collection, Portal `year` 2020)
 
 The 2020-21 collection reflects pandemic conditions:
 
@@ -218,14 +221,14 @@ The 2020-21 collection reflects pandemic conditions:
 | Domain | Impact |
 |--------|--------|
 | Discipline | Reduced due to remote learning |
-| Chronic absenteeism | Definition changed (virtual attendance) |
+| Chronic absenteeism | Taken from EDFacts (state-reported) since 2017-18; reflects pandemic attendance disruption — compare with caution (no OCR redefinition documented) |
 | Course enrollment | AP/IB offerings may have changed |
 | School staffing | Significant changes |
 
 ### What's Different
 
 1. **Reduced in-person time**: Discipline naturally lower
-2. **Virtual attendance**: Absenteeism measured differently
+2. **Attendance disruption**: 2020-21 absenteeism reflects remote/hybrid schooling; a uniform 15-day definition across states after 2016 was not verified
 3. **Course access**: Some courses not offered
 4. **New indicators**: COVID-specific variables added
 
@@ -293,7 +296,7 @@ merged <- crdc |> left_join(ccd, by = "ncessch")
 
 ### Year Alignment
 
-CRDC is biennial; align with correct CCD year:
+CRDC is generally biennial; align with correct CCD year:
 
 | CRDC Collection | CCD Year to Use |
 |-----------------|-----------------|
@@ -302,7 +305,7 @@ CRDC is biennial; align with correct CCD year:
 
 ### Coverage Differences
 
-Not all CCD schools are in CRDC (especially early years):
+Not all CCD schools are in CRDC (nonresponse and differing school universes, even in universe years):
 - Check for nulls after merge
 - Document schools dropped due to non-match
 
@@ -311,7 +314,7 @@ Not all CCD schools are in CRDC (especially early years):
 ### Suppression Rules
 
 Small cell sizes are suppressed for privacy:
-- Typically counts fewer than 3-5 students
+- No fixed OCR cutoff: 2011-12 counts were rounded in groups of three; 2015-16 suppressed small cells and rounded other counts; 2020-21 onward uses small random perturbation plus data-quality suppression. Portal -3 marks suppressed values (check the codebook for the OCR-code mapping)
 - Affects subgroup breakdowns
 - More suppression in smaller schools
 
@@ -347,7 +350,7 @@ if (rate > 10) {
 
 ### Before Analysis
 
-1. **Check collection year coverage** - Sample vs. universe
+1. **Check collection year and topic coverage** - universe since 2011-12, but topics vary by year
 2. **Verify variable exists** - Not all variables all years
 3. **Compare definitions** - Review codebook for your year
 4. **Check suppression** - Especially for subgroup analysis
@@ -362,7 +365,7 @@ if (rate > 10) {
 
 ### For Time Series
 
-1. **Use only universe years for trends** - 2015+
+1. **Use years in which your topic is collected** - all collections from 2011-12 on are universe
 2. **Same schools across years** - Restrict to consistent sample
 3. **Note definition changes**
 4. **Exclude or flag 2020-21**
@@ -387,11 +390,11 @@ if (rate > 10) {
 
 | Task | Guidance |
 |------|----------|
-| Checking availability | CRDC is biennial (2011, 2013, 2015, 2017, 2020, 2021) |
-| Using early years | Note sample vs. universe |
+| Checking availability | CRDC is generally biennial (Portal 2011, 2013, 2015, 2017, 2020, 2021; some topics also 2022 or 2023) |
+| Using early years | 2011-12 onward are universe collections; check topic availability |
 | Discipline analysis | Rates, not counts; within-type comparisons |
 | Subgroup analysis | Check suppression first |
-| Time series | Use 2015+ for consistency; flag COVID year |
+| Time series | Check topic availability by year; flag COVID year (Portal 2020 = 2020-21) |
 | Linking to CCD | Use NCESSCH; check coverage |
 | COVID year | Do not compare directly to prior years |
 | Course access | Distinguish offered vs. enrolled |

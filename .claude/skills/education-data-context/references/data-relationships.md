@@ -196,7 +196,7 @@ ccd = pl.read_parquet("data/raw/schools_ccd_directory.parquet").filter(
 # Load CRDC discipline from mirror (yearly files)
 crdc = pl.read_parquet("data/raw/schools_crdc_discipline_k12_2017.parquet")
 
-# Join on ncessch (CRDC is biennial - verify year alignment)
+# Join on ncessch (CRDC is generally biennial - verify year alignment)
 merged = ccd.join(
     crdc,
     on="ncessch",
@@ -218,7 +218,7 @@ ccd <- read_parquet("data/raw/schools_ccd_directory.parquet") |> filter(year == 
 # Load CRDC discipline from mirror (yearly files)
 crdc <- read_parquet("data/raw/schools_crdc_discipline_k12_2017.parquet")
 
-# Join on ncessch (CRDC is biennial - verify year alignment)
+# Join on ncessch (CRDC is generally biennial - verify year alignment)
 merged <- ccd |> left_join(crdc, by = "ncessch", suffix = c("", "_crdc"))
 
 # Check coverage
@@ -237,7 +237,7 @@ ipeds = pl.read_parquet("data/raw/colleges_ipeds_directory.parquet").filter(
 )
 
 scorecard = pl.read_parquet("data/raw/colleges_scorecard_earnings.parquet").filter(
-    pl.col("year") == 2014  # Cohort year
+    pl.col("year") == 2014  # Measurement year (= cohort_year + years_after_entry)
 )
 
 # Join on unitid
@@ -268,7 +268,7 @@ merged <- ipeds |> left_join(scorecard, by = "unitid", suffix = c("", "_scorecar
 
 | Source 1 | Source 2 | Alignment Issue |
 |----------|----------|-----------------|
-| CCD | CRDC | CRDC is biennial |
+| CCD | CRDC | CRDC is generally biennial |
 | IPEDS enrollment | IPEDS grad rates | Grad rates are cohort-based |
 | Scorecard earnings | IPEDS | Earnings lag enrollment by 6-10 years |
 | CCD | EDFacts | Generally aligned |
@@ -277,7 +277,7 @@ merged <- ipeds |> left_join(scorecard, by = "unitid", suffix = c("", "_scorecar
 ### CRDC Biennial Alignment
 
 ```python
-# CRDC available years: 2011, 2013, 2015, 2017, 2020, 2021
+# CRDC available years (most topics): 2011, 2013, 2015, 2017, 2020, 2021
 # Use matching CCD year
 
 crdc_to_ccd_years = {
@@ -303,7 +303,7 @@ def get_aligned_data(crdc_year):
 ```
 
 ```r
-# CRDC available years: 2011, 2013, 2015, 2017, 2020, 2021
+# CRDC available years (most topics): 2011, 2013, 2015, 2017, 2020, 2021
 # Use matching CCD year
 crdc_year <- 2017
 crdc <- read_parquet(sprintf("data/raw/schools_crdc_discipline_k12_%d.parquet", crdc_year))
@@ -315,8 +315,8 @@ merged <- crdc |> left_join(ccd, by = "ncessch")
 ### IPEDS Cohort Alignment
 
 ```python
-# Graduation rates for year=2015 means cohort entered in 2015
-# 150% completion measured 6 years later (2021 for 4-year schools)
+# Graduation-rate `year` is NOT the entry year; select the cohort with `cohort_year`
+# (GR200 4-year: cohort_year = year - 7; 150% GR 4-year: year - 5; verified 2026-10-19)
 
 def get_ipeds_with_outcomes(enrollment_year):
     """
@@ -327,27 +327,27 @@ def get_ipeds_with_outcomes(enrollment_year):
         "data/raw/colleges_ipeds_fall_enrollment.parquet"
     ).filter(pl.col("year") == enrollment_year)
 
-    # Graduation rate cohort year = enrollment year
+    # Select the cohort that entered in enrollment_year, whatever its Portal year label
     # But outcomes measured later
     grad_rates = pl.read_parquet(
         "data/raw/colleges_ipeds_grad_rates_200pct.parquet"
-    ).filter(pl.col("year") == enrollment_year)
+    ).filter(pl.col("cohort_year") == enrollment_year)
 
     return enrollment.join(grad_rates, on="unitid", how="left")
 ```
 
 ```r
-# Graduation rates for year=2015 means cohort entered in 2015
-# 150% completion measured 6 years later (2021 for 4-year schools)
+# Graduation-rate `year` is NOT the entry year; select the cohort with `cohort_year`
+# (GR200 4-year: cohort_year = year - 7; 150% GR 4-year: year - 5; verified 2026-10-19)
 enrollment_year <- 2015
 
 enrollment <- read_parquet("data/raw/colleges_ipeds_fall_enrollment.parquet") |>
   filter(year == enrollment_year)
 
-# Graduation rate cohort year = enrollment year
+# Select the cohort that entered in enrollment_year, whatever its Portal year label
 # But outcomes measured later
 grad_rates <- read_parquet("data/raw/colleges_ipeds_grad_rates_200pct.parquet") |>
-  filter(year == enrollment_year)
+  filter(cohort_year == enrollment_year)
 
 merged <- enrollment |> left_join(grad_rates, by = "unitid")
 ```
@@ -356,20 +356,18 @@ merged <- enrollment |> left_join(grad_rates, by = "unitid")
 
 ```python
 # Scorecard earnings are measured 6-10 years after entry
-# year field refers to measurement year or cohort year depending on variable
+# Portal earnings `year` = measurement year (= cohort_year + years_after_entry); filter on years_after_entry
 
-# Example: If you want earnings for students who enrolled ~2014
-# Look at ~2020 (6-year) or ~2024 (10-year) measurement years
-# But data release lags by 1-2 additional years
+# Example: students who enrolled ~2008 → Portal `year` 2014 (6-year) or 2018 (10-year)
+# Portal earnings years available: 2003-2014 and 2018 only
 ```
 
 ```r
 # Scorecard earnings are measured 6-10 years after entry
-# year field refers to measurement year or cohort year depending on variable
+# Portal earnings `year` = measurement year (= cohort_year + years_after_entry); filter on years_after_entry
 
-# Example: If you want earnings for students who enrolled ~2014
-# Look at ~2020 (6-year) or ~2024 (10-year) measurement years
-# But data release lags by 1-2 additional years
+# Example: students who enrolled ~2008 → Portal `year` 2014 (6-year) or 2018 (10-year)
+# Portal earnings years available: 2003-2014 and 2018 only
 ```
 
 ## Common Join Pitfalls
@@ -635,7 +633,7 @@ Note: FIPS codes skip some numbers (e.g., no 03, 07, 14, etc.)
 | Task | Join Key(s) | Notes |
 |------|-------------|-------|
 | Schools to districts | `leaid`, `year` | Same source |
-| CCD to CRDC | `ncessch` | Check year alignment (CRDC biennial) |
+| CCD to CRDC | `ncessch` | Check year alignment (CRDC generally biennial) |
 | CCD to EDFacts | `ncessch`, `year` | Same year alignment |
 | IPEDS to Scorecard | `unitid` | Different cohort definitions |
 | Schools to census | `ncessch` | Via NHGIS; check vintage |

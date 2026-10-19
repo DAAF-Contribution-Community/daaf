@@ -1,17 +1,17 @@
 ---
 name: election-data-source-countypres
 description: >-
-  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY set via environment_settings.txt. Critical: naive mode='TOTAL' filtering silently drops ~1,000 counties in post-2020 data where states report by vote mode (absentee, election-day, provisional) instead of totals — use 3-pattern reconstruction (TOTAL-present rows kept, breakdown-only counties summed across modes, empty-string mode rows reclassified). Categorical variables use uppercase strings, not Portal integer codes.
+  County Presidential Returns 2000-2024 (MIT MEDSL). Vote shares, party trends, turnout by county_fips (joins census/education data). Requires HARVARD_DATAVERSE_API_KEY set via environment_settings.txt. Critical: naive mode='TOTAL' filtering silently drops every county in breakdown-only states in 2020-and-later data (848 county-equivalents across the 10 such states in 2020), which report by vote mode (absentee, election-day, provisional) instead of totals — use 3-pattern reconstruction (TOTAL-present rows kept, breakdown-only counties summed across modes, empty-string mode rows reclassified). Categorical variables use uppercase strings, not Portal integer codes.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-23"
-  skill-last-updated: "2026-09-15"
+  skill-last-updated: "2026-10-19"
 ---
 
 # County Presidential Data Source Reference
 
-County Presidential Election Returns 2000-2024 from MIT Election Data and Science Lab (MEDSL). Use when analyzing county-level presidential vote shares, party trends, turnout, or geographic voting patterns. Key join column county_fips enables linking to census, education (CCD/SAIPE), and demographic datasets. Requires Harvard Dataverse API key (HARVARD_DATAVERSE_API_KEY env var). Categorical variables use uppercase strings, not Portal integer codes. Critical caveat: naive mode='TOTAL' filtering silently drops ~1,000 counties in 2020+ data — use 3-pattern reconstruction.
+County Presidential Election Returns 2000-2024 from MIT Election Data and Science Lab (MEDSL). Use when analyzing county-level presidential vote shares, party trends, turnout, or geographic voting patterns. Key join column county_fips enables linking to census, education (CCD/SAIPE), and demographic datasets. Requires Harvard Dataverse API key (HARVARD_DATAVERSE_API_KEY env var). Categorical variables use uppercase strings, not Portal integer codes. Critical caveat: naive mode='TOTAL' filtering silently drops ~850 counties in 2020 data — use 3-pattern reconstruction.
 
 The authoritative source for county-level U.S. presidential election returns spanning 2000-2024. Provides candidate-level vote counts across all 50 states and DC, enabling vote share analysis, partisan trend mapping, and cross-domain geographic research via FIPS code joins.
 
@@ -58,8 +58,10 @@ The authoritative source for county-level U.S. presidential election returns spa
 - **Available years:** 2000, 2004, 2008, 2012, 2016, 2020, 2024
 - **Primary identifier:** `county_fips` (5-digit FIPS code, stored as integer)
 - **Record unit:** One row per county-year-candidate-party-mode combination
-- **Total records:** 94,151 rows x 12 columns (~8.4 MB). Note: rows per year vary dramatically — 2020/2024 have ~2x rows due to mode breakdowns (~22K vs ~9.5K for earlier years)
+- **Total records:** 94,151 rows x 12 columns (Dataverse `countypres_2000-2024.tab` 9,845,506 bytes; original CSV upload 10,222,208 bytes, per Dataverse dataset metadata fetched 2026-10-19). Note: rows per year vary dramatically — 2020/2024 have ~2x rows due to mode breakdowns (~22K vs ~9.5K for earlier years)
 - **Source:** Harvard Dataverse (DOI: 10.7910/DVN/VOQCHQ)
+- **Citation:** MIT Election Data and Science Lab, 2018, "County Presidential Election Returns 2000-2024", https://doi.org/10.7910/DVN/VOQCHQ, Harvard Dataverse, V20, UNF:6:xvsJJxrfXMIvzAuDYlfvVw== [fileUNF]
+- **License / version:** CC0 1.0; Dataverse V20 released 2026-02-25 (file version stamp 20260211)
 
 ## Reference File Structure
 
@@ -79,7 +81,7 @@ The authoritative source for county-level U.S. presidential election returns spa
 ```
 Analyzing presidential election data?
 ├─ County-level vote shares → Use 3-pattern mode reconstruction (./references/mode-reconstruction.md)
-│   └─ Longitudinal (cross-year) → MUST reconstruct TOTAL for 2020+ (naive filter drops ~1,000 counties)
+│   └─ Longitudinal (cross-year) → MUST reconstruct TOTAL for 2020+ (naive filter drops ~850 counties in 2020; 2024 count not verified)
 │   └─ Single year (pre-2020) → Safe to filter mode='TOTAL'
 │   └─ Single year (2020/2024) → Reconstruct unless analyzing a known TOTAL-only state
 ├─ Party trends → Group by year + party, use party column (not candidate name)
@@ -103,7 +105,7 @@ Unexpected values?
 │   └─ See ./references/quality-notes.md #arkansas-fips-contamination (BLOCKER)
 ├─ CT counties missing from shapefile → 2022+ TIGER uses planning regions, not counties
 │   └─ See ./references/quality-notes.md #connecticut-fips-geography-mismatch
-├─ ~1,000 counties missing after mode filter → Use 3-pattern reconstruction, not naive filter
+├─ ~850 counties missing after mode filter → Use 3-pattern reconstruction, not naive filter
 │   └─ See ./references/mode-reconstruction.md
 ├─ candidate is not a person → UNDERVOTES/OVERVOTES/SPOILED/TOTAL VOTES CAST
 │   └─ Filter these OUT for candidate-level analysis
@@ -220,8 +222,7 @@ For complete mode values see `./references/coded-values.md`.
 | County presidential returns 2000-2024 | `County Presidential Returns 2000-2024.md` (bundled in Dataverse) |
 
 > Codebook is a Markdown file bundled in the Harvard Dataverse deposit. For human
-> reference. The QA methodology paper is at:
-> https://www.nature.com/articles/s41597-022-01745-0
+> reference. Related MEDSL methods paper (precinct-level returns for 2016, 2018 and 2020; it does not document this county file): Baltz, S., et al. (2022). American election results at the precinct level. *Scientific Data*, 9, 651. https://doi.org/10.1038/s41597-022-01745-0
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the TSV) -- this IS the truth
@@ -279,7 +280,7 @@ ca_2020 <- df |> filter(state_po == "CA", year == 2020, mode == "TOTAL")
 ```python
 # Common filter patterns for county presidential data
 
-# 1. Cross-year analysis: WARNING — naive filter drops ~1,000 counties in 2020+!
+# 1. Cross-year analysis: WARNING — naive filter drops ~850 counties in 2020 (2024 count not verified)!
 #    Use 3-pattern mode reconstruction instead. See ./references/mode-reconstruction.md
 #    The single-line filter below is ONLY safe for single-year analysis on a state
 #    known to have TOTAL rows (e.g., 2000-2016 data, or a confirmed TOTAL-only state).
@@ -303,7 +304,7 @@ joinable = df.filter(pl.col("county_fips").is_not_null())
 ```r
 # Common filter patterns for county presidential data
 
-# 1. Cross-year analysis: WARNING — naive filter drops ~1,000 counties in 2020+!
+# 1. Cross-year analysis: WARNING — naive filter drops ~850 counties in 2020 (2024 count not verified)!
 #    Use 3-pattern mode reconstruction instead. See ./references/mode-reconstruction.md
 longitudinal <- df |> filter(mode == "TOTAL")  # UNSAFE for 2020+ multi-state!
 
@@ -326,11 +327,11 @@ joinable <- df |> filter(!is.na(county_fips))
 
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
-| Cross-year mode mismatch | 2000-2016 has only `TOTAL`; 2020/2024 add breakdowns, and some states report breakdowns ONLY. Naive `mode == 'TOTAL'` silently drops ~1,000 counties; mixing modes inflates counts | Use 3-pattern mode reconstruction (`./references/mode-reconstruction.md`), never a bare `mode == 'TOTAL'` filter, for any cross-year or multi-state analysis |
+| Cross-year mode mismatch | 2000-2016 has only `TOTAL`; 2020/2024 add breakdowns, and some states report breakdowns ONLY. Naive `mode == 'TOTAL'` silently drops ~850 counties in 2020; mixing modes inflates counts | Use 3-pattern mode reconstruction (`./references/mode-reconstruction.md`), never a bare `mode == 'TOTAL'` filter, for any cross-year or multi-state analysis |
 | Non-candidate rows | `UNDERVOTES`, `OVERVOTES`, `SPOILED`, `TOTAL VOTES CAST` appear as "candidates" | Filter out before computing candidate vote shares |
 | Alaska 2004 | District-level data with non-standard FIPS codes (2001-2099); vote counts overstated | Exclude AK 2004 or handle separately; do not join on county_fips |
 | Null FIPS for joins | CT, ME, RI have null `county_fips` in some years; breaks joins | Use `state_po` + `county_name` as fallback join key |
-| Kansas City MO FIPS | Uses non-standard FIPS 2938000 (not a real county FIPS) | Handle as special case in joins; Kansas City is an independent city |
+| Kansas City MO FIPS | Uses non-standard code 2938000 (state FIPS 29 + Census place code 38000), not a county FIPS | Handle as a special case in joins; Kansas City is an incorporated city spanning parts of Cass, Clay, Jackson, and Platte counties, not an independent city (Missouri's only independent city is St. Louis, 29510) |
 | Empty string party/mode | 2024 has `""` in party (501 rows) and mode (2,795 rows) | Treat as missing/undocumented; filter or investigate by state |
 | Vote share > 100% | 49 county-years where sum(candidatevotes) > totalvotes | Minor rounding; use caution with strict validation |
 | Duplicate rows | 83 exact duplicate rows exist in dataset | Deduplicate before analysis |
@@ -341,7 +342,7 @@ joinable <- df |> filter(!is.na(county_fips))
 
 ## Critical: Mode Column Behavior Change
 
-> **WARNING: Naive `mode == "TOTAL"` filtering drops ~1,000 counties in 2020+ data.**
+> **WARNING: Naive `mode == "TOTAL"` filtering drops ~850 counties in 2020 data (and an unverified number in 2024).**
 > Multiple states report ONLY mode breakdowns (no TOTAL rows). A simple filter silently
 > removes all their counties. Use 3-pattern mode reconstruction instead.
 > See `./references/mode-reconstruction.md` for the full code pattern and validation.
@@ -349,7 +350,7 @@ joinable <- df |> filter(!is.na(county_fips))
 The `mode` column behavior changed significantly starting in 2020:
 
 - **2000-2016:** All rows have `mode = 'TOTAL'` (aggregate county totals only)
-- **2020:** 11 states report by voting method alongside TOTAL; **10 states have ONLY breakdowns** (AR, AZ, GA, IA, KY, MD, NC, OK, SC, VA)
+- **2020:** 11 states report by voting method; **10 of them have ONLY breakdowns** (AR, AZ, GA, IA, KY, MD, NC, OK, SC, VA), so a naive TOTAL filter drops their counties
 - **2024:** Additional breakdown states; some have empty string `mode` (which may represent totals OR breakdowns depending on the state)
 
 **For any cross-year or multi-county analysis, use 3-pattern mode reconstruction:**
@@ -398,6 +399,7 @@ county-candidate). See `./references/mode-reconstruction.md` for detection logic
 | FIPS zero-padding for joins | `./references/columns.md` |
 | AR FIPS contamination (Sharp/St. Francis) | `./references/quality-notes.md` |
 | CT geography mismatch (2022+) | `./references/quality-notes.md` |
+| County FIPS changes within 2000-2024 | `./references/quality-notes.md` |
 | Party-based identification (best practice) | `./references/coded-values.md` |
 | totalvotes deduplication | `./references/variable-definitions.md` |
 | Preliminary interpretations | `./references/interpretations.md` |

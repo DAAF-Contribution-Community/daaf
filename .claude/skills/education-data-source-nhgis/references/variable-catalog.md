@@ -57,17 +57,9 @@ When accessing NHGIS data through the Education Data Portal mirrors, categorical
 
 ### geocode_accuracy
 
-Categorical confidence level for geocode match. **Note:** This column is Float64 in schools data but Int64 in colleges data. Cast to a consistent type before cross-entity comparison.
+Geocoder match score. **Note:** This column is Float64 in schools data but Int64 in colleges data. Cast to a consistent type before cross-entity comparison.
 
-| Code | Meaning |
-|------|---------|
-| `1` | High confidence |
-| `2` | Medium confidence |
-| `3` | Low confidence |
-| `4` | Did not geocode |
-| `-2` | Not applicable |
-
-> **Codebook correction:** The codebook defines this as a 4-level categorical variable (1-4), not a 0-100 numeric score as previously documented. The prior documentation was inaccurate.
+The Portal codebook labels this field 1=High confidence, 2=Medium confidence, 3=Low confidence, 4=Did not geocode, -2=Not applicable. Portal API records observed 2026-10-19 instead carry 0-100 Esri match scores (97-100 for well-matched addresses), matching the Esri "Score" field (1-100; 100 = perfect match) that the Portal endpoint description links to. Verify the observed range in your file before filtering; do not filter on the 1-4 codes.
 
 ### geocode_accuracy_detailed
 
@@ -119,7 +111,7 @@ Legal or statistical area description code for the state legislative district lo
 | `7` | Assembly district |
 | `8` | Other geographic entity |
 
-**Availability:** Present in census 2010 files only. Not in census 1990, 2000, or 2020 files. Appears in both schools and colleges NHGIS datasets for the census 2010 vintage.
+**Availability:** Present in census 2010 and census 2020 files for both schools and colleges (census-2020 Portal API records observed 2026-10-19 return it, e.g. 7 = Assembly district in California, 8 = Other geographic entity in D.C.). Not in census 1990 or 2000 files (Portal variable list).
 
 ### class_code (FIPS Place Class)
 

@@ -172,7 +172,7 @@ The official federal accountability metric:
 ### What Counts as Default
 
 - Scorecard repayment-rate categories classify a loan as in default after more than 360 days of nonpayment (31–360 days = delinquent)
-- CDR uses the Department's official default determination (threshold not restated here; verify against FSA CDR guidance)
+- CDR default (34 CFR 668.202(c)(1)): Direct Loans after 360 days of delinquency (270 days if delinquency began before Oct 7, 1998); FFEL loans once a default claim is paid by a guaranty agency or ED (FFEL statutory default: 270 days for loans repayable monthly, 20 U.S.C. §1085(l))
 
 ### CDR Limitations
 

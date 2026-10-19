@@ -139,7 +139,7 @@ Crosswalk files describe relationships between census units from different years
 | Target zone ID | GISJOIN for target year unit |
 | Weight | Proportion to allocate |
 
-**Weights vary by data type**:
+**Weights vary by source level**: crosswalks from blocks carry a single `weight` field; crosswalks from block group parts, block groups, and tracts carry the separate weights below (plus `wt_ownhu` and `wt_renthu`).
 
 | Weight Field | Use For |
 |--------------|---------|
@@ -167,7 +167,7 @@ merged = crosswalk.join(blocks_2000, left_on="GJOIN2000", right_on="GISJOIN")
 
 # Apply weights to allocate population
 merged = merged.with_columns(
-    (pl.col("total_pop") * pl.col("wt_pop")).alias("pop_allocated")
+    (pl.col("total_pop") * pl.col("weight")).alias("pop_allocated")
 )
 
 # Aggregate to 2010 tracts
@@ -192,7 +192,7 @@ blocks_2000 <- read_csv("nhgis_2000_blocks.csv")
 merged <- crosswalk |> inner_join(blocks_2000, by = c("GJOIN2000" = "GISJOIN"))
 
 # Apply weights to allocate population
-merged <- merged |> mutate(pop_allocated = total_pop * wt_pop)
+merged <- merged |> mutate(pop_allocated = total_pop * weight)
 
 # Aggregate to 2010 tracts
 tracts_2010 <- merged |> group_by(GJOIN2010) |> summarise(pop_allocated = sum(pop_allocated))
@@ -213,12 +213,12 @@ tracts_2010 <- merged |> group_by(GJOIN2010) |> summarise(pop_allocated = sum(po
 
 ### Methodology: Target-Density Weighting
 
-NHGIS uses "target-density weighting" (TDW):
+NHGIS block-to-block crosswalk weights are primarily based on "target-density weighting" (TDW); weights from blocks to larger areas sum the block-to-block weights, other crosswalks (e.g., from block groups or tracts) are computed from block-level data allocated with the block-to-block crosswalks, and the 1990/2000-to-2010 block crosswalks add more advanced modeling (NHGIS Geographic Crosswalks, Methodology):
 
 1. **Assumption**: Characteristics within source zones are distributed proportionally to target zone densities
-2. **Example**: If a 2000 block overlaps two 2010 blocks (density 10:1), allocate 91% to denser block
+2. **Example**: If a 2020 block intersects two 2010 blocks, one of which was 10 times as dense as the other in 2010, TDW assumes the same 10:1 density ratio holds within the 2020 block (the share allocated to each part also depends on each intersection's area)
 3. **Advantage**: More accurate than area-based weighting
-4. **Reference**: Schroeder 2007, *Geographical Analysis*
+4. **Reference**: Schroeder, J. P. (2007). "Target-density weighting interpolation and uncertainty evaluation for temporal analysis of census data." *Geographical Analysis* 39(3), 311–335. https://doi.org/10.1111/j.1538-4632.2007.00706.x
 
 ### Crosswalks for Education Research
 

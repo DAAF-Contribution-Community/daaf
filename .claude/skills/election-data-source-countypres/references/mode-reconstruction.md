@@ -1,12 +1,12 @@
 # Mode Reconstruction: County Presidential Returns 2020+
 
-## Why Naive `mode=="TOTAL"` Drops ~1,000 Counties
+## Why Naive `mode=="TOTAL"` Drops ~850 Counties
 
 Starting in 2020, the MEDSL county presidential returns dataset reports voting method
 breakdowns (ABSENTEE, ELECTION DAY, EARLY, etc.) alongside or *instead of* aggregate
 TOTAL rows. **A simple `df.filter(pl.col("mode") == "TOTAL")` silently drops all
 counties in states that report only breakdowns.** In 2020, this affects 10 states
-(~1,000 counties). In 2024, the affected states differ but the pattern persists.
+(848 county-equivalents per the 2020 Census tallies). In 2024, the affected states differ but the pattern persists.
 
 The correct approach is **3-pattern mode reconstruction**, which handles all county-year
 combinations and produces a uniform dataset where every row has `mode == "TOTAL"`.

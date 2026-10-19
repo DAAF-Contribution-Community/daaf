@@ -7,9 +7,11 @@ Complete encoding tables and formal definitions for all 12 columns.
 - **Dataset:** County Presidential Election Returns 2000-2024
 - **Producer:** MIT Election Data and Science Lab (MEDSL)
 - **Harvard Dataverse DOI:** 10.7910/DVN/VOQCHQ
+- **Citation:** MIT Election Data and Science Lab, 2018, "County Presidential Election Returns 2000-2024", https://doi.org/10.7910/DVN/VOQCHQ, Harvard Dataverse, V20, UNF:6:xvsJJxrfXMIvzAuDYlfvVw== [fileUNF]
+- **License / version:** CC0 1.0; Dataverse V20 released 2026-02-25 (file version stamp 20260211)
 - **Data version:** 20260211 (February 11, 2026)
 - **Codebook date:** 2025-07-12
-- **QA methodology:** Baltz et al. (2022) Scientific Data, https://www.nature.com/articles/s41597-022-01745-0
+- **Related methods paper (precinct-level, not this county file):** Baltz, S., et al. (2022). American election results at the precinct level. *Scientific Data*, 9, 651. https://doi.org/10.1038/s41597-022-01745-0
 
 ## Column Definitions
 
@@ -136,6 +138,6 @@ null `county_fips` values create ambiguity.
 
 | Metric | Formula | Notes |
 |--------|---------|-------|
-| Vote share | `candidatevotes / totalvotes` | Reconstruct TOTAL first (3-pattern, see `mode-reconstruction.md`) and require `totalvotes > 0`; a bare `mode='TOTAL'` filter drops ~1,000 counties in 2020+ |
+| Vote share | `candidatevotes / totalvotes` | Reconstruct TOTAL first (3-pattern, see `mode-reconstruction.md`) and require `totalvotes > 0`; a bare `mode='TOTAL'` filter drops ~850 counties in 2020 (2024 count not verified) |
 | Two-party share | `candidatevotes / (dem_votes + rep_votes)` | Requires pivot; common for swing analysis |
 | Turnout proxy | `totalvotes` | Not true turnout (no denominator of eligible voters in this dataset) |

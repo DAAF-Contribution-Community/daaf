@@ -8,24 +8,24 @@ IPEDS is the primary source for data on colleges, universities, and other postse
 |-----------|-------|
 | Collector | National Center for Education Statistics (NCES) |
 | Respondents | All Title IV participating institutions |
-| Coverage | ~6,500 postsecondary institutions |
+| Coverage | ~5,800 Title IV institutions and administrative offices (5,829 in the 2024-25 collection), plus voluntary non-Title IV reporters |
 | Frequency | Annual (multiple survey components) |
-| Available Years | 1980-present (varies by component) |
+| Available Years | 1979-present in the mirror (varies by component; IPEDS replaced HEGIS in 1986, so pre-1986 years are HEGIS-era) |
 | Mandate | Required for Title IV participation |
 
 ### Survey Components
 
 | Component | Collection Period | Content |
 |-----------|------------------|---------|
-| Institutional Characteristics | Fall | Basic institution info, tuition, fees |
-| Fall Enrollment | Fall | Student counts by level, demographics |
+| Institutional Characteristics | Fall | Basic institution info; tuition and fees through 2023-24 (moved to the Cost (CST) component from 2024-25) |
+| Fall Enrollment | Spring | Student counts by level, demographics |
 | 12-Month Enrollment | Fall | Full academic year enrollment |
 | Completions | Fall | Degrees/certificates awarded |
 | Graduation Rates | Winter | Cohort completion outcomes |
 | Student Financial Aid | Winter | Aid types, amounts, recipients |
 | Finance | Spring | Revenues, expenditures, assets |
 | Human Resources | Spring | Employees, salaries |
-| Academic Libraries | Spring | Library resources (biennial) |
+| Academic Libraries | Spring | Library resources (annual from the 2014-15 collection, biennial before; not in the current NCES component list) |
 
 ## Coverage
 
@@ -40,7 +40,7 @@ IPEDS is the primary source for data on colleges, universities, and other postse
 
 | Excluded | Alternative |
 |----------|-------------|
-| Non-Title IV institutions | No comprehensive federal data |
+| Non-Title IV institutions | Report only voluntarily; coverage is partial |
 | Some religious institutions | May self-exclude from aid programs |
 | Non-degree vocational schools | Some included if Title IV |
 | International students' home country institutions | N/A |
@@ -69,8 +69,8 @@ IPEDS graduation rates track ONLY:
 
 | Excluded Group | Size of Gap |
 |----------------|-------------|
-| Transfer students | ~40% of undergraduates |
-| Part-time students | ~40% of undergraduates |
+| Transfer students | Share varies (unsourced; compute from IPEDS transfer-in counts) |
+| Part-time students | Share varies (compute from IPEDS Fall Enrollment) |
 | Spring/summer starts | Varies by institution type |
 | Returning adults | Large at community colleges |
 | Students who transfer OUT | Not counted as completers |
@@ -78,7 +78,7 @@ IPEDS graduation rates track ONLY:
 ### What This Means
 
 For many institutions, especially community colleges:
-- IPEDS graduation rate may represent <25% of students
+- IPEDS graduation rates may cover a minority of students (illustrative; compute the FTFT share for your sample)
 - Students who transfer to complete elsewhere count as non-completers
 - Part-time students (majority at many schools) are invisible
 
@@ -135,12 +135,9 @@ ipeds_grad_rate <- completers_150pct / first_time_full_time_cohort
 
 ### Full-Time Equivalent (FTE)
 
-FTE calculations differ by sector:
-- **Public**: May use state-specific definitions
-- **Private**: Generally federal definition
-- **For-profit**: Program-based calculations
+FTE = 12-month instructional activity ÷ a standard full-time load (semester calendars: undergraduate credit hours ÷ 30, graduate ÷ 24; divisors differ for quarter/clock-hour reporting). Institutions may report their own FTE (`rep_fte`) instead of the derived value (`est_fte`).
 
-**Do not directly compare FTE across sectors without understanding methodology.**
+**Do not directly compare FTE across institutions without checking calendar system and reported (`rep_fte`) vs. derived (`est_fte`) values.**
 
 ### Enrollment Categories
 
@@ -174,13 +171,13 @@ FTE calculations differ by sector:
 | Category | Public (GASB) | Private (FASB) |
 |----------|---------------|----------------|
 | Tuition revenue | Tuition and fees | Tuition and fees |
-| State appropriations | Operating or non-operating | Not applicable |
+| State appropriations | Operating or non-operating | Reported when received (usually small or zero; Cornell, unitid 190415, reports $370M in Portal `year` 2017) |
 | Federal grants | By source | By purpose |
 | Endowment | Complex treatment | Net assets |
 
 ### Finance Data Lag
 
-Finance data typically has a 1-2 year lag:
+NCES releases provisional Finance data about 1.5 years after the fiscal year ends (final data about a year later), and the pinned mirror lags further (Finance ends at Portal `year` 2017 in mirror 0.26.1; the live Portal lists through 2023) (see `education-data-source-ipeds` § Data Availability & Lag Times). Contributing factors:
 - Institutions report after fiscal year close
 - Audited figures may be delayed
 - Most recent year often incomplete
@@ -207,8 +204,9 @@ Reported by income bracket:
 - $110,001+
 
 **Caveats:**
-- Based on first-time full-time students receiving aid
-- Excludes students not receiving any Title IV aid
+- Average net price: full-time, first-time degree/certificate-seeking undergraduates awarded grant or scholarship aid (public institutions: in-state/in-district only)
+- Net price by income: the subset of those students awarded Title IV aid
+- Students with no grant aid (or, for by-income figures, no Title IV aid) are excluded
 - Institutional aid varies significantly
 
 ### Aid Types
@@ -271,17 +269,18 @@ Understanding when data refers to:
 |-----------|-------------------|
 | Institutional characteristics | As of fall of indicated year |
 | Fall enrollment | As of fall census date |
-| Completions | Awarded during indicated academic year |
-| Graduation rates | **Cohort entered** in indicated year (outcomes measured later) |
+| Completions | Academic year ENDING in the indicated year (`year`=2022 = 2021-22 awards; inferred, medium confidence — see education-data-source-ipeds) |
+| Graduation rates | NOT the entry year: status is measured at the end of the `year` academic year (Aug 31 of `year`+1). Use `cohort_year` (4-year 150%: `year` − 5; less-than-4-year: `year` − 2; GR200/OM 4-year: `year` − 7) |
 | Student financial aid | For indicated academic year |
-| Finance | Fiscal year ending in indicated year |
+| Finance | Fiscal year BEGINNING in the indicated year (`year`=2017 = FY2018, ending June 30, 2018 for June fiscal-year institutions) |
 
 ### Graduation Rate Timing Example
 
-For `year=2015` graduation rate data:
-- Cohort entered in fall 2015
-- 150% completion measured in 2021 (4-year) or 2018 (2-year)
-- Data released ~2022
+For `year=2015` graduation rate data (150% rates):
+- 4-year institutions: cohort entered in fall 2010 (`cohort_year` = 2010)
+- Less-than-4-year institutions: cohort entered in fall 2013 (`cohort_year` = 2013)
+- 150% status measured as of August 31, 2016 for both (inference from the offsets)
+- Always filter or label by the `cohort_year` column
 
 ## Common Analysis Mistakes
 
@@ -316,11 +315,12 @@ For `year=2015` graduation rate data:
 def ipeds_quality_check(df, institution_type="4-year"):
     checks = []
     
-    # Check for plausible graduation rates
-    if "graduation_rate_150" in df.columns:
+    # Check for plausible graduation rates (Portal rates are 0-1 proportions; -1/-2/-3 are missing codes)
+    if "completion_rate_150pct" in df.columns:
         implausible = df.filter(
-            (pl.col("graduation_rate_150") > 100) | 
-            (pl.col("graduation_rate_150") < 0)
+            (pl.col("completion_rate_150pct") > 1)
+            | ((pl.col("completion_rate_150pct") < 0)
+               & ~pl.col("completion_rate_150pct").is_in([-1.0, -2.0, -3.0]))
         )
         if implausible.height > 0:
             checks.append(f"Implausible grad rates: {implausible.height}")
@@ -337,9 +337,10 @@ def ipeds_quality_check(df, institution_type="4-year"):
 ```
 
 ```r
-# Check for plausible graduation rates
-if ("graduation_rate_150" %in% names(df)) {
-  implausible <- df |> filter(graduation_rate_150 > 100 | graduation_rate_150 < 0)
+# Check for plausible graduation rates (Portal rates are 0-1 proportions; -1/-2/-3 are missing codes)
+if ("completion_rate_150pct" %in% names(df)) {
+  implausible <- df |> filter(completion_rate_150pct > 1 |
+    (completion_rate_150pct < 0 & !completion_rate_150pct %in% c(-1, -2, -3)))
   if (nrow(implausible) > 0) {
     cat(sprintf("Implausible grad rates: %d\n", nrow(implausible)))
   }
@@ -374,5 +375,5 @@ if (all(c("enrollment_ft", "enrollment_pt", "enrollment_total") %in% names(df)))
 | Linking institutions | Use UNITID; check OPEID for branches |
 | Time series | Check for institutional changes, mergers |
 | Understanding enrollment | Note FT vs. PT, fall vs. 12-month |
-| Cohort graduation data | Year = cohort entry, not completion |
+| Cohort graduation data | `year` ≠ entry year; use `cohort_year` (4-year: `year` − 5) |
 | Transfer analysis | IPEDS doesn't track transfer outcomes |

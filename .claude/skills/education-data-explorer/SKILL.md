@@ -119,7 +119,7 @@ Verified ranges from the endpoint-file bridge and route reconciliation. Non-cont
 | SAIPE | 1995, 1997, 1999-2024 | Poverty pct on a 0-1 scale despite `_pct` |
 | FSA | 1999-2021 | 90/10 from 2014; campus-based from 2001 |
 | MEPS | 2009-2022 | 2023 empty on 2026-08-06 probe |
-| NHGIS (schools / colleges) | 1986-2023 / 1980-2023 | Crosswalk file-years; census vintages 1990-2020 |
+| NHGIS (schools / colleges) | 1986-2023 / 1980, 1984-2023 | Crosswalk file-years; census vintages 1990-2020 |
 | PSEO | 2001-2021 | Yearly shards |
 | NACUBO / NCCS / EADA / Campus Safety | 2012-2022 / 1993-2016 / 2002-2021 / 2005-2021 | — |
 
