@@ -171,7 +171,7 @@ reading whole, as with web-retrieval extracts.
 6. **Locate full text.** `fulltext <ID>` when OpenAlex caches a parse;
    otherwise `oa <DOI>` for a legal copy plus its license and version, then
    fetch HTML with `web_fetch.sh` (PDFs are saved raw by it). Deep PDF reading
-   belongs to the forthcoming `pdf-reading` skill (build session S3).
+   belongs to the `pdf-reading` skill (`pdf_ingest.sh`, `lit_verify.sh`).
    Paywalled with no OA copy: report the DOI and stop. There is deliberately no
    shadow-library source.
 

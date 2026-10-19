@@ -149,7 +149,8 @@ Read the full STATE.md file. Key sections for skill authoring:
 - **Profiling Progress** — script paths for all executed profiling scripts
 
 **SOURCE DOCUMENTATION:** Before authoring, read any available documentation files referenced
-in STATE.md (codebook PDFs, README files, technical documentation, methodology papers).
+in STATE.md (codebook PDFs via the `pdf-reading` skill, README files, technical documentation,
+methodology papers).
 These are the source of methodological context, study design information, population coverage,
 and analytical limitations that cannot be derived from profiling scripts alone. Reference
 files must synthesize both profiling-derived observations AND documentation-derived context.

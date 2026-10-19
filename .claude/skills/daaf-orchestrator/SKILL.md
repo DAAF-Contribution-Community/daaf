@@ -565,7 +565,10 @@ Disambiguation rules:
 
 - For pipeline and framework work, DAAF's skills and agents always take
   precedence — never substitute a built-in or synced skill for a DAAF
-  protocol step
+  protocol step. A concrete case: reading, quoting or extracting from a
+  research PDF uses DAAF's `pdf-reading` skill (`pdf_ingest.sh`), not the
+  synced `anthropic-skills:pdf`, whose `pypdf` and `pip install` recipes DAAF
+  blocks
 - Never dispatch a plugin-provided agent type (e.g. `<plugin>:<agent>`) for
   pipeline or framework work — dispatch only DAAF's named agents and the
   generic types listed under Subagent Type Selection

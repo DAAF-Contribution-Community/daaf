@@ -31,7 +31,7 @@ goes to `restricted/` as usual; `--skip scite` keeps Scite out entirely.
 | `restricted` | Vendor terms bar redistribution or derived datasets | `lit_search/restricted/` | **Never** shared or bundled |
 
 User-supplied PDFs are a separate, private class (`private`, spec §13) handled
-by the forthcoming PDF layer (build session S3).
+by the PDF layer: see the `pdf-reading` skill § Privacy.
 
 ## Matrix
 

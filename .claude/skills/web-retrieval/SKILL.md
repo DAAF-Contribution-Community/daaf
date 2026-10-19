@@ -165,7 +165,7 @@ reserved exit 3.
 | 5 | Non-2xx HTTP status | Check the status in the manifest. 403 → consider `--browser-ua` (Cloudflare-AI block). 404 → wrong URL. |
 | 6 | Timeout | Retry with a larger `--timeout`, or accept the page is too slow. |
 | 7 | Oversize (exceeds 10 MB cap) | The document is too large to fetch as one artifact; reconsider whether you need it. |
-| 8 | Not extractable (content-type not HTML) | The raw artifact was still written with the correct extension (`.pdf`/`.json`/`.bin`); read/inspect the raw file directly. This is **not** an extraction failure. |
+| 8 | Not extractable (content-type not HTML) | The raw artifact was still written with the correct extension (`.pdf`/`.json`/`.bin`); read/inspect the raw file directly. For a `.pdf`, load the `pdf-reading` skill and run `pdf_ingest.sh` on it (it links the PDF to this MANIFEST row by hash). This is **not** an extraction failure. |
 | 9 | Empty extraction (HTML fetched, extract empty/near-empty) | Trafilatura recall failure — go to the raw `.html` via `Grep`. See Thin-Extract Diagnosis. |
 
 Exit 8 vs 9 matters: 8 means "we got the bytes but they are not HTML, so there

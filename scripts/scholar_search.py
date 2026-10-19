@@ -1646,8 +1646,8 @@ def cmd_fulltext(http, a, notes, dest_dir, base):
     if not has.get("grobid_xml"):
         oa = (w.get("open_access") or {}).get("oa_url")
         msg = (f"OpenAlex has no cached parse for {wid} ({one_line(title, 150)}). "
-               + (f"Open-access copy: {oa} — retrieve it with web_fetch.sh (HTML) or, for PDFs, the "
-                  "forthcoming pdf-reading skill (build session S3)." if oa else
+               + (f"Open-access copy: {oa} — retrieve it with web_fetch.sh (it saves a PDF raw), then "
+                  "read a PDF with the pdf-reading skill (pdf_ingest.sh)." if oa else
                   "No open-access copy is known; try `oa` on its DOI, else the paper is likely paywalled."))
         raise BackendError(openalex.NAME, "not-found", msg)
     xml = openalex.fulltext_bytes(http, wid)
