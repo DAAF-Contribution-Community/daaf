@@ -99,10 +99,13 @@
 #     is too SHORT but matches exactly (PASS, PASS_SKELETON or PASS_OCR) on
 #     that page is COVERED_SPARSE, if it is unique or the page has no line of
 #     its own that is unique. A non-identifying anchor on a normal page does
-#     not cover it.
+#     not cover it, with one exception (1.1.0): on a page with NO unique line
+#     (its text recurs on another page, e.g. a duplicated scan page) a
+#     full-length anchor (not short) that matches exactly covers the page as
+#     COVERED_DUPLICATE. Claim quotes never get either waiver.
 #   4 Coverage: every page 1..N has an entry with >= 1 passing anchor on that
 #     page. Page coverage status: PASS (an identifying text-layer anchor),
-#     COVERED_SPARSE, PASS_OCR, VISION_ONLY (a vision_only digest on a truly
+#     COVERED_SPARSE, COVERED_DUPLICATE, PASS_OCR, VISION_ONLY (a vision_only digest on a truly
 #     scanned page with no text in any lane), COVERED_EMPTY (a page that is
 #     not truly scanned and has no text in any lane, given an empty anchors
 #     list or a vision_only digest), NEEDS_REVIEW (best anchor NEAR or
@@ -111,8 +114,19 @@
 #     extra NON_IDENTIFYING / NEAR anchor on an otherwise covered page is a
 #     warning.
 #   5 Numbers (pdf_text_common number rules, NUMBER_RULES_VERSION): each claim
-#     number must appear on the claim's page(s) in the anchor text:
-#       NUMBER_OK            same value and digit string in the anchor text
+#     number must appear on the claim's page(s) in the anchor text, and
+#     (numbers-v2, 1.2.0, D-21 N1) inside the claim's quote where that quote
+#     matched (a page token overlapping the matched span, +- NUMBER_NEAR_CHARS
+#     = 0); the lane checked is the lane the number was found in:
+#       NUMBER_OK            same value and digit string in the anchor text,
+#                            inside the quote
+#       NUMBER_NOT_NEAR_QUOTE  printed on the cited page(s) but not inside the
+#                            quote (or the claim has no located quote): review,
+#                            a human checks row and column
+#       NUMBER_OCR_LAYER     as NUMBER_OK, on a page flagged
+#                            ocr_layer_suspected (an existing OCR text layer;
+#                            D-21 N2): partial; NUMBER_OCR_LAYER_VISION when
+#                            the claim source is "both" (still partial)
 #       NUMBER_OCR_ONLY      only in that page's OCR text ("ocr-only")
 #       NUMBER_OCR_VISION    only in OCR text, claim source "both": the vision
 #                            reading corroborates it ("ocr+vision"); still
@@ -145,15 +159,22 @@
 #            page with a short caption): never caps the grade; the sparse
 #            waiver above applies. A card's `sparse` field is advisory (a
 #            mismatch is a warning); the class is computed.
+#   OCR layer (1.2.0, D-21 N2; recorded as `ocr_layer` per page): a page
+#            flagged ocr_layer_suspected holds someone else's OCR text layer.
+#            A claim whose quote passes there is PASS_OCR_LAYER and its
+#            numbers NUMBER_OCR_LAYER(_VISION), all partial, like our own OCR
+#            (Q-A). Coverage anchors there do NOT cap: a born-digital cover
+#            image can raise the flag falsely, so only cited claims count.
 #
 # --- Verdicts and grades ----------------------------------------------------
 #   Every item carries severity pass | partial | review | fail | warning.
 #   FAIL          any fail item (all listed)
-#   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN or NUMBER_PRECISION_DIFFERS
-#                 item (listed for a human)
-#   PARTIAL       no fail or review; a PASS_OCR, VISION_ONLY, ocr-only,
-#                 ocr+vision, vision-only, COVERED_SPARSE-on-scanned or
-#                 SCANNED_PAGE item (each listed)
+#   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS or
+#                 NUMBER_NOT_NEAR_QUOTE item (listed for a human)
+#   PARTIAL       no fail or review; a PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
+#                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
+#                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item
+#                 (each listed)
 #   PASS          everything anchored in the text layer
 #   evidence_grade_suggested: PASS -> FULL_TEXT_VERIFIED (no truly scanned
 #   page can be present); PARTIAL -> FULL_TEXT_PARTIAL; NEEDS_REVIEW and FAIL
@@ -235,7 +256,18 @@ import pdf_text_common as ptc  # noqa: E402
 # 1.0.0 (S3 FE-3, 2026-10-15): first version. `card` (schema
 # lit-verify-card-v1 -> card_check JSON lit-verify-card-check-v1) and
 # `selftest`; MANIFEST kind "lit_verify".
-TOOL_VERSION = "1.0.0-daaf"
+# 1.1.0 (S3 bake-off, 2026-10-19): coverage status COVERED_DUPLICATE (a
+# full-length exact anchor covers a page that has no unique line because its
+# text recurs on another page; claims are unchanged). Card and result schemas
+# unchanged; constants unchanged (kept after calibration on real papers).
+# 1.2.0 (S3 FE-5, 2026-10-19, user decision D-21 N1/N2): numbers-v2
+# locality (a number printed on the cited page but not inside the claim's
+# quote where it matched is NUMBER_NOT_NEAR_QUOTE, review); claims relying on
+# a page flagged ocr_layer_suspected are OCR evidence (PASS_OCR_LAYER,
+# NUMBER_OCR_LAYER, NUMBER_OCR_LAYER_VISION: partial; coverage alone does not
+# cap); page summaries gain `ocr_layer`; constants gain NUMBER_NEAR_CHARS.
+# Card and result schemas unchanged (v1; additive fields only).
+TOOL_VERSION = "1.2.0-daaf"
 
 EXIT_CODES = {
     0: "card verdict PASS, PARTIAL or NEEDS_REVIEW (verdict in the card_check JSON); selftest: all expectations held",
@@ -295,10 +327,13 @@ LOCAL_FORGED_PATTERNS = [
 ]
 
 SEVERITY = {
-    "PASS": "pass", "PASS_SKELETON": "pass", "PASS_SPAN": "pass", "COVERED_EMPTY": "pass", "NUMBER_OK": "pass",
+    "PASS": "pass", "PASS_SKELETON": "pass", "PASS_SPAN": "pass", "COVERED_EMPTY": "pass", "COVERED_DUPLICATE": "pass",
+    "NUMBER_OK": "pass",
     "PASS_OCR": "partial", "VISION_ONLY": "partial", "SCANNED_PAGE": "partial", "NUMBER_OCR_ONLY": "partial",
-    "NUMBER_OCR_VISION": "partial", "NUMBER_VISION_ONLY": "partial",
+    "NUMBER_OCR_VISION": "partial", "NUMBER_VISION_ONLY": "partial", "PASS_OCR_LAYER": "partial",
+    "NUMBER_OCR_LAYER": "partial", "NUMBER_OCR_LAYER_VISION": "partial",
     "NEAR": "review", "REDACTED_SPAN": "review", "NEEDS_REVIEW": "review", "NUMBER_PRECISION_DIFFERS": "review",
+    "NUMBER_NOT_NEAR_QUOTE": "review",
     "WRONG_PAGE": "fail", "NOT_FOUND": "fail", "NON_IDENTIFYING": "fail", "NOT_COVERED": "fail",
     "MISSING_PAGE": "fail", "PAGE_OUT_OF_RANGE": "fail", "NUMBER_MISSING": "fail", "NUMBER_UNPARSEABLE": "fail",
     "SOURCE_HASH_MISMATCH": "fail", "PAPER_KEY_MISMATCH": "fail", "ANCHOR_HASH_MISMATCH": "fail",
@@ -310,7 +345,11 @@ SEVERITY = {
 }
 NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_VISION": "ocr+vision",
                  "NUMBER_VISION_ONLY": "vision-only", "NUMBER_PRECISION_DIFFERS": "precision-differs",
-                 "NUMBER_MISSING": "missing", "NUMBER_UNPARSEABLE": "unparseable"}
+                 "NUMBER_MISSING": "missing", "NUMBER_UNPARSEABLE": "unparseable",
+                 "NUMBER_NOT_NEAR_QUOTE": "not-near-quote", "NUMBER_OCR_LAYER": "ocr-layer",
+                 "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision"}
+# INTENT (D-21 N2): pdf_ingest's flag for an existing OCR text layer.
+OCR_LAYER_FLAG = "ocr_layer_suspected"
 
 TOP_FIELDS = {"schema_version": True, "paper_key": True, "source_pdf_sha256": True, "reader_model": True,
               "vision_mode": True, "vision_validated": True, "vision_list_version": True, "coverage": True,
@@ -806,16 +845,29 @@ def check_card(card, ingest, fuzz, integrity=None):
                           and m["tier"] in (ptc.TIER_PASS, ptc.TIER_PASS_SKELETON, ptc.TIER_PASS_OCR)
                           and classes[page][0] in ("sparse", "scanned")
                           and (ident["occurrences"] == 1 or not page_has_unique_line(page)))
+                # INTENT (1.1.0, S3 bake-off): a page whose text recurs on another
+                #   page (a duplicated scan page) has no unique line, so no
+                #   anchor can ever be unique and a genuine card could not
+                #   cover it. A full-length exact anchor covers such a page.
+                # REASONING: bake-off script 66, ERIC ED083756 pp. 69 and 71
+                #   (the same text twice): a genuine card FAILed NOT_COVERED.
+                duplicate = (role == "coverage" and not ident["short"] and ident["occurrences"] > 1
+                             and m["tier"] in (ptc.TIER_PASS, ptc.TIER_PASS_SKELETON, ptc.TIER_PASS_OCR)
+                             and not page_has_unique_line(page))
                 if waiver:
                     status = "COVERED_SPARSE"
                     reason = (f"short anchor ({ident['reason']}) matched exactly ({m['tier']}) on a "
                               f"{classes[page][0]} page")
+                elif duplicate:
+                    status = "COVERED_DUPLICATE"
+                    reason = (f"anchor matched exactly ({m['tier']}) but occurs {ident['occurrences']} times: page "
+                              f"{page} has no line of its own that is unique (its text recurs elsewhere)")
                 else:
                     status, reason = "NON_IDENTIFYING", ident["reason"]
             elif m["tier"] != ptc.TIER_NEAR:
                 reason = f"{m['tier']} via {m['via']} ({m['lane']} text)"
         severity = None
-        if status == "COVERED_SPARSE":
+        if status in ("COVERED_SPARSE", "COVERED_DUPLICATE"):
             severity = "partial" if classes[page][0] == "scanned" or m["lane"] == "ocr" else "pass"
         it = item("coverage_anchor" if role == "coverage" else "claim_quote", status, severity, page=page,
                   page_end=page_end, tier=m["tier"], score=m["score"], lane=m["lane"], found_on=m["found_on"],
@@ -835,12 +887,13 @@ def check_card(card, ingest, fuzz, integrity=None):
             items.append(item("vision", "VISION_UNAVAILABLE_CLAIM", page=e["page"],
                               reason=f"vision_only digest but vision_mode={card['vision_mode']!r}, vision_validated="
                                      f"{card['vision_validated']}"))
-    rank = {"PASS": 0, "PASS_SKELETON": 0, "PASS_SPAN": 0, "COVERED_SPARSE": 1, "PASS_OCR": 2}
+    rank = {"PASS": 0, "PASS_SKELETON": 0, "PASS_SPAN": 0, "COVERED_SPARSE": 1, "COVERED_DUPLICATE": 1, "PASS_OCR": 2}
     for n in range(1, n_pages + 1):
         cls, area, basis = classes[n]
         e = by_page.get(n)
         summary = {"page": n, "class": cls, "image_area": None if area is None else round(area, 4), "basis": basis,
-                   "anchors": 0, "coverage_status": None}
+                   "ocr_layer": OCR_LAYER_FLAG in (pages[n].get("flags") or []), "anchors": 0,
+                   "coverage_status": None}
         if cls == "scanned":
             items.append(item("page", "SCANNED_PAGE", page=n,
                               reason=f"truly scanned page ({basis}): its content is in the image, so the text layer "
@@ -904,6 +957,31 @@ def check_card(card, ingest, fuzz, integrity=None):
             it["claim_id"] = cid
             items.append(it)
         cited = [p] + ([pe] if pe else [])
+        # INTENT (2.0.0, D-21 N2): a claim that relies on a page flagged
+        #   ocr_layer_suspected (someone else's OCR text layer, never compared
+        #   with the image) is OCR evidence, like our own OCR (Q-A): partial.
+        #   Coverage alone does not cap (a falsely flagged cover image).
+        ocr_layer_pages = [n for n in cited if OCR_LAYER_FLAG in (pages[n].get("flags") or [])]
+        if ocr_layer_pages and q and q.strip() and it["status"] in ("PASS", "PASS_SKELETON", "PASS_SPAN"):
+            it.update(status="PASS_OCR_LAYER", severity=SEVERITY["PASS_OCR_LAYER"],
+                      reason=safe_line(f"{it['reason']}; cited page(s) {ocr_layer_pages} carry an existing OCR "
+                                       "text layer (ocr_layer_suspected) never compared with the image", 600))
+        # INTENT (numbers-v2, D-21 N1): where the claim's quote matched, per
+        #   lane, in NORMALIZE coordinates (a declared span is matched across
+        #   the two pages' boundary text). A number must sit there.
+        located = {"anchor": [], "ocr": []}
+        if q and q.strip():
+            for n in cited:
+                for lane, key in (("anchor", "anchor_text"), ("ocr", "ocr_text")):
+                    if pages[n].get(key):
+                        norm, spans = ptc.quote_spans(q, pages[n][key])
+                        if spans:
+                            located[lane].append((norm, spans))
+            if pe and (p, pe) in doc["span"]:
+                ln, rn = doc["span"][(p, pe)][:2]
+                norm, spans = ptc.quote_spans(q, ln + " " + rn)
+                if spans:
+                    located["anchor"].append((norm, spans))
         anchor_toks = [t for n in cited for t in ptc.number_candidates(pages[n]["anchor_text"])]
         ocr_toks = [t for n in cited for t in ptc.number_candidates(pages[n].get("ocr_text") or "")]
         for s in c["numbers"]:
@@ -914,7 +992,15 @@ def check_card(card, ingest, fuzz, integrity=None):
                                   reason="not one number (write it as printed, e.g. -0.087, (0.044), 1,204)", **base))
                 continue
             kind, hit = ptc.compare_number(tok, anchor_toks)
-            if kind == "exact":
+            near = {lane: any(ptc.number_near_spans(tok, norm, spans, ptc.NUMBER_NEAR_CHARS)
+                              for norm, spans in located[lane]) for lane in located}
+            not_near = ("printed on the cited page(s) as {!r} but not inside the claim's quote where it matched"
+                        + ("" if located["anchor"] or located["ocr"] else
+                           " (the claim's quote is not located on the cited page(s))")
+                        + ": a human checks the row and column (quote the row label with the number)")
+            if kind == "exact" and not near["anchor"]:
+                status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40))
+            elif kind == "exact":
                 notes = []
                 if hit["paren"] != tok["paren"]:
                     notes.append(f"page prints it {'in' if hit['paren'] else 'without'} parentheses")
@@ -923,9 +1009,17 @@ def check_card(card, ingest, fuzz, integrity=None):
                 if c["source"] == "vision":
                     notes.append("the text layer corroborates the vision reading")
                 status, reason = "NUMBER_OK", "; ".join(notes) or f"found as {safe_line(hit['raw'], 40)!r}"
+                if ocr_layer_pages:
+                    status = "NUMBER_OCR_LAYER_VISION" if c["source"] == "both" else "NUMBER_OCR_LAYER"
+                    reason = (f"{reason}; from an existing OCR text layer (page(s) {ocr_layer_pages} flagged "
+                              "ocr_layer_suspected)" + (", corroborated by a vision reading"
+                                                        if c["source"] == "both" else ""))
             else:
                 okind, ohit = ptc.compare_number(tok, ocr_toks)
-                if okind == "exact":
+                if okind == "exact" and not near["ocr"]:
+                    status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(ohit["raw"], 40)) + \
+                        " (OCR text)"
+                elif okind == "exact":
                     status = "NUMBER_OCR_VISION" if c["source"] == "both" else "NUMBER_OCR_ONLY"
                     reason = "only in the page's OCR text" + (", corroborated by a vision reading"
                                                               if c["source"] == "both" else "")
@@ -963,7 +1057,8 @@ def check_card(card, ingest, fuzz, integrity=None):
     counts = {s: sum(1 for it in items if it["severity"] == s) for s in ("pass", "partial", "review", "fail",
                                                                           "warning")}
     counts.update(pages=n_pages, pages_covered=sum(1 for ps in page_summaries if ps["coverage_status"] in (
-        "PASS", "COVERED_SPARSE", "PASS_OCR", "VISION_ONLY", "COVERED_EMPTY")), claims=len(card["claims"]),
+        "PASS", "COVERED_SPARSE", "COVERED_DUPLICATE", "PASS_OCR", "VISION_ONLY", "COVERED_EMPTY")),
+        claims=len(card["claims"]),
         numbers=sum(len(c["numbers"]) for c in card["claims"]),
         pages_scanned=sum(1 for v in classes.values() if v[0] == "scanned"),
         pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"))
@@ -1041,6 +1136,13 @@ SELFTEST_PAGES = {
          "evidence": {"figure": ["pdfimages: image 1275x1650 px covers 100% x 100% of the page"],
                       "scanned": ["anchor has 0 non-whitespace chars < 200"],
                       "ocr": ["tesseract ran: 13 word(s), mean confidence 95.0"]}},
+        # 1.2.0 (D-21 N2): a page with an existing OCR text layer
+        {"anchor": "Synthetic Ledger Page\nThe harbour ledger was typed long ago and later scanned with its own "
+                   "text layer, so the\nwords below came from an earlier reader of the image. It lists 23 lanterns "
+                   "and 6 bells.\n\f", "flags": ["figure", "ocr_layer_suspected"],
+         "evidence": {"figure": ["pdfimages: image 1275x1650 px covers 100% x 100% of the page"],
+                      "ocr_layer_suspected": ["an image covers 100% of the page area (>= 80%) and the anchor has "
+                                              "190 non-whitespace chars"]}},
     ],
 }
 
@@ -1113,9 +1215,10 @@ def selftest_cases(src):
          "summary": "Table 1 estimates"},
         {"page": 4, "anchors": ["Figure 2: Gulls by tide"], "summary": "caption-only figure page", "sparse": True},
     ]
-    c1 = {"claim_id": "C1", "page": 3, "quote": "The estimates in Table 1 are invented and exist only to exercise the "
-                                                "number rules", "numbers": ["-0.087", "(0.044)", "1,204", "0.05"],
-          "source": "text", "table_ref": "Table 1"}
+    # INTENT (numbers-v2): the quote holds the row labels with the numbers.
+    c1 = {"claim_id": "C1", "page": 3, "quote": "Table 1: Invented estimates for the imaginary voyages Gulls −0.087* "
+                                                "(0.044) Boats 1,204 .05",
+          "numbers": ["-0.087", "(0.044)", "1,204", "0.05"], "source": "text", "table_ref": "Table 1"}
     c2 = {"claim_id": "C2", "page": 2, "quote": "relies on natural-language summaries of each imaginary voyage",
           "numbers": [], "source": "text"}
     b_cov = [
@@ -1123,9 +1226,13 @@ def selftest_cases(src):
          "summary": "notes"},
         {"page": 2, "anchors": ["COMPASS 7314 HERON 2659 The calm bay sheltered 41 painted rowing boats"],
          "summary": "scanned page, read through its OCR text"},
+        {"page": 3, "anchors": ["The harbour ledger was typed long ago and later scanned with its own text layer"],
+         "summary": "a page with an existing OCR text layer"},
     ]
     b1 = {"claim_id": "B1", "page": 2, "quote": "The calm bay sheltered 41 painted rowing boats", "numbers": ["41"],
           "source": "ocr"}
+    b2 = {"claim_id": "B2", "page": 3, "quote": "words below came from an earlier reader of the image. It lists 23 "
+                                                "lanterns", "numbers": ["23"], "source": "text"}
     return [
         ("genuine card", "A", a_cov, [c1, c2], True, "PASS", 0, None, None),
         ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], True, "FAIL", 11,
@@ -1150,6 +1257,11 @@ def selftest_cases(src):
         ("quote from a truly scanned page's OCR text", "B", b_cov, [b1], True, "PARTIAL", 0, "PASS_OCR", "claim_quote"),
         ("fused compound hyphen (genuine card)", "A", None, None, None, "PASS", 0, "PASS_SKELETON", "claim_quote"),
         ("sparse non-image page (genuine card)", "A", None, None, None, "PASS", 0, "COVERED_SPARSE", "coverage"),
+        ("number printed on the page, not in the quote", "A", a_cov,
+         [dict(c1, quote="The estimates in Table 1 are invented and exist only to exercise the number rules"), c2],
+         True, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        ("claim on an existing OCR text layer page", "B", b_cov, [b1, b2], True, "PARTIAL", 0, "PASS_OCR_LAYER",
+         "claim_quote"),
     ]
 
 
@@ -1387,7 +1499,7 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                           "numbers": ptc.NUMBER_RULES_VERSION},
         "constants": {"MIN_QUOTE_CHARS": ptc.MIN_QUOTE_CHARS, "MIN_QUOTE_WORDS": ptc.MIN_QUOTE_WORDS,
                       "FUZZ_SCORE_CUTOFF": ptc.FUZZ_SCORE_CUTOFF, "FUZZ_WINDOW_CHARS": ptc.FUZZ_WINDOW_CHARS,
-                      "FUZZ_WINDOW_STEP": ptc.FUZZ_WINDOW_STEP,
+                      "FUZZ_WINDOW_STEP": ptc.FUZZ_WINDOW_STEP, "NUMBER_NEAR_CHARS": ptc.NUMBER_NEAR_CHARS,
                       "TRULY_SCANNED_IMAGE_AREA_MIN": TRULY_SCANNED_IMAGE_AREA_MIN,
                       "PROVISIONAL": ["MIN_QUOTE_CHARS", "MIN_QUOTE_WORDS", "TRULY_SCANNED_IMAGE_AREA_MIN"]},
         **result,

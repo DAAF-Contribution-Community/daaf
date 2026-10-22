@@ -163,9 +163,9 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.0.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.2.0-daaf")
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
-                         ("normalize-v1", "ladder-v1", "numbers-v1"))
+                         ("normalize-v1", "ladder-v1", "numbers-v2"))
 
     def test_mirrors_pdf_ingest(self):
         self.assertEqual(lv.PAPER_KEY_RE.pattern, pdf_ingest.PAPER_KEY_RE.pattern)
@@ -385,6 +385,32 @@ class CheckCardTests(unittest.TestCase):
         self.assertIn("NOT_COVERED", statuses(r, "coverage"))
         self.assertIn("NON_IDENTIFYING", statuses(r, "coverage_anchor"))
 
+    def test_duplicated_page_is_covered_by_a_full_length_anchor(self):
+        # S3 bake-off: a real scan carried the same page text twice; no anchor
+        # on either page can be unique. Synthetic text (every word invented).
+        twin = "The amber ferry paid each harbour a prorated share of the invented toll every winter.\n"
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": twin}, {"anchor": twin}])
+        q = "The amber ferry paid each harbour a prorated share of the invented toll"
+        r = self.run_check(ing, mk_card([cov(1, "The violet ferry carried nineteen patient cartographers"),
+                                         cov(2, q), cov(3, q)]))
+        self.assertEqual(r["verdict"], "PASS", r["failures"])
+        self.assertEqual(statuses(r, "coverage"), ["PASS", "COVERED_DUPLICATE", "COVERED_DUPLICATE"])
+        self.assertEqual(r["counts"]["pages_covered"], 3)
+        # a SHORT anchor on a duplicated page, and a claim quote, stay non-identifying
+        r = self.run_check(ing, mk_card([cov(1, "The violet ferry carried nineteen patient cartographers"),
+                                         cov(2, "The amber ferry paid"), cov(3, q)],
+                                        [{"claim_id": "C1", "page": 2, "quote": q, "numbers": [], "source": "text"}]))
+        self.assertEqual(r["verdict"], "FAIL")
+        self.assertIn("NOT_COVERED", statuses(r, "coverage"))
+        self.assertEqual(statuses(r, "claim_quote"), ["NON_IDENTIFYING"])
+        # a page that HAS a unique line still needs a unique anchor
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": twin + "Only this page names the copper heron.\n"},
+                         {"anchor": twin}])
+        r = self.run_check(ing, mk_card([cov(1, "The violet ferry carried nineteen patient cartographers"),
+                                         cov(2, q), cov(3, q)]))
+        self.assertEqual(r["verdict"], "FAIL")
+        self.assertEqual(statuses(r, "coverage"), ["PASS", "NOT_COVERED", "COVERED_DUPLICATE"])
+
     def test_sparse_waiver_needs_a_unique_anchor_when_one_exists(self):
         hdr = "Synthetic Journal, Volume 7\n"
         ing = mk_ingest([{"anchor": hdr + PROSE[1]}, {"anchor": hdr + "Page 2 of 2\n", "flags": ["scanned"]}])
@@ -458,6 +484,104 @@ class CheckCardTests(unittest.TestCase):
         self.assertIn("PAPER_KEY_MISMATCH", statuses(r))
         r = self.run_check(ing, mk_card(c, ingest_suffix="_a"))
         self.assertEqual((r["verdict"], r["counts"]["warning"]), ("PASS", 1))
+
+    # --- numbers-v2 locality (D-21 N1) and OCR-layer pages (D-21 N2) ---
+    TABLE = ("Table 4: Invented harbour counts\nHerons Gulls Terns\n0.31 0.47 0.52\n"
+             "The counts in Table 4 were invented for the locality rule of the gate and describe no harbour.\n\f")
+
+    def test_number_inside_quote_ok_elsewhere_on_page_review(self):
+        ing = mk_ingest([{"anchor": self.TABLE}])
+        c = [cov(1, "The counts in Table 4 were invented for the locality rule")]
+        inside = {"claim_id": "N1", "page": 1, "quote": "Table 4: Invented harbour counts Herons Gulls Terns 0.31 0.47",
+                  "numbers": ["0.31", "0.47"], "source": "text"}
+        r = self.run_check(ing, mk_card(c, [inside]))
+        self.assertEqual(r["verdict"], "PASS", r["review_items"])
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OK", "NUMBER_OK"])
+        # 0.52 is printed on the page but not inside the quote: review, not fail
+        far = dict(inside, numbers=["0.52"])
+        r = self.run_check(ing, mk_card(c, [far]))
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("NEEDS_REVIEW", ["NUMBER_NOT_NEAR_QUOTE"]))
+        self.assertEqual(r["evidence_grade_if_review_confirmed"], "FULL_TEXT_VERIFIED")
+        self.assertEqual([it["label"] for it in r["items"] if it["kind"] == "claim_number"], ["not-near-quote"])
+        # a value absent from the page stays missing (fail); a sign flip of an in-quote value too
+        r = self.run_check(ing, mk_card(c, [dict(inside, numbers=["0.48"])]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_MISSING"])
+        r = self.run_check(ing, mk_card(c, [dict(inside, numbers=["-0.31"])]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_MISSING"])
+
+    def test_locality_uses_page_tokens_and_spans_and_ocr(self):
+        # skeleton ignores "-", so the quote "... -0.31" matches a page that
+        # prints 0.31 here; a -0.31 printed elsewhere must not make it local
+        ing = mk_ingest([{"anchor": "Synthetic sign page: the heron index was 0.31 in the invented spring survey.\n"
+                                    "Elsewhere a different invented index was −0.31 for terns.\n\f"}])
+        cl = {"claim_id": "S1", "page": 1, "quote": "the heron index was -0.31 in the invented spring survey",
+              "numbers": ["-0.31"], "source": "text"}
+        r = self.run_check(ing, mk_card([cov(1, "the heron index was 0.31 in the invented spring survey")], [cl]))
+        self.assertEqual(statuses(r, "claim_quote"), ["PASS_SKELETON"])
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_NOT_NEAR_QUOTE"])
+        # a declared span: the number on the next page, inside the crossing quote
+        ing = mk_ingest([{"anchor": PROSE[1] + "\nIn the end the invented ferry index reached\n\f"},
+                         {"anchor": "0.73 at the northern harbour before dawn.\n\f"}])
+        sp = {"claim_id": "S2", "page": 1, "page_end": 2, "numbers": ["0.73"], "source": "text",
+              "quote": "the invented ferry index reached 0.73 at the northern harbour"}
+        r = self.run_check(ing, mk_card([cov(1, "The violet ferry carried nineteen patient cartographers"),
+                                         cov(2, "0.73 at the northern harbour before dawn")], [sp]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OK"], r["review_items"])
+        # OCR lane: locality is checked in the OCR text the number was found in
+        ocr = "SCAN PAGE\nCOMPASS 7314 HERON 2659\nThe calm bay sheltered 41 painted rowing boats.\n"
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "ocr": ocr, "flags": ["scanned"],
+                                                "evidence": SCANNED_EVIDENCE}])
+        ocl = {"claim_id": "O1", "page": 2, "quote": "The calm bay sheltered 41 painted rowing boats",
+               "numbers": ["41", "7314"], "source": "ocr"}
+        r = self.run_check(ing, mk_card([cov(1, "The violet ferry carried nineteen patient cartographers"),
+                                         cov(2, "COMPASS 7314 HERON 2659 The calm bay sheltered 41")], [ocl]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OCR_ONLY", "NUMBER_NOT_NEAR_QUOTE"])
+
+    def test_vision_number_without_a_quote_is_not_local(self):
+        ing = mk_ingest([{"anchor": self.TABLE}])
+        r = self.run_check(ing, mk_card([cov(1, "The counts in Table 4 were invented for the locality rule")],
+                                        [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["0.52"],
+                                          "source": "vision"}]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_NOT_NEAR_QUOTE"])
+        self.assertIn("not located", [it for it in r["items"] if it["kind"] == "claim_number"][0]["reason"])
+
+    def test_ocr_layer_page_caps_cited_claims_not_coverage(self):
+        layer = {"flags": ["figure", "ocr_layer_suspected"],
+                 "evidence": {"ocr_layer_suspected": ["an image covers 100% of the page area (>= 80%)"]}}
+        ing = mk_ingest([dict(layer, anchor=self.TABLE), {"anchor": PROSE[1]}])
+        c = [cov(1, "The counts in Table 4 were invented for the locality rule"),
+             cov(2, "The violet ferry carried nineteen patient cartographers")]
+        # coverage only (a falsely flagged cover image): no cap
+        r = self.run_check(ing, mk_card(c))
+        self.assertEqual(r["verdict"], "PASS", r["partial_items"])
+        self.assertEqual([p["ocr_layer"] for p in r["pages"]], [True, False])
+        # a claim with a number on that page: partial (PASS_OCR_LAYER + ocr-layer)
+        cl = {"claim_id": "L1", "page": 1, "quote": "Table 4: Invented harbour counts Herons Gulls Terns 0.31 0.47",
+              "numbers": ["0.31"], "source": "text"}
+        r = self.run_check(ing, mk_card(c, [cl]))
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"]), ("PARTIAL", "FULL_TEXT_PARTIAL"))
+        self.assertEqual(statuses(r, "claim_quote"), ["PASS_OCR_LAYER"])
+        self.assertEqual([it["label"] for it in r["items"] if it["kind"] == "claim_number"], ["ocr-layer"])
+        r = self.run_check(ing, mk_card(c, [dict(cl, source="both")]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OCR_LAYER_VISION"])
+        self.assertEqual(r["verdict"], "PARTIAL")
+        # a claim on the other page is unaffected
+        r = self.run_check(ing, mk_card(c, [{"claim_id": "P1", "page": 2, "numbers": [], "source": "text",
+                                             "quote": "The violet ferry carried nineteen patient cartographers"}]))
+        self.assertEqual(r["verdict"], "PASS")
+
+    def test_locality_helpers(self):
+        norm, spans = ptc.quote_spans("relies on natural-language summaries", PROSE[2])
+        self.assertEqual(len(spans), 1)                                   # skeleton match mapped back
+        self.assertEqual(norm[spans[0][0]:spans[0][1]], "relies on naturallanguage summaries")
+        skel, idx = ptc.skeleton_index(ptc.normalize("A b-C ß"))
+        self.assertEqual((skel, idx), ("abcss", [0, 2, 4, 6, 6]))
+        tok = ptc.parse_number("0.47")
+        n2, sp = ptc.quote_spans("Herons Gulls Terns 0.31 0.47", self.TABLE)
+        self.assertTrue(ptc.number_near_spans(tok, n2, sp, 0))
+        self.assertFalse(ptc.number_near_spans(ptc.parse_number("0.52"), n2, sp, 0))
+        self.assertTrue(ptc.number_near_spans(ptc.parse_number("0.52"), n2, sp, 6))
+        self.assertEqual(ptc.NUMBER_NEAR_CHARS, 0)
 
     def test_span_skips_recorded_header_footer(self):
         hf = [{"position": "bottom", "pattern": "page # of #", "pages": [1, 2]},
@@ -728,7 +852,7 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 13/13", out)
+        self.assertIn("SELFTEST PASS: 15/15", out)
         row = rows_of(self.root)[-1]
         self.assertEqual((row["command"], row["verdict"], row["exit_code"]), ("selftest", "PASS", 0))
         self.assertTrue(row["counts"]["work_dir_removed"])

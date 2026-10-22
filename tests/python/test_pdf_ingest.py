@@ -171,6 +171,12 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(ptc.skeleton(""), "")
         self.assertEqual(ptc.normalize(None), "")
 
+    def test_overlap_score_is_order_free(self):
+        # D-21 N4 diagnostic helper: same characters in another order -> 1.0
+        self.assertEqual(ptc.overlap_score("alpha beta gamma", "gamma alpha beta"), 1.0)
+        self.assertLess(ptc.overlap_score("alpha beta", "alpha"), 1.0)
+        self.assertIsNone(ptc.overlap_score("", " \n"))
+
     def test_idempotent(self):
         s = "“A—b” ﬁ­ x-\n y − 2″"
         self.assertEqual(ptc.normalize(ptc.normalize(s)), ptc.normalize(s))

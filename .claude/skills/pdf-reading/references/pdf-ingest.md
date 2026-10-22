@@ -256,12 +256,41 @@ re-run; the reading copies carry the source hash, not a timestamp.
 
 ## Known limits
 
-- Agreement uses `fuzz.ratio`, which is reading-order-sensitive: a correct
-  two-column page whose lanes order the columns differently can score about
-  0.77 (reported from the FE-2 build probes) and fire `low_agreement`. Treat
-  the flag as "look", not "wrong".
+- Agreement uses `fuzz.ratio`, which is reading-order-sensitive. S3
+  bake-off (five real papers, 342 pages, 2026-10-19): the two lanes held the
+  same characters on almost every page (order-free character overlap at
+  least 0.99 on 324 of the 341 pages with text), so a low score means the lanes **order**
+  the page differently. That is often a real anchor problem, not noise:
+  pdftotext misordered a two-column reference list (one block of the left
+  column placed after the right column, agreement 0.77) and the line order of
+  a scan's OCR layer; it also reads tables **column by column**. An
+  order-insensitive score was measured and **not adopted**, because it would
+  hide exactly those cases. The cutoff stays 0.90 (still provisional): pages
+  of plain prose scored a median 0.99, but display-math pages straddle it
+  (0.87–0.95). Treat the flag as "the reading order is uncertain here; look".
+- Tables in the anchor: pdftotext's default mode serializes most tables
+  column-major (all row labels, then each column), while lane B
+  (`lane_b{S}/`) keeps rows together. Since `numbers-v2` (`lit_verify`
+  1.2.0, D-21) a claimed number must sit inside its quote, so on a
+  column-major table most genuine numbers go to human review
+  (`not-near-quote`; `evidence-card.md` § Numbers). To tell which value
+  belongs to which row, read the render when vision is available, or lane
+  B's text as an unanchored aid; never quote lane B.
 - pdfplumber's default `lines` strategy misses borderless (booktabs) tables,
   common in economics and education; a caption still fires `table`.
+- An existing OCR text layer (`ocr_layer_suspected`) is still the anchor
+  (quotes match it), but since `lit_verify` 1.2.0 (user decision D-21 N2) a
+  claim that relies on such a page is OCR evidence: `PASS_OCR_LAYER` and
+  `ocr-layer` numbers, both partial; coverage anchors alone do not cap. On
+  the bake-off scan, numbers from that layer disagreed with a fresh
+  Tesseract read 15% of the time (198 of 1,300). In the sample checked
+  against the image, the layer was right and the fresh read was wrong, but
+  the scan's own digits were degraded in places. A number on such a page
+  proves the layer, not the image.
+- pypdfium2 writes U+0002 in lane B where a word was hyphenated across a
+  line (`proceed\x02ings`); lane A never does. It lowers agreement by at most
+  0.003 and is counted as unmappable (at most 1.2 of the 2% `garbled`
+  budget on a real page); no flag changed in the bake-off.
 - poppler-data is not installed, so CJK glyphs may drop or mis-map; that is
   what `cjk_risk` records.
 - OCR language is English only (`-l eng`).

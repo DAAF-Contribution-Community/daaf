@@ -182,18 +182,30 @@ What the gate requires:
 - **Identifying quotes:** at least 40 normalized characters, 6 words, and a
   text that occurs exactly once in the document (provisional constants);
   otherwise `NON_IDENTIFYING`, a fail. On sparse and truly scanned pages a
-  short exact anchor can cover the page (`COVERED_SPARSE`).
+  short exact anchor can cover the page (`COVERED_SPARSE`); on a page whose
+  text recurs on another page, a full-length exact anchor covers it
+  (`COVERED_DUPLICATE`). In report-style papers, table headers and notes
+  repeat dozens of times: quote a distinctive sentence.
 - **Every page 1..N is covered**; a missing page fails.
 - **Numbers** are written as printed (`-0.087`, `(0.044)`, `1,204`, `.05`,
-  `12.5%`) and must appear on the cited page: `ok`, `ocr-only`,
-  `ocr+vision`, `vision-only` (partial), `precision-differs` (review),
-  `missing` or `unparseable` (fail). A changed digit or a dropped minus fails.
+  `12.5%`) and must appear on the cited page **inside the claim's quote**
+  (`numbers-v2`, user decision D-21: a page-level check let a changed last
+  digit pass 44% of the time on dense tables). Quote the row label together
+  with the number. Statuses: `ok`; `not-near-quote` (printed on the page but
+  outside the quote: review, a human checks row and column); `ocr-only`,
+  `ocr+vision`, `ocr-layer`, `ocr-layer+vision`, `vision-only` (partial);
+  `precision-differs` (review); `missing` or `unparseable` (fail). A changed
+  digit or a dropped minus fails. On a column-major table (pdftotext's usual
+  order) a quote that reaches the cell may not exist: expect review there.
 - **OCR is weaker evidence** (user decision Q-A): an OCR-anchored quote is
   `PASS_OCR`, an OCR-only number is `ocr-only` unless vision corroborates it,
-  and both cap the card at PARTIAL. **A truly scanned page** (flagged
-  `scanned` and one image covering at least 50% of the page, provisional)
-  caps the card at PARTIAL; a sparse page that is not mostly one image
-  does not (user decision Q-B).
+  and both cap the card at PARTIAL. **An existing OCR text layer** (a page
+  flagged `ocr_layer_suspected`) counts the same way for claims (D-21): a
+  claim quote there is `PASS_OCR_LAYER` and its numbers `ocr-layer`, both
+  partial; coverage anchors alone do not cap. **A truly scanned page**
+  (flagged `scanned` and one image covering at least 50% of the page,
+  provisional) caps the card at PARTIAL; a sparse page that is not mostly
+  one image does not (user decision Q-B).
 - **Vision consistency:** with `vision_mode: off` or `vision_validated:
   false`, every `vision`/`both` claim and every `vision_only` digest fails.
 

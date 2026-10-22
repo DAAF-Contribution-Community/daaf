@@ -63,11 +63,11 @@ with the names.
 
 ## Tests
 
-| Suite | Count (FE-4 run) | Needs |
+| Suite | Count (FE-5 run, 2026-10-19) | Needs |
 |-------|------------------|-------|
-| `tests/python/test_pdf_ingest.py` | 51 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
-| `tests/python/test_lit_verify.py` | 48 | rapidfuzz and polars or pyarrow; end-to-end tests run real `pdf_ingest` |
-| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 13 expectations | rapidfuzz and polars or pyarrow |
+| `tests/python/test_pdf_ingest.py` | 52 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
+| `tests/python/test_lit_verify.py` | 54 | rapidfuzz and polars or pyarrow; end-to-end tests run real `pdf_ingest` |
+| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 15 expectations | rapidfuzz and polars or pyarrow |
 
 Run the suites file-first: a captured `.py` under the session's `scripts/`
 calls `python3 -m unittest discover -s /daaf/tests/python -p "test_pdf_ingest.py"`

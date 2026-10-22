@@ -98,6 +98,12 @@
 #   compare_number(): same Decimal value AND same digit string -> "exact";
 #   same value, different digit string (0.5 vs 0.50) -> "precision" (a
 #   warning for a human, never a pass); otherwise no match.
+#   numbers-v2 (2026-10-19, FE-5, D-21 N1): LOCALITY. An exact page token
+#   must also overlap the claim quote's matched span (+- NUMBER_NEAR_CHARS,
+#   chosen 0: inside the quote); quote_spans() / number_near_spans() below.
+#   The caller grades a page-level hit that is not local as a review item.
+#   overlap_score() is the order-free character overlap (D-21 N4), a
+#   diagnostic pdf_ingest records beside `agreement`.
 #
 # rapidfuzz is NOT imported here: callers pass the `rapidfuzz.fuzz` module
 # (or None, which skips the NEAR tier), so this module stays stdlib-only at
@@ -111,7 +117,7 @@ from decimal import Decimal, InvalidOperation
 # §§ CONSTANTS
 NORMALIZE_VERSION = "normalize-v1"
 MATCH_LADDER_VERSION = "ladder-v1"
-NUMBER_RULES_VERSION = "numbers-v1"
+NUMBER_RULES_VERSION = "numbers-v2"
 
 # INTENT: invisible characters that split words without changing the visible
 #   text (soft hyphen, zero-width space/joiners, word joiner, BOM).
@@ -481,3 +487,124 @@ def compare_number(claim, candidates):
                 return "exact", tok
             precision = precision or tok
     return ("precision", precision) if precision else (None, None)
+
+
+# §§ NUMBER_LOCALITY (numbers-v2; added 2026-10-19, FE-5, user decision D-21 N1)
+# A claimed number printed somewhere on the cited page is not enough: a page
+# token printing it must overlap the place where the claim's quote matched,
+# widened by NUMBER_NEAR_CHARS normalized chars on each side. With the
+# chosen value 0 the number must sit INSIDE the matched quote. Positions are
+# in NORMALIZE(page text) coordinates; a skeleton match is mapped back
+# through skeleton_index(). Page tokens are used (not the quote's own text),
+# so a sign or digit the skeleton tier ignores cannot slip through.
+# REASONING (FE-5 script 69, B and C table pages, 453 claims, and 119 prose
+#   numbers from A, B, F): share of claims graded ok, genuine / last digit
+#   changed / sign flipped:
+#     page-level (numbers-v1)    1.000 / 0.110 / 0.009
+#     inside the quote (0)       0.305 / 0.013 / 0.000   <- chosen
+#     +-40 chars                 0.322 / 0.026 / 0.000
+#     +-160 chars                0.470 / 0.035 / 0.000
+#     lane B row, >= 6 letters   1.000 / 0.053 / 0.000   (not adopted)
+#   Prose numbers: 1.000 genuine and 0.000 fabricated under every rule. The
+#   rule with the fewest fabricated passes was chosen (user decision D-21:
+#   gate integrity first); a genuine table number outside its quote goes to
+#   human review (NUMBER_NOT_NEAR_QUOTE), not to FAIL.
+NUMBER_NEAR_CHARS = 0
+# Measurement only (script 69): the lane B row rule was measured and NOT
+#   adopted; lane_b_row_hit() and row_label_skeleton() are kept so the
+#   measurement can be re-run. The gate never calls them.
+LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
+
+
+def skeleton_index(norm):
+    # (SKELETON of an already NORMALIZEd text, [index in norm of each
+    # skeleton char]): the same chars skeleton() keeps, char by char.
+    out, idx = [], []
+    for i, c in enumerate(norm):
+        for f in c.casefold():
+            if not (f.isspace() or f == "-"):
+                out.append(f)
+                idx.append(i)
+    return "".join(out), idx
+
+
+def quote_spans(quote, text):
+    # (NORMALIZE(text), [(start, end), ...]): every place the quote matches
+    # in the page text, exact (NORMALIZE) occurrences first, else SKELETON
+    # occurrences mapped back to NORMALIZE coordinates.
+    norm, qn, qs = normalize(text), normalize(quote), skeleton(quote)
+    spans = []
+    i = norm.find(qn) if qn else -1
+    while i != -1:
+        spans.append((i, i + len(qn)))
+        i = norm.find(qn, i + 1)
+    if not spans and qs:
+        skel, idx = skeleton_index(norm)
+        i = skel.find(qs)
+        while i != -1:
+            spans.append((idx[i], idx[i + len(qs) - 1] + 1))
+            i = skel.find(qs, i + 1)
+    return norm, spans
+
+
+def number_in_text(claim, text):
+    # True when `text` prints the claimed number exactly (same value, digits).
+    return compare_number(claim, number_candidates(text))[0] == "exact"
+
+
+def number_near_spans(claim, norm, spans, window):
+    # True when a token printing the claimed number exactly overlaps one of
+    # `spans` widened by `window` chars on each side (NORMALIZE coordinates).
+    toks = [t for t in number_candidates(norm)
+            if any(t["end"] > s - window and t["start"] < e + window for s, e in spans)]
+    return compare_number(claim, toks)[0] == "exact"
+
+
+def row_label_skeleton(line):
+    # The letters of a line (digits, signs and punctuation dropped), as a
+    # SKELETON: what a row label contributes to a table row's text.
+    return skeleton(" ".join(LANE_B_LABEL_RE.findall(normalize(line))))
+
+
+def lane_b_row_hit(claim, quote, lane_b_text, min_shared):
+    # The first lane B line that prints the claimed number exactly AND shares
+    # a run of >= min_shared letters (SKELETON) with the quote's letters: the
+    # row label quoted beside the number. None when there is none.
+    q = row_label_skeleton(quote)
+    if len(q) < min_shared:
+        return None
+    for line in (lane_b_text or "").split("\n"):
+        if not number_in_text(claim, line):
+            continue
+        lab = row_label_skeleton(line)
+        n, best = len(lab), 0
+        # INTENT: longest common substring, stdlib only and deterministic
+        #   (difflib's autojunk heuristic would make it data-dependent).
+        prev = [0] * (len(q) + 1)
+        for i in range(n):
+            cur = [0] * (len(q) + 1)
+            for j in range(len(q)):
+                if lab[i] == q[j]:
+                    cur[j + 1] = prev[j] + 1
+                    if cur[j + 1] > best:
+                        best = cur[j + 1]
+            prev = cur
+        if best >= min_shared:
+            return line
+    return None
+
+
+def overlap_score(a, b):
+    # Order-free character overlap of two texts on SKELETON (Dice on the
+    # character multisets): 1.0 when both hold the same characters in any
+    # order. A DIAGNOSTIC only (D-21 N4): no flag or verdict uses it.
+    sa, sb = skeleton(a), skeleton(b)
+    if not sa and not sb:
+        return None
+    ca, cb = {}, {}
+    for c in sa:
+        ca[c] = ca.get(c, 0) + 1
+    for c in sb:
+        cb[c] = cb.get(c, 0) + 1
+    common = sum(min(v, cb.get(k, 0)) for k, v in ca.items())
+    return round(2.0 * common / (len(sa) + len(sb)), 4)

@@ -76,7 +76,7 @@ review_type: example
      "summary": "image-only page, OCR text"}
   ],
   "claims": [
-    {"claim_id": "M1", "page": 3, "quote": "The table above is invented and exists only to exercise the table flag.",
+    {"claim_id": "M1", "page": 3, "quote": "Low tide High tide Gulls Boats 14 −3 (2.1) (0.8) 27",
      "numbers": ["14", "-3", "(2.1)", "27"], "source": "text", "table_ref": "Table 1"},
     {"claim_id": "M2", "page": 5, "quote": "MEADOW 1265 The quiet harbour kept 58 copper boats.",
      "numbers": ["58"], "source": "ocr"},
