@@ -4,9 +4,10 @@
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates — the
-# thresholds are quality-tier conditional: Fable/Mythos and Opus 5.5 (user
-# policy decision 2026-09-23) use 30%/40%/50% OR
-# 300k/400k/500k; the exact extended-horizon GPT ids (GPT 5.6 Sol, GPT-6
+# thresholds are quality-tier conditional: Fable/Mythos and Opus 5.5 (admitted
+# to that tier by user policy decision 2026-09-23) use 40%/50%/60% OR
+# 400k/500k/600k (numbers set by user policy decision 2026-10-23, raised from
+# 30/40/50% OR 300/400/500k); the exact extended-horizon GPT ids (GPT 5.6 Sol, GPT-6
 # Astra, GPT-6 Sol, GPT-6.1 Sol, and their flagship -pro forms) use 60%/75%/90% OR
 # 300k/400k/500k; all other models use 40%/60%/75%
 # OR 150k/200k/250k, whichever fires first; see calculate() below).
@@ -65,7 +66,16 @@
 #   The severity thresholds are keyed on the model identity of the agent being
 #   measured — main-session measurements use the session model; subagent
 #   measurements use that subagent's own model. Fable/Mythos patterns get the
-#   validated extended-horizon tier (30/40/50% OR 300/400/500k). The exact
+#   Claude extended-horizon tier (40/50/60% OR 400/500/600k). Fable/Mythos
+#   were registered as validated at 30/40/50% OR 300/400/500k; by USER POLICY
+#   DECISION of 2026-10-23 (not validation) the whole tier, Opus 5.5
+#   included, was raised to 40/50/60% OR 400/500/600k, so the raised gates
+#   rest on the user's policy decision, not on a DAAF validation. Provenance
+#   (maintainer-only research workspace):
+#   research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise/SESSION_NOTES.md.
+#   The GPT tier below keeps its 300/400/500k absolute gates, so the two
+#   extended tiers no longer share absolute gates (Claude CRITICAL at 600k,
+#   GPT at 500k). The exact
 #   terminal extended-horizon GPT slugs — gpt-5.6-sol and gpt-5.6-sol[1m], plus
 #   the second registered extended-horizon model gpt-6-astra and gpt-6-astra[1m]
 #   — use 60/75/90% gates while retaining 300/400/500k absolute gates. By USER
@@ -85,12 +95,14 @@
 #   routes, while the matched ChatGPT-subscription/Codex lane is finally capped
 #   at 919k for accounting (measured 2026-09-05 for both Sol and Astra;
 #   previously 370,000 (2026-07-16), now stale). Only the exact extended-horizon
-#   GPT slugs retain the larger absolute quality-horizon gates without inheriting
-#   Fable/Mythos percentage gates. Likewise, claude-opus-4-8[1m] AND Opus 5
+#   GPT slugs get their own 300/400/500k absolute quality-horizon gates
+#   without inheriting the Claude tier's percentage or absolute gates.
+#   Likewise, claude-opus-4-8[1m] AND Opus 5
 #   (claude-opus-5, bare and [1m]) have 1M physical windows but keep the
 #   conservative tier.
 #   Opus 5.5 (claude-opus-5-5, bare and [1m]) is the ONE Opus exception: it
-#   joins the extended-horizon tier (30/40/50% OR 300/400/500k) by USER POLICY
+#   joins the extended-horizon tier (then 30/40/50% OR 300/400/500k; 40/50/60%
+#   OR 400/500/600k since 2026-10-23, above) by USER POLICY
 #   DECISION of 2026-09-23, not by validation — this deliberately departs from
 #   the 2026-07-24 "validate before promoting" doctrine (no sustained DAAF
 #   quality measurement past 300k exists for it yet). Every other Opus model,
@@ -603,12 +615,14 @@ calculate() {
     local used_k=$((tokens / 1000))
 
     # Quality-tier matching deliberately remains narrower than physical-family
-    # matching. Fable/Mythos keep the validated extended-horizon percentage and
-    # absolute gates; the exact terminal extended-horizon GPT slugs — Sol and
+    # matching. Fable/Mythos and Opus 5.5 use the Claude extended-horizon
+    # gates, 40/50/60% OR 400/500/600k since the 2026-10-23 user policy
+    # decision (Fable/Mythos were validated at 30/40/50% OR 300/400/500k; see
+    # the header); the exact terminal extended-horizon GPT slugs — Sol and
     # the second registered extended-horizon model GPT-6 Astra (validated),
     # plus GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of each (user policy
     # decisions 2026-09-29 and 2026-10-12, not validation; see GPT_EXTENDED_RE) — use 60/75/90%
-    # percentage gates while retaining the larger absolute gates. Each is matched
+    # percentage gates with their own 300/400/500k absolute gates. Each is matched
     # only as the bare slug or the final segment of a provider path (the ERE is
     # tested against the provider-stripped terminal slug); left- or
     # right-boundary near misses (xgpt-6-astra, gpt-6-astra-pro-x,
@@ -626,7 +640,7 @@ calculate() {
     # ("built for long-running agentic coding and knowledge work"). The Opus 5.5
     # pattern is BOUNDARY-ANCHORED, not a substring glob: this arm GRANTS a
     # privilege (relaxed gates), and a privilege-granting arm must name exactly
-    # what it privileges. A loose `*opus-5-5*` would silently hand the 30/40/50%
+    # what it privileges. A loose `*opus-5-5*` would silently hand the 40/50/60%
     # gates to any future slug merely containing that text — `claude-opus-5-5-mini`
     # on the right, `xclaude-opus-5-5` on the left — neither of which the user
     # policy decision covers. The accepted forms are therefore the bare slug or a
@@ -640,12 +654,15 @@ calculate() {
     # already matched those slugs before this change. $model arrives already
     # normalized (normalize_model_id), so a provider-dotted
     # anthropic/claude-opus-5.5 reaches this arm as anthropic/claude-opus-5-5.
-    # Kept lockstep-identical with .claude/scripts/subagent-bar.sh.
+    # Kept lockstep-identical with .claude/scripts/subagent-bar.sh. The six
+    # threshold assignment lines below must match that file byte for byte
+    # (numeric lockstep test in tests/bash/context_reporter.bats, added
+    # 2026-10-23 with the raise to 40/50/60% OR 400/500/600k).
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
         *fable-5*|*mythos-5*|claude-opus-5-5|*/claude-opus-5-5|claude-opus-5-5\[1m\]|*/claude-opus-5-5\[1m\])
-            elev_pct=30; high_pct=40; crit_pct=50
-            elev_k=300;  high_k=400;  crit_k=500 ;;
+            elev_pct=40; high_pct=50; crit_pct=60
+            elev_k=400;  high_k=500;  crit_k=600 ;;
         *)
             if [[ "${model##*/}" =~ $GPT_EXTENDED_RE ]]; then
                 elev_pct=60; high_pct=75; crit_pct=90

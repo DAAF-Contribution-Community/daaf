@@ -3,10 +3,15 @@
 # Tests for context-reporter.sh -- context utilization injection hook
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers in
-# calculate(). Fable/Mythos use ELEVATED 30%/300k, HIGH 40%/400k, and
-# CRITICAL 50%/500k. The exact extended-horizon GPT ids -- GPT 5.6 Sol and
+# calculate(). The Claude extended-horizon profile (Fable/Mythos, plus Opus
+# 5.5 by 2026-09-23 user policy decision) uses ELEVATED 40%/400k, HIGH
+# 50%/500k, and CRITICAL 60%/600k -- raised from 30%/300k, 40%/400k, 50%/500k
+# by user policy decision on 2026-10-23, not by DAAF quality validation
+# (research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise, maintainer-only
+# workspace). The exact extended-horizon GPT ids -- GPT 5.6 Sol and
 # GPT-6 Astra, plus (2026-09-29 user policy decision) GPT-6 Sol and the flagship
-# -pro form of all three -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL
+# -pro form of all three, and (2026-10-12 user policy decision) GPT-6.1 Sol and
+# its -pro form -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL
 # 90%/500k. Every other model -- including opus-4-8[1m] and non-exact Sol/Astra
 # variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and CRITICAL 75%/250k.
 # Provider-dotted Claude ids (anthropic/claude-opus-5.5) are classified through
@@ -159,59 +164,126 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
-# Fable family (1M window) -- permissive thresholds 30/40/50% & 300/400/500k
+# Claude extended-horizon profile (1M window) -- 40/50/60% & 400/500/600k
+# -------------------------------------------------------------------------
+# Raised from 30/40/50% & 300/400/500k by user policy decision on 2026-10-23,
+# not by DAAF quality validation. On the 1M window the percentage and absolute
+# legs coincide (40% = 400k, 50% = 500k, 60% = 600k); the 400k and 2M
+# denominator matrices below isolate each leg.
 # =========================================================================
 
-@test "fable: 299k on 1M window is NOMINAL (just under 300k and 30%)" {
+@test "fable: 399k on 1M window is NOMINAL (just under 400k and 40%)" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 299000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 399000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[NOMINAL]"
 }
 
-@test "fable: 300k on 1M window is ELEVATED (absolute 300k leg fires at 30%)" {
+@test "fable: 300k on 1M window is NOMINAL (the pre-2026-10-23 ELEVATED point)" {
+    # Locks the raise itself: under the old 30%/300k gate this read ELEVATED.
     _seed_window 1000000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+}
+
+@test "fable: 400k on 1M window is ELEVATED (400k absolute and 40% legs coincide)" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
 }
 
-@test "fable: 400k on 1M window is HIGH" {
+@test "fable: 500k on 1M window is HIGH" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[HIGH]"
 }
 
-@test "fable: 500k on 1M window is CRITICAL" {
+@test "fable: 600k on 1M window is CRITICAL" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 600000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[CRITICAL]"
 }
 
-@test "mythos: 300k on 1M window is ELEVATED (mythos shares fable family)" {
+@test "mythos: 400k on 1M window is ELEVATED (mythos shares fable family)" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-mythos-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-mythos-5" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
 }
 
-@test "fable[1m]: 300k on 1M window is ELEVATED (bracketed fable variant keeps extended-horizon tier)" {
+@test "fable[1m]: 400k on 1M window is ELEVATED (bracketed fable variant keeps extended-horizon tier)" {
     # The exact string claude-fable-5[1m] must resolve to the fable family, not
-    # conservative. At 300k/1M that is 30% -> extended-horizon ELEVATED; a
-    # conservative family would treat 300k (>=250k absolute leg) as CRITICAL, so
+    # conservative. At 400k/1M that is 40% -> extended-horizon ELEVATED; a
+    # conservative family would treat 400k (>=250k absolute leg) as CRITICAL, so
     # ELEVATED confirms the bracketed variant is matched as fable.
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5[1m]" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5[1m]" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
+}
+
+# Boundary matrices for the Claude extended-horizon profile (2026-10-23 raise).
+# Every member spelling is run through just-below/at pairs for each gate on
+# three denominators: the 1M full window (both legs coincide), a 400k window
+# (percentage legs fire far below the 400k/500k/600k absolutes), and a 2M
+# window (absolute legs fire at 20/25/30%, below the percentage legs).
+_claude_extended_matrix() {
+    # Args: $1 seeded window, $2 window label in k, then "tokens severity pct" rows.
+    local window="$1" window_k="$2" model boundary tokens expected_severity expected_pct
+    shift 2
+    for model in claude-fable-5 claude-mythos-5 claude-fable-5-1 claude-opus-5-5 \
+                 'claude-opus-5-5[1m]' anthropic/claude-opus-5-5 'anthropic/claude-opus-5-5[1m]'; do
+        for boundary in "$@"; do
+            read -r tokens expected_severity expected_pct <<< "$boundary"
+            _clean_ctx_caches
+            _seed_window "$window"
+            _write_main_transcript "${TEST_DIR}/t.jsonl" "$model" "$tokens"
+            run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+            assert_success
+            assert_output --partial "[${expected_severity}]: $((tokens / 1000))k / ${window_k}k tokens (${expected_pct}%)"
+        done
+    done
+}
+
+@test "Claude extended-horizon full-window boundaries: 40/50/60% = 400k/500k/600k on 1M" {
+    _claude_extended_matrix 1000000 1000 \
+        "399999 NOMINAL 39" \
+        "400000 ELEVATED 40" \
+        "499999 ELEVATED 49" \
+        "500000 HIGH 50" \
+        "599999 HIGH 59" \
+        "600000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon percentage legs: 40/50/60% on a 400k denominator" {
+    _claude_extended_matrix 400000 400 \
+        "159999 NOMINAL 39" \
+        "160000 ELEVATED 40" \
+        "199999 ELEVATED 49" \
+        "200000 HIGH 50" \
+        "239999 HIGH 59" \
+        "240000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon absolute legs: 400k/500k/600k on a 2M denominator" {
+    _claude_extended_matrix 2000000 2000 \
+        "399999 NOMINAL 19" \
+        "400000 ELEVATED 20" \
+        "499999 ELEVATED 24" \
+        "500000 HIGH 25" \
+        "599999 HIGH 29" \
+        "600000 CRITICAL 30"
 }
 
 # =========================================================================
@@ -506,13 +578,13 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     # 220k lands in [200k, 250k): conservative HIGH leg, below the CRITICAL leg.
-    # Under the fable family this same count would be NOMINAL (< 300k), which is
+    # Under the fable family this same count would be NOMINAL (< 400k), which is
     # exactly the distinction under test.
     assert_output --partial "[HIGH]"
 }
 
 # Off-by-one boundary pair for the CONSERVATIVE family's absolute legs on a 1M
-# window (symmetric with the fable 299k/300k pair above). 149k sits one k below
+# window (symmetric with the fable 399k/400k pair above). 149k sits one k below
 # the 150k ELEVATED leg; 200k sits exactly on the HIGH leg. Both use the 1M
 # window so the percentage legs stay far below their thresholds (149k=14%,
 # 200k=20%), isolating the ABSOLUTE-leg boundary as the sole decision driver.
@@ -586,7 +658,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    # 250k against the fable subagent's 1M window = 25%, under the 300k/30%
+    # 250k against the fable subagent's 1M window = 25%, under the 400k/40%
     # permissive ELEVATED leg -> NOMINAL. Under the conservative family the same
     # 250k would be CRITICAL, so this proves the fable family is applied.
     assert_output --partial "[NOMINAL]"
@@ -648,7 +720,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     # 220k / 1000k = 22%; conservative HIGH leg [200k, 250k). Under the
-    # Fable/Mythos profile this same 220k would be NOMINAL (< 300k) -- Opus 5
+    # Fable/Mythos profile this same 220k would be NOMINAL (< 400k) -- Opus 5
     # must NOT select that profile despite sharing the 1M physical window.
     assert_output --partial "220k / 1000k"
     assert_output --partial "[HIGH]"
@@ -681,7 +753,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    # 250k / 1000k = 25% -> below the Fable 300k/30% ELEVATED leg -> NOMINAL.
+    # 250k / 1000k = 25% -> below the Fable 400k/40% ELEVATED leg -> NOMINAL.
     # Under the conservative profile the same 250k would be CRITICAL.
     assert_output --partial "250k / 1000k"
     assert_output --partial "[NOMINAL]"
@@ -1310,7 +1382,7 @@ _write_main_transcript_raw_tokens() {
 
 @test "adversarial session_id is rejected before any path build (exit 0, no injection)" {
     local sid
-    # A valid fable transcript that WOULD inject (CRITICAL at 500k/1M) if the id
+    # A valid fable transcript that WOULD inject (HIGH at 500k/1M) if the id
     # were accepted; empty output therefore proves the id gate suppressed it.
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
     _seed_window 1000000
@@ -1357,7 +1429,7 @@ _write_main_transcript_raw_tokens() {
 @test "the default session_id and the bats fixture ids still pass the allowlist" {
     # is_safe_id must not regress the legitimate default: no session_id key ->
     # jq default 'default' -> must inject normally.
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     printf '%s' 1000000 > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-default"
     run bash "$CONTEXT_REPORTER_SH" < <(printf '{"hook_event_name":"PreToolUse","transcript_path":"%s"}' "${TEST_DIR}/t.jsonl")
     assert_success
@@ -1373,14 +1445,14 @@ _write_main_transcript_raw_tokens() {
 @test "full-scan recovery: >50 trailing zero-token placeholders do not hide real usage" {
     local transcript="${TEST_DIR}/trailing-zeros.jsonl"
     _seed_window 1000000
-    _write_main_transcript "$transcript" "claude-fable-5" 300000
+    _write_main_transcript "$transcript" "claude-fable-5" 400000
     # 60 trailing zero-token placeholders push the positive record out of the
-    # old tail-50 window; a full scan must still recover 300k.
+    # old tail-50 window; a full scan must still recover 400k.
     _append_zero_usage "$transcript" "claude-fable-5" 60 false
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "full-scan recovery works on the subagent branch too" {
@@ -1523,24 +1595,24 @@ _write_main_transcript_raw_tokens() {
 
 @test "future gate timestamp is treated as corrupt (reset to 0) and does not suppress the report" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     # A far-future gate value would make (NOW - LAST_INJECT) negative -> always
     # under the 60s interval -> reports suppressed indefinitely, pre-fix.
     printf '%s' "$(( $(date +%s) + 100000 ))" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "corrupt (non-numeric) gate timestamp is treated as 0 and does not suppress the report" {
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     printf '%s' 'not-a-timestamp' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
 }
 
 @test "a legitimate recent-past gate timestamp still suppresses within the interval" {
@@ -1565,13 +1637,13 @@ _write_main_transcript_raw_tokens() {
     # the injection still emits and the hook exits 0. teardown's rm -rf of the
     # scratch dir removes the planted directory.
     _seed_window 1000000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 400000
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     mkdir -p "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[ELEVATED]"
-    assert_output --partial "300k / 1000k"
+    assert_output --partial "400k / 1000k"
     refute_output --partial "Is a directory"
     refute_output --partial "No such file"
     refute_output --partial "Permission denied"
@@ -1644,7 +1716,8 @@ _write_main_transcript_raw_tokens() {
 # =========================================================================
 # Opus 5.5 (claude-opus-5-5, added Claude Code 2.1.280): 1M physical window
 # AND -- uniquely among Opus models -- the EXTENDED-HORIZON quality profile
-# (30/40/50% + 300/400/500k), by USER POLICY DECISION of 2026-09-23 (not by
+# (then 30/40/50% + 300/400/500k; 40/50/60% + 400/500/600k since the
+# 2026-10-23 user policy decision), by USER POLICY DECISION of 2026-09-23 (not by
 # validation)
 # (research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
 # § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
@@ -1697,7 +1770,7 @@ _write_main_transcript_raw_tokens() {
 @test "mixed: bare claude-opus-5-5 subagent is NOMINAL at 250k -- extended-horizon profile" {
     # PROFILE -- exercises the live hook's anchored extended-horizon arm
     # (context-reporter_opus55.patch is deployed).
-    # 250k / 1000k = 25%: below the extended-horizon 300k/30% ELEVATED leg.
+    # 250k / 1000k = 25%: below the extended-horizon 400k/40% ELEVATED leg.
     # Under the conservative profile the same 250k would be CRITICAL (>= 250k).
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'claude-opus-5-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
@@ -1763,7 +1836,8 @@ _write_main_transcript_raw_tokens() {
 
 # =========================================================================
 # Opus 5.5 profile arm: BOUNDARY-ANCHORING locks (added 2026-09-23, fix cycle 1).
-# The profile arm grants a privilege (relaxed 30/40/50% + 300/400/500k gates),
+# The profile arm grants a privilege (relaxed gates, 40/50/60% + 400/500/600k
+# since 2026-10-23),
 # so it names claude-opus-5-5 exactly -- bare, or as the FINAL segment of a
 # provider path -- rather than substring-matching *opus-5-5*. These four cases
 # are the regression lock for that choice: two right-/left-boundary near misses
@@ -1919,6 +1993,41 @@ _extract_normalize() {
     [ "$rep_ext" = '^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$' ]
 }
 
+# Numeric lockstep (added 2026-10-23 with the Claude extended-horizon raise to
+# 40/50/60% OR 400/500/600k, a user policy decision). The tests above lock the
+# profile PATTERNS; this one locks the NUMBERS. Every line that assigns any of
+# elev_pct/high_pct/crit_pct/elev_k/high_k/crit_k (wherever on the line the
+# assignment sits, so moving one onto its own line cannot slip past) is
+# extracted; today that is two lines per profile arm, three arms, six lines.
+# They must be byte-identical, in order and indentation, in the reporter's
+# calculate() and subagent-bar.sh's row loop, so the two scripts can never
+# apply different threshold numbers. This test locks the numbers only: window
+# resolution has its own cross-script agreement test (below), and the
+# severity comparison cascade is not compared.
+_extract_threshold_assignments() {
+    grep -E '(^|[^[:alnum:]_])(elev|high|crit)_(pct|k)=' "$1"
+}
+
+@test "lockstep: threshold assignment lines are byte-identical in the reporter and subagent-bar.sh" {
+    local rep bar
+    rep=$(_extract_threshold_assignments "$CONTEXT_REPORTER_SH")
+    bar=$(_extract_threshold_assignments "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep" ]
+    # Exactly six lines: a split or added assignment line changes the count
+    # (and the approved-value pins below assume the six-line layout).
+    [ "$(printf '%s\n' "$rep" | wc -l)" -eq 6 ] || { echo "reporter has $(printf '%s\n' "$rep" | wc -l) assignment lines (want 6)"; return 1; }
+    [ "$(printf '%s\n' "$bar" | wc -l)" -eq 6 ] || { echo "subagent-bar has $(printf '%s\n' "$bar" | wc -l) assignment lines (want 6)"; return 1; }
+    [ "$rep" = "$bar" ] || { echo "reporter:"; echo "$rep"; echo "subagent-bar:"; echo "$bar"; return 1; }
+    # Pin the approved values per arm: Claude extended-horizon (2026-10-23),
+    # GPT Sol/Astra extended-horizon, conservative default.
+    [ "$(printf '%s\n' "$rep" | sed -n '1p' | sed 's/^[[:space:]]*//')" = 'elev_pct=40; high_pct=50; crit_pct=60' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '2p' | sed 's/^[[:space:]]*//')" = 'elev_k=400;  high_k=500;  crit_k=600 ;;' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '3p' | sed 's/^[[:space:]]*//')" = 'elev_pct=60; high_pct=75; crit_pct=90' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '4p' | sed 's/^[[:space:]]*//')" = 'elev_k=300;  high_k=400;  crit_k=500' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '5p' | sed 's/^[[:space:]]*//')" = 'elev_pct=40; high_pct=60; crit_pct=75' ]
+    [ "$(printf '%s\n' "$rep" | sed -n '6p' | sed 's/^[[:space:]]*//')" = 'elev_k=150;  high_k=200;  crit_k=250' ]
+}
+
 @test "normalize_model_id (reporter copy): rewrites only terminal dotted claude-<family>-<major>.<minor>" {
     local fn case_row input expected
     fn=$(_extract_normalize "$CONTEXT_REPORTER_SH")
@@ -1942,16 +2051,16 @@ _extract_normalize() {
     done
 }
 
-@test "mixed: dotted anthropic/claude-opus-5.5 subagent is NOMINAL at 250k and ELEVATED at 300k (1M window)" {
+@test "mixed: dotted anthropic/claude-opus-5.5 subagent is NOMINAL at 250k and ELEVATED at 400k (1M window)" {
     _dotted_subagent_fixture "anthropic/claude-opus-5.5" 250000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
     assert_success
     assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
 
-    _dotted_subagent_fixture "anthropic/claude-opus-5.5" 300000
+    _dotted_subagent_fixture "anthropic/claude-opus-5.5" 400000
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
     assert_success
-    assert_output --partial "[ELEVATED]: 300k / 1000k tokens (30%)"
+    assert_output --partial "[ELEVATED]: 400k / 1000k tokens (40%)"
 }
 
 @test "mixed: dotted claude-opus-5.5[1m] subagent is NOMINAL at 250k" {
@@ -1982,6 +2091,20 @@ _extract_normalize() {
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
     assert_success
     assert_output --partial "[NOMINAL]: 250k / 1000k tokens (25%)"
+}
+
+@test "mixed: dotted anthropic/claude-fable-5.1 subagent is NOMINAL at 300k and ELEVATED at 400k (1M window)" {
+    # Discriminates the 2026-10-23 raise for the dotted Fable 5.1 spelling: under
+    # the old 30/40/50% OR 300/400/500k gates 300k read ELEVATED and 400k HIGH.
+    _dotted_subagent_fixture "anthropic/claude-fable-5.1" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+
+    _dotted_subagent_fixture "anthropic/claude-fable-5.1" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 400k / 1000k tokens (40%)"
 }
 
 @test "uncached main session: dotted anthropic/claude-opus-5.5 maps to 1000k and is NOMINAL at 250k" {

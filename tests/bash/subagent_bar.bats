@@ -3,10 +3,15 @@
 # Tests for subagent-bar.sh -- Claude Code subagentStatusLine renderer
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers that drive
-# each row's severity COLOR. Fable/Mythos use ELEVATED 30%/300k, HIGH
-# 40%/400k, and CRITICAL 50%/500k. The exact extended-horizon GPT rows -- GPT
+# each row's severity COLOR. The Claude extended-horizon profile (Fable/Mythos,
+# plus Opus 5.5 by 2026-09-23 user policy decision) uses ELEVATED 40%/400k,
+# HIGH 50%/500k, and CRITICAL 60%/600k -- raised from 30%/300k, 40%/400k,
+# 50%/500k by user policy decision on 2026-10-23, not by DAAF quality
+# validation (research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise,
+# maintainer-only workspace). The exact extended-horizon GPT rows -- GPT
 # 5.6 Sol and GPT-6 Astra, plus (2026-09-29 user policy decision) GPT-6 Sol and
-# the flagship -pro form of all three -- use ELEVATED 60%/300k, HIGH 75%/400k,
+# the flagship -pro form of all three, and (2026-10-12 user policy decision)
+# GPT-6.1 Sol and its -pro form -- use ELEVATED 60%/300k, HIGH 75%/400k,
 # and CRITICAL 90%/500k. Every other model -- including opus-4-8[1m] and
 # non-exact Sol/Astra variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and
 # CRITICAL 75%/250k. Provider-dotted Claude ids (anthropic/claude-opus-5.5) are
@@ -43,34 +48,44 @@ COLOR_CRITICAL="38;5;167m"
 # introducer at runtime (avoids embedding a raw ESC or a \u escape in the source).
 OSC_ENC=$(printf '\033]' | jq -Rsc . | tr -d '"')
 
-# /tmp caches this script reads for FAKE_SESSION (cleaned each test). The
-# per-subagent model cache uses a task-id suffix; tests that seed it build the
-# exact path from their task id.
+# Per-test cache dir. setup() exports DAAF_SUBAGENT_BAR_CACHE_DIR (the script's
+# test seam; every cache it reads or writes -- the window cache, the session
+# and per-subagent model caches, their .transcript-signature sidecars and temp
+# siblings -- lives under it) pointing at $(_iso_cache), i.e. TEST_DIR/isocache.
+# common_setup creates a fresh TEST_DIR for each test, _iso_cache's mkdir -p
+# creates isocache inside it, and common_teardown removes TEST_DIR.
+# So no fixture touches the shared production caches, and concurrent runs of
+# this suite cannot collide (they did on 2026-10-23 while every legacy
+# fixture used one fixed cache name per FAKE_SESSION). Tests that pass the seam explicitly
+# (env DAAF_SUBAGENT_BAR_CACHE_DIR=..., _iso_row) name the same dir or their own.
+# _clean_subbar_caches resets the FAKE_SESSION caches between loop iterations;
+# the per-subagent model cache uses a task-id suffix, and tests that seed it
+# build the exact path from their task id.
 _clean_subbar_caches() {
-    rm -f "/tmp/claude-ctx-window-${FAKE_SESSION}"
-    rm -f /tmp/claude-model-"${FAKE_SESSION}"*
-    rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*
+    rm -f "$(_iso_cache)/claude-ctx-window-${FAKE_SESSION}"
+    rm -f "$(_iso_cache)"/claude-model-"${FAKE_SESSION}"*
+    rm -f "$(_iso_cache)"/claude-subagent-model-"${FAKE_SESSION}"-*
 }
 
 setup() {
     common_setup
-    _clean_subbar_caches
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
-    export FAKE_SESSION SUBAGENT_BAR_SH
+    DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)"
+    export FAKE_SESSION SUBAGENT_BAR_SH DAAF_SUBAGENT_BAR_CACHE_DIR
 }
 
 teardown() {
-    _clean_subbar_caches
+    # The cache dir sits inside TEST_DIR, which common_teardown removes.
     common_teardown
 }
 
-_seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
-_seed_session_model() { printf '%s' "$1" > "/tmp/claude-model-${FAKE_SESSION}"; }
+_seed_window() { printf '%s' "$1" > "$(_iso_cache)/claude-ctx-window-${FAKE_SESSION}"; }
+_seed_session_model() { printf '%s' "$1" > "$(_iso_cache)/claude-model-${FAKE_SESSION}"; }
 _seed_task_model() {
     # $1 = task id, $2 = model id
-    printf '%s' "$2" > "/tmp/claude-subagent-model-${FAKE_SESSION}-${1}"
+    printf '%s' "$2" > "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-${1}"
 }
 
 # Build a payload with a single task. Args: $1 task id, $2 tokenCount.
@@ -109,41 +124,55 @@ _append_subbar_model() {
 }
 
 # =========================================================================
-# Fable family (1M window) -- permissive thresholds
+# Claude extended-horizon profile (1M window) -- 40/50/60% & 400/500/600k
+# (raised from 30/40/50% & 300/400/500k by user policy decision on
+# 2026-10-23). The boundary matrices for every member spelling and three
+# denominators are in the 2026-10-23 block at the end of this file.
 # =========================================================================
 
-@test "fable row: 299k on 1M window renders NOMINAL green" {
+@test "fable row: 399k on 1M window renders NOMINAL green" {
     _seed_window 1000000
     _seed_session_model "claude-sonnet-4-6"   # session differs, forces per-row window mapping
     _seed_task_model "t1" "claude-fable-5"
-    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 299000)
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 399000)
     assert_success
     assert_output --partial "$COLOR_NOMINAL"
 }
 
-@test "fable row: 300k on 1M window renders ELEVATED amber" {
+@test "fable row: 300k on 1M window renders NOMINAL green (the pre-2026-10-23 ELEVATED point)" {
+    # Locks the raise itself: under the old 30%/300k gate this rendered amber.
     _seed_window 1000000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "claude-fable-5"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
     assert_success
-    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "$COLOR_ELEVATED"
 }
 
-@test "fable row: 400k on 1M window renders HIGH orange (bold)" {
+@test "fable row: 400k on 1M window renders ELEVATED amber" {
     _seed_window 1000000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "claude-fable-5"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
-    assert_output --partial "$COLOR_HIGH"
+    assert_output --partial "$COLOR_ELEVATED"
 }
 
-@test "fable row: 500k on 1M window renders CRITICAL red" {
+@test "fable row: 500k on 1M window renders HIGH orange (bold)" {
     _seed_window 1000000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "claude-fable-5"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 500000)
+    assert_success
+    assert_output --partial "$COLOR_HIGH"
+}
+
+@test "fable row: 600k on 1M window renders CRITICAL red" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-fable-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 600000)
     assert_success
     assert_output --partial "$COLOR_CRITICAL"
 }
@@ -152,28 +181,28 @@ _append_subbar_model() {
     # Window-correction BYPASS path: when task_model == session_model,
     # subagent-bar.sh keeps the session window ($max_context) and skips the
     # per-model mapping. Here both are fable and the session window is 1M, so
-    # 300k stays 300k/1M = 30% -> fable-family ELEVATED. This proves the bypass
+    # 400k stays 400k/1M = 40% -> fable-family ELEVATED. This proves the bypass
     # branch still resolves the correct family (fable), not just the correct
-    # window: a conservative family at 300k/1M would be CRITICAL (>=250k), so
+    # window: a conservative family at 400k/1M would be CRITICAL (>=250k), so
     # ELEVATED confirms the fable family is applied on the bypass path too.
     _seed_window 1000000
     _seed_session_model "claude-fable-5"
     _seed_task_model "t1" "claude-fable-5"
-    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
     assert_output --partial "$COLOR_ELEVATED"
-    assert_output --partial "30%"
+    assert_output --partial "40%"
 }
 
-@test "fable[1m] row: 300k on 1M window renders ELEVATED amber (bracketed fable variant keeps extended-horizon tier)" {
+@test "fable[1m] row: 400k on 1M window renders ELEVATED amber (bracketed fable variant keeps extended-horizon tier)" {
     # The exact string claude-fable-5[1m] must resolve to the fable family. Under a
-    # sonnet session the per-row window mapping maps it to 1M; 300k/1M = 30% ->
-    # extended-horizon ELEVATED. A conservative family at 300k (>=250k) would be
+    # sonnet session the per-row window mapping maps it to 1M; 400k/1M = 40% ->
+    # extended-horizon ELEVATED. A conservative family at 400k (>=250k) would be
     # CRITICAL red, so ELEVATED amber confirms the bracketed variant is fable.
     _seed_window 1000000
     _seed_session_model "claude-sonnet-4-6"   # session differs, forces per-row window mapping
     _seed_task_model "t1" "claude-fable-5[1m]"
-    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
     assert_output --partial "$COLOR_ELEVATED"
 }
@@ -494,7 +523,7 @@ _append_subbar_model() {
     assert_success
     # opus-4-8[1m] maps to a 1M window but keeps the conservative family. 220k is
     # in [200k, 250k) -> HIGH. Under a fable family the same 220k would be
-    # NOMINAL (< 300k) -- the exact distinction under test.
+    # NOMINAL (< 400k) -- the exact distinction under test.
     assert_output --partial "$COLOR_HIGH"
     refute_output --partial "$COLOR_NOMINAL"
 }
@@ -540,7 +569,7 @@ _append_subbar_model() {
     assert_success
     # Opus 5 must NOT select the Fable/Mythos profile: 220k is in [200k, 250k)
     # -> conservative HIGH. Under the Fable/Mythos gates the same 220k would be
-    # NOMINAL (< 300k) -- the exact distinction under test.
+    # NOMINAL (< 400k) -- the exact distinction under test.
     assert_output --partial "$COLOR_HIGH"
     refute_output --partial "$COLOR_NOMINAL"
 }
@@ -558,8 +587,8 @@ _append_subbar_model() {
 @test "fable-5-1 row: 150k maps to a 1M window (15%) and renders NOMINAL" {
     # Locks the substring behaviour of the *fable-5* globs against the real
     # 2.1.261 model id `claude-fable-5-1` as TESTED FACT rather than inference:
-    # 1M physical window AND the Fable/Mythos quality profile (150k < 300k and
-    # 15% < 30% -> NOMINAL, where the conservative profile would be ELEVATED).
+    # 1M physical window AND the Fable/Mythos quality profile (150k < 400k and
+    # 15% < 40% -> NOMINAL, where the conservative profile would be ELEVATED).
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"   # differs -> per-row mapping applies
     _seed_task_model "t1" "claude-fable-5-1"
@@ -746,7 +775,7 @@ _append_subbar_model() {
 @test "subagent cache refreshes Claude -> Sol -> Terra -> Claude and ignores an intervening synthetic model" {
     local id="switch"
     local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
-    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${id}"
+    local model_cache="$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-${id}"
     local signature_cache="${model_cache}.transcript-signature"
     _seed_window 1000000
     _write_subbar_main_model "claude-fable-5"
@@ -799,7 +828,7 @@ _append_subbar_model() {
 
 @test "main-session cache refreshes against the main transcript signature" {
     local id="main-switch"
-    local main_cache="/tmp/claude-model-${FAKE_SESSION}"
+    local main_cache="$(_iso_cache)/claude-model-${FAKE_SESSION}"
     _seed_window 1000000
     _write_subbar_main_model "claude-fable-5"
     _write_subbar_task_model "$id" "claude-fable-5"
@@ -821,7 +850,7 @@ _append_subbar_model() {
 @test "unchanged transcript signature reuses the compatible nonempty subagent bare cache" {
     local id="unchanged"
     local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
-    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${id}"
+    local model_cache="$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-${id}"
     _seed_window 200000
     _write_subbar_main_model "claude-sonnet-4-6"
     _write_subbar_task_model "$id" "claude-sonnet-4-6"
@@ -979,13 +1008,14 @@ _append_subbar_model() {
 # rendered against 200k and went red far too early. Now: this session's cache
 # when present, else the static map for the session model.
 #
-# These tests use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (an empty per-test dir)
-# rather than the shared /tmp used above, so the live container's own
-# /tmp/claude-ctx-window-* caches cannot leak into the "no cache" condition
-# and mask a regression to the any-session fallback.
+# These tests use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (an empty per-test dir),
+# so the live container's own claude-ctx-window-* caches in the production
+# cache dir (/tmp) cannot leak into the "no cache" condition and mask a
+# regression to the any-session fallback. Since 2026-10-23 every test in this
+# file uses the same seam: setup() exports it pointing at _iso_cache below.
 # =========================================================================
 
-_iso_cache() { # isolated cache dir for this test; echoes its path
+_iso_cache() { # isolated cache dir for this test (setup() exports it as the seam); echoes its path
     local d="${TEST_DIR}/isocache"
     mkdir -p "$d"
     printf '%s' "$d"
@@ -1091,7 +1121,7 @@ _payload_desc() {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     jq -rn '"g"+([27]|implode)+"]0;X"+([7]|implode)+"-5.6-sol"' \
-        > "/tmp/claude-subagent-model-${FAKE_SESSION}-c1"
+        > "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-c1"
     local esc bel
     esc=$(printf '\033')
     bel=$(printf '\007')
@@ -1249,7 +1279,7 @@ _payload_desc() {
     _seed_session_model "claude-sonnet-4-6"
     # [155]|implode -> U+009B, emitted by jq -rn as raw UTF-8 bytes c2 9b.
     jq -rn '"evil"+([155]|implode)+"0;pwn-model"' \
-        > "/tmp/claude-subagent-model-${FAKE_SESSION}-c1u"
+        > "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-c1u"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "c1u" 50000)
     assert_success
     # Neither the raw UTF-8 C1 bytes nor a JSON-escaped  may survive.
@@ -1529,7 +1559,8 @@ _measured_payload() {
 # =========================================================================
 # Opus 5.5 (claude-opus-5-5, added Claude Code 2.1.280): 1M physical window
 # AND -- uniquely among Opus models -- the EXTENDED-HORIZON quality profile
-# (30/40/50% + 300/400/500k), by USER POLICY DECISION of 2026-09-23 (not by
+# (then 30/40/50% + 300/400/500k; 40/50/60% + 400/500/600k since the
+# 2026-10-23 user policy decision), by USER POLICY DECISION of 2026-09-23 (not by
 # validation)
 # (research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
 # § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
@@ -1571,7 +1602,7 @@ _measured_payload() {
     _seed_task_model "t1" "claude-opus-5-5"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
     assert_success
-    # 250k / 1M = 25%: below the extended-horizon 300k/30% ELEVATED leg.
+    # 250k / 1M = 25%: below the extended-horizon 400k/40% ELEVATED leg.
     # Under the conservative profile the same 250k would be CRITICAL (>= 250k).
     assert_output --partial "$COLOR_NOMINAL"
     refute_output --partial "$COLOR_CRITICAL"
@@ -1612,7 +1643,8 @@ _measured_payload() {
 
 # =========================================================================
 # Opus 5.5 profile arm: BOUNDARY-ANCHORING locks (added 2026-09-23, fix cycle 1).
-# The profile arm grants a privilege (relaxed 30/40/50% + 300/400/500k gates),
+# The profile arm grants a privilege (relaxed gates, 40/50/60% + 400/500/600k
+# since 2026-10-23),
 # so it names claude-opus-5-5 exactly -- bare, or as the FINAL segment of a
 # provider path -- rather than substring-matching *opus-5-5*. These four cases
 # are the regression lock for that choice: two right-/left-boundary near misses
@@ -1683,8 +1715,9 @@ _measured_payload() {
 # gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
 # Provenance: research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames.
 #
-# These cases use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (_iso_* helpers above)
-# so no fixture touches the shared /tmp caches.
+# These cases use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (_iso_* helpers above),
+# like every test in this file (see setup()), so no fixture touches the shared
+# production caches.
 # =========================================================================
 
 # Run one row against the isolated cache. Args: $1 task id, $2 tokenCount,
@@ -1772,9 +1805,9 @@ _color_for() {
     assert_output '^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 }
 
-@test "dotted anthropic/claude-opus-5.5 row: 250k NOMINAL, 300k ELEVATED -- extended-horizon profile" {
+@test "dotted anthropic/claude-opus-5.5 row: 250k NOMINAL, 400k ELEVATED -- extended-horizon profile" {
     local row tokens expected pct
-    for row in "250000 NOMINAL 25" "300000 ELEVATED 30"; do
+    for row in "250000 NOMINAL 25" "400000 ELEVATED 40"; do
         read -r tokens expected pct <<< "$row"
         _iso_sonnet_row_fixture "anthropic/claude-opus-5.5"
         run _iso_row t1 "$tokens"
@@ -1816,6 +1849,20 @@ _color_for() {
     assert_success
     assert_output --partial "$COLOR_NOMINAL"
     assert_output --partial "m25%"
+}
+
+@test "dotted anthropic/claude-fable-5.1 row: 300k NOMINAL, 400k ELEVATED -- the 2026-10-23 raise" {
+    # Discriminates the raise for the dotted Fable 5.1 spelling: under the old
+    # 30/40/50% OR 300/400/500k gates 300k rendered ELEVATED and 400k HIGH.
+    local row tokens expected pct
+    for row in "300000 NOMINAL 30" "400000 ELEVATED 40"; do
+        read -r tokens expected pct <<< "$row"
+        _iso_sonnet_row_fixture "anthropic/claude-fable-5.1"
+        run _iso_row t1 "$tokens"
+        assert_success
+        assert_output --partial "$(_color_for "$expected")"
+        assert_output --partial "m${pct}%"
+    done
 }
 
 @test "dotted rows keep the RAW model name in the row label" {
@@ -2170,4 +2217,77 @@ _ctxbar_static_window() {
     [ -n "$bar_glob" ]
     [ "$(printf '%s\n' "$bar_glob" | wc -l)" -eq 1 ]
     [ "$bar_glob" = "$ctx_glob" ]
+}
+
+# =========================================================================
+# 2026-10-23: Claude extended-horizon raise to 40/50/60% OR 400/500/600k
+# -------------------------------------------------------------------------
+# USER POLICY DECISION 2026-10-23, not DAAF quality validation: the Claude
+# extended-horizon profile (Fable/Mythos, validated at 30/40/50% OR
+# 300/400/500k, plus Opus 5.5) moves to 40/50/60% OR 400/500/600k. Membership
+# and patterns are unchanged. Provenance (maintainer-only workspace):
+# research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise/SESSION_NOTES.md.
+# Every member spelling runs just-below/at pairs for each gate on three
+# denominators: the 1M window via different-model mapping (both legs
+# coincide), and same-model rows on a seeded 400k window (percentage legs
+# only) and a seeded 2M window (absolute legs only). The numeric lockstep with
+# the hook's calculate() lives in tests/bash/context_reporter.bats. These
+# cases use the DAAF_SUBAGENT_BAR_CACHE_DIR seam, so no fixture touches the
+# shared production caches.
+# =========================================================================
+
+_claude_extended_row_matrix() {
+    # Args: $1 seeded same-model window, or "" for a sonnet session whose
+    # different-model row maps to the 1M static window; then "tokens severity pct" rows.
+    local window="$1" model row tokens expected pct
+    shift
+    for model in claude-fable-5 claude-mythos-5 claude-fable-5-1 claude-opus-5-5 \
+                 'claude-opus-5-5[1m]' anthropic/claude-opus-5-5 'anthropic/claude-opus-5-5[1m]'; do
+        for row in "$@"; do
+            read -r tokens expected pct <<< "$row"
+            rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+            if [ -n "$window" ]; then
+                _iso_seed_window "$window"
+                _iso_seed_session_model "$model"
+            else
+                _iso_seed_window 200000
+                _iso_seed_session_model "claude-sonnet-4-6"
+            fi
+            _iso_seed_task_model t1 "$model"
+            run _iso_row t1 "$tokens"
+            assert_success
+            assert_output --partial "$(_color_for "$expected")"
+            assert_output --partial "m${pct}%"
+        done
+    done
+}
+
+@test "Claude extended-horizon rows: 40/50/60% = 400k/500k/600k on the 1M window" {
+    _claude_extended_row_matrix "" \
+        "399999 NOMINAL 39" \
+        "400000 ELEVATED 40" \
+        "499999 ELEVATED 49" \
+        "500000 HIGH 50" \
+        "599999 HIGH 59" \
+        "600000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon rows: percentage legs 40/50/60% on a 400k same-model window" {
+    _claude_extended_row_matrix 400000 \
+        "159999 NOMINAL 39" \
+        "160000 ELEVATED 40" \
+        "199999 ELEVATED 49" \
+        "200000 HIGH 50" \
+        "239999 HIGH 59" \
+        "240000 CRITICAL 60"
+}
+
+@test "Claude extended-horizon rows: absolute legs 400k/500k/600k on a 2M same-model window" {
+    _claude_extended_row_matrix 2000000 \
+        "399999 NOMINAL 19" \
+        "400000 ELEVATED 20" \
+        "499999 ELEVATED 24" \
+        "500000 HIGH 25" \
+        "599999 HIGH 29" \
+        "600000 CRITICAL 30"
 }

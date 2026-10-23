@@ -75,13 +75,16 @@ C_BAR_EMPTY=$'\033[38;5;238m'
 # Severity palette aligned to the Context Quality Curve. The exact numeric
 # thresholds are quality-tier conditional (see the per-row severity block near
 # the bottom of the loop): Fable/Mythos patterns, plus Opus 5.5
-# (claude-opus-5-5, bare or [1m]; user policy decision 2026-09-23, not
-# validation), use ELEVATED >= 30% OR >= 300k,
-# HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. The exact terminal
+# (claude-opus-5-5, bare or [1m]; admitted to this tier by user policy
+# decision 2026-09-23, not validation), use ELEVATED >= 40% OR >= 400k,
+# HIGH >= 50% OR >= 500k, and CRITICAL >= 60% OR >= 600k. These numbers date
+# from a user policy decision of 2026-10-23, not validation, which raised the
+# tier from 30/40/50% OR 300/400/500k (the levels Fable/Mythos were
+# validated at). The exact terminal
 # extended-horizon GPT slugs — GPT 5.6 Sol and GPT-6 Astra (validated), plus
 # GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of each (user policy
 # decisions 2026-09-29 and 2026-10-12, not validation; see gpt_extended_re) — use 60%/75%/90%
-# percentage gates while retaining the larger 300k/400k/500k absolute gates.
+# percentage gates while retaining their 300k/400k/500k absolute gates.
 # Every other model — including every other Opus model (Opus 5 included),
 # Sonnet, other GPT variants (GPT-6 Luna, Terra, mini, chat), GLM, and unknown
 # ids — uses ELEVATED >= 40% OR >=
@@ -649,15 +652,24 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     used_k=$((tokens / 1000))
 
     # Threshold tier (percentage AND absolute k-token gates per severity), keyed
-    # on the measured agent's model. Fable/Mythos (validated) and Opus 5.5
-    # (user policy decision, 2026-09-23 — not validation; see the block below)
-    # get the 30/40/50% extended-horizon gates plus 300/400/500k absolute
-    # gates. The exact
+    # on the measured agent's model. Fable/Mythos and Opus 5.5 (admitted to
+    # this tier by user policy decision 2026-09-23 — not validation; see the
+    # block below) get the Claude extended-horizon gates: 40/50/60% plus
+    # 400/500/600k absolute gates. Fable/Mythos were registered as validated
+    # at 30/40/50% OR 300/400/500k; by USER POLICY DECISION of 2026-10-23
+    # (not validation) the whole tier was raised to the current numbers, so
+    # the raised gates rest on the user's policy decision, not on a DAAF
+    # validation. Provenance (maintainer-only research workspace):
+    # research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise/SESSION_NOTES.md.
+    # The six threshold assignment lines in the case below are kept
+    # byte-identical with calculate() in .claude/hooks/context-reporter.sh
+    # (numeric lockstep test in tests/bash/context_reporter.bats). The exact
     # extended-horizon GPT ids — GPT 5.6 Sol and the second registered
-    # extended-horizon model GPT-6 Astra (validated), plus GPT-6 Sol and the
-    # flagship -pro form of all three (user policy decision 2026-09-29, not
-    # validation) — use 60/75/90% gates while retaining
-    # 300/400/500k absolutes. Everything else — INCLUDING opus-4-8[1m] and
+    # extended-horizon model GPT-6 Astra (validated), plus GPT-6 Sol, GPT-6.1
+    # Sol, and the flagship -pro form of each (user policy decisions
+    # 2026-09-29 and 2026-10-12, not validation) — use 60/75/90% gates while
+    # retaining 300/400/500k absolutes, so the Claude and GPT extended tiers
+    # no longer share absolute gates. Everything else — INCLUDING opus-4-8[1m] and
     # opus-5 (bare or [1m]), whose 1M physical windows do NOT relax their
     # Opus-class quality horizon — gets 40/60/75% plus 150/200/250k. Opus 5's
     # 1M window was observed 2026-09-05 (Claude Code 2.1.261, /model + /context)
@@ -692,7 +704,7 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # ("built for long-running agentic coding and knowledge work"). The Opus 5.5
     # pattern is BOUNDARY-ANCHORED, not a substring glob: this arm GRANTS a
     # privilege (relaxed gates), and a privilege-granting arm must name exactly
-    # what it privileges. A loose `*opus-5-5*` would silently hand the 30/40/50%
+    # what it privileges. A loose `*opus-5-5*` would silently hand the 40/50/60%
     # gates to any future slug merely containing that text — `claude-opus-5-5-mini`
     # on the right, `xclaude-opus-5-5` on the left — neither of which the user
     # policy decision covers. The accepted forms are therefore the bare slug or a
@@ -708,8 +720,8 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # as anthropic/claude-opus-5-5 (normalize_model_id, 2026-09-29).
     case "$model_key" in
         *fable-5*|*mythos-5*|claude-opus-5-5|*/claude-opus-5-5|claude-opus-5-5\[1m\]|*/claude-opus-5-5\[1m\])
-            elev_pct=30; high_pct=40; crit_pct=50
-            elev_k=300;  high_k=400;  crit_k=500 ;;
+            elev_pct=40; high_pct=50; crit_pct=60
+            elev_k=400;  high_k=500;  crit_k=600 ;;
         *)
             if [[ "${model_key##*/}" =~ $gpt_extended_re ]]; then
                 elev_pct=60; high_pct=75; crit_pct=90
