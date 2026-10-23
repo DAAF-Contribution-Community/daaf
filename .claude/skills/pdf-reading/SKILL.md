@@ -1,12 +1,12 @@
 ---
 name: pdf-reading
 description: >-
-  Reads research PDFs with page-anchored provenance. Covers DAAF's deterministic pdf_ingest CLI (unaltered poppler text as the quote anchor, a second extractor, table, figure, numeric and scanned page flags, OCR on scanned pages, 2000 px renders, page index, manifest), the lit_verify card gate that checks each verbatim quote and number on its cited page, the vision cross-check policy and its dated vision-validated model list, two-column, table and scan handling, and the arXiv HTML shortcut. Use whenever an agent must read, quote, or extract numbers, tables or figures from a PDF already on disk: OA papers saved by web_fetch.sh (exit 8), user-supplied papers, codebooks, methodology reports. For research reading it takes precedence over the account-synced anthropic-skills:pdf, whose pypdf and pip-install recipes DAAF blocks. NOT for finding or downloading papers (scholarly-search, web-retrieval), creating, merging or filling PDFs, or scanning PDFs DAAF renders itself (academic-manuscript).
+  Reads research PDFs with page-anchored provenance. Covers DAAF's deterministic pdf_ingest CLI (unaltered poppler text as the quote anchor, a second extractor, table, figure, numeric and scanned page flags, OCR on scanned pages, 2000 px renders, page index, manifest), the lit_verify card gate that checks each verbatim quote and number on its cited page, the vision cross-check policy and its dated vision-validated model list, two-column, table and scan handling, and the arXiv HTML lane (section-cited cards). Use whenever an agent must read, quote, or extract numbers, tables or figures from a PDF already on disk: OA papers saved by web_fetch.sh (exit 8), user-supplied papers, codebooks, methodology reports. For research reading it takes precedence over the account-synced anthropic-skills:pdf, whose pypdf and pip-install recipes DAAF blocks. NOT for finding or downloading papers (scholarly-search, web-retrieval), creating, merging or filling PDFs, or scanning PDFs DAAF renders itself (academic-manuscript).
 metadata:
   audience: any-agent
   domain: data-access
   skill-authored: "2026-10-19"
-  skill-last-updated: "2026-10-19"
+  skill-last-updated: "2026-10-22"
 ---
 
 # PDF Reading
@@ -54,12 +54,12 @@ MANIFEST row.
 | Lane | What it gives | Status | Role |
 |------|---------------|--------|------|
 | Poppler `pdftotext` (default mode), per page | The **anchor**: stored byte-for-byte, hashed | Installed (poppler-utils 24.02.0) | The only text `lit_verify` matches quotes against |
-| pypdfium2 `get_text_bounded` | Lane B text and a per-page agreement score | Installed (5.13.0) | A check on the anchor, never a substitute |
+| pypdfium2 `get_text_bounded` | Lane B text (rows kept together), per-page agreement and overlap scores | Installed (5.13.0) | A check on the anchor, never a substitute; on table pages a not-quotable reading aid and row locality for numbers |
 | pdfplumber `find_tables` | Table bounding boxes | Installed (0.11.10) | A flag only (default `lines` strategy misses borderless tables) |
 | Tesseract OCR | OCR text of pages flagged `scanned` | Installed (5.3.4), CPU, one thread | A separate, weaker lane (`PASS_OCR`) |
 | `pdftoppm` renders | 2000 px page PNGs, 300 DPI table and image crops | Installed | What vision reads, when vision is available |
 | Read tool on a `.pdf` | Rendered page images | Works on both Anthropic and shim routes | Not used: prefer `pdf_ingest` renders (you control resolution and pages) |
-| arXiv HTML | Semantic HTML of an arXiv paper | Via `web_fetch.sh` | Reading aid; not gate-able (see below) |
+| arXiv HTML (`pdf_ingest --source arxiv-html`, 1.2.0) | LaTeXML section units: unit text, table rows, labels | Fetched via `web_fetch.sh` | An anchor of its own: cards cite sections, same grades as a PDF; no vision |
 | PyMuPDF, Gemini, LlamaParse | — | Not used (AGPL; no upload lanes in v1) | — |
 
 ## Which path?
@@ -70,10 +70,12 @@ A PDF to read
 │     web-retrieval / scholarly-search). Readers never fetch.
 ├─ Outside /daaf (e.g. /host_data, read-only)? → copy it into the project
 │     first ({PROJECT_DIR}/user_pdfs/); pdf_ingest refuses sources outside /daaf.
-├─ An arXiv paper and you need equations or structure? → the arXiv HTML
-│     shortcut helps (references/arxiv-and-html.md), BUT an evidence card that
-│     must pass lit_verify still needs the PDF ingested: the gate anchors on
-│     pdf_ingest's page text, not on HTML.
+├─ An arXiv paper with HTML at the version you cite? → the HTML lane
+│     (references/arxiv-and-html.md): ingest the web_fetch'd
+│     arxiv.org/html/{id}vN file with --source arxiv-html, cite SECTIONS in a
+│     lit-verify-card-v2 card; same grades as a PDF, no vision. No HTML (404),
+│     exit 12, or you need page numbers or figures → the PDF of that version.
+│     One source per paper key.
 ├─ Ingest: bash /daaf/scripts/pdf_ingest.sh PDF {PROJECT_DIR}/papers/ --paper-key KEY
 │     exit 0 → read; any other exit → the exit table below.
 ├─ Read: ingest_manifest{S}.json first, then EVERY pages{S}/pNNN.txt in order.
@@ -89,6 +91,8 @@ A PDF to read
 bash /daaf/scripts/pdf_ingest.sh <PDF_PATH> <PAPERS_DIR> --paper-key KEY
      [--render flagged|all|none] [--ocr auto|off] [--max-pages N]
      [--max-bytes N] [--timeout S] [--reingest]
+bash /daaf/scripts/pdf_ingest.sh <HTML_PATH> <PAPERS_DIR> --paper-key KEY
+     --source arxiv-html [--max-pages N] [--max-bytes N] [--reingest]
 ```
 
 - `PAPERS_DIR` is canonically `{PROJECT_DIR}/papers/`; the tool refuses
@@ -102,7 +106,8 @@ bash /daaf/scripts/pdf_ingest.sh <PDF_PATH> <PAPERS_DIR> --paper-key KEY
 
 Under `PAPERS_DIR/KEY/` (`{S}` = `""`, then `_a`…`_z`):
 `anchor{S}/pNNN.txt` (the anchor, for machines), `pages{S}/pNNN.txt` (fenced,
-scrubbed **reading copies, for you**), `lane_b{S}/`, `ocr{S}/` (scanned pages
+scrubbed **reading copies, for you**), `pages{S}/pNNN_rows.txt` (table pages:
+lane B rows as a reading aid, **not quotable**), `lane_b{S}/`, `ocr{S}/` (scanned pages
 only), `renders{S}/`, `fulltext{S}.md` (reading copies in page order with
 `<!-- page N/TOTAL anchor_sha256=… -->` markers and a flags line per page),
 `page_index{S}.parquet` (one row per page) and `ingest_manifest{S}.json`,
@@ -126,6 +131,12 @@ evidence strings and the provisional constants: `references/pdf-ingest.md`.
 | 9 | No text on any page and OCR off, unavailable or empty (artifacts written) | Image-only document: only validated vision can read it (Vision policy) |
 | 10 | A required dependency is missing (pdftotext, pdfinfo, pdftoppm, polars) | The host lacks the PDF stack: see "Without the PDF stack" |
 | 11 | pdftotext failed on a page, or internal error | Report with the MANIFEST note |
+| 12 | `--source arxiv-html`: not a version-pinned arXiv LaTeXML article (no `ltx_document` article, e.g. ar5iv landing on the abs page; no `arXiv:IDvN` watermark; watermark contradicts the fetched URL; not UTF-8) | Fetch `https://arxiv.org/html/{id}vN`, or use the PDF |
+
+On an HTML ingest the artifacts are per unit (`anchor{S}/uNNN.txt`,
+`pages{S}/uNNN.txt`, `rows{S}/uNNN.txt` for table rows, unit markers in
+`fulltext{S}.md`); flags are `table`, `figure`, `sparse` and
+`conversion_error` (`references/pdf-ingest.md` § arXiv HTML mode).
 
 Exit 3 is reserved by `run_with_capture.sh` and never used.
 
@@ -168,8 +179,15 @@ string `lit-verify` holding strict JSON, schema `lit-verify-card-v1`:
 (`claim_id`, `page`, optional `page_end`, `quote`, `numbers` as printed,
 `source` = `text|vision|both|ocr`, optional `table_ref`, `claim`). Unknown
 fields are a parse error (exit 8), so fields the block does not define go in
-the front matter. Full schema and worked example:
-`references/evidence-card.md`.
+the front matter. **Schema `lit-verify-card-v2`** (1.4.0) adds `anchor_kind`
+(`pdf` | `arxiv_html`, must match the ingest), renames the hash
+`source_sha256` and, on arXiv HTML, requires `source_version` (`"v4"`, the
+ingested arXiv version); an HTML card cites **sections**: coverage entries
+`{section, anchors, summary, sparse?}` and claims with `section` and an
+optional `section_end` (the next unit only), labels copied exactly from the
+manifest's `units[].label` or the fulltext marker, `source: "text"` and
+`vision_mode: "off"`. Put `source_sha256` and `source_version` in the front
+matter too. Full schemas and worked examples: `references/evidence-card.md`.
 
 What the gate requires:
 - **Quotes are copied from the page, verbatim.** Ladder, first hit wins:
@@ -188,15 +206,20 @@ What the gate requires:
   repeat dozens of times: quote a distinctive sentence.
 - **Every page 1..N is covered**; a missing page fails.
 - **Numbers** are written as printed (`-0.087`, `(0.044)`, `1,204`, `.05`,
-  `12.5%`) and must appear on the cited page **inside the claim's quote**
-  (`numbers-v2`, user decision D-21: a page-level check let a changed last
-  digit pass 44% of the time on dense tables). Quote the row label together
-  with the number. Statuses: `ok`; `not-near-quote` (printed on the page but
-  outside the quote: review, a human checks row and column); `ocr-only`,
-  `ocr+vision`, `ocr-layer`, `ocr-layer+vision`, `vision-only` (partial);
-  `precision-differs` (review); `missing` or `unparseable` (fail). A changed
-  digit or a dropped minus fails. On a column-major table (pdftotext's usual
-  order) a quote that reaches the cell may not exist: expect review there.
+  `12.5%`) and must appear on the cited page **local to the claim's quote**
+  (`numbers-v3`): inside the quote (D-21), or in the one lane B row the
+  quote's leading row label identifies (the unique-row rule, D-22; recorded
+  as `locality: in-quote | row`). For a table number, **start the claim quote
+  at the row label**: on a row-major page quote through the cell; on a
+  column-major page copy the run of row labels from there, and read
+  `pages/pNNN_rows.txt` (a lane B reading aid, never quoted) to see which
+  value belongs to which row. A label shared by two rows on the page
+  (`ambiguous`) falls back to inside-the-quote. Statuses: `ok`;
+  `not-near-quote` (printed on the page but not local: review, a human checks
+  row and column); `ocr-only`, `ocr+vision`, `ocr-layer`, `ocr-layer+vision`,
+  `vision-only` (partial); `precision-differs` (review); `missing` or
+  `unparseable` (fail). A changed digit or a dropped minus fails. Known
+  residual: a wrong value that the same row prints in another column clears.
 - **OCR is weaker evidence** (user decision Q-A): an OCR-anchored quote is
   `PASS_OCR`, an OCR-only number is `ocr-only` unless vision corroborates it,
   and both cap the card at PARTIAL. **An existing OCR text layer** (a page
@@ -206,6 +229,12 @@ What the gate requires:
   (flagged `scanned` and one image covering at least 50% of the page,
   provisional) caps the card at PARTIAL; a sparse page that is not mostly
   one image does not (user decision Q-B).
+- **arXiv HTML** (D-21 N5): the same rules per section (`WRONG_SECTION`,
+  `MISSING_SECTION`, `SECTION_NOT_FOUND`, `SECTION_END_NOT_NEXT`); a claim in
+  a unit LaTeXML could not fully convert is `PASS_CONVERSION_ERROR` (its
+  numbers `conversion-error`), partial; a card of the wrong kind or version
+  fails (`ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`), and so does a
+  key that mixes PDF and HTML ingests (`MIXED_ANCHOR_KINDS`).
 - **Vision consistency:** with `vision_mode: off` or `vision_validated:
   false`, every `vision`/`both` claim and every `vision_only` digest fails.
 
@@ -329,7 +358,7 @@ runtime; the fix is a rebuild (`references/toolchain.md`).
 | `references/vision-validation.md` | Before any vision use; probing or promoting a model; route behavior and costs |
 | `references/extraction-strategies.md` | Two-column pages, tables, equations, scans and OCR layers, ligatures, rotation, CJK; reading-quality checks |
 | `references/long-papers.md` | Papers over ~60 pages, chunked reads, running notes |
-| `references/arxiv-and-html.md` | arXiv papers: HTML and LaTeX source, and why the gate still needs the PDF |
+| `references/arxiv-and-html.md` | arXiv papers: which lane, fetching and availability, `--source arxiv-html`, version pinning, units and labels, grades, conversion errors, one key per source, measurements |
 | `references/toolchain.md` | Versions, licenses, the Dockerfile blocks, why PyMuPDF is excluded, rebuilds, tests |
 
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,

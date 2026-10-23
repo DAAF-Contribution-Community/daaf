@@ -9,10 +9,14 @@
 # VERIFIABLE: every quoted coverage anchor, claim quote and claim number must
 # be found, on the cited page, in the unaltered page text pdf_ingest stored
 # (anchor{S}/pNNN.txt, byte-for-byte pdftotext). It never reads the fenced
-# reading copies (pages{S}/, fulltext{S}.md) and never calls a model.
-# `lit_verify selftest` builds a synthetic ingest in code, plants known
-# fabrications in cards, runs the real card gate on them and asserts every
-# expected verdict (note 08 §5). A later session adds `report`.
+# reading copies (pages{S}/, fulltext{S}.md) and never calls a model. From
+# 1.4.0 it also checks cards over an arXiv HTML ingest (pdf_ingest --source
+# arxiv-html): the same checks per SECTION, cited by section label, against
+# the extracted unit text (anchor{S}/uNNN.txt); § arXiv HTML ingests below.
+# `lit_verify selftest` builds a synthetic ingest in code (and, from 1.4.0, a
+# synthetic arXiv HTML ingest through pdf_ingest's real arxiv-html lane),
+# plants known fabrications in cards, runs the real card gate on them and
+# asserts every expected verdict (note 08 §5). A later session adds `report`.
 #
 #   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S]
 #   bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
@@ -33,7 +37,8 @@
 #                INCOMPLETE_INGEST_IGNORED). Every artifact path comes from
 #                the manifest and must resolve inside PAPER_DIR (exit 2).
 #   Dependencies rapidfuzz (NEAR tier) and polars or pyarrow (page_index
-#                parquet); missing -> exit 10. No network calls, ever.
+#                parquet); missing -> exit 10 (selftest also needs polars, for
+#                pdf_ingest's arXiv HTML lane). No network calls, ever.
 #
 # --- The card's machine-checkable block (schema "lit-verify-card-v1") -------
 #   The card is evidence_card{S}.md (front matter + prose, spec §7.6; prose is
@@ -76,13 +81,78 @@
 #                  "numbers": ["-0.087"], "source": "text"}]}
 #     ```
 #
+# --- Card schema "lit-verify-card-v2" (1.4.0, D-21 N5) ----------------------
+#   Accepted beside v1; v1 stays PDF-only and checks exactly as before. v2
+#   names the source kind, so one schema covers both anchors:
+#     anchor_kind          "pdf" | "arxiv_html"; must equal the ingest
+#                          manifest's anchor_kind (manifests without the field
+#                          are pdf), else ANCHOR_KIND_MISMATCH (fail; nothing
+#                          else is checked: pages and sections do not map)
+#     source_sha256        64 lowercase hex = the manifest's source.sha256 (v2
+#                          renames v1's source_pdf_sha256; the old name is an
+#                          unknown field in v2)
+#     source_version       arxiv_html: REQUIRED, the arXiv version ("v4"); must
+#                          equal the manifest's arxiv.version, else
+#                          SOURCE_VERSION_MISMATCH (fail). pdf: absent or null
+#     the rest             as v1 (paper_key, ingest_suffix?, reader_model,
+#                          vision_mode, vision_validated, vision_list_version)
+#   anchor_kind "pdf": coverage and claims exactly as v1 (page, page_end, ...);
+#   a v2 pdf card checks exactly as the same v1 card.
+#   anchor_kind "arxiv_html" (structural rules, exit 8 when broken):
+#     coverage   one object per section: {section (a unit label as pdf_ingest
+#                prints it, e.g. "front", "3.2", "A.1", "S1.SSx1", "bib"),
+#                anchors [string, ...], summary (string), sparse? (bool)};
+#                `page` and `vision_only` are unknown fields; a section listed
+#                twice -> exit 8
+#     claims     {claim_id, section, section_end? (a label != section; it must
+#                be the NEXT unit in document order, else SECTION_END_NOT_NEXT),
+#                quote (non-empty string), numbers, source ("text" only),
+#                table_ref?, claim?}
+#     vision     vision_mode "off" or vision_validated false: HTML units have no
+#                page images and no OCR lane, so no reading but the text exists
+#
+# --- arXiv HTML ingests (1.4.0, D-21 N5: "full grade, cite sections") ------
+#   Loading: manifest anchor_kind "arxiv_html"; units 1..unit_count keyed by
+#   label; anchor{S}/uNNN.txt hash-checked against the manifest and
+#   page_index (UNIT_INDEX_SCHEMA); rows{S}/uNNN.txt (the unit's ltx_tabular
+#   rows, cells tab-separated) hash-checked against the manifest and
+#   page_index's table_rows_sha256 (TABLE_ROWS_HASH_MISMATCH, fail; the rows
+#   file is then not used). An ingest made with an HTML_EXTRACT_VERSION this
+#   tool does not know is a warning (HTML_EXTRACT_VERSION_DIFFERS).
+#   One paper key holds one source kind: a key whose complete ingest
+#   manifests mix pdf and arxiv_html is MIXED_ANCHOR_KINDS (fail).
+#   Checks: the ladder, identifying rule, coverage and numbers below, with
+#   SECTIONS in place of pages (units in document order; a quote crossing
+#   from one unit into the next passes as PASS_SPAN only when section_end
+#   names that next unit). Uniqueness is across all units of the paper and
+#   their boundaries. Status names: WRONG_SECTION (the WRONG_PAGE analogue),
+#   MISSING_SECTION (a unit with no coverage entry), SECTION_NOT_FOUND (a
+#   label the ingest does not have; fail). Unit classes: "sparse" (pdf_ingest
+#   flagged the unit `sparse`: < 200 non-whitespace chars, mostly heading-only
+#   units; the sparse waiver and duplicate rule apply as on pages) or
+#   "normal"; no unit is ever scanned. Numbers: numbers-v3 unchanged, with
+#   rows{S}/uNNN.txt as the row source of the unique-row path (the HTML
+#   anchor is already row-major, so a quote copied through the cell clears
+#   in-quote). Conversion-error cap: a claim whose quote passes in a unit
+#   flagged `conversion_error` (LaTeXML could not convert a macro there) is
+#   PASS_CONVERSION_ERROR and each of its numbers that would be NUMBER_OK is
+#   NUMBER_CONVERSION_ERROR (label conversion-error); both partial, so the
+#   card is at best PARTIAL. Coverage anchors there do not cap. Vision is
+#   never available on HTML: a claim with a source other than "text" (only
+#   reachable by bypassing the card parser) is VISION_UNAVAILABLE_CLAIM.
+#   Forged fulltext unit markers (`<!-- unit N/T ...`) in card text are
+#   scrubbed in every output, as page markers are.
+#
 # --- Checks ----------------------------------------------------------------
 #   1 Integrity first: card source_pdf_sha256 = manifest source.sha256; card
 #     paper_key = manifest paper_key = PAPER_DIR basename; every anchor file's
 #     SHA-256 = the manifest's and page_index's record; page_index.parquet =
 #     the manifest's record; each OCR text file used = the manifest's record
-#     (a mismatching OCR file is not used); the ingest manifest = the hash in
-#     the papers dir's pdf_ingest MANIFEST row (no row -> warning).
+#     (a mismatching OCR file is not used); each lane B file used = the
+#     manifest's record and page_index's lane_b_sha256 (1.3.0; a mismatching
+#     lane B file is LANE_B_HASH_MISMATCH, a fail, and is not used); the
+#     ingest manifest = the hash in the papers dir's pdf_ingest MANIFEST row
+#     (no row -> warning).
 #   2 Quote ladder (pdf_text_common.match_quote, MATCH_LADDER_VERSION; tiers
 #     and order are documented there): REDACTED_SPAN, PASS, PASS_SKELETON,
 #     PASS_SPAN, PASS_OCR, NEAR, WRONG_PAGE, NOT_FOUND. Spans: a quote that
@@ -114,15 +184,25 @@
 #     extra NON_IDENTIFYING / NEAR anchor on an otherwise covered page is a
 #     warning.
 #   5 Numbers (pdf_text_common number rules, NUMBER_RULES_VERSION): each claim
-#     number must appear on the claim's page(s) in the anchor text, and
-#     (numbers-v2, 1.2.0, D-21 N1) inside the claim's quote where that quote
-#     matched (a page token overlapping the matched span, +- NUMBER_NEAR_CHARS
-#     = 0); the lane checked is the lane the number was found in:
+#     number must appear on the claim's page(s) in the anchor text, and be
+#     LOCAL to the claim's quote by one of two paths, recorded per number as
+#     `locality`:
+#       in-quote  (numbers-v2, 1.2.0, D-21 N1) a page token printing it
+#                 overlaps the quote's matched span (+- NUMBER_NEAR_CHARS = 0)
+#       row       (numbers-v3, 1.3.0, D-22) the claim quote passed on the
+#                 anchor, its leading label identifies EXACTLY ONE lane B row
+#                 on the page(s) where it matched, and that row prints the
+#                 value (same digits and sign; pdf_text_common.quote_row and
+#                 number_in_row). Lane B is locality evidence only: the value
+#                 must also be printed in the anchor, and quotes are matched
+#                 only against the anchor. An ambiguous label (two or more
+#                 rows) or no matching row falls back to in-quote.
+#     The lane checked is the lane the number was found in:
 #       NUMBER_OK            same value and digit string in the anchor text,
-#                            inside the quote
-#       NUMBER_NOT_NEAR_QUOTE  printed on the cited page(s) but not inside the
-#                            quote (or the claim has no located quote): review,
-#                            a human checks row and column
+#                            local (in-quote or row)
+#       NUMBER_NOT_NEAR_QUOTE  printed on the cited page(s) but not local (or
+#                            the claim has no located quote): review, a human
+#                            checks row and column
 #       NUMBER_OCR_LAYER     as NUMBER_OK, on a page flagged
 #                            ocr_layer_suspected (an existing OCR text layer;
 #                            D-21 N2): partial; NUMBER_OCR_LAYER_VISION when
@@ -173,8 +253,9 @@
 #                 NUMBER_NOT_NEAR_QUOTE item (listed for a human)
 #   PARTIAL       no fail or review; a PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
 #                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
-#                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item
-#                 (each listed)
+#                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item,
+#                 or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error
+#                 item (each listed)
 #   PASS          everything anchored in the text layer
 #   evidence_grade_suggested: PASS -> FULL_TEXT_VERIFIED (no truly scanned
 #   page can be present); PARTIAL -> FULL_TEXT_PARTIAL; NEEDS_REVIEW and FAIL
@@ -190,14 +271,22 @@
 #   version). Written only when a verdict exists (exit 0 or 11). Card quotes
 #   in it pass through the injection scrub (count in redaction_count; the
 #   original quote's sha256 is kept), and the whole JSON through
-#   redact_secrets. It holds no page text.
+#   redact_secrets. It holds no page text. Result schema
+#   "lit-verify-card-check-v2" (1.4.0) = v1 plus additive fields: top-level
+#   anchor_kind; card.anchor_kind / source_version; ingest.anchor_kind,
+#   unit_count, source_sha256, source_version, arxiv_id_version,
+#   html_extract_version; every item carries `section` / `section_end` (the
+#   unit labels on arXiv HTML; null on PDF, where `page` / `page_end` carry
+#   the locator); `sections` (one summary per unit on HTML; [] on PDF) beside
+#   `pages` ([] on HTML).
 #
 # --- MANIFEST.jsonl (in the papers dir, kind "lit_verify") ------------------
 #   One row per attempt with a valid papers dir, through a single finish()
 #   path that redacts secret values from the whole row: kind, tool_version,
 #   command, paper_key, parameters, timestamp, requesting_context
 #   (DAAF_FETCH_CONTEXT), card {path, bytes, sha256}, ingest {suffix,
-#   manifest, manifest_sha256, page_count}, artifacts {card_check: name,
+#   manifest, manifest_sha256, page_count, anchor_kind (1.4.0), unit_count
+#   (1.4.0; null on PDF)}, artifacts {card_check: name,
 #   bytes, sha256}, verdict, evidence_grade_suggested, counts,
 #   redaction_count, secret_redactions, exit_code, note. selftest writes one
 #   row (command "selftest", per-case results) to SCRATCH_DIR/MANIFEST.jsonl;
@@ -267,7 +356,28 @@ import pdf_text_common as ptc  # noqa: E402
 # NUMBER_OCR_LAYER, NUMBER_OCR_LAYER_VISION: partial; coverage alone does not
 # cap); page summaries gain `ocr_layer`; constants gain NUMBER_NEAR_CHARS.
 # Card and result schemas unchanged (v1; additive fields only).
-TOOL_VERSION = "1.2.0-daaf"
+# 1.3.0 (S3 FE-5c, 2026-10-22, user decision D-22): numbers-v3, the unique-row
+# rule: a number printed on the anchor page also clears when the claim's
+# quote identifies exactly one lane B row that prints it (`locality: "row"`);
+# every number item records `locality` (in-quote | row | null) and
+# `row_match` (unique | ambiguous | none | null); lane B files are read and
+# hash-checked (LANE_B_HASH_MISMATCH, fail); page summaries gain `lane_b`;
+# constants gain ROW_LABEL_MIN_CHARS. Card and result schemas unchanged (v1:
+# v1 cards check as before, and their numbers can only gain the row path).
+# 1.4.0 (S3 FE-5e, 2026-10-22, user decision D-21 N5 "full grade, cite
+# sections"): cards over arXiv HTML ingests. Card schema lit-verify-card-v2
+# (anchor_kind, source_sha256, source_version; section / section_end on
+# arxiv_html) accepted beside v1 (unchanged, PDF-only); unit ingests loaded
+# by label with rows{S}/ as the unique-row source; statuses
+# ANCHOR_KIND_MISMATCH, SOURCE_VERSION_MISMATCH, SECTION_NOT_FOUND,
+# MISSING_SECTION, WRONG_SECTION, SECTION_END_NOT_NEXT,
+# TABLE_ROWS_HASH_MISMATCH, MIXED_ANCHOR_KINDS (fail),
+# PASS_CONVERSION_ERROR, NUMBER_CONVERSION_ERROR (partial),
+# HTML_EXTRACT_VERSION_DIFFERS (warning); result schema
+# lit-verify-card-check-v2 (additive); forged unit markers scrubbed;
+# constants gain HTML_EXTRACT_VERSIONS_KNOWN; selftest gains arXiv HTML
+# cases. PDF verdicts and items unchanged (items gain null section keys).
+TOOL_VERSION = "1.4.0-daaf"
 
 EXIT_CODES = {
     0: "card verdict PASS, PARTIAL or NEEDS_REVIEW (verdict in the card_check JSON); selftest: all expectations held",
@@ -281,12 +391,33 @@ EXIT_CODES = {
 }
 
 CARD_SCHEMA_VERSION = "lit-verify-card-v1"
-CHECK_SCHEMA_VERSION = "lit-verify-card-check-v1"
+CARD_SCHEMA_VERSION_V2 = "lit-verify-card-v2"
+CARD_SCHEMA_VERSIONS = (CARD_SCHEMA_VERSION, CARD_SCHEMA_VERSION_V2)
+CHECK_SCHEMA_VERSION = "lit-verify-card-check-v2"
+# INTENT (1.4.0, D-21 N5): the two anchor kinds pdf_ingest writes; a manifest
+#   without the field predates 1.2.0 of pdf_ingest and is a PDF ingest.
+ANCHOR_KIND_PDF = "pdf"
+ANCHOR_KIND_HTML = "arxiv_html"
+ANCHOR_KINDS = (ANCHOR_KIND_PDF, ANCHOR_KIND_HTML)
+# INTENT: the arXiv HTML extraction rule versions this tool was built and
+#   tested against; another version still checks, with a warning, because
+#   what text a unit holds (and so what can match) may differ.
+HTML_EXTRACT_VERSIONS_KNOWN = ("arxiv-html-v1",)
+# INTENT: pdf_ingest's unit flags the gate reads (UNIT_FLAG_NAMES there).
+HTML_SPARSE_FLAG = "sparse"
+CONVERSION_ERROR_FLAG = "conversion_error"
+# INTENT: a unit label as pdf_ingest prints it: a heading tag ("3.2", "A.1",
+#   "S4.1"), a LaTeXML id ("S1.SSx1", "bib"), "front", "unitN", or a
+#   de-duplicated label ("1#2"). Validated so a card cannot smuggle markup or
+#   control characters into an output through a locator.
+SECTION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:#-]{0,79}$")
+SOURCE_VERSION_RE = re.compile(r"^v[1-9][0-9]{0,3}$")
 # INTENT: spec §6 paper_key forms, identical to pdf_ingest.PAPER_KEY_RE
 #   (tests assert the two patterns agree).
 PAPER_KEY_RE = re.compile(r"^(W\d{1,12}|doi_[0-9a-f]{8}|eric_E[DJ]\d{6,7}|user_[0-9a-f]{8})$")
 VERSION_SUFFIXES = [""] + ["_" + c for c in "abcdefghijklmnopqrstuvwxyz"]
-INGEST_SET_NAMES = ("anchor{}", "lane_b{}", "pages{}", "ocr{}", "renders{}", "fulltext{}.md", "page_index{}.parquet")
+INGEST_SET_NAMES = ("anchor{}", "lane_b{}", "pages{}", "ocr{}", "renders{}", "rows{}", "fulltext{}.md",
+                    "page_index{}.parquet")
 CARD_NAME_RE = re.compile(r"^evidence_card(_[a-z])?\.md$")
 CARD_MAX_BYTES = 5 * 1024 * 1024
 BLOCK_OPEN_RE = re.compile(r"^(`{3,}|~{3,})[ \t]*lit-verify[ \t]*$")
@@ -324,6 +455,8 @@ MAX_STDOUT_ITEMS = 20
 LOCAL_FORGED_PATTERNS = [
     re.compile(r"(?m)^[ \t]*(?:pdf_ingest|lit_verify):", re.IGNORECASE),
     re.compile(r"<!--\s*page\s+\d+\s*/\s*\d+", re.IGNORECASE),
+    # 1.4.0: the arXiv HTML lane's fulltext unit marker (pdf_ingest's set)
+    re.compile(r"<!--\s*unit\s+\d+\s*/\s*\d+", re.IGNORECASE),
 ]
 
 SEVERITY = {
@@ -338,16 +471,21 @@ SEVERITY = {
     "MISSING_PAGE": "fail", "PAGE_OUT_OF_RANGE": "fail", "NUMBER_MISSING": "fail", "NUMBER_UNPARSEABLE": "fail",
     "SOURCE_HASH_MISMATCH": "fail", "PAPER_KEY_MISMATCH": "fail", "ANCHOR_HASH_MISMATCH": "fail",
     "PAGE_INDEX_HASH_MISMATCH": "fail", "OCR_HASH_MISMATCH": "fail", "INGEST_MANIFEST_HASH_MISMATCH": "fail",
-    "VISION_UNAVAILABLE_CLAIM": "fail",
+    "VISION_UNAVAILABLE_CLAIM": "fail", "LANE_B_HASH_MISMATCH": "fail",
+    # 1.4.0 (arXiv HTML ingests)
+    "PASS_CONVERSION_ERROR": "partial", "NUMBER_CONVERSION_ERROR": "partial",
+    "ANCHOR_KIND_MISMATCH": "fail", "SOURCE_VERSION_MISMATCH": "fail", "SECTION_NOT_FOUND": "fail",
+    "MISSING_SECTION": "fail", "WRONG_SECTION": "fail", "SECTION_END_NOT_NEXT": "fail",
+    "TABLE_ROWS_HASH_MISMATCH": "fail", "MIXED_ANCHOR_KINDS": "fail",
     "INGEST_SUFFIX_DIFFERS": "warning", "INCOMPLETE_INGEST_IGNORED": "warning", "NO_INGEST_ROW": "warning",
     "NORMALIZE_VERSION_DIFFERS": "warning", "SPARSE_DECLARATION_MISMATCH": "warning",
-    "VISION_ONLY_IGNORED": "warning",
+    "VISION_ONLY_IGNORED": "warning", "HTML_EXTRACT_VERSION_DIFFERS": "warning",
 }
 NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_VISION": "ocr+vision",
                  "NUMBER_VISION_ONLY": "vision-only", "NUMBER_PRECISION_DIFFERS": "precision-differs",
                  "NUMBER_MISSING": "missing", "NUMBER_UNPARSEABLE": "unparseable",
                  "NUMBER_NOT_NEAR_QUOTE": "not-near-quote", "NUMBER_OCR_LAYER": "ocr-layer",
-                 "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision"}
+                 "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision", "NUMBER_CONVERSION_ERROR": "conversion-error"}
 # INTENT (D-21 N2): pdf_ingest's flag for an existing OCR text layer.
 OCR_LAYER_FLAG = "ocr_layer_suspected"
 
@@ -357,6 +495,13 @@ TOP_FIELDS = {"schema_version": True, "paper_key": True, "source_pdf_sha256": Tr
 COVERAGE_FIELDS = {"page": True, "anchors": True, "summary": True, "sparse": False, "vision_only": False}
 CLAIM_FIELDS = {"claim_id": True, "page": True, "quote": True, "numbers": True, "source": True, "page_end": False,
                 "table_ref": False, "claim": False}
+# 1.4.0: schema v2. anchor_kind "pdf" uses COVERAGE_FIELDS / CLAIM_FIELDS above.
+TOP_FIELDS_V2 = {"schema_version": True, "paper_key": True, "anchor_kind": True, "source_sha256": True,
+                 "source_version": False, "reader_model": True, "vision_mode": True, "vision_validated": True,
+                 "vision_list_version": True, "coverage": True, "claims": True, "ingest_suffix": False}
+SECTION_COVERAGE_FIELDS = {"section": True, "anchors": True, "summary": True, "sparse": False}
+SECTION_CLAIM_FIELDS = {"claim_id": True, "section": True, "quote": True, "numbers": True, "source": True,
+                        "section_end": False, "table_ref": False, "claim": False}
 
 
 class LitVerifyError(Exception):
@@ -498,18 +643,20 @@ def _check_fields(obj, spec, where):
 
 
 def validate_card(c):
-    # Structural validation of the machine-checkable block (schema v1).
-    # Semantic problems (wrong page, missing page, bad quote) are NOT raised
-    # here: they are recorded results.
-    _check_fields(c, TOP_FIELDS, "card")
-    if c["schema_version"] != CARD_SCHEMA_VERSION:
+    # Structural validation of the machine-checkable block (schema v1, or v2
+    # from 1.4.0). Semantic problems (wrong page or section, missing page,
+    # bad quote) are NOT raised here: they are recorded results.
+    v2 = isinstance(c, dict) and c.get("schema_version") == CARD_SCHEMA_VERSION_V2
+    _check_fields(c, TOP_FIELDS_V2 if v2 else TOP_FIELDS, "card")
+    if c["schema_version"] not in CARD_SCHEMA_VERSIONS:
         raise LitVerifyError(8, f"unknown schema_version {safe_line(str(c['schema_version']), 60)!r} (this tool "
-                                f"reads {CARD_SCHEMA_VERSION})")
+                                f"reads {' or '.join(CARD_SCHEMA_VERSIONS)})")
     for k in ("paper_key", "reader_model"):
         if not isinstance(c[k], str) or not c[k].strip():
             raise LitVerifyError(8, f"card.{k} must be a non-empty string")
-    if not isinstance(c["source_pdf_sha256"], str) or not SHA256_RE.match(c["source_pdf_sha256"]):
-        raise LitVerifyError(8, "card.source_pdf_sha256 must be 64 lowercase hex characters")
+    sha_field = "source_sha256" if v2 else "source_pdf_sha256"
+    if not isinstance(c[sha_field], str) or not SHA256_RE.match(c[sha_field]):
+        raise LitVerifyError(8, f"card.{sha_field} must be 64 lowercase hex characters")
     if c["vision_mode"] not in VISION_MODES:
         raise LitVerifyError(8, f"card.vision_mode must be one of {list(VISION_MODES)}")
     if not isinstance(c["vision_validated"], bool):
@@ -520,6 +667,79 @@ def validate_card(c):
         raise LitVerifyError(8, "card.ingest_suffix must be \"\" or _a.._z")
     if not isinstance(c["coverage"], list) or not isinstance(c["claims"], list):
         raise LitVerifyError(8, "card.coverage and card.claims must be JSON arrays")
+    if not v2:
+        _validate_page_entries(c)
+        return
+    if c["anchor_kind"] not in ANCHOR_KINDS:
+        raise LitVerifyError(8, f"card.anchor_kind must be one of {list(ANCHOR_KINDS)}")
+    if c["anchor_kind"] == ANCHOR_KIND_PDF:
+        if c.get("source_version") is not None:
+            raise LitVerifyError(8, "card.source_version applies to anchor_kind \"arxiv_html\" only (omit it or "
+                                    "write null for a PDF)")
+        _validate_page_entries(c)
+        return
+    # --- anchor_kind "arxiv_html" ---
+    if not isinstance(c.get("source_version"), str) or not SOURCE_VERSION_RE.match(c["source_version"]):
+        raise LitVerifyError(8, "card.source_version is required for anchor_kind \"arxiv_html\": the arXiv version "
+                                "the HTML was fetched at, e.g. \"v4\" (ingest_manifest arxiv.version)")
+    # REASONING: an HTML ingest has no page images and no OCR lane, so a card
+    #   that declares vision available contradicts itself (exit 8, like the
+    #   other cross-field rules); vision_mode "off" is the accurate statement.
+    if c["vision_mode"] != "off" and c["vision_validated"] is True:
+        raise LitVerifyError(8, "anchor_kind \"arxiv_html\": write vision_mode \"off\" (or vision_validated false): "
+                                "HTML units have no page images, so vision is unavailable")
+    _validate_section_entries(c)
+
+
+def _validate_section_entries(c):
+    # Coverage and claims of a v2 arxiv_html card (cited by section label).
+    seen = set()
+    for i, e in enumerate(c["coverage"]):
+        where = f"coverage[{i}]"
+        _check_fields(e, SECTION_COVERAGE_FIELDS, where)
+        if not isinstance(e["section"], str) or not SECTION_LABEL_RE.match(e["section"]):
+            raise LitVerifyError(8, f"{where}.section must be a unit label as pdf_ingest prints it (e.g. \"front\", "
+                                    f"\"3.2\", \"A.1\", \"bib\"; pattern {SECTION_LABEL_RE.pattern})")
+        if e["section"] in seen:
+            raise LitVerifyError(8, f"{where}: section {e['section']!r} is listed twice")
+        seen.add(e["section"])
+        if not isinstance(e["anchors"], list) or not all(isinstance(q, str) for q in e["anchors"]):
+            raise LitVerifyError(8, f"{where}.anchors must be an array of strings")
+        if not isinstance(e["summary"], str):
+            raise LitVerifyError(8, f"{where}.summary must be a string")
+        if "sparse" in e and not isinstance(e["sparse"], bool):
+            raise LitVerifyError(8, f"{where}.sparse must be a JSON boolean")
+    seen_ids = set()
+    for i, cl in enumerate(c["claims"]):
+        where = f"claims[{i}]"
+        _check_fields(cl, SECTION_CLAIM_FIELDS, where)
+        if not isinstance(cl["claim_id"], str) or not CLAIM_ID_RE.match(cl["claim_id"]):
+            raise LitVerifyError(8, f"{where}.claim_id must match {CLAIM_ID_RE.pattern}")
+        if cl["claim_id"] in seen_ids:
+            raise LitVerifyError(8, f"duplicate claim_id {cl['claim_id']!r}")
+        seen_ids.add(cl["claim_id"])
+        for k in ("section", "section_end"):
+            if k in cl and (not isinstance(cl[k], str) or not SECTION_LABEL_RE.match(cl[k])):
+                raise LitVerifyError(8, f"{where}.{k} must be a unit label as pdf_ingest prints it")
+        if cl.get("section_end") == cl["section"]:
+            raise LitVerifyError(8, f"{where}.section_end must name the NEXT section (omit it for a quote inside one "
+                                    "section)")
+        if cl["source"] != "text":
+            raise LitVerifyError(8, f"{where}.source must be \"text\" on anchor_kind \"arxiv_html\": HTML units have "
+                                    "no page images and no OCR lane")
+        if not isinstance(cl["quote"], str) or not cl["quote"].strip():
+            raise LitVerifyError(8, f"{where}.quote must be a non-empty string")
+        if not isinstance(cl["numbers"], list) or not all(isinstance(x, str) for x in cl["numbers"]):
+            raise LitVerifyError(8, f"{where}.numbers must be an array of strings (numbers as printed)")
+        if cl.get("table_ref") is not None and not isinstance(cl["table_ref"], str):
+            raise LitVerifyError(8, f"{where}.table_ref must be a string or null")
+        if "claim" in cl and not isinstance(cl["claim"], str):
+            raise LitVerifyError(8, f"{where}.claim must be a string")
+
+
+def _validate_page_entries(c):
+    # Coverage and claims of a v1 card or a v2 pdf card (cited by page): the
+    # v1 rules, unchanged.
     seen_pages = set()
     for i, e in enumerate(c["coverage"]):
         where = f"coverage[{i}]"
@@ -667,6 +887,32 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
     msha = sha256_bytes(mbytes)
     try:
         man = json.loads(mbytes.decode("utf-8"))
+        kind = man.get("anchor_kind", ANCHOR_KIND_PDF)
+    except (ValueError, AttributeError) as exc:
+        raise LitVerifyError(10, f"{mname} is unreadable or incomplete ({exc.__class__.__name__})")
+    if kind not in ANCHOR_KINDS:
+        raise LitVerifyError(10, f"{mname} has anchor_kind {safe_line(str(kind), 40)!r}, which this tool cannot read "
+                                 f"(it reads {list(ANCHOR_KINDS)})")
+    # INTENT (1.4.0, orchestrator decision "one paper key per source"): a key
+    #   holds either PDF ingests or arXiv HTML ingests, never both.
+    for other in complete:
+        if other == sfx:
+            continue
+        try:
+            with open(os.path.join(paper_dir, f"ingest_manifest{other}.json"), encoding="utf-8") as f:
+                okind = json.load(f).get("anchor_kind", ANCHOR_KIND_PDF)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if okind != kind:
+            items.append(item("integrity", "MIXED_ANCHOR_KINDS",
+                              reason=f"ingest_manifest{other}.json is anchor_kind {safe_line(str(okind), 40)!r} but "
+                                     f"the current {mname} is {kind!r}: a paper key holds one source kind"))
+    if kind == ANCHOR_KIND_HTML:
+        ingest = load_unit_ingest(paper_dir, man, mname, msha, sfx, read_parquet, items)
+        items.extend(ingest_row_items(papers_dir, paper_key, mname, msha))
+        ingest["dir_key"] = paper_key
+        return ingest, items
+    try:
         n_pages = man["page_count"]
         records = man["pages"]
         src_sha = man["source"]["sha256"]
@@ -717,10 +963,123 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
                                   reason="OCR text sha256 differs from the manifest record; the OCR text is not used"))
             else:
                 ocr_text = o_bytes.decode("utf-8", errors="replace")
+        # INTENT (1.3.0, D-22): lane B is read for the unique-row locality rule
+        #   only; a file that fails its hash check is not used.
+        lane_b_text = None
+        lb_rec = r.get("lane_b") if isinstance(r.get("lane_b"), dict) else None
+        if lb_rec:
+            b_bytes = read_artifact(paper_dir, lb_rec.get("path"), f"lane B text for page {n}")
+            b_sha = sha256_bytes(b_bytes)
+            if b_sha != lb_rec.get("sha256") or row.get("lane_b_sha256", b_sha) != b_sha:
+                items.append(item("integrity", "LANE_B_HASH_MISMATCH", page=n,
+                                  reason="lane B text sha256 differs from the manifest or page_index record; lane B "
+                                         "is not used for this page"))
+            else:
+                lane_b_text = b_bytes.decode("utf-8", errors="replace")
         pages[n] = {"anchor_text": a_bytes.decode("utf-8", errors="replace"), "ocr_text": ocr_text,
-                    "flags": list(r.get("flags") or []), "evidence": evidence if isinstance(evidence, dict) else {}}
+                    "lane_b_text": lane_b_text, "flags": list(r.get("flags") or []),
+                    "evidence": evidence if isinstance(evidence, dict) else {}}
 
-    # --- The pdf_ingest MANIFEST row that recorded this ingest manifest ---
+    items.extend(ingest_row_items(papers_dir, paper_key, mname, msha))
+    ingest = {"anchor_kind": ANCHOR_KIND_PDF, "paper_key": man.get("paper_key"), "dir_key": paper_key,
+              "suffix": sfx, "manifest_name": mname,
+              "manifest_sha256": msha, "source_sha256": src_sha, "page_count": n_pages,
+              "pdf_ingest_tool_version": man.get("tool_version"), "normalize_version": man.get("normalize_version"),
+              "header_footer": man.get("header_footer") or [], "lanes_unavailable": man.get("lanes_unavailable") or [],
+              "pages": pages}
+    return ingest, items
+
+
+def load_unit_ingest(paper_dir, man, mname, msha, sfx, read_parquet, items):
+    # (1.4.0, D-21 N5) The arXiv HTML ingest: units 1..unit_count in document
+    # order, each with its label, anchor text and (when it holds tables) its
+    # table rows. Returns the ingest dict (pages keyed by unit number, so the
+    # page-shaped checks run on units); appends integrity items to `items`.
+    try:
+        n_units = man["unit_count"]
+        records = man["units"]
+        src_sha = man["source"]["sha256"]
+        idx_rec = man["artifacts"]["page_index"]
+        arx = man["arxiv"]
+        ok = (man.get("kind") == "pdf_ingest_manifest" and _is_int(n_units) and n_units >= 1
+              and isinstance(records, list) and len(records) == n_units
+              and [r.get("unit_no") for r in records] == list(range(1, n_units + 1))
+              and all(isinstance(r.get("anchor"), dict) and isinstance(r.get("label"), str) and r["label"]
+                      for r in records)
+              and len({r["label"] for r in records}) == n_units
+              and isinstance(arx, dict) and isinstance(arx.get("version"), str))
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise LitVerifyError(10, f"{mname} is unreadable or incomplete ({exc.__class__.__name__})")
+    if not ok:
+        raise LitVerifyError(10, f"{mname} is not a complete pdf_ingest arXiv HTML manifest (kind, unit_count, unit "
+                                 "records with unique labels, or arxiv.version)")
+
+    # --- page_index.parquet (one row per unit): hash, then anchor and rows hashes ---
+    idx_bytes = read_artifact(paper_dir, idx_rec.get("path"), "page_index")
+    if sha256_bytes(idx_bytes) != idx_rec.get("sha256"):
+        items.append(item("integrity", "PAGE_INDEX_HASH_MISMATCH",
+                          reason=f"{safe_line(idx_rec.get('path'), 120)} sha256 differs from the manifest record"))
+    try:
+        index_rows = {r["unit_no"]: r for r in read_parquet(idx_bytes)}
+    except Exception as exc:  # noqa: BLE001 - an unreadable parquet is an incomplete ingest
+        raise LitVerifyError(10, f"page_index is unreadable ({exc.__class__.__name__})")
+
+    pages = {}
+    for r in records:
+        n, label = r["unit_no"], r["label"]
+        a_bytes = read_artifact(paper_dir, r["anchor"].get("path"), f"anchor for unit {n} (section {label})")
+        a_sha = sha256_bytes(a_bytes)
+        if a_sha != r["anchor"].get("sha256"):
+            items.append(item("integrity", "ANCHOR_HASH_MISMATCH", page=n,
+                              reason=f"anchor file sha256 {a_sha[:16]}... != manifest {str(r['anchor'].get('sha256'))[:16]}..."))
+        row = index_rows.get(n)
+        if row is None:
+            raise LitVerifyError(10, f"page_index has no row for unit {n}")
+        if row.get("anchor_sha256") != r["anchor"].get("sha256"):
+            items.append(item("integrity", "ANCHOR_HASH_MISMATCH", page=n,
+                              reason="page_index anchor_sha256 differs from the manifest record"))
+        if row.get("label") != label:
+            raise LitVerifyError(10, f"page_index unit {n} is labeled {safe_line(str(row.get('label')), 40)!r} but the "
+                                     f"manifest says {safe_line(label, 40)!r}: inconsistent ingest")
+        try:
+            evidence = json.loads(row.get("flag_evidence") or "{}")
+        except ValueError:
+            evidence = {}
+        # INTENT: the unit's table rows are the row source of the unique-row
+        #   rule (numbers-v3) on HTML; a file that fails its hash check is not
+        #   used, so its numbers fall back to the in-quote path.
+        rows_text = None
+        tr = r.get("table_rows") if isinstance(r.get("table_rows"), dict) else None
+        if tr:
+            t_bytes = read_artifact(paper_dir, tr.get("path"), f"table rows for unit {n} (section {label})")
+            t_sha = sha256_bytes(t_bytes)
+            if t_sha != tr.get("sha256") or row.get("table_rows_sha256", t_sha) != t_sha:
+                items.append(item("integrity", "TABLE_ROWS_HASH_MISMATCH", page=n,
+                                  reason="table rows sha256 differs from the manifest or page_index record; the rows "
+                                         "file is not used for this section"))
+            else:
+                rows_text = t_bytes.decode("utf-8", errors="replace")
+        pages[n] = {"anchor_text": a_bytes.decode("utf-8", errors="replace"), "ocr_text": None,
+                    "lane_b_text": rows_text, "flags": list(r.get("flags") or []),
+                    "evidence": evidence if isinstance(evidence, dict) else {}, "label": label,
+                    "latexml_id": r.get("latexml_id"), "section_class": r.get("section_class")}
+    hev = man.get("html_extract_version")
+    if hev not in HTML_EXTRACT_VERSIONS_KNOWN:
+        items.append(item("integrity", "HTML_EXTRACT_VERSION_DIFFERS",
+                          reason=f"ingest used {safe_line(str(hev), 40)}; this tool was built for "
+                                 f"{list(HTML_EXTRACT_VERSIONS_KNOWN)}"))
+    return {"anchor_kind": ANCHOR_KIND_HTML, "paper_key": man.get("paper_key"), "suffix": sfx, "manifest_name": mname,
+            "manifest_sha256": msha, "source_sha256": src_sha, "page_count": None, "unit_count": n_units,
+            "source_version": arx["version"], "arxiv_id_version": arx.get("id_version"),
+            "html_extract_version": hev, "pdf_ingest_tool_version": man.get("tool_version"),
+            "normalize_version": man.get("normalize_version"), "header_footer": [], "lanes_unavailable": [],
+            "pages": pages}
+
+
+def ingest_row_items(papers_dir, paper_key, mname, msha):
+    # Integrity items from the pdf_ingest MANIFEST row that recorded this
+    # ingest manifest (no row: warning; another hash: fail).
+    items = []
     rel = f"{paper_key}/{mname}"
     rows = []
     try:
@@ -741,22 +1100,19 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
     elif rows[-1].get("sha256") != msha:
         items.append(item("integrity", "INGEST_MANIFEST_HASH_MISMATCH",
                           reason=f"{rel} sha256 differs from the pdf_ingest MANIFEST row that wrote it"))
-
-    ingest = {"paper_key": man.get("paper_key"), "dir_key": paper_key, "suffix": sfx, "manifest_name": mname,
-              "manifest_sha256": msha, "source_sha256": src_sha, "page_count": n_pages,
-              "pdf_ingest_tool_version": man.get("tool_version"), "normalize_version": man.get("normalize_version"),
-              "header_footer": man.get("header_footer") or [], "lanes_unavailable": man.get("lanes_unavailable") or [],
-              "pages": pages}
-    return ingest, items
+    return items
 
 
 # §§ CHECKS
 def item(kind, status, severity=None, **fields):
-    # One result item. Every item carries page / claim_id / quote / tier /
-    # score / reason keys (null when not applicable) and a severity.
+    # One result item. Every item carries page / section / claim_id / quote /
+    # tier / score / reason keys (null when not applicable) and a severity.
+    # 1.4.0: `section` / `section_end` hold the unit labels on arXiv HTML
+    # (page / page_end are null there); on PDF they are null.
     out = {"kind": kind, "status": status, "severity": severity or SEVERITY.get(status, "warning"), "page": None,
-           "page_end": None, "claim_id": None, "quote": None, "quote_sha256": None, "number": None, "tier": None,
-           "score": None, "lane": None, "found_on": None, "reason": ""}
+           "page_end": None, "section": None, "section_end": None, "claim_id": None, "quote": None,
+           "quote_sha256": None, "number": None, "tier": None, "score": None, "lane": None, "found_on": None,
+           "reason": ""}
     out.update(fields)
     return out
 
@@ -780,17 +1136,25 @@ def check_card(card, ingest, fuzz, integrity=None):
     # equivalent built in a test); `fuzz` is rapidfuzz.fuzz or None (None
     # skips the NEAR tier; the CLI refuses to run without rapidfuzz).
     items = list(integrity or [])
-    n_pages, pages = ingest["page_count"], ingest["pages"]
-    doc = ptc.prepare_doc({n: pages[n]["anchor_text"] for n in pages},
-                          {n: pages[n]["ocr_text"] for n in pages if pages[n].get("ocr_text")}, build_spans(ingest))
-    classes = {n: classify_page(pages[n], ingest.get("lanes_unavailable") or []) for n in pages}
-    vision_ok = card["vision_mode"] != "off" and card["vision_validated"] is True
+    kind = ingest.get("anchor_kind", ANCHOR_KIND_PDF)
+    card_kind = card.get("anchor_kind", ANCHOR_KIND_PDF)
+    # INTENT (1.4.0): on an arXiv HTML ingest the page-shaped checks run on
+    #   UNITS: positions 1..unit_count in document order (pages[n] is unit n),
+    #   cited by label; the HTML-only wording and statuses branch on `units`.
+    units = kind == ANCHOR_KIND_HTML
+    pages = ingest["pages"]
+    n_pages = ingest["unit_count"] if units else ingest["page_count"]
+    labels = {n: pages[n]["label"] for n in pages} if units else {}
     redactions, secret_names = [0], set()
 
+    def where(n):
+        return f"section {labels[n]}" if units else f"page {n}"
+
     # --- Identity: card vs ingest ---
-    if card["source_pdf_sha256"] != ingest["source_sha256"]:
+    sha_field = "source_sha256" if "source_sha256" in card else "source_pdf_sha256"
+    if card[sha_field] != ingest["source_sha256"]:
         items.append(item("integrity", "SOURCE_HASH_MISMATCH",
-                          reason=f"card source_pdf_sha256 {card['source_pdf_sha256'][:16]}... != ingest source "
+                          reason=f"card {sha_field} {card[sha_field][:16]}... != ingest source "
                                  f"{str(ingest['source_sha256'])[:16]}..."))
     if card["paper_key"] != ingest["dir_key"]:
         items.append(item("integrity", "PAPER_KEY_MISMATCH",
@@ -807,6 +1171,63 @@ def check_card(card, ingest, fuzz, integrity=None):
         items.append(item("integrity", "NORMALIZE_VERSION_DIFFERS",
                           reason=f"ingest used {safe_line(str(ingest['normalize_version']), 40)}; this tool uses "
                                  f"{ptc.NORMALIZE_VERSION}"))
+    if card_kind != kind:
+        # REASONING: pages and sections do not map onto each other, so no
+        #   quote can be checked; the card must be rewritten for this source.
+        items.append(item("integrity", "ANCHOR_KIND_MISMATCH",
+                          reason=f"the card is anchor_kind {card_kind!r} ({card['schema_version']}) but the ingest is "
+                                 f"{kind!r}: write a lit-verify-card-v2 card with anchor_kind {kind!r}; nothing else "
+                                 "was checked"))
+        if units:
+            to_sections(items, labels)
+        return result_of(items, [], [], card, fuzz, False, redactions, secret_names, units, n_pages, {})
+    if units and card.get("source_version") != ingest["source_version"]:
+        items.append(item("integrity", "SOURCE_VERSION_MISMATCH",
+                          reason=f"card source_version {safe_line(str(card.get('source_version')), 20)!r} != ingest "
+                                 f"arXiv version {ingest['source_version']!r} ({ingest.get('arxiv_id_version')})"))
+
+    if units:
+        spans = {(n, n + 1): (pages[n]["anchor_text"], pages[n + 1]["anchor_text"]) for n in range(1, n_pages)}
+    else:
+        spans = build_spans(ingest)
+    doc = ptc.prepare_doc({n: pages[n]["anchor_text"] for n in pages},
+                          {n: pages[n]["ocr_text"] for n in pages if pages[n].get("ocr_text")}, spans)
+    if units:
+        classes = {n: classify_unit(pages[n]) for n in pages}
+    else:
+        classes = {n: classify_page(pages[n], ingest.get("lanes_unavailable") or []) for n in pages}
+    vision_ok = not units and card["vision_mode"] != "off" and card["vision_validated"] is True
+
+    # --- Locators: sections -> unit numbers (arXiv HTML) ---
+    coverage, claims = card["coverage"], card["claims"]
+    if units:
+        by_label = {lab: n for n, lab in labels.items()}
+        coverage, claims = [], []
+        for e in card["coverage"]:
+            n = by_label.get(e["section"])
+            if n is None:
+                items.append(item("coverage", "SECTION_NOT_FOUND", section=e["section"],
+                                  reason=f"coverage entry for section {e['section']!r}, which the ingest does not "
+                                         f"have (its labels: {list(labels.values())[:40]})"))
+                continue
+            coverage.append(dict(e, page=n))
+        for c in card["claims"]:
+            n = by_label.get(c["section"])
+            ne = by_label.get(c["section_end"]) if c.get("section_end") is not None else None
+            if n is None or (c.get("section_end") is not None and ne is None):
+                missing = c["section"] if n is None else c["section_end"]
+                items.append(item("claim", "SECTION_NOT_FOUND", claim_id=c["claim_id"], section=c["section"],
+                                  section_end=c.get("section_end"),
+                                  reason=f"section {missing!r} is not a unit label of this ingest"))
+                continue
+            if ne is not None and ne != n + 1:
+                items.append(item("claim", "SECTION_END_NOT_NEXT", claim_id=c["claim_id"], page=n, page_end=ne,
+                                  reason=f"section_end {c['section_end']!r} is unit {ne}, not the unit after section "
+                                         f"{c['section']!r} (unit {n}; next is "
+                                         f"{labels.get(n + 1, 'none')!r}): a quote may span into the next section "
+                                         "only; the quote was checked in its section alone"))
+                ne = None
+            claims.append(dict(c, page=n, page_end=ne))
 
     unique_line_cache = {}
 
@@ -835,6 +1256,16 @@ def check_card(card, ingest, fuzz, integrity=None):
         # One quote through the ladder plus the identifying rule.
         m = ptc.match_quote(q, doc, page, page_end, fuzz, REDACTION_MARKERS)
         status, reason, ident = m["tier"], m["detail"], None
+        if units:
+            # INTENT (1.4.0): the ladder's own detail names page numbers; on
+            #   HTML the reader cited sections, so name them by label.
+            shown = [labels[x] for x in m["found_on"] if x in labels]
+            if m["tier"] == ptc.TIER_WRONG_PAGE:
+                status, reason = "WRONG_SECTION", f"exact match only in other section(s): {shown}"
+            elif m["tier"] == ptc.TIER_NEAR:
+                reason = f"best score {m['score']} in section {shown[0] if shown else '?'} (anchor text)"
+            elif m["tier"] == ptc.TIER_NOT_FOUND:
+                reason = m["detail"].replace(", OCR or near", " or near").replace("page(s)", "section(s)")
         if m["tier"] in ptc.PASS_TIERS or m["tier"] == ptc.TIER_NEAR:
             ident = ptc.quote_identity(q, doc, include_ocr=m["lane"] == "ocr")
             if m["tier"] == ptc.TIER_NEAR:
@@ -857,11 +1288,11 @@ def check_card(card, ingest, fuzz, integrity=None):
                 if waiver:
                     status = "COVERED_SPARSE"
                     reason = (f"short anchor ({ident['reason']}) matched exactly ({m['tier']}) on a "
-                              f"{classes[page][0]} page")
+                              f"{classes[page][0]} {'section' if units else 'page'}")
                 elif duplicate:
                     status = "COVERED_DUPLICATE"
-                    reason = (f"anchor matched exactly ({m['tier']}) but occurs {ident['occurrences']} times: page "
-                              f"{page} has no line of its own that is unique (its text recurs elsewhere)")
+                    reason = (f"anchor matched exactly ({m['tier']}) but occurs {ident['occurrences']} times: "
+                              f"{where(page)} has no line of its own that is unique (its text recurs elsewhere)")
                 else:
                     status, reason = "NON_IDENTIFYING", ident["reason"]
             elif m["tier"] != ptc.TIER_NEAR:
@@ -878,8 +1309,8 @@ def check_card(card, ingest, fuzz, integrity=None):
 
     # --- Coverage ---
     page_summaries = []
-    by_page = {e["page"]: e for e in card["coverage"]}
-    for e in card["coverage"]:
+    by_page = {e["page"]: e for e in coverage}
+    for e in coverage:
         if e["page"] > n_pages:
             items.append(item("coverage", "PAGE_OUT_OF_RANGE", page=e["page"],
                               reason=f"coverage entry for page {e['page']} but the ingest has {n_pages} page(s)"))
@@ -891,23 +1322,30 @@ def check_card(card, ingest, fuzz, integrity=None):
     for n in range(1, n_pages + 1):
         cls, area, basis = classes[n]
         e = by_page.get(n)
-        summary = {"page": n, "class": cls, "image_area": None if area is None else round(area, 4), "basis": basis,
-                   "ocr_layer": OCR_LAYER_FLAG in (pages[n].get("flags") or []), "anchors": 0,
-                   "coverage_status": None}
+        if units:
+            summary = {"unit": n, "section": labels[n], "latexml_id": pages[n].get("latexml_id"), "class": cls,
+                       "basis": basis, "conversion_error": CONVERSION_ERROR_FLAG in (pages[n].get("flags") or []),
+                       "table_rows": bool(pages[n].get("lane_b_text")), "anchors": 0, "coverage_status": None}
+        else:
+            summary = {"page": n, "class": cls, "image_area": None if area is None else round(area, 4),
+                       "basis": basis, "ocr_layer": OCR_LAYER_FLAG in (pages[n].get("flags") or []),
+                       "lane_b": bool(pages[n].get("lane_b_text")), "anchors": 0, "coverage_status": None}
         if cls == "scanned":
             items.append(item("page", "SCANNED_PAGE", page=n,
                               reason=f"truly scanned page ({basis}): its content is in the image, so the text layer "
                                      "cannot verify it; grade capped at FULL_TEXT_PARTIAL"))
         if e is None:
-            items.append(item("coverage", "MISSING_PAGE", page=n, reason=f"page {n} has no coverage entry"))
-            summary["coverage_status"] = "MISSING_PAGE"
+            missing = "MISSING_SECTION" if units else "MISSING_PAGE"
+            items.append(item("coverage", missing, page=n, reason=f"{where(n)} has no coverage entry"))
+            summary["coverage_status"] = missing
             page_summaries.append(summary)
             continue
         summary["anchors"] = len(e["anchors"])
         has_text = nonws_count(pages[n]["anchor_text"]) > 0 or nonws_count(pages[n].get("ocr_text")) > 0
         if e.get("sparse") and cls == "normal":
             items.append(item("coverage", "SPARSE_DECLARATION_MISMATCH", page=n,
-                              reason="card declares sparse: true but the page is not flagged scanned (has text)"))
+                              reason="card declares sparse: true but the section is not flagged sparse by pdf_ingest"
+                              if units else "card declares sparse: true but the page is not flagged scanned (has text)"))
         if e.get("vision_only") and has_text:
             items.append(item("coverage", "VISION_ONLY_IGNORED", page=n,
                               reason="vision_only digest on a page with text: an anchor must cover it"))
@@ -925,26 +1363,36 @@ def check_card(card, ingest, fuzz, integrity=None):
             status = "VISION_ONLY" if cls == "scanned" else "COVERED_EMPTY"
             severity, reason = None, "vision-only digest; no text lane holds any text"
         elif not has_text and cls != "scanned" and not e["anchors"]:
-            status, severity, reason = "COVERED_EMPTY", None, "the page has no text in any lane"
+            status, severity = "COVERED_EMPTY", None
+            reason = "the section has no text" if units else "the page has no text in any lane"
         elif any(it["status"] in ("NEAR", "REDACTED_SPAN") for it in anchor_items):
             status, severity, reason = "NEEDS_REVIEW", None, "no passing anchor; best anchor needs a human check"
         else:
             status, severity = "NOT_COVERED", None
             reason = ("truly scanned page with no OCR text: a vision_only digest (validated vision) is the only "
-                      "cover" if cls == "scanned" and not has_text else "no anchor passes on this page")
+                      "cover" if cls == "scanned" and not has_text else
+                      "no anchor passes in this section" if units else "no anchor passes on this page")
         items.extend(anchor_items)
         items.append(item("coverage", status, severity, page=n, reason=reason))
         summary["coverage_status"] = status
         page_summaries.append(summary)
 
     # --- Claims ---
-    for c in card["claims"]:
+    nouns = "section(s)" if units else "page(s)"
+    rowsrc = "table" if units else "lane B"
+    for c in claims:
         p, pe, cid = c["page"], c.get("page_end"), c["claim_id"]
         if p > n_pages or (pe and pe > n_pages):
             items.append(item("claim", "PAGE_OUT_OF_RANGE", page=p, page_end=pe, claim_id=cid,
                               reason=f"the ingest has {n_pages} page(s)"))
             continue
-        if c["source"] in ("vision", "both") and not vision_ok:
+        if units and c["source"] != "text":
+            # INTENT: the card parser refuses this; an in-memory card can still
+            #   carry it. No vision or OCR reading of an HTML unit can exist.
+            items.append(item("vision", "VISION_UNAVAILABLE_CLAIM", page=p, claim_id=cid,
+                              reason=f"source {c['source']!r} on an arXiv HTML ingest: HTML units have no page images "
+                                     "and no OCR lane"))
+        elif c["source"] in ("vision", "both") and not vision_ok:
             items.append(item("vision", "VISION_UNAVAILABLE_CLAIM", page=p, claim_id=cid,
                               reason=f"source {c['source']!r} but vision_mode={card['vision_mode']!r}, "
                                      f"vision_validated={card['vision_validated']}"))
@@ -966,10 +1414,21 @@ def check_card(card, ingest, fuzz, integrity=None):
             it.update(status="PASS_OCR_LAYER", severity=SEVERITY["PASS_OCR_LAYER"],
                       reason=safe_line(f"{it['reason']}; cited page(s) {ocr_layer_pages} carry an existing OCR "
                                        "text layer (ocr_layer_suspected) never compared with the image", 600))
+        # INTENT (1.4.0, D-21 N5): a claim relying on a unit where LaTeXML could
+        #   not convert a macro (ltx_ERROR spans, flag conversion_error) may
+        #   quote text that differs from the paper: partial, like OCR evidence.
+        #   Coverage alone does not cap (only cited claims count).
+        conv_units = [labels[n] for n in cited if CONVERSION_ERROR_FLAG in (pages[n].get("flags") or [])] \
+            if units else []
+        if conv_units and q and q.strip() and it["status"] in ("PASS", "PASS_SKELETON", "PASS_SPAN"):
+            it.update(status="PASS_CONVERSION_ERROR", severity=SEVERITY["PASS_CONVERSION_ERROR"],
+                      reason=safe_line(f"{it['reason']}; cited section(s) {conv_units} hold LaTeXML conversion "
+                                       "errors (ltx_ERROR): the HTML text there may differ from the paper", 600))
         # INTENT (numbers-v2, D-21 N1): where the claim's quote matched, per
         #   lane, in NORMALIZE coordinates (a declared span is matched across
         #   the two pages' boundary text). A number must sit there.
         located = {"anchor": [], "ocr": []}
+        row_pages = []
         if q and q.strip():
             for n in cited:
                 for lane, key in (("anchor", "anchor_text"), ("ocr", "ocr_text")):
@@ -977,30 +1436,55 @@ def check_card(card, ingest, fuzz, integrity=None):
                         norm, spans = ptc.quote_spans(q, pages[n][key])
                         if spans:
                             located[lane].append((norm, spans))
+                            if lane == "anchor":
+                                row_pages.append(n)
             if pe and (p, pe) in doc["span"]:
                 ln, rn = doc["span"][(p, pe)][:2]
                 norm, spans = ptc.quote_spans(q, ln + " " + rn)
                 if spans:
                     located["anchor"].append((norm, spans))
+                    row_pages = [p, pe]
+        # INTENT (numbers-v3, D-22): the unique-row path. Only a quote that
+        #   passed on the anchor (lane B never anchors a quote) and only the
+        #   lane B text of the page(s) where it matched.
+        # REASONING: FE-5c script 76 (449 table claims quoted from their own
+        #   row, B and C): genuine ok 0.976 in-quote -> 0.996 in-quote or row;
+        #   last digit changed 0.018 -> 0.018; sign flip 0 -> 0. The loose B6
+        #   rule (1.000 / 0.058 / 0) also cleared look-alike rows.
+        quote_on_anchor = bool(q and q.strip()) and it["status"] in ("PASS", "PASS_SKELETON", "PASS_SPAN",
+                                                                     "PASS_OCR_LAYER", "PASS_CONVERSION_ERROR")
+        lane_b_texts = [pages[n]["lane_b_text"] for n in row_pages if pages[n].get("lane_b_text")]
+        row = ptc.quote_row(q, lane_b_texts) if quote_on_anchor and lane_b_texts else None
         anchor_toks = [t for n in cited for t in ptc.number_candidates(pages[n]["anchor_text"])]
         ocr_toks = [t for n in cited for t in ptc.number_candidates(pages[n].get("ocr_text") or "")]
         for s in c["numbers"]:
             tok = ptc.parse_number(s)
             base = {"page": p, "page_end": pe, "claim_id": cid, "number": safe_line(s, 80)}
             if tok is None:
-                items.append(item("claim_number", "NUMBER_UNPARSEABLE", label="unparseable",
+                items.append(item("claim_number", "NUMBER_UNPARSEABLE", label="unparseable", locality=None,
+                                  row_match=None,
                                   reason="not one number (write it as printed, e.g. -0.087, (0.044), 1,204)", **base))
                 continue
             kind, hit = ptc.compare_number(tok, anchor_toks)
             near = {lane: any(ptc.number_near_spans(tok, norm, spans, ptc.NUMBER_NEAR_CHARS)
                               for norm, spans in located[lane]) for lane in located}
-            not_near = ("printed on the cited page(s) as {!r} but not inside the claim's quote where it matched"
+            in_row = bool(row and row["status"] == "unique" and ptc.number_in_row(tok, row["row"]))
+            locality = None
+            row_note = ""
+            if row is not None:
+                row_note = {"unique": f"; the quote's leading label identifies one {rowsrc} row, which does not "
+                                      "print it",
+                            "ambiguous": f"; the quote's leading label matches {row['candidates']} {rowsrc} rows "
+                                         "(ambiguous: no row path)",
+                            "none": f"; the quote's leading label identifies no {rowsrc} row"}[row["status"]]
+            not_near = ("printed on the cited " + nouns + " as {!r} but not inside the claim's quote where it matched"
                         + ("" if located["anchor"] or located["ocr"] else
-                           " (the claim's quote is not located on the cited page(s))")
-                        + ": a human checks the row and column (quote the row label with the number)")
-            if kind == "exact" and not near["anchor"]:
+                           " (the claim's quote is not located on the cited " + nouns + ")") + row_note
+                        + ": a human checks the row and column (start the quote at the row label)")
+            if kind == "exact" and not near["anchor"] and not in_row:
                 status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40))
             elif kind == "exact":
+                locality = "in-quote" if near["anchor"] else "row"
                 notes = []
                 if hit["paren"] != tok["paren"]:
                     notes.append(f"page prints it {'in' if hit['paren'] else 'without'} parentheses")
@@ -1008,18 +1492,25 @@ def check_card(card, ingest, fuzz, integrity=None):
                     notes.append(f"page prints it {'with' if hit['percent'] else 'without'} %")
                 if c["source"] == "vision":
                     notes.append("the text layer corroborates the vision reading")
+                if locality == "row":
+                    notes.insert(0, f"in the one {rowsrc} row the quote's leading label identifies (row path)")
                 status, reason = "NUMBER_OK", "; ".join(notes) or f"found as {safe_line(hit['raw'], 40)!r}"
                 if ocr_layer_pages:
                     status = "NUMBER_OCR_LAYER_VISION" if c["source"] == "both" else "NUMBER_OCR_LAYER"
                     reason = (f"{reason}; from an existing OCR text layer (page(s) {ocr_layer_pages} flagged "
                               "ocr_layer_suspected)" + (", corroborated by a vision reading"
                                                         if c["source"] == "both" else ""))
+                elif conv_units:
+                    status = "NUMBER_CONVERSION_ERROR"
+                    reason = (f"{reason}; in a section with LaTeXML conversion errors (section(s) {conv_units} "
+                              "flagged conversion_error)")
             else:
                 okind, ohit = ptc.compare_number(tok, ocr_toks)
                 if okind == "exact" and not near["ocr"]:
                     status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(ohit["raw"], 40)) + \
                         " (OCR text)"
                 elif okind == "exact":
+                    locality = "in-quote"
                     status = "NUMBER_OCR_VISION" if c["source"] == "both" else "NUMBER_OCR_ONLY"
                     reason = "only in the page's OCR text" + (", corroborated by a vision reading"
                                                               if c["source"] == "both" else "")
@@ -1034,13 +1525,49 @@ def check_card(card, ingest, fuzz, integrity=None):
                     elsewhere = sorted({n for n in pages if n not in cited and ptc.compare_number(
                         tok, ptc.number_candidates(pages[n]["anchor_text"]))[0] == "exact"})
                     status = "NUMBER_MISSING"
-                    reason = "not on the cited page(s) in any text lane" + (
-                        f"; found on page(s) {elsewhere}" if elsewhere else "") + (
-                        "; source \"both\" declares a text reading" if c["source"] == "both" else "")
+                    if units:
+                        reason = "not in the cited section(s)" + (
+                            f"; found in section(s) {[labels[x] for x in elsewhere]}" if elsewhere else "")
+                    else:
+                        reason = "not on the cited page(s) in any text lane" + (
+                            f"; found on page(s) {elsewhere}" if elsewhere else "") + (
+                            "; source \"both\" declares a text reading" if c["source"] == "both" else "")
             items.append(item("claim_number", status, label=NUMBER_LABELS[status], reason=reason,
-                              number_digits=tok["digits"], **base))
+                              number_digits=tok["digits"], locality=locality,
+                              row_match=row["status"] if row is not None else None, **base))
 
-    # --- Verdict ---
+    if units:
+        to_sections(items, labels)
+    return result_of(items, page_summaries, page_summaries, card, fuzz, vision_ok, redactions, secret_names, units,
+                     n_pages, classes)
+
+
+def to_sections(items, labels):
+    # (1.4.0) Every locator reported as the section label the reader cited;
+    # page / page_end stay null on arXiv HTML items.
+    for it in items:
+        if it["page"] is not None:
+            it["section"], it["page"] = labels.get(it["page"]), None
+        if it["page_end"] is not None:
+            it["section_end"], it["page_end"] = labels.get(it["page_end"]), None
+        if it.get("found_on"):
+            it["found_on"] = [labels.get(x, x) for x in it["found_on"]]
+
+
+def classify_unit(unit):
+    # (class, None, basis) for one arXiv HTML unit: "sparse" when pdf_ingest
+    # flagged it (few non-whitespace chars, mostly heading-only units), else
+    # "normal". No unit is ever scanned: the text is the converted LaTeX.
+    if HTML_SPARSE_FLAG in (unit.get("flags") or []):
+        ev = "; ".join(str(x) for x in (unit.get("evidence") or {}).get(HTML_SPARSE_FLAG) or [])
+        return "sparse", None, "flagged sparse by pdf_ingest" + (f" ({ev})" if ev else "")
+    return "normal", None, "not flagged sparse"
+
+
+def result_of(items, page_summaries, summaries, card, fuzz, vision_ok, redactions, secret_names, units, n_pages,
+              classes):
+    # The verdict, grades, counts and lists from the items (shared by the PDF
+    # and arXiv HTML paths and the early ANCHOR_KIND_MISMATCH return).
     sev = {it["severity"] for it in items}
     if "fail" in sev:
         verdict = "FAIL"
@@ -1056,26 +1583,36 @@ def check_card(card, ingest, fuzz, integrity=None):
         if_confirmed = "FULL_TEXT_PARTIAL" if "partial" in sev else "FULL_TEXT_VERIFIED"
     counts = {s: sum(1 for it in items if it["severity"] == s) for s in ("pass", "partial", "review", "fail",
                                                                           "warning")}
-    counts.update(pages=n_pages, pages_covered=sum(1 for ps in page_summaries if ps["coverage_status"] in (
-        "PASS", "COVERED_SPARSE", "COVERED_DUPLICATE", "PASS_OCR", "VISION_ONLY", "COVERED_EMPTY")),
-        claims=len(card["claims"]),
-        numbers=sum(len(c["numbers"]) for c in card["claims"]),
-        pages_scanned=sum(1 for v in classes.values() if v[0] == "scanned"),
-        pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"))
+    covered = sum(1 for ps in summaries if ps["coverage_status"] in (
+        "PASS", "COVERED_SPARSE", "COVERED_DUPLICATE", "PASS_OCR", "VISION_ONLY", "COVERED_EMPTY"))
+    if units:
+        counts.update(sections=n_pages, sections_covered=covered, claims=len(card["claims"]),
+                      numbers=sum(len(c["numbers"]) for c in card["claims"]),
+                      sections_sparse=sum(1 for v in classes.values() if v[0] == "sparse"),
+                      sections_conversion_error=sum(1 for s in summaries if s.get("conversion_error")))
+    else:
+        counts.update(pages=n_pages, pages_covered=covered,
+                      claims=len(card["claims"]),
+                      numbers=sum(len(c["numbers"]) for c in card["claims"]),
+                      pages_scanned=sum(1 for v in classes.values() if v[0] == "scanned"),
+                      pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"))
     lists = {s: [summary_line(it) for it in items if it["severity"] == s] for s in ("fail", "review", "partial",
                                                                                      "warning")}
     return {"verdict": verdict, "evidence_grade_suggested": grade, "evidence_grade_if_review_confirmed": if_confirmed,
             "vision_available": vision_ok, "fuzzy_tier_run": fuzz is not None, "counts": counts,
             "failures": lists["fail"], "review_items": lists["review"], "partial_items": lists["partial"],
-            "warnings": lists["warning"], "pages": page_summaries, "items": items, "redaction_count": redactions[0],
+            "warnings": lists["warning"], "pages": [] if units else page_summaries,
+            "sections": summaries if units else [], "items": items, "redaction_count": redactions[0],
             "secret_redactions": sorted(secret_names)}
 
 
 def summary_line(it):
     # A compact one-line description of an item (stdout and JSON lists).
-    where = f"p{it['page']}" if it["page"] is not None else "card"
+    where = f"p{it['page']}" if it["page"] is not None else (f"sec {it['section']}" if it.get("section") else "card")
     if it.get("page_end"):
         where += f"-p{it['page_end']}"
+    elif it.get("section_end"):
+        where += f"-{it['section_end']}"
     who = f" claim {it['claim_id']}" if it.get("claim_id") else ""
     what = f" {it['number']!r}" if it.get("number") else (f" {one_line(it['quote'], 70)!r}" if it.get("quote") else "")
     return safe_line(f"{it['status']} {where}{who}{what}: {it['reason']}", 400)
@@ -1101,14 +1638,60 @@ def write_card_check(paper_dir, card_name, payload):
 
 
 # §§ SELFTEST
-SELFTEST_KEYS = {"A": "user_5e1f7e5a", "B": "user_5e1f7e5b", "T": "user_5e1f7e5c"}
+SELFTEST_KEYS = {"A": "user_5e1f7e5a", "B": "user_5e1f7e5b", "T": "user_5e1f7e5c", "R": "user_5e1f7e5e",
+                 "H": "user_5e1f7e60"}
+# 1.4.0 (D-21 N5): paper H, a synthetic arXiv HTML (LaTeXML-shaped, the same
+#   shape as tests/python/fixtures/pdf_ingest/html/synthetic_latexml.html),
+#   ingested by pdf_ingest's REAL arxiv-html lane, so the selftest also checks
+#   the interface between the two tools. Every word is invented. Units: front,
+#   1, 1.1 (a table), 2 (an ltx_ERROR span: conversion_error), bib.
+SELFTEST_HTML = (
+    '<!DOCTYPE html><html lang="en"><head><title>lit_verify selftest (synthetic)</title>\n'
+    '<!--Generated by LaTeXML (version 0.0.0-selftest) synthetic-->\n</head><body>\n'
+    '<div id="watermark-tr">arXiv:2601.00002v3 [stat.ME] 02 Jan 2026</div>\n'
+    '<article class="ltx_document">\n'
+    '<h1 class="ltx_title ltx_title_document">The Invented Lantern Survey</h1>\n'
+    '<div class="ltx_abstract"><h6 class="ltx_title ltx_title_abstract">Abstract</h6>\n'
+    '<p class="ltx_p">An invented survey counted copper lanterns along the northern quay for one imaginary '
+    'winter.</p></div>\n'
+    '<section id="S1" class="ltx_section">\n'
+    '<h2 class="ltx_title ltx_title_section"><span class="ltx_tag ltx_tag_section">1 </span>Lantern counts</h2>\n'
+    '<p class="ltx_p">The keepers recorded every lantern that stayed lit through the long imaginary night, and '
+    'they wrote each count in a ledger that nobody outside the harbour has ever read.</p>\n'
+    '<p class="ltx_p">They agreed that the amber lanterns outlasted the blue ones by a wide margin.</p>\n'
+    '<section id="S1.SS1" class="ltx_subsection">\n'
+    '<h3 class="ltx_title ltx_title_subsection"><span class="ltx_tag ltx_tag_subsection">1.1 </span>Counts by '
+    'quay</h3>\n'
+    '<figure class="ltx_table"><figcaption class="ltx_caption">Table 1: Invented lantern counts by quay'
+    '</figcaption>\n<table class="ltx_tabular"><tbody>\n'
+    '<tr class="ltx_tr"><th class="ltx_th">Quay</th><th class="ltx_th">Amber</th><th class="ltx_th">Blue</th>'
+    '<th class="ltx_th">Green</th></tr>\n'
+    '<tr class="ltx_tr"><td class="ltx_td">North Quay beside the old harbour office</td><td class="ltx_td">0.62'
+    '</td><td class="ltx_td">−0.087</td><td class="ltx_td">0.33</td></tr>\n'
+    '<tr class="ltx_tr"><td class="ltx_td">South Quay</td><td class="ltx_td">0.41</td><td class="ltx_td">1,204'
+    '</td><td class="ltx_td">0.18</td></tr>\n'
+    '</tbody></table></figure>\n'
+    '<p class="ltx_p">The counts in Table 1 are invented to exercise the verification gate on arXiv HTML units, '
+    'and each one was copied by hand from the imaginary ledger kept in the harbour office.</p>\n'
+    '</section></section>\n'
+    '<section id="S2" class="ltx_section">\n'
+    '<h2 class="ltx_title ltx_title_section"><span class="ltx_tag ltx_tag_section">2 </span>Method</h2>\n'
+    '<p class="ltx_p">The invented estimator <span class="ltx_ERROR undefined">\\lanternmacro</span> weighted each '
+    'quay by its 23 painted bollards before pooling, and the keepers checked every weight twice against the '
+    'ledger before they trusted the pooled count for the whole harbour.</p>\n'
+    '</section>\n'
+    '<section id="bib" class="ltx_bibliography"><h2 class="ltx_title ltx_title_bibliography">References</h2>\n'
+    '<ul class="ltx_biblist"><li id="bib.bib1" class="ltx_bibitem">Invented, B. (2025). A census of imaginary '
+    'lanterns on the northern quay.</li></ul></section>\n'
+    '</article></body></html>\n')
 # Every word and number below is invented for this self-test (no third-party
 # text). Paper A: four text-layer pages (p2 carries pdftotext's fused
 # compound hyphen "naturallanguage"; p3 a U+2212 minus, an SE in parentheses,
 # a thousands separator and ".05"; p4 a sparse caption-only page with no
 # image). Paper B: a normal page and a truly scanned page (empty anchor, a
 # full-page image, OCR text). Paper T: paper A with page 1's anchor tampered
-# after the manifest was written.
+# after the manifest was written. Paper R (1.3.0): a column-major table page
+# with a row-major lane B (the unique-row rule, its residual and fallbacks).
 SELFTEST_PAGES = {
     "A": [
         {"anchor": "Synthetic Selftest Fixture\nThe violet ferry carried nineteen patient cartographers across the "
@@ -1144,6 +1727,19 @@ SELFTEST_PAGES = {
                       "ocr_layer_suspected": ["an image covers 100% of the page area (>= 80%) and the anchor has "
                                               "190 non-whitespace chars"]}},
     ],
+    # 1.3.0 (D-22): a table page whose anchor is column-major (as pdftotext
+    #   often reads tables) and whose lane B keeps each row on one line; two
+    #   look-alike row labels and one label shared by two rows.
+    "R": [
+        {"anchor": "Table 5: Invented tide counts by harbour\nHarbour\nNorth Quay (with tide gauge)\nNorth Quay "
+                   "(without tide gauge)\nAll Harbours\nAll Harbours\nSpring\n0.62\n0.71\n0.55\n0.48\nAutumn\n0.63\n"
+                   "0.74\n0.59\n0.41\nThe counts in Table 5 are invented to exercise the row rule of the verification "
+                   "gate.\n\f",
+         "lane_b": "Table 5: Invented tide counts by harbour\nHarbour Spring Autumn\nNorth Quay (with tide gauge) 0.62 "
+                   "0.63\nNorth Quay (without tide gauge) 0.71 0.74\nAll Harbours 0.55 0.59\nAll Harbours 0.48 0.41\n"
+                   "The counts in Table 5 are invented to exercise the row rule of the verification gate.\n",
+         "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 5"]}},
+    ],
 }
 
 
@@ -1156,13 +1752,19 @@ def build_synthetic_ingest(papers_dir, key, pages, write_parquet):
     os.makedirs(os.path.join(key_dir, "anchor"))
     src_sha = sha256_bytes(f"%PDF-1.7 lit_verify selftest synthetic source {key}".encode("utf-8"))
     records = []
-    cols = {"page_no": [], "anchor_sha256": [], "flag_scanned": [], "flag_evidence": []}
+    cols = {"page_no": [], "anchor_sha256": [], "lane_b_sha256": [], "flag_scanned": [], "flag_evidence": []}
     for n, pg in enumerate(pages, 1):
         pn = f"p{n:03d}"
         data = pg["anchor"].encode("utf-8")
         write_new(os.path.join(key_dir, "anchor", f"{pn}.txt"), data)
         rec = {"page_no": n, "anchor": {"path": f"anchor/{pn}.txt", "bytes": len(data), "sha256": sha256_bytes(data)},
-               "flags": pg["flags"], "ocr": None}
+               "lane_b": None, "flags": pg["flags"], "ocr": None}
+        if pg.get("lane_b") is not None:
+            os.makedirs(os.path.join(key_dir, "lane_b"), exist_ok=True)
+            bdata = pg["lane_b"].encode("utf-8")
+            write_new(os.path.join(key_dir, "lane_b", f"{pn}.txt"), bdata)
+            rec["lane_b"] = {"path": f"lane_b/{pn}.txt", "bytes": len(bdata), "sha256": sha256_bytes(bdata)}
+        cols["lane_b_sha256"].append(rec["lane_b"]["sha256"] if rec["lane_b"] else None)
         if pg.get("ocr") is not None:
             os.makedirs(os.path.join(key_dir, "ocr"), exist_ok=True)
             odata = pg["ocr"].encode("utf-8")
@@ -1203,9 +1805,41 @@ def selftest_card(key, src_sha, coverage, claims, vision_validated=True):
             "```lit-verify\n" + json.dumps(block, indent=2, ensure_ascii=False) + "\n```\n")
 
 
+def build_html_ingest(papers_dir, work_dir, key):
+    # (1.4.0) Writes SELFTEST_HTML into the work dir and ingests it with
+    # pdf_ingest's real arxiv-html lane (in-process; its stdout and stderr
+    # swallowed). Returns (source sha256, arXiv version).
+    import pdf_ingest   # stdlib-only at import time; only the selftest needs it
+    src_dir = os.path.join(work_dir, "html_src")
+    os.makedirs(src_dir)
+    src = os.path.join(src_dir, "2601.00002v3.html")
+    write_new(src, SELFTEST_HTML.encode("utf-8"))
+    with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+        code = pdf_ingest.main([src, papers_dir, "--paper-key", key, "--source", "arxiv-html"])
+    if code != 0:
+        raise LitVerifyError(12, f"selftest: pdf_ingest --source arxiv-html exited {code} on the synthetic HTML")
+    with open(os.path.join(papers_dir, key, "ingest_manifest.json"), encoding="utf-8") as f:
+        man = json.load(f)
+    return man["source"]["sha256"], man["arxiv"]["version"]
+
+
+def selftest_card_html(key, src_sha, version, coverage, claims, over=None):
+    # (1.4.0) A complete synthetic lit-verify-card-v2 card for an arXiv HTML
+    # ingest (vision_mode off: HTML units have no page images).
+    block = {"schema_version": CARD_SCHEMA_VERSION_V2, "paper_key": key, "anchor_kind": ANCHOR_KIND_HTML,
+             "source_sha256": src_sha, "source_version": version, "ingest_suffix": "",
+             "reader_model": "selftest-synthetic", "vision_mode": "off", "vision_validated": False,
+             "vision_list_version": "selftest", "coverage": coverage, "claims": claims}
+    block.update({k: v for k, v in (over or {}).items() if k in TOP_FIELDS_V2})
+    return (f"---\npaper_key: {key}\nsource_sha256: {src_sha}\nreader_model: selftest-synthetic\n---\n\n"
+            "# Evidence card (lit_verify selftest; synthetic arXiv HTML)\n\n## 1. Reading coverage ledger\n\n"
+            "See the block.\n\n```lit-verify\n" + json.dumps(block, indent=2, ensure_ascii=False) + "\n```\n")
+
+
 def selftest_cases(src):
     # (name, paper, card coverage, claims, vision_validated, expected verdict,
-    #  expected exit, a status that must appear (or None), item kind for it).
+    #  expected exit, a status that must appear (or None), item kind for it[,
+    #  card overrides (1.4.0; "v1": True builds a v1 card on paper H)]).
     a_cov = [
         {"page": 1, "anchors": ["The violet ferry carried nineteen patient cartographers across the silver estuary"],
          "summary": "the voyage begins"},
@@ -1233,6 +1867,40 @@ def selftest_cases(src):
           "source": "ocr"}
     b2 = {"claim_id": "B2", "page": 3, "quote": "words below came from an earlier reader of the image. It lists 23 "
                                                 "lanterns", "numbers": ["23"], "source": "text"}
+    # INTENT (numbers-v3, D-22): on a column-major page the quote starts at the
+    #   row label (a run of row labels, as pages/ shows them); the gate finds the
+    #   one lane B row that label identifies.
+    r_cov = [{"page": 1, "anchors": ["The counts in Table 5 are invented to exercise the row rule of the verification "
+                                     "gate"], "summary": "Table 5, a column-major table page"}]
+    r1 = {"claim_id": "R1", "page": 1, "quote": "North Quay (with tide gauge) North Quay (without tide gauge) All "
+                                                "Harbours", "numbers": ["0.63"], "source": "text", "table_ref": "Table 5",
+          "claim": "North Quay with tide gauge, Autumn: 0.63"}
+    r4 = {"claim_id": "R4", "page": 1, "quote": "All Harbours All Harbours Spring 0.62 0.71 0.55", "numbers": ["0.41"],
+          "source": "text", "table_ref": "Table 5"}
+    # INTENT (1.4.0, D-21 N5): paper H, cited by section label. H1 quotes the
+    #   row-major anchor through the cells (in-quote); H2 stops before the last
+    #   cell, so its number clears through the one rows/ row its label names.
+    h_cov = [
+        {"section": "front", "anchors": ["An invented survey counted copper lanterns along the northern quay"],
+         "summary": "abstract"},
+        {"section": "1", "anchors": ["The keepers recorded every lantern that stayed lit through the long imaginary "
+                                     "night"], "summary": "lantern counts"},
+        {"section": "1.1", "anchors": ["The counts in Table 1 are invented to exercise the verification gate on arXiv "
+                                       "HTML units"], "summary": "Table 1"},
+        {"section": "2", "anchors": ["the keepers checked every weight twice against the ledger"],
+         "summary": "method (a LaTeXML conversion error in this section)"},
+        {"section": "bib", "anchors": ["Invented, B. (2025). A census of imaginary lanterns on the northern quay."],
+         "summary": "references"},
+    ]
+    h1 = {"claim_id": "H1", "section": "1.1", "quote": "Table 1: Invented lantern counts by quay Quay Amber Blue Green "
+                                                       "North Quay beside the old harbour office 0.62 −0.087",
+          "numbers": ["0.62", "-0.087"], "source": "text", "table_ref": "Table 1"}
+    h2 = {"claim_id": "H2", "section": "1.1", "quote": "North Quay beside the old harbour office 0.62 −0.087",
+          "numbers": ["0.33"], "source": "text", "table_ref": "Table 1", "claim": "North Quay, Green: 0.33"}
+    h3 = {"claim_id": "H3", "section": "2", "quote": "weighted each quay by its 23 painted bollards before pooling",
+          "numbers": ["23"], "source": "text"}
+    h_v1_cov = [{"page": 1, "anchors": ["An invented survey counted copper lanterns along the northern quay"],
+                 "summary": "a PDF-style card on an HTML ingest"}]
     return [
         ("genuine card", "A", a_cov, [c1, c2], True, "PASS", 0, None, None),
         ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], True, "FAIL", 11,
@@ -1262,6 +1930,27 @@ def selftest_cases(src):
          True, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
         ("claim on an existing OCR text layer page", "B", b_cov, [b1, b2], True, "PARTIAL", 0, "PASS_OCR_LAYER",
          "claim_quote"),
+        ("table number found through its one lane B row", "R", r_cov, [r1], True, "PASS", 0, "NUMBER_OK",
+         "claim_number"),
+        # REASONING: residual (a), documented: a fabricated Spring value (0.62 -> 0.63) that
+        #   the same row prints in another column clears; a validated vision check could catch it.
+        ("fabricated value printed in the same row (residual)", "R", r_cov,
+         [dict(r1, claim="North Quay with tide gauge, Spring: 0.63")], True, "PASS", 0, "NUMBER_OK", "claim_number"),
+        ("fabricated value from a look-alike row", "R", r_cov, [dict(r1, numbers=["0.74"])], True, "NEEDS_REVIEW", 0,
+         "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        ("row label shared by two rows (falls back)", "R", r_cov, [r4], True, "NEEDS_REVIEW", 0,
+         "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        # 1.4.0 (D-21 N5): arXiv HTML, cited by section
+        ("arXiv HTML card, table row via rows/ (genuine)", "H", h_cov, [h1, h2], False, "PASS", 0, "NUMBER_OK",
+         "claim_number"),
+        ("HTML quote cited to another section", "H", h_cov, [dict(h1, section="1"), h2], False, "FAIL", 11,
+         "WRONG_SECTION", "claim_quote"),
+        ("HTML claim in a conversion-error section", "H", h_cov, [h1, h3], False, "PARTIAL", 0,
+         "PASS_CONVERSION_ERROR", "claim_quote"),
+        ("HTML card pinned to another arXiv version", "H", h_cov, [h1], False, "FAIL", 11, "SOURCE_VERSION_MISMATCH",
+         "integrity", {"source_version": "v2"}),
+        ("PDF (v1) card on an arXiv HTML ingest", "H", h_v1_cov, [], False, "FAIL", 11, "ANCHOR_KIND_MISMATCH",
+         "integrity", {"v1": True}),
     ]
 
 
@@ -1273,6 +1962,8 @@ def run_selftest(a, scratch_dir, row):
     write_parquet = parquet_writer()
     read_parquet = parquet_reader()
     missing = ([] if fuzz else ["rapidfuzz"]) + ([] if write_parquet and read_parquet else ["polars or pyarrow"])
+    if try_import("polars") is None:
+        missing.append("polars (pdf_ingest's arXiv HTML lane builds paper H)")
     if missing:
         raise LitVerifyError(10, f"required library missing: {', '.join(missing)} (rebuild the DAAF image)")
     work = os.path.join(scratch_dir, f"lit_verify_selftest_{uuid.uuid4().hex[:10]}")
@@ -1282,13 +1973,17 @@ def run_selftest(a, scratch_dir, row):
     try:
         os.makedirs(papers)
         src = {"A": build_synthetic_ingest(papers, SELFTEST_KEYS["A"], SELFTEST_PAGES["A"], write_parquet),
-               "B": build_synthetic_ingest(papers, SELFTEST_KEYS["B"], SELFTEST_PAGES["B"], write_parquet)}
+               "B": build_synthetic_ingest(papers, SELFTEST_KEYS["B"], SELFTEST_PAGES["B"], write_parquet),
+               "R": build_synthetic_ingest(papers, SELFTEST_KEYS["R"], SELFTEST_PAGES["R"], write_parquet)}
         src["T"] = build_synthetic_ingest(papers, SELFTEST_KEYS["T"], SELFTEST_PAGES["A"], write_parquet)
         with open(os.path.join(papers, SELFTEST_KEYS["T"], "anchor", "p001.txt"), "ab") as f:
             f.write(b"A line added after ingest.\n")   # the planted tamper
+        src["H"], h_version = build_html_ingest(papers, work, SELFTEST_KEYS["H"])
         card_runs, next_sfx, genuine = 0, {k: 0 for k in SELFTEST_KEYS}, None
         cases = selftest_cases(src)
-        for i, (name, paper, cov, claims, vv, exp_verdict, exp_exit, exp_status, exp_kind) in enumerate(cases, 1):
+        for i, case in enumerate(cases, 1):
+            name, paper, cov, claims, vv, exp_verdict, exp_exit, exp_status, exp_kind = case[:9]
+            over = case[9] if len(case) > 9 else {}
             if cov is None:
                 code, check = genuine
             else:
@@ -1297,7 +1992,11 @@ def run_selftest(a, scratch_dir, row):
                 sfx = VERSION_SUFFIXES[next_sfx[paper]]
                 next_sfx[paper] += 1
                 card_path = os.path.join(key_dir, f"evidence_card{sfx}.md")
-                write_new(card_path, selftest_card(key, src[paper], cov, claims, vv).encode("utf-8"))
+                if paper == "H" and not over.get("v1"):
+                    text = selftest_card_html(key, src[paper], h_version, cov, claims, over)
+                else:
+                    text = selftest_card(key, src[paper], cov, claims, vv)
+                write_new(card_path, text.encode("utf-8"))
                 with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                     code = main(["card", key_dir, card_path])
                 card_runs += 1
@@ -1478,21 +2177,28 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
         ingest, integrity = load_ingest(paper_dir, papers_dir, paper_key, a.ingest_suffix, read_parquet)
     except LitVerifyError as exc:
         return finish(exc.code, exc.note)
+    html = ingest.get("anchor_kind") == ANCHOR_KIND_HTML
     row["ingest"] = {"suffix": ingest["suffix"], "manifest": ingest["manifest_name"],
-                     "manifest_sha256": ingest["manifest_sha256"], "page_count": ingest["page_count"]}
+                     "manifest_sha256": ingest["manifest_sha256"], "page_count": ingest["page_count"],
+                     "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF), "unit_count": ingest.get("unit_count")}
 
     # --- Check, then the result artifact ---
     result = check_card(card, ingest, fuzz, integrity)
     payload = {
         "kind": "lit_verify_card_check", "schema_version": CHECK_SCHEMA_VERSION, "tool_version": TOOL_VERSION,
-        "checked_at": timestamp, "paper_key": paper_key,
+        "checked_at": timestamp, "paper_key": paper_key, "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF),
         "card": {"path": card_name, "bytes": len(card_bytes), "sha256": row["card"]["sha256"],
-                 "schema_version": card["schema_version"], "reader_model": safe_line(card["reader_model"], 120),
+                 "schema_version": card["schema_version"], "anchor_kind": card.get("anchor_kind", ANCHOR_KIND_PDF),
+                 "source_version": card.get("source_version"), "reader_model": safe_line(card["reader_model"], 120),
                  "vision_mode": card["vision_mode"], "vision_validated": card["vision_validated"],
                  "vision_list_version": card["vision_list_version"]},
         "ingest": {"suffix": ingest["suffix"], "manifest": ingest["manifest_name"],
                    "manifest_sha256": ingest["manifest_sha256"], "page_count": ingest["page_count"],
-                   "source_pdf_sha256": ingest["source_sha256"],
+                   "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF), "unit_count": ingest.get("unit_count"),
+                   "source_pdf_sha256": None if html else ingest["source_sha256"],
+                   "source_sha256": ingest["source_sha256"], "source_version": ingest.get("source_version"),
+                   "arxiv_id_version": ingest.get("arxiv_id_version"),
+                   "html_extract_version": ingest.get("html_extract_version"),
                    "pdf_ingest_tool_version": ingest["pdf_ingest_tool_version"],
                    "normalize_version": ingest["normalize_version"]},
         "rule_versions": {"normalize": ptc.NORMALIZE_VERSION, "match_ladder": ptc.MATCH_LADDER_VERSION,
@@ -1500,7 +2206,9 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
         "constants": {"MIN_QUOTE_CHARS": ptc.MIN_QUOTE_CHARS, "MIN_QUOTE_WORDS": ptc.MIN_QUOTE_WORDS,
                       "FUZZ_SCORE_CUTOFF": ptc.FUZZ_SCORE_CUTOFF, "FUZZ_WINDOW_CHARS": ptc.FUZZ_WINDOW_CHARS,
                       "FUZZ_WINDOW_STEP": ptc.FUZZ_WINDOW_STEP, "NUMBER_NEAR_CHARS": ptc.NUMBER_NEAR_CHARS,
+                      "ROW_LABEL_MIN_CHARS": ptc.ROW_LABEL_MIN_CHARS,
                       "TRULY_SCANNED_IMAGE_AREA_MIN": TRULY_SCANNED_IMAGE_AREA_MIN,
+                      "HTML_EXTRACT_VERSIONS_KNOWN": list(HTML_EXTRACT_VERSIONS_KNOWN),
                       "PROVISIONAL": ["MIN_QUOTE_CHARS", "MIN_QUOTE_WORDS", "TRULY_SCANNED_IMAGE_AREA_MIN"]},
         **result,
     }
@@ -1516,8 +2224,11 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
 
     # --- Stdout triage ---
     cnt = result["counts"]
-    out = [f"lit_verify: {result['verdict']} {paper_key} card {safe_line(card_name, 80)} ({cnt['pages_covered']}/"
-           f"{cnt['pages']} pages covered; {cnt['claims']} claim(s), {cnt['numbers']} number(s); {cnt['fail']} fail, "
+    covered = (f"{cnt['sections_covered']}/{cnt['sections']} sections covered (arXiv HTML "
+               f"{ingest.get('arxiv_id_version')})" if "sections" in cnt else
+               f"{cnt['pages_covered']}/{cnt['pages']} pages covered")
+    out = [f"lit_verify: {result['verdict']} {paper_key} card {safe_line(card_name, 80)} ({covered}; "
+           f"{cnt['claims']} claim(s), {cnt['numbers']} number(s); {cnt['fail']} fail, "
            f"{cnt['review']} review, {cnt['partial']} partial, {cnt['warning']} warning) -> {paper_key}/{art['name']}",
            f"  evidence grade suggested: {result['evidence_grade_suggested'] or 'none'}"
            + (f" (if the review items are confirmed: {result['evidence_grade_if_review_confirmed']})"

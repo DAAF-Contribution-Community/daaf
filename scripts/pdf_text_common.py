@@ -51,8 +51,10 @@
 #                         lit_verify matching both depend on it)
 #   MATCH_LADDER_VERSION  the quote match ladder, the identifying-quote rule
 #                         and their constants (lit_verify only)
-#   NUMBER_RULES_VERSION  number normalization and comparison (lit_verify)
-#   lit_verify records all three in every card_check JSON.
+#   NUMBER_RULES_VERSION  number normalization, comparison and locality,
+#                         including the unique-row rule (lit_verify)
+#   lit_verify records all three in every card_check JSON. OVERLAP_VERSION
+#   (the overlap_score diagnostic) is recorded by pdf_ingest.
 #
 # --- Quote match ladder (added 2026-10-15, FE-3; note 08 §5) ----------------
 #   Evaluated in this order for a quote cited to page P (or the declared
@@ -102,8 +104,12 @@
 #   must also overlap the claim quote's matched span (+- NUMBER_NEAR_CHARS,
 #   chosen 0: inside the quote); quote_spans() / number_near_spans() below.
 #   The caller grades a page-level hit that is not local as a review item.
+#   numbers-v3 (2026-10-22, FE-5c, D-22): a second locality path, the
+#   UNIQUE-ROW rule (quote_row(), number_in_row(); § ROW_RULE below): the
+#   quote's leading label identifies exactly one lane B row on the page and
+#   that row prints the value. An ambiguous label falls back to in-quote.
 #   overlap_score() is the order-free character overlap (D-21 N4), a
-#   diagnostic pdf_ingest records beside `agreement`.
+#   diagnostic pdf_ingest records beside `agreement` (OVERLAP_VERSION).
 #
 # rapidfuzz is NOT imported here: callers pass the `rapidfuzz.fuzz` module
 # (or None, which skips the NEAR tier), so this module stays stdlib-only at
@@ -117,7 +123,9 @@ from decimal import Decimal, InvalidOperation
 # §§ CONSTANTS
 NORMALIZE_VERSION = "normalize-v1"
 MATCH_LADDER_VERSION = "ladder-v1"
-NUMBER_RULES_VERSION = "numbers-v2"
+NUMBER_RULES_VERSION = "numbers-v3"
+# The order-free overlap diagnostic (overlap_score); pdf_ingest records it.
+OVERLAP_VERSION = "overlap-v1"
 
 # INTENT: invisible characters that split words without changing the visible
 #   text (soft hyphen, zero-width space/joiners, word joiner, BOM).
@@ -509,11 +517,26 @@ def compare_number(claim, candidates):
 #   rule with the fewest fabricated passes was chosen (user decision D-21:
 #   gate integrity first); a genuine table number outside its quote goes to
 #   human review (NUMBER_NOT_NEAR_QUOTE), not to FAIL.
+#   Correction (FE-5c scripts 75/76): script 69 quoted from the FIRST
+#   occurrence of a row label, which on report-style pages is often another
+#   row (a label such as "Full Sample" recurs in several panels), so its
+#   genuine rates understate in-quote. With each quote taken from the
+#   number's own row (449 claims, B and C; DOI/URL and footnote rows
+#   excluded): in-quote 0.976 / 0.018 / 0.000; B6 1.000 / 0.058 / 0.000;
+#   in-quote OR unique row (numbers-v3, shipped) 0.996 / 0.018 / 0.000; on
+#   the 31 column-major rows 0.645 -> 0.935 genuine, 0.000 last digit.
 NUMBER_NEAR_CHARS = 0
-# Measurement only (script 69): the lane B row rule was measured and NOT
-#   adopted; lane_b_row_hit() and row_label_skeleton() are kept so the
-#   measurement can be re-run. The gate never calls them.
+# Measurement only (script 69): the loose lane B row rule (B6: any lane B line
+#   sharing >= 6 letters with the quote) was measured and NOT adopted;
+#   lane_b_row_hit() and row_label_skeleton() are kept so that measurement can
+#   be re-run. The gate never calls them. numbers-v3 uses quote_row() below.
 LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
+# numbers-v3 (2026-10-22, FE-5c, user decision D-22): the UNIQUE-ROW rule. A
+#   number also clears when the claim's quote identifies exactly one lane B
+#   row on the page and that row prints the value (quote_row(),
+#   number_in_row()). A row label shorter than this many letters never
+#   identifies a row (single letters are footnote marks and panel labels).
+ROW_LABEL_MIN_CHARS = 2
 
 
 def skeleton_index(norm):
@@ -592,6 +615,98 @@ def lane_b_row_hit(claim, quote, lane_b_text, min_shared):
         if best >= min_shared:
             return line
     return None
+
+
+# §§ ROW_RULE (numbers-v3; added 2026-10-22, FE-5c, user decision D-22)
+# pdftotext serializes most tables column-major, so a quote holding a row
+# label rarely reaches the cell; lane B (pypdfium2) keeps each row on one line.
+# The row rule uses lane B only as LOCALITY evidence for a value the anchor
+# page already prints; quotes are still matched only against the anchor.
+#   label     the letters (casefolded, no digits, spaces or punctuation) of
+#             the text BEFORE the first number token that follows a letter:
+#             "7. Gender (Girls) 0.50 0.50" -> "gendergirls";
+#             "Time III (Inclusive with co-teaching) 288 34" ->
+#             "timeiiiinclusivewithcoteaching". Hyphens and fused compounds
+#             ("co-teaching" / "coteaching") compare equal; digits never do,
+#             so rows "Grade 3" / "Grade 4" share the label "grade" (and are
+#             ambiguous, the safe side).
+#   row       a lane B line whose label has >= ROW_LABEL_MIN_CHARS letters and
+#             that prints at least one number after its label.
+#   identify  the quote's LEADING label (its letters before its first number
+#             token that follows a letter; the whole quote when it holds no
+#             such number, e.g. a run of row labels on a column-major page)
+#             must START with a row's label and the label must end at a word
+#             boundary of the quote ("N" does not match "Notes"). Of the rows
+#             that match, the one(s) with the longest label win; exactly one
+#             winning line = "unique"; two or more lines with that label
+#             (e.g. "Full Sample" in two tables of one page) = "ambiguous";
+#             none = "none".
+#   value     number_in_row(): the identified row prints the claimed number
+#             exactly (value, digit string and sign) AFTER its label.
+def letter_skeleton(norm):
+    # (letters of an already NORMALIZEd text, casefolded, [index in norm of
+    # each kept char]).
+    out, idx = [], []
+    for i, c in enumerate(norm):
+        for f in c.casefold():
+            if f.isalpha():
+                out.append(f)
+                idx.append(i)
+    return "".join(out), idx
+
+
+def label_cut(norm):
+    # Index in `norm` where the label part ends: the start of the first number
+    # token that begins after the first letter (len(norm) when there is none).
+    first = next((i for i, c in enumerate(norm) if c.isalpha()), None)
+    if first is None:
+        return 0
+    return next((t["start"] for t in parse_numbers(norm) if t["start"] > first), len(norm))
+
+
+def lane_b_rows(lane_b_text):
+    # [{"label", "line", "cut"}] for every lane B line that is a row.
+    rows = []
+    for raw in (lane_b_text or "").split("\n"):
+        norm = normalize(raw)
+        cut = label_cut(norm)
+        label = letter_skeleton(norm[:cut])[0]
+        if len(label) >= ROW_LABEL_MIN_CHARS and cut < len(norm) and parse_numbers(norm[cut:]):
+            rows.append({"label": label, "line": norm, "cut": cut})
+    return rows
+
+
+def quote_row(quote, lane_b_texts):
+    # The lane B row the quote's leading label identifies, across the lane B
+    # texts given (the page(s) where the quote matched). Returns {"status":
+    # "unique" | "ambiguous" | "none", "row": row dict or None, "label",
+    # "candidates": number of lines carrying the winning label}.
+    qn = normalize(quote)
+    lead = qn[:label_cut(qn)]
+    skel, idx = letter_skeleton(lead)
+    hits = []
+    for text in lane_b_texts:
+        for row in lane_b_rows(text):
+            k = len(row["label"])
+            if not skel.startswith(row["label"]):
+                continue
+            end = idx[k - 1] + 1
+            # INTENT: the label must end where a word of the quote ends.
+            if k < len(skel) and end < len(lead) and lead[end].isalpha():
+                continue
+            hits.append(row)
+    if not hits:
+        return {"status": "none", "row": None, "label": None, "candidates": 0}
+    best = max(len(r["label"]) for r in hits)
+    winners = [r for r in hits if len(r["label"]) == best]
+    return {"status": "unique" if len(winners) == 1 else "ambiguous", "row": winners[0] if len(winners) == 1 else None,
+            "label": winners[0]["label"], "candidates": len(winners)}
+
+
+def number_in_row(claim, row):
+    # True when the row prints the claimed number exactly after its label.
+    toks = [t for t in number_candidates(row["line"]) if t["start"] >= row["cut"]]
+    return compare_number(claim, toks)[0] == "exact"
 
 
 def overlap_score(a, b):

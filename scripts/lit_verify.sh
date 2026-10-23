@@ -7,7 +7,9 @@
 # Framework-level tool behind the PDF layer of the Literature Review mode.
 # `card` checks every coverage anchor, claim quote and claim number of a
 # paper-reader's evidence card against the unaltered page text pdf_ingest
-# stored (anchor/pNNN.txt), writes card_check{S}.json into PAPER_DIR and one
+# stored (anchor/pNNN.txt; from 1.4.0 also an arXiv HTML ingest's section
+# units, anchor/uNNN.txt, cited by section label with card schema v2),
+# writes card_check{S}.json into PAPER_DIR and one
 # MANIFEST.jsonl row into the papers dir. `selftest` plants known
 # fabrications in cards on a synthetic ingest and asserts every verdict. This
 # wrapper is a thin passthrough to lit_verify.py so agents invoke one stable

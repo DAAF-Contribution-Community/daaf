@@ -20,7 +20,7 @@ DAAF never merges two readings into one text. Each reading keeps its lane:
 | Reading | Lane | May it be quoted? |
 |---------|------|-------------------|
 | Anchor (`pdftotext`, via `pages/`) | text | Yes: the only text a `PASS` quote comes from |
-| Lane B (pypdfium2) | — | No; it only scores agreement. If it reads a passage the anchor garbles, log it and quote nothing from lane B |
+| Lane B (pypdfium2) | — | No; it scores agreement and overlap, is the table-page reading aid (`pages/pNNN_rows.txt`) and gives `lit_verify` row locality for table numbers. If it reads a passage the anchor garbles, log it and quote nothing from lane B |
 | OCR (Tesseract, `pages/pNNN_ocr.txt`) | ocr | Yes, as `source: "ocr"` (`PASS_OCR`, weaker; caps the card at PARTIAL) |
 | Vision (renders, when validated) | vision | As `source: "vision"` (no quote, numbers `vision-only`) or `both` (a text quote plus vision corroboration) |
 

@@ -55,6 +55,8 @@ HAVE_FUZZ = importlib.util.find_spec("rapidfuzz") is not None
 HAVE_PARQUET = importlib.util.find_spec("polars") is not None or importlib.util.find_spec("pyarrow") is not None
 CAN_RUN_CLI = HAVE_FUZZ and HAVE_PARQUET
 CLI_WHY = "needs rapidfuzz and polars or pyarrow"
+HAVE_POLARS = importlib.util.find_spec("polars") is not None
+HTML_FIX = Path(__file__).resolve().parent / "fixtures" / "pdf_ingest" / "html" / "synthetic_latexml.html"
 LIBS = ("pypdfium2", "pdfplumber", "rapidfuzz", "polars", "pyarrow")
 BINS = ("pdftotext", "pdftoppm", "pdfinfo", "pdfimages", "pdffonts", "tesseract")
 MISSING = [m for m in LIBS if importlib.util.find_spec(m) is None] + [b for b in BINS if shutil.which(b) is None]
@@ -95,8 +97,9 @@ def mk_ingest(pages, header_footer=(), lanes_unavailable=(), key="user_00000001"
             "manifest_sha256": "0" * 64, "source_sha256": src, "page_count": len(pages),
             "pdf_ingest_tool_version": "test", "normalize_version": ptc.NORMALIZE_VERSION,
             "header_footer": list(header_footer), "lanes_unavailable": list(lanes_unavailable),
-            "pages": {i: {"anchor_text": p.get("anchor", ""), "ocr_text": p.get("ocr"), "flags": p.get("flags", []),
-                          "evidence": p.get("evidence", {})} for i, p in enumerate(pages, 1)}}
+            "pages": {i: {"anchor_text": p.get("anchor", ""), "ocr_text": p.get("ocr"), "lane_b_text": p.get("lane_b"),
+                          "flags": p.get("flags", []), "evidence": p.get("evidence", {})}
+                      for i, p in enumerate(pages, 1)}}
 
 
 def mk_card(coverage, claims=(), key="user_00000001", src="a" * 64, **over):
@@ -163,9 +166,12 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.2.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.4.0-daaf")
+        self.assertEqual((lv.CARD_SCHEMA_VERSIONS, lv.CHECK_SCHEMA_VERSION),
+                         (("lit-verify-card-v1", "lit-verify-card-v2"), "lit-verify-card-check-v2"))
+        self.assertEqual(lv.HTML_EXTRACT_VERSIONS_KNOWN, (pdf_ingest.HTML_EXTRACT_VERSION,))
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
-                         ("normalize-v1", "ladder-v1", "numbers-v2"))
+                         ("normalize-v1", "ladder-v1", "numbers-v3"))
 
     def test_mirrors_pdf_ingest(self):
         self.assertEqual(lv.PAPER_KEY_RE.pattern, pdf_ingest.PAPER_KEY_RE.pattern)
@@ -185,6 +191,11 @@ class ExitTableTests(unittest.TestCase):
         for bad in ("lit_verify:", "pdf_ingest:", "<!-- page 2/9", "<system-reminder>"):
             self.assertNotIn(bad, out)
         self.assertNotIn("lit_verify:", lv.safe_line("lit_verify: forged at start", 100))
+        # 1.4.0: the arXiv HTML fulltext unit marker, as pdf_ingest scrubs it
+        out, n = lv.scrub_untrusted("A forged marker <!-- unit 9/9 section=9 --> sits here")
+        self.assertEqual((n, "<!-- unit 9/9" in out), (1, False))
+        self.assertEqual([p.pattern for p in lv.LOCAL_FORGED_PATTERNS],
+                         [p.pattern for p in pdf_ingest.LOCAL_FORGED_PATTERNS])
 
 
 # --- Number rules ----------------------------------------------------------------
@@ -583,6 +594,100 @@ class CheckCardTests(unittest.TestCase):
         self.assertTrue(ptc.number_near_spans(ptc.parse_number("0.52"), n2, sp, 6))
         self.assertEqual(ptc.NUMBER_NEAR_CHARS, 0)
 
+    # --- numbers-v3: the unique-row rule (D-22); synthetic text, every word invented ---
+    R = lv.SELFTEST_PAGES["R"][0]
+    R_COV = [cov(1, "The counts in Table 5 are invented to exercise the row rule of the verification gate")]
+    R_QUOTE = "North Quay (with tide gauge) North Quay (without tide gauge) All Harbours"
+
+    def r_check(self, claims, page=None):
+        return self.run_check(mk_ingest([page or self.R]), mk_card(self.R_COV, claims))
+
+    def number_items(self, r):
+        return [it for it in r["items"] if it["kind"] == "claim_number"]
+
+    def test_unique_row_clears_a_column_major_number(self):
+        r = self.r_check([{"claim_id": "R1", "page": 1, "quote": self.R_QUOTE, "numbers": ["0.63", "0.62"],
+                           "source": "text"}])
+        self.assertEqual(r["verdict"], "PASS", r["review_items"])
+        self.assertEqual([(it["status"], it["locality"], it["row_match"]) for it in self.number_items(r)],
+                         [("NUMBER_OK", "row", "unique")] * 2)
+        self.assertEqual(r["pages"][0]["lane_b"], True)
+
+    def test_look_alike_row_goes_to_review(self):
+        # 0.74 is printed only in the "(without tide gauge)" row; B6 would have cleared it
+        self.assertIsNotNone(ptc.lane_b_row_hit(ptc.parse_number("0.74"), self.R_QUOTE, self.R["lane_b"], 6))
+        r = self.r_check([{"claim_id": "R3", "page": 1, "quote": self.R_QUOTE, "numbers": ["0.74"], "source": "text"}])
+        self.assertEqual(r["verdict"], "NEEDS_REVIEW")
+        it = self.number_items(r)[0]
+        self.assertEqual((it["status"], it["locality"], it["row_match"]), ("NUMBER_NOT_NEAR_QUOTE", None, "unique"))
+        self.assertIn("does not print it", it["reason"])
+
+    def test_same_row_other_column_is_a_documented_residual(self):
+        # a fabricated Spring value equal to the Autumn cell of the same row clears (residual a)
+        r = self.r_check([{"claim_id": "R2", "page": 1, "quote": self.R_QUOTE, "numbers": ["0.63"], "source": "text",
+                           "claim": "Spring count 0.63"}])
+        self.assertEqual((r["verdict"], self.number_items(r)[0]["locality"]), ("PASS", "row"))
+        # a value no cell of the page prints still fails, and so does a sign flip
+        r = self.r_check([{"claim_id": "R2", "page": 1, "quote": self.R_QUOTE, "numbers": ["0.64", "-0.63"],
+                           "source": "text"}])
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_MISSING", "NUMBER_MISSING"])
+
+    def test_ambiguous_or_missing_label_falls_back_to_in_quote(self):
+        q = "All Harbours All Harbours Spring 0.62 0.71 0.55"
+        r = self.r_check([{"claim_id": "R4", "page": 1, "quote": q, "numbers": ["0.41", "0.55"], "source": "text"}])
+        items = self.number_items(r)
+        self.assertEqual([(it["status"], it["locality"], it["row_match"]) for it in items],
+                         [("NUMBER_NOT_NEAR_QUOTE", None, "ambiguous"), ("NUMBER_OK", "in-quote", "ambiguous")])
+        self.assertIn("matches 2 lane B rows", items[0]["reason"])
+        # no lane B on the page: the row path is simply absent (as for every v1 ingest without lane B)
+        r = self.r_check([{"claim_id": "R1", "page": 1, "quote": self.R_QUOTE, "numbers": ["0.63"], "source": "text"}],
+                         page=dict(self.R, lane_b=None))
+        it = self.number_items(r)[0]
+        self.assertEqual((it["status"], it["row_match"], r["pages"][0]["lane_b"]), ("NUMBER_NOT_NEAR_QUOTE", None,
+                                                                                     False))
+
+    def test_row_path_needs_an_anchor_quote_pass(self):
+        # a quote copied from lane B (row-major) is not on the column-major anchor: no row path
+        r = self.r_check([{"claim_id": "R5", "page": 1, "quote": "North Quay (with tide gauge) 0.62 0.63 North Quay",
+                           "numbers": ["0.63"], "source": "text"}])
+        self.assertIn(statuses(r, "claim_quote")[0], ("NOT_FOUND", "NEAR"))
+        self.assertIsNone(self.number_items(r)[0]["row_match"])
+
+    def test_v1_card_without_table_rows_checks_as_before(self):
+        # a 1.2.0-style card on a prose page: in-quote locality, row_match "none"
+        ing = mk_ingest([{"anchor": PROSE[3], "lane_b": PROSE[3]}])
+        card = mk_card([cov(1, "Table 2 reports -0.087* (0.044) and 1,204 boats")],
+                       [{"claim_id": "C1", "page": 1, "quote": "reports −0.087* (0.044) and 1,204 boats with .05",
+                         "numbers": ["-0.087", "1,204"], "source": "text"}])
+        r = self.run_check(ing, card)
+        self.assertEqual(r["verdict"], "PASS", r["failures"])
+        self.assertEqual({(it["locality"], it["row_match"]) for it in self.number_items(r)}, {("in-quote", "none")})
+
+    def test_quote_row_label_rules(self):
+        lane_b = "No 288 321\nNotes on the invented ferries 4 5\nCo-teaching group 0.31 0.33\n7. Gender (Girls) 0.50 0.52\n"
+        self.assertEqual(ptc.quote_row("Notes on the invented ferries and their harbours", [lane_b])["status"], "unique")
+        self.assertEqual(ptc.quote_row("Notes on the invented ferries", [lane_b])["row"]["label"],
+                         "notesontheinventedferries")                        # row "No" does not match "Notes"
+        self.assertEqual(ptc.quote_row("No invented ferry crossed the harbour that winter", [lane_b])["row"]["label"],
+                         "no")
+        hit = ptc.quote_row("Coteaching group and the invented control group", [lane_b])
+        self.assertEqual((hit["status"], hit["row"]["label"]), ("unique", "coteachinggroup"))   # fused hyphen
+        hit = ptc.quote_row("Gender (Girls) Gender (Boys) invented rows", [lane_b])
+        self.assertTrue(hit["status"] == "unique" and ptc.number_in_row(ptc.parse_number("0.52"), hit["row"]))
+        self.assertFalse(ptc.number_in_row(ptc.parse_number("7"), hit["row"]))     # the row index is not a cell
+        self.assertEqual(ptc.quote_row("An invented sentence with no row label", [lane_b])["status"], "none")
+
+    def test_reading_aid_quote_is_not_a_pass(self):
+        # D-21 N3: a line copied verbatim from the reading aid carries the prefix no page prints
+        aid, _ = pdf_ingest.reading_aid_body(self.R["lane_b"])
+        line = next(ln for ln in aid.split("\n") if "with tide gauge" in ln)
+        r = self.r_check([{"claim_id": "A1", "page": 1, "quote": line, "numbers": [], "source": "text"}])
+        self.assertEqual(statuses(r, "claim_quote"), ["NOT_FOUND"])
+        r = self.run_check(mk_ingest([self.R]), mk_card(self.R_COV, [
+            {"claim_id": "A2", "page": 1, "quote": line[len(pdf_ingest.READING_AID_PREFIX):], "numbers": [],
+             "source": "text"}]), fuzz=fuzz_mod() if HAVE_FUZZ else None)
+        self.assertEqual(statuses(r, "claim_quote"), ["NOT_FOUND"])
+
     def test_span_skips_recorded_header_footer(self):
         hf = [{"position": "bottom", "pattern": "page # of #", "pages": [1, 2]},
               {"position": "top", "pattern": "synthetic journal, volume #", "pages": [1, 2]}]
@@ -598,6 +703,256 @@ class CheckCardTests(unittest.TestCase):
         self.assertIn("PASS_SPAN", statuses(r, "claim_quote"))
         card["claims"][0].pop("page_end")
         self.assertIn("WRONG_PAGE", statuses(self.run_check(ing, card), "claim_quote"))
+
+
+# --- arXiv HTML ingests (1.4.0, D-21 N5): card v2 on in-memory unit ingests (pure) ---
+# Every word below is invented (no third-party text).
+UNITS = [
+    {"label": "front", "flags": ["sparse"],
+     "anchor": "The Invented Harbour Ledger\nAbstract\nThe violet ferry carried nineteen patient cartographers across "
+               "the silver estuary.\n"},
+    {"label": "1", "anchor": "1 Harbour tides\nThe crew logged a tide index of 207 on the quiet morning before the "
+                             "gulls returned to the harbour wall.\nIn the end the invented ferry index reached\n"},
+    {"label": "1.1", "flags": ["table"],
+     "anchor": "0.73 at the northern harbour before dawn, and nobody on board had crossed that water before.\n"
+               "Table 1: Invented tide counts\nHarbour\tSpring\tAutumn\tWinter\nNorth Quay beside the old harbour "
+               "office\t0.62\t-0.087\t0.33\nSouth Quay\t0.41\t1,204\t0.18\n",
+     "rows": "Harbour\tSpring\tAutumn\tWinter\nNorth Quay beside the old harbour office\t0.62\t-0.087\t0.33\n"
+             "South Quay\t0.41\t1,204\t0.18\n"},
+    {"label": "2", "flags": ["conversion_error"],
+     "anchor": "2 Method\nA broken macro \\midsloppy weighted each quay by its 23 painted bollards before pooling the "
+               "counts.\n"},
+    {"label": "bib", "flags": ["sparse"], "anchor": "References\nInvented, A. (2025). A ledger of tides.\n"},
+]
+
+
+def mk_unit_ingest(units=UNITS, key="user_00000001", src="a" * 64, version="v2"):
+    # An in-memory arXiv HTML ingest equivalent to load_unit_ingest()'s dict.
+    return {"anchor_kind": "arxiv_html", "paper_key": key, "dir_key": key, "suffix": "",
+            "manifest_name": "ingest_manifest.json", "manifest_sha256": "0" * 64, "source_sha256": src,
+            "page_count": None, "unit_count": len(units), "source_version": version,
+            "arxiv_id_version": "2601.00001" + version, "html_extract_version": "arxiv-html-v1",
+            "pdf_ingest_tool_version": "test", "normalize_version": ptc.NORMALIZE_VERSION, "header_footer": [],
+            "lanes_unavailable": [],
+            "pages": {i: {"anchor_text": u["anchor"], "ocr_text": None, "lane_b_text": u.get("rows"),
+                          "flags": u.get("flags", []), "evidence": {}, "label": u["label"], "latexml_id": None,
+                          "section_class": "ltx_section"} for i, u in enumerate(units, 1)}}
+
+
+def mk_html_card(coverage, claims=(), key="user_00000001", src="a" * 64, version="v2", **over):
+    card = {"schema_version": "lit-verify-card-v2", "paper_key": key, "anchor_kind": "arxiv_html", "source_sha256": src,
+            "source_version": version, "reader_model": "test", "vision_mode": "off", "vision_validated": False,
+            "vision_list_version": None, "coverage": list(coverage), "claims": list(claims)}
+    card.update(over)
+    return card
+
+
+def sec(label, *anchors, **extra):
+    return dict({"section": label, "anchors": list(anchors), "summary": "s"}, **extra)
+
+
+H_COV = [sec("front", "The violet ferry carried nineteen patient cartographers"),
+         sec("1", "The crew logged a tide index of 207 on the quiet morning"),
+         sec("1.1", "nobody on board had crossed that water before"),
+         sec("2", "weighted each quay by its 23 painted bollards before pooling"),
+         sec("bib", "Invented, A. (2025). A ledger of tides.")]
+ROW_QUOTE = "North Quay beside the old harbour office 0.62 -0.087"
+
+
+def hclaim(cid, section, quote, numbers=(), **extra):
+    return dict({"claim_id": cid, "section": section, "quote": quote, "numbers": list(numbers), "source": "text"},
+                **extra)
+
+
+class HtmlCheckTests(unittest.TestCase):
+    def run_check(self, card, ingest=None, fuzz=None):
+        return lv.check_card(card, ingest or mk_unit_ingest(), fuzz)
+
+    def nums(self, r):
+        return [it for it in r["items"] if it["kind"] == "claim_number"]
+
+    def test_genuine_card_passes_with_section_locators(self):
+        r = self.run_check(mk_html_card(H_COV, [hclaim("T1", "1.1", ROW_QUOTE + " 0.33", ["0.62", "-0.087", "0.33"])]))
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"]), ("PASS", "FULL_TEXT_VERIFIED"), r["failures"])
+        self.assertEqual(statuses(r, "coverage"), ["PASS", "PASS", "PASS", "PASS", "COVERED_SPARSE"])
+        self.assertEqual([(it["status"], it["locality"]) for it in self.nums(r)], [("NUMBER_OK", "in-quote")] * 3)
+        for it in r["items"]:
+            self.assertIsNone(it["page"])
+            self.assertIn("section_end", it)
+        self.assertEqual({it["section"] for it in r["items"] if it["kind"] == "coverage"}, {"front", "1", "1.1", "2",
+                                                                                          "bib"})
+        self.assertEqual(r["pages"], [])
+        self.assertEqual([(s["section"], s["class"], s["conversion_error"], s["table_rows"]) for s in r["sections"]],
+                         [("front", "sparse", False, False), ("1", "normal", False, False), ("1.1", "normal", False, True),
+                          ("2", "normal", True, False), ("bib", "sparse", False, False)])
+        self.assertEqual((r["counts"]["sections"], r["counts"]["sections_covered"], r["vision_available"]), (5, 5, False))
+        self.assertTrue(lv.summary_line(next(it for it in r["items"] if it["kind"] == "coverage")).startswith(
+            "PASS sec front"))
+
+    def test_anchor_kind_mismatch_both_ways(self):
+        r = self.run_check(mk_card([cov(1, "The violet ferry carried nineteen patient cartographers")]))
+        self.assertEqual((r["verdict"], statuses(r)), ("FAIL", ["ANCHOR_KIND_MISMATCH"]))
+        self.assertEqual((r["sections"], r["counts"]["sections"]), ([], 5))
+        r = lv.check_card(mk_html_card(H_COV), mk_ingest([{"anchor": PROSE[1]}]), None)
+        self.assertEqual((r["verdict"], statuses(r)), ("FAIL", ["ANCHOR_KIND_MISMATCH"]))
+
+    def test_source_version_section_not_found_and_missing_section(self):
+        r = self.run_check(mk_html_card(H_COV, version="v1"))
+        self.assertEqual((r["verdict"], statuses(r, "integrity")), ("FAIL", ["SOURCE_VERSION_MISMATCH"]))
+        r = self.run_check(mk_html_card(H_COV[:4] + [sec("9.9", "x")], [hclaim("C1", "7", ROW_QUOTE),
+                                                                         hclaim("C2", "1", ROW_QUOTE, section_end="8")]))
+        self.assertEqual(r["verdict"], "FAIL")
+        self.assertEqual(statuses(r, "coverage"), ["SECTION_NOT_FOUND", "PASS", "PASS", "PASS", "PASS",
+                                                   "MISSING_SECTION"])
+        self.assertEqual([(it["section"], it["section_end"]) for it in r["items"] if it["kind"] == "claim"],
+                         [("7", None), ("1", "8")])
+        self.assertEqual(statuses(r, "claim"), ["SECTION_NOT_FOUND", "SECTION_NOT_FOUND"])
+
+    def test_wrong_section_and_section_end_spans(self):
+        r = self.run_check(mk_html_card(H_COV, [hclaim("W1", "1", ROW_QUOTE + " 0.33")]))
+        it = next(it for it in r["items"] if it["kind"] == "claim_quote")
+        self.assertEqual((it["status"], it["found_on"], it["section"]), ("WRONG_SECTION", ["1.1"], "1"))
+        self.assertIn("other section(s): ['1.1']", it["reason"])
+        q = "the invented ferry index reached 0.73 at the northern harbour"
+        r = self.run_check(mk_html_card(H_COV, [hclaim("S1", "1", q, ["0.73"], section_end="1.1")]))
+        self.assertEqual(r["verdict"], "PASS", r["failures"])
+        it = next(it for it in r["items"] if it["kind"] == "claim_quote")
+        self.assertEqual((it["status"], it["section"], it["section_end"]), ("PASS_SPAN", "1", "1.1"))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OK"])
+        self.assertEqual(statuses(self.run_check(mk_html_card(H_COV, [hclaim("S1", "1", q)])), "claim_quote"),
+                         ["WRONG_SECTION"])                                   # undeclared span
+        r = self.run_check(mk_html_card(H_COV, [hclaim("S1", "1", q, section_end="2")]))
+        self.assertEqual((statuses(r, "claim"), statuses(r, "claim_quote")), (["SECTION_END_NOT_NEXT"], ["WRONG_SECTION"]))
+        self.assertIn("not the unit after section '1'", next(it for it in r["items"] if it["kind"] == "claim")["reason"])
+
+    def test_conversion_error_caps_claims_not_coverage(self):
+        q = "weighted each quay by its 23 painted bollards before pooling"
+        r = self.run_check(mk_html_card(H_COV, [hclaim("E1", "2", q, ["23"])]))
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"]), ("PARTIAL", "FULL_TEXT_PARTIAL"))
+        self.assertEqual(statuses(r, "claim_quote"), ["PASS_CONVERSION_ERROR"])
+        self.assertEqual([(it["status"], it["label"]) for it in self.nums(r)],
+                         [("NUMBER_CONVERSION_ERROR", "conversion-error")])
+        self.assertIn("conversion errors", self.nums(r)[0]["reason"])
+        self.assertEqual(self.run_check(mk_html_card(H_COV))["verdict"], "PASS")   # coverage alone: no cap
+        # a failing quote in that unit is not softened
+        r = self.run_check(mk_html_card(H_COV, [hclaim("E2", "2", "an invented sentence that this section never "
+                                                                  "prints anywhere")]))
+        self.assertEqual(statuses(r, "claim_quote"), ["NOT_FOUND"])
+
+    def test_row_path_uses_the_rows_file(self):
+        r = self.run_check(mk_html_card(H_COV, [hclaim("R1", "1.1", ROW_QUOTE, ["0.33"])]))
+        self.assertEqual(r["verdict"], "PASS", r["review_items"])
+        it = self.nums(r)[0]
+        self.assertEqual((it["status"], it["locality"], it["row_match"]), ("NUMBER_OK", "row", "unique"))
+        self.assertIn("table row", it["reason"])
+        units = [dict(u, rows=None) if u["label"] == "1.1" else u for u in UNITS]   # rows unavailable (hash mismatch)
+        r = self.run_check(mk_html_card(H_COV, [hclaim("R1", "1.1", ROW_QUOTE, ["0.33"])]), mk_unit_ingest(units))
+        it = self.nums(r)[0]
+        self.assertEqual((it["status"], it["row_match"]), ("NUMBER_NOT_NEAR_QUOTE", None))
+        self.assertIn("cited section(s)", it["reason"])
+        # a value from the other row is not local; a value no section prints is missing, with the label shown
+        r = self.run_check(mk_html_card(H_COV, [hclaim("R2", "1.1", ROW_QUOTE, ["0.18", "0.99", "23"])]))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_NOT_NEAR_QUOTE", "NUMBER_MISSING", "NUMBER_MISSING"])
+        self.assertIn("found in section(s) ['2']", self.nums(r)[2]["reason"])
+
+    def test_sparse_waiver_duplicate_rule_and_cross_unit_uniqueness(self):
+        # a short exact anchor covers a sparse unit, never a normal one
+        r = self.run_check(mk_html_card([H_COV[0], sec("1", "1 Harbour tides")] + H_COV[2:]))
+        self.assertEqual(statuses(r, "coverage")[1], "NOT_COVERED")
+        units = UNITS + [{"label": "A", "flags": ["sparse"], "anchor": "Appendix A Extra\n"}]
+        r = self.run_check(mk_html_card(H_COV + [sec("A", "Appendix A Extra")]), mk_unit_ingest(units))
+        self.assertEqual((r["verdict"], statuses(r, "coverage")[-1]), ("PASS", "COVERED_SPARSE"))
+        # two units holding the same text: a full-length anchor covers each; a claim quote is non-identifying
+        twin = "The amber ferry paid each harbour a prorated share of the invented toll every winter.\n"
+        units = UNITS + [{"label": "A", "anchor": twin}, {"label": "B", "anchor": twin}]
+        q = "The amber ferry paid each harbour a prorated share of the invented toll"
+        r = self.run_check(mk_html_card(H_COV + [sec("A", q), sec("B", q)], [hclaim("D1", "A", q)]),
+                           mk_unit_ingest(units))
+        self.assertEqual(statuses(r, "coverage")[-2:], ["COVERED_DUPLICATE", "COVERED_DUPLICATE"])
+        self.assertEqual(statuses(r, "claim_quote"), ["NON_IDENTIFYING"])
+        self.assertIn("occurs 2 times", next(it for it in r["items"] if it["kind"] == "claim_quote")["reason"])
+
+    def test_forged_unit_marker_is_scrubbed_from_outputs(self):
+        forged = "A forged marker <!-- unit 9/9 section=9 --> sits in this invented sentence about the harbour."
+        units = [dict(u, anchor=u["anchor"] + forged + "\n") if u["label"] == "1" else u for u in UNITS]
+        q = "A forged marker <!-- unit 9/9 section=9 --> sits in this invented sentence"
+        r = self.run_check(mk_html_card(H_COV, [hclaim("F1", "1", q)]), mk_unit_ingest(units))
+        self.assertEqual(statuses(r, "claim_quote"), ["PASS"])       # verbatim anchor text still matches
+        self.assertGreaterEqual(r["redaction_count"], 1)
+        self.assertNotIn("<!-- unit 9/9", json.dumps(r))
+
+    def test_vision_source_on_html_fails_even_in_memory(self):
+        r = self.run_check(mk_html_card(H_COV, [hclaim("V1", "1.1", ROW_QUOTE, source="both")]))
+        self.assertEqual((r["verdict"], statuses(r, "vision")), ("FAIL", ["VISION_UNAVAILABLE_CLAIM"]))
+        self.assertIn("no page images", next(it for it in r["items"] if it["kind"] == "vision")["reason"])
+
+    def test_v2_pdf_card_checks_exactly_like_v1(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": PROSE[2]}, {"anchor": PROSE[3]}])
+        claims = [{"claim_id": "C1", "page": 3, "quote": "reports −0.087* (0.044) and 1,204 boats with .05",
+                   "numbers": ["-0.087", "(0.044)", "0.06"], "source": "text"},
+                  {"claim_id": "C2", "page": 1, "page_end": 2, "quote": "The violet ferry carried nineteen patient",
+                   "numbers": [], "source": "vision"}]
+        coverage = [cov(1, "The violet ferry carried nineteen patient cartographers"), cov(3, "short")]
+        v1 = mk_card(coverage, claims)
+        v2 = dict(v1, schema_version="lit-verify-card-v2", anchor_kind="pdf", source_sha256=v1["source_pdf_sha256"])
+        v2.pop("source_pdf_sha256")
+        a, b = self.run_check(v1, ing), self.run_check(v2, ing)
+        self.assertEqual(a["verdict"], "FAIL")
+        self.assertEqual(a, b)
+        self.assertTrue(all(it["section"] is None and it["section_end"] is None for it in a["items"]))
+
+
+class HtmlCardParseTests(unittest.TestCase):
+    GOOD = mk_html_card([sec("front", "x")], [hclaim("C1", "1.1", "q", section_end="1.2")])
+
+    def bad(self, obj):
+        with self.assertRaises(lv.LitVerifyError) as cm:
+            lv.parse_card("```lit-verify\n" + json.dumps(obj) + "\n```\n")
+        self.assertEqual(cm.exception.code, 8)
+        return cm.exception.note
+
+    def mutate(self, **changes):
+        c = json.loads(json.dumps(self.GOOD))
+        c.update(changes)
+        return c
+
+    def test_good_v2_cards_parse(self):
+        self.assertEqual(lv.parse_card("```lit-verify\n" + json.dumps(self.GOOD) + "\n```\n")["anchor_kind"],
+                         "arxiv_html")
+        pdf = mk_card([cov(1, "x")])
+        pdf.update(schema_version="lit-verify-card-v2", anchor_kind="pdf", source_sha256=pdf.pop("source_pdf_sha256"),
+                   source_version=None)
+        self.assertEqual(lv.parse_card("```lit-verify\n" + json.dumps(pdf) + "\n```\n")["claims"], [])
+
+    def test_v2_schema_errors(self):
+        claim = self.GOOD["claims"][0]
+        pdf = mk_card([cov(1, "x")], schema_version="lit-verify-card-v2", anchor_kind="pdf",
+                      source_sha256="a" * 64)
+        pdf_with_old = dict(pdf)
+        pdf.pop("source_pdf_sha256")
+        cases = [
+            (self.mutate(anchor_kind="epub"), "anchor_kind must be one of"),
+            (self.mutate(source_version=None), "source_version is required"),
+            (self.mutate(source_version="2"), "source_version is required"),
+            (dict(pdf, source_version="v2"), "applies to anchor_kind \"arxiv_html\" only"),
+            (pdf_with_old, "unknown field"),                                        # v1's name in a v2 card
+            (self.mutate(vision_mode="auto", vision_validated=True), "write vision_mode \"off\""),
+            (self.mutate(coverage=[{"page": 1, "anchors": [], "summary": ""}]), "unknown field"),
+            (self.mutate(coverage=[sec("front", "x", vision_only=True)]), "unknown field"),
+            (self.mutate(coverage=[sec("front", "x"), sec("front", "y")]), "listed twice"),
+            (self.mutate(coverage=[sec("<!-- unit 1/2", "x")]), "unit label"),
+            (self.mutate(claims=[dict(claim, page=1)]), "unknown field"),
+            (self.mutate(claims=[dict(claim, section_end="1.1")]), "NEXT section"),
+            (self.mutate(claims=[dict(claim, source="vision")]), "must be \"text\""),
+            (self.mutate(claims=[dict(claim, source="ocr")]), "must be \"text\""),
+            (self.mutate(claims=[dict(claim, quote="")]), "non-empty string"),
+            (self.mutate(claims=[dict(claim, section="")]), "unit label"),
+        ]
+        for obj, needle in cases:
+            with self.subTest(needle=needle):
+                self.assertIn(needle, self.bad(obj))
+        self.assertEqual(lv.parse_card("```lit-verify\n" + json.dumps(self.mutate(vision_mode="auto")) + "\n```\n")[
+            "vision_mode"], "auto")                                             # auto + vision_validated false is fine
 
 
 # --- Card parsing (exit 8) ---------------------------------------------------------
@@ -849,10 +1204,31 @@ class IngestAndRowTests(ScratchCase):
         check = json.loads((key_dir / "card_check_3.json").read_text())
         self.assertIn("PAGE_INDEX_HASH_MISMATCH", statuses(check))
 
+    def test_lane_b_is_hash_checked_and_unused_on_mismatch(self):
+        key_dir, src = self.synthetic("user_5e1f7e5e", pages="R")
+        cases = [c for c in lv.selftest_cases({}) if c[1] == "R"]
+        _, _, coverage, claims, *_ = cases[0]
+        card = self.write_card(key_dir, "evidence_card.md", None, raw=lv.selftest_card(key_dir.name, src, coverage,
+                                                                                        claims))
+        self.assertEqual(run_main(["card", key_dir, card])[0], 0)
+        check = json.loads((key_dir / "card_check.json").read_text())
+        nums = [it for it in check["items"] if it["kind"] == "claim_number"]
+        self.assertEqual((check["verdict"], nums[0]["locality"]), ("PASS", "row"))
+        self.assertEqual(check["constants"]["ROW_LABEL_MIN_CHARS"], ptc.ROW_LABEL_MIN_CHARS)
+        self.assertEqual(check["rule_versions"]["numbers"], "numbers-v3")
+        with open(key_dir / "lane_b" / "p001.txt", "a") as f:
+            f.write("North Quay (with tide gauge) 0.74\n")                 # a planted row
+        self.assertEqual(run_main(["card", key_dir, card])[0], 11)
+        check = json.loads((key_dir / "card_check_1.json").read_text())
+        self.assertIn("LANE_B_HASH_MISMATCH", statuses(check, "integrity"))
+        self.assertEqual([it["row_match"] for it in check["items"] if it["kind"] == "claim_number"], [None])
+
+    @unittest.skipUnless(HAVE_POLARS, "needs polars (pdf_ingest's arXiv HTML lane builds selftest paper H)")
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 15/15", out)
+        self.assertIn("SELFTEST PASS: 24/24", out)
+        self.assertIn("HTML quote cited to another section", out)
         row = rows_of(self.root)[-1]
         self.assertEqual((row["command"], row["verdict"], row["exit_code"]), ("selftest", "PASS", 0))
         self.assertTrue(row["counts"]["work_dir_removed"])
@@ -864,6 +1240,99 @@ class IngestAndRowTests(ScratchCase):
         proc = subprocess.run(["bash", str(_SCRIPTS / "lit_verify.sh"), "selftest", "/tmp"], capture_output=True,
                               text=True, timeout=60)
         self.assertEqual(proc.returncode, 2)
+
+
+# --- arXiv HTML on disk: real pdf_ingest --source arxiv-html on the synthetic fixture ----
+@unittest.skipUnless(CAN_RUN_CLI and HAVE_POLARS, "needs rapidfuzz and polars (pdf_ingest's arXiv HTML lane)")
+class HtmlOnDiskTests(ScratchCase):
+    KEY = "user_00e2e003"
+
+    def ingest_html(self, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = pdf_ingest.main([str(HTML_FIX), str(self.papers), "--paper-key", self.KEY, "--source", "arxiv-html",
+                                    *extra])
+        self.assertEqual(code, 0, err.getvalue())
+        return self.papers / self.KEY
+
+    def check(self, key_dir, name="evidence_card.md", *extra):
+        card = key_dir / name
+        if not card.exists():
+            shutil.copy(FIX / "arxiv_html_evidence_card.md", card)
+        code, out, err = run_main(["card", key_dir, card, *extra])
+        art = (rows_of(self.papers)[-1].get("artifacts") or {}).get("card_check")
+        return code, (json.loads((key_dir / art["name"]).read_text()) if art else None), out + err
+
+    def test_example_card_is_partial_with_sections_recorded(self):
+        key_dir = self.ingest_html()
+        code, check, log = self.check(key_dir)
+        self.assertEqual((code, check["verdict"], check["evidence_grade_suggested"]),
+                         (0, "PARTIAL", "FULL_TEXT_PARTIAL"), log)
+        self.assertEqual(check["failures"] + check["review_items"], [])
+        self.assertEqual((check["schema_version"], check["tool_version"], check["anchor_kind"]),
+                         ("lit-verify-card-check-v2", "1.4.0-daaf", "arxiv_html"))
+        ing = check["ingest"]
+        self.assertEqual((ing["anchor_kind"], ing["unit_count"], ing["source_version"], ing["arxiv_id_version"],
+                          ing["html_extract_version"], ing["source_pdf_sha256"], ing["page_count"]),
+                         ("arxiv_html", 12, "v2", "2601.00001v2", "arxiv-html-v1", None, None))
+        self.assertEqual((check["card"]["anchor_kind"], check["card"]["source_version"]), ("arxiv_html", "v2"))
+        self.assertEqual(check["constants"]["HTML_EXTRACT_VERSIONS_KNOWN"], ["arxiv-html-v1"])
+        quotes = {it["claim_id"]: (it["status"], it["section"], it["section_end"]) for it in check["items"]
+                  if it["kind"] == "claim_quote"}
+        self.assertEqual(quotes, {"X1": ("PASS", "1.2", None), "X2": ("PASS_SPAN", "S1", "S1.SSx1"),
+                                  "X3": ("PASS_CONVERSION_ERROR", "2.3.1", None), "X4": ("PASS", "S1", None)})
+        self.assertEqual({it["status"] for it in check["items"] if it["kind"] == "claim_number"}, {"NUMBER_OK"})
+        cov_status = {it["section"]: it["status"] for it in check["items"] if it["kind"] == "coverage"}
+        self.assertEqual((cov_status["2"], cov_status["A"], len(cov_status)), ("COVERED_SPARSE", "PASS", 12))
+        self.assertEqual([s["section"] for s in check["sections"]][:4], ["front", "S1", "S1.SSx1", "1.2"])
+        self.assertEqual(check["pages"], [])
+        row = rows_of(self.papers)[-1]
+        self.assertEqual((row["ingest"]["anchor_kind"], row["ingest"]["unit_count"], row["verdict"]),
+                         ("arxiv_html", 12, "PARTIAL"))
+        self.assertIn("12/12 sections covered (arXiv HTML 2601.00001v2)", log)
+        self.assertIn("PASS_CONVERSION_ERROR sec 2.3.1 claim X3", log)
+
+    def test_tampered_rows_and_anchor_fail(self):
+        key_dir = self.ingest_html()
+        with open(key_dir / "rows" / "u004.txt", "a") as f:
+            f.write("South Quay\t0.99\t7\n")                                # a planted row
+        code, check, _ = self.check(key_dir)
+        self.assertEqual((code, check["verdict"]), (11, "FAIL"))
+        it = next(it for it in check["items"] if it["status"] == "TABLE_ROWS_HASH_MISMATCH")
+        self.assertEqual((it["section"], it["page"], it["severity"]), ("1.2", None, "fail"))
+        self.assertFalse(next(s for s in check["sections"] if s["section"] == "1.2")["table_rows"])
+        with open(key_dir / "anchor" / "u011.txt", "a") as f:
+            f.write("A line added after ingest.\n")
+        code, check, _ = self.check(key_dir)
+        self.assertIn(("ANCHOR_HASH_MISMATCH", "1"), [(it["status"], it["section"]) for it in check["items"]])
+
+    def test_kind_rules_one_key_one_source(self):
+        key_dir = self.ingest_html()
+        self.ingest_html("--reingest")                                   # _a, the same source
+        man = key_dir / "ingest_manifest.json"
+        m = json.loads(man.read_text())
+        m["anchor_kind"] = "pdf"
+        man.write_text(json.dumps(m))
+        code, check, _ = self.check(key_dir)
+        self.assertEqual((code, check["ingest"]["suffix"]), (11, "_a"))
+        self.assertIn("MIXED_ANCHOR_KINDS", statuses(check, "integrity"))
+        m["anchor_kind"] = "epub"
+        (key_dir / "ingest_manifest_a.json").write_text(json.dumps(m))
+        code, check, log = self.check(key_dir, "evidence_card_a.md")
+        self.assertEqual((code, check), (10, None))
+        self.assertIn("anchor_kind 'epub'", log)
+
+    def test_incomplete_html_ingest_is_ignored_and_v1_card_mismatches(self):
+        key_dir = self.ingest_html()
+        (key_dir / "rows_a").mkdir()                                     # an unfinished re-ingest
+        code, check, log = self.check(key_dir)
+        self.assertEqual(code, 0, log)
+        self.assertTrue(any(w.startswith("INCOMPLETE_INGEST_IGNORED") for w in check["warnings"]))
+        v1 = mk_card([cov(1, "The violet ferry carried nineteen patient cartographers")], key=self.KEY,
+                     src=lv.sha256_bytes(HTML_FIX.read_bytes()))
+        card = self.write_card(key_dir, "evidence_card_a.md", v1)
+        code, check, _ = self.check(key_dir, card.name)
+        self.assertEqual((code, statuses(check)), (11, ["INCOMPLETE_INGEST_IGNORED", "ANCHOR_KIND_MISMATCH"]))
 
 
 # --- End to end: real pdf_ingest on the committed synthetic fixture PDFs ------------

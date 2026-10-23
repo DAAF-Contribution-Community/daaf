@@ -63,11 +63,18 @@ with the names.
 
 ## Tests
 
-| Suite | Count (FE-5 run, 2026-10-19) | Needs |
+Tool versions: `pdf_ingest` 1.2.0-daaf (`HTML_EXTRACT_VERSION`
+`arxiv-html-v1`), `lit_verify` 1.4.0-daaf (card schemas v1 and v2, result
+schema `lit-verify-card-check-v2`), `pdf_text_common` `normalize-v1`,
+`ladder-v1`, `numbers-v3`, `overlap-v1`. The arXiv HTML lane uses only the
+Python standard library (`html.parser`) and polars: no new dependency.
+
+| Suite | Count (FE-5f run, 2026-10-22) | Needs |
 |-------|------------------|-------|
-| `tests/python/test_pdf_ingest.py` | 52 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
-| `tests/python/test_lit_verify.py` | 54 | rapidfuzz and polars or pyarrow; end-to-end tests run real `pdf_ingest` |
-| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 15 expectations | rapidfuzz and polars or pyarrow |
+| `tests/python/test_pdf_ingest.py` | 58 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
+| `tests/python/test_lit_verify.py` | 79 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` |
+| `tests/python/test_scholar_search.py` (regression, shares `web_retrieval_common.py`) | 249 (6 expected failures) | none beyond the image |
+| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 24 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`) |
 
 Run the suites file-first: a captured `.py` under the session's `scripts/`
 calls `python3 -m unittest discover -s /daaf/tests/python -p "test_pdf_ingest.py"`
