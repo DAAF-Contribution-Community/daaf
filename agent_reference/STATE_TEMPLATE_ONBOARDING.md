@@ -23,7 +23,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | **Project** | [Full title, e.g., "County Presidential Election Returns Onboarding"] |
 | **Current Phase** | [DI-0/DI-1/DI-2/DI-3]: [Phase Name] |
 | **Current Stage** | [DI-0 through DI-8]: [Stage Name] |
-| **Status** | [In Progress / Blocked / Complete] |
+| **Status** | [In Progress / Awaiting Confirmation / Blocked / Complete] (Awaiting Confirmation: a checkpoint such as PSU-DI1 was presented and the user has not yet confirmed it) |
 
 ---
 

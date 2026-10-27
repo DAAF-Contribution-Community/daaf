@@ -311,7 +311,11 @@ Two consequences for anyone running `pdf_ingest`:
 - **Keep the source where it was ingested** (the manifest's `source.path`):
   web_fetch's raw artifact stays in `web_fetches/`, a user PDF in
   `user_pdfs/`. `lit_verify` reads it at every check; a moved, renamed or
-  deleted source is `SOURCE_MISSING` (fail).
+  deleted source is `SOURCE_MISSING` (fail). The one sanctioned move is
+  Scope Check graduation out of the scratchpad staging folder (orchestrator
+  `SKILL.md` § Scope Check > Read First), followed by a re-ingest from the
+  new path with `--reingest` (the bytes are unchanged, so without the flag
+  the re-run writes nothing).
 - A change to any function above changes both CLIs: run both test suites
   (CONTRIBUTING change-surface rows for the two CLIs).
 

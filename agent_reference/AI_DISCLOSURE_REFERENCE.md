@@ -85,7 +85,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Key points to document:**
 - AI generated all analysis code (data fetching, cleaning, transformation, analysis, visualization)
 - All code underwent automated QA review by a separate AI instance (code-reviewer agent)
-- Researcher reviewed and approved methodology at Checkpoint 2, data quality at Checkpoint 3, and analytical results at Checkpoint 4
+- Researcher approved the analysis scope at the pre-flight Scope Check (grounded in any materials they pointed to), then reviewed and approved data sources at Checkpoint 1, methodology at Checkpoint 2, data quality at Checkpoint 3, and analytical results at Checkpoint 4
 - All scripts, data files, and execution logs are archived for reproducibility
 
 ### Data Discovery Mode
@@ -114,7 +114,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Depth:** Moderate. AI profiled dataset structure and generated a reusable data source skill.
 
 **Template:**
-> Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [session model ID, plus specialist model IDs for dispatched subagents — see STATE.md Session Metadata] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher reviewed profiling findings at two checkpoints before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
+> Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [session model ID, plus specialist model IDs for dispatched subagents — see STATE.md Session Metadata] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher confirmed the setup scope before profiling and reviewed the profiling findings before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
 
 **Synthetic Data Path (sensitivity gate):** When onboarding takes the privacy-preserving synthetic-data path — the raw data never entered the container, and DAAF worked only from a user-produced, disclosure-controlled profile report — the disclosure MUST additionally state the synthetic provenance, the disclosure tier, and the finalize-against-real-data requirement. Any deliverable derived from the synthetic data (a data source skill, a report, an analysis output) carries this disclosure. This also satisfies GUIDE-LLM item **D.1** (handling of personal/sensitive data): the raw sensitive data was never transmitted to the model. See the `synthetic-data-workflow` skill.
 

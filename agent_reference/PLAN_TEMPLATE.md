@@ -132,6 +132,24 @@ must_haves:
 1. **[Topic]:** [User's response]
 2. **[Topic]:** [User's response]
 
+### Confirmed Pre-Flight Scope (Full Pipeline)
+
+> From the `CONFIRMED PRE-FLIGHT SCOPE:` field (the orchestrator's `output/preliminary_notes/{date}_preflight_scope-check.md`, written at Gate G1). The Plan follows it; any departure is recorded in the Decisions Log. Other modes: "N/A".
+
+- **Scope as confirmed:** [research question, data sources, years, geography and approximate records, as the user approved them at the pre-flight, with their adjustments]
+- **What changed from the original request:** [as confirmed at the pre-flight, or "Nothing"]
+- **Decisions and the user's answers:** [each decision on its own line: the answer given]
+
+### User-Referenced Materials (Full Pipeline)
+
+> From the `USER-REFERENCED MATERIALS:` field. Paths are absolute, as the field supplies them: in the project folder (or the user's own location); never a staging path.
+
+| Material | Path | What it defines for this analysis |
+|----------|------|-----------------------------------|
+| [title or URL] | [e.g., `/daaf/research/YYYY-MM-DD_[Title]/papers/{key}/`, `/daaf/research/YYYY-MM-DD_[Title]/output/preliminary_notes/{date}_{slug}_materials-digest.md`] | [e.g., outcome definition, years, a specification to replicate] |
+
+[Or: "None referenced."]
+
 ### Research Question
 
 [Your interpretation of the request as a clear, answerable research question]

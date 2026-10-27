@@ -250,7 +250,9 @@ Four things to keep in mind as you use DAAF:
 
 DAAF first classifies every request you make into one of nine **engagement modes**. This is how we properly context-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
-Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." Here's a quick reference of all nine:
+Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." That first confirmation is about *how* DAAF will work: it describes what the mode does, where you'll be asked to weigh in, and what you'll get, and it names anything you pointed it to (a document, a prior project, a link, a dataset) that it will read first. What it won't do yet is guess at the details -- which sources, which years, how many files -- because it hasn't read anything.
+
+The details come in a second step. In the larger modes (Full Pipeline, Revision and Extension, Reproducibility Verification, Data Onboarding and Framework Development), once you've confirmed the mode DAAF reads your materials and then shows you a **scope check**: what it read, what exactly it proposes to do, what your materials changed compared with your original request, and any decisions it needs from you. Nothing substantial starts until you approve it. In the lighter modes, DAAF just reads what you pointed to and adapts -- in Ad Hoc Collaboration and Data Discovery it will briefly tell you what it sees and what it plans before anything multi-step, without stopping to wait. Here's a quick reference of all nine:
 
 | Mode | When to Use | What You Get |
 |------|-------------|--------------|
@@ -339,7 +341,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Expected time investment:** About 20-30 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
 
-**When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly.
+**When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly: after you confirm the mode, it reads anything you pointed it to (a prior study, a memo, a codebook) and opens with a pre-flight scope check -- the data sources, years, and geography it proposes, and anything your materials changed -- for your approval before any exploration starts.
 
 **When NOT to use it:** When you just need a quick answer, a variable definition, or want to know if certain data even exists. That's what the other modes are for -- and using Full Pipeline mode for a simple question is like driving a semi-truck to the corner store.
 
@@ -347,7 +349,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "fix," "update," "change," "modify the analysis," "revise," "redo," "can you adjust," "extend"
 
-**What it is:** You have an existing analysis that needs changes or extension, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan, and creates a *new version* of the relevant artifacts -- it never modifies the originals.
+**What it is:** You have an existing analysis that needs changes or extension, and you want DAAF's help to improve it. Maybe you want to rethink a measure, add a new variable, change the year range, run a different statistical test, or fix something that didn't look right. First, point DAAF to the name of the project folder. Then, DAAF locates your existing project, reads the Plan (and anything else you point it to), shows you a scope check -- what kind of change this is, which steps need re-running, and what can be reused -- and, once you approve, creates a *new version* of the relevant artifacts -- it never modifies the originals.
 
 **What you get:**
 - A new version of the Plan document incorporating your changes
@@ -375,7 +377,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **A fork in the road -- the sensitivity gate:** Right at the start of onboarding, DAAF asks you directly whether your data is sensitive -- PII, proprietary, regulated (FERPA/HIPAA), locked in a secure enclave, or simply something that can't leave your environment. This is the "sensitivity gate." If you confirm the data is safe to bring in, onboarding proceeds normally (the data is copied into the container and profiled there). But if you *can't* confirm that -- if the data genuinely shouldn't enter the container -- DAAF takes a different path entirely: the **synthetic-data protocol**. Instead of importing your data, DAAF hands you a disclosure-controlled profiling script that you run yourself, wherever the data lives. Only a summary profile report crosses the boundary; DAAF then builds a synthetic stand-in dataset and a data source skill from that report alone, so you can develop and debug your whole analysis against realistically-shaped fake data. The real data never enters the container. When your code is finished and vetted, you run it against the real data yourself, in its own secure environment, to get the actual results. It's a way to get almost all of DAAF's help without ever exposing the sensitive data itself. One thing to keep in mind: the disclosure controls are careful engineering that minimizes what leaves your machine, but they are not a formal privacy guarantee — you always review the profile report yourself and confirm you're comfortable with it before it crosses the boundary, and that judgment about what is safe to share stays with you. (For the full picture, see the FAQ entry [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).)
 
-**Checkpoints:** 2 -- one after project setup (to confirm the profiling plan), and one after profiling completes (to review and confirm/modify the preliminary interpretations before they become part of the skill).
+**Checkpoints:** two checkpoints, then you review the finished skill -- one checkpoint after project setup (the scope check, to confirm the profiling plan), one after profiling completes (to review and confirm/modify the preliminary interpretations before they become part of the skill), and finally your review of the skill itself once it's written.
 
 **Example prompts:**
 - "I have a CSV of county-level election returns I'd like to profile and add as a data source"
@@ -392,7 +394,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **What you get:** A Reproduction Report that lays out, claim by claim, what matched, what diverged, and what couldn't be verified — and then a single plain-language verdict: **FULLY REPRODUCED**, **PARTIALLY REPRODUCED**, or **NOT REPRODUCED**. Any in-scope evidence gap prevents a FULLY REPRODUCED verdict. Things you deliberately agree to leave out of scope up front are kept separate from genuine failures — but anything you *don't* explicitly exclude still counts, so a script you skip partway through remains an in-scope gap rather than a free pass.
 
-**Two decisions DAAF asks you to make up front:**
+**Two decisions DAAF asks you to make before it re-runs anything** (it previews them when you confirm the mode, then asks you to decide at its scope check, once it has inventoried the project):
 - **Whether to re-fetch the data** (default: yes) — re-download the data and test whether acquisition still works today, or work from a frozen copy of the original raw files instead — in which case whether the data could still be re-downloaded today is simply left out of scope.
 - **How deep the methodological review goes** (default: light) — a light pass focuses on mechanical reproduction and any notable concerns; a full pass also scrutinizes the methodology, assumptions, and interpretation.
 
@@ -406,7 +408,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "create a skill", "add an agent", "add a mode", "modify DAAF", "update the template", "extend the framework"
 
-**What it is:** A structured collaboration mode for modifying DAAF itself — its skills, agents, modes, reference files, templates, and configuration. The orchestrator scopes the current state of whatever you want to change, presents findings, then authors or modifies framework artifacts following canonical templates with a full integration checklist.
+**What it is:** A structured collaboration mode for modifying DAAF itself — its skills, agents, modes, reference files, templates, and configuration. The orchestrator reads anything you point it to (a design note, a lessons-learned file, an issue), maps the current state of whatever you want to change, presents a scope check based on what it found, then authors or modifies framework artifacts following canonical templates with a full integration checklist.
 
 **What you get:** Modified or new framework components placed directly in the DAAF codebase, with a multi-angle review pass ensuring cross-file consistency.
 
@@ -414,8 +416,8 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **When NOT to use it:** When you want to onboard a dataset by profiling it (use Data Onboarding), when you want to run an analysis (use Full Pipeline), or when you want general help (use Ad Hoc Collaboration).
 
-**Two checkpoints:**
-1. After scoping — confirm the approach before any modifications begin
+**Two checkpoints** (plus a design review for complex work, such as a new agent or mode):
+1. The scope check, after scoping — confirm the scope and approach before any modifications begin
 2. After review — approve the final state of all changes
 
 **Escalation:** Can escalate to Data Onboarding (if you need to profile data, not just create a skill template), Full Pipeline (to test a new skill with actual analysis), or Ad Hoc Collaboration (if you need general help rather than framework changes).
@@ -424,7 +426,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "what is DAAF," "how does this work," "help me understand," "something's not working," "what can you do," "explain this to me," "Docker," "Git," "Claude Code help"
 
-**What it is:** A lightweight, conversational mode for questions about DAAF itself and the tools it runs on -- Docker, Git, and Claude Code. If you want to know how DAAF works, what it can do, how to troubleshoot a Docker or setup problem, how to use Git with your projects, or how to get the most out of the framework -- this is where you start. The orchestrator loads the core user documentation and responds directly, and can look up official documentation for Docker, Git, and Claude Code online when needed. No subagents are dispatched, no workspace is created, and no formal deliverables are produced. This is the only mode where DAAF itself (and its technology stack) is the subject, rather than your data or analysis.
+**What it is:** A lightweight, conversational mode for questions about DAAF itself and the tools it runs on -- Docker, Git, and Claude Code. If you want to know how DAAF works, what it can do, how to troubleshoot a Docker or setup problem, how to use Git with your projects, or how to get the most out of the framework -- this is where you start. The orchestrator loads the core user documentation and responds directly, and can look up official documentation for Docker, Git, and Claude Code online when needed. Normally no subagents are dispatched (for a question that needs real digging, DAAF may ask to send a single search specialist, but that's rare), no workspace is created, and no formal deliverables are produced. This is the only mode where DAAF itself (and its technology stack) is the subject, rather than your data or analysis.
 
 **What you get:**
 - Direct, educational answers to any question about DAAF -- its modes, agents, skills, architecture, design philosophy, troubleshooting, and best practices
