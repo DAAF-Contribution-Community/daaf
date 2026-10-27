@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 1 (keyless GET /tallies/{doi}, 2026-10-11); values invented (DOI under 10.5555/, every count). The rate-limit header names and values are measured behavior from the same entry.",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Scite trial, MANIFEST row 1 (keyless GET /tallies/{doi}, 2026-10-11); values invented (DOI under 10.5555/, every count). The rate-limit header names and values are measured behavior from the same entry.",
   "rate_headers": {
     "ratelimit-limit": "60",
     "ratelimit-remaining": "59",

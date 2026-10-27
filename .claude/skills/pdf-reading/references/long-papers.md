@@ -1,16 +1,17 @@
 # Long papers and chunked reading
 
 How to read a document too long for one careful pass: technical reports,
-dissertations, government reports over ~60 pages. Rules from spec §7.4 (one
-paper per dispatch; sequential chunks over ~60 pages with a running-notes
-block, the Chain-of-Agents pattern [doc]) and the overlap-page lesson of the
+dissertations, government reports over ~60 pages. The rules: one paper per
+dispatch; sequential chunks over ~60 pages with a running-notes block, the
+Chain-of-Agents pattern (https://arxiv.org/abs/2406.02818, accessed
+2026-10-02) [doc]; and the overlap-page lesson of the
 user's source skill. The source skill's parallel chunk agents are dropped:
 only the orchestrator dispatches, and parallel chunks lose the running notes.
 
 ## When to chunk
 
 - Up to ~60 pages: one reader reads the whole paper. A 30-page paper is
-  about 25–35k text tokens plus ~8 renders at ~4k each (spec §16) [inf].
+  about 25–35k text tokens plus ~8 renders at ~4k each [inf].
 - Over ~60 pages: the orchestrator splits the paper on page boundaries into
   sequential dispatches. The ingest is done **once** for the whole PDF (one
   paper key, one manifest); chunks are page ranges of it.

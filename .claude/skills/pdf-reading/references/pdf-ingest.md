@@ -29,7 +29,7 @@ bash /daaf/scripts/pdf_ingest.sh <HTML_PATH> <PAPERS_DIR> --paper-key KEY
 |----------|---------|---------|
 | `PDF_PATH` | — | The PDF. Must be a file (else exit 1) whose real path is under the DAAF root (`/daaf`) and outside `.claude/` and `.git/` (else exit 2) |
 | `PAPERS_DIR` | — | Destination, canonically `{PROJECT_DIR}/papers/` |
-| `--paper-key` | required | `W<1-12 digits>` (OpenAlex), `doi_<8 lowercase hex>`, `eric_ED…`/`eric_EJ…` with 6–7 digits, `user_<8 lowercase hex>` (spec §6). Anything else: exit 2 |
+| `--paper-key` | required | `W<1-12 digits>` (OpenAlex), `doi_<8 lowercase hex>`, `eric_ED…`/`eric_EJ…` with 6–7 digits, `user_<8 lowercase hex>`. Anything else: exit 2 |
 | `--render` | `flagged` | Render the pages that need vision, every page (`all`, for the `all-pages` vision mode), or none |
 | `--ocr` | `auto` | `auto`: Tesseract on pages flagged `scanned` only; `off`: never |
 | `--max-pages` | 600 | More pages → exit 7 |
@@ -77,7 +77,7 @@ a row with `already_ingested: true`, unless `--reingest`.
 | A, the anchor | `pdftotext -f N -l N -enc UTF-8 PDF -` (poppler default mode) | `anchor{S}/pNNN.txt`, byte-for-byte (trailing form feed kept), hashed | Quote and number matching in `lit_verify`; nothing else ever replaces it |
 | B | pypdfium2 `PdfTextPage.get_text_bounded(errors="replace")`, CRLF → LF | `lane_b{S}/pNNN.txt` | Agreement and overlap; the reading aid on table pages; row locality for numbers in `lit_verify` 1.3.0 (never a quote source) |
 | Agreement | rapidfuzz `fuzz.ratio(skeleton(A), skeleton(B)) / 100` | `agreement` per page (None when both skeletons are empty or a lane is missing) | The `low_agreement` flag |
-| Overlap (1.1.0, D-21 N4) | `pdf_text_common.overlap_score(A, B)`: Dice on the SKELETON character multisets, order-free (`overlap-v1`) | `overlap` per page (None when lane B is missing or both skeletons are empty) | **Diagnostic only**: no flag or verdict uses it. Read it beside `agreement`: high overlap with low agreement = the lanes order the page differently; low overlap = they read different characters (e.g. lane B dropping equation glyphs) |
+| Overlap (1.1.0) | `pdf_text_common.overlap_score(A, B)`: Dice on the SKELETON character multisets, order-free (`overlap-v1`) | `overlap` per page (None when lane B is missing or both skeletons are empty) | **Diagnostic only**: no flag or verdict uses it. Read it beside `agreement`: high overlap with low agreement = the lanes order the page differently; low overlap = they read different characters (e.g. lane B dropping equation glyphs) |
 | Tables | pdfplumber `page.find_tables()` (default `lines` strategy) | Bounding boxes | The `table` flag and crops; a hint, never data |
 | OCR | `pdftoppm -png -r 300` → `tesseract PNG stdout -l eng --psm 3 tsv`, `OMP_THREAD_LIMIT=1` | `ocr{S}/pNNN_300dpi.png`, `.tsv`, `.txt` | Its own labeled lane; never fills in the anchor |
 | Images, fonts | `pdfimages -list`, `pdffonts` | Evidence strings | `figure`, `ocr_layer_suspected`, `cjk_risk` |
@@ -94,8 +94,8 @@ Suspects object is wrong type" on typst PDFs) are not failures.
 two-column pages in column order, but fuses a real compound hyphen at a line
 end ("natural-⏎language" → "naturallanguage"). `-layout` keeps hyphens but
 interleaves columns on one line. The anchor uses default mode, and matching
-falls back to SKELETON, which ignores hyphens and whitespace (preliminary
-note 08 § 2; `pdf_text_common.py`).
+falls back to SKELETON, which ignores hyphens and whitespace
+(`pdf_text_common.py`).
 
 **NORMALIZE (`normalize-v1`)**, applied identically to page text and quote:
 CRLF → LF and NFKC; delete U+00AD, U+200B–U+200D, U+2060, U+FEFF; fold
@@ -107,7 +107,7 @@ whitespace and `-`.
 
 ## Reading aid
 
-*(1.1.0, D-21 N3)* pdftotext often reads a table column by column, while
+*(1.1.0)* pdftotext often reads a table column by column, while
 lane B keeps each row on one line. On every page flagged `table` that has
 lane B text, `pdf_ingest` writes `pages{S}/pNNN_rows.txt`: lane B's text,
 scrubbed, wrapped, every line prefixed `lane-B| `, secret-redacted and
@@ -290,7 +290,7 @@ re-run; the reading copies carry the source hash, not a timestamp.
 
 ## Functions lit_verify reuses
 
-*(1.2.1, S3-B1, 2026-10-23; no artifact change.)* `lit_verify` 1.7.0
+*(1.2.1, 2026-10-23; no artifact change.)* `lit_verify` 1.7.0
 re-derives an ingest's anchors from its source at check time
 (`evidence-card.md` § Re-derivation) by importing this module and calling
 the same code the ingest ran, so the two can never drift apart:
@@ -303,7 +303,7 @@ the same code the ingest ran, so the two can never drift apart:
 | `arxiv_identity(html, web_fetch)` | The watermark's arXiv id and version | Re-checking the HTML source's identity |
 | `run_tool(argv, timeout, extra_env=None, pass_fds=())`, `tool_version(binary, timeout)`, `parse_pdfinfo(text)` | Subprocess runner with timeout (1.2.2: `pass_fds`, the descriptors the child keeps), tool version probe, `pdfinfo` parser | The page count, page sizes and the `EXTRACTOR_VERSION_DIFFERS` check; 1.8.0 runs poppler on a sealed memfd passed as `/dev/fd/N` |
 | `MAX_BYTES_DEFAULT`, `TIMEOUT_DEFAULT_S` | The `--max-bytes` and `--timeout` defaults | `lit_verify`'s `SOURCE_MAX_BYTES` and `--timeout` default |
-| *(1.2.2, S3-C1a, 2026-10-27; no artifact change)* `header_footer_records(texts)` | The repeated header/footer rule over the anchor texts of pages 1..N | Re-deriving the lines a declared span may skip (`HEADER_FOOTER_REDERIVE_MISMATCH`) |
+| *(1.2.2, 2026-10-27; no artifact change)* `header_footer_records(texts)` | The repeated header/footer rule over the anchor texts of pages 1..N | Re-deriving the lines a declared span may skip (`HEADER_FOOTER_REDERIVE_MISMATCH`) |
 | `text_flag_evidence(text)`, `caption_evidence(text)` | The `numeric`, `scanned` and caption (`table` / `figure`) rules on the anchor text | Re-deriving those page flags (`FLAGS_REDERIVE_MISMATCH`) |
 | `image_evidence(images, page_size, plumber_images, plumber_strings)`, `ocr_layer_evidence(max_area, nonws, glyphless)`, `parse_pdfimages(text)` | The image-area, figure-image and `ocr_layer_suspected` rules | Re-deriving `ocr_layer_suspected` and the truly-scanned image evidence from `pdfimages -list` |
 
@@ -331,13 +331,13 @@ Two consequences for anyone running `pdf_ingest`:
   a scan's OCR layer; it also reads tables **column by column**. An
   order-insensitive score was measured and **not adopted as the flag**,
   because it would hide exactly those cases; since 1.1.0 it is recorded
-  beside `agreement` as the `overlap` diagnostic (D-21 N4). The cutoff stays 0.90 (still provisional): pages
+  beside `agreement` as the `overlap` diagnostic. The cutoff stays 0.90 (still provisional): pages
   of plain prose scored a median 0.99, but display-math pages straddle it
   (0.87–0.95). Treat the flag as "the reading order is uncertain here; look".
 - Tables in the anchor: pdftotext's default mode serializes most tables
   column-major (all row labels, then each column), while lane B
   (`lane_b{S}/`) keeps rows together. A claimed number must be local to
-  its quote: inside it, or (`numbers-v3`, `lit_verify` 1.3.0, D-22; guarded
+  its quote: inside it, or (`numbers-v3`, `lit_verify` 1.3.0; guarded
   by `numbers-v4`/`-v5`) in the one lane B row the quote's leading row label
   identifies
   (`evidence-card.md` § Numbers). To tell which value belongs to which row,
@@ -346,7 +346,7 @@ Two consequences for anyone running `pdf_ingest`:
 - pdfplumber's default `lines` strategy misses borderless (booktabs) tables,
   common in economics and education; a caption still fires `table`.
 - An existing OCR text layer (`ocr_layer_suspected`) is still the anchor
-  (quotes match it), but since `lit_verify` 1.2.0 (user decision D-21 N2) a
+  (quotes match it), but since `lit_verify` 1.2.0 (user decision, 2026-10-19) a
   claim that relies on such a page is OCR evidence: `PASS_OCR_LAYER` and
   `ocr-layer` numbers, both partial; coverage anchors alone do not cap. On
   the bake-off scan, numbers from that layer disagreed with a fresh
@@ -365,7 +365,7 @@ Two consequences for anyone running `pdf_ingest`:
 
 ## arXiv HTML mode
 
-*(1.2.0, D-21 N5.)* `--source arxiv-html` reads a raw arXiv LaTeXML page
+*(1.2.0.)* `--source arxiv-html` reads a raw arXiv LaTeXML page
 (fetched from `https://arxiv.org/html/{id}v{N}` with `web_fetch.sh`) and
 anchors on **section units** instead of pages. When to choose it, how units
 and labels are built, version pinning and grades: `arxiv-and-html.md`.

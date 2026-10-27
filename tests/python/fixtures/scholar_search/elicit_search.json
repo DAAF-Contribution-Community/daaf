@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 2 (POST /api/v2/search/papers --max-results 1, HTTP 200, 2026-10-11: every documented paper field present, pmid null, warnings []); values invented (paper ID, title, authors, abstract, DOI under 10.5555/, venue, count, URLs). The request body is this test's own input.",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Elicit trial, MANIFEST row 2 (POST /api/v2/search/papers --max-results 1, HTTP 200, 2026-10-11: every documented paper field present, pmid null, warnings []); values invented (paper ID, title, authors, abstract, DOI under 10.5555/, venue, count, URLs). The request body is this test's own input.",
   "http_status": 200,
   "request_body": {
     "query": "synthetic tutoring question for fixture tests",

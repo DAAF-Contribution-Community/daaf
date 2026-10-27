@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 1 (GET /api/v2/usage, HTTP 200, 2026-10-11: integer percentUsed, ISO timestamps with milliseconds, extraUsage null); values invented (percentUsed, period dates).",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Elicit trial, MANIFEST row 1 (GET /api/v2/usage, HTTP 200, 2026-10-11: integer percentUsed, ISO timestamps with milliseconds, extraUsage null); values invented (percentUsed, period dates).",
   "http_status": 200,
   "body": {
     "hasUsageRemaining": true,

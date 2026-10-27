@@ -179,7 +179,7 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(ptc.normalize(None), "")
 
     def test_overlap_score_is_order_free(self):
-        # D-21 N4 diagnostic helper: same characters in another order -> 1.0
+        # 1.1.0 overlap diagnostic helper: same characters in another order -> 1.0
         self.assertEqual(ptc.overlap_score("alpha beta gamma", "gamma alpha beta"), 1.0)
         self.assertLess(ptc.overlap_score("alpha beta", "alpha"), 1.0)
         self.assertIsNone(ptc.overlap_score("", " \n"))
@@ -454,7 +454,7 @@ class FixtureIngestTests(unittest.TestCase):
         self.assertIn(ptc.skeleton("natural-language summaries"), ptc.skeleton(anchor("multipage", 2)))
 
     def test_reading_aid_on_table_pages_only(self):
-        # D-21 N3: lane B rows as a fenced, prefixed, NOT quotable sibling of the reading copy
+        # 1.1.0 reading aid: lane B rows as a fenced, prefixed, NOT quotable sibling of the reading copy
         r = self.run_of("tables")
         p = r["manifest"]["pages"][0]
         aid = p["reading_aid"]
@@ -481,7 +481,7 @@ class FixtureIngestTests(unittest.TestCase):
         self.assertFalse((s["dir"] / "pages" / "p001_rows.txt").exists())
 
     def test_overlap_diagnostic_recorded_beside_agreement(self):
-        # D-21 N4: order-free overlap, diagnostic only (no flag uses it)
+        # 1.1.0: order-free overlap, diagnostic only (no flag uses it)
         for name in ("single_column", "tables", "two_column"):
             row, rec = self.page(name), self.run_of(name)["manifest"]["pages"][0]
             self.assertIsInstance(row["overlap"], float, name)
@@ -761,7 +761,7 @@ class IngestBehaviorTests(ScratchCase):
         self.assertEqual(proc.returncode, 1)
 
 
-# --- arXiv HTML lane (1.2.0, D-21 N5): synthetic hand-written LaTeXML-shaped HTML ----------
+# --- arXiv HTML lane (1.2.0): synthetic hand-written LaTeXML-shaped HTML ----------
 HTML_FIX = FIX / "html" / "synthetic_latexml.html"
 
 

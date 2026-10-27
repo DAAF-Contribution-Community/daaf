@@ -16,7 +16,7 @@
 # `lit_verify selftest` builds a synthetic ingest in code (and, from 1.4.0, a
 # synthetic arXiv HTML ingest through pdf_ingest's real arxiv-html lane),
 # plants known fabrications in cards, runs the real card gate on them and
-# asserts every expected verdict (note 08 §5). A later session adds `report`.
+# asserts every expected verdict. A later session adds `report`.
 #
 #   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S]
 #   bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
@@ -27,7 +27,7 @@
 #                checked with web_retrieval_common.validate_dest_dir (under
 #                the DAAF root; /tmp, /var/tmp, /dev/shm, /host_data,
 #                <root>/.claude, <root>/.git refused; exit 2, no row). Its
-#                basename must be a spec §6 paper key (exit 2).
+#                basename must be a paper key (PAPER_KEY_RE; exit 2).
 #   CARD_PATH    must resolve (realpath) to a file directly inside PAPER_DIR
 #                (exit 2); at most CARD_MAX_BYTES, UTF-8 (else exit 8).
 #   Ingest read  the CURRENT ingest: the ingest_manifest{S}.json with the
@@ -45,11 +45,12 @@
 #                No network calls, ever.
 #
 # --- The card's machine-checkable block (schema "lit-verify-card-v1") -------
-#   The card is evidence_card{S}.md (front matter + prose, spec §7.6; prose is
+#   The card is evidence_card{S}.md (front matter + prose; prose is
 #   free). The gate reads exactly ONE fenced block whose info string is
 #   `lit-verify`, holding strict JSON (stdlib only: no YAML). Zero blocks,
 #   two blocks, invalid JSON, duplicate keys, NaN/Infinity, unknown fields,
-#   wrong types -> exit 8. C14 formalizes the full card later.
+#   wrong types -> exit 8. The Literature Review output contract formalizes
+#   the full card later.
 #     schema_version       "lit-verify-card-v1" (or "lit-verify-card-v2", next
 #                          section; anything else -> exit 8)
 #     paper_key            must equal the PAPER_DIR basename (else FAIL)
@@ -86,7 +87,7 @@
 #                  "numbers": ["-0.087"], "source": "text"}]}
 #     ```
 #
-# --- Card schema "lit-verify-card-v2" (1.4.0, D-21 N5) ----------------------
+# --- Card schema "lit-verify-card-v2" (1.4.0) -------------------------------
 #   Accepted beside v1; v1 stays PDF-only and checks exactly as before. v2
 #   names the source kind, so one schema covers both anchors:
 #     anchor_kind          "pdf" | "arxiv_html"; must equal the ingest
@@ -116,7 +117,7 @@
 #     vision     vision_mode "off" or vision_validated false: HTML units have no
 #                page images and no OCR lane, so no reading but the text exists
 #
-# --- arXiv HTML ingests (1.4.0, D-21 N5: "full grade, cite sections") ------
+# --- arXiv HTML ingests (1.4.0, user decision: "full grade, cite sections") -
 #   Loading: manifest anchor_kind "arxiv_html"; units 1..unit_count keyed by
 #   label; anchor{S}/uNNN.txt hash-checked against the manifest and
 #   page_index (UNIT_INDEX_SCHEMA); rows{S}/uNNN.txt (the unit's ltx_tabular
@@ -160,13 +161,13 @@
 #     lane B file is LANE_B_HASH_MISMATCH, a fail, and is not used); the
 #     ingest manifest = the hash in the papers dir's pdf_ingest MANIFEST row
 #     (no row -> NO_INGEST_ROW, a fail from 1.7.0; it was a warning).
-#     1b Re-derivation (1.7.0, D-24 W1; § Re-derivation below): the anchor
+#     1b Re-derivation (1.7.0; § Re-derivation below): the anchor
 #     text (and lane B / table rows) is re-derived from the stored source and
 #     compared byte-for-byte with the files the checks are about to trust;
 #     from 1.8.0 also the header/footer lines, the grade-relevant page flags
 #     and OCR acceptance, from the same hashed bytes.
 #
-# --- Re-derivation (1.7.0, user decision D-24, review W1) -------------------
+# --- Re-derivation (1.7.0, user decision 2026-10-23) ------------------------
 #   Hashes alone prove only that the manifest, page_index and anchor files
 #   agree with EACH OTHER: a hand-written ingest set with a fabricated anchor
 #   and consistent hashes passed. So at check time, before any quote is
@@ -244,7 +245,7 @@
 #                     from the manifest: the pdfplumber probe does not run on
 #                     such a page in a document pdfimages lists images for, so
 #                     nothing restores it (0 such pages in the 5 bake-off PDFs,
-#                     probe 104).
+#                     measured 2026-10-27).
 #            OCR      OCR text on a page whose re-derived anchor has >=
 #                     SCANNED_MAX_CHARS non-whitespace chars is refused
 #                     (OCR_ON_TEXT_PAGE, fail; review W-d): pdf_ingest OCRs
@@ -322,9 +323,9 @@
 #     number must appear on the claim's page(s) in the anchor text, and be
 #     LOCAL to the claim's quote by one of two paths, recorded per number as
 #     `locality`:
-#       in-quote  (numbers-v2, 1.2.0, D-21 N1) a page token printing it
+#       in-quote  (numbers-v2, 1.2.0) a page token printing it
 #                 overlaps the quote's matched span (+- NUMBER_NEAR_CHARS = 0)
-#       row       (numbers-v3, 1.3.0, D-22) the claim quote passed on the
+#       row       (numbers-v3, 1.3.0) the claim quote passed on the
 #                 anchor, its leading label identifies EXACTLY ONE lane B row
 #                 on the page(s) where it matched, and that row prints the
 #                 value (same digits and sign; pdf_text_common.quote_row and
@@ -349,8 +350,8 @@
 #                            the claim has no located quote): review, a human
 #                            checks row and column
 #       NUMBER_OCR_LAYER     as NUMBER_OK, on a page flagged
-#                            ocr_layer_suspected (an existing OCR text layer;
-#                            D-21 N2): partial; NUMBER_OCR_LAYER_VISION when
+#                            ocr_layer_suspected (an existing OCR text
+#                            layer): partial; NUMBER_OCR_LAYER_VISION when
 #                            the claim source is "both" (still partial)
 #       NUMBER_OCR_ONLY      only in that page's OCR text ("ocr-only")
 #       NUMBER_OCR_VISION    only in OCR text, claim source "both": the vision
@@ -376,7 +377,7 @@
 #                            minus deleted INSIDE a quote is caught by the
 #                            quote-number rule (check 2), not here
 #       NUMBER_UNPARSEABLE   the card string is not one number
-#     Column label (1.5.0, D-23; pdf_text_common.column_values,
+#     Column label (1.5.0; pdf_text_common.column_values,
 #     COLUMN_CHECK_VERSION): a LABEL on cleared numbers, never a status. For
 #     every number with a locality (in-quote or row: NUMBER_OK, the OCR,
 #     OCR-layer and conversion-error variants), the clearing text (the
@@ -389,7 +390,8 @@
 #     COLUMN_UNCHECKED_SEVERITY ("label": the verdict ignores it); exactly
 #     one -> column_checked true; no locality -> null. column_values holds
 #     the count. Counted in counts.numbers_column_not_checked and listed in
-#     column_not_checked_items. Hook for D-23's "human review later": set
+#     column_not_checked_items. Hook for the user's "human review later"
+#     (2026-10-23): set
 #     COLUMN_UNCHECKED_SEVERITY to "review" and each labeled item's severity
 #     is raised to review (verdict NEEDS_REVIEW), with no other code change.
 #   6 Vision consistency: with vision_mode "off" or vision_validated false,
@@ -421,13 +423,13 @@
 #            page with a short caption): never caps the grade; the sparse
 #            waiver above applies. A card's `sparse` field is advisory (a
 #            mismatch is a warning); the class is computed.
-#   OCR layer (1.2.0, D-21 N2; recorded as `ocr_layer` per page): a page
+#   OCR layer (1.2.0; recorded as `ocr_layer` per page): a page
 #            flagged ocr_layer_suspected holds someone else's OCR text layer.
 #            A claim whose quote passes there is PASS_OCR_LAYER and its
 #            numbers NUMBER_OCR_LAYER(_VISION), all partial, like our own OCR
 #            (Q-A). Coverage anchors there do NOT cap: a born-digital cover
 #            image can raise the flag falsely, so only cited claims count.
-#            1.6.0 (D-24 W2): a paper with >= OCR_LAYER_PAPER_CAP_PAGES (2)
+#            1.6.0: a paper with >= OCR_LAYER_PAPER_CAP_PAGES (2)
 #            such pages is capped anyway (OCR_LAYER_PAPER, partial).
 #
 # --- Verdicts and grades ----------------------------------------------------
@@ -549,14 +551,14 @@ import pdf_text_common as ptc  # noqa: E402
 # full-length exact anchor covers a page that has no unique line because its
 # text recurs on another page; claims are unchanged). Card and result schemas
 # unchanged; constants unchanged (kept after calibration on real papers).
-# 1.2.0 (S3 FE-5, 2026-10-19, user decision D-21 N1/N2): numbers-v2
+# 1.2.0 (S3 FE-5, 2026-10-19, user decision): numbers-v2
 # locality (a number printed on the cited page but not inside the claim's
 # quote where it matched is NUMBER_NOT_NEAR_QUOTE, review); claims relying on
 # a page flagged ocr_layer_suspected are OCR evidence (PASS_OCR_LAYER,
 # NUMBER_OCR_LAYER, NUMBER_OCR_LAYER_VISION: partial; coverage alone does not
 # cap); page summaries gain `ocr_layer`; constants gain NUMBER_NEAR_CHARS.
 # Card and result schemas unchanged (v1; additive fields only).
-# 1.3.0 (S3 FE-5c, 2026-10-22, user decision D-22): numbers-v3, the unique-row
+# 1.3.0 (S3 FE-5c, 2026-10-22, user decision): numbers-v3, the unique-row
 # rule: a number printed on the anchor page also clears when the claim's
 # quote identifies exactly one lane B row that prints it (`locality: "row"`);
 # every number item records `locality` (in-quote | row | null) and
@@ -564,7 +566,7 @@ import pdf_text_common as ptc  # noqa: E402
 # hash-checked (LANE_B_HASH_MISMATCH, fail); page summaries gain `lane_b`;
 # constants gain ROW_LABEL_MIN_CHARS. Card and result schemas unchanged (v1:
 # v1 cards check as before, and their numbers can only gain the row path).
-# 1.4.0 (S3 FE-5e, 2026-10-22, user decision D-21 N5 "full grade, cite
+# 1.4.0 (S3 FE-5e, 2026-10-22, user decision "full grade, cite
 # sections"): cards over arXiv HTML ingests. Card schema lit-verify-card-v2
 # (anchor_kind, source_sha256, source_version; section / section_end on
 # arxiv_html) accepted beside v1 (unchanged, PDF-only); unit ingests loaded
@@ -577,14 +579,14 @@ import pdf_text_common as ptc  # noqa: E402
 # lit-verify-card-check-v2 (additive); forged unit markers scrubbed;
 # constants gain HTML_EXTRACT_VERSIONS_KNOWN; selftest gains arXiv HTML
 # cases. PDF verdicts and items unchanged (items gain null section keys).
-# 1.5.0 (S3 FE-5g, 2026-10-23, user decision D-23): the column-not-checked
+# 1.5.0 (S3 FE-5g, 2026-10-23, user decision): the column-not-checked
 # LABEL on cleared numbers whose clearing text prints other comparable values
 # (pdf_text_common column-check-v1); severity level "label", ignored by the
 # verdict; COLUMN_UNCHECKED_SEVERITY is the hook a later decision can flip
 # to "review". No verdict, grade or number status changes; numbers-v3
 # unchanged (NUMBER_RULES_VERSION not bumped: the label is not a number
 # rule). Card and result schemas unchanged (additive fields).
-# 1.6.0 (S3-A, 2026-10-23, review-fix round 1, user decision D-24): gate
+# 1.6.0 (S3-A, 2026-10-23, review-fix round 1, user decision): gate
 # soundness. numbers-v4 (pdf_text_common: the spaced sign "= - 0.041" (B1);
 # superscripts are marks, not digits; the row path needs a label of >= 3
 # letters, a cell-like tail, a table/numeric page and a quote starting at a
@@ -595,9 +597,9 @@ import pdf_text_common as ptc  # noqa: E402
 # VISION_NOT_ON_LIST (fail: vision_validated true for a reader_model not on
 # the embedded VISION_VALIDATED_LISTS for the card's vision_list_version);
 # OCR_LAYER_PAPER (partial: >= OCR_LAYER_PAPER_CAP_PAGES pages flagged
-# ocr_layer_suspected cap the card at PARTIAL, D-24 W2; counts gain
+# ocr_layer_suspected cap the card at PARTIAL, W2; counts gain
 # pages_ocr_layer). Card and result schemas unchanged (additive fields).
-# 1.7.0 (S3-B1, 2026-10-23, review-fix round 1 part B, user decision D-24):
+# 1.7.0 (S3-B1, 2026-10-23, review-fix round 1 part B, user decision):
 # provenance (W1): re-derivation of the anchors (and lane B / table rows) from
 # the stored source at check time (§ Re-derivation; rederive-v1); statuses
 # ANCHOR_REDERIVE_MISMATCH, ROW_SOURCE_REDERIVE_MISMATCH, SOURCE_MISSING,
@@ -645,10 +647,13 @@ import pdf_text_common as ptc  # noqa: E402
 # no digit, "%" or dash before it, or glued with no letter or digit before
 # it: "by – 0.30", "(Girls)−0.30"), is QUOTE_NUMBERS_DIFFER (review; reason
 # "the quote prints a sign-shaped dash ..."); compound and range dashes stay
-# allowed. Measured (WS script 120_a): genuine false alarms 0 of 2,407 (0
-# before); planted added dashes flagged 0 -> 999 of 999 (spaced after a word)
-# and 0 -> 18 of 18 (glued after a bracket). Still 1.8.0 (unreleased); no new
-# status, card and result schemas unchanged.
+# allowed. Measured 2026-10-27 on 2,407 genuine quotes from the eight bake-off
+# papers (five PDFs, three arXiv HTML papers; 1,879 quote windows sampled from
+# their ingests plus the 528 claim quotes and coverage anchors of their nine
+# cards): genuine false alarms 0 (0 before); planted added dashes flagged
+# 0 -> 999 of 999 (spaced after a word) and 0 -> 18 of 18 (glued after a
+# bracket). Still 1.8.0 (unreleased); no new status, card and result schemas
+# unchanged.
 TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
@@ -667,7 +672,7 @@ CARD_SCHEMA_VERSION = "lit-verify-card-v1"
 CARD_SCHEMA_VERSION_V2 = "lit-verify-card-v2"
 CARD_SCHEMA_VERSIONS = (CARD_SCHEMA_VERSION, CARD_SCHEMA_VERSION_V2)
 CHECK_SCHEMA_VERSION = "lit-verify-card-check-v2"
-# INTENT (1.4.0, D-21 N5): the two anchor kinds pdf_ingest writes; a manifest
+# INTENT (1.4.0): the two anchor kinds pdf_ingest writes; a manifest
 #   without the field predates 1.2.0 of pdf_ingest and is a PDF ingest.
 ANCHOR_KIND_PDF = "pdf"
 ANCHOR_KIND_HTML = "arxiv_html"
@@ -685,7 +690,7 @@ CONVERSION_ERROR_FLAG = "conversion_error"
 #   control characters into an output through a locator.
 SECTION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:#-]{0,79}$")
 SOURCE_VERSION_RE = re.compile(r"^v[1-9][0-9]{0,3}$")
-# INTENT: spec §6 paper_key forms, identical to pdf_ingest.PAPER_KEY_RE
+# INTENT: the paper_key forms, identical to pdf_ingest.PAPER_KEY_RE
 #   (tests assert the two patterns agree).
 PAPER_KEY_RE = re.compile(r"^(W\d{1,12}|doi_[0-9a-f]{8}|eric_E[DJ]\d{6,7}|user_[0-9a-f]{8})$")
 VERSION_SUFFIXES = [""] + ["_" + c for c in "abcdefghijklmnopqrstuvwxyz"]
@@ -702,7 +707,7 @@ SOURCES = ("text", "vision", "both", "ocr")
 SCANNED_FLAG = "scanned"
 # PROVISIONAL (user decision Q-B; calibrated in the S3 bake-off): a page
 #   flagged `scanned` is TRULY scanned only when one embedded image covers at
-#   least this share of the page area. Probe 50 (2026-10-15) on the committed
+#   least this share of the page area. Measured 2026-10-15 on the committed
 #   fixtures: scanned.pdf 100% x 100% = 1.00; multipage p5 (scan inside the
 #   margins) 78% x 78% = 0.61; multipage p4 (figure + caption) 53% x 31% =
 #   0.16 -> sparse.
@@ -732,9 +737,9 @@ LOCAL_FORGED_PATTERNS = [
     re.compile(r"<!--\s*unit\s+\d+\s*/\s*\d+", re.IGNORECASE),
 ]
 
-# INTENT (1.5.0, D-23): the column-not-checked label. "label" is a label-only
+# INTENT (1.5.0): the column-not-checked label. "label" is a label-only
 #   severity level: no verdict rule reads it, so the card's verdict and grade
-#   are unchanged. HOOK for D-23's "human review later": set this to
+#   are unchanged. HOOK for the user's "human review later" (2026-10-23): set this to
 #   "review" (or any level in SEVERITY_RANK) and every labeled number item's
 #   severity is raised to it (never lowered), so the verdict, counts and
 #   review_items follow with no other code change.
@@ -786,9 +791,9 @@ NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_V
                  "NUMBER_NOT_NEAR_QUOTE": "not-near-quote", "NUMBER_OCR_LAYER": "ocr-layer",
                  "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision", "NUMBER_CONVERSION_ERROR": "conversion-error",
                  "NUMBER_SIGN_AMBIGUOUS": "sign-ambiguous"}
-# INTENT (D-21 N2): pdf_ingest's flag for an existing OCR text layer.
+# INTENT (1.2.0): pdf_ingest's flag for an existing OCR text layer.
 OCR_LAYER_FLAG = "ocr_layer_suspected"
-# INTENT (1.6.0, user decision D-24 W2): a paper with at least this many pages
+# INTENT (1.6.0, user decision 2026-10-23): a paper with at least this many pages
 #   flagged ocr_layer_suspected is capped at PARTIAL (OCR_LAYER_PAPER) even
 #   when no claim cites those pages: much of its text is someone else's OCR.
 #   One flagged page does not cap (a born-digital cover image can raise the
@@ -805,7 +810,7 @@ OCR_LAYER_PAPER_CAP_PAGES = 2
 VISION_LIST_VERSION = "vision-list-2026-10-19"
 VISION_VALIDATED_LISTS = {"vision-list-2026-10-19": ()}
 
-# INTENT (1.7.0, D-24 W1): re-derivation (§ Re-derivation in the header).
+# INTENT (1.7.0): re-derivation (§ Re-derivation in the header).
 #   rederive-v2 (1.8.0): read once from sealed bytes; header/footer, page
 #   flags and OCR acceptance re-derived too.
 REDERIVE_VERSION = "rederive-v2"
@@ -1301,7 +1306,7 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
                                   reason="OCR text sha256 differs from the manifest record; the OCR text is not used"))
             else:
                 ocr_text = o_bytes.decode("utf-8", errors="replace")
-        # INTENT (1.3.0, D-22): lane B is read for the unique-row locality rule
+        # INTENT (1.3.0): lane B is read for the unique-row locality rule
         #   only; a file that fails its hash check is not used.
         lane_b_text, b_sha = None, None
         lb_rec = r.get("lane_b") if isinstance(r.get("lane_b"), dict) else None
@@ -1333,7 +1338,7 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
 
 
 def load_unit_ingest(paper_dir, man, mname, msha, sfx, read_parquet, items):
-    # (1.4.0, D-21 N5) The arXiv HTML ingest: units 1..unit_count in document
+    # (1.4.0) The arXiv HTML ingest: units 1..unit_count in document
     # order, each with its label, anchor text and (when it holds tables) its
     # table rows. Returns the ingest dict (pages keyed by unit number, so the
     # page-shaped checks run on units); appends integrity items to `items`.
@@ -1447,7 +1452,7 @@ def ingest_row_items(papers_dir, paper_key, mname, msha):
     return items
 
 
-# §§ REDERIVE (1.7.0, user decision D-24, review W1; 1.8.0 S3-C1a, review cycle 2 NB1, W-b, W-c, W-d)
+# §§ REDERIVE (1.7.0, user decision 2026-10-23, review W1; 1.8.0 S3-C1a, review cycle 2 NB1, W-b, W-c, W-d)
 def source_kind_of(real, sha):
     # (1.8.0) What kind of file the re-derivation read, for the orchestrator's
     # audit (recorded only; no verdict effect): "web_fetch" when the
@@ -2111,8 +2116,9 @@ def check_card(card, ingest, fuzz, integrity=None):
                 #   page (a duplicated scan page) has no unique line, so no
                 #   anchor can ever be unique and a genuine card could not
                 #   cover it. A full-length exact anchor covers such a page.
-                # REASONING: bake-off script 66, ERIC ED083756 pp. 69 and 71
-                #   (the same text twice): a genuine card FAILed NOT_COVERED.
+                # REASONING: in the S3 bake-off (2026-10-19), ERIC ED083756
+                #   pp. 69 and 71 (the same text twice): a genuine card FAILed
+                #   NOT_COVERED.
                 duplicate = (role == "coverage" and not ident["short"] and ident["occurrences"] > 1
                              and m["tier"] in (ptc.TIER_PASS, ptc.TIER_PASS_SKELETON, ptc.TIER_PASS_OCR)
                              and not page_has_unique_line(page))
@@ -2208,7 +2214,7 @@ def check_card(card, ingest, fuzz, integrity=None):
         summary["coverage_status"] = status
         page_summaries.append(summary)
 
-    # INTENT (1.6.0, D-24 W2): the coverage cap for a paper whose text is
+    # INTENT (1.6.0, W2): the coverage cap for a paper whose text is
     #   largely an existing OCR layer (PDF only; HTML units never carry it).
     ocr_layer_all = [n for n in sorted(pages) if OCR_LAYER_FLAG in (pages[n].get("flags") or [])]
     if not units and len(ocr_layer_all) >= OCR_LAYER_PAPER_CAP_PAGES:
@@ -2260,7 +2266,7 @@ def check_card(card, ingest, fuzz, integrity=None):
             it.update(claim_id=cid, **qn_fields)
             items.append(it)
         cited = [p] + ([pe] if pe else [])
-        # INTENT (2.0.0, D-21 N2): a claim that relies on a page flagged
+        # INTENT (1.2.0): a claim that relies on a page flagged
         #   ocr_layer_suspected (someone else's OCR text layer, never compared
         #   with the image) is OCR evidence, like our own OCR (Q-A): partial.
         #   Coverage alone does not cap (a falsely flagged cover image).
@@ -2269,7 +2275,7 @@ def check_card(card, ingest, fuzz, integrity=None):
             it.update(status="PASS_OCR_LAYER", severity=SEVERITY["PASS_OCR_LAYER"],
                       reason=safe_line(f"{it['reason']}; cited page(s) {ocr_layer_pages} carry an existing OCR "
                                        "text layer (ocr_layer_suspected) never compared with the image", 600))
-        # INTENT (1.4.0, D-21 N5): a claim relying on a unit where LaTeXML could
+        # INTENT (1.4.0): a claim relying on a unit where LaTeXML could
         #   not convert a macro (ltx_ERROR spans, flag conversion_error) may
         #   quote text that differs from the paper: partial, like OCR evidence.
         #   Coverage alone does not cap (only cited claims count).
@@ -2279,7 +2285,7 @@ def check_card(card, ingest, fuzz, integrity=None):
             it.update(status="PASS_CONVERSION_ERROR", severity=SEVERITY["PASS_CONVERSION_ERROR"],
                       reason=safe_line(f"{it['reason']}; cited section(s) {conv_units} hold LaTeXML conversion "
                                        "errors (ltx_ERROR): the HTML text there may differ from the paper", 600))
-        # INTENT (numbers-v2, D-21 N1): where the claim's quote matched, per
+        # INTENT (numbers-v2): where the claim's quote matched, per
         #   lane, in NORMALIZE coordinates (a declared span is matched across
         #   the two pages' boundary text). A number must sit there.
         #   numbers-v4: each location is (number view, spans, page; page None
@@ -2347,11 +2353,11 @@ def check_card(card, ingest, fuzz, integrity=None):
                 ineligible.append(f"the quote does not start at a row start on {where(n)}")
             else:
                 row_pages.append(n)
-        # INTENT (numbers-v3, D-22): the unique-row path. Only a quote that
+        # INTENT (numbers-v3): the unique-row path. Only a quote that
         #   passed on the anchor (lane B never anchors a quote) and only the
         #   lane B text of the page(s) where it matched.
-        # REASONING: FE-5c script 76 (449 table claims quoted from their own
-        #   row, B and C): genuine ok 0.976 in-quote -> 0.996 in-quote or row;
+        # REASONING: measured 2026-10-22 on 449 bake-off table claims quoted
+        #   from their own row (papers B and C): genuine ok 0.976 in-quote -> 0.996 in-quote or row;
         #   last digit changed 0.018 -> 0.018; sign flip 0 -> 0. The loose B6
         #   rule (1.000 / 0.058 / 0) also cleared look-alike rows.
         quote_on_anchor = bool(q and q.strip()) and it["status"] in ("PASS", "PASS_SKELETON", "PASS_SPAN",
@@ -2363,9 +2369,11 @@ def check_card(card, ingest, fuzz, integrity=None):
         #   matched (alone on its line, or followed by cells); a prose sentence
         #   that starts with a row label word is not a row.
         # REASONING: S3-A2 open question 1 (doi_79ea144e p8 "ORGANIZATION and
-        #   other models; ...", doi_cae47236 p23 lane B fragment "the 1");
-        #   measured in WS script 96 (genuine / fabricated rates before ->
-        #   after: see the S3-B1 report).
+        #   other models; ...", doi_cae47236 p23 lane B fragment "the 1").
+        #   Measured 2026-10-23 on 3,173 genuine quotes over every bake-off PDF
+        #   page with lane B: genuine ok 0.948 before and after (row path 46 ->
+        #   45 quotes), last digit changed 0.043 unchanged, remote prose
+        #   windows clearing a row value 5 -> 3.
         if row is not None and row["status"] == "unique" and not any(
                 ptc.row_label_is_cell(v, s, len(row["row"]["label"])) for v, spans, n in located["anchor"]
                 if n in row_pages for s, _ in spans if ptc.at_row_start(v, s)):
@@ -2397,7 +2405,7 @@ def check_card(card, ingest, fuzz, integrity=None):
             near_amb = {lane: "sign-ambiguous" in near_kinds[lane] for lane in located}
             in_row = bool(row and row["status"] == "unique" and ptc.number_in_row(tok, row["row"]))
             locality = None
-            # INTENT (1.5.0, D-23): which lane's quote span cleared the number
+            # INTENT (1.5.0): which lane's quote span cleared the number
             #   in-quote ("anchor" or "ocr"), for the column label below.
             clear_lane = None
             row_note = ""
@@ -2499,7 +2507,7 @@ def check_card(card, ingest, fuzz, integrity=None):
                         reason = "not on the cited page(s) in any text lane" + (
                             f"; found on page(s) {elsewhere}" if elsewhere else "") + (
                             "; source \"both\" declares a text reading" if c["source"] == "both" else "")
-            # INTENT (1.5.0, D-23): the column label. The clearing text is the
+            # INTENT (1.5.0): the column label. The clearing text is the
             #   quote's matched span(s) in the lane that cleared the number, or
             #   the identified row after its label; column_values() counts the
             #   distinct comparable values printed there (None: nothing to
@@ -2525,7 +2533,7 @@ def check_card(card, ingest, fuzz, integrity=None):
                           column_severity=COLUMN_UNCHECKED_SEVERITY if unchecked else None, **base)
             if unchecked and SEVERITY_RANK.get(COLUMN_UNCHECKED_SEVERITY, -1) > SEVERITY_RANK.get(
                     it_num["severity"], 0):
-                # HOOK (D-23): only when COLUMN_UNCHECKED_SEVERITY is flipped from
+                # HOOK (1.5.0): only when COLUMN_UNCHECKED_SEVERITY is flipped from
                 #   "label" to a verdict-bearing level; "label" never raises.
                 it_num["severity"] = COLUMN_UNCHECKED_SEVERITY
                 it_num["reason"] = safe_line(f"{reason}; column not checked: the clearing text prints {col} "
@@ -2596,7 +2604,7 @@ def result_of(items, page_summaries, summaries, card, fuzz, vision_ok, redaction
                       pages_scanned=sum(1 for v in classes.values() if v[0] == "scanned"),
                       pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"),
                       pages_ocr_layer=sum(1 for s in summaries if s.get("ocr_layer")))
-    # INTENT (1.5.0, D-23): the column label, counted and listed apart from
+    # INTENT (1.5.0): the column label, counted and listed apart from
     #   the severity lists (a "label" never enters them or the verdict).
     labeled = [it for it in items if it.get("column_label")]
     counts["numbers_column_not_checked"] = len(labeled)
@@ -2659,7 +2667,7 @@ SELFTEST_FABRICATED_OCR = ("The keepers swore that every invented lantern on the
 # 1.8.0 (review cycle 2 NB1): the last line of paper A page 1, which a forged
 #   header/footer record would let a span quote skip.
 SELFTEST_SKIPPED_LINE = "they agreed to publish every page of it once the voyage was over."
-# 1.4.0 (D-21 N5): paper H, a synthetic arXiv HTML (LaTeXML-shaped, the same
+# 1.4.0: paper H, a synthetic arXiv HTML (LaTeXML-shaped, the same
 #   shape as tests/python/fixtures/pdf_ingest/html/synthetic_latexml.html),
 #   ingested by pdf_ingest's REAL arxiv-html lane, so the selftest also checks
 #   the interface between the two tools. Every word is invented. Units: front,
@@ -2744,7 +2752,7 @@ SELFTEST_PAGES = {
                       "scanned": ["anchor has 0 non-whitespace chars < 200"],
                       "ocr": ["tesseract ran: 13 word(s), mean confidence 95.0"]},
          "images": [(1275, 1650, 150.0, 150.0)]},
-        # 1.2.0 (D-21 N2): a page with an existing OCR text layer. 1.8.0: >= 200
+        # 1.2.0: a page with an existing OCR text layer. 1.8.0: >= 200
         #   non-whitespace chars, as pdf_ingest's rule needs for the flag.
         {"anchor": "Synthetic Ledger Page\nThe harbour ledger was typed long ago and later scanned with its own "
                    "text layer, so the\nwords below came from an earlier reader of the image. It lists 23 lanterns "
@@ -2755,7 +2763,7 @@ SELFTEST_PAGES = {
                                               "229 non-whitespace chars"]},
          "images": [(1275, 1650, 150.0, 150.0)]},
     ],
-    # 1.3.0 (D-22): a table page whose anchor is column-major (as pdftotext
+    # 1.3.0: a table page whose anchor is column-major (as pdftotext
     #   often reads tables) and whose lane B keeps each row on one line; two
     #   look-alike row labels and one label shared by two rows.
     "R": [
@@ -3013,7 +3021,7 @@ def selftest_cases(src):
           "source": "ocr"}
     b2 = {"claim_id": "B2", "page": 3, "quote": "words below came from an earlier reader of the image. It lists 23 "
                                                 "lanterns", "numbers": ["23"], "source": "text"}
-    # INTENT (numbers-v3, D-22): on a column-major page the quote starts at the
+    # INTENT (numbers-v3): on a column-major page the quote starts at the
     #   row label (a run of row labels, as pages/ shows them); the gate finds the
     #   one lane B row that label identifies.
     r_cov = [{"page": 1, "anchors": ["The counts in Table 5 are invented to exercise the row rule of the verification "
@@ -3023,10 +3031,10 @@ def selftest_cases(src):
           "claim": "North Quay with tide gauge, Autumn: 0.63"}
     r4 = {"claim_id": "R4", "page": 1, "quote": "All Harbours All Harbours Spring 0.62 0.71 0.55", "numbers": ["0.41"],
           "source": "text", "table_ref": "Table 5"}
-    # INTENT (1.5.0, D-23): a quote that prints exactly one number (in-quote).
+    # INTENT (1.5.0): a quote that prints exactly one number (in-quote).
     r6 = {"claim_id": "R6", "page": 1, "quote": "The counts in Table 5 are invented to exercise the row rule",
           "numbers": ["5"], "source": "text"}
-    # INTENT (1.4.0, D-21 N5): paper H, cited by section label. H1 quotes the
+    # INTENT (1.4.0): paper H, cited by section label. H1 quotes the
     #   row-major anchor through the cells (in-quote); H2 stops before the last
     #   cell, so its number clears through the one rows/ row its label names.
     h_cov = [
@@ -3145,13 +3153,13 @@ def selftest_cases(src):
          "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
         ("row label shared by two rows (falls back)", "R", r_cov, [r4], False, "NEEDS_REVIEW", 0,
          "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
-        # 1.5.0 (D-23): the same residual case now carries the column label (its
+        # 1.5.0: the same residual case now carries the column label (its
         #   row prints 0.62 and 0.63); a single-number quote on the same page is
         #   column-checked. The verdict stays PASS: the label is not a verdict.
         ("column label: multi-number row vs one number", "R", r_cov,
          [dict(r1, claim="North Quay with tide gauge, Spring: 0.63"), r6], False, "PASS", 0, "NUMBER_OK",
          "claim_number", {"column_checked": {"0.63": False, "5": True}}),
-        # 1.4.0 (D-21 N5): arXiv HTML, cited by section
+        # 1.4.0: arXiv HTML, cited by section
         ("arXiv HTML card, table row via rows/ (genuine)", "H", h_cov, [h1, h2], False, "PASS", 0, "NUMBER_OK",
          "claim_number"),
         ("HTML quote cited to another section", "H", h_cov, [dict(h1, section="1"), h2], False, "FAIL", 11,
@@ -3287,7 +3295,7 @@ def run_selftest(a, scratch_dir, row):
             got_status = "" if exp_status is None else (exp_status if (exp_kind, exp_status) in statuses else "absent")
             want = f"{exp_verdict} (exit {exp_exit})" + (f" + {exp_status}" if exp_status else "")
             have = f"{got_verdict} (exit {code})" + (f" + {got_status}" if exp_status else "")
-            # INTENT (1.5.0, D-23): optional column-label expectations, keyed by
+            # INTENT (1.5.0): optional column-label expectations, keyed by
             #   the card number string: True = column_checked, False = labeled.
             exp_cols = over.get("column_checked") or {}
             if exp_cols:
@@ -3477,7 +3485,7 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                      "manifest_sha256": ingest["manifest_sha256"], "page_count": ingest["page_count"],
                      "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF), "unit_count": ingest.get("unit_count")}
 
-    # --- Re-derivation (1.7.0, D-24 W1): before any text is trusted ---
+    # --- Re-derivation (1.7.0, W1): before any text is trusted ---
     # INTENT (1.8.0): the pages a numbered claim cites, where the `table` flag
     #   (the row path's gate) is re-checked with pdfplumber find_tables.
     number_pages = {p for c in card.get("claims") or [] if c.get("numbers")

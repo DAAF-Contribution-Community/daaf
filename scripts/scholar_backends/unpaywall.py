@@ -13,8 +13,8 @@
 # are JS-rendered and could not be extracted, so the daily-limit figure
 # (100k/day, from search snippets) is UNVERIFIED.
 #
-# Measured behavior (2026-10-02, live `oa --all-legs`, smoke_s1/ MANIFEST line
-# 15; details in references/unpaywall.md):
+# Measured behavior (2026-10-02, live `oa --all-legs` on three DOIs; details
+# in references/unpaywall.md):
 #   - z_authors carry raw_author_name (+ author_position, is_corresponding,
 #     raw_affiliation_strings), not given/family; the mapper reads both.
 #   - host_type is always set ("publisher" | "repository");

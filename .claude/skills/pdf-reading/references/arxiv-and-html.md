@@ -1,7 +1,7 @@
 # arXiv papers: the HTML lane
 
 An arXiv paper that has an HTML rendering at the cited version can be read
-and gate-checked from that HTML instead of the PDF (user decision D-21 N5,
+and gate-checked from that HTML instead of the PDF (user decision,
 2026-10-19: "Full grade, cite sections"). `pdf_ingest --source arxiv-html`
 turns the LaTeXML page into **section units**, and `lit_verify card` checks a
 `lit-verify-card-v2` card against them exactly as it checks a PDF card
@@ -36,7 +36,7 @@ it: the card's `anchor_kind` names it.
 - When scanning text for an ID, require the `arXiv` prefix
   (`arXiv:2310.08726`). A bare `NNNN.NNNNN` pattern matches many unrelated
   numbers; the source skill's analyzer regex had an optional prefix and
-  matched them (note 10 § 1) [inf].
+  matched them [inf].
 - Note the **version** you are citing (`v1`, `v4`). The record or the abs
   page lists the versions; cite the one you read.
 
@@ -56,19 +56,21 @@ bash /daaf/scripts/web_fetch.sh https://arxiv.org/html/{id}v{N} {PROJECT_DIR}/we
 - Use `https://arxiv.org/html/{id}v{N}`, never ar5iv and never an
   unversioned URL. On 2026-10-19 `https://ar5iv.labs.arxiv.org/html/2310.08726`
   returned HTTP 200 with `final_url` `https://arxiv.org/abs/2310.08726`: the
-  abs page, not the paper (web_fetch exit 0) [obs:
-  `web_fetches/s3_bakeoff_arxiv_html/MANIFEST.jsonl` row 2]. `pdf_ingest`
-  refuses such a file (exit 12), but the fetch itself looks like a success.
+  abs page, not the paper (web_fetch exit 0) [obs: web_fetch,
+  2026-10-19T16:48:55Z]. `pdf_ingest` refuses such a file (exit 12), but the fetch itself looks like a success.
 
 ## Availability
 
 Not every arXiv paper has HTML. arXiv converts LaTeX submissions with
 LaTeXML; some papers have none, and older ones may never have been
 converted. `https://arxiv.org/html/2310.08726` and `…/2310.08726v1` both
-returned **404** (web_fetch exit 5) on 2026-10-19 [obs: same MANIFEST, rows
-1 and 3]. A 404 means: use the PDF of the same version. The three B1 papers
-(2504.04906v4, 2403.00922v1, 2403.05420v1) all had HTML [obs:
-`web_fetches/s3_arxiv_html_candidates/MANIFEST.jsonl`].
+returned **404** (web_fetch exit 5) on 2026-10-19 [obs: web_fetch]. A 404
+means: use the PDF of the same version. The three papers the HTML lane was
+measured on (§ Measured on real papers) all had HTML:
+`https://arxiv.org/html/2504.04906v4`,
+`https://arxiv.org/html/2403.00922v1` and
+`https://arxiv.org/html/2403.05420v1` each returned HTTP 200, accessed
+2026-10-19 [obs: web_fetch].
 
 ## Ingesting
 
@@ -146,7 +148,7 @@ new card.
 
 ## Grades
 
-Same grades as a PDF (D-21 N5): PASS → `FULL_TEXT_VERIFIED`, PARTIAL →
+Same grades as a PDF: PASS → `FULL_TEXT_VERIFIED`, PARTIAL →
 `FULL_TEXT_PARTIAL`, under the same ladder, identifying-quote rule, coverage
 rule, quote-number rule (`ladder-v4`) and number rules (`numbers-v6`;
 `evidence-card.md`). Only the locator changes: a
@@ -154,7 +156,7 @@ section label in place of a page, `section_end` in place of `page_end` (a
 quote may run from one unit into the **next** unit only), `WRONG_SECTION`
 in place of `WRONG_PAGE`, `MISSING_SECTION` in place of `MISSING_PAGE`.
 Downstream, the claim's locator is the section (`§3.2`), the source is
-"arXiv HTML vN" (spec §9.2 `locator`).
+"arXiv HTML vN".
 
 ## No vision
 
@@ -170,7 +172,7 @@ vision.
 LaTeXML marks a macro it could not convert with an `ltx_ERROR` span. The
 unit is flagged `conversion_error` (manifest `conversion_error_units`,
 `conversion_error_count`), and its text there may differ from the paper. The
-cap is **whole unit, claims only** (orchestrator default within D-21 N5): a
+cap is **whole unit, claims only** (an orchestrator default): a
 claim quote that passes in a flagged unit is `PASS_CONVERSION_ERROR` and its
 numbers `NUMBER_CONVERSION_ERROR` (`conversion-error`), both partial, so the
 card is at best PARTIAL. Coverage anchors there do not cap. To keep
@@ -179,7 +181,8 @@ read that paper from the PDF; otherwise accept PARTIAL.
 
 ## One paper key per source
 
-A paper key holds one source kind (orchestrator default within D-21 N5).
+A paper key holds one source kind (an orchestrator default; quotes do not
+carry over between renderings, § Measured on real papers).
 A paper read from its HTML has the HTML as its source and its card cites
 sections. A PDF ingest of the same work gets **its own key**, for
 comparison only. If one key's complete ingests mix `pdf` and `arxiv_html`,
@@ -213,10 +216,9 @@ No unit is ever "scanned".
 
 ## Measured on real papers
 
-FE-5f, 2026-10-22, on the three B1 ingests (2504.04906v4, 40 units;
+Measured 2026-10-22 on three arXiv HTML ingests (2504.04906v4, 40 units;
 2403.00922v1, 43; 2403.05420v1, a thesis, 43) and their same-version PDFs
-ingested under their own keys [obs: workspace
-`bakeoff/arxiv/2026-10-22_arxiv_html_measurements.md`, script 86 log]:
+ingested under their own keys [obs]:
 
 | Measure | Result |
 |---------|--------|
@@ -234,7 +236,7 @@ ingested under their own keys [obs: workspace
 What this means for a reader:
 - **Section numbers can differ from the PDF's.** Cite the HTML label (the
   gate checks it) and, where it matters downstream, say the numbering is
-  the HTML's ("§0.1 of arXiv HTML v1"). User decision D-23 (2026-10-23): the
+  the HTML's ("§0.1 of arXiv HTML v1"). User decision (2026-10-23): the
   HTML label stays the locator and the HTML lane is the default ("focus on
   having the HTML default").
 - **Table rows are often too short to identify.** Quote the row together
@@ -243,7 +245,7 @@ What this means for a reader:
 - **A whole-row quote lets a wrong column through** (the same-row
   residual, as on PDF): name the column in the claim text and keep the
   quote as close to the cell as the identifying rule allows. Since
-  `lit_verify` 1.5.0 (D-23) such a number carries the label
+  `lit_verify` 1.5.0 such a number carries the label
   `column-not-checked` (`evidence-card.md` § Numbers, the column label).
 - **Quotes do not move between renderings**: a quote copied from the HTML
   often fails against the PDF and the reverse, one more reason a paper key

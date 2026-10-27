@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/elicit/ MANIFEST row 4 (POST /api/v2/sessions/reports, HTTP 202, phase created checkpoint, 2026-10-11: {type, sessionId, status processing, url, isPublic, links.self}, no executionStage); values invented (sessionId and the URLs built from it). The request body is this test's own input.",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Elicit trial, MANIFEST row 4 (POST /api/v2/sessions/reports, HTTP 202, phase created checkpoint, 2026-10-11: {type, sessionId, status processing, url, isPublic, links.self}, no executionStage); values invented (sessionId and the URLs built from it). The request body is this test's own input.",
   "http_status": 202,
   "request_body": {
     "researchQuestion": "What are the effects of high-dosage tutoring on K-12 student achievement?",

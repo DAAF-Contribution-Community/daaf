@@ -52,5 +52,5 @@
   }
  ],
  "retrievalVersion": "pa1-v1",
- "_fixture_source": "SYNTHETIC; shape from live response smoke_s1/2026-10-02T125154Z_scholar_snippets_effect-of-high-dosage-tutoring-on-math-test-scores_bc45a9fc.json (Semantic Scholar /graph/v1/snippet/search; trimmed, scholar_search S1 smoke 2026-10-02); values invented"
+ "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-02 scholar_search smoke run (Semantic Scholar /graph/v1/snippet/search, `snippets 'effect of high-dosage tutoring on math test scores in standard deviations'`, 2026-10-02T12:51:54Z; trimmed); values invented"
 }

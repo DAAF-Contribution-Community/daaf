@@ -9,7 +9,7 @@ schemas `lit-verify-card-v1` and `lit-verify-card-v2`, result schema
 number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v4`,
 `numbers-v6`, `column-check-v1`, `normalize-v1`). A later session
 adds `lit_verify report` (S4); the full card schema is formalized later in
-`LIT_REVIEW_OUTPUT_CONTRACT.md` (spec C14). If this page and the code
+`LIT_REVIEW_OUTPUT_CONTRACT.md`. If this page and the code
 disagree, the code wins.
 
 **Contents:** Syntax · Card anatomy · Front matter · The lit-verify block ·
@@ -48,8 +48,8 @@ bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 
 ## Card anatomy
 
-`evidence_card{S}.md` = YAML front matter + free prose sections (spec §7.6:
-coverage ledger, question and contribution, design and identification,
+`evidence_card{S}.md` = YAML front matter + free prose sections (the
+Literature Review card's: coverage ledger, question and contribution, design and identification,
 sample, measures, findings table, heterogeneity, limitations, appraisal,
 open questions, relevance and directness, reader confidence, and the
 **text/vision discrepancy log**) + **exactly one** fenced block whose info
@@ -60,7 +60,7 @@ types → exit 8. JSON allows no comments, so commentary goes in prose.
 
 ## Front matter
 
-Free-form for the gate. Spec §7.6 lists `paper_key`, `doi`, `openalex_id`,
+Free-form for the gate. The Literature Review card lists `paper_key`, `doi`, `openalex_id`,
 `citekey`, `title`, `authors`, `year`, `venue`, `evidence_grade`,
 `source_pdf_sha256`, `extractors`, `vision_mode`, `reader_model`, `read_at`,
 `review_type`. A v2 card writes `source_sha256` (in place of
@@ -72,7 +72,7 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 |-------|-------|-------------|
 | `reader_model_source` | `self-report` | The reader. The orchestrator's audit result (`transcript-confirmed` or a mismatch) is recorded by the orchestrator outside the card, because editing a checked card breaks the SHA-256 its `card_check` records (`vision-validation.md` § Gating) |
 | `reader_route` | One of the route names in `vision-validation.md` § Routes, as given in the dispatch | The reader, copying the dispatch |
-| `vision` | `validated` or `unavailable` (the CLAUDE.md D-7 wording) | The reader, from the list check |
+| `vision` | `validated` or `unavailable` (the wording of CLAUDE.md § User Preferences, "PDF page-image cross-checking") | The reader, from the list check |
 
 `lit_verify` does **not** check any front-matter field.
 
@@ -93,7 +93,7 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 
 That is schema v1, which stays **PDF-only** and checks exactly as before.
 
-## Card schema v2 and section locators (1.4.0, D-21 N5)
+## Card schema v2 and section locators (1.4.0)
 
 `lit-verify-card-v2` is accepted beside v1. It names the source kind, so one
 schema covers both anchors. Use v2 for every arXiv HTML card; a v2 card with
@@ -149,7 +149,7 @@ across all units and their boundaries. How units and labels are built:
 6. **Vision consistency** with what the card declares and the embedded
    vision list.
 
-## Re-derivation (1.7.0 `rederive-v1`, D-24 W1; 1.8.0 `rederive-v2`, review cycle 2)
+## Re-derivation (1.7.0 `rederive-v1`; 1.8.0 `rederive-v2`)
 
 Hashes alone prove only that the manifest, page_index and anchor files agree
 with **each other**: in review cycle 1 a hand-written ingest set with a
@@ -172,14 +172,14 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
   `SOURCE_REDERIVE_ERROR` (fail; raise `--timeout` if it timed out).
   pypdfium2 missing or failing → `ROW_SOURCE_NOT_REDERIVED` (warning; lane B
   is not used, so no number takes the row path).
-- **Read once (1.8.0, `rederive-v2`, review W-b):** the source file is read
+- **Read once (1.8.0, `rederive-v2`):** the source file is read
   once and those bytes are hashed; every lane re-derives from the same
   bytes, never from the path again (poppler reads a sealed memfd as
   `/dev/fd/N`; pypdfium2, pdfplumber and the HTML lane read the bytes). A
   file swapped in at the path after the hash changes nothing. Without
   memfd sealing (non-Linux) → `SOURCE_REDERIVE_ERROR` (fail; no fallback to
   the path).
-- **Header/footer, page flags and OCR (1.8.0, review NB1, W-c, W-d):** from
+- **Header/footer, page flags and OCR (1.8.0):** from
   the re-derived anchors, with `pdf_ingest`'s own rules (its
   `header_footer_records()`, `text_flag_evidence()`, `caption_evidence()`,
   `image_evidence()`, `ocr_layer_evidence()`):
@@ -197,7 +197,7 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
     pdfimages alone does not confirm). A flag or page class that differs →
     `FLAGS_REDERIVE_MISMATCH` (fail); the gate uses the re-derived flags
     (a forged removal of 70 `ocr_layer_suspected` flags had lifted the
-    D-24 cap). pdfplumber unavailable → `FLAGS_NOT_REDERIVED` (warning) and
+    paper-level OCR-layer cap). pdfplumber unavailable → `FLAGS_NOT_REDERIVED` (warning) and
     a conservative reading: an unconfirmed `table` closes the row path, a
     recorded `ocr_layer_suspected` is kept, and a scanned page in a document
     pdfimages lists no image for counts as truly scanned (so a manifest made
@@ -208,8 +208,8 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
     or not it lists the image), with what that area raised
     (`ocr_layer_suspected`, or the truly-scanned class) removed from the
     manifest: the pdfplumber probe does not run on such a page in a document
-    pdfimages lists images for (probe 104 measured that quantity: no such
-    page in the five bake-off PDFs);
+    pdfimages lists images for (measured 2026-10-27: no such page in the
+    five bake-off PDFs);
   - OCR text on a page that re-derives with ≥ 200 non-whitespace anchor
     chars (not scanned, so `pdf_ingest` never OCRs it) → `OCR_ON_TEXT_PAGE`
     (fail; the OCR text is not used).
@@ -220,7 +220,7 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
   anchor has fewer than `SCANNED_MAX_CHARS` (200) non-whitespace characters
   is graded at most PARTIAL (`PASS_OCR`, with the `OCR_NOT_REDERIVED`
   warning): the paper never reaches `FULL_TEXT_VERIFIED` on OCR evidence (a
-  residual the user accepted, D-25; review cycle 3 W3). The display-only
+  residual the user accepted on 2026-10-27). The display-only
   flags (figure, garbled, rotated, cjk_risk, low_agreement, ocr) move no
   verdict.
 - `rederive.source_kind` (recorded only; no verdict effect): `web_fetch`
@@ -288,7 +288,7 @@ The tiers are those of `ladder-v1`; `ladder-v2` (1.6.0) adds the
 quote-number rule below on top of them, `ladder-v3` (1.8.0) widens it, and
 `ladder-v4` (1.8.0, part 3) makes its dash check symmetric.
 
-## The quote-number rule (`ladder-v2`, 1.6.0, S3-A review finding B2; `ladder-v3` and `ladder-v4`, 1.8.0)
+## The quote-number rule (`ladder-v2`, 1.6.0; `ladder-v3` and `ladder-v4`, 1.8.0)
 
 SKELETON deletes `-`, so without this rule a claim quote "slope was 0.164"
 passed on a page printing "slope was −0.164", and "510%" on "5–10%". Now a
@@ -308,7 +308,7 @@ whose matched span cannot be located is graded the same way (fail closed).
 Coverage anchors are not checked (they carry no claim). A
 `QUOTE_NUMBERS_DIFFER` quote also leaves the row path (§ Numbers).
 
-`ladder-v3` (1.8.0, S3-C1b, review cycle 2 NB2;
+`ladder-v3` (1.8.0;
 `pdf_text_common.quote_number_check()`) adds three things:
 - **Marks.** Each token's superscript and footnote letter must agree too, so
   "p < 10³" over a printed "p < 10⁻³" (the superscript minus dropped) and
@@ -327,7 +327,7 @@ Coverage anchors are not checked (they carry no claim). A
   the two tokens compare digits without the sign. The dash itself is still
   checked by the position rule.
 
-`ladder-v4` (1.8.0 part 3, S3-D, review cycle 3 quality W1) makes the dash
+`ladder-v4` (1.8.0, part 3) makes the dash
 check **symmetric**. A dash the quote prints before a number where the page
 prints no dash at that SKELETON position is `QUOTE_NUMBERS_DIFFER` too, when
 it can read as a sign: a spaced dash with no digit, `%` or dash before it
@@ -349,11 +349,14 @@ minus, a range dash, a superscript or a digit was lost, or a dash added,
 when the quote was retyped. Re-copy the quote from `pages/pNNN.txt` with
 every number exactly as printed (`−0.164`, `5–10%`, `10⁻³`). If the page
 itself prints the dash as something that is not a sign (a binary minus in a
-formula, an exponent), leave the item for the human check. On the bake-off
-papers the rule raised 2 false alarms in 2,407 genuine quotes under
-`ladder-v2` (both quotes starting with such a minus, S3-A2) and 0 under
-`ladder-v3` (WS script 111; the binary minus there is now sign-ambiguous)
-and `ladder-v4` (WS script 120_a). Of 217 planted minus deletions it
+formula, an exponent), leave the item for the human check. Measured on 2,407
+genuine quotes from the eight bake-off papers (five PDFs and three arXiv HTML
+papers, 2026-10-23 to 2026-10-27: 1,879 quote windows sampled from their
+ingests plus the 528 claim quotes and coverage anchors of their nine cards),
+the rule raised 2 false
+alarms in 2,407 genuine quotes under `ladder-v2` (both quotes starting with
+such a minus) and 0 under `ladder-v3` (the binary minus there is now
+sign-ambiguous) and `ladder-v4`. Of 217 planted minus deletions it
 flagged 208 under `ladder-v2` and 217 under `ladder-v3` and `ladder-v4`; of
 planted added dashes, `ladder-v4` flags 999 of 999 spaced after a word and
 18 of 18 glued after a bracket (`ladder-v3`: 0 of each).
@@ -396,7 +399,7 @@ cover the page.
 | `scanned` (truly scanned) | Flagged `scanned` AND one embedded image covers at least `TRULY_SCANNED_IMAGE_AREA_MIN = 0.50` of the page area (**PROVISIONAL**; from 1.8.0 the flag and the image evidence are re-derived from the source bytes, § Re-derivation; before, they were parsed from pdf_ingest's flag evidence); also when image evidence is unavailable (pdfimages lists no image in the document and pdfplumber is unavailable; a missing pdfimages is exit 10), the conservative reading | Adds a `SCANNED_PAGE` partial item: the card is at best PARTIAL |
 | `sparse` | Flagged `scanned` but not mostly one image (a figure page with a short caption) | No cap; the sparse waiver applies. The card's `sparse` field is advisory (a mismatch is a warning) |
 
-**OCR-layer pages (1.2.0, user decision D-21 N2).** A page flagged
+**OCR-layer pages (1.2.0, user decision 2026-10-19).** A page flagged
 `ocr_layer_suspected` (an image covers at least 80% of the page and the
 anchor has text: someone else's OCR, which the gate never compared with the
 image) is recorded per page as `ocr_layer: true` and treated like our own
@@ -409,7 +412,7 @@ born-digital cover image (bake-off: one false positive in 342 pages), and a
 cited-claims rule keeps that harmless. On the bake-off scan ED083756 (70 of
 71 pages flagged) every claim is now partial.
 
-**Paper-level cap (1.6.0, user decision D-24 W2).** A paper with at least
+**Paper-level cap (1.6.0, user decision 2026-10-23).** A paper with at least
 `OCR_LAYER_PAPER_CAP_PAGES = 2` pages flagged `ocr_layer_suspected` gets one
 `OCR_LAYER_PAPER` item (partial) and is at best PARTIAL even when no claim
 cites those pages: much of its text is someone else's OCR. One flagged page
@@ -457,7 +460,7 @@ string and the page text:
   `numbers-v4` a dash separated from the number by spaces (and at most one
   line break) is a sign after one of those characters or at the start
   (`Est = - 0.041`, `(- 0.044)`); after a digit it stays a range or
-  subtraction (`28 - 75`). From `numbers-v6` (1.8.0, S3-C1b, W-a) it is also
+  subtraction (`28 - 75`). From `numbers-v6` (1.8.0) it is also
   a sign at a **line start** (only spaces or tabs back to the line break: a
   column-major table cell `– 0.30`). After a letter or a closing bracket
   with a space before the dash (`of – 0.30`, `(n − 1)`, `(Girls) – 0.30`)
@@ -499,7 +502,7 @@ string and the page text:
 | `NUMBER_MISSING` | `missing` | Anything else (a changed digit, a dropped minus, the spaced form `= - 0.041` included from `numbers-v4`, a line-start cell `– 0.30` from `numbers-v6`; `both` declares a text reading, so a number in no text lane fails). A minus deleted *inside the quote* is the quote's `QUOTE_NUMBERS_DIFFER` (review, `ladder-v3`), not this | fail |
 | `NUMBER_UNPARSEABLE` | `unparseable` | The card string is not one number | fail |
 
-**Locality (`numbers-v2`, 1.2.0, user decision D-21 N1).** Under
+**Locality (`numbers-v2`, 1.2.0, user decision 2026-10-19).** Under
 `numbers-v1` a number passed when its value was printed anywhere on the
 cited page; in the S3 bake-off a planted last-digit change still passed 44%
 of the time on dense table pages (351 of 800) and a sign flip 5% (42 of
@@ -509,7 +512,7 @@ tokens are used, so a minus the SKELETON tier ignores cannot slip through;
 a declared `page_end` span is matched across the page boundary). A value
 printed elsewhere on the page is `not-near-quote`: a **human check, not a
 fail**; a value absent from the page is still `missing`. Measured on the
-bake-off ingests (FE-5 script 69; 453 table claims from B and C, quote =
+bake-off ingests (2026-10-19; 453 table claims from B and C, quote =
 12 words from the row label as a reader copying from `pages/` gets them;
 119 prose numbers from A, B, F), share graded ok, genuine / last digit
 changed / sign flipped:
@@ -523,13 +526,13 @@ changed / sign flipped:
 | Lane B row (the number on one lane B line that shares ≥ 6 letters with the quote) | 1.000 / 0.053 / 0.000 | 0.941 / 0.000 / 0.000 |
 
 The rule with the fewest fabricated passes was chosen (gate integrity
-first). *Correction (FE-5c, 2026-10-22):* script 69 quoted each table claim
+first). *Correction (2026-10-22):* that measurement quoted each table claim
 from the **first** occurrence of its row label on the page. On report-style
 pages a label such as "Full Sample" recurs in several panels, so that quote
 often belonged to another row, and the 0.305 above understates the in-quote
-rule (FE-5c scripts 75 and 76).
+rule (re-measured below with each quote taken from the number's own row).
 
-**The unique-row rule (`numbers-v3`, 1.3.0, user decision D-22).** The user
+**The unique-row rule (`numbers-v3`, 1.3.0, user decision 2026-10-22).** The user
 adopted lane B's row-by-row text as locality evidence, because human review
 time matters. A number printed on the anchor page also clears (`locality:
 row`) when all of these hold:
@@ -545,7 +548,7 @@ row`) when all of these hold:
    `ROW_LABEL_MIN_CHARS = 3` letters from `numbers-v4`; 2 before) is
    followed by at least one number in a cell-like tail (letters at most
    `ROW_TAIL_LETTER_SHARE_MAX = 0.25` of the tail's non-space characters).
-   From `numbers-v4` (1.6.0, S3-A) the row path also needs a page flagged
+   From `numbers-v4` (1.6.0) the row path also needs a page flagged
    `table` or `numeric` (`ROW_PAGE_FLAGS`) and a quote whose anchor match
    begins at a row start (no letter before it on its line), on a single page
    (a declared two-page span never takes the row path). From `numbers-v5`
@@ -572,7 +575,7 @@ the number is `not-near-quote` (review). Every number item records
 `locality` (`in-quote`, `row` or null) and `row_match` (`unique`,
 `ambiguous`, `none`, or null when the row path was not tried) so a reviewer
 sees which path cleared it. Measured on the bake-off ingests, with each table
-quote taken from the number's own row (FE-5c script 76: 449 claims from B and
+quote taken from the number's own row (2026-10-22: 449 claims from B and
 C; 60 DOI/URL and footnote rows excluded). Shares graded ok, genuine / last
 digit changed / sign flipped:
 
@@ -582,13 +585,13 @@ digit changed / sign flipped:
 | Lane B, any line sharing ≥ 6 letters (B6) | 1.000 / 0.058 / 0.000 | 1.000 / 0.097 / 0.000 |
 | **Unique row OR inside the quote (`numbers-v3`, shipped in 1.3.0)** | **0.996 / 0.018 / 0.000** | **0.935 / 0.000 / 0.000** |
 
-On script 69's own sample (430 table claims after removing 23 noise rows),
+On the 2026-10-19 sample (430 table claims after removing 23 noise rows),
 the `numbers-v3` rule cleared 0.277 genuine and B6 1.000, with 0.016 and 0.056
 fabricated last digits. Those quotes started at a recurring label: the
 `numbers-v3` rule calls 98% of C's quotes `ambiguous`, and B6 clears them by
 matching any line that shares the label, including the look-alike rows. Prose
 numbers (51 claims from A, B, F): 1.000 genuine and 0.000 fabricated under
-both in-quote and the `numbers-v3` rule (script 74).
+both in-quote and the `numbers-v3` rule.
 
 **Residuals (documented, not caught):**
 - (a) *same row, another column.* In a row `Overage 0.58 0.57 0.59 …`, a
@@ -599,17 +602,17 @@ both in-quote and the `numbers-v3` rule (script 74).
 - (b) *look-alike rows* are closed: under B6, "Time III (Inclusive with
   co-teaching)" matched the "… without co-teaching" row and "Full Sample"
   matched another table's row. Now the label must identify one row, so such
-  claims go to review. *Remote rows* (S3-A review, B3) were not closed by
-  `numbers-v3`: a prose quote named a prose lane B line ("which …", "of …")
-  and cleared its numbers (69 prose windows in four bake-off papers).
-  `numbers-v4`'s guards (above) cut that to 6 (S3-A script 93); those left
-  start at a row start on a table page with a label a table row shares.
-  `numbers-v5`'s anchor-cell guard closed the two holes S3-A2 still found
+  claims go to review. *Remote rows* (found in review, 2026-10-23) were not
+  closed by `numbers-v3`: a prose quote named a prose lane B line ("which …",
+  "of …") and cleared its numbers (69 prose windows in four bake-off papers).
+  `numbers-v4`'s guards (above) cut that to 6 (measured 2026-10-23); those
+  left start at a row start on a table page with a label a table row shares.
+  `numbers-v5`'s anchor-cell guard closed the two holes a re-check still found
   (a prose sentence starting with a row-label word; a lane B fragment row
   "the 1" that any quote starting with "the" identified), at the cost of one
   genuine row-path quote on the bake-off papers (now review).
 
-**The column label (`column-check-v1`, 1.5.0, user decision D-23).** The
+**The column label (`column-check-v1`, 1.5.0, user decision 2026-10-23).** The
 user asked for residual (a) to be visible "for future reference, and then it
 can go to human review if required later on down the line". So a number
 that clears now says whether the gate could tell which cell it came from.
@@ -654,13 +657,14 @@ The rule (`pdf_text_common.column_values`):
   else comparable makes the claim true in either column (`column_checked:
   true`); `0.57 0.59 0.57` does not.
 
-What it costs and catches: on the bake-off cards (FE-5g script 90) the label
+What it costs and catches: on the bake-off cards (2026-10-23) the label
 fell on the 5 numbers C quotes from one five-cell row, on one HTML number
 inside a confidence interval (`7.2% (6.5% - 11.2%)`), and on one HTML number
 in a short math expression beside a heading number; no prose sentence with
 one number was labeled. The residual it marks was measured at 1.8% of
-last-digit fabrications on PDF true-row quotes (FE-5c script 76) and about 9%
-on whole-row arXiv HTML quotes (FE-5f script 86). `counts` gains
+last-digit fabrications on PDF true-row quotes (the unique-row table above)
+and about 9% on whole-row arXiv HTML quotes (`arxiv-and-html.md` § Measured
+on real papers). `counts` gains
 `numbers_column_not_checked`, the JSON lists the labeled items in
 `column_not_checked_items`, and the stdout summary line prints the count
 (`… 15 number(s), 5 column-not-checked; …` on C).
@@ -804,8 +808,9 @@ column label).
 | `PARTIAL` | No fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY, ocr-only, ocr+vision, ocr-layer, ocr-layer+vision, vision-only or SCANNED_PAGE item, a COVERED_SPARSE or COVERED_DUPLICATE on a truly scanned page or matched in OCR text, or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error item | `FULL_TEXT_PARTIAL` | 0 |
 | `PASS` | Everything anchored in the text layer | `FULL_TEXT_VERIFIED` | 0 |
 
-Evidence grades and what synthesis may do with each: spec §7.5
-(`FULL_TEXT_PARTIAL` = claims from verified pages only, exceptions listed).
+What synthesis may do with each grade: `FULL_TEXT_VERIFIED` supports any
+claim, effect sizes included; `FULL_TEXT_PARTIAL` supports claims from
+verified pages only, with the gate's exceptions listed.
 
 ## `card_check{S}.json`
 
@@ -872,13 +877,13 @@ table_probed, table_not_rederived_uncited, not_rederived},
 `numbers-v5`; `constants` gain `SOURCE_MAX_BYTES`, `REDERIVE_TIMEOUT_S` (the
 `--timeout` used) and `REDERIVE_WORKERS`.
 
-**1.8.0, part 2 (S3-C1b; result schema unchanged):** `rule_versions.match_ladder`
+**1.8.0, part 2 (result schema unchanged):** `rule_versions.match_ladder`
 is `ladder-v3` and `numbers` `numbers-v6`; a number item can carry the
 status `NUMBER_SIGN_AMBIGUOUS` (label `sign-ambiguous`, review, `locality`
 null); a `QUOTE_NUMBERS_DIFFER` reason now says whether the digits, a mark
 or a sign-shaped dash differ.
 
-**1.8.0, part 3 (S3-D; result schema unchanged):** `rule_versions.match_ladder`
+**1.8.0, part 3 (result schema unchanged):** `rule_versions.match_ladder`
 is `ladder-v4`; a `QUOTE_NUMBERS_DIFFER` reason can also say that the quote
 prints a sign-shaped dash the matched span does not. No new status.
 
@@ -912,7 +917,7 @@ dir writes no row.
 
 ## Fixing a failing card
 
-At most **two** self-revisions (spec §7.4), each a new card file
+At most **two** self-revisions, each a new card file
 (`evidence_card_a.md`, `evidence_card_b.md`), then return with the latest
 `card_check` path and the open items.
 
@@ -985,7 +990,7 @@ fields, each with a forged MANIFEST row: a header/footer record that lets a
 span quote skip a printed line (FAIL via HEADER_FOOTER_REDERIVE_MISMATCH),
 removed `scanned` / `ocr_layer_suspected` flags (FAIL via
 FLAGS_REDERIVE_MISMATCH) and OCR text on a text page (FAIL via
-OCR_ON_TEXT_PAGE); (1.8.0, S3-C1b) on a number-parsing page: a genuine
+OCR_ON_TEXT_PAGE); (1.8.0, part 2) on a number-parsing page: a genuine
 footnote-lettered negative `−0.164a` (PASS), its minus deleted in the quote
 and a superscript minus deleted from `10⁻³` (both NEEDS_REVIEW via
 QUOTE_NUMBERS_DIFFER), a spaced minus after a word (NEEDS_REVIEW via

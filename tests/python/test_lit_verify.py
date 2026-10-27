@@ -515,7 +515,7 @@ class CheckCardTests(unittest.TestCase):
         r = self.run_check(ing, mk_card(c, ingest_suffix="_a"))
         self.assertEqual((r["verdict"], r["counts"]["warning"]), ("PASS", 1))
 
-    # --- numbers-v2 locality (D-21 N1) and OCR-layer pages (D-21 N2) ---
+    # --- numbers-v2 locality and OCR-layer pages (1.2.0) ---
     TABLE = ("Table 4: Invented harbour counts\nHerons Gulls Terns\n0.31 0.47 0.52\n"
              "The counts in Table 4 were invented for the locality rule of the gate and describe no harbour.\n\f")
 
@@ -614,7 +614,7 @@ class CheckCardTests(unittest.TestCase):
         self.assertTrue(ptc.number_near_spans(ptc.parse_number("0.52"), n2, sp, 6))
         self.assertEqual(ptc.NUMBER_NEAR_CHARS, 0)
 
-    # --- numbers-v3: the unique-row rule (D-22); synthetic text, every word invented ---
+    # --- numbers-v3: the unique-row rule (1.3.0); synthetic text, every word invented ---
     R = lv.SELFTEST_PAGES["R"][0]
     R_COV = [cov(1, "The counts in Table 5 are invented to exercise the row rule of the verification gate")]
     R_QUOTE = "North Quay (with tide gauge) North Quay (without tide gauge) All Harbours"
@@ -702,7 +702,7 @@ class CheckCardTests(unittest.TestCase):
         self.assertEqual(ptc.quote_row("An invented sentence with no row label", [lane_b])["status"], "none")
 
     def test_reading_aid_quote_is_not_a_pass(self):
-        # D-21 N3: a line copied verbatim from the reading aid carries the prefix no page prints
+        # Reading aid (pdf_ingest 1.1.0): a line copied verbatim from the reading aid carries the prefix no page prints
         aid, _ = pdf_ingest.reading_aid_body(self.R["lane_b"])
         line = next(ln for ln in aid.split("\n") if "with tide gauge" in ln)
         r = self.r_check([{"claim_id": "A1", "page": 1, "quote": line, "numbers": [], "source": "text"}])
@@ -729,7 +729,7 @@ class CheckCardTests(unittest.TestCase):
         self.assertIn("WRONG_PAGE", statuses(self.run_check(ing, card), "claim_quote"))
 
 
-# --- arXiv HTML ingests (1.4.0, D-21 N5): card v2 on in-memory unit ingests (pure) ---
+# --- arXiv HTML ingests (1.4.0): card v2 on in-memory unit ingests (pure) ---
 # Every word below is invented (no third-party text).
 UNITS = [
     {"label": "front", "flags": ["sparse"],
@@ -926,7 +926,7 @@ class HtmlCheckTests(unittest.TestCase):
         self.assertTrue(all(it["section"] is None and it["section_end"] is None for it in a["items"]))
 
 
-# --- 1.5.0 (D-23): the column-not-checked label on cleared numbers (pure; every word invented) ---
+# --- 1.5.0: the column-not-checked label on cleared numbers (pure; every word invented) ---
 class ColumnLabelTests(unittest.TestCase):
     TABLE = CheckCardTests.TABLE
     T_COV = [cov(1, "The counts in Table 4 were invented for the locality rule")]
@@ -1319,7 +1319,7 @@ class SoundnessFixTests(unittest.TestCase):
         self.assertEqual(REAL_VISION_LISTS, {lv.VISION_LIST_VERSION: ()})
         self.assertIn("*(none yet)*", skill)
 
-    # W2 (D-24): the OCR-layer paper cap
+    # W2 (1.6.0): the OCR-layer paper cap
     def test_ocr_layer_paper_cap(self):
         layer = {"flags": ["ocr_layer_suspected"], "evidence": {"ocr_layer_suspected": ["an image covers 100%"]}}
         pages = [dict(layer, anchor=PROSE[1]), dict(layer, anchor=PROSE[2]), {"anchor": PROSE[3]}]
@@ -1833,7 +1833,7 @@ class IngestAndRowTests(ScratchCase):
         self.assertEqual((check["verdict"], nums[0]["locality"]), ("PASS", "row"))
         self.assertEqual(check["constants"]["ROW_LABEL_MIN_CHARS"], ptc.ROW_LABEL_MIN_CHARS)
         self.assertEqual(check["rule_versions"]["numbers"], "numbers-v6")
-        # 1.5.0 (D-23): the row prints 0.62 and 0.63, so the cleared number is
+        # 1.5.0: the row prints 0.62 and 0.63, so the cleared number is
         #   labeled; counted, printed on stdout and recorded with its constants
         self.assertEqual((nums[0]["column_checked"], nums[0]["column_label"], nums[0]["column_values"]),
                          (False, "column-not-checked", 2))
@@ -1865,7 +1865,7 @@ class IngestAndRowTests(ScratchCase):
             self.assertIn(case, out)
         self.assertIn("prose quote starting with a row label", out)                # numbers-v5
         self.assertIn("HTML quote cited to another section", out)
-        self.assertIn("cols 0.63:not-checked,5:checked", out)                  # 1.5.0 (D-23)
+        self.assertIn("cols 0.63:not-checked,5:checked", out)                  # 1.5.0
         row = rows_of(self.root)[-1]
         self.assertEqual((row["command"], row["verdict"], row["exit_code"]), ("selftest", "PASS", 0))
         self.assertTrue(row["counts"]["work_dir_removed"])

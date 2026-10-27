@@ -30,7 +30,7 @@
 # restricted/<base>.json, the open backends' raw log and the facts-only digest
 # stay in DEST_DIR (row fields restricted_raw_artifact / restricted_backends).
 #
-# Architecture (spec §5.5): this core owns argparse, guards, artifacts,
+# Architecture: this core owns argparse, guards, artifacts,
 # MANIFEST, fusion, version merging, rendering and rate gating. Each backend
 # is an adapter module in scripts/scholar_backends/ that builds requests and
 # maps responses to the common record schema; adapters never write files.
@@ -1332,7 +1332,7 @@ def cmd_verify(http, a, notes):
     #   review-fix cycles 3-7 (2026-10-03 to 2026-10-06) refine the author and
     #   numeral rules (see _common.py § VERIFY_CUTOFFS and api-notes.md); every
     #   constant and rule id is recorded in the MANIFEST row (verify_cutoffs).
-    #   Cycle 6 (user decision D-16): this is the RULE layer; it owns identity
+    #   Cycle 6 (user decision 2026-10-06): this is the RULE layer; it owns identity
     #   and steps aside (WEAK) on semantic questions such as whether an
     #   organization's acronym or variant name is the listed body, which the
     #   forthcoming citation adjudicator (then a human) resolves. Cycle 7 adds

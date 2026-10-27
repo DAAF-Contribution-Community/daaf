@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 5 (keyless POST /tallies with a bare-array body -> 200 {\"tallies\": {doi: tally}}, 2026-10-11); the documented {\"dois\": [...]} body got HTTP 400 {\"message\": \"Invalid request.\"} one call earlier (MANIFEST row 4: measured behavior, kept verbatim); values invented (DOIs under 10.5555/, every count).",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Scite trial, MANIFEST row 5 (keyless POST /tallies with a bare-array body -> 200 {\"tallies\": {doi: tally}}, 2026-10-11); the documented {\"dois\": [...]} body got HTTP 400 {\"message\": \"Invalid request.\"} one call earlier (MANIFEST row 4: measured behavior, kept verbatim); values invented (DOIs under 10.5555/, every count).",
   "request_body": [
     "10.5555/synth.2001",
     "10.5555/synth.1998"

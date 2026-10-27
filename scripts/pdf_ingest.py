@@ -17,7 +17,7 @@
 #   bash /daaf/scripts/pdf_ingest.sh <HTML_PATH> <PAPERS_DIR> --paper-key KEY
 #        --source arxiv-html [--max-pages N] [--max-bytes N] [--reingest]
 #
-# --- arXiv HTML lane (1.2.0, D-21 N5; § ARXIV_HTML below) ------------------
+# --- arXiv HTML lane (1.2.0; § ARXIV_HTML below) ---------------------------
 #   Input: a raw arxiv.org/html/{id}v{N} file saved by web_fetch.sh (its
 #   MANIFEST row gives the provenance as for a PDF). Refused (exit 12) unless
 #   it is LaTeXML article output with an `arXiv:IDvN` watermark. Anchor units
@@ -42,7 +42,7 @@
 #   PDF_PATH     must resolve (realpath) under the same root and outside
 #                <root>/.claude and <root>/.git (exit 2): copy a PDF into the
 #                project first
-#   --paper-key  spec §6 forms only: OpenAlex W-id (W123), doi_<sha8>,
+#   --paper-key  these forms only (PAPER_KEY_RE): OpenAlex W-id (W123), doi_<sha8>,
 #                eric_<ED|EJ + 6-7 digits>, user_<sha8> (exit 2 otherwise)
 #   Provenance   the PDF is hashed; a MANIFEST.jsonl beside it (web_fetch's)
 #                is searched for rows whose raw_artifact is the PDF's
@@ -68,13 +68,13 @@
 #               stored raw and hashed. Used for two-extractor agreement only.
 #   agreement   rapidfuzz fuzz.ratio(skeleton(A), skeleton(B)) / 100 per page
 #               (None when both skeletons are empty or a lane is missing).
-#   overlap     (1.1.0, D-21 N4) pdf_text_common.overlap_score(A, B): Dice on
+#   overlap     (1.1.0) pdf_text_common.overlap_score(A, B): Dice on
 #               the SKELETON character multisets, order-free (1.0 = the same
 #               characters in any order). A DIAGNOSTIC beside `agreement`:
 #               high overlap with low agreement means the lanes order the
 #               page differently; low overlap means they read different
 #               characters. No flag or verdict uses it (OVERLAP_VERSION).
-#   reading aid (1.1.0, D-21 N3) on pages flagged `table`, lane B's text (rows
+#   reading aid (1.1.0) on pages flagged `table`, lane B's text (rows
 #               kept on one line) as a fenced sibling of the reading copy,
 #               every line prefixed READING_AID_PREFIX. NOT quotable: lit_verify
 #               matches quotes against the anchor only, so a quote copied from
@@ -243,14 +243,14 @@ from pdf_text_common import NORMALIZE_VERSION, OVERLAP_VERSION, normalize, overl
 # B (pypdfium2) + SKELETON agreement, pdfplumber table hints, captions, OCR
 # on scanned pages (tesseract TSV), 2000-px renders and 300-DPI crops,
 # versioned re-ingest sets, MANIFEST kind "pdf_ingest".
-# 1.1.0 (S3 FE-5c, 2026-10-22, D-21 N3/N4): the table-page READING AID
+# 1.1.0 (S3 FE-5c, 2026-10-22): the table-page READING AID
 # (pages{S}/pNNN_rows.txt, manifest page `reading_aid`, page_index
 # reading_aid_path / reading_aid_sha256, row and stdout `reading_aid_pages`,
 # a pointer line at the end of a table page's reading copy and an aid block
 # in fulltext{S}.md); the `overlap` diagnostic per page (manifest pages,
 # page_index column, lanes.overlap, constants OVERLAP_VERSION and
 # READING_AID_FLAG). Exit meanings unchanged.
-# 1.2.0 (S3 FE-5d, 2026-10-22, D-21 N5): `--source arxiv-html`, the arXiv
+# 1.2.0 (S3 FE-5d, 2026-10-22, user decision): `--source arxiv-html`, the arXiv
 # HTML lane (anchor units = LaTeXML sections, labels from the heading tags,
 # table rows, conversion-error flags; exit 12 for a file that is not a
 # version-pinned LaTeXML article); every manifest records `anchor_kind`
@@ -282,7 +282,7 @@ EXIT_CODES = {
         "version watermark, or a watermark that contradicts the fetched URL)",
 }
 
-# --- arXiv HTML lane (1.2.0, D-21 N5) ---
+# --- arXiv HTML lane (1.2.0) ---
 # INTENT: the extraction rules for LaTeXML HTML are versioned like NORMALIZE:
 #   a change to what text a unit holds changes what quotes can match.
 HTML_EXTRACT_VERSION = "arxiv-html-v1"
@@ -327,7 +327,7 @@ UNIT_FLAG_NAMES = ("table", "figure", "sparse", "conversion_error")
 #   the container, the runner's checkout in CI), never a second hardcoded copy.
 ALLOWED_SOURCE_ROOT = ALLOWED_ROOT
 FORBIDDEN_SOURCE_PREFIXES = (ALLOWED_SOURCE_ROOT + "/.claude", ALLOWED_SOURCE_ROOT + "/.git")
-# INTENT: spec §6 paper_key forms. Strict, so the key is safe as a directory
+# INTENT: the paper_key forms. Strict, so the key is safe as a directory
 #   name and in every path built from it.
 PAPER_KEY_RE = re.compile(r"^(W\d{1,12}|doi_[0-9a-f]{8}|eric_E[DJ]\d{6,7}|user_[0-9a-f]{8})$")
 REQUIRED_BINARIES = ("pdftotext", "pdfinfo", "pdftoppm")
@@ -360,7 +360,7 @@ OCR_LANG = "eng"
 OCR_PSM = "3"
 OCR_THREAD_ENV = {"OMP_THREAD_LIMIT": "1"}
 VERSION_SUFFIXES = [""] + ["_" + c for c in "abcdefghijklmnopqrstuvwxyz"]
-# INTENT (1.1.0, D-21 N3): the reading aid is written for pages carrying this
+# INTENT (1.1.0): the reading aid is written for pages carrying this
 #   flag; every aid line starts with the prefix, so a line copied verbatim
 #   carries text no page prints and cannot pass as a quote.
 READING_AID_FLAG = "table"
@@ -493,7 +493,7 @@ def cjk_evidence(lanes, font_encodings, poppler_data_present):
 def char_is_rotated(char):
     # True when a pdfplumber char's text matrix turns it more than
     # ROTATED_ANGLE_TOLERANCE_DEG away from upright, or pdfplumber marks it
-    # non-upright. REASONING: probe 42 (2026-10-13) found pdfplumber 0.11.10
+    # non-upright. REASONING: a probe (2026-10-13) found pdfplumber 0.11.10
     # reporting upright=True for chars with matrix (0, 1, -1, 0), i.e. text
     # turned 90 degrees by a typst rotate(); the matrix angle catches 90, 180
     # and 270 degrees, while a skew (italic: b = 0) stays upright.
@@ -782,7 +782,7 @@ def existing_ingests(key_dir):
     return found
 
 
-# §§ ARXIV_HTML (1.2.0, D-21 N5; rules versioned as HTML_EXTRACT_VERSION)
+# §§ ARXIV_HTML (1.2.0; rules versioned as HTML_EXTRACT_VERSION)
 # Only the text inside <article class="ltx_document">...</article> is read (the
 # arXiv banner, TOC sidebar, infobox and footer around it are dropped). Units:
 # the article's own content outside every section is unit "front" (title,
@@ -1453,7 +1453,7 @@ def ingest(a, ctx, row):
             ev["rotated"].append(f"pdfplumber rotated chars {rec['nonupright']} >= {ROTATED_MIN_NONUPRIGHT_CHARS}")
         # cjk_risk
         ev["cjk_risk"] = cjk_evidence({"lane A": ta, "lane B": tb}, cjk_per_page.get(n, []), poppler_data)
-        # overlap (1.1.0, D-21 N4): diagnostic only, never a flag
+        # overlap (1.1.0): diagnostic only, never a flag
         rec["overlap"] = overlap_score(ta, tb) if tb is not None else None
         # agreement
         rec["agreement"] = None
@@ -1556,7 +1556,7 @@ def ingest(a, ctx, row):
     anchor_tool = f"pdftotext {versions['pdftotext']} (anchor lane, default mode)"
     aid_tool = f"pypdfium2 {pdfium.PYPDFIUM_INFO} (lane B, rows kept on one line)" if pdfium is not None else ""
     for rec in pages:
-        # INTENT (1.1.0, D-21 N3): on a table page, lane B as a labeled reading
+        # INTENT (1.1.0): on a table page, lane B as a labeled reading
         #   aid beside the reading copy; never a quote source (the gate
         #   matches the anchor only, and every aid line carries the prefix).
         rec["reading_aid"], aid_text = None, None

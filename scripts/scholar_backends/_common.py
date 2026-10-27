@@ -53,7 +53,7 @@ VERIFY_CONFIDENT_MIN = 0.95
 VERIFY_MISMATCH_BELOW = 0.45
 VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 # Rules R1-R4 (user decisions 2026-10-03; evidence: api-notes.md § "Measured
-# behavior: verify R1–R4 (2026-10-03)", calibration_verify_r1r4/):
+# behavior: verify R1–R4 (2026-10-03)"):
 #   R1 VERIFY_SCORER "hybrid-v1": CONFIDENT on the difflib FULL-title score
 #      (>= VERIFY_CONFIDENT_MIN); MISMATCH on the subtitle-aware score
 #      max(full, main titles before the first colon, both sides split)
@@ -68,8 +68,7 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #   R4 VERIFY_YEAR_TOLERANCE: --year passes within ±1 (online-first vs issue
 #      year); a larger gap downgrades CONFIDENT to WEAK, never to MISMATCH.
 # Review-fix cycle 2 (user decisions D1-D2 and review fixes, 2026-10-03;
-# evidence: api-notes.md § "Measured behavior: verify cycle 2 (2026-10-03)",
-# calibration_verify_cycle2/):
+# evidence: api-notes.md § "Measured behavior: verify cycle 2 (2026-10-03)"):
 #   D1 EXISTS: an identifier lookup without a title check resolves the ID only
 #      and is never citable; CONFIDENT requires a passing title check.
 #   B1 VERIFY_TITLE_NORM "nfkc-casefold-v1": verify scoring has its own
@@ -85,7 +84,7 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #      or an author-less record is "not checked" (never MISMATCH); a surname
 #      matching only a given or middle name part is "ambiguous" (caps WEAK).
 # Review-fix cycle 3 (2026-10-03; evidence: api-notes.md § "Measured behavior:
-# verify cycle 3 (2026-10-03)", calibration_verify_cycle3/):
+# verify cycle 3 (2026-10-03)"):
 #   W-A VERIFY_NUMERAL_GUARD "numerals-v2": also ordinals and decades read by
 #      their number ("21st" = 21, "1980s" = 1980), decimal digits of any script
 #      (Arabic-Indic "٢٠١٨" = 2018), and I/V/X right after Part / Volume / Vol /
@@ -98,8 +97,7 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #      token ("Xiaoming LI") is read as initials only when that leaves a
 #      surname on the record.
 # Review-fix cycle 4 (user-authorized extra round, 2026-10-05; evidence:
-# api-notes.md § "Measured behavior: verify cycle 4 (2026-10-05)",
-# calibration_verify_cycle4/):
+# api-notes.md § "Measured behavior: verify cycle 4 (2026-10-05)"):
 #   VERIFY_NUMERAL_GUARD "numerals-v3": PART_WORDS gains Phase / Wave / Title /
 #      Section / Stage / Round / Experiment / Grade / Level; a spelled-out
 #      one-twenty or first-twentieth right after a part word counts ("Part
@@ -116,7 +114,7 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #      words before its first comma is read as a person even when a word is an
 #      ORG_WORDS word ("Board", "Board, Jane").
 # Review-fix cycle 5 (user-authorized, 2026-10-06; evidence: api-notes.md §
-# "Measured behavior: verify cycle 5 (2026-10-06)", calibration_verify_cycle5/):
+# "Measured behavior: verify cycle 5 (2026-10-06)"):
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v5":
 #   - M1 (fixes a cycle-4 regression): an acronym is read ONLY when the whole
 #     cited name is that acronym ("OECD", "OECD (2019)"), never from a
@@ -137,9 +135,9 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #     the other) -> "ambiguous": Mueller and Muller are also distinct names.
 #   VERIFY_NUMERAL_GUARD "numerals-v4": PART_WORDS gains Year / Cohort ("Year
 #     One" vs "Year Two" is WEAK, no longer CONFIDENT at 0.979).
-# Review-fix cycle 6 (user decision D-16, 2026-10-06; evidence: api-notes.md §
-# "Measured behavior: verify cycle 6 (2026-10-06)", calibration_verify_cycle6/):
-#   D-16 splits the citation gate into a rule layer (this code: identity —
+# Review-fix cycle 6 (user decision 2026-10-06, "the step-aside decision" below;
+# evidence: api-notes.md § "Measured behavior: verify cycle 6 (2026-10-06)"):
+#   The decision splits the citation gate into a rule layer (this code: identity —
 #   the record exists, exact or near-exact title, numbers, year, surname,
 #   retraction — certain or it steps aside to WEAK), a forthcoming model
 #   "citation adjudicator" for the WEAK band (semantic equivalence), and a
@@ -166,8 +164,8 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #   - the dropped-umlaut fold fires only on consonant + ae/oe/ue + two more
 #     letters ("Mueller", "Schroeder"; not "Xue", "Doe", "Bauer", "Goel") (N3).
 # Review-fix cycle 7 (user-approved fix round K, 2026-10-06; evidence:
-# api-notes.md § "Measured behavior: verify cycle 7 (2026-10-06)",
-# calibration_verify_cycle7/). Under D-16 every fix is a STEP-ASIDE (the rule
+# api-notes.md § "Measured behavior: verify cycle 7 (2026-10-06)"). Under the
+# step-aside decision every fix is a STEP-ASIDE (the rule
 # layer cannot be sure, so it says "ambiguous", capping at WEAK), never a new
 # word list:
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v7" (person path, H1: an
@@ -205,8 +203,8 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #     Melinda Gates Foundation"). Spelling variants (Centre/Center,
 #     Organisation/Organization) stay unmatched for the adjudicator.
 # Review-fix cycle 8 (fix round L, the FINAL rule-layer round, user decision
-# D-17, 2026-10-06; evidence: api-notes.md § "Measured behavior: verify cycle 8
-# (2026-10-06)", calibration_verify_cycle8/). D-17 makes the citation
+# 2026-10-06; evidence: api-notes.md § "Measured behavior: verify cycle 8
+# (2026-10-06)"). That decision makes the citation
 # adjudicator's second check on EVERY CONFIDENT mandatory, so the remaining
 # rule-layer false passes are documented residuals the model reviews:
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v8" (step-asides only):
@@ -231,14 +229,14 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #   Johnson": "&" ends the first author).
 # Cycle 8b (add-on to fix round L, 2026-10-06; reported by the Manuscript
 # Preparation session; evidence: api-notes.md § "Measured behavior: verify
-# cycle 8 (2026-10-06)" > "Add-on 8b", calibration_verify_cycle8b/):
+# cycle 8 (2026-10-06)" > "Add-on 8b"):
 #   VERIFY_TRANSLIT "translit-v1": the ASCII fold DELETED Latin letters that
 #   have no Unicode decomposition ("Sørensen" -> srensen, "Ærø" -> r,
 #   "Đorđević" -> orevic), so an ASCII-transliterated citation ("Sorensen",
 #   "Djordjevic") was a false MISMATCH, and deleted letters could collide.
 #   LATIN_TRANSLITERATION spells them out first, on BOTH sides, in every fold
 #   that deletes (name_tokens, norm_title, org_initials). A character table is
-#   normalization, not a word list (D-16).
+#   normalization, not a word list (the step-aside decision).
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v9" (a step-aside): a surname that
 #   matches only under an ALTERNATIVE transliteration of such a letter
 #   (TRANSLIT_ALTERNATIVES: đ as dj, ø as oe, æ as a — "Djordjevic",
@@ -246,10 +244,10 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #   through the cycle-5 dropped-umlaut fold, which is tried first) is
 #   "ambiguous", never a fail; a different surname ("Nielsen" on "Anne
 #   Sørensen") still fails.
-# Cycle 9 (the final S1 patch, user approval at Checkpoint 2g, 2026-10-06;
+# Cycle 9 (the final S1 patch, user approval 2026-10-06;
 # from review cycle 8's BLOCKER B-1 and FIX-NOW F-1, with the reviewer's
 # tested sketches F1 and F2; evidence: api-notes.md § "Measured behavior:
-# verify cycle 9 / final S1 patch (2026-10-06)", calibration_verify_cycle9/):
+# verify cycle 9 / final S1 patch (2026-10-06)"):
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v10" (B-1, a step-aside): the N-2
 #   check compared only the SECOND given position, so "John Q. R. Smith"
 #   passed on "John Q. S. Smith". Now every aligned given position after the
@@ -335,7 +333,7 @@ nations""".split())
 # "Supreme Court", "Federal Reserve", "United Nations"). "banks" is left out:
 # Banks is a common surname ("James A. Banks"), and a listed name with an
 # ORG_WORDS word is read as an organization (is_org_name).
-# Cycle 6 (D-16): the name_part of an organization match that is not an exact
+# Cycle 6 (step-aside decision): the name_part of an organization match that is not an exact
 # whole-name match — the rows the forthcoming citation adjudicator selects.
 ORG_NOT_EXACT = "organization: not an exact name match"
 # A leading "The" is dropped from BOTH organization names before the exact
@@ -379,8 +377,8 @@ LATIN_TRANSLITERATION_V1 = {
 # romanized "Aliyev"; open e / open o: West African orthographies; ezh).
 LATIN_TRANSLITERATION_EXPLICIT_V2 = {"ə": "a", "Ə": "A", "ɛ": "e", "Ɛ": "E", "ɔ": "o", "Ɔ": "O", "ʒ": "z",
                                      "Ʒ": "Z"}
-# The code-point blocks the name-derived rule scans (the reviewer's c8_r01
-# enumeration ranges: Latin-1 Supplement through IPA Extensions, and Latin
+# The code-point blocks the name-derived rule scans (the review-cycle-8
+# reviewer's enumeration ranges: Latin-1 Supplement through IPA Extensions, and Latin
 # Extended Additional). Fixed here so the table does not grow with the
 # Unicode database of a future Python.
 TRANSLIT_NAME_RANGES = ((0x00C0, 0x024F), (0x0250, 0x02AF), (0x1E00, 0x1EFF))
@@ -396,7 +394,8 @@ def name_derived_transliteration():
     #   partner is ("LATIN CAPITAL LETTER AFRICAN D" Ɖ, partner of ɖ "D WITH
     #   TAIL") gets the partner's base letter in its own case.
     # REASONING: Unicode names are immutable, so the mapping is a fixed,
-    #   reviewable function of the character, not a word list (D-16). Letters
+    #   reviewable function of the character, not a word list (step-aside
+    #   decision). Letters
     #   with a decomposition never reach the table (NFKD runs first).
     # ASSUMES: a stroke, hook, bar, curl, tail or loop on a Latin letter is a
     #   diacritic-like modifier whose ASCII rendering is the base letter, as
@@ -631,11 +630,11 @@ def arxiv_id_from(*values):
 
 
 def record(**kw):
-    # INTENT: the COMMON RECORD SCHEMA (preliminary_notes/05 §5, trimmed to
-    #   what adapters can know). Provenance fields — raw_response_path,
+    # INTENT: the COMMON RECORD SCHEMA (from the 2026-10-02 scholarly-API
+    #   design research, trimmed to what adapters can know). Provenance fields — raw_response_path,
     #   raw_sha256, fetched_at, query, rank — are added by the CORE, never by
     #   an adapter, so a new backend cannot misreport its own provenance.
-    #   Field map to the §5 schema: backend=source_backend, ids=backend_ids,
+    #   Field map to the design's field names: backend=source_backend, ids=backend_ids,
     #   cites=citation_count (per backend), oa={is_oa, oa_pdf_url(=oa_url),
     #   license, version, host}, fulltext=fulltext.available,
     #   retracted=retraction.status (True/False/None=unknown).
@@ -908,7 +907,7 @@ def cited_org_parts(cited):
     #   full name second, "ACR (Full)", "ACR [Full]", "ACR, Full" (N1, N5).
     # REASONING: the full name is the identity claim; an acronym maps to
     #   several organizations (APA = Psychological / Psychiatric), so reading
-    #   it is a semantic judgment, left to the adjudicator (D-16).
+    #   it is a semantic judgment, left to the adjudicator (step-aside decision).
     raw = unicodedata.normalize("NFC", str(cited or "")).strip()
     raw = re.split(r"(?:^|\s+)(?:et\.?\s+al\b\.?|and\s+others\b)", raw, maxsplit=1, flags=re.I)[0]
     parens = [(a or b).strip() for a, b in re.findall(r"\(([^)]*)\)|\[([^\]]*)\]", raw)]
@@ -1062,7 +1061,7 @@ def cited_given_hyphenated(cited, pop_initials=True):
 def person_step_aside(cited, matched, want, pop_initials=True, fold="ascii"):
     # INTENT (cycle 7, H1; cycle 8 VERIFY_AUTHOR_RULE "contiguous-surname-v8"):
     #   why a person-path surname match must NOT pass, as (name_part, reason),
-    #   or None when it may pass. D-16: the rule layer cannot tell a person
+    #   or None when it may pass. Step-aside decision: the rule layer cannot tell a person
     #   from an organization whose name holds no ORG_WORDS word ("Health
     #   Canada"), or a nickname from another person ("Jane" / "John"), so it
     #   steps aside to "ambiguous" (WEAK) rather than guessing:
@@ -1222,7 +1221,7 @@ def translit_alternative_hit(cited, authors):
     #   "Đorđević", "Aeroe" / "Ærø", "Torsson" / "Þórsson"), else None.
     #   ("Soerensen" / "Sørensen" never gets here: the dropped-umlaut fold,
     #   tried earlier, already grades it ambiguous.)
-    # REASONING (D-16): ø is written o or oe, đ d or dj, æ ae or a; which one a
+    # REASONING (step-aside decision): ø is written o or oe, đ d or dj, æ ae or a; which one a
     #   reference list used is a spelling convention the rule cannot settle,
     #   so such a hit steps aside to "ambiguous" (never a pass), while a
     #   surname that matches under no spelling ("Nielsen" on "Anne Sørensen")
@@ -1318,7 +1317,7 @@ def author_match(cited, authors, first_only=False):
                 return i, a
         return None
 
-    # Cycle 6 (D-16, VERIFY_ORG_RULE "org-conservative-v1"):
+    # Cycle 6 (step-aside decision, VERIFY_ORG_RULE "org-conservative-v1"):
     #   - an organization (cited_org_parts; "Board", "Board, J." and "Board,
     #     Jane" stay persons, cycle 4) passes ONLY when its full-name part
     #     equals a listed author's whole name (org_exact: case, punctuation,
@@ -1396,7 +1395,7 @@ def author_match_person(cited, authors, first_only=False, acronym_hit=None):
     if not hits:
         hit = acronym_hit() if acronym_hit else None
         if hit:
-            # Cycle 6 (D-16): a bare acronym equal to a listed organization's
+            # Cycle 6 (step-aside decision): a bare acronym equal to a listed organization's
             #   initials is ORG_NOT_EXACT ("ambiguous"), no longer a pass: APA,
             #   AERA or NBER can each name more than one organization. With
             #   --first-author a hit on a later author still fails (kept).
@@ -1511,7 +1510,7 @@ def author_match_person(cited, authors, first_only=False, acronym_hit=None):
     if first_only and pos != 0:
         return dict(res, ok=False, status="fail", reason=f"found as author {pos + 1}, not the first author")
     if is_org_name(matched) and not org_exact(cited_first_name(cited), matched):
-        # Cycle 6 (D-16; N2, N4): the cited name was read as a person but is
+        # Cycle 6 (step-aside decision; N2, N4): the cited name was read as a person but is
         #   only PART of a listed organization's name ("Bank" in "World Bank",
         #   "Association (APA)" on "American Psychiatric Association"): an
         #   organization passes on its exact whole name only (cycle 7:
@@ -1521,7 +1520,7 @@ def author_match_person(cited, authors, first_only=False, acronym_hit=None):
     if not ends:
         return dict(res, ok=None, status="ambiguous",
                     reason=f"'{res['surname']}' matches a given or middle part of '{matched}', not its surname")
-    # Cycle 7 (H1, D-16): the surname alone does not make a pass when the
+    # Cycle 7 (H1, step-aside decision): the surname alone does not make a pass when the
     #   given names disagree or either name reads like an organization's.
     step = person_step_aside(cited, matched, want, reading, hit_fold)
     if step:

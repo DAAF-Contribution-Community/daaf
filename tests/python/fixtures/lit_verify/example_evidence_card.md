@@ -12,7 +12,8 @@ review_type: example
   hand for DAAF's tests. It describes the SYNTHETIC fixture
   tests/python/fixtures/pdf_ingest/pdf/multipage.pdf (every word in it is
   invented; no third-party text). The front matter and prose sections are
-  free-form (spec §7.6; C14 formalizes them later). lit_verify reads ONLY the
+  free-form (the Literature Review output contract formalizes them later).
+  lit_verify reads ONLY the
   single fenced block whose info string is `lit-verify`, which must be strict
   JSON (JSON allows no comments, so the commentary lives here):
 

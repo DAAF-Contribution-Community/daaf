@@ -1,5 +1,5 @@
 {
-  "_fixture_source": "SYNTHETIC; shape from live response smoke_s2/scite/ MANIFEST row 2, restricted raw requests[1] (keyless GET /papers/{doi}, 2026-10-11: no tally key, empty editorialNotices); values invented (DOI under 10.5555/, title, author, slugs, IDs). Every live key is kept; the 13 keys (15 key paths) the first version dropped (abstract, id, issns, issue, journalSlug, keywords, memberId, normalizedTypes, page, preprintLinks, publicationLinks, publisher, volume) were added 2026-10-12 with invented values of the live type (key paths listed by session script 29, which prints no live value).",
+  "_fixture_source": "SYNTHETIC; shape from live response of the 2026-10-11 Scite trial, MANIFEST row 2, restricted raw requests[1] (keyless GET /papers/{doi}, 2026-10-11: no tally key, empty editorialNotices); values invented (DOI under 10.5555/, title, author, slugs, IDs). Every live key is kept; the 13 keys (15 key paths) the first version dropped (abstract, id, issns, issue, journalSlug, keywords, memberId, normalizedTypes, page, preprintLinks, publicationLinks, publisher, volume) were added 2026-10-12 with invented values of the live type (key paths listed by a script that prints no live value).",
   "doi": "10.5555/synth.2001",
   "title": "A Synthetic Study of Classroom Practice Used Only as a Test Fixture",
   "year": 2019,
