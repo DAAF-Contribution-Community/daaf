@@ -412,7 +412,8 @@ indicates a preference during conversation.
        rendered page images when an agent reads a PDF (e.g., the Literature
        Review mode's paper reader). "auto" (default) = render and visually
        cross-check only the pages pdf_ingest flags (tables, figures,
-       numeric-dense, scanned, low extractor agreement). "all-pages" = render
+       numeric-dense, scanned, garbled, rotated, low extractor agreement, a
+       suspected existing OCR text layer). "all-pages" = render
        and read every page (about +4k tokens per page; ~+120k for a 30-page
        paper). Both "auto" and "all-pages" apply only when the reading agent's
        exact model ID and route are on the skill's dated vision-validated list;

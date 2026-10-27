@@ -182,15 +182,15 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.7.0-daaf")
-        self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v1", dict))
+        self.assertEqual(lv.TOOL_VERSION, "1.8.0-daaf")
+        self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v2", dict))
         self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
                          ("column-check-v1", "label", "column-not-checked"))
         self.assertEqual((lv.CARD_SCHEMA_VERSIONS, lv.CHECK_SCHEMA_VERSION),
                          (("lit-verify-card-v1", "lit-verify-card-v2"), "lit-verify-card-check-v2"))
         self.assertEqual(lv.HTML_EXTRACT_VERSIONS_KNOWN, (pdf_ingest.HTML_EXTRACT_VERSION,))
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
-                         ("normalize-v1", "ladder-v2", "numbers-v5"))
+                         ("normalize-v1", "ladder-v3", "numbers-v6"))
 
     def test_mirrors_pdf_ingest(self):
         self.assertEqual(lv.PAPER_KEY_RE.pattern, pdf_ingest.PAPER_KEY_RE.pattern)
@@ -1334,6 +1334,136 @@ class SoundnessFixTests(unittest.TestCase):
         self.assertEqual(lv.OCR_LAYER_PAPER_CAP_PAGES, 2)
 
 
+# --- numbers-v6 / ladder-v3 (S3-C1b, review cycle 2 NB2 and W-a); every word invented ---
+class NumberParsingTests(unittest.TestCase):
+    NB2_PAGE = ("Synthetic page: the invented lantern slope was −0.164a in the full model and the intercept was 1.20b "
+                "overall.\nThe tide gap between the two invented quays was significant at p < 10⁻³ in every winter.\n"
+                "The gull slope was −0.211ab for the amber lanterns nobody ever counted.\n\f")
+    WA_PAGE = ("Synthetic page: the gull counts fell by a change of – 0.30 points along the invented quay wall.\n"
+               "Keepers on the northern quay recorded the change in their ledger\n– 0.25\nand nobody disputed it.\n"
+               "A zero change of – 0 lanterns was logged by the invented night keepers.\n\f")
+
+    def gate(self, anchor, claims):
+        ing = mk_ingest([{"anchor": anchor}])
+        anchor_cov = next(s for s in anchor.split("\n") if len(s) > 45)[:60]
+        return lv.check_card(mk_card([cov(1, anchor_cov)], claims), ing, None)
+
+    def claim(self, cid, quote, numbers=()):
+        return {"claim_id": cid, "page": 1, "quote": quote, "numbers": list(numbers), "source": "text"}
+
+    def digits(self, text):
+        return [t["digits"] for t in ptc.number_candidates(text)]
+
+    # NB2 (a): one footnote letter after a number is a mark; units and plurals are not
+    def test_footnote_letter_reading_is_narrow(self):
+        tok = ptc.number_candidates("slope −0.164a here")[0]
+        self.assertEqual((tok["digits"], tok["letter"], tok["marks"], tok["raw"]), ("-0.164", "a", "a", "-0.164a"))
+        self.assertEqual(ptc.number_candidates("(7b) holds")[0]["paren"], True)
+        for text, want in (("intercept 1.20b overall", ["1.20"]), ("Trinh, 2017a.", ["2017"]), ("item 2a, then", ["2"]),
+                           ("COVID-19 and K-12", ["19", "12"]), ("the 1990s", []), ("5mg and 10kg", []),
+                           ("the 3rd wave", []), ("5m 2x 5k", []), ("rate 1e-5", ["5"]), ("at 5a.m. sharp", []),
+                           ("slope −0.164ab", []), ("x 0.5A", [])):
+            with self.subTest(text=text):
+                self.assertEqual(self.digits(text), want)
+        claim = ptc.parse_number("-0.164a")
+        self.assertEqual((claim["digits"], claim["letter"]), ("-0.164", "a"))
+        page = ptc.number_candidates("slope −0.164a here")
+        for c, want in (("-0.164", "exact"), ("-0.164a", "exact"), ("-0.164b", None), ("0.164", None)):
+            with self.subTest(claim=c):
+                self.assertEqual(ptc.compare_number(ptc.parse_number(c), page)[0], want)
+
+    # W-a: a spaced dash at a line start is a sign; after a word or a closing bracket it is ambiguous
+    def test_spaced_dash_line_start_sign_and_ambiguity(self):
+        for text, want in (("Gender (Girls)\n– 0.30\n0.12", ("-0.30", False)), ("ledger\n  - 0.25", ("-0.25", False)),
+                           ("a change of – 0.30 points", ("0.30", True)), ("(Girls) – 0.30", ("0.30", True)),
+                           ("(n − 1)", ("1", True)), ("ages (28 - 75)", ("75", False)), ("all K-\n12", ("12", False)),
+                           ("Est = - 0.041", ("-0.041", False))):
+            with self.subTest(text=text):
+                t = [x for x in ptc.number_candidates(text) if x["digits"].lstrip("-") == want[0].lstrip("-")][0]
+                self.assertEqual((t["digits"], t["sign_ambiguous"]), want)
+        self.assertTrue(ptc.number_candidates("ages (28 - 75)")[-1]["spaced_dash"])
+        # the number view keeps the line start NORMALIZE turned into a space ...
+        v = ptc.number_view("Gender (Girls)\n– 0.30\n0.12\n")
+        self.assertEqual(v["norm"], "Gender (Girls) - 0.30 0.12")
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(v)], ["-0.30", "0.12"])
+        # ... and the rejoin-deleted dash after a word (ambiguous) or at a line start (sign)
+        self.assertTrue(ptc.view_numbers(ptc.number_view("a change of –\n0.30 here"))[0]["sign_ambiguous"])
+        self.assertEqual(ptc.view_numbers(ptc.number_view("cells\n-\n0.30 here"))[0]["digits"], "-0.30")
+        self.assertEqual(len(ptc.normalize_map("a –\n0.30")), 6)
+        # a declared span: the right page's first line starts at the join
+        j = ptc.join_views(ptc.number_view("left page text\n"), ptc.number_view("– 0.30 right page\n"))
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(j)], ["-0.30"])
+        amb = ptc.number_candidates("a change of – 0.30 points and of – 0 lanterns")
+        for c, want in (("0.30", "sign-ambiguous"), ("-0.30", "sign-ambiguous"), ("0.3", "precision"), ("0", "exact")):
+            with self.subTest(claim=c):
+                self.assertEqual(ptc.compare_number(ptc.parse_number(c), amb)[0], want)
+
+    # NB2 (b) + FX-Q: the quote-number rule compares marks and sign-shaped dashes
+    def test_quote_number_check_marks_and_sign_dashes(self):
+        def check(page, quote):
+            norm, spans = ptc.quote_spans(quote, page)
+            self.assertTrue(spans, quote)
+            return ptc.quote_number_check(quote, ptc.number_view(page), spans)
+        for page, quote, want in (
+                (self.NB2_PAGE, "was significant at p < 10⁻³ in every", (True, None)),
+                (self.NB2_PAGE, "was significant at p < 10³ in every", (False, "marks")),
+                (self.NB2_PAGE, "lantern slope was −0.164a in the full", (True, None)),
+                (self.NB2_PAGE, "lantern slope was 0.164a in the full", (False, "digits")),
+                (self.NB2_PAGE, "gull slope was 0.211ab for the amber", (False, "sign-dash")),
+                (self.NB2_PAGE, "gull slope was −0.211ab for the amber", (True, None)),
+                ("Synthetic: all K-\n12 harbour schools counted lanterns.", "all K-12 harbour schools", (True, None)),
+                # the number view splits "K-\n12" (S3-A2), so a quote "K12" already differs in its tokens
+                ("Synthetic: all K-\n12 harbour schools counted lanterns.", "all K12 harbour schools", (False, "digits")),
+                # a dash the line-break rejoin deleted, where no token is parsed
+                ("Synthetic: the code K-\n12ab ran twice that winter.", "the code K12ab ran twice", (False, "sign-dash")),
+                ("Synthetic: the code K-\n12ab ran twice that winter.", "the code K-12ab ran twice", (True, None)),
+                # an extra dash in the quote is allowed (FX-Q)
+                ("Synthetic: the invented range 5 10 of lanterns.", "the invented range 5-10 of lanterns", (True, None)),
+                (self.WA_PAGE, "recorded the change in their ledger – 0.25 and nobody", (True, None)),
+                (self.WA_PAGE, "recorded the change in their ledger 0.25 and nobody", (False, "digits")),
+                (self.WA_PAGE, "fell by a change of – 0.30 points", (True, None)),
+                (self.WA_PAGE, "fell by a change of 0.30 points", (False, "sign-dash"))):
+            with self.subTest(quote=quote):
+                r = check(page, quote)
+                self.assertEqual((r["agree"], r["why"]), want)
+        # a dash before the span's first char is not the span's; extra quote dashes are allowed
+        self.assertEqual(ptc.sign_dash_flags("x -5 and -6", 3, 11), [False, False, False, False, True])
+        self.assertEqual(ptc.quote_numbers_agree("q", None, []), (None, [], None))
+
+    def test_gate_footnote_letter_superscript_minus_and_sign_dash(self):
+        q = "the invented lantern slope was −0.164a in the full model"
+        r = self.gate(self.NB2_PAGE, [self.claim("G1", q, ["-0.164"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
+        self.assertIn("footnote letter 'a'", [it for it in r["items"] if it["kind"] == "claim_number"][0]["reason"])
+        r = self.gate(self.NB2_PAGE, [self.claim("F1", q.replace("−", ""))])
+        it = [x for x in r["items"] if x["kind"] == "claim_quote"][0]
+        self.assertEqual((r["verdict"], it["status"], it["quote_numbers"], it["page_numbers"]),
+                         ("NEEDS_REVIEW", "QUOTE_NUMBERS_DIFFER", ["0.164"], ["-0.164"]))
+        r = self.gate(self.NB2_PAGE, [self.claim("F2", "two invented quays was significant at p < 10³ in every")])
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        self.assertIn("superscripts or footnote letters", r["items"][-1]["reason"])
+        r = self.gate(self.NB2_PAGE, [self.claim("F3", "The gull slope was 0.211ab for the amber lanterns")])
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        self.assertIn("sign-shaped dash", r["items"][-1]["reason"])
+
+    def test_gate_sign_ambiguous_and_line_start(self):
+        q = "the gull counts fell by a change of – 0.30 points along the invented"
+        for numbers in (["0.30"], ["-0.30"]):
+            r = self.gate(self.WA_PAGE, [self.claim("A1", q, numbers)])
+            num = [it for it in r["items"] if it["kind"] == "claim_number"][0]
+            self.assertEqual((r["verdict"], num["status"], num["severity"], num["label"], num["locality"]),
+                             ("NEEDS_REVIEW", "NUMBER_SIGN_AMBIGUOUS", "review", "sign-ambiguous", None), numbers)
+        self.assertEqual(lv.SEVERITY["NUMBER_SIGN_AMBIGUOUS"], "review")
+        r = self.gate(self.WA_PAGE, [self.claim("Z1", "A zero change of – 0 lanterns was logged by the invented",
+                                                ["0"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]))   # a zero's sign is moot
+        q = "recorded the change in their ledger – 0.25 and nobody disputed it"
+        r = self.gate(self.WA_PAGE, [self.claim("L1", q, ["-0.25"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
+        r = self.gate(self.WA_PAGE, [self.claim("L2", q, ["0.25"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("FAIL", ["NUMBER_MISSING"]))
+
+
 class HtmlCardParseTests(unittest.TestCase):
     GOOD =mk_html_card([sec("front", "x")], [hclaim("C1", "1.1", "q", section_end="1.2")])
 
@@ -1540,7 +1670,7 @@ class IngestAndRowTests(ScratchCase):
         self.assertEqual(art["name"], "card_check.json")
         self.assertEqual(art["sha256"], lv.sha256_bytes((key_dir / art["name"]).read_bytes()))
         check = json.loads((key_dir / "card_check.json").read_text())
-        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v2"))
+        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v3"))
         # re-check of the same card version: a new name, nothing overwritten
         before = (key_dir / "card_check.json").read_bytes()
         self.assertEqual(run_main(["card", key_dir, card])[0], 0)
@@ -1647,7 +1777,7 @@ class IngestAndRowTests(ScratchCase):
         nums = [it for it in check["items"] if it["kind"] == "claim_number"]
         self.assertEqual((check["verdict"], nums[0]["locality"]), ("PASS", "row"))
         self.assertEqual(check["constants"]["ROW_LABEL_MIN_CHARS"], ptc.ROW_LABEL_MIN_CHARS)
-        self.assertEqual(check["rule_versions"]["numbers"], "numbers-v5")
+        self.assertEqual(check["rule_versions"]["numbers"], "numbers-v6")
         # 1.5.0 (D-23): the row prints 0.62 and 0.63, so the cleared number is
         #   labeled; counted, printed on stdout and recorded with its constants
         self.assertEqual((nums[0]["column_checked"], nums[0]["column_label"], nums[0]["column_values"]),
@@ -1670,8 +1800,14 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 34/34", out)
+        self.assertIn("SELFTEST PASS: 43/43", out)
         self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
+        for case in ("forged header/footer line, span skips it", "forged page flags lift the OCR-layer cap",
+                     "forged OCR text on a text page"):                         # 1.8.0 (review cycle 2)
+            self.assertIn(case, out)
+        for case in ("minus deleted before a footnote letter", "superscript minus deleted from an exponent",
+                     "spaced minus after a word", "spaced minus at a line start, sign-flipped claim"):   # S3-C1b
+            self.assertIn(case, out)
         self.assertIn("prose quote starting with a row label", out)                # numbers-v5
         self.assertIn("HTML quote cited to another section", out)
         self.assertIn("cols 0.63:not-checked,5:checked", out)                  # 1.5.0 (D-23)
@@ -1712,7 +1848,7 @@ class RederiveTests(ScratchCase):
         mm = [it for it in check["items"] if it["status"] == "ANCHOR_REDERIVE_MISMATCH"]
         self.assertEqual([(it["page"], it["severity"]) for it in mm], [(1, "fail")])
         self.assertEqual((check["rederive"]["outcome"], check["rederive"]["anchor_mismatches"]), ("mismatch", [1]))
-        self.assertEqual(check["rule_versions"]["rederive"], "rederive-v1")
+        self.assertEqual(check["rule_versions"]["rederive"], "rederive-v2")
         self.assertNotIn("NO_INGEST_ROW", statuses(check))                      # the forged row is present
         rows = [json.loads(x) for x in (self.papers / "MANIFEST.jsonl").read_text().splitlines()]
         kept = [r for r in rows if "FORGED" not in (r.get("note") or "")]
@@ -1765,6 +1901,133 @@ class RederiveTests(ScratchCase):
             self.assertEqual(run_main(["card", key_dir, card, "--timeout", bad])[0], 1, bad)
         self.assertEqual(run_main(["card", key_dir, card, "--timeout", "5"])[0], 0)
         self.assertEqual(rows_of(self.papers)[-1]["parameters"]["timeout_s"], 5.0)
+
+
+# --- 1.8.0 (S3-C1a, review cycle 2): header/footer, page flags, OCR acceptance -----------
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class RederiveFactsTests(ScratchCase):
+    CASES = {c[0]: c for c in lv.selftest_cases({})}
+
+    def check(self, key_dir, src, case, name="evidence_card.md"):
+        _, _, coverage, claims, *_ = self.CASES[case]
+        card = self.write_card(key_dir, name, None, raw=lv.selftest_card(key_dir.name, src, coverage, claims))
+        code, out, err = run_main(["card", key_dir, card])
+        art = rows_of(self.papers)[-1]["artifacts"]["card_check"]
+        return code, json.loads((key_dir / art["name"]).read_text()), out + err
+
+    def loaded(self, key_dir):
+        ing, items = lv.load_ingest(str(key_dir), str(self.papers), key_dir.name, None, lv.parquet_reader())
+        return ing, items
+
+    def test_forged_header_footer_record_fails_and_is_not_used(self):
+        hf = {"position": "bottom", "pattern": lv.hf_key(lv.SELFTEST_SKIPPED_LINE), "example": "forged", "pages": [1]}
+        # the attack shape is real: trusted, the forged record lets the span quote skip a printed line
+        pages = [{"anchor": p["anchor"]} for p in lv.SELFTEST_PAGES["A"]]
+        n1 = next(c for c in self.CASES["forged header/footer line, span skips it"][3] if c["claim_id"] == "N1")
+        result = lv.check_card(mk_card([cov(1, "x")], [n1]), mk_ingest(pages, header_footer=[hf]), fuzz_mod())
+        self.assertIn("PASS_SPAN", statuses(result, "claim_quote"))
+        key_dir, src = self.synthetic("user_5e1f7e65")
+        code, check, log = self.check(key_dir, src, "genuine card")
+        self.assertEqual((code, check["rederive"]["header_footer"], check["rederive"]["outcome"]),
+                         (0, {"records": 0, "outcome": "match"}, "match"), log)
+        lv.forge_manifest_set(str(self.papers), key_dir.name, lambda m: m["header_footer"].append(hf))
+        code, check, log = self.check(key_dir, src, "forged header/footer line, span skips it", "evidence_card_a.md")
+        self.assertEqual((code, check["verdict"], check["ingest"]["suffix"]), (11, "FAIL", "_a"), log)
+        self.assertIn("HEADER_FOOTER_REDERIVE_MISMATCH", statuses(check, "integrity"))
+        quote = next(it for it in check["items"] if it["claim_id"] == "N1" and it["kind"] == "claim_quote")
+        self.assertNotIn(quote["status"], ("PASS_SPAN", "PASS", "PASS_SKELETON"))
+        self.assertEqual((check["rederive"]["header_footer"]["outcome"], check["rederive"]["outcome"]),
+                         ("mismatch", "mismatch"))
+        self.assertEqual(rows_of(self.papers)[-1]["rederive"]["header_footer"], "mismatch")
+
+    def test_forged_flags_fail_and_the_rederived_flags_are_used(self):
+        key_dir, src = self.synthetic("user_5e1f7e66", pages="B")
+        code, check, log = self.check(key_dir, src, "claim on an existing OCR text layer page")
+        self.assertEqual((code, check["verdict"], check["rederive"]["flags"]["mismatches"]), (0, "PARTIAL", []), log)
+        self.assertEqual(check["rederive"]["flags"]["pages_checked"], 3)
+        lv.forge_manifest_set(str(self.papers), key_dir.name, lambda m: [r.update(flags=[f for f in r["flags"] if f not in (
+            "scanned", "ocr_layer_suspected")]) for r in m["pages"]])
+        code, check, log = self.check(key_dir, src, "claim on an existing OCR text layer page", "evidence_card_a.md")
+        self.assertEqual((code, check["verdict"]), (11, "FAIL"), log)
+        self.assertEqual([it["page"] for it in check["items"] if it["status"] == "FLAGS_REDERIVE_MISMATCH"], [2, 3])
+        self.assertIn("PASS_OCR_LAYER", statuses(check, "claim_quote"))          # the re-derived flag is used
+        self.assertEqual({p["page"]: p["class"] for p in check["pages"]}[2], "scanned")
+        self.assertEqual(check["constants"]["GRADE_FLAGS"], list(lv.GRADE_FLAGS))
+
+    def test_forged_table_and_numeric_flags_cannot_open_the_row_path(self):
+        key_dir, src = self.synthetic("user_5e1f7e6a")
+        claim = {"claim_id": "Q1", "page": 1, "quote": "The violet ferry carried nineteen patient cartographers across "
+                                                       "the silver estuary", "numbers": ["1"], "source": "text"}
+        _, _, coverage, _, *_ = self.CASES["genuine card"]
+        lv.forge_manifest_set(str(self.papers), key_dir.name, lambda m: m["pages"][0].update(flags=["table", "numeric"]))
+        card = self.write_card(key_dir, "evidence_card.md", None, raw=lv.selftest_card(key_dir.name, src, coverage,
+                                                                                        [claim]))
+        code, _, _ = run_main(["card", key_dir, card])
+        check = json.loads((key_dir / rows_of(self.papers)[-1]["artifacts"]["card_check"]["name"]).read_text())
+        mm = [it for it in check["items"] if it["status"] == "FLAGS_REDERIVE_MISMATCH"]
+        self.assertEqual((code, [it["page"] for it in mm]), (11, [1]))
+        self.assertIn("['table', 'numeric']", mm[0]["reason"])
+        self.assertEqual(check["rederive"]["flags"]["table_probed"], [1])
+
+    def test_table_probe_scope_and_conservative_fallbacks(self):
+        key_dir, src = self.synthetic("user_5e1f7e61", pages="S")
+        texts = {1: lv.SYNTHETIC_SOURCES[src]["pages"][1].decode("utf-8")}
+        # no numbered claim cites page 1: a caption-less `table` is kept as recorded, not probed
+        ing, _ = self.loaded(key_dir)
+        items, rec = [], {"ocr_on_text_pages": []}
+        lv.rederive_page_facts(ing, texts, {}, {}, lambda n: self.fail("probed"), lambda n: [], set(), items, rec)
+        self.assertEqual((items, rec["flags"]["table_not_rederived_uncited"], ing["pages"][1]["flags"]),
+                         ([], 1, ["table"]))
+        # pdfplumber unavailable on a cited page: the row path closes, with a warning (not a mismatch)
+        ing, _ = self.loaded(key_dir)
+        items, rec = [], {"ocr_on_text_pages": []}
+        lv.rederive_page_facts(ing, texts, {}, {}, lambda n: None, lambda n: None, {1}, items, rec)
+        self.assertEqual([it["status"] for it in items], ["FLAGS_NOT_REDERIVED"])
+        self.assertEqual((ing["pages"][1]["flags"], rec["flags"]["not_rederived"]), ([], [1]))
+        # paper B, pdfimages sees no image and pdfplumber is missing: the OCR-layer flag is kept
+        #   (it only caps) and the scanned page stays truly scanned
+        key_b, src_b = self.synthetic("user_5e1f7e5b", pages="B")
+        ing, _ = self.loaded(key_b)
+        texts_b = {n: b.decode("utf-8") for n, b in lv.SYNTHETIC_SOURCES[src_b]["pages"].items()}
+        items, rec = [], {"ocr_on_text_pages": []}
+        lv.rederive_page_facts(ing, texts_b, {}, {}, lambda n: None, lambda n: None, None, items, rec)
+        self.assertEqual([it["status"] for it in items], ["FLAGS_NOT_REDERIVED"])
+        self.assertIn("ocr_layer_suspected", ing["pages"][3]["flags"])
+        self.assertEqual(lv.classify_page(ing["pages"][2], ing["lanes_unavailable"])[0], "scanned")
+        # forged image evidence that turns a truly scanned page into a sparse one
+        ing, _ = self.loaded(key_b)
+        ing["pages"][2]["evidence"]["figure"] = ["pdfimages: image 100x100 px covers 10% x 10% of the page"]
+        items, rec = lv.rederive(ing, 30)
+        mm = [it for it in items if it["status"] == "FLAGS_REDERIVE_MISMATCH"]
+        self.assertEqual([it["page"] for it in mm], [2])
+        self.assertIn("page class sparse -> scanned", mm[0]["reason"])
+
+    def test_forged_ocr_text_on_a_text_page_is_refused(self):
+        key_dir, src = self.synthetic("user_5e1f7e67")
+        # the attack shape is real: trusted, the forged OCR text passes (PASS_OCR, partial)
+        pages = [{"anchor": p["anchor"]} for p in lv.SELFTEST_PAGES["A"]]
+        pages[0]["ocr"] = lv.SELFTEST_FABRICATED_OCR + "\n"
+        o1 = next(c for c in self.CASES["forged OCR text on a text page"][3] if c["claim_id"] == "O1")
+        self.assertIn("PASS_OCR", statuses(lv.check_card(mk_card([cov(1, "x")], [o1]), mk_ingest(pages), fuzz_mod()),
+                                           "claim_quote"))
+        ob = (lv.SELFTEST_FABRICATED_OCR + "\n").encode("utf-8")
+        lv.forge_manifest_set(str(self.papers), key_dir.name, lambda m: m["pages"][0].update(ocr={"text": {
+            "path": "ocr_a/p001.txt", "bytes": len(ob), "sha256": lv.sha256_bytes(ob)}}), files={"ocr_a/p001.txt": ob})
+        code, check, log = self.check(key_dir, src, "forged OCR text on a text page")
+        self.assertEqual((code, check["verdict"]), (11, "FAIL"), log)
+        self.assertEqual([it["page"] for it in check["items"] if it["status"] == "OCR_ON_TEXT_PAGE"], [1])
+        quote = next(it for it in check["items"] if it["claim_id"] == "O1" and it["kind"] == "claim_quote")
+        self.assertEqual(quote["severity"], "fail")
+        self.assertEqual((check["rederive"]["ocr_on_text_pages"], check["rederive"]["ocr"]), ([1], None))
+        self.assertEqual((check["rederive"]["source_kind"], lv.SEVERITY["OCR_ON_TEXT_PAGE"]), ("synthetic", "fail"))
+
+    def test_new_statuses_have_severities(self):
+        self.assertEqual({s: lv.SEVERITY[s] for s in ("HEADER_FOOTER_REDERIVE_MISMATCH", "FLAGS_REDERIVE_MISMATCH",
+                                                      "OCR_ON_TEXT_PAGE", "FLAGS_NOT_REDERIVED")},
+                         {"HEADER_FOOTER_REDERIVE_MISMATCH": "fail", "FLAGS_REDERIVE_MISMATCH": "fail",
+                          "OCR_ON_TEXT_PAGE": "fail", "FLAGS_NOT_REDERIVED": "warning"})
+        self.assertEqual(lv.GRADE_FLAGS, ("table", "numeric", "scanned", "ocr_layer_suspected"))
+        self.assertTrue(set(ptc.ROW_PAGE_FLAGS) <= set(lv.GRADE_FLAGS))
 
 
 # --- arXiv HTML on disk: real pdf_ingest --source arxiv-html on the synthetic fixture ----
@@ -1943,6 +2206,70 @@ class EndToEndTests(ScratchCase):
         code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_b.md")
         self.assertEqual((code, check["ingest"]["suffix"]), (11, "_a"))
         self.assertIn(("ANCHOR_REDERIVE_MISMATCH", 1), [(it["status"], it["page"]) for it in check["items"]])
+
+    def test_sealed_source_defeats_a_swap_after_hashing(self):
+        # 1.8.0 (review W-b): the source is read once and re-derived from those
+        #   bytes; a file swapped in at the path after the hash changes nothing.
+        src_dir = self.root / "src"
+        src_dir.mkdir()
+        src = src_dir / "single_column_copy.pdf"
+        shutil.copy(PDF / "single_column.pdf", src)
+        proc = subprocess.run(["bash", str(_SCRIPTS / "pdf_ingest.sh"), str(src), str(self.papers), "--paper-key",
+                               "user_00e2e001", "--render", "none"], capture_output=True, text=True, timeout=600)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        key_dir = self.papers / "user_00e2e001"
+        real_run_tool, state = lv.pdi.run_tool, {"swapped": False}
+
+        def swapping_run_tool(*a, **kw):
+            if not state["swapped"]:
+                state["swapped"] = True
+                shutil.copy(PDF / "multipage.pdf", src)                  # another PDF at the path
+            return real_run_tool(*a, **kw)
+
+        with mock.patch.object(lv.pdi, "run_tool", side_effect=swapping_run_tool):
+            code, check, log = self.check(key_dir, "single_column_genuine.md")
+        rd = check["rederive"]
+        self.assertTrue(state["swapped"])
+        self.assertEqual((code, check["verdict"], rd["outcome"]), (0, "PASS", "match"), log)
+        self.assertTrue(rd["read"].startswith("once"))
+        self.assertEqual((rd["source_kind"], rd["source_kind_ingest"], rd["web_fetch_row"]),
+                         ("user_supplied", "user_supplied", None))
+        code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_a.md")   # the swap is real
+        self.assertEqual((code, check["rederive"]["outcome"]), (11, "source hash mismatch"))
+        shutil.copy(PDF / "single_column.pdf", src)
+        with mock.patch.object(lv, "sealed_copy", side_effect=AttributeError("memfd_create")):
+            code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_b.md")
+        self.assertEqual((code, check["rederive"]["outcome"]), (11, "error"))
+        self.assertIn("memfd_create", next(it["reason"] for it in check["items"]
+                                           if it["status"] == "SOURCE_REDERIVE_ERROR"))
+        real_which = shutil.which
+        with mock.patch.object(lv.shutil, "which", side_effect=lambda b: None if b == "pdfimages" else real_which(b)):
+            code, _, _ = run_main(["card", key_dir, key_dir / "evidence_card.md"])
+        self.assertEqual(code, 10)
+        self.assertIn("pdfimages", rows_of(self.papers)[-1]["note"])
+
+    def test_real_pdf_forged_header_footer_and_flags_fail(self):
+        key_dir = self.ingest("multipage", "user_00e2e002")
+        code, check, log = self.check(key_dir, "example_evidence_card.md")
+        rd = check["rederive"]
+        self.assertEqual((code, check["verdict"], rd["outcome"], rd["flags"]["mismatches"]),
+                         (0, "PARTIAL", "match", []), log)
+        self.assertEqual((rd["header_footer"]["outcome"], rd["flags"]["pages_checked"]), ("match", 5))
+        man = json.loads((key_dir / "ingest_manifest.json").read_text())
+        self.assertIn("scanned", man["pages"][4]["flags"])
+
+        def forge(m):
+            m["header_footer"].append({"position": "bottom", "pattern": "forged running footer", "example": "forged",
+                                       "pages": [1, 2, 3]})
+            m["pages"][4]["flags"] = [f for f in m["pages"][4]["flags"] if f != "scanned"]
+
+        lv.forge_manifest_set(str(self.papers), key_dir.name, forge)
+        code, check, _ = self.check(key_dir, "example_evidence_card.md", "evidence_card_a.md")
+        self.assertEqual(code, 11)
+        st = [(it["status"], it["page"]) for it in check["items"] if it["kind"] == "integrity"]
+        self.assertIn(("HEADER_FOOTER_REDERIVE_MISMATCH", None), st)
+        self.assertIn(("FLAGS_REDERIVE_MISMATCH", 5), st)
+        self.assertEqual({p["page"]: p["class"] for p in check["pages"]}[5], "scanned")   # re-derived flags used
 
     def test_multipage_example_card_is_partial(self):
         key_dir = self.ingest("multipage", "user_00e2e002")

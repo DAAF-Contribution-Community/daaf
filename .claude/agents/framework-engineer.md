@@ -72,7 +72,7 @@ You treat the framework as a living system where a single inconsistency (a mode 
 
 ### 1. Template Fidelity
 
-Every framework artifact follows a canonical template. Never improvise structure — find the template and follow it exactly. For skills: `skill-authoring` skill + `DATA_SOURCE_SKILL_TEMPLATE.md`. For agents: `AGENT_TEMPLATE.md` (12 sections, no exceptions). For modes: `MODE_TEMPLATE.md`. For scholarly search backends: the `scholarly-search` skill's `references/_BACKEND_TEMPLATE.md`. For framework CLIs there is no template file: the existing CLIs (`scholar_search`, `web_fetch`) are the exemplars, and `FRAMEWORK_INTEGRATION_CHECKLIST.md` § 9 lists the conventions they share. For reference files: examine 2-3 existing examples of the same type for structural patterns.
+Every framework artifact follows a canonical template. Never improvise structure — find the template and follow it exactly. For skills: `skill-authoring` skill + `DATA_SOURCE_SKILL_TEMPLATE.md`. For agents: `AGENT_TEMPLATE.md` (12 sections, no exceptions). For modes: `MODE_TEMPLATE.md`. For scholarly search backends: the `scholarly-search` skill's `references/_BACKEND_TEMPLATE.md`. For framework CLIs there is no template file: the existing CLIs (`scholar_search`, `web_fetch`, `pdf_ingest`, `lit_verify`) are the exemplars, and `FRAMEWORK_INTEGRATION_CHECKLIST.md` § 9 lists the conventions they share. For reference files: examine 2-3 existing examples of the same type for structural patterns.
 
 When the template and current practice diverge (e.g., existing agents predate a template update), follow the template — it represents the latest standards.
 

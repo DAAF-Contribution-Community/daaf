@@ -3,11 +3,11 @@
 How to write an evidence card that `scripts/lit_verify.sh card` can verify,
 what every check and status means, and how to fix a failing card. Source of
 truth: the header, `validate_card()`, `check_card()` and the selftest in
-`scripts/lit_verify.py` (`TOOL_VERSION = "1.7.0-daaf"`, 2026-10-23; card
+`scripts/lit_verify.py` (`TOOL_VERSION = "1.8.0-daaf"`, 2026-10-27; card
 schemas `lit-verify-card-v1` and `lit-verify-card-v2`, result schema
-`lit-verify-card-check-v2`, re-derivation `rederive-v1`) and the ladder,
-number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v2`,
-`numbers-v5`, `column-check-v1`, `normalize-v1`). A later session
+`lit-verify-card-check-v2`, re-derivation `rederive-v2`) and the ladder,
+number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v3`,
+`numbers-v6`, `column-check-v1`, `normalize-v1`). A later session
 adds `lit_verify report` (S4); the full card schema is formalized later in
 `LIT_REVIEW_OUTPUT_CONTRACT.md` (spec C14). If this page and the code
 disagree, the code wins.
@@ -141,14 +141,14 @@ across all units and their boundaries. How units and labels are built:
    re-derived from the stored source and compared byte-for-byte
    (§ Re-derivation).
 2. **Quote ladder** for every coverage anchor and claim quote, then the
-   **quote-number rule** on every claim quote that passed (`ladder-v2`).
+   **quote-number rule** on every claim quote that passed (`ladder-v3`).
 3. **Identifying-quote rule** on every quote that matched.
 4. **Coverage** of every page 1..N, then the paper-level OCR-layer cap.
 5. **Numbers** of every claim.
 6. **Vision consistency** with what the card declares and the embedded
    vision list.
 
-## Re-derivation (1.7.0, `rederive-v1`, user decision D-24 W1)
+## Re-derivation (1.7.0 `rederive-v1`, D-24 W1; 1.8.0 `rederive-v2`, review cycle 2)
 
 Hashes alone prove only that the manifest, page_index and anchor files agree
 with **each other**: in review cycle 1 a hand-written ingest set with a
@@ -166,30 +166,89 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
 
 - A `pdftotext` or pypdfium2 version other than the one the ingest recorded
   is `EXTRACTOR_VERSION_DIFFERS` (warning): the byte comparison still decides.
-- `pdftotext` or `pdfinfo` missing → exit 10. One of them failing, or
-  exceeding `--timeout`, or HTML that no longer decodes →
+- `pdftotext`, `pdfinfo` or (1.8.0) `pdfimages` missing → exit 10. One of
+  them failing, or exceeding `--timeout`, or HTML that no longer decodes →
   `SOURCE_REDERIVE_ERROR` (fail; raise `--timeout` if it timed out).
   pypdfium2 missing or failing → `ROW_SOURCE_NOT_REDERIVED` (warning; lane B
   is not used, so no number takes the row path).
-- **Not re-derived:** OCR text (Tesseract on a 300-DPI render costs seconds
-  per page). Its files are hash-checked only, and a paper whose OCR text is
-  used carries one `OCR_NOT_REDERIVED` warning; OCR evidence is already
-  capped at PARTIAL. Page flags and their evidence (pdfplumber, pdfimages)
-  and the header/footer lines are not re-derived either: they can move a
-  grade or a review item, never make an unprinted quote or number pass.
+- **Read once (1.8.0, `rederive-v2`, review W-b):** the source file is read
+  once and those bytes are hashed; every lane re-derives from the same
+  bytes, never from the path again (poppler reads a sealed memfd as
+  `/dev/fd/N`; pypdfium2, pdfplumber and the HTML lane read the bytes). A
+  file swapped in at the path after the hash changes nothing. Without
+  memfd sealing (non-Linux) → `SOURCE_REDERIVE_ERROR` (fail; no fallback to
+  the path).
+- **Header/footer, page flags and OCR (1.8.0, review NB1, W-c, W-d):** from
+  the re-derived anchors, with `pdf_ingest`'s own rules (its
+  `header_footer_records()`, `text_flag_evidence()`, `caption_evidence()`,
+  `image_evidence()`, `ocr_layer_evidence()`):
+  - the header/footer lines a declared span may skip; a manifest list that
+    differs → `HEADER_FOOTER_REDERIVE_MISMATCH` (fail), and only the
+    re-derived lines are skipped (a forged record had let a span quote skip
+    a printed line);
+  - the page flags that move a grade (`GRADE_FLAGS`: `table`, `numeric`,
+    `scanned`, `ocr_layer_suspected`) and the truly-scanned image evidence,
+    from the text, `pdfimages -list` and `pdfinfo` on the same bytes;
+    pdfplumber only where needed (`find_tables` on a caption-less `table`
+    page a numbered claim cites; elsewhere `table` changes no item and is
+    kept as recorded; `page.images` on a scanned page of a document
+    pdfimages lists no image for, and on an `ocr_layer_suspected` page
+    pdfimages alone does not confirm). A flag or page class that differs →
+    `FLAGS_REDERIVE_MISMATCH` (fail); the gate uses the re-derived flags
+    (a forged removal of 70 `ocr_layer_suspected` flags had lifted the
+    D-24 cap). pdfplumber unavailable → `FLAGS_NOT_REDERIVED` (warning) and
+    a conservative reading: an unconfirmed `table` closes the row path, a
+    recorded `ocr_layer_suspected` is kept. Residual: a page whose ≥ 80%
+    image only pdfplumber sees, with the flag removed from the manifest (no
+    such page in the five bake-off PDFs);
+  - OCR text on a page that re-derives with ≥ 200 non-whitespace anchor
+    chars (not scanned, so `pdf_ingest` never OCRs it) → `OCR_ON_TEXT_PAGE`
+    (fail; the OCR text is not used).
+- **Not re-derived:** OCR text itself (Tesseract on a 300-DPI render costs
+  seconds per page). Its files are hash-checked only, and a paper whose OCR
+  text is used carries one `OCR_NOT_REDERIVED` warning; OCR evidence is
+  already capped at PARTIAL. The display-only flags (figure, garbled,
+  rotated, cjk_risk, low_agreement, ocr) move no verdict.
+- `rederive.source_kind` (recorded only; no verdict effect): `web_fetch`
+  (a web_fetch `MANIFEST.jsonl` beside the source names it with its hash;
+  `web_fetch_row` gives `manifest_line`, `final_url` and `fetch_timestamp`),
+  `web_fetch_row_conflict` (rows name the file with another hash),
+  `user_supplied` (no such row), `synthetic` (selftest only; the CLI never
+  produces it) or `unknown` (that MANIFEST could not be read).
+  `source_kind_ingest` is what `pdf_ingest` recorded at ingest time.
+- **What the gate does not prove (the whole-chain residual).** Re-derivation
+  proves that the card and the ingest agree with the bytes on disk at
+  `source.path`, not that those bytes came from the publisher. An agent with
+  Write can author a source file, a matching web_fetch MANIFEST row, the
+  ingest set and the card, and that self-consistent forgery passes.
+  Re-derivation (the anchors, lane B and, from 1.8.0, the header/footer
+  lines, OCR acceptance and the `GRADE_FLAGS` `table`, `numeric`, `scanned`
+  and `ocr_layer_suspected`) catches a forged ingest over a genuine source;
+  OCR text stays hash-checked only (above). It cannot catch a forged source.
+  The orchestrator's audit can: compare `source_kind` and `web_fetch_row` in
+  the `card_check` with its own record of fetches (its transcript and the
+  web_fetch MANIFEST rows of the fetches it dispatched). A `web_fetch` source
+  whose line, URL and timestamp
+  match no dispatched fetch, any `web_fetch_row_conflict`, a `user_supplied`
+  source the user did not supply, and `synthetic` or `unknown` on a real card
+  are reported, not trusted. *Inference:* this audit step is specified here
+  and is to be built into the Literature Review mode (S5); it has not been
+  exercised yet.
 - `card_check` records the outcome in `rederive` (§ card_check JSON) and the
   MANIFEST row a summary. On the nine bake-off cards every re-derivation
-  matched, in 0.06–0.97 s (0.968 s for the 192-page report).
+  matched, in 0.06–0.97 s under 1.7.0 (0.968 s for the 192-page report)
+  and 0.065–1.67 s under 1.8.0 (1.665 s for that report).
 - Selftest and unit-test ingests are built in code and have no source file:
-  `build_synthetic_ingest()` registers the planted text in an in-process
-  registry (`SYNTHETIC_SOURCES`) that the CLI never fills, so no file or
-  argument can reach it.
+  `build_synthetic_ingest()` registers the planted text (and, 1.8.0, what
+  the image and table tools would report for it) in an in-process registry
+  (`SYNTHETIC_SOURCES`) that the CLI never fills, so no file or argument can
+  reach it.
 
 **If a card fails here, do not edit the card.** Report it: the ingest or its
 source changed after the ingest, and the orchestrator re-ingests (or restores
 the source to its recorded path).
 
-## The match ladder (`ladder-v2`)
+## The match ladder (`ladder-v3`)
 
 Evaluated for a quote cited to page P (or P..P+1 with `page_end`); first hit
 wins.
@@ -211,9 +270,9 @@ within 1.25 × the quote length + 10 chars, or the quote is not NEAR
 (stitched fragments are not a near match).
 
 The tiers are those of `ladder-v1`; `ladder-v2` (1.6.0) adds the
-quote-number rule below on top of them.
+quote-number rule below on top of them, and `ladder-v3` (1.8.0) widens it.
 
-## The quote-number rule (`ladder-v2`, 1.6.0, S3-A review finding B2)
+## The quote-number rule (`ladder-v2`, 1.6.0, S3-A review finding B2; `ladder-v3`, 1.8.0)
 
 SKELETON deletes `-`, so without this rule a claim quote "slope was 0.164"
 passed on a page printing "slope was −0.164", and "510%" on "5–10%". Now a
@@ -232,14 +291,37 @@ whose matched span cannot be located is graded the same way (fail closed).
 Coverage anchors are not checked (they carry no claim). A
 `QUOTE_NUMBERS_DIFFER` quote also leaves the row path (§ Numbers).
 
+`ladder-v3` (1.8.0, S3-C1b, review cycle 2 NB2;
+`pdf_text_common.quote_number_check()`) adds three things:
+- **Marks.** Each token's superscript and footnote letter must agree too, so
+  "p < 10³" over a printed "p < 10⁻³" (the superscript minus dropped) and
+  "0.164a" over "−0.164a" are caught.
+- **Sign-shaped dashes, position by position.** Every `-` the span prints
+  directly (or after one space) before a digit or `.digit` must stand at the
+  same place in the quote, compared on the SKELETON characters of the two
+  (equal by construction). Every dash and minus that NORMALIZE folds counts,
+  the superscript minus included, and so does a dash the line-break rejoin
+  deleted (`K-` + line break + `12`). This catches a deleted dash even where
+  no number token is parsed ("0.164ab" over "−0.164ab"). A dash outside the
+  span (before its first character) is not checked; an extra dash in the
+  quote is allowed.
+- **Spaced dashes compare without the sign.** When the page token is
+  sign-ambiguous (§ Numbers), or a spaced dash precedes the quote's token,
+  the two tokens compare digits without the sign. The dash itself is still
+  checked by the position rule.
+
 **Fixing `QUOTE_NUMBERS_DIFFER`.** Compare `quote_numbers` with
-`page_numbers` in the item: usually a minus, a range dash or a digit was
-lost when the quote was retyped. Re-copy the quote from `pages/pNNN.txt`
-with every number exactly as printed (`−0.164`, `5–10%`). If the page itself
-prints the dash as something that is not a sign (a binary minus in a
-formula, an exponent), leave the item for the human check: on the bake-off
-papers the rule raised 2 false alarms in 2,407 genuine quotes, both quotes
-starting with such a minus (S3-A2).
+`page_numbers` in the item; the reason says whether the digits, a mark
+(superscript or footnote letter) or a sign-shaped dash differ. Usually a
+minus, a range dash, a superscript or a digit was lost when the quote was
+retyped. Re-copy the quote from `pages/pNNN.txt` with every number exactly as
+printed (`−0.164`, `5–10%`, `10⁻³`). If the page itself prints the dash as
+something that is not a sign (a binary minus in a formula, an exponent),
+leave the item for the human check. On the bake-off papers the rule raised
+2 false alarms in 2,407 genuine quotes under `ladder-v2` (both quotes
+starting with such a minus, S3-A2) and 0 under `ladder-v3` (WS script 111;
+the binary minus there is now sign-ambiguous). Of 217 planted minus
+deletions it flagged 208 under `ladder-v2` and 217 under `ladder-v3`.
 
 ## Identifying quotes
 
@@ -322,11 +404,12 @@ OCR text is empty can only be covered by a validated `vision_only` digest, so
 with no validated model it is `NOT_COVERED` and the card FAILs. Report such a
 paper to the orchestrator rather than forcing the card.
 
-## Numbers (`numbers-v5`)
+## Numbers (`numbers-v6`)
 
 Versions: `numbers-v2` locality, `numbers-v3` the unique-row path,
 `numbers-v4` the spaced sign, superscript marks and row guards (1.6.0),
-`numbers-v5` the anchor-cell guard (1.7.0). Write each number exactly as
+`numbers-v5` the anchor-cell guard (1.7.0), `numbers-v6` footnote letters,
+the line-start sign and sign-ambiguous dashes (1.8.0). Write each number exactly as
 printed. It must be **local** to the claim's
 quote by one of two paths (recorded per number as `locality`): inside the
 quote (`in-quote`), or in the one lane B row the quote's leading row label
@@ -338,13 +421,26 @@ string and the page text:
   `( [ { = < > : ; , / ~`, so "2019-2020" is two positive numbers. From
   `numbers-v4` a dash separated from the number by spaces (and at most one
   line break) is a sign after one of those characters or at the start
-  (`Est = - 0.041`, `(- 0.044)`); after a digit or letter it stays a range or
-  subtraction (`28 - 75`, `(n − 1)`).
+  (`Est = - 0.041`, `(- 0.044)`); after a digit it stays a range or
+  subtraction (`28 - 75`). From `numbers-v6` (1.8.0, S3-C1b, W-a) it is also
+  a sign at a **line start** (only spaces or tabs back to the line break: a
+  column-major table cell `– 0.30`). After a letter or a closing bracket
+  with a space before the dash (`of – 0.30`, `(n − 1)`, `(Girls) – 0.30`)
+  the sign is **ambiguous**: the dash may be a minus or a subtraction or
+  range dash. A claim of either sign that only such a token prints is
+  `sign-ambiguous` (review, never `ok`); zero excepted. "K-" + line break +
+  "12" (no space before the dash) is a compound, not a sign.
 - Superscript and subscript characters (`¹`, `²`, `⁻`, `ᵃ`, `₂`) are marks,
   never digits (`numbers-v4`: NFKC used to fold `0.62¹` into `0.621`). A
   superscript the **claim** writes must be printed (it can be an exponent,
   `10⁵`); a claim without one matches a page value that has one (a footnote
   mark left out). Stars and daggers are not compared.
+- One **footnote letter** a–g right after a number that ends the word
+  (`−0.164a`, `1.20b`, `2017a`, `(7b)`) is read as the number with the letter
+  as a mark (`numbers-v6`); write the number without it (`-0.164`), or with
+  it, which must then match. Two letters, a digit, or `.`/`-`/`+`/`'` and a
+  letter or digit after it keep the old reading (`5mg`, `3rd`, `1e-5`,
+  `5a.m.`), and other letters stay non-numbers (`1990s`, `5m`, `2x`).
 - `,`, U+2009, U+202F and a plain space are thousands separators only
   between groups of exactly 3 digits (`1,204` = `1 204` = 1204). A plain space
   is ambiguous (two table cells "1" "204"), so the page is searched under
@@ -364,7 +460,8 @@ string and the page text:
 | `NUMBER_OCR_VISION` | `ocr+vision` | Only in OCR text, claim `source` `both` (vision corroborates) | partial (the paper still relies on OCR, Q-A) |
 | `NUMBER_VISION_ONLY` | `vision-only` | In no text lane, claim `source` `vision` | partial |
 | `NUMBER_PRECISION_DIFFERS` | `precision-differs` | Same value, other digits | review |
-| `NUMBER_MISSING` | `missing` | Anything else (a changed digit, a dropped minus, the spaced form `= - 0.041` included from `numbers-v4`; `both` declares a text reading, so a number in no text lane fails). A minus deleted *inside the quote* is the quote's `QUOTE_NUMBERS_DIFFER` (review, `ladder-v2`), not this | fail |
+| `NUMBER_SIGN_AMBIGUOUS` | `sign-ambiguous` | (`numbers-v6`, 1.8.0) Inside the claim's quote, the only token printing the claim's digits (either sign) follows a spaced dash after a word or a closing bracket (`of – 0.30`): minus or subtraction is undecided | review |
+| `NUMBER_MISSING` | `missing` | Anything else (a changed digit, a dropped minus, the spaced form `= - 0.041` included from `numbers-v4`, a line-start cell `– 0.30` from `numbers-v6`; `both` declares a text reading, so a number in no text lane fails). A minus deleted *inside the quote* is the quote's `QUOTE_NUMBERS_DIFFER` (review, `ladder-v3`), not this | fail |
 | `NUMBER_UNPARSEABLE` | `unparseable` | The card string is not one number | fail |
 
 **Locality (`numbers-v2`, 1.2.0, user decision D-21 N1).** Under
@@ -448,15 +545,15 @@ digit changed / sign flipped:
 |------|-----------------------|------------------------|
 | Inside the quote (`numbers-v2`) | 0.976 / 0.018 / 0.000 | 0.645 / 0.000 / 0.000 |
 | Lane B, any line sharing ≥ 6 letters (B6) | 1.000 / 0.058 / 0.000 | 1.000 / 0.097 / 0.000 |
-| **Unique row OR inside the quote (`numbers-v3`, shipped)** | **0.996 / 0.018 / 0.000** | **0.935 / 0.000 / 0.000** |
+| **Unique row OR inside the quote (`numbers-v3`, shipped in 1.3.0)** | **0.996 / 0.018 / 0.000** | **0.935 / 0.000 / 0.000** |
 
 On script 69's own sample (430 table claims after removing 23 noise rows),
-the shipped rule cleared 0.277 genuine and B6 1.000, with 0.016 and 0.056
+the `numbers-v3` rule cleared 0.277 genuine and B6 1.000, with 0.016 and 0.056
 fabricated last digits. Those quotes started at a recurring label: the
-shipped rule calls 98% of C's quotes `ambiguous`, and B6 clears them by
+`numbers-v3` rule calls 98% of C's quotes `ambiguous`, and B6 clears them by
 matching any line that shares the label, including the look-alike rows. Prose
 numbers (51 claims from A, B, F): 1.000 genuine and 0.000 fabricated under
-both in-quote and the shipped rule (script 74).
+both in-quote and the `numbers-v3` rule (script 74).
 
 **Residuals (documented, not caught):**
 - (a) *same row, another column.* In a row `Overage 0.58 0.57 0.59 …`, a
@@ -641,18 +738,21 @@ another anchor covers is downgraded to `warning`.
 
 ## Status index
 
-Every status `lit_verify` 1.7.0 can write (the keys of `SEVERITY` in
-`lit_verify.py`), with its severity and the section that explains it.
-`COVERED_SPARSE` and `COVERED_DUPLICATE` take their severity from the page
-(§ Coverage statuses).
+What `lit_verify` 1.8.0 can write, with the severity and the section that
+explains each: the 70 keys of `SEVERITY` in `lit_verify.py` (one of them,
+`COLUMN_NOT_CHECKED`, is a label, never a status: last row), plus
+`COVERED_SPARSE`†. `COVERED_SPARSE` and `COVERED_DUPLICATE` take their
+severity from the page (§ Coverage statuses).
+
+† Not a `SEVERITY` key: a coverage status whose severity is set per page.
 
 | Severity | Statuses |
 |----------|----------|
-| pass | `PASS`, `PASS_SKELETON`, `PASS_SPAN` (§ The match ladder); `COVERED_EMPTY`, `COVERED_DUPLICATE`, `COVERED_SPARSE` (§ Coverage statuses); `NUMBER_OK` (§ Numbers) |
+| pass | `PASS`, `PASS_SKELETON`, `PASS_SPAN` (§ The match ladder); `COVERED_EMPTY`, `COVERED_DUPLICATE`, `COVERED_SPARSE`† (§ Coverage statuses); `NUMBER_OK` (§ Numbers) |
 | partial | `PASS_OCR`, `VISION_ONLY`, `SCANNED_PAGE`, `PASS_OCR_LAYER`, `OCR_LAYER_PAPER` (§ Page classes, § Coverage statuses); `NUMBER_OCR_ONLY`, `NUMBER_OCR_VISION`, `NUMBER_VISION_ONLY`, `NUMBER_OCR_LAYER`, `NUMBER_OCR_LAYER_VISION` (§ Numbers); `PASS_CONVERSION_ERROR`, `NUMBER_CONVERSION_ERROR` (§ arXiv HTML statuses) |
-| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE` (§ Numbers) |
-| fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR` (§ Re-derivation) |
-| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED` (§ Re-derivation) |
+| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers) |
+| fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR`, `HEADER_FOOTER_REDERIVE_MISMATCH`, `FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE` (§ Re-derivation) |
+| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation) |
 | label | `COLUMN_NOT_CHECKED` (a number item's `column_severity` only, never its `severity`; § Numbers, the column label) |
 
 ## Verdicts and grades
@@ -665,7 +765,7 @@ column label).
 | Verdict | When | `evidence_grade_suggested` | Exit |
 |---------|------|-----------------------------|------|
 | `FAIL` | Any fail item (all listed) | null | 11 |
-| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW, QUOTE_NUMBERS_DIFFER, precision-differs or not-near-quote item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items exist | 0 |
+| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW, QUOTE_NUMBERS_DIFFER, precision-differs, not-near-quote or sign-ambiguous item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items exist | 0 |
 | `PARTIAL` | No fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY, ocr-only, ocr+vision, ocr-layer, ocr-layer+vision, vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item, or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error item | `FULL_TEXT_PARTIAL` | 0 |
 | `PASS` | Everything anchored in the text layer | `FULL_TEXT_VERIFIED` | 0 |
 
@@ -729,9 +829,19 @@ block: `version` (`rederive-v1`), `method`, `source_path`, `source_sha256`,
 pages or unit labels; `"count"` for a page-count mismatch),
 `row_sources_checked`, `ocr` (a note when OCR text was hash-checked only),
 `outcome` (`match`, `mismatch`, `source missing`, `source hash mismatch` or
-`error`) and `seconds`; `rule_versions` gains `rederive` and `numbers` is
+`error`) and `seconds` (1.8.0 adds, still additive: `version`
+`rederive-v2`, `read`, `source_kind`, `source_kind_ingest`, `web_fetch_row`,
+`header_footer` {records, outcome}, `flags` {pages_checked, mismatches,
+table_probed, table_not_rederived_uncited, not_rederived},
+`ocr_on_text_pages`; `constants` gain `GRADE_FLAGS`); `rule_versions` gains `rederive` and `numbers` is
 `numbers-v5`; `constants` gain `SOURCE_MAX_BYTES`, `REDERIVE_TIMEOUT_S` (the
 `--timeout` used) and `REDERIVE_WORKERS`.
+
+**1.8.0, part 2 (S3-C1b; result schema unchanged):** `rule_versions.match_ladder`
+is `ladder-v3` and `numbers` `numbers-v6`; a number item can carry the
+status `NUMBER_SIGN_AMBIGUOUS` (label `sign-ambiguous`, review, `locality`
+null); a `QUOTE_NUMBERS_DIFFER` reason now says whether the digits, a mark
+or a sign-shaped dash differ.
 
 ## MANIFEST row (papers dir, kind `lit_verify`)
 
@@ -741,7 +851,9 @@ One row per attempt with a valid papers dir: `kind`, `tool_version`,
 page count, and since 1.4.0 `anchor_kind` and `unit_count` (null on PDF)),
 `rederive` (1.7.0: `version`, `method`, `outcome`, `anchors_checked`,
 `row_sources_checked`, `seconds`, and the counts `anchor_mismatches` and
-`row_source_mismatches`), `artifacts.card_check` (name, bytes, SHA-256),
+`row_source_mismatches`; 1.8.0 adds `source_kind`, the `header_footer`
+outcome and the counts `flag_mismatches` and `ocr_on_text_pages`),
+`artifacts.card_check` (name, bytes, SHA-256),
 `verdict`, `evidence_grade_suggested`, `counts`, `redaction_count`,
 `secret_redactions`, `exit_code`, `note`. A usage error or a refused papers
 dir writes no row.
@@ -755,7 +867,7 @@ dir writes no row.
 | 2 | Refused path (PAPER_DIR / papers dir / SCRATCH_DIR guard; CARD_PATH not directly inside PAPER_DIR; basename not a paper key; an ingest artifact path resolving outside PAPER_DIR; a secret value in an argument) |
 | 3 | Reserved by `run_with_capture.sh`, never used |
 | 8 | Card cannot be parsed (missing, duplicate or invalid lit-verify block; oversize or non-UTF-8 card; a v2 structural rule broken: `source_version` missing on HTML or present on PDF, a non-`text` source or vision declared available on HTML, a bad or repeated section label, `section_end` = `section`) |
-| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors) |
+| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors; from 1.8.0 pdfimages, which re-derives page flags) |
 | 11 | FAIL as a recorded result (card_check written); selftest: an expectation did not hold |
 | 12 | Internal error (no verdict; see the MANIFEST note) |
 
@@ -785,7 +897,8 @@ At most **two** self-revisions (spec §7.4), each a new card file
 | `ANCHOR_KIND_MISMATCH` | A v1 or `pdf` card on an HTML ingest, or the reverse | Rewrite the card as `lit-verify-card-v2` with the ingest's `anchor_kind` and its locators (sections or pages) |
 | `SOURCE_VERSION_MISMATCH` | The card names another arXiv version than the one ingested | Write the ingested version (manifest `arxiv.version`); if you read another version, that version needs its own fetch, key and ingest |
 | `MIXED_ANCHOR_KINDS` | A PDF and an HTML ingest under one paper key | Report it: the orchestrator moves one source to its own key |
-| `QUOTE_NUMBERS_DIFFER` (review) | A minus, range dash or digit lost when the quote was retyped | Re-copy the quote with every number as printed (§ The quote-number rule); a non-sign dash on the page stays a human check |
+| `QUOTE_NUMBERS_DIFFER` (review) | A minus, range dash, superscript or digit lost when the quote was retyped | Re-copy the quote with every number as printed (§ The quote-number rule); a non-sign dash on the page stays a human check |
+| `NUMBER_SIGN_AMBIGUOUS` (review) | The page prints the number after a spaced dash that follows a word or bracket (`of – 0.30`) | Nothing to fix in the card if the number is copied right: a human reads the page (or its render) and decides minus or subtraction |
 | `VISION_NOT_ON_LIST` | `vision_validated: true` for a model not on the card's list version | Set `vision_validated: false`, `vision: unavailable`, and re-read flagged pages from the text layer |
 | `SOURCE_MISSING` / `SOURCE_FILE_HASH_MISMATCH` | The ingest's source was moved, deleted or replaced after the ingest | Do not edit the card: report it; restore the source to its recorded path or re-ingest |
 | `ANCHOR_REDERIVE_MISMATCH` / `ROW_SOURCE_REDERIVE_MISMATCH` | The ingest's files do not re-derive from its source (edited or forged after the ingest) | Do not edit the card: report it; the orchestrator re-ingests |
@@ -828,13 +941,23 @@ set with consistent hashes and a MANIFEST row (FAIL via
 ANCHOR_REDERIVE_MISMATCH), an ingest without a pdf_ingest MANIFEST row (FAIL
 via NO_INGEST_ROW), and on a column-major page a row label alone on its
 anchor line (PASS via NUMBER_OK) and a prose quote starting with that label
-(NEEDS_REVIEW via NUMBER_NOT_NEAR_QUOTE); plus one check that each card run
-wrote one MANIFEST row with a matching `card_check` hash: **34
+(NEEDS_REVIEW via NUMBER_NOT_NEAR_QUOTE); (1.8.0) three forged manifest
+fields, each with a forged MANIFEST row: a header/footer record that lets a
+span quote skip a printed line (FAIL via HEADER_FOOTER_REDERIVE_MISMATCH),
+removed `scanned` / `ocr_layer_suspected` flags (FAIL via
+FLAGS_REDERIVE_MISMATCH) and OCR text on a text page (FAIL via
+OCR_ON_TEXT_PAGE); (1.8.0, S3-C1b) on a number-parsing page: a genuine
+footnote-lettered negative `−0.164a` (PASS), its minus deleted in the quote
+and a superscript minus deleted from `10⁻³` (both NEEDS_REVIEW via
+QUOTE_NUMBERS_DIFFER), a spaced minus after a word (NEEDS_REVIEW via
+NUMBER_SIGN_AMBIGUOUS), and a line-start cell `– 0.25`, genuine (PASS) and
+sign-flipped (FAIL via NUMBER_MISSING); plus one check that each card run
+wrote one MANIFEST row with a matching `card_check` hash: **43
 expectations**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 34/34 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 43/43 expectations held; work dir removed`.
 
 ## Worked examples
 

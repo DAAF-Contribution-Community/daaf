@@ -119,7 +119,7 @@ class ExitTableTests(unittest.TestCase):
         self.assertTrue(os.stat(_SCRIPTS / "pdf_ingest.sh").st_mode & 0o111)
 
     def test_tool_version_and_normalize_version(self):
-        self.assertEqual(pdf_ingest.TOOL_VERSION, "1.2.1-daaf")
+        self.assertEqual(pdf_ingest.TOOL_VERSION, "1.2.2-daaf")
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.OVERLAP_VERSION), ("normalize-v1", "overlap-v1"))
 
     def test_reading_aid_body_prefixes_every_line(self):
@@ -400,7 +400,7 @@ class FixtureIngestTests(unittest.TestCase):
         rows = manifest_rows(self.papers)
         self.assertEqual(len(rows), len(self.NAMES))
         for r in rows:
-            self.assertEqual((r["kind"], r["tool_version"], r["exit_code"]), ("pdf_ingest", "1.2.1-daaf", 0))
+            self.assertEqual((r["kind"], r["tool_version"], r["exit_code"]), ("pdf_ingest", "1.2.2-daaf", 0))
             art = r["artifacts"]["ingest_manifest"]
             self.assertEqual(sha(self.papers / art["path"]), art["sha256"])
 
@@ -587,6 +587,40 @@ class FixtureIngestTests(unittest.TestCase):
         self.assertTrue(m["constants"]["AGREEMENT_CUTOFF_PROVISIONAL"])
         self.assertEqual(m["source"]["source_kind"], "user_supplied")
         self.assertFalse(m["poppler_data_present"] and not os.path.isdir(pdf_ingest.POPPLER_DATA_CMAP_DIR))
+
+    def test_shared_rules_rederive_the_recorded_flags_and_header_footer(self):
+        # 1.2.2 (S3-C1a): the module rules lit_verify 1.8.0 re-runs at check time
+        #   reproduce, from the stored anchors and a pdfimages listing read
+        #   through a sealed memfd (run_tool pass_fds), what ingest() recorded.
+        import fcntl
+        for name in self.NAMES:
+            r = self.run_of(name)
+            m = r["manifest"]
+            texts = [(r["dir"] / p["anchor"]["path"]).read_bytes().decode("utf-8", errors="replace")
+                     for p in m["pages"]]
+            self.assertEqual(pdf_ingest.header_footer_records(texts)[0], m["header_footer"], name)
+            fd = os.memfd_create("t", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+            try:
+                os.write(fd, (PDF / f"{name}.pdf").read_bytes())
+                fcntl.fcntl(fd, fcntl.F_ADD_SEALS, fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK)
+                code, out, _ = pdf_ingest.run_tool(["pdfimages", "-list", f"/dev/fd/{fd}"], 60, pass_fds=(fd,))
+                code2, out2, _ = pdf_ingest.run_tool(["pdfinfo", "-f", "1", "-l", str(m["page_count"]),
+                                                      f"/dev/fd/{fd}"], 60, pass_fds=(fd,))
+            finally:
+                os.close(fd)
+            self.assertEqual((code, code2), (0, 0), name)
+            images = pdf_ingest.parse_pdfimages(out.decode("utf-8", errors="replace"))
+            sizes = pdf_ingest.parse_pdfinfo(out2.decode("utf-8", errors="replace"))[1]
+            for page, text in zip(m["pages"], texts):
+                n = page["page_no"]
+                nonws, _, numeric, scanned = pdf_ingest.text_flag_evidence(text)
+                area, _, _ = pdf_ingest.image_evidence(images.get(n, []), sizes.get(n, (0.0, 0.0)), [], False)
+                got = {"numeric": bool(numeric), "scanned": bool(scanned),
+                       "ocr_layer_suspected": bool(pdf_ingest.ocr_layer_evidence(area, nonws, False))}
+                want = {f: f in page["flags"] for f in got}
+                self.assertEqual(got, want, f"{name} p{n}")
+                if any(f == "table" for f, _ in pdf_ingest.caption_evidence(text)):
+                    self.assertIn("table", page["flags"], f"{name} p{n}")
 
 
 # --- Ingest behaviors that need their own destination --------------------------------

@@ -2,8 +2,8 @@
 
 Everything an agent needs to run `scripts/pdf_ingest.sh` and to read what it
 writes. Source of truth: the header, `EXIT_CODES`, `build_parser()` and the
-manifest writer in `scripts/pdf_ingest.py` (`TOOL_VERSION = "1.2.1-daaf"`,
-2026-10-23; `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the rule header of
+manifest writer in `scripts/pdf_ingest.py` (`TOOL_VERSION = "1.2.2-daaf"`,
+2026-10-27; `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the rule header of
 `scripts/pdf_text_common.py` (`NORMALIZE_VERSION = "normalize-v1"`,
 `OVERLAP_VERSION = "overlap-v1"`). If this page and the code disagree, the
 code wins: report the drift. Since 1.2.0 every manifest records
@@ -301,8 +301,11 @@ the same code the ingest ran, so the two can never drift apart:
 | `lane_b_page_text(pdfium_doc, n)` | Lane B's text of page `n` from an open pypdfium2 document (CRLF → LF) | Re-deriving each lane B file (the row source) |
 | `html_units(html)` / `unit_evidence(u, text, rows)` | The arXiv HTML unit extraction (`HTML_EXTRACT_VERSION`) and per-unit flags | Re-deriving unit text, labels, flags and table rows |
 | `arxiv_identity(html, web_fetch)` | The watermark's arXiv id and version | Re-checking the HTML source's identity |
-| `run_tool(argv, timeout)`, `tool_version(binary, timeout)`, `parse_pdfinfo(text)` | Subprocess runner with timeout, tool version probe, `pdfinfo` parser | The page count and the `EXTRACTOR_VERSION_DIFFERS` check |
+| `run_tool(argv, timeout, extra_env=None, pass_fds=())`, `tool_version(binary, timeout)`, `parse_pdfinfo(text)` | Subprocess runner with timeout (1.2.2: `pass_fds`, the descriptors the child keeps), tool version probe, `pdfinfo` parser | The page count, page sizes and the `EXTRACTOR_VERSION_DIFFERS` check; 1.8.0 runs poppler on a sealed memfd passed as `/dev/fd/N` |
 | `MAX_BYTES_DEFAULT`, `TIMEOUT_DEFAULT_S` | The `--max-bytes` and `--timeout` defaults | `lit_verify`'s `SOURCE_MAX_BYTES` and `--timeout` default |
+| *(1.2.2, S3-C1a, 2026-10-27; no artifact change)* `header_footer_records(texts)` | The repeated header/footer rule over the anchor texts of pages 1..N | Re-deriving the lines a declared span may skip (`HEADER_FOOTER_REDERIVE_MISMATCH`) |
+| `text_flag_evidence(text)`, `caption_evidence(text)` | The `numeric`, `scanned` and caption (`table` / `figure`) rules on the anchor text | Re-deriving those page flags (`FLAGS_REDERIVE_MISMATCH`) |
+| `image_evidence(images, page_size, plumber_images, plumber_strings)`, `ocr_layer_evidence(max_area, nonws, glyphless)`, `parse_pdfimages(text)` | The image-area, figure-image and `ocr_layer_suspected` rules | Re-deriving `ocr_layer_suspected` and the truly-scanned image evidence from `pdfimages -list` |
 
 Two consequences for anyone running `pdf_ingest`:
 - **Keep the source where it was ingested** (the manifest's `source.path`):

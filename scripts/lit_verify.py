@@ -18,7 +18,7 @@
 # plants known fabrications in cards, runs the real card gate on them and
 # asserts every expected verdict (note 08 §5). A later session adds `report`.
 #
-#   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S]
+#   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S]
 #   bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 #
 # --- Inputs and guards ------------------------------------------------------
@@ -46,7 +46,8 @@
 #   `lit-verify`, holding strict JSON (stdlib only: no YAML). Zero blocks,
 #   two blocks, invalid JSON, duplicate keys, NaN/Infinity, unknown fields,
 #   wrong types -> exit 8. C14 formalizes the full card later.
-#     schema_version       "lit-verify-card-v1" (anything else -> exit 8)
+#     schema_version       "lit-verify-card-v1" (or "lit-verify-card-v2", next
+#                          section; anything else -> exit 8)
 #     paper_key            must equal the PAPER_DIR basename (else FAIL)
 #     source_pdf_sha256    64 lowercase hex; must equal the ingest manifest's
 #                          source.sha256 (else FAIL)
@@ -130,7 +131,9 @@
 #   label the ingest does not have; fail). Unit classes: "sparse" (pdf_ingest
 #   flagged the unit `sparse`: < 200 non-whitespace chars, mostly heading-only
 #   units; the sparse waiver and duplicate rule apply as on pages) or
-#   "normal"; no unit is ever scanned. Numbers: numbers-v3 unchanged, with
+#   "normal"; no unit is ever scanned. Numbers: the PDF number rules
+#   (NUMBER_RULES_VERSION; numbers-v3 when 1.4.0 added this lane, numbers-v6
+#   from 1.8.0), with
 #   rows{S}/uNNN.txt as the row source of the unique-row path (the HTML
 #   anchor is already row-major, so a quote copied through the cell clears
 #   in-quote). Conversion-error cap: a claim whose quote passes in a unit
@@ -155,7 +158,9 @@
 #     (no row -> NO_INGEST_ROW, a fail from 1.7.0; it was a warning).
 #     1b Re-derivation (1.7.0, D-24 W1; § Re-derivation below): the anchor
 #     text (and lane B / table rows) is re-derived from the stored source and
-#     compared byte-for-byte with the files the checks are about to trust.
+#     compared byte-for-byte with the files the checks are about to trust;
+#     from 1.8.0 also the header/footer lines, the grade-relevant page flags
+#     and OCR acceptance, from the same hashed bytes.
 #
 # --- Re-derivation (1.7.0, user decision D-24, review W1) -------------------
 #   Hashes alone prove only that the manifest, page_index and anchor files
@@ -169,7 +174,22 @@
 #            at most SOURCE_MAX_BYTES, and hash to the manifest's
 #            source.sha256 (which the card's hash already equals, check 1).
 #            Unusable -> SOURCE_MISSING; another hash -> SOURCE_FILE_HASH_
-#            MISMATCH (both fail; nothing is re-derived).
+#            MISMATCH (both fail; nothing is re-derived). 1.8.0 (rederive-v2,
+#            review W-b): the file is read ONCE; those bytes are hashed and
+#            every lane re-derives from them, never from the path again:
+#            poppler reads a sealed memfd (os.memfd_create + F_SEAL_WRITE/
+#            GROW/SHRINK/SEAL) as /dev/fd/N, pypdfium2 and pdfplumber the
+#            bytes, the HTML lane the decoded bytes. No memfd (non-Linux) ->
+#            SOURCE_REDERIVE_ERROR (fail closed; no path fallback).
+#            `rederive.source_kind` (recorded only, no verdict effect):
+#            "web_fetch" when a web_fetch MANIFEST.jsonl beside the file has
+#            a row with raw_artifact = its basename and raw_sha256 = its hash
+#            (pdf_ingest.web_fetch_provenance; `web_fetch_row` gives the line
+#            and final_url), "web_fetch_row_conflict" (rows name it with
+#            another hash), "user_supplied" (no row), "synthetic" (selftest).
+#            An agent that can write files can author a source AND such a
+#            row, so a whole-chain forgery stays possible; the field lets the
+#            orchestrator's audit see which kind it is.
 #   PDF      pdftotext page by page with pdf_ingest.anchor_argv() (the very
 #            invocation pdf_ingest used, LC_ALL=C) for EVERY page (the
 #            uniqueness rule reads them all), compared byte-for-byte with
@@ -179,10 +199,44 @@
 #            compared with lane_b{S}/pNNN.txt (ROW_SOURCE_REDERIVE_MISMATCH,
 #            fail; lane B is then not used). A pdftotext or pypdfium2 version
 #            other than the manifest's is EXTRACTOR_VERSION_DIFFERS (warning;
-#            the comparison still decides). pdftotext/pdfinfo missing -> exit
-#            10; one failing or exceeding --timeout -> SOURCE_REDERIVE_ERROR
-#            (fail). pypdfium2 missing -> ROW_SOURCE_NOT_REDERIVED (warning;
-#            lane B not used, so no number takes the row path).
+#            the comparison still decides). pdftotext/pdfinfo/pdfimages
+#            missing -> exit 10; one failing or exceeding --timeout ->
+#            SOURCE_REDERIVE_ERROR (fail). pypdfium2 missing ->
+#            ROW_SOURCE_NOT_REDERIVED (warning; lane B not used, so no number
+#            takes the row path).
+#   Facts    (1.8.0, rederive-v2) from the RE-DERIVED anchors, with pdf_
+#            ingest's own functions (§ SHARED_RULES there):
+#            header/footer  header_footer_records(); a manifest list that
+#                     differs -> HEADER_FOOTER_REDERIVE_MISMATCH (fail; review
+#                     NB1: a forged record let a span quote skip a printed
+#                     line). Only the re-derived lines are skipped in a span.
+#            flags    GRADE_FLAGS (table, numeric, scanned, ocr_layer_
+#                     suspected) and the truly-scanned image evidence (review
+#                     W-c): scanned / numeric / caption tables from the text
+#                     (text_flag_evidence, caption_evidence, exact);
+#                     ocr_layer_suspected and figure image evidence from
+#                     `pdfimages -list` + `pdfinfo -f 1 -l N` on the same
+#                     bytes (image_evidence, ocr_layer_evidence); pdfplumber
+#                     (bytes) only where needed: find_tables on a caption-less
+#                     page the manifest flags `table` that a numbered claim
+#                     cites (elsewhere `table` changes no item and is kept as
+#                     recorded), page.images on a scanned page of a document
+#                     pdfimages lists no image for, and on a page the manifest
+#                     flags ocr_layer_suspected that pdfimages alone does not
+#                     confirm. A grade flag (or page class) that differs ->
+#                     FLAGS_REDERIVE_MISMATCH (fail); the gate uses the
+#                     re-derived flags. pdfplumber unavailable -> conservative
+#                     (an unconfirmed `table` closes the row path; a recorded
+#                     ocr_layer_suspected is kept; a scanned page without
+#                     image evidence counts as truly scanned) and one
+#                     FLAGS_NOT_REDERIVED warning. Residual: a page whose
+#                     >= 80% image only pdfplumber sees, with the flag removed
+#                     from the manifest (0 such pages in the 5 bake-off PDFs,
+#                     probe 104).
+#            OCR      OCR text on a page whose re-derived anchor has >=
+#                     SCANNED_MAX_CHARS non-whitespace chars is refused
+#                     (OCR_ON_TEXT_PAGE, fail; review W-d): pdf_ingest OCRs
+#                     scanned pages only.
 #   HTML     pdf_ingest.html_units() / unit_evidence() (HTML_EXTRACT_VERSION)
 #            on the stored HTML: unit count, labels, unit text, flags and the
 #            arXiv id/version from the watermark must equal the ingest
@@ -192,14 +246,17 @@
 #            page): its files are hash-checked only, and a paper whose OCR
 #            text is used carries one OCR_NOT_REDERIVED warning (OCR evidence
 #            is already capped at PARTIAL).
-#   Not re-derived either: page flags and their evidence (pdfplumber,
-#   pdfimages), header/footer lines. They can move a grade or a review item,
-#   never make an unprinted quote or number pass.
-#   card_check records the outcome under `rederive` (method, versions, pages
-#   checked, mismatches, seconds); the MANIFEST row a summary. Selftest and
+#   Not re-derived (1.8.0): the display-only flags (figure, garbled, rotated,
+#   cjk_risk, low_agreement, ocr) and OCR text itself (above); none moves a
+#   verdict or grade.
+#   card_check records the outcome under `rederive` (method, read, versions,
+#   source_kind, pages checked, mismatches, header_footer, flags,
+#   ocr_on_text_pages, seconds); the MANIFEST row a summary. Selftest and
 #   unit tests: their in-code synthetic ingests have no source file, so
-#   build_synthetic_ingest() registers the planted text in SYNTHETIC_SOURCES,
-#   an in-process registry the CLI never fills (no file can reach it).
+#   build_synthetic_ingest() registers the planted text (and, 1.8.0, what the
+#   image and table tools would report for it) in SYNTHETIC_SOURCES, an
+#   in-process registry the CLI never fills (no file can reach it); pdf_
+#   ingest's rules then run on it as on a real source.
 #   2 Quote ladder (pdf_text_common.match_quote, MATCH_LADDER_VERSION; tiers
 #     and order are documented there): REDACTED_SPAN, PASS, PASS_SKELETON,
 #     PASS_SPAN, PASS_OCR, NEAR, WRONG_PAGE, NOT_FOUND. Spans: a quote that
@@ -213,7 +270,14 @@
 #     quote_numbers_agree, on the page's number view); else
 #     QUOTE_NUMBERS_DIFFER (review; status_if_confirmed keeps the pass it
 #     replaced), which also takes the claim off the row path. Coverage
-#     anchors are not checked (they carry no claim).
+#     anchors are not checked (they carry no claim). ladder-v3 (1.8.0,
+#     S3-C1b, NB2; pdf_text_common.quote_number_check): the tokens' superscript
+#     and footnote-letter marks must agree too ("10³" over "10⁻³"), and every
+#     sign-shaped dash the span prints before a number (the superscript minus
+#     and a dash the line-break rejoin deleted included) must stand at the
+#     same SKELETON position in the quote, even where no token is parsed
+#     ("0.164ab" over "−0.164ab"); a spaced dash before a quote token, or a
+#     sign-ambiguous page token, compares the digits without their sign.
 #   3 Identifying quote (pdf_text_common.quote_identity): >= MIN_QUOTE_CHARS
 #     normalized chars AND >= MIN_QUOTE_WORDS words AND the SKELETON occurs
 #     exactly once across all anchor text and page boundaries (and all OCR
@@ -279,6 +343,15 @@
 #                            ("vision-only"; allowed, labeled, partial)
 #       NUMBER_PRECISION_DIFFERS  same value, other digits (0.5 vs 0.50):
 #                            a human check, never a pass
+#       NUMBER_SIGN_AMBIGUOUS  (numbers-v6, 1.8.0 S3-C1b, W-a) inside the
+#                            quote the only token printing the claim's digits
+#                            (either sign) follows a spaced dash after a word
+#                            or a closing bracket ("of – 0.30"): minus or
+#                            subtraction is undecided; review, never ok. A
+#                            spaced dash at a LINE START is a sign (a table
+#                            cell "\n– 0.30"), after a digit a range
+#       (numbers-v6) a number printed with one footnote letter ("−0.164a") is
+#       read as the number; a claim without the letter matches it
 #       NUMBER_MISSING       anything else (a changed digit or a dropped minus
 #                            sign fails here, the spaced form "= - 0.041"
 #                            included from numbers-v4; "both" declares a text
@@ -342,8 +415,8 @@
 #   only a number item's column_severity, and no verdict rule reads it.
 #   FAIL          any fail item (all listed)
 #   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS,
-#                 NUMBER_NOT_NEAR_QUOTE or QUOTE_NUMBERS_DIFFER item (listed
-#                 for a human)
+#                 NUMBER_NOT_NEAR_QUOTE, NUMBER_SIGN_AMBIGUOUS or
+#                 QUOTE_NUMBERS_DIFFER item (listed for a human)
 #   PARTIAL       no fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
 #                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
 #                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item,
@@ -410,7 +483,8 @@
 #   10  ingest artifacts missing or incomplete (no manifest for the suffix,
 #       missing anchor / OCR / page_index file, unreadable manifest), or a
 #       required dependency missing (rapidfuzz; polars or pyarrow; from
-#       1.7.0 pdftotext and pdfinfo, which re-derive a PDF's anchors)
+#       1.7.0 pdftotext and pdfinfo, which re-derive a PDF's anchors; from
+#       1.8.0 pdfimages, which re-derives its page flags)
 #   11  FAIL as a recorded result (coverage gap, wrong page, quote or number
 #       missing, non-identifying quote, hash mismatch, inconsistent vision
 #       claims); selftest: an expectation did not hold
@@ -512,7 +586,34 @@ import pdf_text_common as ptc  # noqa: E402
 # also needs the identified label to stand as a cell on the anchor line where
 # the quote matched (row_label_is_cell()). Card and result schemas unchanged
 # (additive fields).
-TOOL_VERSION = "1.7.0-daaf"
+# 1.8.0 (S3-C1a, 2026-10-27, review cycle 2, the last fix round; user-approved
+# principle: every manifest field that can raise a verdict or grade is
+# re-derived from the hashed source bytes, or the gate fails closed):
+# rederive-v2. NB1 the header/footer lines skipped in a declared span are
+# re-derived from the re-derived anchors with pdf_ingest's own rule
+# (HEADER_FOOTER_REDERIVE_MISMATCH, fail; only re-derived lines are skipped);
+# W-b the PDF source is read once, hashed, and every lane re-derives from
+# those bytes (a sealed memfd as /dev/fd/N for poppler; bytes for pypdfium2
+# and pdfplumber; no memfd -> SOURCE_REDERIVE_ERROR); W-c the grade-relevant
+# page flags (GRADE_FLAGS) and the truly-scanned image evidence are
+# re-derived with pdf_ingest's rules (pdfimages -list; pdfplumber where
+# needed) (FLAGS_REDERIVE_MISMATCH, fail; FLAGS_NOT_REDERIVED, warning; the
+# gate uses the re-derived flags); W-d OCR text on a page that re-derives as
+# a text page is refused (OCR_ON_TEXT_PAGE, fail). card_check `rederive`
+# gains source_kind, source_kind_ingest, web_fetch_row, read, header_footer,
+# flags, ocr_on_text_pages (additive). Exit 10 also covers pdfimages missing.
+# Card and result schemas unchanged (additive fields).
+# 1.8.0, part 2 (S3-C1b, 2026-10-27, review cycle 2 NB2 and W-a; same
+# principle, for number parsing: when the parser cannot be sure a sign or a
+# digit belongs to the number, the claim goes to review or fails). numbers-v6
+# (pdf_text_common): a number followed by one footnote letter a-g is read
+# with the letter as a mark ("−0.164a"); a spaced dash at a line start is a
+# sign; a spaced dash after a word or a closing bracket is sign-ambiguous
+# (NUMBER_SIGN_AMBIGUOUS, review). ladder-v3: the quote-number rule also
+# compares superscript / footnote-letter marks and the sign-shaped dashes of
+# the matched span position by position (FX-Q). Kept in 1.8.0 (unreleased):
+# one fix round, one version. Card and result schemas unchanged.
+TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
     0: "card verdict PASS, PARTIAL or NEEDS_REVIEW (verdict in the card_check JSON); selftest: all expectations held",
@@ -521,7 +622,7 @@ EXIT_CODES = {
        "path, secret value)",
     8: "card cannot be parsed (no single valid lit-verify block; oversize or non-UTF-8 card)",
     10: "ingest artifacts missing or incomplete, or a required dependency missing (rapidfuzz; polars or pyarrow; "
-        "pdftotext and pdfinfo to re-derive PDF anchors)",
+        "pdftotext, pdfinfo and pdfimages to re-derive PDF anchors and page flags)",
     11: "FAIL as a recorded result; selftest: an expectation did not hold",
     12: "internal error (no verdict)",
 }
@@ -631,6 +732,11 @@ SEVERITY = {
     "ANCHOR_REDERIVE_MISMATCH": "fail", "ROW_SOURCE_REDERIVE_MISMATCH": "fail", "SOURCE_MISSING": "fail",
     "SOURCE_FILE_HASH_MISMATCH": "fail", "SOURCE_REDERIVE_ERROR": "fail", "NO_INGEST_ROW": "fail",
     "EXTRACTOR_VERSION_DIFFERS": "warning", "OCR_NOT_REDERIVED": "warning", "ROW_SOURCE_NOT_REDERIVED": "warning",
+    # 1.8.0 (S3-C1a): header/footer, page flags and OCR acceptance re-derived
+    "HEADER_FOOTER_REDERIVE_MISMATCH": "fail", "FLAGS_REDERIVE_MISMATCH": "fail", "OCR_ON_TEXT_PAGE": "fail",
+    "FLAGS_NOT_REDERIVED": "warning",
+    # 1.8.0 (S3-C1b, numbers-v6 W-a): a claimed number only a sign-ambiguous token prints
+    "NUMBER_SIGN_AMBIGUOUS": "review",
     "INGEST_SUFFIX_DIFFERS": "warning", "INCOMPLETE_INGEST_IGNORED": "warning",
     "NORMALIZE_VERSION_DIFFERS": "warning", "SPARSE_DECLARATION_MISMATCH": "warning",
     "VISION_ONLY_IGNORED": "warning", "HTML_EXTRACT_VERSION_DIFFERS": "warning",
@@ -642,7 +748,8 @@ NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_V
                  "NUMBER_VISION_ONLY": "vision-only", "NUMBER_PRECISION_DIFFERS": "precision-differs",
                  "NUMBER_MISSING": "missing", "NUMBER_UNPARSEABLE": "unparseable",
                  "NUMBER_NOT_NEAR_QUOTE": "not-near-quote", "NUMBER_OCR_LAYER": "ocr-layer",
-                 "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision", "NUMBER_CONVERSION_ERROR": "conversion-error"}
+                 "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision", "NUMBER_CONVERSION_ERROR": "conversion-error",
+                 "NUMBER_SIGN_AMBIGUOUS": "sign-ambiguous"}
 # INTENT (D-21 N2): pdf_ingest's flag for an existing OCR text layer.
 OCR_LAYER_FLAG = "ocr_layer_suspected"
 # INTENT (1.6.0, user decision D-24 W2): a paper with at least this many pages
@@ -663,7 +770,15 @@ VISION_LIST_VERSION = "vision-list-2026-10-19"
 VISION_VALIDATED_LISTS = {"vision-list-2026-10-19": ()}
 
 # INTENT (1.7.0, D-24 W1): re-derivation (§ Re-derivation in the header).
-REDERIVE_VERSION = "rederive-v1"
+#   rederive-v2 (1.8.0): read once from sealed bytes; header/footer, page
+#   flags and OCR acceptance re-derived too.
+REDERIVE_VERSION = "rederive-v2"
+# INTENT (1.8.0, review W-c): the page flags that can move a verdict or grade,
+#   re-derived at check time: `scanned` decides the page class (with the
+#   image evidence), `ocr_layer_suspected` caps, `table` / `numeric` open the
+#   row path (pdf_text_common.ROW_PAGE_FLAGS). The other flags (figure,
+#   garbled, rotated, cjk_risk, low_agreement, ocr) move no verdict.
+GRADE_FLAGS = ("table", "numeric", "scanned", "ocr_layer_suspected")
 SOURCE_MAX_BYTES = pdi.MAX_BYTES_DEFAULT          # pdf_ingest's default --max-bytes (100 MiB)
 REDERIVE_TIMEOUT_DEFAULT_S = pdi.TIMEOUT_DEFAULT_S   # per subprocess, as pdf_ingest's --timeout
 # INTENT: pdftotext runs page by page; a few in parallel cut the wall time on
@@ -1296,21 +1411,204 @@ def ingest_row_items(papers_dir, paper_key, mname, msha):
     return items
 
 
-# §§ REDERIVE (1.7.0, user decision D-24, review W1)
-def rederive(ingest, timeout):
+# §§ REDERIVE (1.7.0, user decision D-24, review W1; 1.8.0 S3-C1a, review cycle 2 NB1, W-b, W-c, W-d)
+def source_kind_of(real, sha):
+    # (1.8.0) What kind of file the re-derivation read, for the orchestrator's
+    # audit (recorded only; no verdict effect): "web_fetch" when the
+    # MANIFEST.jsonl beside the file holds a web_fetch row naming it
+    # (raw_artifact = its basename) with its sha256 (pdf_ingest.
+    # web_fetch_provenance, the rule pdf_ingest applied at ingest; returns
+    # the row's line and final_url); "web_fetch_row_conflict" when rows name
+    # it with another hash; "user_supplied" when no row names it (a file a
+    # user or an agent placed). An agent with Write can author a source and
+    # such a row together, so the field records provenance; it proves none.
+    try:
+        kind, wf, refusal = pdi.web_fetch_provenance(real, sha)
+    except OSError:
+        return "unknown", None
+    if refusal:
+        return "web_fetch_row_conflict", None
+    if kind == "web_fetch":
+        return kind, {"manifest_line": wf.get("manifest_line"), "final_url": safe_line(str(wf.get("final_url")), 200),
+                      "fetch_timestamp": safe_line(str(wf.get("fetch_timestamp")), 40)}
+    return kind, None
+
+
+def sealed_copy(data):
+    # (1.8.0, review W-b) A sealed anonymous in-memory file holding `data`,
+    # the bytes already hashed; poppler reads it as /dev/fd/N, so no file at
+    # a path can be swapped between the hash and the re-derivation. Returns
+    # the fd (the caller closes it). Raises ImportError, AttributeError or
+    # OSError where memfd_create or file sealing is unavailable (non-Linux).
+    import fcntl   # Unix only: imported here so the module still imports elsewhere
+    fd = os.memfd_create("lit_verify_source", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        fcntl.fcntl(fd, fcntl.F_ADD_SEALS,
+                    fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def rederive_page_facts(ingest, texts, images_by_page, sizes, table_probe, plumber_probe, number_pages, items, rec):
+    # (1.8.0) From the RE-DERIVED anchor texts {page: text} and the image
+    # listing of the same source bytes, with pdf_ingest's own rules (§
+    # SHARED_RULES there): the header/footer records (NB1), the grade-
+    # relevant page flags and the truly-scanned image evidence (W-c), and the
+    # OCR refusal on text pages (W-d). A manifest value that differs is a
+    # fail; the gate then uses the re-derived value. `table_probe(n)` (bool,
+    # or None when pdfplumber is unavailable) is pdfplumber find_tables on
+    # page n; `plumber_probe(n)` (boxes, or None) is pdfplumber page.images.
+    pages = ingest["pages"]
+    complete = sorted(texts) == sorted(pages)
+
+    # --- Header/footer records (NB1): only these lines are skipped in a span ---
+    hf_d = pdi.header_footer_records([texts[n] for n in sorted(texts)])[0] if complete else []
+    # REASONING: pdf_ingest secret-redacts the whole manifest text, so the
+    #   re-derived records pass through the same redaction before comparing.
+    hf_d = json.loads(redact_secrets(json.dumps(hf_d, ensure_ascii=False))[0])
+    hf_m = ingest.get("header_footer") or []
+    rec["header_footer"] = {"records": len(hf_d), "outcome": ("match" if hf_d == hf_m else "mismatch") if complete
+                            else "not re-derived (the anchors do not re-derive page for page; nothing is skipped)"}
+    if complete and hf_d != hf_m:
+        shown_m = [(h.get("position"), safe_line(str(h.get("pattern")), 60), h.get("pages")) for h in hf_m
+                   if isinstance(h, dict) and h not in hf_d][:3]
+        items.append(item("integrity", "HEADER_FOOTER_REDERIVE_MISMATCH",
+                          reason=f"the manifest records {len(hf_m)} header/footer line(s); pdf_ingest's rule on the "
+                                 f"anchors re-derived from the source gives {len(hf_d)}"
+                                 + (f" (not re-derived: {shown_m})" if shown_m else "")
+                                 + "; only the re-derived lines are skipped in a span"))
+    ingest["header_footer"] = hf_d
+
+    # --- Page flags (W-c): table, numeric, scanned, ocr_layer_suspected + image class ---
+    doc_has_images = bool(images_by_page)
+    fr = {"pages_checked": 0, "mismatches": [], "table_probed": [], "table_not_rederived_uncited": 0,
+          "not_rederived": []}
+    pending, plumber_missing = {}, False
+    for n in sorted(texts):
+        pg = pages[n]
+        mflags = list(pg.get("flags") or [])
+        mev = pg.get("evidence") if isinstance(pg.get("evidence"), dict) else {}
+        nonws, _, numeric_ev, scanned_ev = pdi.text_flag_evidence(texts[n])
+        caps = pdi.caption_evidence(texts[n])
+        d = {"scanned": bool(scanned_ev), "numeric": bool(numeric_ev)}
+        table_ev = [e for f, e in caps if f == "table"]
+        unconfirmed = False
+        if table_ev:
+            d["table"] = True
+        elif "table" in mflags and (number_pages is None or n in number_pages):
+            # INTENT: pdfplumber find_tables (~0.2 s a page) runs only where the
+            #   flag can move a result: a page a numbered claim cites (the row
+            #   path's ROW_PAGE_FLAGS). Elsewhere `table` changes no item.
+            found = table_probe(n)
+            fr["table_probed"].append(n)
+            if found is None:
+                unconfirmed, plumber_missing = True, True
+                d["table"] = False          # conservative: the row path stays closed on this page
+            else:
+                d["table"] = found
+                table_ev = [f"pdfplumber find_tables: re-derived ({'table found' if found else 'none'})"]
+        elif "table" in mflags:
+            d["table"] = True               # kept as recorded: no numbered claim cites the page
+            table_ev = mev.get("table") or []
+            fr["table_not_rederived_uncited"] += 1
+        else:
+            d["table"] = False
+        size = sizes.get(n, (0.0, 0.0))
+        max_area, fig_ev, _ = pdi.image_evidence(images_by_page.get(n, []), size, [], False)
+        ocr_ev = pdi.ocr_layer_evidence(max_area, nonws, False)
+        kept_ocr = False
+        # INTENT: pdfplumber's image boxes also fed pdf_ingest's image area. They
+        #   are re-read where they can matter: a scanned page in a document
+        #   pdfimages lists no image for (its figure evidence then came from
+        #   pdfplumber), and a text page the manifest flags ocr_layer_suspected
+        #   that pdfimages alone does not confirm.
+        if (d["scanned"] and not doc_has_images) or (not ocr_ev and OCR_LAYER_FLAG in mflags
+                                                     and nonws >= pdi.SCANNED_MAX_CHARS):
+            boxes = plumber_probe(n)
+            if boxes is None:
+                plumber_missing = True
+                if not ocr_ev and OCR_LAYER_FLAG in mflags and nonws >= pdi.SCANNED_MAX_CHARS:
+                    ocr_ev, kept_ocr = list(mev.get(OCR_LAYER_FLAG) or ["kept as recorded"]), True  # it only caps
+            else:
+                max_area, fig_ev, _ = pdi.image_evidence(images_by_page.get(n, []), size, boxes, not doc_has_images)
+                ocr_ev = pdi.ocr_layer_evidence(max_area, nonws, False)
+        d[OCR_LAYER_FLAG] = bool(ocr_ev)
+        if unconfirmed or kept_ocr:
+            fr["not_rederived"].append(n)
+        ev = dict(mev, scanned=scanned_ev, numeric=numeric_ev, table=table_ev, figure=[e for f, e in caps
+                                                                                     if f == "figure"] + fig_ev)
+        ev[OCR_LAYER_FLAG] = ocr_ev
+        flags = [f for f in pdi.FLAG_NAMES if (f in GRADE_FLAGS and d[f]) or (f not in GRADE_FLAGS and f in mflags)]
+        flags += [f for f in mflags if f not in pdi.FLAG_NAMES and f not in flags]
+        diffs = [f for f in GRADE_FLAGS if (f in mflags) != d[f] and not (f == "table" and unconfirmed)]
+        pending[n] = (flags, ev, diffs)
+        fr["pages_checked"] += 1
+    # INTENT: the page class (normal / sparse / truly scanned) from the
+    #   re-derived evidence. Image evidence is unavailable only when pdfimages
+    #   lists no image AND pdfplumber is missing: then a scanned page counts as
+    #   truly scanned (the conservative reading, as at ingest).
+    lanes_m = list(ingest.get("lanes_unavailable") or [])
+    lanes_d = [x for x in lanes_m if x not in IMAGE_LANES] + (list(IMAGE_LANES) if plumber_missing and
+                                                                not doc_has_images else [])
+    degraded_ingest = all(x in lanes_m for x in IMAGE_LANES)
+    for n, (flags, ev, diffs) in pending.items():
+        cls_m = classify_page(pages[n], lanes_m)[0]
+        cls_d = classify_page({"flags": flags, "evidence": ev}, lanes_d)[0]
+        if cls_m != cls_d and not degraded_ingest:
+            diffs = diffs + [f"page class {cls_m} -> {cls_d} (image evidence)"]
+        if diffs:
+            fr["mismatches"].append(n)
+            items.append(item("integrity", "FLAGS_REDERIVE_MISMATCH", page=n,
+                              reason=f"the manifest's page flags differ from pdf_ingest's rules on the source ({diffs}; "
+                                     f"recorded {[f for f in pages[n].get('flags') or [] if f in GRADE_FLAGS]}, "
+                                     f"re-derived {[f for f in flags if f in GRADE_FLAGS]}): the re-derived flags "
+                                     "are used"))
+        pages[n]["flags"], pages[n]["evidence"] = flags, ev
+    ingest["lanes_unavailable"] = lanes_d
+    if fr["not_rederived"]:
+        items.append(item("integrity", "FLAGS_NOT_REDERIVED",
+                          reason=f"pdfplumber is unavailable, so flags on page(s) {fr['not_rederived'][:20]} were "
+                                 "treated conservatively: an unconfirmed `table` closes the row path there, a "
+                                 "recorded ocr_layer_suspected is kept (it only caps)"))
+    rec["flags"] = fr
+
+    # --- OCR text on a text page (W-d): pdf_ingest OCRs scanned pages only ---
+    for n in sorted(texts):
+        if pages[n].get("ocr_text") and pdi.nonws_count(texts[n]) >= pdi.SCANNED_MAX_CHARS:
+            pages[n]["ocr_text"] = None
+            rec["ocr_on_text_pages"].append(n)
+            items.append(item("integrity", "OCR_ON_TEXT_PAGE", page=n,
+                              reason=f"the page re-derives to {pdi.nonws_count(texts[n])} non-whitespace anchor chars "
+                                     f"(>= {pdi.SCANNED_MAX_CHARS}, not scanned), so pdf_ingest never ran OCR on it: its "
+                                     "OCR text is refused"))
+
+
+def rederive(ingest, timeout, number_pages=None):
     # Re-derives the text the checks are about to trust (every anchor; lane B
     # or table rows where a file exists) from the ingest's stored source and
     # compares it byte-for-byte with the files (§ Re-derivation in the
     # header). Returns (items, record). A lane B / rows file that does not
     # re-derive is set aside (lane_b_text None), as on a hash mismatch.
-    # Raises LitVerifyError(10) when pdftotext or pdfinfo is missing.
+    # 1.8.0: PDF sources are read ONCE, hashed, and re-derived from those
+    # bytes (a sealed memfd for poppler, bytes for pypdfium2 / pdfplumber);
+    # the header/footer lines, grade-relevant page flags and OCR acceptance
+    # are re-derived too (rederive_page_facts). `number_pages`: the pages
+    # numbered claims cite (None = every page), where `table` is re-checked.
+    # Raises LitVerifyError(10) when pdftotext, pdfinfo or pdfimages is missing.
     t0 = time.monotonic()
     html = ingest.get("anchor_kind") == ANCHOR_KIND_HTML
     pages = ingest["pages"]
     noun = "unit" if html else "page"
     rec = {"version": REDERIVE_VERSION, "method": None, "source_path": None, "source_sha256": ingest["source_sha256"],
-           "extractor": None, "extractor_version": None, "extractor_version_ingest": None, "anchors_checked": 0,
-           "anchor_mismatches": [], "row_sources_checked": 0, "row_source_mismatches": [], "ocr": None,
+           "source_kind": None, "source_kind_ingest": (ingest.get("source") or {}).get("source_kind"),
+           "web_fetch_row": None, "read": None, "extractor": None, "extractor_version": None,
+           "extractor_version_ingest": None, "anchors_checked": 0, "anchor_mismatches": [], "row_sources_checked": 0,
+           "row_source_mismatches": [], "header_footer": None, "flags": None, "ocr_on_text_pages": [], "ocr": None,
            "outcome": None, "seconds": None}
     items = []
 
@@ -1332,18 +1630,30 @@ def rederive(ingest, timeout):
             items.append(item("integrity", "OCR_NOT_REDERIVED",
                               reason=f"OCR text on page(s) {ocr_pages[:20]} is hash-checked only: Tesseract is not "
                                      "re-run at check time"))
-        rec["outcome"] = outcome if outcome else (
-            "match" if not (rec["anchor_mismatches"] or rec["row_source_mismatches"]) else "mismatch")
+        clean = not (rec["anchor_mismatches"] or rec["row_source_mismatches"] or rec["ocr_on_text_pages"]
+                     or (rec["header_footer"] or {}).get("outcome") == "mismatch"
+                     or (rec["flags"] or {}).get("mismatches"))
+        rec["outcome"] = outcome if outcome else ("match" if clean else "mismatch")
         rec["seconds"] = round(time.monotonic() - t0, 3)
         return items, rec
 
     derived, derived_rows, labels_d, flags_d = {}, {}, {}, {}
+    images_by_page, sizes, table_probe, plumber_probe = {}, {}, None, None
     synth = None if html else SYNTHETIC_SOURCES.get(ingest["source_sha256"])
+    plumber_state = {}
     if synth is not None:
-        rec["method"] = "synthetic registry (an in-process selftest or unit-test ingest; the CLI never fills it)"
+        rec.update(method="synthetic registry (an in-process selftest or unit-test ingest; the CLI never fills it)",
+                   source_kind="synthetic", read="in-process registry")
         derived = {n: synth["pages"].get(n) for n in pages}
         derived_rows = {n: synth["lane_b"].get(n) for n in pages if pages[n].get("lane_b_file_sha256")}
         count = len(synth["pages"])
+        # INTENT (1.8.0): what pdfimages / pdfinfo / pdfplumber would report for
+        #   the synthetic pages (declared with the planted text); pdf_ingest's
+        #   rules then run on them exactly as on a real source.
+        images_by_page = {n: list(v) for n, v in (synth.get("images") or {}).items() if v}
+        sizes = dict(synth.get("sizes") or {})
+        table_probe = lambda n: bool((synth.get("tables") or {}).get(n))                 # noqa: E731
+        plumber_probe = lambda n: list((synth.get("plumber_images") or {}).get(n) or [])  # noqa: E731
     else:
         # --- The stored source: resolvable, inside the root, the recorded hash ---
         src = ingest.get("source") or {}
@@ -1363,10 +1673,15 @@ def rederive(ingest, timeout):
             bad = f"is larger than {SOURCE_MAX_BYTES} bytes"
         else:
             try:
+                # INTENT (1.8.0, W-b): the ONE read of the source. These bytes are
+                #   hashed below and every lane re-derives from them; the path is
+                #   never opened again. The cap is re-checked on what was read.
                 with open(real, "rb") as f:
-                    data = f.read()
+                    data = f.read(SOURCE_MAX_BYTES + 1)
             except OSError as exc:
                 bad = f"is unreadable ({exc.__class__.__name__})"
+            if data is not None and len(data) > SOURCE_MAX_BYTES:
+                bad, data = f"is larger than {SOURCE_MAX_BYTES} bytes", None
         if bad:
             items.append(item("integrity", "SOURCE_MISSING",
                               reason=f"the ingest's source {safe_line(str(path), 160)!r} {bad}: its anchors cannot be "
@@ -1377,11 +1692,12 @@ def rederive(ingest, timeout):
                               reason=f"the file at the ingest's source path hashes to {sha256_bytes(data)[:16]}..., not "
                                      f"the recorded {str(ingest['source_sha256'])[:16]}...: nothing was re-derived"))
             return done("source hash mismatch")
+        rec["source_kind"], rec["web_fetch_row"] = source_kind_of(real, ingest["source_sha256"])
         if html:
-            # --- arXiv HTML: the same extraction pdf_ingest ran ---
+            # --- arXiv HTML: the same extraction pdf_ingest ran, on the bytes hashed ---
             rec.update(method=f"pdf_ingest.html_units() on the stored HTML ({pdi.HTML_EXTRACT_VERSION})",
                        extractor="pdf_ingest arxiv-html", extractor_version=pdi.HTML_EXTRACT_VERSION,
-                       extractor_version_ingest=ingest.get("html_extract_version"))
+                       extractor_version_ingest=ingest.get("html_extract_version"), read="once; decoded from the bytes hashed")
             try:
                 text = data.decode("utf-8")
                 arx, _, refusal = pdi.arxiv_identity(text, None)
@@ -1402,11 +1718,11 @@ def rederive(ingest, timeout):
                 labels_d[k], flags_d[k] = lab, [f for f in pdi.UNIT_FLAG_NAMES if ev[f]]
             count = len(parsed)
         else:
-            # --- PDF: pdftotext per page with pdf_ingest's invocation ---
-            missing = [b for b in ("pdftotext", "pdfinfo") if not shutil.which(b)]
+            # --- PDF: poppler on a sealed in-memory copy of the bytes hashed ---
+            missing = [b for b in ("pdftotext", "pdfinfo", "pdfimages") if not shutil.which(b)]
             if missing:
                 raise LitVerifyError(10, f"required dependency missing: {', '.join(missing)} (poppler-utils, needed to "
-                                         "re-derive PDF anchors; rebuild the DAAF image)")
+                                         "re-derive PDF anchors and page flags; rebuild the DAAF image)")
             anchor_lane = (ingest.get("lanes") or {}).get("anchor") or {}
             rec.update(method="pdftotext per page with pdf_ingest.anchor_argv() (LC_ALL=C), compared byte-for-byte",
                        extractor="pdftotext", extractor_version=pdi.tool_version("pdftotext", timeout),
@@ -1417,34 +1733,91 @@ def rederive(ingest, timeout):
                                          f"ingest used {safe_line(str(rec['extractor_version_ingest']), 60)!r} (the "
                                          "byte comparison still decides)"))
             try:
-                code, out, _ = pdi.run_tool(["pdfinfo", real], timeout)
-            except pdi.IngestError as exc:
-                code, out = None, safe_line(exc.note, 160)
-            if code != 0:
+                fd = sealed_copy(data)
+            except (ImportError, AttributeError, OSError) as exc:
+                # REASONING (W-b): fail closed rather than re-open the path, which
+                #   another process could have replaced after the hash.
                 items.append(item("integrity", "SOURCE_REDERIVE_ERROR",
-                                  reason=f"pdfinfo failed on the stored source ({'exit ' + str(code) if code else out})"))
+                                  reason=f"no sealed in-memory copy of the source ({exc.__class__.__name__}; "
+                                         "memfd_create with file sealing needs Linux): nothing is re-derived from a "
+                                         "path that could change after it was hashed"))
                 return done("error")
+            rec["read"] = "once; poppler reads a sealed memfd of the bytes hashed, pypdfium2 and pdfplumber the bytes"
+            dev, fds = f"/dev/fd/{fd}", (fd,)
             try:
-                count = int(pdi.parse_pdfinfo(out.decode("utf-8", errors="replace"))[0].get("Pages", "0"))
-            except ValueError:
-                count = 0
-
-            def one(n):
                 try:
-                    c, o, _ = pdi.run_tool(pdi.anchor_argv(real, n), timeout)
+                    code, out, _ = pdi.run_tool(["pdfinfo", dev], timeout, pass_fds=fds)
                 except pdi.IngestError as exc:
-                    return n, None, safe_line(exc.note, 160)
-                return (n, o, None) if c == 0 else (n, None, f"pdftotext exit {c}")
+                    code, out = None, safe_line(exc.note, 160)
+                if code != 0:
+                    items.append(item("integrity", "SOURCE_REDERIVE_ERROR",
+                                      reason=f"pdfinfo failed on the stored source ({'exit ' + str(code) if code else out})"))
+                    return done("error")
+                try:
+                    count = int(pdi.parse_pdfinfo(out.decode("utf-8", errors="replace"))[0].get("Pages", "0"))
+                except ValueError:
+                    count = 0
 
-            with ThreadPoolExecutor(max_workers=REDERIVE_WORKERS) as ex:
-                results = list(ex.map(one, [n for n in sorted(pages) if n <= count]))
-            errors = [(n, why) for n, _, why in results if why]
-            if errors:
-                items.append(item("integrity", "SOURCE_REDERIVE_ERROR", page=errors[0][0],
-                                  reason=f"pdftotext could not re-derive {len(errors)} page(s), first page "
-                                         f"{errors[0][0]}: {errors[0][1]} (raise --timeout if it timed out)"))
-                return done("error")
-            derived = {n: o for n, o, _ in results}
+                def one(n):
+                    try:
+                        c, o, _ = pdi.run_tool(pdi.anchor_argv(dev, n), timeout, pass_fds=fds)
+                    except pdi.IngestError as exc:
+                        return n, None, safe_line(exc.note, 160)
+                    return (n, o, None) if c == 0 else (n, None, f"pdftotext exit {c}")
+
+                with ThreadPoolExecutor(max_workers=REDERIVE_WORKERS) as ex:
+                    results = list(ex.map(one, [n for n in sorted(pages) if n <= count]))
+                errors = [(n, why) for n, _, why in results if why]
+                if errors:
+                    items.append(item("integrity", "SOURCE_REDERIVE_ERROR", page=errors[0][0],
+                                      reason=f"pdftotext could not re-derive {len(errors)} page(s), first page "
+                                             f"{errors[0][0]}: {errors[0][1]} (raise --timeout if it timed out)"))
+                    return done("error")
+                derived = {n: o for n, o, _ in results}
+                # 1.8.0 (W-c): page sizes and the image listing, as pdf_ingest read them
+                try:
+                    code_s, out_s, _ = pdi.run_tool(["pdfinfo", "-f", "1", "-l", str(max(count, 1)), dev], timeout,
+                                                    pass_fds=fds)
+                    code_i, out_i, _ = pdi.run_tool(["pdfimages", "-list", dev], timeout, pass_fds=fds)
+                except pdi.IngestError as exc:
+                    code_s, code_i, out_i = None, None, safe_line(exc.note, 160)
+                if code_s != 0 or code_i != 0:
+                    items.append(item("integrity", "SOURCE_REDERIVE_ERROR",
+                                      reason="pdfinfo -f/-l or pdfimages -list failed on the stored source "
+                                             f"({out_i if code_i is None else f'exit {code_s}/{code_i}'}): the page "
+                                             "flags cannot be re-derived"))
+                    return done("error")
+                sizes = pdi.parse_pdfinfo(out_s.decode("utf-8", errors="replace"))[1]
+                images_by_page = pdi.parse_pdfimages(out_i.decode("utf-8", errors="replace"))
+            finally:
+                os.close(fd)
+
+            def plumber_page(n):
+                # pdfplumber on the bytes hashed, opened once and only if needed.
+                if "doc" not in plumber_state:
+                    mod = try_import("pdfplumber")
+                    try:
+                        plumber_state["doc"] = mod.open(io.BytesIO(data)) if mod is not None else None
+                    except Exception:  # noqa: BLE001 - unavailable: the callers treat flags conservatively
+                        plumber_state["doc"] = None
+                doc = plumber_state["doc"]
+                return doc.pages[n - 1] if doc is not None and n <= len(doc.pages) else None
+
+            def table_probe(n):
+                pg = plumber_page(n)
+                try:
+                    return None if pg is None else bool(pg.find_tables())
+                except Exception:  # noqa: BLE001 - a pdfplumber failure counts as unavailable
+                    return None
+
+            def plumber_probe(n):
+                pg = plumber_page(n)
+                try:
+                    return None if pg is None else [(float(im["x0"]), float(im["top"]), float(im["x1"]),
+                                                     float(im["bottom"])) for im in pg.images]
+                except Exception:  # noqa: BLE001
+                    return None
+
             lb_pages = [n for n in sorted(pages) if pages[n].get("lane_b_file_sha256") and n <= count]
             pdfium = try_import("pypdfium2") if lb_pages else None
             if lb_pages and pdfium is None:
@@ -1461,7 +1834,7 @@ def rederive(ingest, timeout):
                                              f"{safe_line(str(lb_lane.get('version')), 60)!r} (lane B; the byte "
                                              "comparison still decides)"))
                 try:
-                    doc = pdfium.PdfDocument(real)
+                    doc = pdfium.PdfDocument(data)     # 1.8.0 (W-b): from the bytes hashed, never the path
                     try:
                         for n in lb_pages:
                             derived_rows[n] = pdi.lane_b_page_text(doc, n).encode("utf-8")
@@ -1499,6 +1872,15 @@ def rederive(ingest, timeout):
                          f"the {'table rows' if html else 'lane B'} file differs from the text re-derived from the "
                          "source; it is not used for this " + noun)
                 pages[n]["lane_b_text"] = None
+    if not html:
+        # --- 1.8.0: header/footer, page flags and OCR acceptance from the re-derived anchors ---
+        texts = {n: derived[n].decode("utf-8", errors="replace") for n in sorted(pages) if derived.get(n) is not None}
+        try:
+            rederive_page_facts(ingest, texts, images_by_page, sizes, table_probe, plumber_probe, number_pages, items,
+                                rec)
+        finally:
+            if plumber_state.get("doc") is not None:
+                plumber_state["doc"].close()
     return done(None)
 
 
@@ -1886,21 +2268,30 @@ def check_card(card, ingest, fuzz, integrity=None):
         #   tokens (sign included) as the page span it matched; SKELETON
         #   deletes "-", so "slope was 0.164" otherwise passes on "−0.164".
         #   A mismatch (or a passing quote that cannot be located) is review.
+        #   ladder-v3 (1.8.0, S3-C1b, NB2): also a superscript / footnote-letter
+        #   mark that differs ("10³" over "10⁻³") and a sign-shaped dash the
+        #   span prints before a number but the quote lacks ("0.164a" over
+        #   "−0.164a"), even where no number token is parsed.
         if q and q.strip() and it["status"] in QUOTE_NUMBER_CHECKED:
             lane = "ocr" if it["lane"] == "ocr" else "anchor"
-            checks = [ptc.quote_numbers_agree(q, v, spans) for v, spans, _ in located[lane]] or [
-                ptc.quote_numbers_agree(q, None, [])]
-            bad = next((c for c in checks if c[0] is not True), None)
-            it.update(quote_numbers=checks[0][1], page_numbers=(bad or checks[0])[2],
+            checks = [ptc.quote_number_check(q, v, spans) for v, spans, _ in located[lane]] or [
+                ptc.quote_number_check(q, None, [])]
+            bad = next((c for c in checks if c["agree"] is not True), None)
+            it.update(quote_numbers=checks[0]["quote"], page_numbers=(bad or checks[0])["page"],
                       quote_numbers_agree=bad is None)
             if bad is not None:
+                why = {"digits": f"the quote's numbers {bad['quote']} differ from the numbers the matched page span "
+                                 f"prints {bad['page']} (a sign, digit or range dash the match ignored)",
+                       "marks": f"the quote's numbers {bad['quote']} carry other superscripts or footnote letters "
+                                f"than the matched page span's {bad['page']} (an exponent or its sign the match "
+                                "ignored)",
+                       "sign-dash": "the matched page span prints a sign-shaped dash before a number where the "
+                                    "quote has none (a minus or range dash the match ignored)"}.get(bad["why"])
                 it.update(status="QUOTE_NUMBERS_DIFFER", severity=SEVERITY["QUOTE_NUMBERS_DIFFER"],
                           status_if_confirmed=it["status"],
-                          reason=safe_line(f"{it['reason']}; the quote's numbers {bad[1]} differ from the numbers "
-                                           f"the matched page span prints {bad[2]} (a sign, digit or range dash the "
-                                           "match ignored): a human checks the quote", 600)
-                          if bad[0] is False else safe_line(f"{it['reason']}; the matched span could not be located "
-                                                            "for the quote-number check", 600))
+                          reason=safe_line(f"{it['reason']}; {why}: a human checks the quote", 600)
+                          if bad["agree"] is False else safe_line(f"{it['reason']}; the matched span could not be "
+                                                                  "located for the quote-number check", 600))
         # INTENT (numbers-v4, S3-A B3): the row path's page and start guards:
         #   only a single-page anchor match on a page flagged table/numeric
         #   whose match begins at a row start.
@@ -1956,8 +2347,12 @@ def check_card(card, ingest, fuzz, integrity=None):
                                   reason="not one number (write it as printed, e.g. -0.087, (0.044), 1,204)", **base))
                 continue
             kind, hit = ptc.compare_number(tok, anchor_toks)
-            near = {lane: any(ptc.number_near_view(tok, v, spans, ptc.NUMBER_NEAR_CHARS)
-                              for v, spans, _ in located[lane]) for lane in located}
+            # numbers-v6 (W-a): per lane, the kinds of the tokens inside the
+            #   quote's span(s); "sign-ambiguous" never clears a number.
+            near_kinds = {lane: [ptc.near_view_kind(tok, v, spans, ptc.NUMBER_NEAR_CHARS)
+                                 for v, spans, _ in located[lane]] for lane in located}
+            near = {lane: "exact" in near_kinds[lane] for lane in located}
+            near_amb = {lane: "sign-ambiguous" in near_kinds[lane] for lane in located}
             in_row = bool(row and row["status"] == "unique" and ptc.number_in_row(tok, row["row"]))
             locality = None
             # INTENT (1.5.0, D-23): which lane's quote span cleared the number
@@ -1976,8 +2371,28 @@ def check_card(card, ingest, fuzz, integrity=None):
                         + ("" if located["anchor"] or located["ocr"] else
                            " (the claim's quote is not located on the cited " + nouns + ")") + row_note
                         + ": a human checks the row and column (start the quote at the row label)")
+            # INTENT (numbers-v6, W-a): a token whose spaced dash follows a word
+            #   or a closing bracket ("of – 0.30") may be a minus or a
+            #   subtraction / range dash; a claim of either sign that only such
+            #   a token prints inside the quote goes to a human, never to ok.
+            amb_reason = ("printed inside the claim's quote as {!r} after a spaced dash that follows a word or a "
+                          "closing bracket: the dash may be a minus sign or a subtraction / range dash, so the claim's "
+                          "sign is not decided by the text (a human checks the sign)") + row_note
             if kind == "exact" and not near["anchor"] and not in_row:
-                status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40))
+                if near_amb["anchor"]:
+                    amb_hit = ptc.compare_number(tok, [t for v, spans, _ in located["anchor"] for t in
+                                                       ptc.view_candidates(v) if any(t["end"] > s and t["start"] < e
+                                                                                     for s, e in spans)])[1]
+                    status, reason = "NUMBER_SIGN_AMBIGUOUS", amb_reason.format(safe_line(
+                        (amb_hit or hit)["raw"], 40))
+                else:
+                    status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40))
+            elif kind == "sign-ambiguous":
+                if near["anchor"] or near_amb["anchor"]:
+                    status, reason = "NUMBER_SIGN_AMBIGUOUS", amb_reason.format(safe_line(hit["raw"], 40))
+                else:
+                    status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40)) + \
+                        " (and its sign is ambiguous: a spaced dash after a word or a closing bracket)"
             elif kind == "exact":
                 locality = "in-quote" if near["anchor"] else "row"
                 clear_lane = "anchor" if near["anchor"] else None
@@ -1989,6 +2404,9 @@ def check_card(card, ingest, fuzz, integrity=None):
                 if hit.get("sup") and not tok.get("sup"):
                     notes.append(f"page prints the superscript mark(s) {safe_line(hit['sup'], 12)!r} after it (a "
                                  "footnote mark or an exponent)")
+                if hit.get("letter") and not tok.get("letter"):
+                    notes.append(f"page prints the footnote letter {safe_line(hit['letter'], 4)!r} after it "
+                                 "(numbers-v6)")
                 if c["source"] == "vision":
                     notes.append("the text layer corroborates the vision reading")
                 if locality == "row":
@@ -2005,7 +2423,15 @@ def check_card(card, ingest, fuzz, integrity=None):
                               "flagged conversion_error)")
             else:
                 okind, ohit = ptc.compare_number(tok, ocr_toks)
-                if okind == "exact" and not near["ocr"]:
+                if okind == "sign-ambiguous" or (okind == "exact" and not near["ocr"] and near_amb["ocr"]):
+                    # numbers-v6 (W-a): the same rule on the OCR text
+                    if near["ocr"] or near_amb["ocr"]:
+                        status, reason = "NUMBER_SIGN_AMBIGUOUS", amb_reason.format(safe_line(ohit["raw"], 40)) + \
+                            " (OCR text)"
+                    else:
+                        status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(ohit["raw"], 40)) + \
+                            " (OCR text; its sign is ambiguous)"
+                elif okind == "exact" and not near["ocr"]:
                     status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(ohit["raw"], 40)) + \
                         " (OCR text)"
                 elif okind == "exact":
@@ -2179,10 +2605,18 @@ def write_card_check(paper_dir, card_name, payload):
 # §§ SELFTEST
 SELFTEST_KEYS = {"A": "user_5e1f7e5a", "B": "user_5e1f7e5b", "T": "user_5e1f7e5c", "R": "user_5e1f7e5e",
                  "H": "user_5e1f7e60", "S": "user_5e1f7e61", "F": "user_5e1f7e62", "G": "user_5e1f7e63",
-                 "W": "user_5e1f7e64"}
+                 "W": "user_5e1f7e64", "N": "user_5e1f7e65", "X": "user_5e1f7e66", "O": "user_5e1f7e67",
+                 "Q": "user_5e1f7e68"}
 # 1.7.0 (review W1): the sentence the forged ingest set F plants (invented).
 SELFTEST_FABRICATED = ("The violet ferry returned with ninety cheerful cartographers and a cargo of invented "
                        "silver lanterns.")
+# 1.8.0 (review cycle 2 W-d): the sentence a forged OCR file plants on a text
+#   page of paper O (invented).
+SELFTEST_FABRICATED_OCR = ("The keepers swore that every invented lantern on the quay burned for ninety nights "
+                           "without oil.")
+# 1.8.0 (review cycle 2 NB1): the last line of paper A page 1, which a forged
+#   header/footer record would let a span quote skip.
+SELFTEST_SKIPPED_LINE = "they agreed to publish every page of it once the voyage was over."
 # 1.4.0 (D-21 N5): paper H, a synthetic arXiv HTML (LaTeXML-shaped, the same
 #   shape as tests/python/fixtures/pdf_ingest/html/synthetic_latexml.html),
 #   ingested by pdf_ingest's REAL arxiv-html lane, so the selftest also checks
@@ -2235,6 +2669,11 @@ SELFTEST_HTML = (
 # full-page image, OCR text). Paper T: paper A with page 1's anchor tampered
 # after the manifest was written. Paper R (1.3.0): a column-major table page
 # with a row-major lane B (the unique-row rule, its residual and fallbacks).
+# 1.8.0: the planted flags equal what pdf_ingest's rules give for the planted
+# text (re-derivation checks them); optional per-page "images" (pdfimages
+# -list rows), "size" (points; default 612 x 792), "find_tables" (tables
+# pdfplumber would find) and "plumber_images" declare what the image and
+# table tools would report for the synthetic source.
 SELFTEST_PAGES = {
     "A": [
         {"anchor": "Synthetic Selftest Fixture\nThe violet ferry carried nineteen patient cartographers across the "
@@ -2248,7 +2687,7 @@ SELFTEST_PAGES = {
         {"anchor": "Table 1: Invented estimates for the imaginary voyages\nGulls −0.087* (0.044)\nBoats 1,204 "
                    ".05\nThe estimates in Table 1 are invented and exist only to exercise the number rules of\nthe "
                    "verification gate; none of them describes a real harbour or a real crossing.\n\f",
-         "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 1"]}},
+         "flags": ["table"], "evidence": {"table": ["caption: Table 1"]}},
         {"anchor": "Figure 2: Gulls by tide\n\f", "flags": ["figure", "scanned"],
          "evidence": {"figure": ["caption: Figure 2"], "scanned": ["anchor has 19 non-whitespace chars < 200"]}},
     ],
@@ -2261,14 +2700,18 @@ SELFTEST_PAGES = {
                                 "rowing boats.\n", "flags": ["figure", "scanned", "ocr"],
          "evidence": {"figure": ["pdfimages: image 1275x1650 px covers 100% x 100% of the page"],
                       "scanned": ["anchor has 0 non-whitespace chars < 200"],
-                      "ocr": ["tesseract ran: 13 word(s), mean confidence 95.0"]}},
-        # 1.2.0 (D-21 N2): a page with an existing OCR text layer
+                      "ocr": ["tesseract ran: 13 word(s), mean confidence 95.0"]},
+         "images": [(1275, 1650, 150.0, 150.0)]},
+        # 1.2.0 (D-21 N2): a page with an existing OCR text layer. 1.8.0: >= 200
+        #   non-whitespace chars, as pdf_ingest's rule needs for the flag.
         {"anchor": "Synthetic Ledger Page\nThe harbour ledger was typed long ago and later scanned with its own "
                    "text layer, so the\nwords below came from an earlier reader of the image. It lists 23 lanterns "
-                   "and 6 bells.\n\f", "flags": ["figure", "ocr_layer_suspected"],
+                   "and 6 bells.\nThe ledger also names every keeper who lit the lanterns on the long winter nights.\n"
+                   "\f", "flags": ["figure", "ocr_layer_suspected"],
          "evidence": {"figure": ["pdfimages: image 1275x1650 px covers 100% x 100% of the page"],
                       "ocr_layer_suspected": ["an image covers 100% of the page area (>= 80%) and the anchor has "
-                                              "190 non-whitespace chars"]}},
+                                              "229 non-whitespace chars"]},
+         "images": [(1275, 1650, 150.0, 150.0)]},
     ],
     # 1.3.0 (D-22): a table page whose anchor is column-major (as pdftotext
     #   often reads tables) and whose lane B keeps each row on one line; two
@@ -2281,7 +2724,7 @@ SELFTEST_PAGES = {
          "lane_b": "Table 5: Invented tide counts by harbour\nHarbour Spring Autumn\nNorth Quay (with tide gauge) 0.62 "
                    "0.63\nNorth Quay (without tide gauge) 0.71 0.74\nAll Harbours 0.55 0.59\nAll Harbours 0.48 0.41\n"
                    "The counts in Table 5 are invented to exercise the row rule of the verification gate.\n",
-         "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 5"]}},
+         "flags": ["table"], "evidence": {"table": ["caption: Table 5"]}},
     ],
     # 1.6.0 (S3-A): the review findings, planted. A spaced minus ("Est = -
     #   0.041", B1), a U+2212 minus inside a sentence a quote can drop (B2),
@@ -2299,7 +2742,8 @@ SELFTEST_PAGES = {
                    "the quay checked it twice.\nwhich 27 lanterns burned while the keepers counted the gulls along the "
                    "invented quay wall\nThe counts on this page are invented to exercise the sign and row rules of "
                    "the verification gate.\n",
-         "flags": ["table", "numeric"], "evidence": {"table": ["caption: none (selftest)"]}},
+         "flags": ["table"], "evidence": {"table": ["pdfplumber find_tables: 1 table(s) (selftest)"]},
+         "find_tables": 1},
     ],
     # 1.7.0 (numbers-v5, S3-A2 open question 1): a column-major table page whose
     #   prose line STARTS with a row label ("Harbour gulls (counted at dawn) and
@@ -2314,7 +2758,22 @@ SELFTEST_PAGES = {
                    "River terns (counted at dusk) 13 17\nHarbour gulls (counted at dawn) and other birds were counted by "
                    "the keepers along the invented quay wall.\nThe counts in Table 6 are invented to exercise the anchor "
                    "cell guard of the row rule.\n",
-         "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 6"]}},
+         "flags": ["table"], "evidence": {"table": ["caption: Table 6"]}},
+    ],
+    # 1.8.0 (S3-C1b, review cycle 2 NB2 and W-a): number-parsing shapes, planted.
+    #   A minus before a number with a footnote letter ("−0.164a"), a
+    #   superscript minus in an exponent ("10⁻³"), a spaced dash after a word
+    #   ("of – 0.30") and a spaced dash at a line start (a cell "– 0.25").
+    #   A prose page (no caption, low digit density): no grade flag. Every
+    #   word and number is invented.
+    "Q": [
+        {"anchor": "Synthetic Number Parsing Page\nThe invented harbour slope for the amber lanterns was −0.164a in the "
+                   "full model and the intercept was 1.20b overall.\nThe tide difference between the two invented "
+                   "quays was significant at p < 10⁻³ in every winter wave.\nThe gull counts fell by a change of – 0.30 "
+                   "points along the invented quay wall after the reform.\nKeepers on the northern quay recorded the "
+                   "change in their ledger\n– 0.25\nand nobody on the quay disputed it.\nThe counts on this page are "
+                   "invented to exercise the number parsing rules of the verification gate.\n\f",
+         "flags": [], "evidence": {}},
     ],
 }
 
@@ -2331,7 +2790,13 @@ def build_synthetic_ingest(papers_dir, key, pages, write_parquet, with_row=True)
     src_sha = sha256_bytes(f"%PDF-1.7 lit_verify selftest synthetic source {key}".encode("utf-8"))
     SYNTHETIC_SOURCES[src_sha] = {"pages": {n: pg["anchor"].encode("utf-8") for n, pg in enumerate(pages, 1)},
                                   "lane_b": {n: pg["lane_b"].encode("utf-8") for n, pg in enumerate(pages, 1)
-                                             if pg.get("lane_b") is not None}}
+                                             if pg.get("lane_b") is not None},
+                                  # 1.8.0: what pdfimages / pdfinfo / pdfplumber report for it
+                                  "images": {n: list(pg.get("images") or []) for n, pg in enumerate(pages, 1)},
+                                  "sizes": {n: tuple(pg.get("size") or (612.0, 792.0)) for n, pg in enumerate(pages, 1)},
+                                  "tables": {n: pg.get("find_tables", 0) for n, pg in enumerate(pages, 1)},
+                                  "plumber_images": {n: list(pg.get("plumber_images") or [])
+                                                     for n, pg in enumerate(pages, 1)}}
     records = []
     cols = {"page_no": [], "anchor_sha256": [], "lane_b_sha256": [], "flag_scanned": [], "flag_evidence": []}
     for n, pg in enumerate(pages, 1):
@@ -2405,6 +2870,29 @@ def forge_ingest_set(papers_dir, key, fabricated, read_parquet, write_parquet):
                                  "artifacts": {"ingest_manifest": {"path": f"{key}/ingest_manifest_a.json",
                                                                    "bytes": len(mdata), "sha256": sha256_bytes(mdata)}},
                                  "exit_code": 0, "note": "FORGED by lit_verify selftest (review W1)"})
+
+
+def forge_manifest_set(papers_dir, key, change, files=None):
+    # (1.8.0, review cycle 2) Selftest only: a reviewer-style forgery of
+    # manifest FIELDS. Writes ingest_manifest_a.json = the first manifest
+    # after `change(manifest)` (artifact paths still point at the first set,
+    # plus any extra `files` {relative path: bytes} written first) and a
+    # forged pdf_ingest MANIFEST row for it, so every hash agrees: only
+    # re-derivation of the changed field can catch it.
+    key_dir = os.path.join(papers_dir, key)
+    for rel, data in (files or {}).items():
+        os.makedirs(os.path.dirname(os.path.join(key_dir, rel)), exist_ok=True)
+        write_new(os.path.join(key_dir, rel), data)
+    with open(os.path.join(key_dir, "ingest_manifest.json"), encoding="utf-8") as f:
+        man = json.load(f)
+    man["version_suffix"] = "_a"
+    change(man)
+    mdata = (json.dumps(man, indent=2) + "\n").encode("utf-8")
+    write_new(os.path.join(key_dir, "ingest_manifest_a.json"), mdata)
+    append_manifest(papers_dir, {"kind": "pdf_ingest", "paper_key": key, "version_suffix": "_a",
+                                 "artifacts": {"ingest_manifest": {"path": f"{key}/ingest_manifest_a.json",
+                                                                   "bytes": len(mdata), "sha256": sha256_bytes(mdata)}},
+                                 "exit_code": 0, "note": "FORGED by lit_verify selftest (review cycle 2)"})
 
 
 def selftest_card(key, src_sha, coverage, claims, vision_validated=False):
@@ -2545,6 +3033,32 @@ def selftest_cases(src):
           "numbers": ["21"], "source": "text", "table_ref": "Table 6", "claim": "Harbour gulls, Autumn: 21"}
     w2 = {"claim_id": "W2", "page": 1, "quote": "Harbour gulls (counted at dawn) and other birds were counted by the "
                                                 "keepers", "numbers": ["41"], "source": "text"}
+    # INTENT (1.8.0, review cycle 2): forged manifest fields, each with a forged
+    #   MANIFEST row so every hash agrees. n1 is a page-boundary quote that
+    #   skips paper A page 1's last printed line (paper N records that line as
+    #   a running footer); paper X drops the scanned and ocr_layer_suspected
+    #   flags of paper B; o1 quotes a sentence a forged OCR file adds to paper
+    #   A's page 1, a text page pdf_ingest never OCRs.
+    n1 = {"claim_id": "N1", "page": 1, "page_end": 2, "quote": "the wind and the colour of the sky, and The method "
+                                                               "relies on naturallanguage summaries of each imaginary",
+          "numbers": [], "source": "text", "claim": "a quote that skips one printed line at the page boundary"}
+    o1 = {"claim_id": "O1", "page": 1, "quote": SELFTEST_FABRICATED_OCR, "numbers": [], "source": "ocr",
+          "claim": "a sentence planted in a forged OCR file on a text page"}
+    # INTENT (1.8.0, S3-C1b): paper Q. q1 quotes the footnote-lettered negative
+    #   (genuine); q2 drops its minus; q3 drops the superscript minus of an
+    #   exponent; q4 quotes the after-word spaced dash; q5 the line-start cell.
+    q_cov = [{"page": 1, "anchors": ["The counts on this page are invented to exercise the number parsing rules"],
+              "summary": "the number parsing page"}]
+    q1 = {"claim_id": "Q1", "page": 1, "quote": "The invented harbour slope for the amber lanterns was −0.164a in the "
+                                                "full model", "numbers": ["-0.164"], "source": "text"}
+    q2 = dict(q1, claim_id="Q2", quote="The invented harbour slope for the amber lanterns was 0.164a in the full model",
+              numbers=[])
+    q3 = {"claim_id": "Q3", "page": 1, "quote": "difference between the two invented quays was significant at p < 10³ "
+                                                "in every", "numbers": [], "source": "text"}
+    q4 = {"claim_id": "Q4", "page": 1, "quote": "The gull counts fell by a change of – 0.30 points along the invented",
+          "numbers": ["0.30"], "source": "text"}
+    q5 = {"claim_id": "Q5", "page": 1, "quote": "recorded the change in their ledger – 0.25 and nobody on the quay",
+          "numbers": ["-0.25"], "source": "text"}
     return [
         ("genuine card", "A", a_cov, [c1, c2], False, "PASS", 0, None, None),
         ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], False, "FAIL", 11,
@@ -2620,6 +3134,24 @@ def selftest_cases(src):
          "claim_number"),
         ("prose quote starting with a row label", "W", w_cov, [w2], False, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE",
          "claim_number"),
+        # 1.8.0 (S3-C1a, review cycle 2): forged manifest fields fail closed
+        ("forged header/footer line, span skips it", "N", a_cov, [c1, c2, n1], False, "FAIL", 11,
+         "HEADER_FOOTER_REDERIVE_MISMATCH", "integrity"),
+        ("forged page flags lift the OCR-layer cap", "X", b_cov, [b2], False, "FAIL", 11, "FLAGS_REDERIVE_MISMATCH",
+         "integrity"),
+        ("forged OCR text on a text page", "O", a_cov, [c1, c2, o1], False, "FAIL", 11, "OCR_ON_TEXT_PAGE",
+         "integrity"),
+        # 1.8.0 (S3-C1b, review cycle 2 NB2 and W-a): number parsing, planted on paper Q
+        ("footnote-lettered negative (genuine)", "Q", q_cov, [q1], False, "PASS", 0, "NUMBER_OK", "claim_number"),
+        ("minus deleted before a footnote letter", "Q", q_cov, [q2], False, "NEEDS_REVIEW", 0, "QUOTE_NUMBERS_DIFFER",
+         "claim_quote"),
+        ("superscript minus deleted from an exponent", "Q", q_cov, [q3], False, "NEEDS_REVIEW", 0,
+         "QUOTE_NUMBERS_DIFFER", "claim_quote"),
+        ("spaced minus after a word", "Q", q_cov, [q4], False, "NEEDS_REVIEW", 0, "NUMBER_SIGN_AMBIGUOUS",
+         "claim_number"),
+        ("spaced minus at a line start (genuine)", "Q", q_cov, [q5], False, "PASS", 0, "NUMBER_OK", "claim_number"),
+        ("spaced minus at a line start, sign-flipped claim", "Q", q_cov, [dict(q5, numbers=["0.25"])], False, "FAIL",
+         11, "NUMBER_MISSING", "claim_number"),
     ]
 
 
@@ -2648,8 +3180,21 @@ def run_selftest(a, scratch_dir, row):
                "F": build_synthetic_ingest(papers, SELFTEST_KEYS["F"], SELFTEST_PAGES["A"], write_parquet),
                "G": build_synthetic_ingest(papers, SELFTEST_KEYS["G"], SELFTEST_PAGES["A"], write_parquet,
                                            with_row=False),
-               "W": build_synthetic_ingest(papers, SELFTEST_KEYS["W"], SELFTEST_PAGES["W"], write_parquet)}
+               "W": build_synthetic_ingest(papers, SELFTEST_KEYS["W"], SELFTEST_PAGES["W"], write_parquet),
+               "Q": build_synthetic_ingest(papers, SELFTEST_KEYS["Q"], SELFTEST_PAGES["Q"], write_parquet)}
         forge_ingest_set(papers, SELFTEST_KEYS["F"], SELFTEST_FABRICATED, read_parquet, write_parquet)
+        # 1.8.0 (review cycle 2): forged manifest fields on clones of A and B
+        src["N"] = build_synthetic_ingest(papers, SELFTEST_KEYS["N"], SELFTEST_PAGES["A"], write_parquet)
+        forge_manifest_set(papers, SELFTEST_KEYS["N"], lambda m: m["header_footer"].append(
+            {"position": "bottom", "pattern": hf_key(SELFTEST_SKIPPED_LINE), "example": "forged", "pages": [1]}))
+        src["X"] = build_synthetic_ingest(papers, SELFTEST_KEYS["X"], SELFTEST_PAGES["B"], write_parquet)
+        forge_manifest_set(papers, SELFTEST_KEYS["X"], lambda m: [r.update(flags=[f for f in r["flags"] if f not in (
+            "scanned", OCR_LAYER_FLAG)]) for r in m["pages"]])
+        src["O"] = build_synthetic_ingest(papers, SELFTEST_KEYS["O"], SELFTEST_PAGES["A"], write_parquet)
+        ocr_bytes = (SELFTEST_FABRICATED_OCR + "\n").encode("utf-8")
+        forge_manifest_set(papers, SELFTEST_KEYS["O"], lambda m: m["pages"][0].update(ocr={"text": {
+            "path": "ocr_a/p001.txt", "bytes": len(ocr_bytes), "sha256": sha256_bytes(ocr_bytes)}}),
+            files={"ocr_a/p001.txt": ocr_bytes})
         src["T"] = build_synthetic_ingest(papers, SELFTEST_KEYS["T"], SELFTEST_PAGES["A"], write_parquet)
         with open(os.path.join(papers, SELFTEST_KEYS["T"], "anchor", "p001.txt"), "ab") as f:
             f.write(b"A line added after ingest.\n")   # the planted tamper
@@ -2883,15 +3428,22 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                      "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF), "unit_count": ingest.get("unit_count")}
 
     # --- Re-derivation (1.7.0, D-24 W1): before any text is trusted ---
+    # INTENT (1.8.0): the pages a numbered claim cites, where the `table` flag
+    #   (the row path's gate) is re-checked with pdfplumber find_tables.
+    number_pages = {p for c in card.get("claims") or [] if c.get("numbers")
+                    for p in (c.get("page"), c.get("page_end")) if _is_int(p)}
     try:
-        rd_items, rd = rederive(ingest, a.timeout)
+        rd_items, rd = rederive(ingest, a.timeout, number_pages)
     except LitVerifyError as exc:
         return finish(exc.code, exc.note)
     integrity = list(integrity) + rd_items
     row["rederive"] = {k: rd[k] for k in ("version", "method", "outcome", "anchors_checked", "row_sources_checked",
-                                          "seconds")}
+                                          "source_kind", "seconds")}
     row["rederive"].update(anchor_mismatches=len(rd["anchor_mismatches"]),
-                           row_source_mismatches=len(rd["row_source_mismatches"]))
+                           row_source_mismatches=len(rd["row_source_mismatches"]),
+                           header_footer=(rd["header_footer"] or {}).get("outcome"),
+                           flag_mismatches=len((rd["flags"] or {}).get("mismatches") or []),
+                           ocr_on_text_pages=len(rd["ocr_on_text_pages"]))
 
     # --- Check, then the result artifact ---
     result = check_card(card, ingest, fuzz, integrity)
@@ -2924,7 +3476,7 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                       "ROW_PAGE_FLAGS": list(ptc.ROW_PAGE_FLAGS),
                       "OCR_LAYER_PAPER_CAP_PAGES": OCR_LAYER_PAPER_CAP_PAGES,
                       "SOURCE_MAX_BYTES": SOURCE_MAX_BYTES, "REDERIVE_TIMEOUT_S": a.timeout,
-                      "REDERIVE_WORKERS": REDERIVE_WORKERS,
+                      "REDERIVE_WORKERS": REDERIVE_WORKERS, "GRADE_FLAGS": list(GRADE_FLAGS),
                       "VISION_LIST_VERSION": VISION_LIST_VERSION,
                       "VISION_VALIDATED_LISTS": {k: [list(r) for r in v] for k, v in VISION_VALIDATED_LISTS.items()},
                       "TRULY_SCANNED_IMAGE_AREA_MIN": TRULY_SCANNED_IMAGE_AREA_MIN,

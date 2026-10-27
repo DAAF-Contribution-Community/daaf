@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-access
   skill-authored: "2026-10-19"
-  skill-last-updated: "2026-10-23"
+  skill-last-updated: "2026-10-27"
 ---
 
 # PDF Reading
@@ -171,14 +171,30 @@ bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S
 bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 ```
 
-`lit_verify` 1.7.0 first **re-derives** the anchor text (and lane B or
+`lit_verify` 1.8.0 first **re-derives** the anchor text (and lane B or
 table rows) from the source the ingest recorded, with `pdf_ingest`'s own
 code, and compares it byte-for-byte with the stored files, so a forged or
 edited ingest fails (`ANCHOR_REDERIVE_MISMATCH`) and a moved or deleted
 source fails closed (`SOURCE_MISSING`); an ingest with no `pdf_ingest`
-MANIFEST row fails (`NO_INGEST_ROW`). OCR text is hash-checked only
-(`OCR_NOT_REDERIVED`, a warning). `--timeout` (default 120 s) bounds each
-re-derivation subprocess.
+MANIFEST row fails (`NO_INGEST_ROW`). The source is read once and every
+lane re-derives from those hashed bytes. From the re-derived anchors it
+also re-derives the header/footer lines, the page flags that move a grade
+(`GRADE_FLAGS`: `table`, `numeric`, `scanned`, `ocr_layer_suspected`) and
+OCR acceptance (`HEADER_FOOTER_REDERIVE_MISMATCH`,
+`FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE`: fail). OCR text itself is
+hash-checked only (`OCR_NOT_REDERIVED`, a warning). `--timeout` (default
+120 s) bounds each re-derivation subprocess.
+
+**What the gate does not prove.** Re-derivation shows that the card and the
+ingest agree with the bytes on disk, not that those bytes came from the
+publisher. An agent with Write that authors the source file, a matching
+web_fetch MANIFEST row, the ingest and the card makes a self-consistent
+forgery that passes. The orchestrator's audit is what can catch it: it
+compares `card_check` `rederive.source_kind` (`web_fetch`,
+`web_fetch_row_conflict`, `user_supplied`, `synthetic`) and `web_fetch_row`
+(MANIFEST line, `final_url`, fetch timestamp) with its own transcript and
+the MANIFEST rows of the fetches it dispatched (`references/evidence-card.md`
+§ Re-derivation; the audit step is built with the mode in S5).
 
 The card (`evidence_card{S}.md`, directly inside `papers/{key}/`) carries YAML
 front matter and free prose, plus **exactly one** fenced block with info
@@ -206,8 +222,10 @@ What the gate requires:
   `PASS_SPAN` → `PASS_OCR` (weaker) → `NEAR` (fuzzy ≥ 95: a human check,
   never a pass) → `WRONG_PAGE` → `NOT_FOUND`. A passing claim quote must
   also print the same number tokens, sign included, as the page span it
-  matched (`ladder-v2`), else `QUOTE_NUMBERS_DIFFER` (review): re-copy it
-  with every minus and dash as printed.
+  matched, with the same superscripts and footnote letters, and every
+  sign-shaped dash the span prints before a number (`ladder-v3`), else
+  `QUOTE_NUMBERS_DIFFER` (review): re-copy it with every minus, dash and
+  superscript as printed.
 - **A quote that runs from page N onto N+1 declares `page_end: N+1`.** An
   undeclared span is `WRONG_PAGE`. Coverage anchors are single-page.
 - **Identifying quotes:** at least 40 normalized characters, 6 words, and a
@@ -220,7 +238,7 @@ What the gate requires:
 - **Every page 1..N is covered**; a missing page fails.
 - **Numbers** are written as printed (`-0.087`, `(0.044)`, `1,204`, `.05`,
   `12.5%`) and must appear on the cited page **local to the claim's quote**
-  (`numbers-v5`): inside the quote (D-21), or in the one lane B row the
+  (`numbers-v6`): inside the quote (D-21), or in the one lane B row the
   quote's leading row label identifies (the unique-row rule, D-22; recorded
   as `locality: in-quote | row`). The row path needs a page flagged `table`
   or `numeric`, a quote that starts at a row start and a label that stands
@@ -232,11 +250,15 @@ What the gate requires:
   (`ambiguous`) falls back to inside-the-quote. Statuses: `ok`;
   `not-near-quote` (printed on the page but not local: review, a human checks
   row and column); `ocr-only`, `ocr+vision`, `ocr-layer`, `ocr-layer+vision`,
-  `vision-only` (partial); `precision-differs` (review); `missing` or
-  `unparseable` (fail). A changed digit or a dropped minus in a declared
-  number fails (the spaced `= - 0.041` too, `numbers-v4`); a minus or dash
-  dropped inside a quote makes the quote `QUOTE_NUMBERS_DIFFER` (review,
-  `ladder-v2`: the quote's numbers must match the page span's). Known
+  `vision-only` (partial); `precision-differs` and `sign-ambiguous`
+  (review); `missing` or `unparseable` (fail). A changed digit or a dropped
+  minus in a declared number fails (the spaced `= - 0.041` too, and a cell
+  `– 0.25` at a line start, `numbers-v6`); a number printed after a spaced
+  dash that follows a word or bracket (`of – 0.30`) is `sign-ambiguous`
+  whatever sign the claim writes; a number with one footnote letter
+  (`−0.164a`) is declared without it (`-0.164`). A minus or dash dropped
+  inside a quote makes the quote `QUOTE_NUMBERS_DIFFER` (review,
+  `ladder-v3`: the quote's numbers must match the page span's). Known
   residual: a wrong value that the same row prints in another column clears;
   since 1.5.0 (D-23) such a cleared number carries the label
   `column-not-checked` (its quote or row prints other comparable values), a
@@ -270,7 +292,7 @@ index and § Fixing a failing card. Fail: a fabricated, misplaced or
 non-identifying quote, a changed or missing number, a coverage gap, an
 unavailable or unlisted vision claim, a hash, re-derivation or provenance
 mismatch. Review: `NEAR`, `REDACTED_SPAN`, `QUOTE_NUMBERS_DIFFER`,
-`not-near-quote`, `precision-differs`. Partial: OCR, OCR-layer,
+`not-near-quote`, `precision-differs`, `sign-ambiguous`. Partial: OCR, OCR-layer,
 vision-only, scanned-page and conversion-error evidence.
 
 | Exit | Meaning | Do |
@@ -279,7 +301,7 @@ vision-only, scanned-page and conversion-error evidence.
 | 1 | Usage error | Fix the arguments |
 | 2 | Refused path (PAPER_DIR / papers dir / SCRATCH_DIR guard, CARD_PATH outside PAPER_DIR, paper key, artifact path, secret value) | Fix the path; the card belongs directly inside `papers/{key}/` |
 | 8 | Card cannot be parsed (no single valid lit-verify block; oversize or non-UTF-8 card) | Fix the block (strict JSON, known fields only) as a new card version |
-| 10 | Ingest artifacts missing or incomplete, or a required dependency missing (rapidfuzz; polars or pyarrow; pdftotext and pdfinfo to re-derive PDF anchors) | Re-ingest, or see "Without the PDF stack" |
+| 10 | Ingest artifacts missing or incomplete, or a required dependency missing (rapidfuzz; polars or pyarrow; pdftotext, pdfinfo and pdfimages to re-derive PDF anchors and page flags) | Re-ingest, or see "Without the PDF stack" |
 | 11 | FAIL as a recorded result; selftest: an expectation did not hold | Revision loop below |
 | 12 | Internal error (no verdict) | Report with the MANIFEST note |
 
@@ -408,8 +430,8 @@ runtime; the fix is a rebuild (`references/toolchain.md`).
 
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
 `scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
-Versions (2026-10-23): `pdf_ingest` 1.2.1-daaf, `lit_verify` 1.7.0-daaf
-(`ladder-v2`, `numbers-v5`, `column-check-v1`, `rederive-v1`). Tests:
-`tests/python/test_pdf_ingest.py` (58), `tests/python/test_lit_verify.py`
-(106) and `lit_verify.sh selftest` (34 expectations), run file-first through
+Versions (2026-10-27): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
+(`ladder-v3`, `numbers-v6`, `column-check-v1`, `rederive-v2`). Tests:
+`tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
+(119) and `lit_verify.sh selftest` (43 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

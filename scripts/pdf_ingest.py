@@ -259,7 +259,14 @@ from pdf_text_common import NORMALIZE_VERSION, OVERLAP_VERSION, normalize, overl
 # invocation (anchor_argv), lane B page text (lane_b_page_text) and the arXiv
 # HTML unit extraction (html_units, unit_evidence) are module functions, so
 # lit_verify 1.7.0 re-derives anchors with this exact code.
-TOOL_VERSION = "1.2.1-daaf"
+# 1.2.2 (S3-C1a, 2026-10-27, review cycle 2 NB1 / W-b / W-c): no artifact
+# change. The header/footer rule (header_footer_records), the text flag
+# rules (text_flag_evidence, caption_evidence), the image rules
+# (image_evidence, ocr_layer_evidence) are module functions, so lit_verify
+# 1.8.0 re-derives header/footer lines and the grade-relevant page flags with
+# this exact code; run_tool() takes pass_fds (lit_verify passes a sealed
+# in-memory copy of the source as /dev/fd/N).
+TOOL_VERSION = "1.2.2-daaf"
 
 EXIT_CODES = {
     0: "ingested (incl. flagged pages / degraded lanes) or already ingested",
@@ -502,6 +509,91 @@ def hf_key(line):
     return re.sub(r"\d+", "#", normalize(line)).casefold()
 
 
+# §§ SHARED_RULES (1.2.2): the flag and header/footer rules as module
+# functions, so lit_verify 1.8.0 re-derives them from the source bytes with
+# this exact code (no second implementation). ingest() calls them in the
+# same order as before, so every artifact is unchanged.
+def header_footer_records(texts):
+    # Repeated header/footer lines over the anchor texts of pages 1..N (in
+    # order): the first/last HF_LINES_PER_END non-empty lines, digits folded
+    # to "#", on >= HF_MIN_PAGES pages and >= HF_MIN_FRACTION of the pages.
+    # Returns (records for the manifest, {page_no: [line, ...]} for
+    # page_index header_footer_lines).
+    hf_hits = {}
+    n_pages = len(texts)
+    if n_pages >= HF_MIN_PAGES:
+        for page_no, text_a in enumerate(texts, 1):
+            lines = [ln for ln in text_a.replace("\f", "").split("\n") if ln.strip()]
+            for pos, chunk in (("top", lines[:HF_LINES_PER_END]), ("bottom", lines[-HF_LINES_PER_END:])):
+                for ln in chunk:
+                    k = hf_key(ln)
+                    if k:
+                        hf_hits.setdefault((pos, k), {}).setdefault(page_no, ln)
+    need = max(HF_MIN_PAGES, math.ceil(HF_MIN_FRACTION * n_pages))
+    records, lines_by_page = [], {}
+    for (pos, k), by_page in sorted(hf_hits.items()):
+        if len(by_page) >= need:
+            records.append({"position": pos, "pattern": safe_line(k, 200),
+                            "example": safe_line(next(iter(by_page.values())), 200), "pages": sorted(by_page)})
+            for pno, ln in by_page.items():
+                lines_by_page.setdefault(pno, []).append(safe_line(ln, 200))
+    return records, lines_by_page
+
+
+def caption_evidence(text_a):
+    # [(flag, evidence), ...] for each caption label in the anchor text, in
+    # order (Table/Exhibit/Panel -> table, Figure/Fig. -> figure).
+    return [(CAPTION_FLAG[m.group(1).lower()], f"caption: {m.group(1)} {m.group(2)}")
+            for m in CAPTION_RE.finditer(text_a)]
+
+
+def text_flag_evidence(text_a):
+    # The flags the anchor text alone decides. Returns (non-whitespace chars,
+    # digit density, numeric evidence, scanned evidence).
+    nonws = nonws_count(text_a)
+    digits = sum(1 for c in text_a if c.isdigit())
+    density = round(digits / nonws, 4) if nonws else 0.0
+    numeric = ([f"digit density {density:.2f} > {NUMERIC_DENSITY_MIN}"]
+               if nonws >= NUMERIC_MIN_CHARS and density > NUMERIC_DENSITY_MIN else [])
+    scanned = [f"anchor has {nonws} non-whitespace chars < {SCANNED_MAX_CHARS}"] if nonws < SCANNED_MAX_CHARS else []
+    return nonws, density, numeric, scanned
+
+
+def image_evidence(images, page_size, plumber_images, plumber_strings):
+    # Embedded images on one page: `images` = pdfimages -list rows for the
+    # page [(w_px, h_px, x_ppi, y_ppi)], `page_size` = (w_pt, h_pt) from
+    # pdfinfo, `plumber_images` = pdfplumber boxes [(x0, top, x1, bottom)].
+    # pdfplumber boxes add figure evidence only when `plumber_strings` (the
+    # document's pdfimages listing is empty). Returns (largest single-image
+    # share of the page area, figure evidence, big pdfplumber boxes).
+    page_w, page_h = page_size
+    max_area, figure, big_images = 0.0, [], []
+    for w_px, h_px, xppi, yppi in images:
+        if xppi > 0 and yppi > 0 and page_w > 0 and page_h > 0:
+            wf, hf = (w_px * 72.0 / xppi) / page_w, (h_px * 72.0 / yppi) / page_h
+            max_area = max(max_area, min(wf, 1.0) * min(hf, 1.0))
+            if wf >= FIGURE_IMAGE_MIN_FRACTION and hf >= FIGURE_IMAGE_MIN_FRACTION:
+                figure.append(f"pdfimages: image {w_px}x{h_px} px covers {wf:.0%} x {hf:.0%} of the page")
+    for x0, top, x1, bottom in plumber_images:
+        if page_w > 0 and page_h > 0:
+            wf, hf = (x1 - x0) / page_w, (bottom - top) / page_h
+            max_area = max(max_area, min(wf, 1.0) * min(hf, 1.0))
+            if wf >= FIGURE_IMAGE_MIN_FRACTION and hf >= FIGURE_IMAGE_MIN_FRACTION:
+                big_images.append((x0, top, x1, bottom))
+                if plumber_strings:
+                    figure.append(f"pdfplumber: image covers {wf:.0%} x {hf:.0%} of the page")
+    return max_area, figure, big_images
+
+
+def ocr_layer_evidence(max_area, nonws, glyphless):
+    # `ocr_layer_suspected`: an image covers >= OCR_LAYER_IMAGE_AREA_MIN of
+    # the page AND the anchor is not scanned (an existing OCR text layer).
+    if max_area >= OCR_LAYER_IMAGE_AREA_MIN and nonws >= SCANNED_MAX_CHARS:
+        return [f"an image covers {max_area:.0%} of the page area (>= {OCR_LAYER_IMAGE_AREA_MIN:.0%}) and the anchor "
+                f"has {nonws} non-whitespace chars" + ("; pdffonts lists GlyphLessFont" if glyphless else "")]
+    return []
+
+
 # §§ FILE_HELPERS
 def png_size(data):
     # (width, height) from a PNG's IHDR chunk, or None.
@@ -524,15 +616,18 @@ def artifact_names(sfx):
 
 
 # §§ SUBPROCESS_HELPERS
-def run_tool(argv, timeout, extra_env=None):
+def run_tool(argv, timeout, extra_env=None, pass_fds=()):
     # Run one binary with stdout/stderr captured (bytes). poppler writes
     # harmless warnings to stderr on valid files (e.g. "Syntax Error: Suspects
     # object is wrong type" on typst PDFs), so stderr alone is never failure.
+    # (1.2.2) pass_fds: file descriptors the child keeps (lit_verify passes
+    # its sealed in-memory copy of the source as /dev/fd/N).
     env = dict(os.environ, LC_ALL="C")
     if extra_env:
         env.update(extra_env)
     try:
-        p = subprocess.run(argv, capture_output=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+        p = subprocess.run(argv, capture_output=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL,
+                           pass_fds=tuple(pass_fds))
     except subprocess.TimeoutExpired:
         raise IngestError(6, f"{os.path.basename(argv[0])} timed out after {timeout:g}s ({' '.join(argv[1:6])} ...)")
     return p.returncode, p.stdout, p.stderr
@@ -1321,25 +1416,10 @@ def ingest(a, ctx, row):
         if plumber_doc is not None:
             plumber_doc.close()
 
-    # --- Repeated header/footer lines (recorded, never deleted) ---
-    hf_hits = {}
-    if n_pages >= HF_MIN_PAGES:
-        for rec in pages:
-            lines = [ln for ln in rec["text_a"].replace("\f", "").split("\n") if ln.strip()]
-            for pos, chunk in (("top", lines[:HF_LINES_PER_END]), ("bottom", lines[-HF_LINES_PER_END:])):
-                for ln in chunk:
-                    k = hf_key(ln)
-                    if k:
-                        hf_hits.setdefault((pos, k), {}).setdefault(rec["page_no"], ln)
-    need = max(HF_MIN_PAGES, math.ceil(HF_MIN_FRACTION * n_pages))
-    header_footer = []
-    for (pos, k), by_page in sorted(hf_hits.items()):
-        if len(by_page) >= need:
-            header_footer.append({"position": pos, "pattern": safe_line(k, 200),
-                                  "example": safe_line(next(iter(by_page.values())), 200),
-                                  "pages": sorted(by_page)})
-            for pno, ln in by_page.items():
-                pages[pno - 1].setdefault("hf_lines", []).append(safe_line(ln, 200))
+    # --- Repeated header/footer lines (recorded, never deleted; 1.2.2 shared rule) ---
+    header_footer, hf_lines = header_footer_records([rec["text_a"] for rec in pages])
+    for pno, lines in hf_lines.items():
+        pages[pno - 1]["hf_lines"] = lines
 
     # --- Flags ---
     cjk_per_page = {}
@@ -1352,41 +1432,18 @@ def ingest(a, ctx, row):
     for rec in pages:
         n, ta, tb = rec["page_no"], rec["text_a"], rec["text_b"]
         ev = {f: [] for f in FLAG_NAMES}
-        nonws = nonws_count(ta)
+        # 1.2.2: the shared rules (same evidence, same order as before)
+        nonws, rec["digit_density"], ev["numeric"], ev["scanned"] = text_flag_evidence(ta)
         rec["nonws"] = nonws
-        digits = sum(1 for c in ta if c.isdigit())
-        rec["digit_density"] = round(digits / nonws, 4) if nonws else 0.0
-        page_w, page_h = sizes.get(n, (0.0, 0.0))
         rec["rotation"] = rots.get(n, 0)
         # table / figure: find_tables, captions, embedded images
         if rec["tables"]:
             ev["table"].append(f"pdfplumber find_tables: {len(rec['tables'])} table(s) {rec['tables']}")
-        for m in CAPTION_RE.finditer(ta):
-            label = m.group(1)
-            ev[CAPTION_FLAG[label.lower()]].append(f"caption: {label} {m.group(2)}")
-        max_area = 0.0
-        for w_px, h_px, xppi, yppi in images_by_page.get(n, []):
-            if xppi > 0 and yppi > 0 and page_w > 0 and page_h > 0:
-                wf, hf = (w_px * 72.0 / xppi) / page_w, (h_px * 72.0 / yppi) / page_h
-                max_area = max(max_area, min(wf, 1.0) * min(hf, 1.0))
-                if wf >= FIGURE_IMAGE_MIN_FRACTION and hf >= FIGURE_IMAGE_MIN_FRACTION:
-                    ev["figure"].append(f"pdfimages: image {w_px}x{h_px} px covers {wf:.0%} x {hf:.0%} of the page")
-        big_images = []
-        for x0, top, x1, bottom in rec["plumber_images"]:
-            if page_w > 0 and page_h > 0:
-                wf, hf = (x1 - x0) / page_w, (bottom - top) / page_h
-                max_area = max(max_area, min(wf, 1.0) * min(hf, 1.0))
-                if wf >= FIGURE_IMAGE_MIN_FRACTION and hf >= FIGURE_IMAGE_MIN_FRACTION:
-                    big_images.append((x0, top, x1, bottom))
-                    if not images_by_page:
-                        ev["figure"].append(f"pdfplumber: image covers {wf:.0%} x {hf:.0%} of the page")
-        rec["big_images"] = big_images
-        # numeric
-        if nonws >= NUMERIC_MIN_CHARS and rec["digit_density"] > NUMERIC_DENSITY_MIN:
-            ev["numeric"].append(f"digit density {rec['digit_density']:.2f} > {NUMERIC_DENSITY_MIN}")
-        # scanned
-        if nonws < SCANNED_MAX_CHARS:
-            ev["scanned"].append(f"anchor has {nonws} non-whitespace chars < {SCANNED_MAX_CHARS}")
+        for flag, e in caption_evidence(ta):
+            ev[flag].append(e)
+        max_area, figure_ev, rec["big_images"] = image_evidence(images_by_page.get(n, []), sizes.get(n, (0.0, 0.0)),
+                                                                rec["plumber_images"], not images_by_page)
+        ev["figure"].extend(figure_ev)
         # garbled
         ev["garbled"] = garbled_evidence({"lane A": ta, "lane B": tb}, rec["cid_chars"])
         # rotated
@@ -1408,10 +1465,7 @@ def ingest(a, ctx, row):
                     ev["low_agreement"].append(
                         f"agreement {rec['agreement']:.3f} < {AGREEMENT_LOW_CUTOFF} (provisional cutoff)")
         # ocr_layer_suspected
-        if max_area >= OCR_LAYER_IMAGE_AREA_MIN and nonws >= SCANNED_MAX_CHARS:
-            ev["ocr_layer_suspected"].append(
-                f"an image covers {max_area:.0%} of the page area (>= {OCR_LAYER_IMAGE_AREA_MIN:.0%}) and the anchor "
-                f"has {nonws} non-whitespace chars" + ("; pdffonts lists GlyphLessFont" if glyphless else ""))
+        ev["ocr_layer_suspected"] = ocr_layer_evidence(max_area, nonws, glyphless)
         rec["evidence"] = ev
         rec["needs_vision"] = any(ev[f] for f in VISION_FLAGS)
 

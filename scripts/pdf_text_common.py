@@ -101,6 +101,21 @@
 #   readings of a plain space between digit groups (equal under either is
 #   agreement). lit_verify grades a mismatch QUOTE_NUMBERS_DIFFER (review),
 #   never a pass. The tiers themselves are unchanged.
+#   ladder-v3 (2026-10-27, S3-C1b, review cycle 2 NB2): the quote-number rule
+#   (quote_number_check(); quote_numbers_agree() is its 3-tuple form) also
+#   fails when (a) a token's superscript or footnote-letter marks differ
+#   ("10³" over a printed "10⁻³"), or (b) the page span prints a SIGN-SHAPED
+#   DASH the quote lacks: a "-" (any dash or minus NORMALIZE folds, the
+#   superscript minus included) directly or after one space before a digit or
+#   ".digit", or a dash the line-break rejoin deleted there (normalize_map's
+#   `dashed`). (b) compares position by position on the SKELETON chars of the
+#   quote and of the span (equal by construction; a count is the fallback
+#   when their lengths differ), so a deleted dash is caught even where no
+#   number token is parsed ("−0.164ab"); a dash outside the span (before its
+#   first char) is not the span's, and extra dashes in the quote are allowed
+#   ("K-12" over a rejoined "K12"). (c) A spaced dash read sign-ambiguous on
+#   the page (numbers-v6), or any spaced dash before a quote token, compares
+#   the two tokens without their sign (the dash itself is checked by (b)).
 #
 # --- Number rules (added 2026-10-15, FE-3; note 08 §5) ----------------------
 #   U+2212, U+2013, U+FE63, U+FF0D directly before a digit -> "-"; then NFKC
@@ -165,6 +180,40 @@
 #     S3-A2 left (a prose sentence starting with a row label word,
 #     "ORGANIZATION and other models; ...", and a lane B fragment row "the 1"
 #     that any quote starting with "the" identified). Applied by the caller.
+#   numbers-v6 (2026-10-27, S3-C1b, review cycle 2 NB2 and W-a; user-approved
+#   principle: when the parser cannot be sure a sign or a digit belongs to the
+#   number, the claim goes to review or fails, never to a silent pass):
+#     FOOTNOTE LETTER (NB2): a number followed by exactly ONE letter of
+#       FOOTNOTE_LETTERS (a-g) that ends the word ("−0.164a", "1.20b",
+#       "2017a", "(7b)") is read as the number with that letter as a mark
+#       (`letter`, also in `marks`). Not when another letter, a digit or "_"
+#       follows, or ".", "-", "+", "'" and then a letter or digit ("5mg",
+#       "3rd", "1e-5", "a.m."); other letters stay non-numbers ("1990s", "5m",
+#       "2x"). compare_number() requires an equal letter when the CLAIM writes
+#       one; a claim without one matches a page token with one (a footnote
+#       mark the reader left out), as for superscripts.
+#     SPACED DASH AT A LINE START (W-a): a "-" with spaces/tabs before the
+#       number is a sign when only spaces/tabs stand between the dash and the
+#       start of its line ("\n– 0.30", a table cell); in a number view, where
+#       NORMALIZE turned the newline into a space, the view's `breaks` carry
+#       the line starts. normalize_map() also reads a rejoin-deleted dash at a
+#       line start as a lost sign.
+#     SIGN-AMBIGUOUS (W-a): a spaced dash after a letter or a closing bracket
+#       with a space or tab between them (SIGN_AMBIGUOUS_AFTER: "of – 0.30",
+#       "(n − 1)", "(Girls) – 0.30"; not "K-\n12") may be
+#       a minus sign or a subtraction / range dash: the token keeps the
+#       positive reading and is marked `sign_ambiguous`. compare_number()
+#       returns "sign-ambiguous" (never "exact") for a claim of either sign
+#       that only such a token prints (zero excepted: its sign is moot);
+#       lit_verify grades it NUMBER_SIGN_AMBIGUOUS (review). After a digit,
+#       "%" or another dash it stays a range ("28 - 75", numbers-v4). A
+#       rejoin-deleted dash after a word is ambiguous in the view too
+#       (normalize_map's `ambig`). Every token also records `spaced_dash`
+#       (a spaced dash precedes it and was not read as a sign).
+#
+# --- Versions note (numbers-v6 / ladder-v3) ---------------------------------
+#   normalize_map() returns two more sets (dashed, ambig); number_view()
+#   carries them and `breaks`; NORMALIZE itself is unchanged (normalize-v1).
 #
 # rapidfuzz is NOT imported here: callers pass the `rapidfuzz.fuzz` module
 # (or None, which skips the NEAR tier), so this module stays stdlib-only at
@@ -177,8 +226,8 @@ from decimal import Decimal, InvalidOperation
 
 # §§ CONSTANTS
 NORMALIZE_VERSION = "normalize-v1"
-MATCH_LADDER_VERSION = "ladder-v2"
-NUMBER_RULES_VERSION = "numbers-v5"
+MATCH_LADDER_VERSION = "ladder-v3"
+NUMBER_RULES_VERSION = "numbers-v6"
 # The order-free overlap diagnostic (overlap_score); pdf_ingest records it.
 OVERLAP_VERSION = "overlap-v1"
 
@@ -228,6 +277,11 @@ def normalize_map(text):
     # a digit or ".digit" after). None when this char-wise construction does
     # not reproduce normalize(text) exactly (e.g. an NFKC composition across
     # chars); callers then fall back to NORMALIZE alone.
+    # numbers-v6: returns (norm, idx, lost, splits, dashed, ambig). `dashed`:
+    # norm indices of a number whose preceding dash the rejoin deleted (any
+    # context; the quote-number rule's sign-dash check); `ambig`: those whose
+    # deleted dash followed a word or closing bracket after a space (sign-
+    # ambiguous). A dash at a line start before the rejoin is a lost sign.
     src = (text or "").replace("\r\n", "\n")
     shift = [i for i, c in enumerate(text or "") if not (c == "\r" and (text or "")[i + 1:i + 2] == "\n")]
     chars = []
@@ -240,14 +294,24 @@ def normalize_map(text):
         chars.extend((c, shift[i], False) for c in piece)
         i = j
     s = "".join(c for c, _, _ in chars)
-    drop, lost_at, split_at = set(), set(), set()
+    drop, lost_at, split_at, dashed_at, ambig_at = set(), set(), set(), set(), set()
     for m in HYPHEN_BREAK_RE.finditer(s):
         drop.update(range(m.start(), m.end()))
         k = m.start() - 1
         while k >= 0 and s[k] in " \t":
             k -= 1
-        if m.group(0).count("\n") == 1 and (k < 0 or s[k] in SIGN_CONTEXT) and re.match(r"\.?\d", s[m.end():]):
+        digit_after = re.match(r"\.?\d", s[m.end():m.end() + 2]) is not None
+        if digit_after:
+            # INTENT (numbers-v6): any dash the rejoin deletes before a number
+            #   still counts as a sign-shaped dash for the quote-number rule.
+            dashed_at.add(m.end())
+        one_nl = m.group(0).count("\n") == 1
+        if one_nl and (k < 0 or s[k] in SIGN_CONTEXT or s[k] in LINE_BREAK_CHARS) and digit_after:
             lost_at.add(m.end())
+        elif one_nl and digit_after and k < m.start() - 1 and (s[k].isalpha() or s[k] in SIGN_AMBIGUOUS_AFTER):
+            # INTENT (numbers-v6, W-a): "of –\n0.30": a spaced dash after a
+            #   word, deleted by the rejoin: the number's sign is undecided.
+            ambig_at.add(m.end())
         elif m.start() > 0 and ((s[m.start() - 1].isdigit() and s[m.end():m.end() + 1].isalnum()) or (
                 s[m.start() - 1].isalpha() and s[m.end():m.end() + 1].isdigit())):
             # INTENT: "749–\n756" / "6-\nyear": the rejoin fuses a number with
@@ -257,13 +321,17 @@ def normalize_map(text):
             #   word before it ("K12"), which hides it from the number rules,
             #   so a genuine quote "K-12" read as QUOTE_NUMBERS_DIFFER.
             split_at.add(m.end())
-    kept = [(c, r, "lost" if k in lost_at else "split" if k in split_at else False)
-            for k, (c, r, _) in enumerate(chars) if k not in drop]
+    # INTENT (numbers-v6): each kept char carries a tuple of tags (a position
+    #   can be both "dashed" and one of lost / ambig / split).
+    tags = {k: tuple(t for t, at in (("lost", lost_at), ("split", split_at), ("dashed", dashed_at),
+                                       ("ambig", ambig_at)) if k in at)
+            for k in lost_at | split_at | dashed_at | ambig_at}
+    kept = [(c, r, tags.get(k, ())) for k, (c, r, _) in enumerate(chars) if k not in drop]
     s2 = "".join(c for c, _, _ in kept)
     out, pos = [], 0
     for m in WHITESPACE_RE.finditer(s2):
         out.extend(kept[pos:m.start()])
-        out.append((" ", kept[m.start()][1], False))
+        out.append((" ", kept[m.start()][1], ()))
         pos = m.end()
     out.extend(kept[pos:])
     while out and out[0][0] == " ":
@@ -273,8 +341,8 @@ def normalize_map(text):
     norm = "".join(c for c, _, _ in out)
     if norm != normalize(text):
         return None
-    return (norm, [r for _, r, _ in out], frozenset(i for i, (_, _, f) in enumerate(out) if f == "lost"),
-            frozenset(i for i, (_, _, f) in enumerate(out) if f == "split"))
+    tagged = lambda name: frozenset(i for i, (_, _, f) in enumerate(out) if name in f)  # noqa: E731
+    return (norm, [r for _, r, _ in out], tagged("lost"), tagged("split"), tagged("dashed"), tagged("ambig"))
 
 
 # §§ MATCH_LADDER (MATCH_LADDER_VERSION; added 2026-10-15, FE-3)
@@ -514,6 +582,23 @@ GROUP_PLACEHOLDER = "\x00"
 #   (or at the start / after whitespace); after a digit or letter it is a
 #   range dash or a subtraction ("2019-2020", "x-3").
 SIGN_CONTEXT = "([{=<>:;,/~"
+# INTENT (numbers-v6, W-a): a spaced dash right after one of these (or after a
+#   letter) is SIGN-AMBIGUOUS: "of – 0.30" may be a minus sign or a
+#   subtraction; "(Girls) – 0.30" may be a table cell or a range. Only spaces
+#   or tabs before the dash back to a LINE_BREAK_CHARS char (or the text
+#   start) make it a sign instead (a cell at a line start).
+SIGN_AMBIGUOUS_AFTER = ")]}"
+LINE_BREAK_CHARS = "\n\f"
+# INTENT (numbers-v6, NB2): footnote / sub-label letters read as a mark after
+#   a number ("−0.164a", "2017a", "(7b)"). Narrow on purpose: the S3-C1b
+#   corpus scan (WS script 109: 196 number+letter shapes in 848 bake-off
+#   pages) found a/b/c as table notes, equation labels and citation years,
+#   and x, k, y, p, z, t, r, q mostly as math variables; "s" is a plural
+#   ("1990s") and m/k multipliers ("5m", "5k"), so they stay non-numbers.
+# REASONING: a mark letter changes no digit, so reading "1.20b" as 1.20 only
+#   lets the number rules see a token they missed (a deleted minus before it,
+#   a declared number printed with a footnote letter).
+FOOTNOTE_LETTERS = "abcdefg"
 NUMBER_CORE_RE = {
     False: re.compile(r"\d{1,3}(?:[,\x00]\d{3})+(?!\d)(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+"),
     True: re.compile(r"\d{1,3}(?:[,\x00 ]\d{3})+(?!\d)(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+"),
@@ -533,11 +618,15 @@ def number_text(text):
     return "".join(p if k % 2 else unicodedata.normalize("NFKC", p) for k, p in enumerate(parts))
 
 
-def parse_numbers(text, join_spaces=False):
+def parse_numbers(text, join_spaces=False, breaks=None):
     # Every number token in `text` as a dict: raw, digits (canonical string),
     # value (Decimal), negative, paren, percent, marks, start, end. With
     # join_spaces, a plain space between 3-digit groups is a thousands
     # separator too.
+    # numbers-v6: also sup, letter (a footnote letter, FOOTNOTE_LETTERS),
+    #   sign_ambiguous and spaced_dash (header). `breaks`: positions of spaces
+    #   in `text` that stand for a line break (a number view's NORMALIZE text);
+    #   a raw text's own "\n" / "\f" need none.
     t = number_text(text)
     out = []
     for m in NUMBER_CORE_RE[join_spaces].finditer(t):
@@ -545,7 +634,7 @@ def parse_numbers(text, join_spaces=False):
         prev = t[s - 1] if s > 0 else ""
         if prev and (prev.isalnum() or prev in "._" or prev == GROUP_PLACEHOLDER):
             continue
-        start, negative = s, False
+        start, negative, ambiguous, spaced = s, False, False, False
         if prev == "-":
             before = t[s - 2] if s >= 2 else ""
             if before == "" or before.isspace() or before in SIGN_CONTEXT:
@@ -554,6 +643,8 @@ def parse_numbers(text, join_spaces=False):
             # INTENT (numbers-v4, B1): the spaced sign. A "-" before spaces /
             #   tabs and at most one newline is a sign when the char before it
             #   (spaces/tabs skipped) is SIGN_CONTEXT or the text starts there.
+            #   numbers-v6 (W-a): or the dash starts its line; after a letter
+            #   or a closing bracket the sign is ambiguous (header).
             j = s - 1
             while j >= 0 and t[j] in " \t":
                 j -= 1
@@ -565,8 +656,16 @@ def parse_numbers(text, join_spaces=False):
                 k = j - 1
                 while k >= 0 and t[k] in " \t":
                     k -= 1
-                if k < 0 or t[k] in SIGN_CONTEXT:
+                line_start = k < 0 or t[k] in LINE_BREAK_CHARS or bool(
+                    breaks and any(p in breaks for p in range(k + 1, j)))
+                if line_start or t[k] in SIGN_CONTEXT:
                     start, negative = j, True
+                else:
+                    # INTENT: ambiguous only with a space or tab between the
+                    #   word and the dash ("of – 0.30"); "K-\n12" is a compound
+                    #   broken at a line end, not a sign.
+                    spaced = True
+                    ambiguous = k < j - 1 and (t[k].isalpha() or t[k] in SIGN_AMBIGUOUS_AFTER)
         end, percent = e, False
         pm = PERCENT_RE.match(t, end)
         if pm:
@@ -580,6 +679,14 @@ def parse_numbers(text, join_spaces=False):
             if pm and pm.end() > end:
                 end, percent = pm.end(), True
         after = t[end] if end < len(t) else ""
+        letter = ""
+        if after and after in FOOTNOTE_LETTERS:
+            # INTENT (numbers-v6, NB2): one footnote letter that ends the word
+            #   is a mark ("−0.164a"); "5mg", "1e-5", "2a.m." are not.
+            nxt = t[end + 1] if end + 1 < len(t) else ""
+            nxt2 = t[end + 2] if end + 2 < len(t) else ""
+            if not (nxt.isalnum() or nxt == "_" or (nxt and nxt in ".-+'’" and nxt2.isalnum())):
+                letter, end, after = after, end + 1, nxt
         if after.isalnum() or after == "_":
             continue
         body = m.group(0)
@@ -594,7 +701,8 @@ def parse_numbers(text, join_spaces=False):
             continue
         out.append({"raw": t[start:end].replace(GROUP_PLACEHOLDER, " "), "digits": digits, "value": value,
                     "negative": negative, "paren": start > 0 and t[start - 1] == "(" and after == ")",
-                    "percent": percent, "marks": marks, "sup": "".join(c for c in marks if c in SUPSUB_CHARS),
+                    "percent": percent, "marks": marks + letter, "sup": "".join(c for c in marks if c in SUPSUB_CHARS),
+                    "letter": letter, "sign_ambiguous": ambiguous, "spaced_dash": spaced,
                     "start": start, "end": end})
     return out
 
@@ -630,14 +738,29 @@ def compare_number(claim, candidates):
     # (None, None) otherwise. Sign is part of the value: 0.087 != -0.087.
     # numbers-v4: a superscript the CLAIM writes must be printed (it may be
     #   an exponent); a claim without one ignores the page's (a footnote mark).
-    precision = None
+    # numbers-v6: the same for a footnote letter; and ("sign-ambiguous",
+    #   token) when the only token printing the claim's digits (either sign)
+    #   is sign-ambiguous ("of – 0.30"): never "exact", so it never clears
+    #   silently. A zero's sign is moot (Decimal -0 == 0): compared as usual.
+    precision = ambiguous = None
     for tok in candidates:
         if claim.get("sup") and tok.get("sup") != claim["sup"]:
+            continue
+        if claim.get("letter") and tok.get("letter") != claim["letter"]:
+            continue
+        if tok.get("sign_ambiguous") and tok["value"] != 0:
+            if abs(tok["value"]) == abs(claim["value"]):
+                if tok["digits"].lstrip("-") == claim["digits"].lstrip("-"):
+                    ambiguous = ambiguous or tok
+                else:
+                    precision = precision or tok
             continue
         if tok["value"] == claim["value"] and tok["negative"] == claim["negative"]:
             if tok["digits"] == claim["digits"]:
                 return "exact", tok
             precision = precision or tok
+    if ambiguous:
+        return "sign-ambiguous", ambiguous
     return ("precision", precision) if precision else (None, None)
 
 
@@ -755,13 +878,17 @@ def number_near_spans(claim, norm, spans, window):
 # whose sign "-" the line-break rejoin deleted. When normalize_map() cannot
 # map the page, the view is NORMALIZE itself (`mapped` False; idx None).
 def number_view(text):
+    # numbers-v6: the view also carries `dashed` and `ambig` (normalize_map)
+    #   and `breaks`: positions of the spaces NORMALIZE made from a whitespace
+    #   run that held a line break (so a dash after one starts its line).
     raw = text or ""
     m = normalize_map(raw)
+    empty = frozenset()
     if m is None:
         norm = normalize(raw)
-        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": frozenset(), "splits": frozenset(),
-                "mapped": False}
-    norm, idx, lost, splits = m
+        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": empty, "splits": empty,
+                "dashed": empty, "ambig": empty, "breaks": empty, "mapped": False}
+    norm, idx, lost, splits, dashed, ambig = m
     chars = list(norm)
     for i, r in enumerate(idx):
         c = raw[r]
@@ -770,37 +897,62 @@ def number_view(text):
             chars[i] = c
     view = "".join(chars)
     if len(number_text(view)) != len(view):
-        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": frozenset(), "splits": frozenset(),
-                "mapped": False}
-    return {"text": view, "norm": norm, "raw": raw, "idx": idx, "lost_signs": lost, "splits": splits, "mapped": True}
+        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": empty, "splits": empty,
+                "dashed": empty, "ambig": empty, "breaks": empty, "mapped": False}
+    breaks = set()
+    for i, c in enumerate(norm):
+        if c != " ":
+            continue
+        # INTENT: walk the raw whitespace run this space stands for (chars
+        #   NORMALIZE deletes, e.g. a zero-width space, are skipped too).
+        j = idx[i]
+        while j < len(raw) and (raw[j].isspace() or raw[j] in DELETE_CHARS):
+            if raw[j] in LINE_BREAK_CHARS:
+                breaks.add(i)
+                break
+            j += 1
+    return {"text": view, "norm": norm, "raw": raw, "idx": idx, "lost_signs": lost, "splits": splits,
+            "dashed": dashed, "ambig": ambig, "breaks": frozenset(breaks), "mapped": True}
 
 
 def join_views(left, right):
     # The view of a declared span: left + " " + right (as lit_verify matches
     # it); no raw index (the row path never runs on a span).
+    # numbers-v6: dashed / ambig / breaks shifted too; the joining space is a
+    #   line break (the right page's first line starts there).
     norm = left["norm"] + " " + right["norm"]
+    empty = frozenset()
     if normalize(norm) != norm:
         n2 = normalize(norm)
-        return {"text": n2, "norm": n2, "raw": norm, "idx": None, "lost_signs": frozenset(), "mapped": False}
+        return {"text": n2, "norm": n2, "raw": norm, "idx": None, "lost_signs": empty, "splits": empty,
+                "dashed": empty, "ambig": empty, "breaks": empty, "mapped": False}
     off = len(left["text"]) + 1
+    both = lambda k: frozenset(left.get(k, ())) | {p + off for p in right.get(k, ())}  # noqa: E731
     return {"text": left["text"] + " " + right["text"], "norm": norm, "raw": norm, "idx": None,
-            "lost_signs": frozenset(left["lost_signs"]) | {p + off for p in right["lost_signs"]},
-            "splits": frozenset(left.get("splits", ())) | {p + off for p in right.get("splits", ())}, "mapped": False}
+            "lost_signs": both("lost_signs"), "splits": both("splits"), "dashed": both("dashed"),
+            "ambig": both("ambig"), "breaks": both("breaks") | {off - 1}, "mapped": False}
 
 
 def view_numbers(view, join_spaces=False):
     # parse_numbers() on the view, with the lost signs applied and a token
     # boundary at each split (a space is parsed there; positions map back).
+    # numbers-v6: the view's line breaks are passed on (mapped through the
+    #   inserted split spaces) and a rejoin-deleted ambiguous dash marks its
+    #   token sign_ambiguous.
     text, cuts = view["text"], sorted(view.get("splits") or ())
     for c in reversed(cuts):
         text = text[:c] + " " + text[c:]
     back = lambda p: p - sum(1 for k, c in enumerate(cuts) if c + k < p)  # noqa: E731
+    breaks = {b + sum(1 for c in cuts if c <= b) for b in view.get("breaks") or ()}
+    ambig = view.get("ambig") or ()
     out = []
-    for t in parse_numbers(text, join_spaces):
+    for t in parse_numbers(text, join_spaces, breaks):
         if cuts:
             t = dict(t, start=back(t["start"]), end=back(t["end"]))
         if not t["negative"] and t["start"] in view["lost_signs"]:
             t = dict(t, negative=True, digits="-" + t["digits"], value=-t["value"])
+        elif not t["negative"] and t["start"] in ambig:
+            t = dict(t, sign_ambiguous=True, spaced_dash=True)
         out.append(t)
     return out
 
@@ -815,28 +967,100 @@ def view_candidates(view):
 
 def number_near_view(claim, view, spans, window):
     # number_near_spans() on a number view.
+    return near_view_kind(claim, view, spans, window) == "exact"
+
+
+def near_view_kind(claim, view, spans, window):
+    # (numbers-v6) compare_number()'s kind ("exact", "sign-ambiguous",
+    # "precision" or None) over the view tokens overlapping `spans` widened
+    # by `window` chars.
     toks = [t for t in view_candidates(view) if any(t["end"] > s - window and t["start"] < e + window
                                                     for s, e in spans)]
-    return compare_number(claim, toks)[0] == "exact"
+    return compare_number(claim, toks)[0]
+
+
+def sign_dash_flags(norm, start, end, dashed=frozenset()):
+    # (ladder-v3) One bool per SKELETON char of norm[start:end] (the chars
+    # skeleton_index() keeps): True on a digit, or a "." before a digit, that
+    # a sign-shaped dash precedes INSIDE the slice ("-" directly or after one
+    # space), or that `dashed` marks (a dash the line-break rejoin deleted
+    # before it; not on the slice's first char).
+    flags = []
+    for i in range(start, end):
+        c = norm[i]
+        keep = sum(1 for f in c.casefold() if not (f.isspace() or f == "-"))
+        if not keep:
+            continue
+        flag = False
+        if c.isdigit() or (c == "." and norm[i + 1:i + 2].isdigit()):
+            if i - 1 >= start and norm[i - 1] == "-":
+                flag = True
+            elif i - 2 >= start and norm[i - 1] == " " and norm[i - 2] == "-":
+                flag = True
+            elif i > start and i in dashed:
+                flag = True
+        flags.append(flag)
+        flags.extend([False] * (keep - 1))
+    return flags
+
+
+def quote_number_check(quote, view, spans):
+    # The quote-number rule (ladder-v2; ladder-v3 adds marks and sign dashes):
+    # {"agree", "quote", "page", "why"}. The quote's number tokens
+    # (parse_numbers on the quote as written) must equal, in order, the WHOLE
+    # page tokens overlapping each matched span, under one of the two readings
+    # of a plain space between digit groups: same digits (or, with a
+    # sign-ambiguous page token or a spaced dash before the quote token, the
+    # same digits without the sign), same superscript and footnote letter.
+    # And every sign-shaped dash the span prints before a number must be in
+    # the quote at the same SKELETON position (sign_dash_flags). `quote` and
+    # `page` are digit lists; `why` is None, "digits", "marks" or "sign-dash".
+    # No span: agree None (the caller fails closed).
+    q = {js: parse_numbers(quote, js) for js in (False, True)}
+    qd = [t["digits"] for t in q[False]]
+    if not spans:
+        return {"agree": None, "quote": qd, "page": None, "why": None}
+
+    def same(a, b):
+        # a quote token, b a page token
+        if a["sup"] != b["sup"] or a.get("letter", "") != b.get("letter", ""):
+            return False
+        if a["digits"] == b["digits"]:
+            return True
+        loose = b.get("sign_ambiguous") or a.get("spaced_dash")
+        return bool(loose) and a["digits"].lstrip("-") == b["digits"].lstrip("-")
+
+    def agree(qs, ps):
+        return len(qs) == len(ps) and all(same(a, b) for a, b in zip(qs, ps))
+
+    qmap = normalize_map(quote)
+    qnorm, qdashed = (qmap[0], qmap[4]) if qmap else (normalize(quote), frozenset())
+    qflags = sign_dash_flags(qnorm, 0, len(qnorm), qdashed)
+    first = None
+    for s, e in spans:
+        p = {js: [t for t in view_numbers(view, js) if t["end"] > s and t["start"] < e] for js in (False, True)}
+        pd = [t["digits"] for t in p[False]]
+        first = first or pd
+        if not (agree(q[False], p[False]) or agree(q[True], p[True])):
+            # INTENT: equal digit lists under one reading means only a mark
+            #   (superscript or footnote letter) differs.
+            digits_differ = all([t["digits"] for t in q[js]] != [t["digits"] for t in p[js]] for js in (False, True))
+            return {"agree": False, "quote": qd, "page": pd, "why": "digits" if digits_differ else "marks"}
+        pflags = sign_dash_flags(view["norm"], s, e, view.get("dashed") or frozenset())
+        if len(pflags) == len(qflags):
+            missing = any(a and not b for a, b in zip(pflags, qflags))
+        else:
+            missing = sum(pflags) > sum(qflags)
+        if missing:
+            return {"agree": False, "quote": qd, "page": pd, "why": "sign-dash"}
+    return {"agree": True, "quote": qd, "page": first, "why": None}
 
 
 def quote_numbers_agree(quote, view, spans):
-    # ladder-v2, the quote-number rule: (agree, quote digits, page digits).
-    # The quote's number tokens (parse_numbers on the quote as written) must
-    # equal, in order, the WHOLE page tokens overlapping each matched span,
-    # under one of the two readings of a plain space between digit groups.
-    # No span: (None, quote digits, None) (the caller fails closed).
-    q = {js: [t["digits"] for t in parse_numbers(quote, js)] for js in (False, True)}
-    if not spans:
-        return None, q[False], None
-    first = None
-    for s, e in spans:
-        p = {js: [t["digits"] for t in view_numbers(view, js) if t["end"] > s and t["start"] < e]
-             for js in (False, True)}
-        first = first or p[False]
-        if p[False] != q[False] and p[True] != q[True]:
-            return False, q[False], p[False]
-    return True, q[False], first
+    # ladder-v2's (agree, quote digits, page digits) form of
+    # quote_number_check() (kept for callers and measurement scripts).
+    r = quote_number_check(quote, view, spans)
+    return r["agree"], r["quote"], r["page"]
 
 
 def at_row_start(view, start):

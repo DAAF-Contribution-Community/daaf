@@ -6,10 +6,10 @@ and gate-checked from that HTML instead of the PDF (user decision D-21 N5,
 turns the LaTeXML page into **section units**, and `lit_verify card` checks a
 `lit-verify-card-v2` card against them exactly as it checks a PDF card
 against pages. Source of truth: the `§§ ARXIV_HTML` block of
-`scripts/pdf_ingest.py` (added in 1.2.0-daaf; current 1.2.1-daaf,
+`scripts/pdf_ingest.py` (added in 1.2.0-daaf; current 1.2.2-daaf,
 `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the "arXiv HTML ingests"
 header block of `scripts/lit_verify.py` (added in 1.4.0-daaf; current
-1.7.0-daaf). If this page and the code disagree, the code wins.
+1.8.0-daaf). If this page and the code disagree, the code wins.
 
 **Contents:** Which path · Detecting an arXiv paper · Fetching the HTML ·
 Availability · Ingesting · Version pinning · Units and labels · Grades ·
@@ -148,7 +148,7 @@ new card.
 
 Same grades as a PDF (D-21 N5): PASS → `FULL_TEXT_VERIFIED`, PARTIAL →
 `FULL_TEXT_PARTIAL`, under the same ladder, identifying-quote rule, coverage
-rule, quote-number rule (`ladder-v2`) and number rules (`numbers-v5`;
+rule, quote-number rule (`ladder-v3`) and number rules (`numbers-v6`;
 `evidence-card.md`). Only the locator changes: a
 section label in place of a page, `section_end` in place of `page_end` (a
 quote may run from one unit into the **next** unit only), `WRONG_SECTION`

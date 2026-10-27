@@ -66,10 +66,13 @@ LINE_WRAP = 2000
 
 # Injection-shaped patterns scrubbed from every agent-facing text. The first
 # five are web_fetch.py's set (the two tag patterns widened here, see below;
-# web_fetch.py keeps its own narrower copy, D-9); the rest close two gaps the user's
-# toolkit found: a forged fence marker would let a hostile abstract "close"
-# the UNTRUSTED block early, and a line imitating a tool's own status output
-# could fake extra triage rows. Matching is case-insensitive.
+# web_fetch.py keeps its own five-pattern copy and does not import this module,
+# D-9; S3-B2 mirrored the widened tag pair into it, and
+# tests/python/test_web_fetch_scrub.py keeps the two pairs identical); the
+# rest close two gaps the user's toolkit found: a forged fence marker would
+# let a hostile abstract "close" the UNTRUSTED block early, and a line
+# imitating a tool's own status output could fake extra triage rows. Matching
+# is case-insensitive.
 # 2026-10-23 (S3-B1, review W3): the two tag patterns are widened (never
 # narrowed) to spaced, attribute and line-broken forms: whitespace after "<"
 # and around "/" ("< /system-reminder>"), and anything but "<" or ">" before

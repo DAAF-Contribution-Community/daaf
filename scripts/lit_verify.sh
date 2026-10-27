@@ -21,7 +21,7 @@
 # scholar_search.sh and pdf_ingest.sh do).
 #
 # Usage:
-#   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S]
+#   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S]
 #   bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 #     PAPER_DIR = papers/{paper_key}/ from pdf_ingest; CARD_PATH = a file
 #     directly inside it (evidence_card.md, evidence_card_a.md, ...)
@@ -37,7 +37,8 @@
 #       oversize or non-UTF-8 card)
 #   10  ingest artifacts missing or incomplete, or a required dependency
 #       missing (rapidfuzz; polars or pyarrow; pdftotext and pdfinfo, which
-#       re-derive PDF anchors, from 1.7.0)
+#       re-derive PDF anchors, from 1.7.0; pdfimages, which re-derives page
+#       flags, from 1.8.0)
 #   11  FAIL as a recorded result (card_check written); selftest: an
 #       expectation did not hold
 #   12  internal error (no verdict)
@@ -55,7 +56,7 @@ readonly TOOL="${SCRIPT_DIR}/lit_verify.py"
 
 # --- Preflight ---
 if [ $# -lt 1 ]; then
-    echo "Usage: $(basename "$0") card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] | selftest <SCRATCH_DIR>" >&2
+    echo "Usage: $(basename "$0") card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S] | selftest <SCRATCH_DIR>" >&2
     exit 1
 fi
 
