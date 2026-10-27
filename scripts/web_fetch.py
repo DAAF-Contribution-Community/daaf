@@ -278,8 +278,9 @@ def finish(dest_dir, code, status, note):
 
 
 # --- Guard: DEST_DIR validation (BLOCKER) ---
-# REASONING: hooks cannot see program-argument paths (bash-safety.sh:287-288),
-#   so the tool must validate the destination itself.
+# REASONING: hooks cannot see program-argument paths (bash-safety.sh header,
+#   ACCEPTED RESIDUALS: "Program-argument /tmp writes"), so the tool must
+#   validate the destination itself.
 dest_dir = os.path.realpath(args.dest_dir)
 if not (dest_dir == ALLOWED_ROOT or dest_dir.startswith(ALLOWED_ROOT + "/")):
     # Cannot safely write a manifest outside /daaf; refuse loudly to stderr.

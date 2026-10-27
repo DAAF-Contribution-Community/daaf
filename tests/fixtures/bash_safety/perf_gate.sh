@@ -5,7 +5,9 @@
 # Usage: bash tests/fixtures/bash_safety/perf_gate.sh [HOOK_PATH]
 #   HOOK_PATH defaults to <repo>/.claude/hooks/bash-safety.sh, resolved from
 #   this file's own location, so it works in any checkout (CI, fresh clone).
-#   Pass a staged draft's path to gate the draft instead.
+#   Pass a staged draft's path to gate the draft instead; keep a
+#   bash-safety.site.sh beside the draft (the hook reads its settings from that
+#   sibling file and blocks every command without it).
 # Called by: tests/bash/bash_safety.bats (perf FC41) and
 #            scripts/test_safety_hooks.sh (PERF FC41).
 #
@@ -45,6 +47,20 @@ fi
 
 DANGER="r""m -r""f /"
 fail=0
+
+# Control: a benign command must be ALLOWED (rc=0). Without it, a hook that
+# blocks EVERY command -- e.g. a draft bash-safety.sh tested without its
+# bash-safety.site.sh beside it, which fails closed by design -- would pass the
+# BLOCK assertions below without measuring anything.
+json=$(jq -cn --arg c "echo perf-gate-control" '{tool_name:"Bash",tool_input:{command:$c}}')
+rc=0
+printf '%s' "$json" | bash "$HOOK" >/dev/null 2>&1 || rc=$?
+printf 'control rc=%s\n' "$rc"
+if [[ $rc -ne 0 ]]; then
+    printf 'PERF FAIL: benign control command returned rc=%s (expected 0 = ALLOW); is bash-safety.site.sh beside the hook?\n' "$rc"
+    exit 1
+fi
+
 for k in 32000 64000; do
     pad=$(head -c "$k" /dev/zero | tr '\0' 'a')
     cmd="echo ${pad} ; ${DANGER}"
