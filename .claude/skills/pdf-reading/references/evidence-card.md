@@ -6,7 +6,7 @@ truth: the header, `validate_card()`, `check_card()` and the selftest in
 `scripts/lit_verify.py` (`TOOL_VERSION = "1.8.0-daaf"`, 2026-10-27; card
 schemas `lit-verify-card-v1` and `lit-verify-card-v2`, result schema
 `lit-verify-card-check-v2`, re-derivation `rederive-v2`) and the ladder,
-number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v3`,
+number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v4`,
 `numbers-v6`, `column-check-v1`, `normalize-v1`). A later session
 adds `lit_verify report` (S4); the full card schema is formalized later in
 `LIT_REVIEW_OUTPUT_CONTRACT.md` (spec C14). If this page and the code
@@ -138,10 +138,11 @@ across all units and their boundaries. How units and labels are built:
    (else warning `HTML_EXTRACT_VERSION_DIFFERS`). The statuses:
    § Integrity and warning statuses.
    1b. **Re-derivation** (1.7.0): the anchor text, lane B and table rows are
-   re-derived from the stored source and compared byte-for-byte
-   (§ Re-derivation).
+   re-derived from the stored source and compared byte-for-byte; from 1.8.0
+   also the header/footer lines, the grade-relevant page flags and OCR
+   acceptance, from the same hashed bytes (§ Re-derivation).
 2. **Quote ladder** for every coverage anchor and claim quote, then the
-   **quote-number rule** on every claim quote that passed (`ladder-v3`).
+   **quote-number rule** on every claim quote that passed (`ladder-v4`).
 3. **Identifying-quote rule** on every quote that matched.
 4. **Coverage** of every page 1..N, then the paper-level OCR-layer cap.
 5. **Numbers** of every claim.
@@ -198,23 +199,37 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
     (a forged removal of 70 `ocr_layer_suspected` flags had lifted the
     D-24 cap). pdfplumber unavailable → `FLAGS_NOT_REDERIVED` (warning) and
     a conservative reading: an unconfirmed `table` closes the row path, a
-    recorded `ocr_layer_suspected` is kept. Residual: a page whose ≥ 80%
-    image only pdfplumber sees, with the flag removed from the manifest (no
-    such page in the five bake-off PDFs);
+    recorded `ocr_layer_suspected` is kept, and a scanned page in a document
+    pdfimages lists no image for counts as truly scanned (so a manifest made
+    with pdfplumber can read such a page as sparse, and that class
+    difference is a `FLAGS_REDERIVE_MISMATCH`; the DAAF image ships
+    pdfplumber). Residual: a page where only pdfplumber's image box reaches
+    80% of the page area (pdfimages' computed area stays under 80%, whether
+    or not it lists the image), with what that area raised
+    (`ocr_layer_suspected`, or the truly-scanned class) removed from the
+    manifest: the pdfplumber probe does not run on such a page in a document
+    pdfimages lists images for (probe 104 measured that quantity: no such
+    page in the five bake-off PDFs);
   - OCR text on a page that re-derives with ≥ 200 non-whitespace anchor
     chars (not scanned, so `pdf_ingest` never OCRs it) → `OCR_ON_TEXT_PAGE`
     (fail; the OCR text is not used).
 - **Not re-derived:** OCR text itself (Tesseract on a 300-DPI render costs
   seconds per page). Its files are hash-checked only, and a paper whose OCR
   text is used carries one `OCR_NOT_REDERIVED` warning; OCR evidence is
-  already capped at PARTIAL. The display-only flags (figure, garbled,
-  rotated, cjk_risk, low_agreement, ocr) move no verdict.
+  already capped at PARTIAL. So forged OCR text on a page whose re-derived
+  anchor has fewer than `SCANNED_MAX_CHARS` (200) non-whitespace characters
+  is graded at most PARTIAL (`PASS_OCR`, with the `OCR_NOT_REDERIVED`
+  warning): the paper never reaches `FULL_TEXT_VERIFIED` on OCR evidence (a
+  residual the user accepted, D-25; review cycle 3 W3). The display-only
+  flags (figure, garbled, rotated, cjk_risk, low_agreement, ocr) move no
+  verdict.
 - `rederive.source_kind` (recorded only; no verdict effect): `web_fetch`
   (a web_fetch `MANIFEST.jsonl` beside the source names it with its hash;
   `web_fetch_row` gives `manifest_line`, `final_url` and `fetch_timestamp`),
   `web_fetch_row_conflict` (rows name the file with another hash),
   `user_supplied` (no such row), `synthetic` (selftest only; the CLI never
-  produces it) or `unknown` (that MANIFEST could not be read).
+  produces it) or `unknown` (that MANIFEST could not be read); null when no
+  source was read (`SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`).
   `source_kind_ingest` is what `pdf_ingest` recorded at ingest time.
 - **What the gate does not prove (the whole-chain residual).** Re-derivation
   proves that the card and the ingest agree with the bytes on disk at
@@ -248,7 +263,7 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
 source changed after the ingest, and the orchestrator re-ingests (or restores
 the source to its recorded path).
 
-## The match ladder (`ladder-v3`)
+## The match ladder (`ladder-v4`)
 
 Evaluated for a quote cited to page P (or P..P+1 with `page_end`); first hit
 wins.
@@ -270,16 +285,18 @@ within 1.25 × the quote length + 10 chars, or the quote is not NEAR
 (stitched fragments are not a near match).
 
 The tiers are those of `ladder-v1`; `ladder-v2` (1.6.0) adds the
-quote-number rule below on top of them, and `ladder-v3` (1.8.0) widens it.
+quote-number rule below on top of them, `ladder-v3` (1.8.0) widens it, and
+`ladder-v4` (1.8.0, part 3) makes its dash check symmetric.
 
-## The quote-number rule (`ladder-v2`, 1.6.0, S3-A review finding B2; `ladder-v3`, 1.8.0)
+## The quote-number rule (`ladder-v2`, 1.6.0, S3-A review finding B2; `ladder-v3` and `ladder-v4`, 1.8.0)
 
 SKELETON deletes `-`, so without this rule a claim quote "slope was 0.164"
 passed on a page printing "slope was −0.164", and "510%" on "5–10%". Now a
 **claim quote** that passes on any tier (`PASS`, `PASS_SKELETON`,
 `PASS_SPAN`, `PASS_OCR`, `PASS_OCR_LAYER`, `PASS_CONVERSION_ERROR`) must
 print, **in order**, the same number tokens, sign included, as the page span
-it matched (`pdf_text_common.quote_numbers_agree()`). The quote is parsed as
+it matched (`pdf_text_common.quote_number_check()`; `quote_numbers_agree()`
+is its 3-tuple form, the `ladder-v2` name). The quote is parsed as
 written; the page side is the page's *number view* (NORMALIZE coordinates
 with superscripts, thin-space groups and a sign lost to a line-break rejoin
 put back; the whole tokens that overlap the matched span). A plain space
@@ -303,25 +320,43 @@ Coverage anchors are not checked (they carry no claim). A
   the superscript minus included, and so does a dash the line-break rejoin
   deleted (`K-` + line break + `12`). This catches a deleted dash even where
   no number token is parsed ("0.164ab" over "−0.164ab"). A dash outside the
-  span (before its first character) is not checked; an extra dash in the
-  quote is allowed.
+  span (before its first character) is not checked; under `ladder-v3` an
+  extra dash in the quote was allowed (see `ladder-v4` below).
 - **Spaced dashes compare without the sign.** When the page token is
   sign-ambiguous (§ Numbers), or a spaced dash precedes the quote's token,
   the two tokens compare digits without the sign. The dash itself is still
   checked by the position rule.
 
+`ladder-v4` (1.8.0 part 3, S3-D, review cycle 3 quality W1) makes the dash
+check **symmetric**. A dash the quote prints before a number where the page
+prints no dash at that SKELETON position is `QUOTE_NUMBERS_DIFFER` too, when
+it can read as a sign: a spaced dash with no digit, `%` or dash before it
+("rose by – 0.30" over "rose by 0.30"), or a dash glued to the digit with no
+letter or digit before it ("(Girls)−0.30" over "(Girls) 0.30"). Without it
+such a quote was certified verbatim while reading as a sign flip (its
+declared numbers were still checked). Compound and range dashes stay
+allowed: "K-12" over a rejoined "K12", "5-10" over "5 10", "[26 - 28]"
+over "[26 28]" (the number rules never read them as a sign either). On the
+page side any dash at that position counts as printed: inside the span,
+just before it, or deleted by the line-break rejoin.
+
 **Fixing `QUOTE_NUMBERS_DIFFER`.** Compare `quote_numbers` with
 `page_numbers` in the item; the reason says whether the digits, a mark
-(superscript or footnote letter) or a sign-shaped dash differ. Usually a
-minus, a range dash, a superscript or a digit was lost when the quote was
-retyped. Re-copy the quote from `pages/pNNN.txt` with every number exactly as
-printed (`−0.164`, `5–10%`, `10⁻³`). If the page itself prints the dash as
-something that is not a sign (a binary minus in a formula, an exponent),
-leave the item for the human check. On the bake-off papers the rule raised
-2 false alarms in 2,407 genuine quotes under `ladder-v2` (both quotes
-starting with such a minus, S3-A2) and 0 under `ladder-v3` (WS script 111;
-the binary minus there is now sign-ambiguous). Of 217 planted minus
-deletions it flagged 208 under `ladder-v2` and 217 under `ladder-v3`.
+(superscript or footnote letter) or a sign-shaped dash differ, and whether
+the page prints the dash ("the matched page span prints a sign-shaped dash")
+or the quote added it ("the quote prints a sign-shaped dash"). Usually a
+minus, a range dash, a superscript or a digit was lost, or a dash added,
+when the quote was retyped. Re-copy the quote from `pages/pNNN.txt` with
+every number exactly as printed (`−0.164`, `5–10%`, `10⁻³`). If the page
+itself prints the dash as something that is not a sign (a binary minus in a
+formula, an exponent), leave the item for the human check. On the bake-off
+papers the rule raised 2 false alarms in 2,407 genuine quotes under
+`ladder-v2` (both quotes starting with such a minus, S3-A2) and 0 under
+`ladder-v3` (WS script 111; the binary minus there is now sign-ambiguous)
+and `ladder-v4` (WS script 120_a). Of 217 planted minus deletions it
+flagged 208 under `ladder-v2` and 217 under `ladder-v3` and `ladder-v4`; of
+planted added dashes, `ladder-v4` flags 999 of 999 spaced after a word and
+18 of 18 glued after a bracket (`ladder-v3`: 0 of each).
 
 ## Identifying quotes
 
@@ -358,7 +393,7 @@ cover the page.
 | Class | Rule | Effect |
 |-------|------|--------|
 | `normal` | Not flagged `scanned` | — |
-| `scanned` (truly scanned) | Flagged `scanned` AND one embedded image covers at least `TRULY_SCANNED_IMAGE_AREA_MIN = 0.50` of the page area (**PROVISIONAL**, parsed from pdf_ingest's flag evidence); also when image evidence is unavailable (pdfimages and pdfplumber both missing), the conservative reading | Adds a `SCANNED_PAGE` partial item: the card is at best PARTIAL |
+| `scanned` (truly scanned) | Flagged `scanned` AND one embedded image covers at least `TRULY_SCANNED_IMAGE_AREA_MIN = 0.50` of the page area (**PROVISIONAL**; from 1.8.0 the flag and the image evidence are re-derived from the source bytes, § Re-derivation; before, they were parsed from pdf_ingest's flag evidence); also when image evidence is unavailable (pdfimages lists no image in the document and pdfplumber is unavailable; a missing pdfimages is exit 10), the conservative reading | Adds a `SCANNED_PAGE` partial item: the card is at best PARTIAL |
 | `sparse` | Flagged `scanned` but not mostly one image (a figure page with a short caption) | No cap; the sparse waiver applies. The card's `sparse` field is advisory (a mismatch is a warning) |
 
 **OCR-layer pages (1.2.0, user decision D-21 N2).** A page flagged
@@ -765,8 +800,8 @@ column label).
 | Verdict | When | `evidence_grade_suggested` | Exit |
 |---------|------|-----------------------------|------|
 | `FAIL` | Any fail item (all listed) | null | 11 |
-| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW, QUOTE_NUMBERS_DIFFER, precision-differs, not-near-quote or sign-ambiguous item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items exist | 0 |
-| `PARTIAL` | No fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY, ocr-only, ocr+vision, ocr-layer, ocr-layer+vision, vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item, or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error item | `FULL_TEXT_PARTIAL` | 0 |
+| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW (coverage: a page's best anchor NEAR or REDACTED_SPAN), QUOTE_NUMBERS_DIFFER, precision-differs, not-near-quote or sign-ambiguous item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items exist | 0 |
+| `PARTIAL` | No fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY, ocr-only, ocr+vision, ocr-layer, ocr-layer+vision, vision-only or SCANNED_PAGE item, a COVERED_SPARSE or COVERED_DUPLICATE on a truly scanned page or matched in OCR text, or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error item | `FULL_TEXT_PARTIAL` | 0 |
 | `PASS` | Everything anchored in the text layer | `FULL_TEXT_VERIFIED` | 0 |
 
 Evidence grades and what synthesis may do with each: spec §7.5
@@ -843,6 +878,10 @@ status `NUMBER_SIGN_AMBIGUOUS` (label `sign-ambiguous`, review, `locality`
 null); a `QUOTE_NUMBERS_DIFFER` reason now says whether the digits, a mark
 or a sign-shaped dash differ.
 
+**1.8.0, part 3 (S3-D; result schema unchanged):** `rule_versions.match_ladder`
+is `ladder-v4`; a `QUOTE_NUMBERS_DIFFER` reason can also say that the quote
+prints a sign-shaped dash the matched span does not. No new status.
+
 ## MANIFEST row (papers dir, kind `lit_verify`)
 
 One row per attempt with a valid papers dir: `kind`, `tool_version`,
@@ -897,12 +936,12 @@ At most **two** self-revisions (spec §7.4), each a new card file
 | `ANCHOR_KIND_MISMATCH` | A v1 or `pdf` card on an HTML ingest, or the reverse | Rewrite the card as `lit-verify-card-v2` with the ingest's `anchor_kind` and its locators (sections or pages) |
 | `SOURCE_VERSION_MISMATCH` | The card names another arXiv version than the one ingested | Write the ingested version (manifest `arxiv.version`); if you read another version, that version needs its own fetch, key and ingest |
 | `MIXED_ANCHOR_KINDS` | A PDF and an HTML ingest under one paper key | Report it: the orchestrator moves one source to its own key |
-| `QUOTE_NUMBERS_DIFFER` (review) | A minus, range dash, superscript or digit lost when the quote was retyped | Re-copy the quote with every number as printed (§ The quote-number rule); a non-sign dash on the page stays a human check |
+| `QUOTE_NUMBERS_DIFFER` (review) | A minus, range dash, superscript or digit lost when the quote was retyped, or (`ladder-v4`) a sign-shaped dash added that the page does not print | Re-copy the quote with every number as printed (§ The quote-number rule); a non-sign dash on the page stays a human check |
 | `NUMBER_SIGN_AMBIGUOUS` (review) | The page prints the number after a spaced dash that follows a word or bracket (`of – 0.30`) | Nothing to fix in the card if the number is copied right: a human reads the page (or its render) and decides minus or subtraction |
 | `VISION_NOT_ON_LIST` | `vision_validated: true` for a model not on the card's list version | Set `vision_validated: false`, `vision: unavailable`, and re-read flagged pages from the text layer |
 | `SOURCE_MISSING` / `SOURCE_FILE_HASH_MISMATCH` | The ingest's source was moved, deleted or replaced after the ingest | Do not edit the card: report it; restore the source to its recorded path or re-ingest |
-| `ANCHOR_REDERIVE_MISMATCH` / `ROW_SOURCE_REDERIVE_MISMATCH` | The ingest's files do not re-derive from its source (edited or forged after the ingest) | Do not edit the card: report it; the orchestrator re-ingests |
-| `SOURCE_REDERIVE_ERROR` | `pdftotext` or `pdfinfo` failed or timed out on the source | Re-run with a larger `--timeout`; otherwise report it |
+| `ANCHOR_REDERIVE_MISMATCH` / `ROW_SOURCE_REDERIVE_MISMATCH` / `HEADER_FOOTER_REDERIVE_MISMATCH` / `FLAGS_REDERIVE_MISMATCH` / `OCR_ON_TEXT_PAGE` | The ingest's files (anchors, lane B or table rows, header/footer records, grade-moving page flags, OCR text on a text page) do not re-derive from its source (edited or forged after the ingest; for a page class, also a check run without pdfplumber, § Re-derivation) | Do not edit the card: report it; the orchestrator re-ingests |
+| `SOURCE_REDERIVE_ERROR` | A poppler tool (`pdftotext`, `pdfinfo`, `pdfimages`) failed or timed out on the source, the HTML no longer decodes, or memfd sealing is unavailable (non-Linux) | Re-run with a larger `--timeout` if it timed out; otherwise report it |
 | `NO_INGEST_ROW` / `INGEST_MANIFEST_HASH_MISMATCH` | The ingest was not written by a recorded `pdf_ingest` run, or its manifest changed afterwards | Report it; the orchestrator re-ingests |
 
 ## Selftest
@@ -951,13 +990,14 @@ footnote-lettered negative `−0.164a` (PASS), its minus deleted in the quote
 and a superscript minus deleted from `10⁻³` (both NEEDS_REVIEW via
 QUOTE_NUMBERS_DIFFER), a spaced minus after a word (NEEDS_REVIEW via
 NUMBER_SIGN_AMBIGUOUS), and a line-start cell `– 0.25`, genuine (PASS) and
-sign-flipped (FAIL via NUMBER_MISSING); plus one check that each card run
-wrote one MANIFEST row with a matching `card_check` hash: **43
-expectations**. It needs
+sign-flipped (FAIL via NUMBER_MISSING); (1.8.0 part 3, `ladder-v4`) a quote
+that adds a spaced dash before the positive `1.20b` (NEEDS_REVIEW via
+QUOTE_NUMBERS_DIFFER); plus one check that each card run wrote one MANIFEST
+row with a matching `card_check` hash: **44 expectations**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 43/43 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 44/44 expectations held; work dir removed`.
 
 ## Worked examples
 

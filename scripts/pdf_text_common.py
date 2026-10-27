@@ -113,9 +113,24 @@
 #   when their lengths differ), so a deleted dash is caught even where no
 #   number token is parsed ("−0.164ab"); a dash outside the span (before its
 #   first char) is not the span's, and extra dashes in the quote are allowed
-#   ("K-12" over a rejoined "K12"). (c) A spaced dash read sign-ambiguous on
+#   ("K-12" over a rejoined "K12"; narrowed in ladder-v4 to dashes that
+#   cannot read as a sign, below). (c) A spaced dash read sign-ambiguous on
 #   the page (numbers-v6), or any spaced dash before a quote token, compares
 #   the two tokens without their sign (the dash itself is checked by (b)).
+#   ladder-v4 (2026-10-27, S3-D, review cycle 3 quality W1): (b) is symmetric.
+#   A sign-shaped dash the QUOTE prints before a number where the page prints
+#   no dash at that SKELETON position fails too (why "sign-dash-added"): "rose
+#   by – 0.30" or "(Girls)−0.30" over a page printing "by 0.30" / "(Girls)
+#   0.30" would otherwise be certified as a verbatim quote that reads as a
+#   sign flip. On the quote side only a dash that can read as a sign counts:
+#   a spaced dash with no digit, "%" or dash before it, or a dash glued to
+#   the digit with no letter or digit before it (start, space, bracket,
+#   punctuation); a dash glued between a letter or digit and the digit
+#   ("K-12", "COVID-19", "5-10") and a spaced dash after a digit ("[26 - 28]")
+#   stay allowed (compound or range dashes, which the number rules never read
+#   as a sign either). On the page side ANY dash at that position counts as
+#   printed: one inside the span, one just before its first char, and one the
+#   line-break rejoin deleted (`dashed`, e.g. "of –\n0.30").
 #
 # --- Number rules (added 2026-10-15, FE-3; note 08 §5) ----------------------
 #   U+2212, U+2013, U+FE63, U+FF0D directly before a digit -> "-"; then NFKC
@@ -211,9 +226,11 @@
 #       (normalize_map's `ambig`). Every token also records `spaced_dash`
 #       (a spaced dash precedes it and was not read as a sign).
 #
-# --- Versions note (numbers-v6 / ladder-v3) ---------------------------------
+# --- Versions note (numbers-v6 / ladder-v3; ladder-v4) ----------------------
 #   normalize_map() returns two more sets (dashed, ambig); number_view()
 #   carries them and `breaks`; NORMALIZE itself is unchanged (normalize-v1).
+#   ladder-v4 changes only quote_number_check() and sign_dash_flags()'s
+#   options; numbers-v6 is unchanged.
 #
 # rapidfuzz is NOT imported here: callers pass the `rapidfuzz.fuzz` module
 # (or None, which skips the NEAR tier), so this module stays stdlib-only at
@@ -226,7 +243,7 @@ from decimal import Decimal, InvalidOperation
 
 # §§ CONSTANTS
 NORMALIZE_VERSION = "normalize-v1"
-MATCH_LADDER_VERSION = "ladder-v3"
+MATCH_LADDER_VERSION = "ladder-v4"
 NUMBER_RULES_VERSION = "numbers-v6"
 # The order-free overlap diagnostic (overlap_score); pdf_ingest records it.
 OVERLAP_VERSION = "overlap-v1"
@@ -790,7 +807,7 @@ def compare_number(claim, candidates):
 #   genuine rates understate in-quote. With each quote taken from the
 #   number's own row (449 claims, B and C; DOI/URL and footnote rows
 #   excluded): in-quote 0.976 / 0.018 / 0.000; B6 1.000 / 0.058 / 0.000;
-#   in-quote OR unique row (numbers-v3, shipped) 0.996 / 0.018 / 0.000; on
+#   in-quote OR unique row (numbers-v3, shipped in 1.3.0) 0.996 / 0.018 / 0.000; on
 #   the 31 column-major rows 0.645 -> 0.935 genuine, 0.000 last digit.
 NUMBER_NEAR_CHARS = 0
 # Measurement only (script 69): the loose lane B row rule (B6: any lane B line
@@ -979,12 +996,20 @@ def near_view_kind(claim, view, spans, window):
     return compare_number(claim, toks)[0]
 
 
-def sign_dash_flags(norm, start, end, dashed=frozenset()):
+def sign_dash_flags(norm, start, end, dashed=frozenset(), lookback=False, sign_only=False):
     # (ladder-v3) One bool per SKELETON char of norm[start:end] (the chars
     # skeleton_index() keeps): True on a digit, or a "." before a digit, that
     # a sign-shaped dash precedes INSIDE the slice ("-" directly or after one
     # space), or that `dashed` marks (a dash the line-break rejoin deleted
     # before it; not on the slice's first char).
+    # ladder-v4 options (both used by quote_number_check's "added" test):
+    #   lookback   the dash may stand before the slice's first char too (the
+    #              page side: does the page print a dash at this position?)
+    #   sign_only  only a dash that can read as a sign: a spaced dash with no
+    #              digit, "%" or dash before it, or a dash glued to the digit
+    #              with no letter or digit before it (the quote side; "K-12",
+    #              "5-10", "26 - 28" are compound/range dashes)
+    lo = 0 if lookback else start
     flags = []
     for i in range(start, end):
         c = norm[i]
@@ -993,12 +1018,23 @@ def sign_dash_flags(norm, start, end, dashed=frozenset()):
             continue
         flag = False
         if c.isdigit() or (c == "." and norm[i + 1:i + 2].isdigit()):
-            if i - 1 >= start and norm[i - 1] == "-":
-                flag = True
-            elif i - 2 >= start and norm[i - 1] == " " and norm[i - 2] == "-":
-                flag = True
-            elif i > start and i in dashed:
-                flag = True
+            if i - 1 >= lo and norm[i - 1] == "-":
+                # INTENT (ladder-v4): with sign_only, a dash glued between a
+                #   letter or digit and this digit is not sign-shaped.
+                flag = not (sign_only and i - 2 >= 0 and norm[i - 2].isalnum())
+            elif i - 2 >= lo and norm[i - 1] == " " and norm[i - 2] == "-":
+                # INTENT (ladder-v4): with sign_only, a spaced dash after a
+                #   digit, "%" or another dash (spaces skipped) is a range, as
+                #   parse_numbers reads it ("[26 - 28]", numbers-v4).
+                k = i - 3
+                while k >= 0 and norm[k] == " ":
+                    k -= 1
+                flag = not (sign_only and k >= 0 and (norm[k].isdigit() or norm[k] in "%-"))
+            elif (i > start or lookback) and i in dashed:
+                # INTENT (ladder-v4): with sign_only, a rejoin-deleted dash
+                #   that followed a letter or digit ("K-\n12") is a compound
+                #   dash; after a space ("of –\n0.30") it can be a sign.
+                flag = not (sign_only and i - 1 >= 0 and norm[i - 1].isalnum())
         flags.append(flag)
         flags.extend([False] * (keep - 1))
     return flags
@@ -1013,9 +1049,11 @@ def quote_number_check(quote, view, spans):
     # sign-ambiguous page token or a spaced dash before the quote token, the
     # same digits without the sign), same superscript and footnote letter.
     # And every sign-shaped dash the span prints before a number must be in
-    # the quote at the same SKELETON position (sign_dash_flags). `quote` and
-    # `page` are digit lists; `why` is None, "digits", "marks" or "sign-dash".
-    # No span: agree None (the caller fails closed).
+    # the quote at the same SKELETON position (sign_dash_flags). ladder-v4:
+    # and every dash the quote prints that can read as a sign must stand
+    # where the page prints a dash ("sign-dash-added"). `quote` and `page`
+    # are digit lists; `why` is None, "digits", "marks", "sign-dash" or
+    # "sign-dash-added". No span: agree None (the caller fails closed).
     q = {js: parse_numbers(quote, js) for js in (False, True)}
     qd = [t["digits"] for t in q[False]]
     if not spans:
@@ -1036,6 +1074,9 @@ def quote_number_check(quote, view, spans):
     qmap = normalize_map(quote)
     qnorm, qdashed = (qmap[0], qmap[4]) if qmap else (normalize(quote), frozenset())
     qflags = sign_dash_flags(qnorm, 0, len(qnorm), qdashed)
+    # INTENT (ladder-v4, review cycle 3 W1): the quote's dashes that can read
+    #   as a sign, for the "added" direction.
+    qsign = sign_dash_flags(qnorm, 0, len(qnorm), qdashed, sign_only=True)
     first = None
     for s, e in spans:
         p = {js: [t for t in view_numbers(view, js) if t["end"] > s and t["start"] < e] for js in (False, True)}
@@ -1046,13 +1087,23 @@ def quote_number_check(quote, view, spans):
             #   (superscript or footnote letter) differs.
             digits_differ = all([t["digits"] for t in q[js]] != [t["digits"] for t in p[js]] for js in (False, True))
             return {"agree": False, "quote": qd, "page": pd, "why": "digits" if digits_differ else "marks"}
-        pflags = sign_dash_flags(view["norm"], s, e, view.get("dashed") or frozenset())
+        pdashed = view.get("dashed") or frozenset()
+        pflags = sign_dash_flags(view["norm"], s, e, pdashed)
+        # INTENT (ladder-v4): where does the page print ANY dash before a
+        #   digit (inside the span, just before it, or rejoin-deleted)?
+        pany = sign_dash_flags(view["norm"], s, e, pdashed, lookback=True)
         if len(pflags) == len(qflags):
             missing = any(a and not b for a, b in zip(pflags, qflags))
+            added = any(b and not a for a, b in zip(pany, qsign))
         else:
+            # REASONING: lengths differ only when the match is not 1:1 on
+            #   SKELETON; a count is the fallback, as for "missing".
             missing = sum(pflags) > sum(qflags)
+            added = sum(qsign) > sum(pany)
         if missing:
             return {"agree": False, "quote": qd, "page": pd, "why": "sign-dash"}
+        if added:
+            return {"agree": False, "quote": qd, "page": pd, "why": "sign-dash-added"}
     return {"agree": True, "quote": qd, "page": first, "why": None}
 
 

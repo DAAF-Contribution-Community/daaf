@@ -190,7 +190,7 @@ class ExitTableTests(unittest.TestCase):
                          (("lit-verify-card-v1", "lit-verify-card-v2"), "lit-verify-card-check-v2"))
         self.assertEqual(lv.HTML_EXTRACT_VERSIONS_KNOWN, (pdf_ingest.HTML_EXTRACT_VERSION,))
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
-                         ("normalize-v1", "ladder-v3", "numbers-v6"))
+                         ("normalize-v1", "ladder-v4", "numbers-v6"))
 
     def test_mirrors_pdf_ingest(self):
         self.assertEqual(lv.PAPER_KEY_RE.pattern, pdf_ingest.PAPER_KEY_RE.pattern)
@@ -1417,7 +1417,7 @@ class NumberParsingTests(unittest.TestCase):
                 # a dash the line-break rejoin deleted, where no token is parsed
                 ("Synthetic: the code K-\n12ab ran twice that winter.", "the code K12ab ran twice", (False, "sign-dash")),
                 ("Synthetic: the code K-\n12ab ran twice that winter.", "the code K-12ab ran twice", (True, None)),
-                # an extra dash in the quote is allowed (FX-Q)
+                # a range dash the quote adds between digits is allowed (FX-Q; kept by ladder-v4)
                 ("Synthetic: the invented range 5 10 of lanterns.", "the invented range 5-10 of lanterns", (True, None)),
                 (self.WA_PAGE, "recorded the change in their ledger – 0.25 and nobody", (True, None)),
                 (self.WA_PAGE, "recorded the change in their ledger 0.25 and nobody", (False, "digits")),
@@ -1462,6 +1462,61 @@ class NumberParsingTests(unittest.TestCase):
         self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
         r = self.gate(self.WA_PAGE, [self.claim("L2", q, ["0.25"])])
         self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("FAIL", ["NUMBER_MISSING"]))
+
+    # --- ladder-v4 (S3-D, review cycle 3 quality W1): a quote that ADDS a sign-shaped dash ---
+    ADD_PAGE = ("Synthetic page: the invented gull counts rose by 0.30 points along the quay wall after the reform.\n"
+                "Invented lantern outcomes by keeper (Girls) 0.30 and (Boys) 0.12 in the amber winter.\n"
+                "The invented plot totals [26 28] were logged, and the slope −0.164 held for the gulls on the quay.\n"
+                "The keepers noted a change of –\n0.30 points in the ledger that nobody disputed.\n\f")
+
+    def test_quote_number_check_added_sign_dash(self):
+        def check(quote, page=None):
+            page = page or self.ADD_PAGE
+            norm, spans = ptc.quote_spans(quote, page)
+            self.assertTrue(spans, quote)
+            return ptc.quote_number_check(quote, ptc.number_view(page), spans)
+        for quote, want in (
+                ("gull counts rose by – 0.30 points along the quay", (False, "sign-dash-added")),
+                ("by keeper (Girls)−0.30 and (Boys) 0.12 in the", (False, "sign-dash-added")),
+                ("by keeper (Girls) -0.30 and (Boys) 0.12 in the", (False, "digits")),   # the token's sign differs
+                ("gull counts rose by 0.30 points along the quay", (True, None)),
+                # a spaced range dash after a digit cannot read as a sign (as parse_numbers reads it)
+                ("The invented plot totals [26 - 28] were logged", (True, None)),
+                # the page prints the dash just before the span's first char (lookback)
+                ("- 0.164 held for the gulls on the quay", (True, None)),
+                # the line-break rejoin deleted the page's dash (`dashed`): not added
+                ("noted a change of – 0.30 points in the ledger", (True, None))):
+            with self.subTest(quote=quote):
+                r = check(quote)
+                self.assertEqual((r["agree"], r["why"]), want)
+        # compound and range dashes glued to the digit stay allowed
+        self.assertEqual((check("all K-12 harbour schools", "Synthetic: all K-\n12 harbour schools counted.")["agree"],
+                          check("the invented range 5-10 of lanterns", "Synthetic: the invented range 5 10 of lanterns.")
+                          ["agree"]), (True, True))
+        s = "K-12 (a)-3 5 - 6 x - 7"
+        self.assertEqual(ptc.sign_dash_flags(s, 0, len(s)), [False, True, False, False, False, False, True, False, True,
+                                                             False, True])
+        self.assertEqual(ptc.sign_dash_flags(s, 0, len(s), sign_only=True),
+                         [False, False, False, False, False, False, True, False, False, False, True])
+        self.assertEqual(ptc.sign_dash_flags("x -5 and -6", 3, 11, lookback=True), [True, False, False, False, True])
+
+    def test_gate_added_sign_dash(self):
+        q = "the invented gull counts rose by – 0.30 points along the quay wall"
+        r = self.gate(self.ADD_PAGE, [self.claim("D1", q)])
+        it = [x for x in r["items"] if x["kind"] == "claim_quote"][0]
+        self.assertEqual((r["verdict"], it["status"], it["status_if_confirmed"], it["severity"]),
+                         ("NEEDS_REVIEW", "QUOTE_NUMBERS_DIFFER", "PASS_SKELETON", "review"))
+        self.assertIn("the quote prints a sign-shaped dash", it["reason"])
+        # the declared number is still checked: the added sign is printed nowhere on this page
+        one = self.ADD_PAGE.split("\n")[0] + "\nNo other figure appears on this invented page of the keepers' notes.\n\f"
+        r = self.gate(one, [self.claim("D3", q, ["-0.30"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("FAIL", ["NUMBER_MISSING"]))
+        r = self.gate(self.ADD_PAGE, [self.claim("D5", "Invented lantern outcomes by keeper (Girls)−0.30 and (Boys) "
+                                                       "0.12 in the amber")])
+        self.assertEqual((r["verdict"], statuses(r, "claim_quote")), ("NEEDS_REVIEW", ["QUOTE_NUMBERS_DIFFER"]))
+        r = self.gate(self.ADD_PAGE, [self.claim("G1", "the invented gull counts rose by 0.30 points along the quay "
+                                                       "wall", ["0.30"])])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
 
 
 class HtmlCardParseTests(unittest.TestCase):
@@ -1670,7 +1725,7 @@ class IngestAndRowTests(ScratchCase):
         self.assertEqual(art["name"], "card_check.json")
         self.assertEqual(art["sha256"], lv.sha256_bytes((key_dir / art["name"]).read_bytes()))
         check = json.loads((key_dir / "card_check.json").read_text())
-        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v3"))
+        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v4"))
         # re-check of the same card version: a new name, nothing overwritten
         before = (key_dir / "card_check.json").read_bytes()
         self.assertEqual(run_main(["card", key_dir, card])[0], 0)
@@ -1800,7 +1855,7 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 43/43", out)
+        self.assertIn("SELFTEST PASS: 44/44", out)
         self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
         for case in ("forged header/footer line, span skips it", "forged page flags lift the OCR-layer cap",
                      "forged OCR text on a text page"):                         # 1.8.0 (review cycle 2)

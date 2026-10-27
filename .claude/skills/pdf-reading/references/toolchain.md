@@ -11,10 +11,10 @@ its appended log) [obs].
 
 | Component | Version | License (as declared) | Used by | Role |
 |-----------|---------|-----------------------|---------|------|
-| poppler-utils (`pdftotext`, `pdfinfo`, `pdftoppm`, `pdfimages`, `pdffonts`) | 24.02.0-1ubuntu9.9 | GPL-2 or GPL-3 (Debian copyright file) | pdf_ingest | Anchor text, page info, renders, image and font listings; called as separate programs |
+| poppler-utils (`pdftotext`, `pdfinfo`, `pdftoppm`, `pdfimages`, `pdffonts`) | 24.02.0-1ubuntu9.9 | GPL-2 or GPL-3 (Debian copyright file) | pdf_ingest; lit_verify (`pdftotext`, `pdfinfo`, `pdfimages`: re-derivation) | Anchor text, page info, renders, image and font listings; called as separate programs |
 | tesseract-ocr (+ `-eng`, `-osd`) | 5.3.4-1build5 | Apache-2.0 | pdf_ingest | OCR on scanned pages only, CPU, `OMP_THREAD_LIMIT=1` |
-| pypdfium2 | 5.13.0 | "BSD-3-Clause, Apache-2.0, dependency licenses" | pdf_ingest | Lane B text |
-| pdfplumber | 0.11.10 | MIT (classifier) | pdf_ingest | Table hints, image boxes, char rotation |
+| pypdfium2 | 5.13.0 | "BSD-3-Clause, Apache-2.0, dependency licenses" | pdf_ingest, lit_verify | Lane B text (lit_verify re-derives it) |
+| pdfplumber | 0.11.10 | MIT (classifier) | pdf_ingest, lit_verify | Table hints, image boxes, char rotation (lit_verify: `find_tables` and image boxes where a flag needs it) |
 | pdfminer.six | 20260107 | MIT | (pdfplumber) | Layout engine under pdfplumber |
 | rapidfuzz | 3.14.6 | MIT | pdf_ingest, lit_verify | Agreement score; the NEAR tier |
 | polars (or pyarrow) | as pinned elsewhere in the image | not re-read in FE-4 (not part of the PDF stack block) | both | `page_index.parquet` |
@@ -66,7 +66,7 @@ with the names.
 Tool versions: `pdf_ingest` 1.2.2-daaf (`HTML_EXTRACT_VERSION`
 `arxiv-html-v1`), `lit_verify` 1.8.0-daaf (card schemas v1 and v2, result
 schema `lit-verify-card-check-v2`, re-derivation `rederive-v2`),
-`pdf_text_common` `normalize-v1`, `ladder-v3`, `numbers-v6`,
+`pdf_text_common` `normalize-v1`, `ladder-v4`, `numbers-v6`,
 `column-check-v1`, `overlap-v1`. The arXiv HTML lane uses only the
 Python standard library (`html.parser`) and polars: no new dependency.
 `lit_verify` re-derives PDF anchors with poppler's `pdftotext` and `pdfinfo`,
@@ -79,13 +79,13 @@ Re-derivation cost per card (S3-C1a, 2026-10-27, the nine bake-off cards):
 extra `pdfimages -list` and `pdfinfo -f 1 -l N` passes plus `find_tables`
 on its 2 cited caption-less table pages).
 
-| Suite | Count (S3-C1a run, 2026-10-27) | Needs |
+| Suite | Count (S3-D run, 2026-10-27, WS script 122) | Needs |
 |-------|------------------|-------|
 | `tests/python/test_pdf_ingest.py` | 59 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
-| `tests/python/test_lit_verify.py` | 119 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` and re-derivation (poppler, pypdfium2) |
+| `tests/python/test_lit_verify.py` | 121 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` and re-derivation (poppler, pypdfium2) |
 | `tests/python/test_scholar_search.py` (regression, shares `web_retrieval_common.py`) | 250 (6 expected failures) | none beyond the image |
 | `tests/python/test_web_fetch_scrub.py` (`web_fetch.py`'s own injection scrub, kept in step with the shared one) | 7 | none (reads the source; no network) |
-| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 43 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`); no PDF tools (its ingests are synthetic) |
+| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 44 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`); no PDF tools (its ingests are synthetic) |
 
 Run the suites file-first: a captured `.py` under the session's `scripts/`
 calls `python3 -m unittest discover -s /daaf/tests/python -p "test_pdf_ingest.py"`

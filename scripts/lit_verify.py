@@ -37,8 +37,12 @@
 #                INCOMPLETE_INGEST_IGNORED). Every artifact path comes from
 #                the manifest and must resolve inside PAPER_DIR (exit 2).
 #   Dependencies rapidfuzz (NEAR tier) and polars or pyarrow (page_index
-#                parquet); missing -> exit 10 (selftest also needs polars, for
-#                pdf_ingest's arXiv HTML lane). No network calls, ever.
+#                parquet); for a PDF ingest also pdftotext, pdfinfo and
+#                pdfimages (poppler; re-derivation, § Re-derivation); missing
+#                -> exit 10 (selftest also needs polars, for pdf_ingest's
+#                arXiv HTML lane). pypdfium2 and pdfplumber missing are
+#                warnings (ROW_SOURCE_NOT_REDERIVED, FLAGS_NOT_REDERIVED).
+#                No network calls, ever.
 #
 # --- The card's machine-checkable block (schema "lit-verify-card-v1") -------
 #   The card is evidence_card{S}.md (front matter + prose, spec §7.6; prose is
@@ -186,7 +190,10 @@
 #            a row with raw_artifact = its basename and raw_sha256 = its hash
 #            (pdf_ingest.web_fetch_provenance; `web_fetch_row` gives the line
 #            and final_url), "web_fetch_row_conflict" (rows name it with
-#            another hash), "user_supplied" (no row), "synthetic" (selftest).
+#            another hash), "user_supplied" (no row), "synthetic" (selftest),
+#            "unknown" (a web_fetch MANIFEST.jsonl beside the file cannot be
+#            read); null when no source was read (SOURCE_MISSING,
+#            SOURCE_FILE_HASH_MISMATCH).
 #            An agent that can write files can author a source AND such a
 #            row, so a whole-chain forgery stays possible; the field lets the
 #            orchestrator's audit see which kind it is.
@@ -229,9 +236,14 @@
 #                     (an unconfirmed `table` closes the row path; a recorded
 #                     ocr_layer_suspected is kept; a scanned page without
 #                     image evidence counts as truly scanned) and one
-#                     FLAGS_NOT_REDERIVED warning. Residual: a page whose
-#                     >= 80% image only pdfplumber sees, with the flag removed
-#                     from the manifest (0 such pages in the 5 bake-off PDFs,
+#                     FLAGS_NOT_REDERIVED warning. Residual: a page where only
+#                     pdfplumber's image box reaches 80% of the page area
+#                     (pdfimages' computed area stays under 80%, whether or not
+#                     it lists the image), with what that area raised
+#                     (ocr_layer_suspected, or the truly-scanned class) removed
+#                     from the manifest: the pdfplumber probe does not run on
+#                     such a page in a document pdfimages lists images for, so
+#                     nothing restores it (0 such pages in the 5 bake-off PDFs,
 #                     probe 104).
 #            OCR      OCR text on a page whose re-derived anchor has >=
 #                     SCANNED_MAX_CHARS non-whitespace chars is refused
@@ -278,6 +290,11 @@
 #     same SKELETON position in the quote, even where no token is parsed
 #     ("0.164ab" over "−0.164ab"); a spaced dash before a quote token, or a
 #     sign-ambiguous page token, compares the digits without their sign.
+#     ladder-v4 (1.8.0 part 3, S3-D, review cycle 3 W1): the dash check is
+#     symmetric: a dash the QUOTE prints before a number that can read as a
+#     sign (spaced, or glued with no letter or digit before it: "by – 0.30",
+#     "(Girls)−0.30") where the page prints no dash is QUOTE_NUMBERS_DIFFER
+#     too; compound and range dashes ("K-12", "5-10", "26 - 28") stay allowed.
 #   3 Identifying quote (pdf_text_common.quote_identity): >= MIN_QUOTE_CHARS
 #     normalized chars AND >= MIN_QUOTE_WORDS words AND the SKELETON occurs
 #     exactly once across all anchor text and page boundaries (and all OCR
@@ -390,10 +407,14 @@
 #   normal   not flagged `scanned` by pdf_ingest
 #   scanned  TRULY scanned: flagged `scanned` (< 200 non-whitespace anchor
 #            chars) AND one embedded image covers >= TRULY_SCANNED_IMAGE_
-#            AREA_MIN of the page area (PROVISIONAL; parsed from pdf_ingest's
-#            recorded flag_evidence "covers W% x H% of the page"); also when
-#            image evidence is unavailable (pdfimages AND pdfplumber missing),
-#            the conservative reading. Its content is in the image, so every
+#            AREA_MIN of the page area (PROVISIONAL; from 1.8.0 the image
+#            evidence is re-derived from the source bytes, `pdfimages -list`
+#            and, where needed, pdfplumber, § Re-derivation; it was parsed
+#            from pdf_ingest's recorded flag_evidence "covers W% x H% of the
+#            page"); also when image evidence is unavailable (pdfimages lists
+#            no image in the document AND pdfplumber is unavailable; a
+#            missing pdfimages is exit 10), the conservative reading. Its
+#            content is in the image, so every
 #            truly scanned page adds a SCANNED_PAGE partial item: the card is
 #            at best PARTIAL (FULL_TEXT_PARTIAL), never PASS.
 #   sparse   flagged `scanned` but not mostly a single image (e.g. a figure
@@ -416,12 +437,16 @@
 #   FAIL          any fail item (all listed)
 #   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS,
 #                 NUMBER_NOT_NEAR_QUOTE, NUMBER_SIGN_AMBIGUOUS or
-#                 QUOTE_NUMBERS_DIFFER item (listed for a human)
+#                 QUOTE_NUMBERS_DIFFER item, or a page whose coverage status
+#                 is NEEDS_REVIEW (best anchor NEAR or REDACTED_SPAN) (listed
+#                 for a human)
 #   PARTIAL       no fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
 #                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
-#                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item,
-#                 or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error
-#                 item (each listed)
+#                 vision-only or SCANNED_PAGE item, a COVERED_SPARSE or
+#                 COVERED_DUPLICATE on a truly scanned page or matched in OCR
+#                 text, or (arXiv HTML) a PASS_CONVERSION_ERROR or
+#                 conversion-error item (each listed). The verdict is computed
+#                 from each item's severity (SEVERITY); these lists name them
 #   PASS          everything anchored in the text layer
 #   evidence_grade_suggested: PASS -> FULL_TEXT_VERIFIED (no truly scanned
 #   page can be present); PARTIAL -> FULL_TEXT_PARTIAL; NEEDS_REVIEW and FAIL
@@ -613,6 +638,17 @@ import pdf_text_common as ptc  # noqa: E402
 # compares superscript / footnote-letter marks and the sign-shaped dashes of
 # the matched span position by position (FX-Q). Kept in 1.8.0 (unreleased):
 # one fix round, one version. Card and result schemas unchanged.
+# 1.8.0, part 3 (S3-D, 2026-10-27, review cycle 3 quality W1; a small round
+# the user approved after the final review): ladder-v4 (pdf_text_common): the
+# quote-number rule's dash check is symmetric. A dash the quote ADDS before a
+# number where the page prints none, and that can read as a sign (spaced with
+# no digit, "%" or dash before it, or glued with no letter or digit before
+# it: "by – 0.30", "(Girls)−0.30"), is QUOTE_NUMBERS_DIFFER (review; reason
+# "the quote prints a sign-shaped dash ..."); compound and range dashes stay
+# allowed. Measured (WS script 120_a): genuine false alarms 0 of 2,407 (0
+# before); planted added dashes flagged 0 -> 999 of 999 (spaced after a word)
+# and 0 -> 18 of 18 (glued after a bracket). Still 1.8.0 (unreleased); no new
+# status, card and result schemas unchanged.
 TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
@@ -2271,7 +2307,10 @@ def check_card(card, ingest, fuzz, integrity=None):
         #   ladder-v3 (1.8.0, S3-C1b, NB2): also a superscript / footnote-letter
         #   mark that differs ("10³" over "10⁻³") and a sign-shaped dash the
         #   span prints before a number but the quote lacks ("0.164a" over
-        #   "−0.164a"), even where no number token is parsed.
+        #   "−0.164a"), even where no number token is parsed. ladder-v4
+        #   (1.8.0 part 3, S3-D, review cycle 3 W1): and the reverse, a dash
+        #   that can read as a sign which the quote ADDS ("by – 0.30" over
+        #   "by 0.30").
         if q and q.strip() and it["status"] in QUOTE_NUMBER_CHECKED:
             lane = "ocr" if it["lane"] == "ocr" else "anchor"
             checks = [ptc.quote_number_check(q, v, spans) for v, spans, _ in located[lane]] or [
@@ -2286,7 +2325,10 @@ def check_card(card, ingest, fuzz, integrity=None):
                                 f"than the matched page span's {bad['page']} (an exponent or its sign the match "
                                 "ignored)",
                        "sign-dash": "the matched page span prints a sign-shaped dash before a number where the "
-                                    "quote has none (a minus or range dash the match ignored)"}.get(bad["why"])
+                                    "quote has none (a minus or range dash the match ignored)",
+                       "sign-dash-added": "the quote prints a sign-shaped dash before a number where the matched "
+                                          "page span prints none (the quote would read as a sign the page does "
+                                          "not print)"}.get(bad["why"])
                 it.update(status="QUOTE_NUMBERS_DIFFER", severity=SEVERITY["QUOTE_NUMBERS_DIFFER"],
                           status_if_confirmed=it["status"],
                           reason=safe_line(f"{it['reason']}; {why}: a human checks the quote", 600)
@@ -3059,6 +3101,11 @@ def selftest_cases(src):
           "numbers": ["0.30"], "source": "text"}
     q5 = {"claim_id": "Q5", "page": 1, "quote": "recorded the change in their ledger – 0.25 and nobody on the quay",
           "numbers": ["-0.25"], "source": "text"}
+    # INTENT (1.8.0 part 3, S3-D, ladder-v4): q6 ADDS a spaced dash before the
+    #   positive intercept 1.20b (the page prints none): the quote would read
+    #   as a sign the page does not print.
+    q6 = {"claim_id": "Q6", "page": 1, "quote": "full model and the intercept was – 1.20b overall", "numbers": [],
+          "source": "text"}
     return [
         ("genuine card", "A", a_cov, [c1, c2], False, "PASS", 0, None, None),
         ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], False, "FAIL", 11,
@@ -3152,6 +3199,9 @@ def selftest_cases(src):
         ("spaced minus at a line start (genuine)", "Q", q_cov, [q5], False, "PASS", 0, "NUMBER_OK", "claim_number"),
         ("spaced minus at a line start, sign-flipped claim", "Q", q_cov, [dict(q5, numbers=["0.25"])], False, "FAIL",
          11, "NUMBER_MISSING", "claim_number"),
+        # 1.8.0 part 3 (S3-D, review cycle 3 W1): ladder-v4, the added dash
+        ("sign-shaped dash added by the quote", "Q", q_cov, [q6], False, "NEEDS_REVIEW", 0, "QUOTE_NUMBERS_DIFFER",
+         "claim_quote"),
     ]
 
 

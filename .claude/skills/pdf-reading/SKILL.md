@@ -191,10 +191,16 @@ publisher. An agent with Write that authors the source file, a matching
 web_fetch MANIFEST row, the ingest and the card makes a self-consistent
 forgery that passes. The orchestrator's audit is what can catch it: it
 compares `card_check` `rederive.source_kind` (`web_fetch`,
-`web_fetch_row_conflict`, `user_supplied`, `synthetic`) and `web_fetch_row`
-(MANIFEST line, `final_url`, fetch timestamp) with its own transcript and
-the MANIFEST rows of the fetches it dispatched (`references/evidence-card.md`
-§ Re-derivation; the audit step is built with the mode in S5).
+`web_fetch_row_conflict`, `user_supplied`, `synthetic`, or `unknown` when
+the web_fetch MANIFEST cannot be read) and `web_fetch_row` (MANIFEST line,
+`final_url`, fetch timestamp) with its own transcript and the MANIFEST rows
+of the fetches it dispatched (`references/evidence-card.md`
+§ Re-derivation; the audit step is built with the mode in S5). OCR text is
+hash-checked, not re-derived: forged OCR text on a page whose re-derived
+anchor has fewer than `SCANNED_MAX_CHARS` (200) non-whitespace characters
+is graded at most PARTIAL (`PASS_OCR`, `OCR_NOT_REDERIVED` warning), so the
+paper never reaches `FULL_TEXT_VERIFIED` on OCR evidence (an accepted
+residual, D-25).
 
 The card (`evidence_card{S}.md`, directly inside `papers/{key}/`) carries YAML
 front matter and free prose, plus **exactly one** fenced block with info
@@ -222,10 +228,10 @@ What the gate requires:
   `PASS_SPAN` → `PASS_OCR` (weaker) → `NEAR` (fuzzy ≥ 95: a human check,
   never a pass) → `WRONG_PAGE` → `NOT_FOUND`. A passing claim quote must
   also print the same number tokens, sign included, as the page span it
-  matched, with the same superscripts and footnote letters, and every
-  sign-shaped dash the span prints before a number (`ladder-v3`), else
-  `QUOTE_NUMBERS_DIFFER` (review): re-copy it with every minus, dash and
-  superscript as printed.
+  matched, with the same superscripts and footnote letters, every
+  sign-shaped dash the span prints before a number, and no sign-shaped dash
+  the span does not print (`ladder-v4`), else `QUOTE_NUMBERS_DIFFER`
+  (review): re-copy it with every minus, dash and superscript as printed.
 - **A quote that runs from page N onto N+1 declares `page_end: N+1`.** An
   undeclared span is `WRONG_PAGE`. Coverage anchors are single-page.
 - **Identifying quotes:** at least 40 normalized characters, 6 words, and a
@@ -257,8 +263,9 @@ What the gate requires:
   dash that follows a word or bracket (`of – 0.30`) is `sign-ambiguous`
   whatever sign the claim writes; a number with one footnote letter
   (`−0.164a`) is declared without it (`-0.164`). A minus or dash dropped
-  inside a quote makes the quote `QUOTE_NUMBERS_DIFFER` (review,
-  `ladder-v3`: the quote's numbers must match the page span's). Known
+  inside a quote, or a sign-shaped dash added to it (`by – 0.30` over a
+  printed `by 0.30`), makes the quote `QUOTE_NUMBERS_DIFFER` (review,
+  `ladder-v4`: the quote's numbers must match the page span's). Known
   residual: a wrong value that the same row prints in another column clears;
   since 1.5.0 (D-23) such a cleared number carries the label
   `column-not-checked` (its quote or row prints other comparable values), a
@@ -291,9 +298,12 @@ status, its severity and its fix: `references/evidence-card.md` § Status
 index and § Fixing a failing card. Fail: a fabricated, misplaced or
 non-identifying quote, a changed or missing number, a coverage gap, an
 unavailable or unlisted vision claim, a hash, re-derivation or provenance
-mismatch. Review: `NEAR`, `REDACTED_SPAN`, `QUOTE_NUMBERS_DIFFER`,
+mismatch. Review: `NEAR`, `REDACTED_SPAN`, a page whose coverage is
+`NEEDS_REVIEW` (best anchor NEAR or REDACTED_SPAN), `QUOTE_NUMBERS_DIFFER`,
 `not-near-quote`, `precision-differs`, `sign-ambiguous`. Partial: OCR, OCR-layer,
-vision-only, scanned-page and conversion-error evidence.
+vision-only, scanned-page and conversion-error evidence, including a
+`COVERED_SPARSE` or `COVERED_DUPLICATE` page cover on a truly scanned page
+or in OCR text.
 
 | Exit | Meaning | Do |
 |------|---------|----|
@@ -393,13 +403,19 @@ agent reads. An OA PDF's redistribution rights come from its OA location
 The DAAF image installs the whole stack (Dockerfile: Tesseract in the
 geospatial apt layer, the "PDF reading stack" uv block). On a host or image
 without it: missing `pdftotext`, `pdfinfo`, `pdftoppm` or polars → `pdf_ingest`
-exits 10; missing rapidfuzz, polars/pyarrow, or (to re-derive PDF anchors)
-`pdftotext` or `pdfinfo` → `lit_verify` exits 10, and without pypdfium2 it
-warns `ROW_SOURCE_NOT_REDERIVED` and no number takes the row path;
-missing pypdfium2, pdfplumber, tesseract, pdfimages or pdffonts → ingest still
-succeeds and lists them in `lanes_unavailable` (no agreement score, no table
-hints or no OCR). The unit tests skip what they cannot run. Never install at
-runtime; the fix is a rebuild (`references/toolchain.md`).
+exits 10; missing rapidfuzz, polars/pyarrow, or (to re-derive PDF anchors
+and page flags) `pdftotext`, `pdfinfo` or `pdfimages` → `lit_verify` exits
+10; without pypdfium2 it warns `ROW_SOURCE_NOT_REDERIVED` and no number
+takes the row path; without pdfplumber it warns `FLAGS_NOT_REDERIVED` and
+reads those flags conservatively (an unconfirmed `table` closes the row
+path, a recorded `ocr_layer_suspected` is kept, a scanned page in a
+document with no listed image counts as truly scanned; against a manifest
+made with pdfplumber that class can differ, `FLAGS_REDERIVE_MISMATCH`);
+missing pypdfium2, pdfplumber, tesseract, pdfimages or pdffonts →
+`pdf_ingest` still succeeds and lists them in `lanes_unavailable` (no
+agreement score, no table hints or no OCR). The unit tests skip what they
+cannot run. Never install at runtime; the fix is a rebuild
+(`references/toolchain.md`).
 
 ## Anti-patterns
 
@@ -431,7 +447,7 @@ runtime; the fix is a rebuild (`references/toolchain.md`).
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
 `scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
 Versions (2026-10-27): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
-(`ladder-v3`, `numbers-v6`, `column-check-v1`, `rederive-v2`). Tests:
+(`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`). Tests:
 `tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(119) and `lit_verify.sh selftest` (43 expectations), run file-first through
+(121) and `lit_verify.sh selftest` (44 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

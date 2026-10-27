@@ -148,7 +148,7 @@ new card.
 
 Same grades as a PDF (D-21 N5): PASS → `FULL_TEXT_VERIFIED`, PARTIAL →
 `FULL_TEXT_PARTIAL`, under the same ladder, identifying-quote rule, coverage
-rule, quote-number rule (`ladder-v3`) and number rules (`numbers-v6`;
+rule, quote-number rule (`ladder-v4`) and number rules (`numbers-v6`;
 `evidence-card.md`). Only the locator changes: a
 section label in place of a page, `section_end` in place of `page_end` (a
 quote may run from one unit into the **next** unit only), `WRONG_SECTION`
