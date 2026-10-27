@@ -65,13 +65,20 @@ SLUG_MAX = 60
 LINE_WRAP = 2000
 
 # Injection-shaped patterns scrubbed from every agent-facing text. The first
-# five are web_fetch.py's set verbatim; the rest close two gaps the user's
+# five are web_fetch.py's set (the two tag patterns widened here, see below;
+# web_fetch.py keeps its own narrower copy, D-9); the rest close two gaps the user's
 # toolkit found: a forged fence marker would let a hostile abstract "close"
 # the UNTRUSTED block early, and a line imitating a tool's own status output
 # could fake extra triage rows. Matching is case-insensitive.
+# 2026-10-23 (S3-B1, review W3): the two tag patterns are widened (never
+# narrowed) to spaced, attribute and line-broken forms: whitespace after "<"
+# and around "/" ("< /system-reminder>"), and anything but "<" or ">" before
+# the closing ">" ("<system-reminder >", "<system-reminder x=1>",
+# "<system-reminder\n>"). The tag NAME is removed even when no ">" closes it
+# within 500 chars (an unclosed opener), so no tag-shaped name survives.
 INJECTION_PATTERNS = [
-    re.compile(r"<system-reminder>", re.IGNORECASE),
-    re.compile(r"</system-reminder>", re.IGNORECASE),
+    re.compile(r"<\s*system-reminder\b(?:[^<>]{0,500}>)?", re.IGNORECASE),
+    re.compile(r"<\s*/\s*system-reminder\b(?:[^<>]{0,500}>)?", re.IGNORECASE),
     re.compile(r"PreToolUse\s+hook", re.IGNORECASE),
     re.compile(r"PostToolUse\s+hook", re.IGNORECASE),
     re.compile(r"BLOCKED by[^\n]*hook", re.IGNORECASE),

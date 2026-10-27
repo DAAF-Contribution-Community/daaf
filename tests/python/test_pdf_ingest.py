@@ -119,7 +119,7 @@ class ExitTableTests(unittest.TestCase):
         self.assertTrue(os.stat(_SCRIPTS / "pdf_ingest.sh").st_mode & 0o111)
 
     def test_tool_version_and_normalize_version(self):
-        self.assertEqual(pdf_ingest.TOOL_VERSION, "1.2.0-daaf")
+        self.assertEqual(pdf_ingest.TOOL_VERSION, "1.2.1-daaf")
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.OVERLAP_VERSION), ("normalize-v1", "overlap-v1"))
 
     def test_reading_aid_body_prefixes_every_line(self):
@@ -400,7 +400,7 @@ class FixtureIngestTests(unittest.TestCase):
         rows = manifest_rows(self.papers)
         self.assertEqual(len(rows), len(self.NAMES))
         for r in rows:
-            self.assertEqual((r["kind"], r["tool_version"], r["exit_code"]), ("pdf_ingest", "1.2.0-daaf", 0))
+            self.assertEqual((r["kind"], r["tool_version"], r["exit_code"]), ("pdf_ingest", "1.2.1-daaf", 0))
             art = r["artifacts"]["ingest_manifest"]
             self.assertEqual(sha(self.papers / art["path"]), art["sha256"])
 

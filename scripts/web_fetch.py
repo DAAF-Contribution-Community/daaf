@@ -119,9 +119,16 @@ FORBIDDEN_DEST_PREFIXES = ("/tmp", "/host_data")
 # Injection-shaped patterns scrubbed from the .md working copy. These mimic
 # DAAF's own trusted injection channels; fetched content must never be able to
 # forge them. Matching is case-insensitive.
+# 2026-10-23 (S3-B2): the two tag patterns mirror the widened pair in
+#   web_retrieval_common.py (S3-B1, review W3); this file still keeps its own
+#   five-pattern list and does not import that module (D-9). They match spaced,
+#   attribute and line-broken forms ("< /system-reminder>", "<system-reminder >",
+#   "<system-reminder x=1>", "<system-reminder\n>"), and the tag NAME is removed
+#   even when no ">" closes it within 500 chars (an unclosed opener).
+#   tests/python/test_web_fetch_scrub.py keeps the two pairs identical.
 INJECTION_PATTERNS = [
-    re.compile(r"<system-reminder>", re.IGNORECASE),
-    re.compile(r"</system-reminder>", re.IGNORECASE),
+    re.compile(r"<\s*system-reminder\b(?:[^<>]{0,500}>)?", re.IGNORECASE),
+    re.compile(r"<\s*/\s*system-reminder\b(?:[^<>]{0,500}>)?", re.IGNORECASE),
     re.compile(r"PreToolUse\s+hook", re.IGNORECASE),
     re.compile(r"PostToolUse\s+hook", re.IGNORECASE),
     re.compile(r"BLOCKED by[^\n]*hook", re.IGNORECASE),

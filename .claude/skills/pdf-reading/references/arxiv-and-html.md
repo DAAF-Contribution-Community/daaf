@@ -6,10 +6,10 @@ and gate-checked from that HTML instead of the PDF (user decision D-21 N5,
 turns the LaTeXML page into **section units**, and `lit_verify card` checks a
 `lit-verify-card-v2` card against them exactly as it checks a PDF card
 against pages. Source of truth: the `§§ ARXIV_HTML` block of
-`scripts/pdf_ingest.py` (1.2.0-daaf, `HTML_EXTRACT_VERSION =
-"arxiv-html-v1"`) and the "arXiv HTML ingests" header block of
-`scripts/lit_verify.py` (1.4.0-daaf). If this page and the code disagree, the
-code wins.
+`scripts/pdf_ingest.py` (added in 1.2.0-daaf; current 1.2.1-daaf,
+`HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the "arXiv HTML ingests"
+header block of `scripts/lit_verify.py` (added in 1.4.0-daaf; current
+1.7.0-daaf). If this page and the code disagree, the code wins.
 
 **Contents:** Which path · Detecting an arXiv paper · Fetching the HTML ·
 Availability · Ingesting · Version pinning · Units and labels · Grades ·
@@ -79,6 +79,9 @@ bash /daaf/scripts/pdf_ingest.sh <HTML_PATH> {PROJECT_DIR}/papers/ --paper-key K
 
 - `HTML_PATH` is the raw `.html` web_fetch saved (keep it in its
   `web_fetches/` folder, beside the MANIFEST that proves where it came from).
+  `lit_verify` 1.7.0 re-extracts the units from that file at every check
+  (`evidence-card.md` § Re-derivation): moved or deleted, it is
+  `SOURCE_MISSING` (fail).
 - `--render` and `--ocr` are refused with `--source arxiv-html` (exit 1):
   there are no page images. `--max-pages` caps the **unit** count.
 - Running the default PDF path on an HTML file exits 8 with the hint
@@ -145,7 +148,8 @@ new card.
 
 Same grades as a PDF (D-21 N5): PASS → `FULL_TEXT_VERIFIED`, PARTIAL →
 `FULL_TEXT_PARTIAL`, under the same ladder, identifying-quote rule, coverage
-rule and `numbers-v3` (`evidence-card.md`). Only the locator changes: a
+rule, quote-number rule (`ladder-v2`) and number rules (`numbers-v5`;
+`evidence-card.md`). Only the locator changes: a
 section label in place of a page, `section_end` in place of `page_end` (a
 quote may run from one unit into the **next** unit only), `WRONG_SECTION`
 in place of `WRONG_PAGE`, `MISSING_SECTION` in place of `MISSING_PAGE`.
@@ -186,9 +190,11 @@ checked.
 ## Table rows
 
 `rows{S}/uNNN.txt` holds a unit's `ltx_tabular` rows, one row per line,
-cells tab-separated. It is the HTML row source of `numbers-v3`'s unique-row
-path (the role lane B plays on a PDF page), hash-checked
-(`TABLE_ROWS_HASH_MISMATCH`, fail; the file is then not used). The HTML
+cells tab-separated. It is the HTML row source of the unique-row path
+(`numbers-v3`, with the `numbers-v4`/`-v5` guards; the role lane B plays on
+a PDF page), hash-checked (`TABLE_ROWS_HASH_MISMATCH`, fail) and re-derived
+from the stored HTML (`ROW_SOURCE_REDERIVE_MISMATCH`, fail); a file that
+fails either is not used. The HTML
 anchor is already row-major, so the simplest table claim quotes from the row
 label through the cell and clears in-quote; a quote that starts at the row
 label and stops short of the cell clears through the row. Numeric rows are
@@ -228,13 +234,17 @@ ingested under their own keys [obs: workspace
 What this means for a reader:
 - **Section numbers can differ from the PDF's.** Cite the HTML label (the
   gate checks it) and, where it matters downstream, say the numbering is
-  the HTML's ("§0.1 of arXiv HTML v1").
+  the HTML's ("§0.1 of arXiv HTML v1"). User decision D-23 (2026-10-23): the
+  HTML label stays the locator and the HTML lane is the default ("focus on
+  having the HTML default").
 - **Table rows are often too short to identify.** Quote the row together
   with the table caption or the header line before it, all copied from
   `pages/uNNN.txt` in order, until the quote is identifying.
 - **A whole-row quote lets a wrong column through** (the same-row
   residual, as on PDF): name the column in the claim text and keep the
-  quote as close to the cell as the identifying rule allows.
+  quote as close to the cell as the identifying rule allows. Since
+  `lit_verify` 1.5.0 (D-23) such a number carries the label
+  `column-not-checked` (`evidence-card.md` § Numbers, the column label).
 - **Quotes do not move between renderings**: a quote copied from the HTML
   often fails against the PDF and the reverse, one more reason a paper key
   holds one source.

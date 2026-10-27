@@ -87,9 +87,19 @@ model name echoed back by the shim, not the upstream's own report of which
 model served the request [obs, memo § 4]. It is safe to key the list on, but
 it is not independent confirmation of the serving model.
 
-`lit_verify` enforces only consistency with what the card declares
+`lit_verify` enforces consistency with what the card declares
 (`vision_mode` not `off` and `vision_validated` true, or every vision claim
-fails). It does not read the list, the front matter or the route.
+fails). From 1.6.0 it also carries a copy of the list
+(`VISION_VALIDATED_LISTS`, one entry per list version): `vision_validated`
+true for a `reader_model` that is not on the card's `vision_list_version`
+entry fails as `VISION_NOT_ON_LIST`, as does an unknown list version, and
+vision then counts as unavailable for that card. It reads only the block,
+never the front matter, so it checks the model ID, not the route; identity
+and route stay with the orchestrator audit above. The embedded copy is
+`VISION_LIST_VERSION` and `VISION_VALIDATED_LISTS` in
+`scripts/lit_verify.py` (1.7.0: one version, `vision-list-2026-10-19`, with
+no rows), recorded in every `card_check` under `constants`, so a check
+result shows which list it was judged against.
 
 ## Routes
 
@@ -163,8 +173,10 @@ reused as a smoke test; it is too small to be the gate (memo § 5).
 ## Promotion and demotion
 
 - Add a row to SKILL.md's list only with the probe record path, and bump
-  `vision_list_version` (e.g. `vision-list-2026-11-02`). Update
-  `skill-last-updated`. Never add a model ID that was not transcript-derived
+  `vision_list_version` (e.g. `vision-list-2026-11-02`). Add the same
+  version and rows to `lit_verify`'s `VISION_VALIDATED_LISTS` (and set
+  `VISION_LIST_VERSION`), or cards read under it fail `VISION_NOT_ON_LIST`.
+  Update `skill-last-updated`. Never add a model ID that was not transcript-derived
   in the probe run.
 - Remove a row (and bump the version) when a re-probe fails or the route's
   image handling changes untested. Cards keep the version they were read
@@ -188,3 +200,4 @@ from this table.
 | Version | Date | Change |
 |---------|------|--------|
 | `vision-list-2026-10-19` | 2026-10-19 | List created empty (FE-4, Lit Review S3). No probe run yet |
+| `vision-list-2026-10-19` | 2026-10-23 | Unchanged, now also embedded in `lit_verify` (1.6.0, S3-A, D-24): `vision_validated: true` against it fails as `VISION_NOT_ON_LIST` until a model is promoted |

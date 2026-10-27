@@ -69,6 +69,22 @@ def fuzz_mod():
     return rapidfuzz.fuzz
 
 
+# 1.6.0 (VISION_NOT_ON_LIST): the in-memory test cards (mk_card) declare
+#   vision_validated true for reader_model "test" under list version "t". A
+#   test-only list version holding that model is added for the whole module;
+#   the shipped lists are kept in REAL_VISION_LISTS (checked against SKILL.md).
+REAL_VISION_LISTS = {k: tuple(v) for k, v in lv.VISION_VALIDATED_LISTS.items()}
+_VISION_PATCH = mock.patch.dict(lv.VISION_VALIDATED_LISTS, {"t": (("test", "test-route"),)})
+
+
+def setUpModule():
+    _VISION_PATCH.start()
+
+
+def tearDownModule():
+    _VISION_PATCH.stop()
+
+
 def run_main(argv):
     out, err = io.StringIO(), io.StringIO()
     with redirect_stdout(out), redirect_stderr(err):
@@ -166,12 +182,15 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.4.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.7.0-daaf")
+        self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v1", dict))
+        self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
+                         ("column-check-v1", "label", "column-not-checked"))
         self.assertEqual((lv.CARD_SCHEMA_VERSIONS, lv.CHECK_SCHEMA_VERSION),
                          (("lit-verify-card-v1", "lit-verify-card-v2"), "lit-verify-card-check-v2"))
         self.assertEqual(lv.HTML_EXTRACT_VERSIONS_KNOWN, (pdf_ingest.HTML_EXTRACT_VERSION,))
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
-                         ("normalize-v1", "ladder-v1", "numbers-v3"))
+                         ("normalize-v1", "ladder-v2", "numbers-v5"))
 
     def test_mirrors_pdf_ingest(self):
         self.assertEqual(lv.PAPER_KEY_RE.pattern, pdf_ingest.PAPER_KEY_RE.pattern)
@@ -528,7 +547,8 @@ class CheckCardTests(unittest.TestCase):
         cl = {"claim_id": "S1", "page": 1, "quote": "the heron index was -0.31 in the invented spring survey",
               "numbers": ["-0.31"], "source": "text"}
         r = self.run_check(ing, mk_card([cov(1, "the heron index was 0.31 in the invented spring survey")], [cl]))
-        self.assertEqual(statuses(r, "claim_quote"), ["PASS_SKELETON"])
+        # 1.6.0 (ladder-v2): the quote's "-0.31" differs from the page's 0.31: the quote is review too
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
         self.assertEqual(statuses(r, "claim_number"), ["NUMBER_NOT_NEAR_QUOTE"])
         # a declared span: the number on the next page, inside the crossing quote
         ing = mk_ingest([{"anchor": PROSE[1] + "\nIn the end the invented ferry index reached\n\f"},
@@ -661,15 +681,19 @@ class CheckCardTests(unittest.TestCase):
                          "numbers": ["-0.087", "1,204"], "source": "text"}])
         r = self.run_check(ing, card)
         self.assertEqual(r["verdict"], "PASS", r["failures"])
-        self.assertEqual({(it["locality"], it["row_match"]) for it in self.number_items(r)}, {("in-quote", "none")})
+        # numbers-v4: a prose page (not flagged table/numeric) never takes the row path
+        self.assertEqual({(it["locality"], it["row_match"]) for it in self.number_items(r)},
+                         {("in-quote", "ineligible")})
 
     def test_quote_row_label_rules(self):
-        lane_b = "No 288 321\nNotes on the invented ferries 4 5\nCo-teaching group 0.31 0.33\n7. Gender (Girls) 0.50 0.52\n"
+        lane_b = "Not 288 321\nNotes on the invented ferries 4 5\nCo-teaching group 0.31 0.33\n7. Gender (Girls) 0.50 0.52\n"
         self.assertEqual(ptc.quote_row("Notes on the invented ferries and their harbours", [lane_b])["status"], "unique")
         self.assertEqual(ptc.quote_row("Notes on the invented ferries", [lane_b])["row"]["label"],
-                         "notesontheinventedferries")                        # row "No" does not match "Notes"
-        self.assertEqual(ptc.quote_row("No invented ferry crossed the harbour that winter", [lane_b])["row"]["label"],
-                         "no")
+                         "notesontheinventedferries")                        # row "Not" does not match "Notes"
+        self.assertEqual(ptc.quote_row("Not one invented ferry crossed the harbour", [lane_b])["row"]["label"],
+                         "not")
+        # numbers-v4: a 2-letter label is no longer a row
+        self.assertEqual(ptc.quote_row("No invented ferry crossed the harbour", ["No 288 321\n"])["status"], "none")
         hit = ptc.quote_row("Coteaching group and the invented control group", [lane_b])
         self.assertEqual((hit["status"], hit["row"]["label"]), ("unique", "coteachinggroup"))   # fused hyphen
         hit = ptc.quote_row("Gender (Girls) Gender (Boys) invented rows", [lane_b])
@@ -902,8 +926,416 @@ class HtmlCheckTests(unittest.TestCase):
         self.assertTrue(all(it["section"] is None and it["section_end"] is None for it in a["items"]))
 
 
+# --- 1.5.0 (D-23): the column-not-checked label on cleared numbers (pure; every word invented) ---
+class ColumnLabelTests(unittest.TestCase):
+    TABLE = CheckCardTests.TABLE
+    T_COV = [cov(1, "The counts in Table 4 were invented for the locality rule")]
+    T_QUOTE = "Table 4: Invented harbour counts Herons Gulls Terns 0.31 0.47"
+
+    def nums(self, r):
+        return [it for it in r["items"] if it["kind"] == "claim_number"]
+
+    def cols(self, r):
+        return [(it["number"], it["column_checked"], it["column_label"], it["column_values"]) for it in self.nums(r)]
+
+    def one_page(self, anchor, quote, numbers, **page):
+        ing = mk_ingest([dict({"anchor": anchor}, **page)])
+        anchor_cov = next(s for s in anchor.split("\n") if len(s) > 45)
+        return lv.check_card(mk_card([cov(1, anchor_cov)], [{"claim_id": "K1", "page": 1, "quote": quote,
+                                                             "numbers": list(numbers), "source": "text"}]), ing, None)
+
+    def test_multi_number_quote_is_labeled_single_number_is_checked(self):
+        r = lv.check_card(mk_card(self.T_COV, [{"claim_id": "K1", "page": 1, "quote": self.T_QUOTE,
+                                                "numbers": ["0.31"], "source": "text"}]), mk_ingest([{"anchor": self.TABLE}]),
+                          None)
+        self.assertEqual(r["verdict"], "PASS", r["review_items"])                     # a label is not a verdict
+        it = self.nums(r)[0]
+        self.assertEqual((it["status"], it["locality"], it["severity"], it["label"]), ("NUMBER_OK", "in-quote", "pass",
+                                                                                         "ok"))
+        self.assertEqual(self.cols(r), [("0.31", False, "column-not-checked", 2)])
+        self.assertEqual((it["column_severity"], r["counts"]["numbers_column_not_checked"]), ("label", 1))
+        self.assertEqual(len(r["column_not_checked_items"]), 1)
+        # an ordinary prose sentence with one number is checked
+        prose = "Synthetic prose page: the heron index was 0.31 in the invented spring survey of the bay.\n\f"
+        r = self.one_page(prose, "the heron index was 0.31 in the invented spring survey", ["0.31"])
+        self.assertEqual((self.cols(r), r["counts"]["numbers_column_not_checked"], r["column_not_checked_items"]),
+                         ([("0.31", True, None, 1)], 0, []))
+
+    def test_token_definition_edge_cases(self):
+        # shapes: an integer count is not a candidate for a coefficient, and the reverse;
+        # the "1" of "Table 2" would not count anyway (a reference number)
+        q3 = "reports −0.087* (0.044) and 1,204 boats with .05"
+        r = self.one_page(PROSE[3], q3, ["-0.087", "(0.044)", "1,204", "0.05"])
+        self.assertEqual([(n, c, v) for n, c, _, v in self.cols(r)],
+                         [("-0.087", False, 3), ("(0.044)", False, 3), ("1,204", True, 1), ("0.05", False, 3)])
+        # years and reference numbers ("Table 4", "page 3") are not cells; a claim that is itself a
+        #   year counts the other integers (here 41) as candidates
+        page = "Synthetic ledger line: in 2019 the keepers of Table 4 listed 41 invented boats on page 3 of the log.\n\f"
+        q = "in 2019 the keepers of Table 4 listed 41 invented boats on page 3"
+        r = self.one_page(page, q, ["41", "2019"])
+        self.assertEqual([(n, c, v) for n, c, _, v in self.cols(r)], [("41", True, 1), ("2019", False, 2)])
+        # the claim's own value printed twice counts once; another value makes it ambiguous
+        page = "Synthetic row page: Amber lantern quay 0.57 0.57 was the only invented row the keepers kept.\n\f"
+        r = self.one_page(page, "Amber lantern quay 0.57 0.57 was the only invented row", ["0.57"])
+        self.assertEqual(self.cols(r), [("0.57", True, None, 1)])
+        page = "Synthetic row page: Amber lantern quay 0.57 0.59 0.57 was the only invented row the keepers kept.\n\f"
+        r = self.one_page(page, "Amber lantern quay 0.57 0.59 0.57 was the only invented row", ["0.57"])
+        self.assertEqual(self.cols(r), [("0.57", False, "column-not-checked", 2)])
+        # a plain-space thousands group read as the claim is the claim itself, not two cells
+        page = "Synthetic fleet page: the invented fleet counted 1 204 boats on the northern quay that winter.\n\f"
+        r = self.one_page(page, "the invented fleet counted 1 204 boats on the northern quay", ["1,204"])
+        self.assertEqual(self.cols(r), [("1,204", True, None, 1)])
+        # percent is its own shape
+        page = "Synthetic share page: 45% of the 120 invented boats and 52% of the gulls left the quay early.\n\f"
+        r = self.one_page(page, "45% of the 120 invented boats and 52% of the gulls left", ["45%", "120"])
+        self.assertEqual([(n, c, v) for n, c, _, v in self.cols(r)], [("45%", False, 2), ("120", True, 1)])
+
+    def test_helper_directly(self):
+        tok = ptc.parse_number("0.59")
+        line = ptc.normalize("Overage (invented) 0.58 0.57 0.59 0.56 0.55 0.57")
+        self.assertEqual(ptc.column_values(tok, line, 0, len(line)), 5)
+        self.assertIsNone(ptc.column_values(ptc.parse_number("0.60"), line, 0, len(line)))   # not printed: no label
+        self.assertEqual(ptc.column_values(tok, line, line.index("0.59"), line.index("0.59") + 4), 1)
+        for text, ref in (("Fig. 2", True), ("p. 14", True), ("pp. 14", True), ("Grade 3", False), ("Table 0.5", False)):
+            toks = ptc.parse_numbers(text)
+            self.assertEqual(ptc.column_is_reference(toks[-1], text), ref, text)
+        self.assertTrue(ptc.column_is_year(ptc.parse_numbers("in 1987")[0]))
+        self.assertFalse(ptc.column_is_year(ptc.parse_numbers("1,987 boats")[0]))
+        self.assertFalse(ptc.column_is_year(ptc.parse_numbers("7314")[0]))
+
+    def test_row_path_multi_number_labeled_single_number_checked(self):
+        R = lv.SELFTEST_PAGES["R"][0]
+        r = lv.check_card(mk_card(CheckCardTests.R_COV, [{"claim_id": "R1", "page": 1, "quote": CheckCardTests.R_QUOTE,
+                                                           "numbers": ["0.63"], "source": "text"}]), mk_ingest([R]), None)
+        self.assertEqual((r["verdict"], self.nums(r)[0]["locality"]), ("PASS", "row"))
+        self.assertEqual(self.cols(r), [("0.63", False, "column-not-checked", 2)])
+        # a column-major page whose identified row prints one number
+        anchor = ("Table 6: Invented bell counts\nHarbour\nEast Pier beside the old copper bell\nWest Pier\nBells\n"
+                  "0.44\n0.29\nThe bell counts in Table 6 are invented for the column label of the gate.\n\f")
+        lane_b = ("Table 6: Invented bell counts\nHarbour Bells\nEast Pier beside the old copper bell 0.44\nWest Pier 0.29\n"
+                  "The bell counts in Table 6 are invented for the column label of the gate.\n")
+        ing = mk_ingest([{"anchor": anchor, "lane_b": lane_b, "flags": ["table"]}])   # numbers-v4: a table page
+        r = lv.check_card(mk_card([cov(1, "The bell counts in Table 6 are invented for the column label")],
+                                  [{"claim_id": "B1", "page": 1, "quote": "East Pier beside the old copper bell West Pier "
+                                                                         "Bells", "numbers": ["0.44"], "source": "text"}]),
+                          ing, None)
+        self.assertEqual((r["verdict"], self.nums(r)[0]["locality"], self.nums(r)[0]["row_match"]),
+                         ("PASS", "row", "unique"), r["review_items"])
+        self.assertEqual(self.cols(r), [("0.44", True, None, 1)])
+
+    def test_null_where_no_locality(self):
+        claim = {"claim_id": "K1", "page": 1, "quote": self.T_QUOTE, "numbers": ["0.52", "0.48", "zero", "0.310"],
+                 "source": "text"}
+        r = lv.check_card(mk_card(self.T_COV, [claim]), mk_ingest([{"anchor": self.TABLE}]), None)
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_NOT_NEAR_QUOTE", "NUMBER_MISSING", "NUMBER_UNPARSEABLE",
+                                                       "NUMBER_PRECISION_DIFFERS"])
+        for it in self.nums(r):
+            self.assertEqual((it["column_checked"], it["column_label"], it["column_values"], it["column_severity"]),
+                             (None, None, None, None), it["status"])
+        # a vision number without a quote: no clearing text
+        r = lv.check_card(mk_card(self.T_COV, [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["0.47"],
+                                                "source": "vision"}]), mk_ingest([{"anchor": "\f", "flags": ["scanned"],
+                                                                                   "evidence": SCANNED_EVIDENCE}]), None)
+        self.assertEqual([(it["status"], it["column_checked"]) for it in self.nums(r)], [("NUMBER_VISION_ONLY", None)])
+
+    def test_ocr_lane_uses_the_ocr_span(self):
+        ocr = "SCAN PAGE\nCOMPASS 7314 HERON 2659\nThe calm bay sheltered 41 painted rowing boats.\n"
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "ocr": ocr, "flags": ["scanned"],
+                                                "evidence": SCANNED_EVIDENCE}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers"),
+             cov(2, "COMPASS 7314 HERON 2659 The calm bay sheltered 41")]
+        for quote, want in (("The calm bay sheltered 41 painted rowing boats", ("41", True, None, 1)),
+                            ("COMPASS 7314 HERON 2659 The calm bay sheltered 41", ("41", False, "column-not-checked", 3))):
+            r = lv.check_card(mk_card(c, [{"claim_id": "O1", "page": 2, "quote": quote, "numbers": ["41"],
+                                           "source": "ocr"}]), ing, None)
+            self.assertEqual((statuses(r, "claim_number"), self.cols(r)), (["NUMBER_OCR_ONLY"], [want]))
+            self.assertEqual(r["verdict"], "PARTIAL")
+
+    def test_verdict_unchanged_and_the_review_hook(self):
+        claims = [{"claim_id": "K1", "page": 1, "quote": self.T_QUOTE, "numbers": ["0.31", "0.47"], "source": "text"}]
+        ing = mk_ingest([{"anchor": self.TABLE}])
+        r = lv.check_card(mk_card(self.T_COV, claims), ing, None)
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"], r["review_items"]), ("PASS", "FULL_TEXT_VERIFIED",
+                                                                                            []))
+        self.assertEqual((r["counts"]["review"], r["counts"]["numbers_column_not_checked"]), (0, 2))
+        self.assertNotIn("label", {it["severity"] for it in r["items"]})
+        # the hook: flipping the constant routes labeled numbers to review, nothing else changes
+        with mock.patch.object(lv, "COLUMN_UNCHECKED_SEVERITY", "review"):
+            h = lv.check_card(mk_card(self.T_COV, claims), ing, None)
+        self.assertEqual((h["verdict"], h["evidence_grade_if_review_confirmed"], h["counts"]["review"]),
+                         ("NEEDS_REVIEW", "FULL_TEXT_VERIFIED", 2))
+        self.assertTrue(all("column not checked" in s for s in h["review_items"]))
+        self.assertEqual([it["status"] for it in h["items"]], [it["status"] for it in r["items"]])
+        # a failing card stays FAIL; the label never softens or hardens it
+        bad = [dict(claims[0], numbers=["0.31", "0.48"])]
+        self.assertEqual(lv.check_card(mk_card(self.T_COV, bad), ing, None)["verdict"], "FAIL")
+
+    def test_v1_v2_and_html_cards(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": PROSE[2]}, {"anchor": PROSE[3]}])
+        claims = [{"claim_id": "C1", "page": 3, "quote": "reports −0.087* (0.044) and 1,204 boats with .05",
+                   "numbers": ["-0.087", "1,204"], "source": "text"}]
+        coverage = [cov(1, "The violet ferry carried nineteen patient cartographers"),
+                    cov(2, "relies on natural-language summaries of each imaginary voyage"),
+                    cov(3, "Table 2 reports -0.087* (0.044) and 1,204 boats")]
+        v1 = mk_card(coverage, claims)
+        v2 = dict(v1, schema_version="lit-verify-card-v2", anchor_kind="pdf", source_sha256=v1["source_pdf_sha256"])
+        v2.pop("source_pdf_sha256")
+        a, b = lv.check_card(v1, ing, None), lv.check_card(v2, ing, None)
+        self.assertEqual(a, b)
+        self.assertEqual([(n, c) for n, c, _, _ in self.cols(a)], [("-0.087", False), ("1,204", True)])
+        # arXiv HTML: in-quote through the row, the rows/ row path, and a one-number prose section
+        card = mk_html_card(H_COV, [hclaim("T1", "1.1", ROW_QUOTE + " 0.33", ["0.62"]),
+                                    hclaim("R1", "1.1", ROW_QUOTE, ["0.33"]),
+                                    hclaim("E1", "2", "weighted each quay by its 23 painted bollards before pooling",
+                                           ["23"])])
+        r = lv.check_card(card, mk_unit_ingest(), None)
+        self.assertEqual(r["verdict"], "PARTIAL", r["failures"])                    # the conversion-error cap, as before
+        self.assertEqual([(it["locality"], it["column_checked"], it["column_values"]) for it in self.nums(r)],
+                         [("in-quote", False, 3), ("row", False, 3), ("in-quote", True, 1)])
+        self.assertEqual(r["counts"]["numbers_column_not_checked"], 2)
+
+
+# --- 1.6.0 (S3-A, review-fix round 1): gate soundness (pure; every word and number invented) ---
+class SoundnessFixTests(unittest.TestCase):
+    SIGN_PAGE = ("Synthetic sign page: the invented model estimated the tide slope (Est = - 0.041, SE = 0.050) for the "
+                 "northern quay.\nThe lantern slope was −0.164 for the amber lanterns and nobody checked it twice.\n"
+                 "An increase of 5–10% in the invented gull counts was reported by the keepers that winter.\n\f")
+    S_COV = [cov(1, "nobody checked it twice")]
+
+    def gate(self, claims, anchor=None, **page):
+        text = anchor or self.SIGN_PAGE
+        ing = mk_ingest([dict({"anchor": text}, **page)])
+        anchor_cov = next(s for s in text.split("\n") if len(s) > 45)[:60]
+        return lv.check_card(mk_card([cov(1, anchor_cov)], claims), ing, None)
+
+    def item_of(self, r, kind, cid):
+        return next(it for it in r["items"] if it["kind"] == kind and it["claim_id"] == cid)
+
+    # B1: the spaced minus, both directions
+    def test_spaced_minus_is_a_sign_after_sign_context_only(self):
+        for s, want in (("Est = - 0.041", ("-0.041", True)), ("(- 0.044)", ("-0.044", True)),
+                        ("Est = − 0.041", ("-0.041", True)), ("x = -\t0.5", ("-0.5", True)),
+                        ("Est = -\n0.041", ("-0.041", True)), ("- 0.07 at the start", ("-0.07", True)),
+                        ("ages (28 - 75)", ("75", False)), ("(n − 1)", ("1", False)), ("pages 1 – 3", ("3", False)),
+                        ("slope - 0.5", ("0.5", False)), ("Est = -\n\n0.041", ("0.041", False))):
+            with self.subTest(s=s):
+                t = ptc.number_candidates(s)[-1]
+                self.assertEqual((t["digits"], t["negative"]), want)
+        self.assertTrue(ptc.number_candidates("(- 0.044)")[0]["paren"])
+        r = self.gate([{"claim_id": "N1", "page": 1, "quote": "the tide slope (Est = - 0.041, SE = 0.050) for the "
+                        "northern quay", "numbers": ["-0.041"], "source": "text"}])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
+        r = self.gate([{"claim_id": "N2", "page": 1, "quote": "the tide slope (Est = - 0.041, SE = 0.050) for the "
+                        "northern quay", "numbers": ["0.041"], "source": "text"}])
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("FAIL", ["NUMBER_MISSING"]))
+
+    # B2: a minus (or range dash) deleted inside a quote; ladder-v2 quote-number rule
+    def test_deleted_minus_in_a_quote_is_review_with_or_without_declared_numbers(self):
+        q = "The lantern slope was 0.164 for the amber lanterns and nobody checked"
+        r = self.gate([{"claim_id": "Q1", "page": 1, "quote": q, "numbers": [], "source": "text"}])
+        it = self.item_of(r, "claim_quote", "Q1")
+        self.assertEqual((r["verdict"], it["status"], it["severity"], it["tier"], it["status_if_confirmed"]),
+                         ("NEEDS_REVIEW", "QUOTE_NUMBERS_DIFFER", "review", "PASS_SKELETON", "PASS_SKELETON"))
+        self.assertEqual((it["quote_numbers"], it["page_numbers"], it["quote_numbers_agree"]),
+                         (["0.164"], ["-0.164"], False))
+        self.assertEqual(r["evidence_grade_if_review_confirmed"], "FULL_TEXT_VERIFIED")
+        r = self.gate([{"claim_id": "Q2", "page": 1, "quote": q, "numbers": ["0.164"], "source": "text"}])
+        self.assertEqual((r["verdict"], statuses(r, "claim_quote"), statuses(r, "claim_number")),
+                         ("FAIL", ["QUOTE_NUMBERS_DIFFER"], ["NUMBER_MISSING"]))
+        r = self.gate([{"claim_id": "Q3", "page": 1, "quote": "An increase of 510% in the invented gull counts was "
+                        "reported", "numbers": [], "source": "text"}])
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        # the genuine quotes agree (and record their numbers)
+        r = self.gate([{"claim_id": "G1", "page": 1, "quote": "The lantern slope was -0.164 for the amber lanterns "
+                        "and nobody", "numbers": ["-0.164"], "source": "text"},
+                       {"claim_id": "G2", "page": 1, "quote": "An increase of 5-10% in the invented gull counts was "
+                        "reported", "numbers": [], "source": "text"}])
+        self.assertEqual(r["verdict"], "PASS", r["review_items"])
+        self.assertEqual([(it["quote_numbers"], it["quote_numbers_agree"]) for it in r["items"]
+                          if it["kind"] == "claim_quote"], [(["-0.164"], True), (["5", "10%"[:-1]], True)])
+
+    def test_quote_number_mismatch_truncation_and_lost_line_break_sign(self):
+        page = "Synthetic page: the invented heron index was 0.164 in the spring survey of the bay.\n\f"
+        r = self.gate([{"claim_id": "T1", "page": 1, "quote": "the invented heron index was 0.16", "numbers": [],
+                        "source": "text"}], anchor=page)
+        self.assertIn(statuses(r, "claim_quote")[0], ("QUOTE_NUMBERS_DIFFER", "NON_IDENTIFYING"))
+        r = self.gate([{"claim_id": "T2", "page": 1, "quote": "Synthetic page: the invented heron index was 0.16",
+                        "numbers": [], "source": "text"}], anchor=page)
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        # NORMALIZE's line-break rejoin deletes "-\n"; the number view keeps the sign
+        page = "Synthetic page: the invented tide slope (Est = -\n0.041, SE = 0.050) for the northern quay.\n\f"
+        view = ptc.number_view(page)
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(view)], ["-0.041", "0.050"])
+        q = "the invented tide slope (Est = 0.041, SE = 0.050) for the northern"
+        r = self.gate([{"claim_id": "L1", "page": 1, "quote": q, "numbers": [], "source": "text"}], anchor=page)
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        r = self.gate([{"claim_id": "L2", "page": 1, "quote": "the invented tide slope (Est = -0.041, SE = 0.050) for "
+                        "the northern", "numbers": ["-0.041"], "source": "text"}], anchor=page)
+        self.assertEqual((statuses(r, "claim_quote"), statuses(r, "claim_number")), (["PASS_SKELETON"], ["NUMBER_OK"]))
+
+    def test_quote_numbers_differ_keeps_the_partial_weight(self):
+        layer = {"flags": ["ocr_layer_suspected"], "evidence": {"ocr_layer_suspected": ["an image covers 100%"]}}
+        r = self.gate([{"claim_id": "Q1", "page": 1, "quote": "The lantern slope was 0.164 for the amber lanterns",
+                        "numbers": [], "source": "text"}], **layer)
+        it = self.item_of(r, "claim_quote", "Q1")
+        self.assertEqual((r["verdict"], it["status_if_confirmed"], r["evidence_grade_if_review_confirmed"]),
+                         ("NEEDS_REVIEW", "PASS_OCR_LAYER", "FULL_TEXT_PARTIAL"))
+
+    # superscripts are marks, not digits; stars are not compared
+    def test_superscript_marks(self):
+        self.assertEqual(ptc.normalize("r = 0.62¹"), "r = 0.621")          # NORMALIZE itself is unchanged
+        tok = ptc.number_candidates("r = 0.62¹ and")[0]
+        self.assertEqual((tok["digits"], tok["marks"], tok["sup"]), ("0.62", "¹", "¹"))
+        page = ptc.number_candidates("r = 0.62¹ and 10⁵ boats and 0.33ᵃ gulls")
+        for claim, want in (("0.621", None), ("0.62", "exact"), ("0.62¹", "exact"), ("0.62²", None), ("105", None),
+                            ("10⁵", "exact"), ("10³", None), ("0.33", "exact")):
+            with self.subTest(claim=claim):
+                self.assertEqual(ptc.compare_number(ptc.parse_number(claim), page)[0], want)
+        # stars are not compared (documented): the quote carries them
+        self.assertEqual(ptc.compare_number(ptc.parse_number("0.123***"), ptc.number_candidates("b = 0.123"))[0],
+                         "exact")
+        page = "Synthetic page: the invented correlation was r = 0.62¹ in the spring survey of the bay.\n\f"
+        r = self.gate([{"claim_id": "U1", "page": 1, "quote": "the invented correlation was r = 0.621 in the spring",
+                        "numbers": [], "source": "text"}], anchor=page)
+        self.assertEqual(statuses(r, "claim_quote"), ["QUOTE_NUMBERS_DIFFER"])
+        r = self.gate([{"claim_id": "U2", "page": 1, "quote": "the invented correlation was r = 0.62¹ in the spring",
+                        "numbers": ["0.62"], "source": "text"}], anchor=page)
+        self.assertEqual((r["verdict"], statuses(r, "claim_number")), ("PASS", ["NUMBER_OK"]), r["review_items"])
+        self.assertIn("superscript", self.item_of(r, "claim_number", "U2")["reason"])
+        r = self.gate([{"claim_id": "U3", "page": 1, "quote": "the invented correlation was r = 0.62¹ in the spring",
+                        "numbers": ["0.621"], "source": "text"}], anchor=page)
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_MISSING"])
+
+    def test_normalize_map_reproduces_normalize(self):
+        for s in ("a\r\nb", "natural-\n language", "x­Y ‘q’ “w” ０.５ ﬁ", "  lead  and\ttrail \n", "é café",
+                  "1 204 and 0.62¹", "", "Est = -\n0.041"):
+            with self.subTest(s=s):
+                m = ptc.normalize_map(s)
+                self.assertIsNotNone(m)
+                self.assertEqual(m[0], ptc.normalize(s))
+                self.assertEqual(len(m[1]), len(m[0]))
+        self.assertEqual(sorted(ptc.normalize_map("Est = -\n0.041")[2]), [6])
+        self.assertEqual(ptc.normalize_map("1277–\n1295")[2], frozenset())        # a range dash is not a sign
+        self.assertEqual(ptc.normalize("pages 749–\n756"), "pages 749756")         # NORMALIZE fuses the range ...
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(ptc.number_view("pages 749–\n756 and a 6-\nyear"))],
+                         ["749", "756", "6"])                                     # ... the number view does not
+        # S3-A2: the mirror case, a letter before the line-break dash and a digit
+        #   after ("K-\n12" -> NORMALIZE "K12" hides the 12 from the number rules)
+        self.assertEqual(ptc.normalize("all K-\n12 schools"), "all K12 schools")
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(ptc.number_view("all K-\n12 schools and COVID-\n19"))],
+                         ["12", "19"])
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(ptc.number_view("a natural-\nlanguage 7"))], ["7"])
+        page = "Synthetic page: the invented survey of all K-\n12 harbour schools counted 41 copper lanterns.\n\f"
+        r = self.gate([{"claim_id": "K1", "page": 1, "quote": "the invented survey of all K-12 harbour schools counted",
+                        "numbers": ["12"], "source": "text"}], anchor=page)
+        self.assertEqual((statuses(r, "claim_quote"), statuses(r, "claim_number")), (["PASS_SKELETON"], ["NUMBER_OK"]))
+        v = ptc.number_view("cells 1 204 here")
+        self.assertEqual([t["digits"] for t in ptc.view_numbers(v)], ["1204"])
+
+    # B3: the row path's guards
+    TABLE_A = ("Table 7: Invented gull counts\nHarbour\nNorth Pier beside the copper bell\nSouth Pier\nSpring\n0.44\n"
+               "0.29\nwhich invented keepers counted the gulls along the quay wall every winter morning\n"
+               "The gull counts in Table 7 are invented for the row guards of the gate.\n\f")
+    LANE_B = ("Table 7: Invented gull counts\nHarbour Spring\nNorth Pier beside the copper bell 0.44\nSouth Pier 0.29\n"
+              "which 27 invented keepers counted the gulls along the quay wall every winter morning 0.29\n"
+              "The gull counts in Table 7 are invented for the row guards of the gate.\n")
+
+    def row_gate(self, quote, numbers, flags=("table",), anchor=None):
+        ing = mk_ingest([{"anchor": (anchor or self.TABLE_A) + "27 and 0.29\n", "lane_b": self.LANE_B,
+                          "flags": list(flags)}])
+        r = lv.check_card(mk_card([cov(1, "The gull counts in Table 7 are invented for the row guards")],
+                                  [{"claim_id": "W1", "page": 1, "quote": quote, "numbers": list(numbers),
+                                    "source": "text"}]), ing, None)
+        return r, [it for it in r["items"] if it["kind"] == "claim_number"]
+
+    def test_row_guards_reject_prose_lines_and_accept_table_rows(self):
+        rows = ptc.lane_b_rows(self.LANE_B)
+        self.assertEqual([x["label"] for x in rows], ["northpierbesidethecopperbell", "southpier"])
+        self.assertEqual(ptc.lane_b_rows("of 1552 students without disabilities in the invented sample\n"), [])
+        self.assertEqual(ptc.lane_b_rows("Gender (Girls) 0.50 (0.02) 0.52 n.s.\n")[0]["label"], "gendergirls")
+        r, nums = self.row_gate("North Pier beside the copper bell South Pier Spring", ["0.44"])
+        self.assertEqual([(it["status"], it["locality"], it["row_match"]) for it in nums],
+                         [("NUMBER_OK", "row", "unique")])
+        r, nums = self.row_gate("which invented keepers counted the gulls along the quay wall", ["27"])
+        self.assertEqual([(it["status"], it["row_match"]) for it in nums], [("NUMBER_NOT_NEAR_QUOTE", "none")])
+
+    def test_row_guards_page_flag_and_row_start(self):
+        r, nums = self.row_gate("North Pier beside the copper bell South Pier Spring", ["0.44"], flags=())
+        self.assertEqual([(it["status"], it["row_match"]) for it in nums], [("NUMBER_NOT_NEAR_QUOTE", "ineligible")])
+        self.assertIn("not flagged table or numeric", nums[0]["reason"])
+        mid = self.TABLE_A.replace("Harbour\nNorth Pier", "Harbour North Pier")
+        r, nums = self.row_gate("North Pier beside the copper bell South Pier Spring", ["0.44"], anchor=mid)
+        self.assertEqual([(it["status"], it["row_match"]) for it in nums], [("NUMBER_NOT_NEAR_QUOTE", "ineligible")])
+        self.assertIn("row start", nums[0]["reason"])
+        v = ptc.number_view("x\n7. Gender (Girls)\nab Gender")
+        self.assertTrue(ptc.at_row_start(v, v["norm"].index("Gender")))           # a leading row number is fine
+        self.assertFalse(ptc.at_row_start(v, v["norm"].rindex("Gender")))
+        self.assertFalse(ptc.at_row_start({"idx": None}, 0))                       # no raw index: fail closed
+
+    # numbers-v5 (S3-B1, S3-A2 open question 1): the anchor cell guard
+    def test_row_label_must_stand_as_a_cell_on_its_anchor_line(self):
+        prose = self.TABLE_A.replace("0.29\nwhich", "0.29\nNorth Pier beside the copper bell and the other piers were "
+                                                    "counted twice by the keepers\nwhich")
+        r, nums = self.row_gate("North Pier beside the copper bell and the other piers were counted twice", ["0.44"],
+                                anchor=prose)
+        self.assertEqual([(it["status"], it["row_match"]) for it in nums], [("NUMBER_NOT_NEAR_QUOTE", "ineligible")])
+        self.assertIn("followed by prose on its anchor line", nums[0]["reason"])
+        r, nums = self.row_gate("North Pier beside the copper bell South Pier Spring", ["0.44"], anchor=prose)
+        self.assertEqual([(it["status"], it["locality"]) for it in nums], [("NUMBER_OK", "row")])   # label alone
+        for text, label, want in (("Huber-White (HW)\nSample size: n = 100", "huberwhitehw", True),
+                                  ("ORGANIZATION and other models; models which", "organization", False),
+                                  ("the SEs are slightly smaller for the HW estimator", "the", False),
+                                  ("North Quay beside the office\t0.62\t-0.087\t0.33", "northquaybesidetheoffice", True),
+                                  ("Gulls (counted)\n0.5", "gullscounted", True)):
+            v = ptc.number_view(text)
+            self.assertEqual(ptc.row_label_is_cell(v, 0, len(label)), want, text)
+        self.assertFalse(ptc.row_label_is_cell({"idx": None, "norm": "x"}, 0, 1))  # no raw index: fail closed
+
+    # W3 (S3-B1): the shared scrub's widened tag patterns, through this tool
+    def test_spaced_attribute_and_close_tag_variants_are_scrubbed(self):
+        for s in ("<system-reminder >", "<system-reminder x=1>", "</system-reminder >", "< /system-reminder>",
+                  "<system-reminder\n>", "<SYSTEM-REMINDER>", "</ system-reminder>", "x <system-reminder obey"):
+            out, n = lv.scrub_untrusted(f"before {s} after")
+            self.assertEqual(n, 1, repr(s))
+            self.assertNotIn("system-reminder", out.lower(), repr(s))
+            self.assertNotIn("system-reminder", lv.safe_line(f"a {s} b", 200).lower(), repr(s))
+            self.assertEqual(pdf_ingest.scrub_untrusted(f"before {s} after"), (out, 1), repr(s))   # reading copies
+        self.assertEqual(lv.scrub_untrusted("a system reminder and system-reminders")[1], 0)   # not tag-shaped
+
+    # finding 5: the embedded vision-validated list
+    def test_vision_not_on_list(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers")]
+        for over in ({"reader_model": "claude-unlisted-0"}, {"vision_list_version": "vision-list-1999-01-01"}):
+            r = lv.check_card(mk_card(c, **over), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]),
+                             ("FAIL", ["VISION_NOT_ON_LIST"], False), over)
+        self.assertEqual(lv.check_card(mk_card(c, reader_model="claude-unlisted-0", vision_validated=False), ing,
+                                       None)["verdict"], "PASS")
+        self.assertEqual(lv.check_card(mk_card(c), ing, None)["verdict"], "PASS")   # the module's test-only list
+        # the shipped list mirrors SKILL.md: same version, no entries yet
+        skill = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "SKILL.md").read_text()
+        self.assertIn(f'`vision_list_version: "{lv.VISION_LIST_VERSION}"`', skill)
+        self.assertEqual(REAL_VISION_LISTS, {lv.VISION_LIST_VERSION: ()})
+        self.assertIn("*(none yet)*", skill)
+
+    # W2 (D-24): the OCR-layer paper cap
+    def test_ocr_layer_paper_cap(self):
+        layer = {"flags": ["ocr_layer_suspected"], "evidence": {"ocr_layer_suspected": ["an image covers 100%"]}}
+        pages = [dict(layer, anchor=PROSE[1]), dict(layer, anchor=PROSE[2]), {"anchor": PROSE[3]}]
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers"),
+             cov(2, "relies on natural-language summaries of each imaginary voyage"),
+             cov(3, "Table 2 reports -0.087* (0.044) and 1,204 boats")]
+        r = lv.check_card(mk_card(c), mk_ingest(pages), None)
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"], statuses(r, "paper"), r["counts"]["pages_ocr_layer"]),
+                         ("PARTIAL", "FULL_TEXT_PARTIAL", ["OCR_LAYER_PAPER"], 2))
+        r = lv.check_card(mk_card(c), mk_ingest([pages[0], {"anchor": PROSE[2]}, pages[2]]), None)
+        self.assertEqual((r["verdict"], statuses(r, "paper"), r["counts"]["pages_ocr_layer"]), ("PASS", [], 1))
+        self.assertEqual(lv.OCR_LAYER_PAPER_CAP_PAGES, 2)
+
+
 class HtmlCardParseTests(unittest.TestCase):
-    GOOD = mk_html_card([sec("front", "x")], [hclaim("C1", "1.1", "q", section_end="1.2")])
+    GOOD =mk_html_card([sec("front", "x")], [hclaim("C1", "1.1", "q", section_end="1.2")])
 
     def bad(self, obj):
         with self.assertRaises(lv.LitVerifyError) as cm:
@@ -1108,7 +1540,7 @@ class IngestAndRowTests(ScratchCase):
         self.assertEqual(art["name"], "card_check.json")
         self.assertEqual(art["sha256"], lv.sha256_bytes((key_dir / art["name"]).read_bytes()))
         check = json.loads((key_dir / "card_check.json").read_text())
-        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v1"))
+        self.assertEqual((check["verdict"], check["rule_versions"]["match_ladder"]), ("PASS", "ladder-v2"))
         # re-check of the same card version: a new name, nothing overwritten
         before = (key_dir / "card_check.json").read_bytes()
         self.assertEqual(run_main(["card", key_dir, card])[0], 0)
@@ -1215,11 +1647,22 @@ class IngestAndRowTests(ScratchCase):
         nums = [it for it in check["items"] if it["kind"] == "claim_number"]
         self.assertEqual((check["verdict"], nums[0]["locality"]), ("PASS", "row"))
         self.assertEqual(check["constants"]["ROW_LABEL_MIN_CHARS"], ptc.ROW_LABEL_MIN_CHARS)
-        self.assertEqual(check["rule_versions"]["numbers"], "numbers-v3")
+        self.assertEqual(check["rule_versions"]["numbers"], "numbers-v5")
+        # 1.5.0 (D-23): the row prints 0.62 and 0.63, so the cleared number is
+        #   labeled; counted, printed on stdout and recorded with its constants
+        self.assertEqual((nums[0]["column_checked"], nums[0]["column_label"], nums[0]["column_values"]),
+                         (False, "column-not-checked", 2))
+        self.assertEqual((check["counts"]["numbers_column_not_checked"], len(check["column_not_checked_items"])), (1, 1))
+        self.assertIn("column-not-checked: 2 comparable values", check["column_not_checked_items"][0])
+        self.assertEqual((check["rule_versions"]["column_check"], check["constants"]["COLUMN_UNCHECKED_SEVERITY"]),
+                         ("column-check-v1", "label"))
+        self.assertEqual(rows_of(self.papers)[-1]["counts"]["numbers_column_not_checked"], 1)
+        _, out, _ = run_main(["card", key_dir, card])
+        self.assertIn("1 number(s), 1 column-not-checked;", out)
         with open(key_dir / "lane_b" / "p001.txt", "a") as f:
             f.write("North Quay (with tide gauge) 0.74\n")                 # a planted row
         self.assertEqual(run_main(["card", key_dir, card])[0], 11)
-        check = json.loads((key_dir / "card_check_1.json").read_text())
+        check = json.loads((key_dir / "card_check_2.json").read_text())
         self.assertIn("LANE_B_HASH_MISMATCH", statuses(check, "integrity"))
         self.assertEqual([it["row_match"] for it in check["items"] if it["kind"] == "claim_number"], [None])
 
@@ -1227,8 +1670,11 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 24/24", out)
+        self.assertIn("SELFTEST PASS: 34/34", out)
+        self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
+        self.assertIn("prose quote starting with a row label", out)                # numbers-v5
         self.assertIn("HTML quote cited to another section", out)
+        self.assertIn("cols 0.63:not-checked,5:checked", out)                  # 1.5.0 (D-23)
         row = rows_of(self.root)[-1]
         self.assertEqual((row["command"], row["verdict"], row["exit_code"]), ("selftest", "PASS", 0))
         self.assertTrue(row["counts"]["work_dir_removed"])
@@ -1240,6 +1686,85 @@ class IngestAndRowTests(ScratchCase):
         proc = subprocess.run(["bash", str(_SCRIPTS / "lit_verify.sh"), "selftest", "/tmp"], capture_output=True,
                               text=True, timeout=60)
         self.assertEqual(proc.returncode, 2)
+
+
+# --- 1.7.0 (S3-B1, review W1): re-derivation and the ingest row -----------------------
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class RederiveTests(ScratchCase):
+    def card_for(self, key_dir, src, extra_claims=()):
+        _, _, coverage, claims, *_ = lv.selftest_cases({})[0]
+        return self.write_card(key_dir, "evidence_card.md", None,
+                               raw=lv.selftest_card(key_dir.name, src, coverage, list(claims) + list(extra_claims)))
+
+    def last_check(self, key_dir):
+        art = rows_of(self.papers)[-1]["artifacts"]["card_check"]
+        return json.loads((key_dir / art["name"]).read_text())
+
+    def test_forged_ingest_set_fails_with_and_without_a_forged_row(self):
+        key_dir, src = self.synthetic()
+        fab = {"claim_id": "Z1", "page": 1, "quote": lv.SELFTEST_FABRICATED, "numbers": [], "source": "text"}
+        card = self.card_for(key_dir, src, [fab])
+        lv.forge_ingest_set(str(self.papers), key_dir.name, lv.SELFTEST_FABRICATED, lv.parquet_reader(),
+                            lv.parquet_writer())
+        code, out, err = run_main(["card", key_dir, card])
+        check = self.last_check(key_dir)
+        self.assertEqual((code, check["verdict"], check["ingest"]["suffix"]), (11, "FAIL", "_a"), out + err)
+        mm = [it for it in check["items"] if it["status"] == "ANCHOR_REDERIVE_MISMATCH"]
+        self.assertEqual([(it["page"], it["severity"]) for it in mm], [(1, "fail")])
+        self.assertEqual((check["rederive"]["outcome"], check["rederive"]["anchor_mismatches"]), ("mismatch", [1]))
+        self.assertEqual(check["rule_versions"]["rederive"], "rederive-v1")
+        self.assertNotIn("NO_INGEST_ROW", statuses(check))                      # the forged row is present
+        rows = [json.loads(x) for x in (self.papers / "MANIFEST.jsonl").read_text().splitlines()]
+        kept = [r for r in rows if "FORGED" not in (r.get("note") or "")]
+        (self.papers / "MANIFEST.jsonl").write_text("".join(json.dumps(r) + "\n" for r in kept))
+        code, _, _ = run_main(["card", key_dir, card])
+        check = self.last_check(key_dir)
+        self.assertEqual(code, 11)
+        self.assertTrue({"ANCHOR_REDERIVE_MISMATCH", "NO_INGEST_ROW"} <= set(statuses(check, "integrity")))
+        self.assertEqual(rows_of(self.papers)[-1]["rederive"]["anchor_mismatches"], 1)
+
+    def test_no_ingest_row_is_a_fail(self):
+        writer = lv.parquet_writer()
+        src = lv.build_synthetic_ingest(str(self.papers), "user_5e1f7e5a", lv.SELFTEST_PAGES["A"], writer,
+                                        with_row=False)
+        key_dir = self.papers / "user_5e1f7e5a"
+        code, _, _ = run_main(["card", key_dir, self.card_for(key_dir, src)])
+        check = self.last_check(key_dir)
+        self.assertEqual((code, check["verdict"], statuses(check, "integrity")), (11, "FAIL", ["NO_INGEST_ROW"]))
+        self.assertEqual(lv.SEVERITY["NO_INGEST_ROW"], "fail")
+
+    def test_unregistered_synthetic_source_is_missing(self):
+        key_dir, src = self.synthetic()
+        card = self.card_for(key_dir, src)
+        self.assertEqual(run_main(["card", key_dir, card])[0], 0)
+        self.assertEqual(self.last_check(key_dir)["rederive"]["outcome"], "match")
+        entry = lv.SYNTHETIC_SOURCES.pop(src)
+        try:
+            code, _, _ = run_main(["card", key_dir, card])
+        finally:
+            lv.SYNTHETIC_SOURCES[src] = entry
+        check = self.last_check(key_dir)
+        self.assertEqual((code, statuses(check, "integrity"), check["rederive"]["outcome"]),
+                         (11, ["SOURCE_MISSING"], "source missing"))
+
+    def test_tampered_lane_b_and_ocr_are_reported(self):
+        key_dir, src = self.synthetic("user_5e1f7e5b", pages="B")
+        _, _, coverage, claims, *_ = lv.selftest_cases({})[9]
+        card = self.write_card(key_dir, "evidence_card.md", None,
+                               raw=lv.selftest_card(key_dir.name, src, coverage, claims))
+        self.assertEqual(run_main(["card", key_dir, card])[0], 0)
+        check = self.last_check(key_dir)
+        self.assertIn("OCR_NOT_REDERIVED", statuses(check, "integrity"))        # OCR: hash-checked only
+        self.assertEqual(check["verdict"], "PARTIAL")
+        self.assertTrue(check["rederive"]["ocr"].startswith("hash-checked only"))
+
+    def test_timeout_argument(self):
+        key_dir, src = self.synthetic()
+        card = self.card_for(key_dir, src)
+        for bad in ("0", "-1", "x", "4000"):
+            self.assertEqual(run_main(["card", key_dir, card, "--timeout", bad])[0], 1, bad)
+        self.assertEqual(run_main(["card", key_dir, card, "--timeout", "5"])[0], 0)
+        self.assertEqual(rows_of(self.papers)[-1]["parameters"]["timeout_s"], 5.0)
 
 
 # --- arXiv HTML on disk: real pdf_ingest --source arxiv-html on the synthetic fixture ----
@@ -1270,7 +1795,7 @@ class HtmlOnDiskTests(ScratchCase):
                          (0, "PARTIAL", "FULL_TEXT_PARTIAL"), log)
         self.assertEqual(check["failures"] + check["review_items"], [])
         self.assertEqual((check["schema_version"], check["tool_version"], check["anchor_kind"]),
-                         ("lit-verify-card-check-v2", "1.4.0-daaf", "arxiv_html"))
+                         ("lit-verify-card-check-v2", lv.TOOL_VERSION, "arxiv_html"))
         ing = check["ingest"]
         self.assertEqual((ing["anchor_kind"], ing["unit_count"], ing["source_version"], ing["arxiv_id_version"],
                           ing["html_extract_version"], ing["source_pdf_sha256"], ing["page_count"]),
@@ -1305,6 +1830,36 @@ class HtmlOnDiskTests(ScratchCase):
             f.write("A line added after ingest.\n")
         code, check, _ = self.check(key_dir)
         self.assertIn(("ANCHOR_HASH_MISMATCH", "1"), [(it["status"], it["section"]) for it in check["items"]])
+
+    def test_rederive_html_match_mismatch_and_edited_source(self):
+        src_dir = self.root / "src"
+        src_dir.mkdir()
+        copy = src_dir / "synthetic_latexml_copy.html"
+        shutil.copy(HTML_FIX, copy)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = pdf_ingest.main([str(copy), str(self.papers), "--paper-key", self.KEY, "--source", "arxiv-html"])
+        self.assertEqual(code, 0, err.getvalue())
+        key_dir = self.papers / self.KEY
+        code, check, log = self.check(key_dir)
+        rd = check["rederive"]
+        self.assertEqual((code, rd["outcome"], rd["anchors_checked"], rd["extractor_version"]),
+                         (0, "match", 12, pdf_ingest.HTML_EXTRACT_VERSION), log)
+        self.assertGreaterEqual(rd["row_sources_checked"], 1)
+        ing, _ = lv.load_ingest(str(key_dir), str(self.papers), self.KEY, None, lv.parquet_reader())
+        n = next(n for n, p in ing["pages"].items() if p.get("lane_b_file_sha256"))
+        ing["pages"][n]["lane_b_file_sha256"] = "0" * 64
+        ing["pages"][1]["anchor_file_sha256"] = "0" * 64
+        ing["pages"][2]["flags"] = ["table"]
+        items, rec = lv.rederive(ing, 30)
+        self.assertEqual(sorted({it["status"] for it in items}), ["ANCHOR_REDERIVE_MISMATCH",
+                                                                  "ROW_SOURCE_REDERIVE_MISMATCH"])
+        self.assertEqual((rec["anchor_mismatches"], ing["pages"][n]["lane_b_text"]),
+                         ([ing["pages"][1]["label"], ing["pages"][2]["label"]], None))
+        copy.write_text(copy.read_text() + "<!-- edited after the ingest -->\n")
+        code, check, _ = self.check(key_dir, "evidence_card_a.md")
+        self.assertEqual((code, check["rederive"]["outcome"]), (11, "source hash mismatch"))
+        self.assertIn("SOURCE_FILE_HASH_MISMATCH", statuses(check, "integrity"))
 
     def test_kind_rules_one_key_one_source(self):
         key_dir = self.ingest_html()
@@ -1368,6 +1923,26 @@ class EndToEndTests(ScratchCase):
         self.assertEqual((code, check["ingest"]["suffix"]), (0, "_a"))
         code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_c.md", "--ingest-suffix=")
         self.assertEqual((code, check["ingest"]["suffix"]), (0, ""))
+
+    def test_rederive_real_pdf_match_forgery_timeout_and_missing_poppler(self):
+        key_dir = self.ingest("single_column", "user_00e2e001")
+        code, check, log = self.check(key_dir, "single_column_genuine.md")
+        rd = check["rederive"]
+        self.assertEqual((code, rd["outcome"], rd["anchors_checked"]), (0, "match", check["counts"]["pages"]), log)
+        self.assertTrue(rd["method"].startswith("pdftotext per page"))
+        self.assertEqual(rd["extractor_version"], rd["extractor_version_ingest"])
+        code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_a.md", "--timeout", "0.000001")
+        self.assertEqual(code, 11)
+        self.assertIn("SOURCE_REDERIVE_ERROR", statuses(check, "integrity"))
+        with mock.patch.object(lv.shutil, "which", return_value=None):
+            code, _, _ = run_main(["card", key_dir, key_dir / "evidence_card.md"])
+        self.assertEqual(code, 10)
+        self.assertIn("pdftotext", rows_of(self.papers)[-1]["note"])
+        lv.forge_ingest_set(str(self.papers), key_dir.name, "An invented sentence this source never printed on "
+                                                            "its first page.", lv.parquet_reader(), lv.parquet_writer())
+        code, check, _ = self.check(key_dir, "single_column_genuine.md", "evidence_card_b.md")
+        self.assertEqual((code, check["ingest"]["suffix"]), (11, "_a"))
+        self.assertIn(("ANCHOR_REDERIVE_MISMATCH", 1), [(it["status"], it["page"]) for it in check["items"]])
 
     def test_multipage_example_card_is_partial(self):
         key_dir = self.ingest("multipage", "user_00e2e002")

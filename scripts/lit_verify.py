@@ -152,7 +152,54 @@
 #     manifest's record and page_index's lane_b_sha256 (1.3.0; a mismatching
 #     lane B file is LANE_B_HASH_MISMATCH, a fail, and is not used); the
 #     ingest manifest = the hash in the papers dir's pdf_ingest MANIFEST row
-#     (no row -> warning).
+#     (no row -> NO_INGEST_ROW, a fail from 1.7.0; it was a warning).
+#     1b Re-derivation (1.7.0, D-24 W1; § Re-derivation below): the anchor
+#     text (and lane B / table rows) is re-derived from the stored source and
+#     compared byte-for-byte with the files the checks are about to trust.
+#
+# --- Re-derivation (1.7.0, user decision D-24, review W1) -------------------
+#   Hashes alone prove only that the manifest, page_index and anchor files
+#   agree with EACH OTHER: a hand-written ingest set with a fabricated anchor
+#   and consistent hashes passed. So at check time, before any quote is
+#   matched (REDERIVE_VERSION):
+#   Source   the ingest manifest's source.path (pdf_ingest keeps the source
+#            where it found it, normally web_fetch's raw artifact; it is not
+#            copied into PAPER_DIR). It must resolve under the DAAF root,
+#            outside the web_retrieval_common forbidden prefixes, be a file of
+#            at most SOURCE_MAX_BYTES, and hash to the manifest's
+#            source.sha256 (which the card's hash already equals, check 1).
+#            Unusable -> SOURCE_MISSING; another hash -> SOURCE_FILE_HASH_
+#            MISMATCH (both fail; nothing is re-derived).
+#   PDF      pdftotext page by page with pdf_ingest.anchor_argv() (the very
+#            invocation pdf_ingest used, LC_ALL=C) for EVERY page (the
+#            uniqueness rule reads them all), compared byte-for-byte with
+#            anchor{S}/pNNN.txt (ANCHOR_REDERIVE_MISMATCH, fail); the page
+#            count from pdfinfo vs the manifest (same status). Lane B pages
+#            are re-read with pdf_ingest.lane_b_page_text() (pypdfium2) and
+#            compared with lane_b{S}/pNNN.txt (ROW_SOURCE_REDERIVE_MISMATCH,
+#            fail; lane B is then not used). A pdftotext or pypdfium2 version
+#            other than the manifest's is EXTRACTOR_VERSION_DIFFERS (warning;
+#            the comparison still decides). pdftotext/pdfinfo missing -> exit
+#            10; one failing or exceeding --timeout -> SOURCE_REDERIVE_ERROR
+#            (fail). pypdfium2 missing -> ROW_SOURCE_NOT_REDERIVED (warning;
+#            lane B not used, so no number takes the row path).
+#   HTML     pdf_ingest.html_units() / unit_evidence() (HTML_EXTRACT_VERSION)
+#            on the stored HTML: unit count, labels, unit text, flags and the
+#            arXiv id/version from the watermark must equal the ingest
+#            (ANCHOR_REDERIVE_MISMATCH); each rows{S}/uNNN.txt must equal the
+#            re-derived rows (ROW_SOURCE_REDERIVE_MISMATCH; not used then).
+#   OCR      NOT re-derived (Tesseract on a 300-DPI render costs seconds per
+#            page): its files are hash-checked only, and a paper whose OCR
+#            text is used carries one OCR_NOT_REDERIVED warning (OCR evidence
+#            is already capped at PARTIAL).
+#   Not re-derived either: page flags and their evidence (pdfplumber,
+#   pdfimages), header/footer lines. They can move a grade or a review item,
+#   never make an unprinted quote or number pass.
+#   card_check records the outcome under `rederive` (method, versions, pages
+#   checked, mismatches, seconds); the MANIFEST row a summary. Selftest and
+#   unit tests: their in-code synthetic ingests have no source file, so
+#   build_synthetic_ingest() registers the planted text in SYNTHETIC_SOURCES,
+#   an in-process registry the CLI never fills (no file can reach it).
 #   2 Quote ladder (pdf_text_common.match_quote, MATCH_LADDER_VERSION; tiers
 #     and order are documented there): REDACTED_SPAN, PASS, PASS_SKELETON,
 #     PASS_SPAN, PASS_OCR, NEAR, WRONG_PAGE, NOT_FOUND. Spans: a quote that
@@ -160,6 +207,13 @@
 #     declares page_end = N+1; an undeclared span is WRONG_PAGE (fix: declare
 #     page_end). Recorded header/footer lines between the pages are skipped.
 #     Coverage anchors are single-page (no page_end).
+#     Quote-number rule (ladder-v2, 1.6.0, S3-A B2): a claim quote that
+#     passes on any tier must print, in order, the same number tokens (sign
+#     included) as the page span it matched (pdf_text_common.
+#     quote_numbers_agree, on the page's number view); else
+#     QUOTE_NUMBERS_DIFFER (review; status_if_confirmed keeps the pass it
+#     replaced), which also takes the claim off the row path. Coverage
+#     anchors are not checked (they carry no claim).
 #   3 Identifying quote (pdf_text_common.quote_identity): >= MIN_QUOTE_CHARS
 #     normalized chars AND >= MIN_QUOTE_WORDS words AND the SKELETON occurs
 #     exactly once across all anchor text and page boundaries (and all OCR
@@ -197,6 +251,16 @@
 #                 must also be printed in the anchor, and quotes are matched
 #                 only against the anchor. An ambiguous label (two or more
 #                 rows) or no matching row falls back to in-quote.
+#                 numbers-v4 (1.6.0, B3): only on a single-page anchor match,
+#                 on a page flagged table or numeric (ROW_PAGE_FLAGS), whose
+#                 match begins at a row start (no letter before it on its raw
+#                 line), and only lane B lines with a label of >= 3 letters
+#                 and a cell-like tail are rows; a refused path is recorded
+#                 as row_match "ineligible" (with the reason).
+#                 numbers-v5 (1.7.0): and the identified label must stand as
+#                 a cell on the anchor line where the quote matched (alone on
+#                 the line, or followed by cells; pdf_text_common.
+#                 row_label_is_cell()), else "ineligible".
 #     The lane checked is the lane the number was found in:
 #       NUMBER_OK            same value and digit string in the anchor text,
 #                            local (in-quote or row)
@@ -216,14 +280,38 @@
 #       NUMBER_PRECISION_DIFFERS  same value, other digits (0.5 vs 0.50):
 #                            a human check, never a pass
 #       NUMBER_MISSING       anything else (a changed digit or a dropped minus
-#                            sign fails here; "both" declares a text reading,
-#                            so a number in no text lane fails)
+#                            sign fails here, the spaced form "= - 0.041"
+#                            included from numbers-v4; "both" declares a text
+#                            reading, so a number in no text lane fails). A
+#                            minus deleted INSIDE a quote is caught by the
+#                            quote-number rule (check 2), not here
 #       NUMBER_UNPARSEABLE   the card string is not one number
+#     Column label (1.5.0, D-23; pdf_text_common.column_values,
+#     COLUMN_CHECK_VERSION): a LABEL on cleared numbers, never a status. For
+#     every number with a locality (in-quote or row: NUMBER_OK, the OCR,
+#     OCR-layer and conversion-error variants), the clearing text (the
+#     quote's matched span in the lane the number was found in; or the
+#     identified row after its label) is searched for OTHER comparable values
+#     (same shape: integer vs decimal, with vs without %; years and numbers
+#     after "Table", "Fig.", "p." ... not counted; the claim's own value
+#     counted once). Two or more distinct values -> column_checked false,
+#     column_label "column-not-checked", column_severity
+#     COLUMN_UNCHECKED_SEVERITY ("label": the verdict ignores it); exactly
+#     one -> column_checked true; no locality -> null. column_values holds
+#     the count. Counted in counts.numbers_column_not_checked and listed in
+#     column_not_checked_items. Hook for D-23's "human review later": set
+#     COLUMN_UNCHECKED_SEVERITY to "review" and each labeled item's severity
+#     is raised to review (verdict NEEDS_REVIEW), with no other code change.
 #   6 Vision consistency: with vision_mode "off" or vision_validated false,
 #     every claim with source "vision"/"both" and every vision_only digest is
 #     a FAIL (VISION_UNAVAILABLE_CLAIM). lit_verify does not decide model
-#     validation (FE-4 / the orchestrator audit does); it enforces only
-#     consistency with what the card declares.
+#     identity (the Option C orchestrator audit does). From 1.6.0 it fails
+#     closed on an unvalidated claim of validation: vision_validated true
+#     with a reader_model that is not on the embedded VISION_VALIDATED_LISTS
+#     entry for the card's vision_list_version (or an unknown version) is
+#     VISION_NOT_ON_LIST (fail; vision then counts as unavailable). Only the
+#     block is read: the route is front matter, so the model ID is checked
+#     against the version's rows for any route.
 #
 # --- Page classes (user decision Q-B) ---------------------------------------
 #   normal   not flagged `scanned` by pdf_ingest
@@ -245,13 +333,18 @@
 #            numbers NUMBER_OCR_LAYER(_VISION), all partial, like our own OCR
 #            (Q-A). Coverage anchors there do NOT cap: a born-digital cover
 #            image can raise the flag falsely, so only cited claims count.
+#            1.6.0 (D-24 W2): a paper with >= OCR_LAYER_PAPER_CAP_PAGES (2)
+#            such pages is capped anyway (OCR_LAYER_PAPER, partial).
 #
 # --- Verdicts and grades ----------------------------------------------------
 #   Every item carries severity pass | partial | review | fail | warning.
+#   (1.5.0) "label" is a sixth, label-only level: never an item's severity,
+#   only a number item's column_severity, and no verdict rule reads it.
 #   FAIL          any fail item (all listed)
-#   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS or
-#                 NUMBER_NOT_NEAR_QUOTE item (listed for a human)
-#   PARTIAL       no fail or review; a PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
+#   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS,
+#                 NUMBER_NOT_NEAR_QUOTE or QUOTE_NUMBERS_DIFFER item (listed
+#                 for a human)
+#   PARTIAL       no fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
 #                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
 #                 vision-only, COVERED_SPARSE-on-scanned or SCANNED_PAGE item,
 #                 or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error
@@ -278,7 +371,11 @@
 #   html_extract_version; every item carries `section` / `section_end` (the
 #   unit labels on arXiv HTML; null on PDF, where `page` / `page_end` carry
 #   the locator); `sections` (one summary per unit on HTML; [] on PDF) beside
-#   `pages` ([] on HTML).
+#   `pages` ([] on HTML). 1.5.0 (additive, schema unchanged): number items
+#   carry column_checked, column_label, column_values, column_severity;
+#   counts gain numbers_column_not_checked; column_not_checked_items lists
+#   them; rule_versions gain column_check; constants gain
+#   COLUMN_UNCHECKED_SEVERITY, COLUMN_YEAR_MIN/MAX, COLUMN_REFERENCE_WORDS.
 #
 # --- MANIFEST.jsonl (in the papers dir, kind "lit_verify") ------------------
 #   One row per attempt with a valid papers dir, through a single finish()
@@ -312,7 +409,8 @@
 #       oversize or non-UTF-8 card)
 #   10  ingest artifacts missing or incomplete (no manifest for the suffix,
 #       missing anchor / OCR / page_index file, unreadable manifest), or a
-#       required library missing (rapidfuzz; polars or pyarrow)
+#       required dependency missing (rapidfuzz; polars or pyarrow; from
+#       1.7.0 pdftotext and pdfinfo, which re-derive a PDF's anchors)
 #   11  FAIL as a recorded result (coverage gap, wrong page, quote or number
 #       missing, non-identifying quote, hash mismatch, inconsistent vision
 #       claims); selftest: an expectation did not hold
@@ -330,15 +428,18 @@ import os
 import re
 import shutil
 import sys
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from web_retrieval_common import (  # noqa: E402
-    REDACTION_TOKEN, append_manifest, find_secret_in, one_line, redact_secrets, scrub_injection,
-    sha256_bytes, slugify, unique_basename, validate_dest_dir, write_new,
+    ALLOWED_ROOT, FORBIDDEN_DEST_PREFIXES, REDACTION_TOKEN, append_manifest, find_secret_in, one_line,
+    redact_secrets, scrub_injection, sha256_bytes, slugify, unique_basename, validate_dest_dir, write_new,
 )
+import pdf_ingest as pdi  # noqa: E402  (stdlib-only at import time; 1.7.0 re-derivation)
 import pdf_text_common as ptc  # noqa: E402
 
 # §§ CONSTANTS
@@ -377,15 +478,50 @@ import pdf_text_common as ptc  # noqa: E402
 # lit-verify-card-check-v2 (additive); forged unit markers scrubbed;
 # constants gain HTML_EXTRACT_VERSIONS_KNOWN; selftest gains arXiv HTML
 # cases. PDF verdicts and items unchanged (items gain null section keys).
-TOOL_VERSION = "1.4.0-daaf"
+# 1.5.0 (S3 FE-5g, 2026-10-23, user decision D-23): the column-not-checked
+# LABEL on cleared numbers whose clearing text prints other comparable values
+# (pdf_text_common column-check-v1); severity level "label", ignored by the
+# verdict; COLUMN_UNCHECKED_SEVERITY is the hook a later decision can flip
+# to "review". No verdict, grade or number status changes; numbers-v3
+# unchanged (NUMBER_RULES_VERSION not bumped: the label is not a number
+# rule). Card and result schemas unchanged (additive fields).
+# 1.6.0 (S3-A, 2026-10-23, review-fix round 1, user decision D-24): gate
+# soundness. numbers-v4 (pdf_text_common: the spaced sign "= - 0.041" (B1);
+# superscripts are marks, not digits; the row path needs a label of >= 3
+# letters, a cell-like tail, a table/numeric page and a quote starting at a
+# row start (B3), else row_match "ineligible"); ladder-v2 (the quote-number
+# rule (B2): a passing claim quote whose number tokens differ from the page
+# span it matched is QUOTE_NUMBERS_DIFFER, review; claim_quote items gain
+# quote_numbers, page_numbers, quote_numbers_agree, status_if_confirmed);
+# VISION_NOT_ON_LIST (fail: vision_validated true for a reader_model not on
+# the embedded VISION_VALIDATED_LISTS for the card's vision_list_version);
+# OCR_LAYER_PAPER (partial: >= OCR_LAYER_PAPER_CAP_PAGES pages flagged
+# ocr_layer_suspected cap the card at PARTIAL, D-24 W2; counts gain
+# pages_ocr_layer). Card and result schemas unchanged (additive fields).
+# 1.7.0 (S3-B1, 2026-10-23, review-fix round 1 part B, user decision D-24):
+# provenance (W1): re-derivation of the anchors (and lane B / table rows) from
+# the stored source at check time (§ Re-derivation; rederive-v1); statuses
+# ANCHOR_REDERIVE_MISMATCH, ROW_SOURCE_REDERIVE_MISMATCH, SOURCE_MISSING,
+# SOURCE_FILE_HASH_MISMATCH, SOURCE_REDERIVE_ERROR (fail),
+# EXTRACTOR_VERSION_DIFFERS, OCR_NOT_REDERIVED, ROW_SOURCE_NOT_REDERIVED
+# (warning); NO_INGEST_ROW is a fail; `--timeout S`; card_check gains
+# `rederive`, rule_versions.rederive and constants SOURCE_MAX_BYTES,
+# REDERIVE_TIMEOUT_S, REDERIVE_WORKERS; exit 10 also covers pdftotext /
+# pdfinfo missing. The shared injection scrub widened (W3, web_retrieval_
+# common). numbers-v5 (pdf_text_common, S3-A2 open question 1): the row path
+# also needs the identified label to stand as a cell on the anchor line where
+# the quote matched (row_label_is_cell()). Card and result schemas unchanged
+# (additive fields).
+TOOL_VERSION = "1.7.0-daaf"
 
 EXIT_CODES = {
     0: "card verdict PASS, PARTIAL or NEEDS_REVIEW (verdict in the card_check JSON); selftest: all expectations held",
     1: "usage",
     2: "refused path (PAPER_DIR / papers dir / SCRATCH_DIR guard, CARD_PATH outside PAPER_DIR, paper key, artifact "
        "path, secret value)",
-    8: "card cannot be parsed (no single valid lit-verify block)",
-    10: "ingest artifacts missing or incomplete, or a required library missing (rapidfuzz; polars or pyarrow)",
+    8: "card cannot be parsed (no single valid lit-verify block; oversize or non-UTF-8 card)",
+    10: "ingest artifacts missing or incomplete, or a required dependency missing (rapidfuzz; polars or pyarrow; "
+        "pdftotext and pdfinfo to re-derive PDF anchors)",
     11: "FAIL as a recorded result; selftest: an expectation did not hold",
     12: "internal error (no verdict)",
 }
@@ -459,7 +595,19 @@ LOCAL_FORGED_PATTERNS = [
     re.compile(r"<!--\s*unit\s+\d+\s*/\s*\d+", re.IGNORECASE),
 ]
 
+# INTENT (1.5.0, D-23): the column-not-checked label. "label" is a label-only
+#   severity level: no verdict rule reads it, so the card's verdict and grade
+#   are unchanged. HOOK for D-23's "human review later": set this to
+#   "review" (or any level in SEVERITY_RANK) and every labeled number item's
+#   severity is raised to it (never lowered), so the verdict, counts and
+#   review_items follow with no other code change.
+COLUMN_UNCHECKED_SEVERITY = "label"
+COLUMN_UNCHECKED_LABEL = "column-not-checked"
+# INTENT: order of the verdict-bearing levels, used only to raise a labeled
+#   item; "label" is absent on purpose (it never raises anything).
+SEVERITY_RANK = {"warning": 0, "pass": 0, "partial": 1, "review": 2, "fail": 3}
 SEVERITY = {
+    "COLUMN_NOT_CHECKED": COLUMN_UNCHECKED_SEVERITY,   # 1.5.0: a label, not a status (column_severity)
     "PASS": "pass", "PASS_SKELETON": "pass", "PASS_SPAN": "pass", "COVERED_EMPTY": "pass", "COVERED_DUPLICATE": "pass",
     "NUMBER_OK": "pass",
     "PASS_OCR": "partial", "VISION_ONLY": "partial", "SCANNED_PAGE": "partial", "NUMBER_OCR_ONLY": "partial",
@@ -477,10 +625,19 @@ SEVERITY = {
     "ANCHOR_KIND_MISMATCH": "fail", "SOURCE_VERSION_MISMATCH": "fail", "SECTION_NOT_FOUND": "fail",
     "MISSING_SECTION": "fail", "WRONG_SECTION": "fail", "SECTION_END_NOT_NEXT": "fail",
     "TABLE_ROWS_HASH_MISMATCH": "fail", "MIXED_ANCHOR_KINDS": "fail",
-    "INGEST_SUFFIX_DIFFERS": "warning", "INCOMPLETE_INGEST_IGNORED": "warning", "NO_INGEST_ROW": "warning",
+    # 1.6.0 (S3-A)
+    "QUOTE_NUMBERS_DIFFER": "review", "VISION_NOT_ON_LIST": "fail", "OCR_LAYER_PAPER": "partial",
+    # 1.7.0 (S3-B1, W1): re-derivation; NO_INGEST_ROW was a warning
+    "ANCHOR_REDERIVE_MISMATCH": "fail", "ROW_SOURCE_REDERIVE_MISMATCH": "fail", "SOURCE_MISSING": "fail",
+    "SOURCE_FILE_HASH_MISMATCH": "fail", "SOURCE_REDERIVE_ERROR": "fail", "NO_INGEST_ROW": "fail",
+    "EXTRACTOR_VERSION_DIFFERS": "warning", "OCR_NOT_REDERIVED": "warning", "ROW_SOURCE_NOT_REDERIVED": "warning",
+    "INGEST_SUFFIX_DIFFERS": "warning", "INCOMPLETE_INGEST_IGNORED": "warning",
     "NORMALIZE_VERSION_DIFFERS": "warning", "SPARSE_DECLARATION_MISMATCH": "warning",
     "VISION_ONLY_IGNORED": "warning", "HTML_EXTRACT_VERSION_DIFFERS": "warning",
 }
+# INTENT (1.6.0, ladder-v2): the claim-quote statuses the quote-number rule
+#   checks (every passing tier, including the OCR and conversion variants).
+QUOTE_NUMBER_CHECKED = ("PASS", "PASS_SKELETON", "PASS_SPAN", "PASS_OCR", "PASS_OCR_LAYER", "PASS_CONVERSION_ERROR")
 NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_VISION": "ocr+vision",
                  "NUMBER_VISION_ONLY": "vision-only", "NUMBER_PRECISION_DIFFERS": "precision-differs",
                  "NUMBER_MISSING": "missing", "NUMBER_UNPARSEABLE": "unparseable",
@@ -488,6 +645,36 @@ NUMBER_LABELS = {"NUMBER_OK": "ok", "NUMBER_OCR_ONLY": "ocr-only", "NUMBER_OCR_V
                  "NUMBER_OCR_LAYER_VISION": "ocr-layer+vision", "NUMBER_CONVERSION_ERROR": "conversion-error"}
 # INTENT (D-21 N2): pdf_ingest's flag for an existing OCR text layer.
 OCR_LAYER_FLAG = "ocr_layer_suspected"
+# INTENT (1.6.0, user decision D-24 W2): a paper with at least this many pages
+#   flagged ocr_layer_suspected is capped at PARTIAL (OCR_LAYER_PAPER) even
+#   when no claim cites those pages: much of its text is someone else's OCR.
+#   One flagged page does not cap (a born-digital cover image can raise the
+#   flag falsely; eric_ED575021's cover page in the S3 bake-off).
+OCR_LAYER_PAPER_CAP_PAGES = 2
+# INTENT (1.6.0, review finding 5): the vision-validated list, embedded so a
+#   card cannot claim validation for a model that is not on it. Mirrors
+#   .claude/skills/pdf-reading/SKILL.md § "Vision-validated model list" (one
+#   entry per list version: rows of (exact model ID, route)); add a version
+#   here whenever that list is bumped. The card block carries reader_model and
+#   vision_list_version but not the route (front matter, reader_route), so the
+#   gate checks the model ID only: on the list for ANY route of the card's
+#   version. Identity and route stay with the Option C audit (orchestrator).
+VISION_LIST_VERSION = "vision-list-2026-10-19"
+VISION_VALIDATED_LISTS = {"vision-list-2026-10-19": ()}
+
+# INTENT (1.7.0, D-24 W1): re-derivation (§ Re-derivation in the header).
+REDERIVE_VERSION = "rederive-v1"
+SOURCE_MAX_BYTES = pdi.MAX_BYTES_DEFAULT          # pdf_ingest's default --max-bytes (100 MiB)
+REDERIVE_TIMEOUT_DEFAULT_S = pdi.TIMEOUT_DEFAULT_S   # per subprocess, as pdf_ingest's --timeout
+# INTENT: pdftotext runs page by page; a few in parallel cut the wall time on
+#   long papers (each call is a separate process; results are per page, so
+#   the order of completion changes nothing).
+REDERIVE_WORKERS = 4
+# INTENT: the in-process registry of synthetic sources (selftest and unit
+#   tests): {source sha256: {"pages": {n: anchor bytes}, "lane_b": {n: bytes}}}.
+#   Filled only by build_synthetic_ingest(); the CLI never fills it, and no
+#   file or argument can, so a forged ingest cannot use it.
+SYNTHETIC_SOURCES = {}
 
 TOP_FIELDS = {"schema_version": True, "paper_key": True, "source_pdf_sha256": True, "reader_model": True,
               "vision_mode": True, "vision_validated": True, "vision_list_version": True, "coverage": True,
@@ -965,7 +1152,7 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
                 ocr_text = o_bytes.decode("utf-8", errors="replace")
         # INTENT (1.3.0, D-22): lane B is read for the unique-row locality rule
         #   only; a file that fails its hash check is not used.
-        lane_b_text = None
+        lane_b_text, b_sha = None, None
         lb_rec = r.get("lane_b") if isinstance(r.get("lane_b"), dict) else None
         if lb_rec:
             b_bytes = read_artifact(paper_dir, lb_rec.get("path"), f"lane B text for page {n}")
@@ -976,12 +1163,16 @@ def load_ingest(paper_dir, papers_dir, paper_key, pin, read_parquet):
                                          "is not used for this page"))
             else:
                 lane_b_text = b_bytes.decode("utf-8", errors="replace")
+        # 1.7.0: the files' own hashes, for the re-derivation comparison
         pages[n] = {"anchor_text": a_bytes.decode("utf-8", errors="replace"), "ocr_text": ocr_text,
                     "lane_b_text": lane_b_text, "flags": list(r.get("flags") or []),
-                    "evidence": evidence if isinstance(evidence, dict) else {}}
+                    "evidence": evidence if isinstance(evidence, dict) else {}, "anchor_file_sha256": a_sha,
+                    "lane_b_file_sha256": b_sha}
 
     items.extend(ingest_row_items(papers_dir, paper_key, mname, msha))
     ingest = {"anchor_kind": ANCHOR_KIND_PDF, "paper_key": man.get("paper_key"), "dir_key": paper_key,
+              "source": man["source"] if isinstance(man.get("source"), dict) else {},
+              "lanes": man.get("lanes") if isinstance(man.get("lanes"), dict) else {},
               "suffix": sfx, "manifest_name": mname,
               "manifest_sha256": msha, "source_sha256": src_sha, "page_count": n_pages,
               "pdf_ingest_tool_version": man.get("tool_version"), "normalize_version": man.get("normalize_version"),
@@ -1048,7 +1239,7 @@ def load_unit_ingest(paper_dir, man, mname, msha, sfx, read_parquet, items):
         # INTENT: the unit's table rows are the row source of the unique-row
         #   rule (numbers-v3) on HTML; a file that fails its hash check is not
         #   used, so its numbers fall back to the in-quote path.
-        rows_text = None
+        rows_text, t_sha = None, None
         tr = r.get("table_rows") if isinstance(r.get("table_rows"), dict) else None
         if tr:
             t_bytes = read_artifact(paper_dir, tr.get("path"), f"table rows for unit {n} (section {label})")
@@ -1062,13 +1253,15 @@ def load_unit_ingest(paper_dir, man, mname, msha, sfx, read_parquet, items):
         pages[n] = {"anchor_text": a_bytes.decode("utf-8", errors="replace"), "ocr_text": None,
                     "lane_b_text": rows_text, "flags": list(r.get("flags") or []),
                     "evidence": evidence if isinstance(evidence, dict) else {}, "label": label,
-                    "latexml_id": r.get("latexml_id"), "section_class": r.get("section_class")}
+                    "latexml_id": r.get("latexml_id"), "section_class": r.get("section_class"),
+                    "anchor_file_sha256": a_sha, "lane_b_file_sha256": t_sha}
     hev = man.get("html_extract_version")
     if hev not in HTML_EXTRACT_VERSIONS_KNOWN:
         items.append(item("integrity", "HTML_EXTRACT_VERSION_DIFFERS",
                           reason=f"ingest used {safe_line(str(hev), 40)}; this tool was built for "
                                  f"{list(HTML_EXTRACT_VERSIONS_KNOWN)}"))
     return {"anchor_kind": ANCHOR_KIND_HTML, "paper_key": man.get("paper_key"), "suffix": sfx, "manifest_name": mname,
+            "source": man["source"] if isinstance(man.get("source"), dict) else {}, "lanes": {},
             "manifest_sha256": msha, "source_sha256": src_sha, "page_count": None, "unit_count": n_units,
             "source_version": arx["version"], "arxiv_id_version": arx.get("id_version"),
             "html_extract_version": hev, "pdf_ingest_tool_version": man.get("tool_version"),
@@ -1101,6 +1294,212 @@ def ingest_row_items(papers_dir, paper_key, mname, msha):
         items.append(item("integrity", "INGEST_MANIFEST_HASH_MISMATCH",
                           reason=f"{rel} sha256 differs from the pdf_ingest MANIFEST row that wrote it"))
     return items
+
+
+# §§ REDERIVE (1.7.0, user decision D-24, review W1)
+def rederive(ingest, timeout):
+    # Re-derives the text the checks are about to trust (every anchor; lane B
+    # or table rows where a file exists) from the ingest's stored source and
+    # compares it byte-for-byte with the files (§ Re-derivation in the
+    # header). Returns (items, record). A lane B / rows file that does not
+    # re-derive is set aside (lane_b_text None), as on a hash mismatch.
+    # Raises LitVerifyError(10) when pdftotext or pdfinfo is missing.
+    t0 = time.monotonic()
+    html = ingest.get("anchor_kind") == ANCHOR_KIND_HTML
+    pages = ingest["pages"]
+    noun = "unit" if html else "page"
+    rec = {"version": REDERIVE_VERSION, "method": None, "source_path": None, "source_sha256": ingest["source_sha256"],
+           "extractor": None, "extractor_version": None, "extractor_version_ingest": None, "anchors_checked": 0,
+           "anchor_mismatches": [], "row_sources_checked": 0, "row_source_mismatches": [], "ocr": None,
+           "outcome": None, "seconds": None}
+    items = []
+
+    def shown(n):
+        return pages[n]["label"] if html and n in pages else n
+
+    def mismatch(n, status, reason):
+        items.append(item("integrity", status, page=n, reason=reason))
+        rec["anchor_mismatches" if status == "ANCHOR_REDERIVE_MISMATCH" else "row_source_mismatches"].append(
+            shown(n) if n is not None else "count")
+
+    def done(outcome):
+        ocr_pages = [n for n in sorted(pages) if pages[n].get("ocr_text")]
+        if ocr_pages:
+            # INTENT: OCR is hash-checked only (Tesseract is not re-run): said
+            #   once, so a reader of the card_check knows which text was not
+            #   re-derived. OCR evidence is already capped at PARTIAL.
+            rec["ocr"] = f"hash-checked only, not re-derived (pages {ocr_pages[:20]})"
+            items.append(item("integrity", "OCR_NOT_REDERIVED",
+                              reason=f"OCR text on page(s) {ocr_pages[:20]} is hash-checked only: Tesseract is not "
+                                     "re-run at check time"))
+        rec["outcome"] = outcome if outcome else (
+            "match" if not (rec["anchor_mismatches"] or rec["row_source_mismatches"]) else "mismatch")
+        rec["seconds"] = round(time.monotonic() - t0, 3)
+        return items, rec
+
+    derived, derived_rows, labels_d, flags_d = {}, {}, {}, {}
+    synth = None if html else SYNTHETIC_SOURCES.get(ingest["source_sha256"])
+    if synth is not None:
+        rec["method"] = "synthetic registry (an in-process selftest or unit-test ingest; the CLI never fills it)"
+        derived = {n: synth["pages"].get(n) for n in pages}
+        derived_rows = {n: synth["lane_b"].get(n) for n in pages if pages[n].get("lane_b_file_sha256")}
+        count = len(synth["pages"])
+    else:
+        # --- The stored source: resolvable, inside the root, the recorded hash ---
+        src = ingest.get("source") or {}
+        path = src.get("path")
+        real = os.path.realpath(path) if isinstance(path, str) and path else None
+        rec["source_path"] = real
+        bad, data = None, None
+        if real is None:
+            bad = "is not recorded in the ingest manifest"
+        elif not real.startswith(ALLOWED_ROOT + os.sep):
+            bad = f"resolves outside {ALLOWED_ROOT}"
+        elif any(real == p or real.startswith(p + os.sep) for p in FORBIDDEN_DEST_PREFIXES):
+            bad = "resolves under a forbidden prefix (.claude, .git, /tmp, ...)"
+        elif not os.path.isfile(real):
+            bad = "is not a file (moved or deleted since the ingest?)"
+        elif os.path.getsize(real) > SOURCE_MAX_BYTES:
+            bad = f"is larger than {SOURCE_MAX_BYTES} bytes"
+        else:
+            try:
+                with open(real, "rb") as f:
+                    data = f.read()
+            except OSError as exc:
+                bad = f"is unreadable ({exc.__class__.__name__})"
+        if bad:
+            items.append(item("integrity", "SOURCE_MISSING",
+                              reason=f"the ingest's source {safe_line(str(path), 160)!r} {bad}: its anchors cannot be "
+                                     "re-derived, so none is trusted"))
+            return done("source missing")
+        if sha256_bytes(data) != ingest["source_sha256"]:
+            items.append(item("integrity", "SOURCE_FILE_HASH_MISMATCH",
+                              reason=f"the file at the ingest's source path hashes to {sha256_bytes(data)[:16]}..., not "
+                                     f"the recorded {str(ingest['source_sha256'])[:16]}...: nothing was re-derived"))
+            return done("source hash mismatch")
+        if html:
+            # --- arXiv HTML: the same extraction pdf_ingest ran ---
+            rec.update(method=f"pdf_ingest.html_units() on the stored HTML ({pdi.HTML_EXTRACT_VERSION})",
+                       extractor="pdf_ingest arxiv-html", extractor_version=pdi.HTML_EXTRACT_VERSION,
+                       extractor_version_ingest=ingest.get("html_extract_version"))
+            try:
+                text = data.decode("utf-8")
+                arx, _, refusal = pdi.arxiv_identity(text, None)
+                _, parsed, labels = pdi.html_units(text)
+            except (UnicodeDecodeError, pdi.IngestError) as exc:
+                items.append(item("integrity", "SOURCE_REDERIVE_ERROR",
+                                  reason=f"the stored HTML could not be re-extracted ({exc.__class__.__name__})"))
+                return done("error")
+            if refusal or arx["id_version"] != ingest.get("arxiv_id_version") or \
+                    arx["version"] != ingest.get("source_version"):
+                mismatch(None, "ANCHOR_REDERIVE_MISMATCH",
+                         f"the stored HTML's watermark gives {safe_line(str(arx and arx['id_version']), 40)!r}; the "
+                         f"ingest records {safe_line(str(ingest.get('arxiv_id_version')), 40)!r}")
+            for k, ((u, t, rows), (lab, _)) in enumerate(zip(parsed, labels), 1):
+                derived[k] = t.encode("utf-8")
+                derived_rows[k] = ("\n".join(rows) + "\n").encode("utf-8") if rows else None
+                ev, _ = pdi.unit_evidence(u, t, rows)
+                labels_d[k], flags_d[k] = lab, [f for f in pdi.UNIT_FLAG_NAMES if ev[f]]
+            count = len(parsed)
+        else:
+            # --- PDF: pdftotext per page with pdf_ingest's invocation ---
+            missing = [b for b in ("pdftotext", "pdfinfo") if not shutil.which(b)]
+            if missing:
+                raise LitVerifyError(10, f"required dependency missing: {', '.join(missing)} (poppler-utils, needed to "
+                                         "re-derive PDF anchors; rebuild the DAAF image)")
+            anchor_lane = (ingest.get("lanes") or {}).get("anchor") or {}
+            rec.update(method="pdftotext per page with pdf_ingest.anchor_argv() (LC_ALL=C), compared byte-for-byte",
+                       extractor="pdftotext", extractor_version=pdi.tool_version("pdftotext", timeout),
+                       extractor_version_ingest=anchor_lane.get("version"))
+            if rec["extractor_version"] != rec["extractor_version_ingest"]:
+                items.append(item("integrity", "EXTRACTOR_VERSION_DIFFERS",
+                                  reason=f"pdftotext is {safe_line(str(rec['extractor_version']), 60)!r} now; the "
+                                         f"ingest used {safe_line(str(rec['extractor_version_ingest']), 60)!r} (the "
+                                         "byte comparison still decides)"))
+            try:
+                code, out, _ = pdi.run_tool(["pdfinfo", real], timeout)
+            except pdi.IngestError as exc:
+                code, out = None, safe_line(exc.note, 160)
+            if code != 0:
+                items.append(item("integrity", "SOURCE_REDERIVE_ERROR",
+                                  reason=f"pdfinfo failed on the stored source ({'exit ' + str(code) if code else out})"))
+                return done("error")
+            try:
+                count = int(pdi.parse_pdfinfo(out.decode("utf-8", errors="replace"))[0].get("Pages", "0"))
+            except ValueError:
+                count = 0
+
+            def one(n):
+                try:
+                    c, o, _ = pdi.run_tool(pdi.anchor_argv(real, n), timeout)
+                except pdi.IngestError as exc:
+                    return n, None, safe_line(exc.note, 160)
+                return (n, o, None) if c == 0 else (n, None, f"pdftotext exit {c}")
+
+            with ThreadPoolExecutor(max_workers=REDERIVE_WORKERS) as ex:
+                results = list(ex.map(one, [n for n in sorted(pages) if n <= count]))
+            errors = [(n, why) for n, _, why in results if why]
+            if errors:
+                items.append(item("integrity", "SOURCE_REDERIVE_ERROR", page=errors[0][0],
+                                  reason=f"pdftotext could not re-derive {len(errors)} page(s), first page "
+                                         f"{errors[0][0]}: {errors[0][1]} (raise --timeout if it timed out)"))
+                return done("error")
+            derived = {n: o for n, o, _ in results}
+            lb_pages = [n for n in sorted(pages) if pages[n].get("lane_b_file_sha256") and n <= count]
+            pdfium = try_import("pypdfium2") if lb_pages else None
+            if lb_pages and pdfium is None:
+                for n in lb_pages:
+                    pages[n]["lane_b_text"] = None
+                items.append(item("integrity", "ROW_SOURCE_NOT_REDERIVED",
+                                  reason="pypdfium2 is unavailable, so lane B cannot be re-derived; it is not used (no "
+                                         "number takes the row path)"))
+            elif lb_pages:
+                lb_lane = (ingest.get("lanes") or {}).get("lane_b") or {}
+                if str(pdfium.PYPDFIUM_INFO) != lb_lane.get("version"):
+                    items.append(item("integrity", "EXTRACTOR_VERSION_DIFFERS",
+                                      reason=f"pypdfium2 is {pdfium.PYPDFIUM_INFO} now; the ingest used "
+                                             f"{safe_line(str(lb_lane.get('version')), 60)!r} (lane B; the byte "
+                                             "comparison still decides)"))
+                try:
+                    doc = pdfium.PdfDocument(real)
+                    try:
+                        for n in lb_pages:
+                            derived_rows[n] = pdi.lane_b_page_text(doc, n).encode("utf-8")
+                    finally:
+                        doc.close()
+                except Exception as exc:  # noqa: BLE001 - lane B failing only takes away the row path
+                    for n in lb_pages:
+                        pages[n]["lane_b_text"] = None
+                    derived_rows = {}
+                    items.append(item("integrity", "ROW_SOURCE_NOT_REDERIVED",
+                                      reason=f"pypdfium2 failed on the stored source ({exc.__class__.__name__}); lane "
+                                             "B is not used"))
+
+    # --- The comparison (every anchor; every row source re-derived above) ---
+    if count != len(pages):
+        mismatch(None, "ANCHOR_REDERIVE_MISMATCH", f"the source re-derives to {count} {noun}(s); the ingest has "
+                                                   f"{len(pages)}")
+    for n in sorted(pages):
+        rec["anchors_checked"] += 1
+        d = derived.get(n)
+        if d is None or sha256_bytes(d) != pages[n]["anchor_file_sha256"]:
+            mismatch(n, "ANCHOR_REDERIVE_MISMATCH",
+                     f"the anchor file differs from the text re-derived from the source for this {noun}" +
+                     (f" (the source has no {noun} {shown(n)})" if d is None else ""))
+        elif html and (labels_d.get(n) != pages[n]["label"] or flags_d.get(n) != pages[n]["flags"]):
+            mismatch(n, "ANCHOR_REDERIVE_MISMATCH",
+                     f"the ingest's label or flags for this unit ({safe_line(pages[n]['label'], 40)!r}, "
+                     f"{pages[n]['flags']}) differ from the re-derived ones ({safe_line(str(labels_d.get(n)), 40)!r}, "
+                     f"{flags_d.get(n)})")
+        if pages[n].get("lane_b_file_sha256") and n in derived_rows:
+            rec["row_sources_checked"] += 1
+            rd = derived_rows[n]
+            if rd is None or sha256_bytes(rd) != pages[n]["lane_b_file_sha256"]:
+                mismatch(n, "ROW_SOURCE_REDERIVE_MISMATCH",
+                         f"the {'table rows' if html else 'lane B'} file differs from the text re-derived from the "
+                         "source; it is not used for this " + noun)
+                pages[n]["lane_b_text"] = None
+    return done(None)
 
 
 # §§ CHECKS
@@ -1192,11 +1591,25 @@ def check_card(card, ingest, fuzz, integrity=None):
         spans = build_spans(ingest)
     doc = ptc.prepare_doc({n: pages[n]["anchor_text"] for n in pages},
                           {n: pages[n]["ocr_text"] for n in pages if pages[n].get("ocr_text")}, spans)
+    spans_raw = spans   # raw (tail, head) per boundary, for the number views of a declared span
     if units:
         classes = {n: classify_unit(pages[n]) for n in pages}
     else:
         classes = {n: classify_page(pages[n], ingest.get("lanes_unavailable") or []) for n in pages}
     vision_ok = not units and card["vision_mode"] != "off" and card["vision_validated"] is True
+    # INTENT (1.6.0, review finding 5): fail closed on an unvalidated claim of
+    #   validation. Only block fields are used (reader_model and
+    #   vision_list_version; the route is front matter, not checked here).
+    if card["vision_validated"] is True:
+        listed = VISION_VALIDATED_LISTS.get(card["vision_list_version"])
+        if listed is None or not any(row[0] == card["reader_model"] for row in listed):
+            why = (f"vision_list_version {safe_line(str(card['vision_list_version']), 40)!r} is not a list version "
+                   f"this tool knows ({list(VISION_VALIDATED_LISTS)})" if listed is None else
+                   f"reader_model {safe_line(card['reader_model'], 80)!r} is not on vision list "
+                   f"{card['vision_list_version']!r} ({len(listed)} entr{'y' if len(listed) == 1 else 'ies'})")
+            items.append(item("vision", "VISION_NOT_ON_LIST",
+                              reason=f"vision_validated is true but {why}: vision is treated as unavailable"))
+            vision_ok = False
 
     # --- Locators: sections -> unit numbers (arXiv HTML) ---
     coverage, claims = card["coverage"], card["claims"]
@@ -1377,8 +1790,28 @@ def check_card(card, ingest, fuzz, integrity=None):
         summary["coverage_status"] = status
         page_summaries.append(summary)
 
+    # INTENT (1.6.0, D-24 W2): the coverage cap for a paper whose text is
+    #   largely an existing OCR layer (PDF only; HTML units never carry it).
+    ocr_layer_all = [n for n in sorted(pages) if OCR_LAYER_FLAG in (pages[n].get("flags") or [])]
+    if not units and len(ocr_layer_all) >= OCR_LAYER_PAPER_CAP_PAGES:
+        shown = ocr_layer_all[:12] + (["..."] if len(ocr_layer_all) > 12 else [])
+        items.append(item("paper", "OCR_LAYER_PAPER",
+                          reason=f"{len(ocr_layer_all)} pages flagged ocr_layer_suspected (>= "
+                                 f"{OCR_LAYER_PAPER_CAP_PAGES}; pages {shown}): the paper's text is largely an "
+                                 "existing OCR layer never compared with the images; grade capped at "
+                                 "FULL_TEXT_PARTIAL"))
+
     # --- Claims ---
     nouns = "section(s)" if units else "page(s)"
+    # INTENT (numbers-v4): one number view per page text and lane, built on
+    #   first use (pdf_text_common.number_view).
+    view_cache = {}
+
+    def view_of(n, key):
+        if (n, key) not in view_cache:
+            view_cache[(n, key)] = ptc.number_view(pages[n][key])
+        return view_cache[(n, key)]
+
     rowsrc = "table" if units else "lane B"
     for c in claims:
         p, pe, cid = c["page"], c.get("page_end"), c["claim_id"]
@@ -1397,12 +1830,16 @@ def check_card(card, ingest, fuzz, integrity=None):
                               reason=f"source {c['source']!r} but vision_mode={card['vision_mode']!r}, "
                                      f"vision_validated={card['vision_validated']}"))
         q = c["quote"]
+        # 1.6.0: every claim_quote item carries the quote-number fields (null
+        #   until the ladder-v2 rule runs on a passing quote).
+        qn_fields = {"quote_numbers": None, "page_numbers": None, "quote_numbers_agree": None,
+                     "status_if_confirmed": None}
         if q is None or not q.strip():
             items.append(item("claim_quote", "VISION_ONLY", page=p, page_end=pe, claim_id=cid,
-                              reason="vision claim without a quote: unanchored"))
+                              reason="vision claim without a quote: unanchored", **qn_fields))
         else:
             it = evaluate(q, p, pe, "claim")
-            it["claim_id"] = cid
+            it.update(claim_id=cid, **qn_fields)
             items.append(it)
         cited = [p] + ([pe] if pe else [])
         # INTENT (2.0.0, D-21 N2): a claim that relies on a page flagged
@@ -1427,23 +1864,56 @@ def check_card(card, ingest, fuzz, integrity=None):
         # INTENT (numbers-v2, D-21 N1): where the claim's quote matched, per
         #   lane, in NORMALIZE coordinates (a declared span is matched across
         #   the two pages' boundary text). A number must sit there.
+        #   numbers-v4: each location is (number view, spans, page; page None
+        #   for a declared span).
         located = {"anchor": [], "ocr": []}
-        row_pages = []
         if q and q.strip():
             for n in cited:
                 for lane, key in (("anchor", "anchor_text"), ("ocr", "ocr_text")):
                     if pages[n].get(key):
                         norm, spans = ptc.quote_spans(q, pages[n][key])
                         if spans:
-                            located[lane].append((norm, spans))
-                            if lane == "anchor":
-                                row_pages.append(n)
+                            located[lane].append((view_of(n, key), spans, n))
             if pe and (p, pe) in doc["span"]:
                 ln, rn = doc["span"][(p, pe)][:2]
                 norm, spans = ptc.quote_spans(q, ln + " " + rn)
                 if spans:
-                    located["anchor"].append((norm, spans))
-                    row_pages = [p, pe]
+                    lraw, rraw = spans_raw[(p, pe)]
+                    located["anchor"].append((ptc.join_views(ptc.number_view(lraw), ptc.number_view(rraw)), spans,
+                                              None))
+        # INTENT (ladder-v2, S3-A B2): the quote-number rule. A claim quote
+        #   that passed on any tier must print, in order, the same number
+        #   tokens (sign included) as the page span it matched; SKELETON
+        #   deletes "-", so "slope was 0.164" otherwise passes on "−0.164".
+        #   A mismatch (or a passing quote that cannot be located) is review.
+        if q and q.strip() and it["status"] in QUOTE_NUMBER_CHECKED:
+            lane = "ocr" if it["lane"] == "ocr" else "anchor"
+            checks = [ptc.quote_numbers_agree(q, v, spans) for v, spans, _ in located[lane]] or [
+                ptc.quote_numbers_agree(q, None, [])]
+            bad = next((c for c in checks if c[0] is not True), None)
+            it.update(quote_numbers=checks[0][1], page_numbers=(bad or checks[0])[2],
+                      quote_numbers_agree=bad is None)
+            if bad is not None:
+                it.update(status="QUOTE_NUMBERS_DIFFER", severity=SEVERITY["QUOTE_NUMBERS_DIFFER"],
+                          status_if_confirmed=it["status"],
+                          reason=safe_line(f"{it['reason']}; the quote's numbers {bad[1]} differ from the numbers "
+                                           f"the matched page span prints {bad[2]} (a sign, digit or range dash the "
+                                           "match ignored): a human checks the quote", 600)
+                          if bad[0] is False else safe_line(f"{it['reason']}; the matched span could not be located "
+                                                            "for the quote-number check", 600))
+        # INTENT (numbers-v4, S3-A B3): the row path's page and start guards:
+        #   only a single-page anchor match on a page flagged table/numeric
+        #   whose match begins at a row start.
+        row_pages, ineligible = [], []
+        for v, spans, n in located["anchor"]:
+            if n is None:
+                ineligible.append("the quote spans two " + ("sections" if units else "pages"))
+            elif not set(ptc.ROW_PAGE_FLAGS) & set(pages[n].get("flags") or []):
+                ineligible.append(f"{where(n)} is not flagged {' or '.join(ptc.ROW_PAGE_FLAGS)}")
+            elif not any(ptc.at_row_start(v, s) for s, _ in spans):
+                ineligible.append(f"the quote does not start at a row start on {where(n)}")
+            else:
+                row_pages.append(n)
         # INTENT (numbers-v3, D-22): the unique-row path. Only a quote that
         #   passed on the anchor (lane B never anchors a quote) and only the
         #   lane B text of the page(s) where it matched.
@@ -1455,6 +1925,25 @@ def check_card(card, ingest, fuzz, integrity=None):
                                                                      "PASS_OCR_LAYER", "PASS_CONVERSION_ERROR")
         lane_b_texts = [pages[n]["lane_b_text"] for n in row_pages if pages[n].get("lane_b_text")]
         row = ptc.quote_row(q, lane_b_texts) if quote_on_anchor and lane_b_texts else None
+        # INTENT (numbers-v5, S3-B1): the anchor cell guard. The identified
+        #   label must stand as a cell on the anchor line where the quote
+        #   matched (alone on its line, or followed by cells); a prose sentence
+        #   that starts with a row label word is not a row.
+        # REASONING: S3-A2 open question 1 (doi_79ea144e p8 "ORGANIZATION and
+        #   other models; ...", doi_cae47236 p23 lane B fragment "the 1");
+        #   measured in WS script 96 (genuine / fabricated rates before ->
+        #   after: see the S3-B1 report).
+        if row is not None and row["status"] == "unique" and not any(
+                ptc.row_label_is_cell(v, s, len(row["row"]["label"])) for v, spans, n in located["anchor"]
+                if n in row_pages for s, _ in spans if ptc.at_row_start(v, s)):
+            row = None
+            ineligible.append("the identified row label is followed by prose on its anchor line (not a cell)")
+        # INTENT (numbers-v4): lane B exists where the quote matched but a guard
+        #   refused the row path: recorded as row_match "ineligible".
+        row_refused = None
+        if row is None and quote_on_anchor and ineligible and any(
+                pages[n].get("lane_b_text") for n in ([p, pe] if pe else [p])):
+            row_refused = "; ".join(dict.fromkeys(ineligible))
         anchor_toks = [t for n in cited for t in ptc.number_candidates(pages[n]["anchor_text"])]
         ocr_toks = [t for n in cited for t in ptc.number_candidates(pages[n].get("ocr_text") or "")]
         for s in c["numbers"]:
@@ -1462,14 +1951,18 @@ def check_card(card, ingest, fuzz, integrity=None):
             base = {"page": p, "page_end": pe, "claim_id": cid, "number": safe_line(s, 80)}
             if tok is None:
                 items.append(item("claim_number", "NUMBER_UNPARSEABLE", label="unparseable", locality=None,
-                                  row_match=None,
+                                  row_match=None, column_checked=None, column_label=None, column_values=None,
+                                  column_severity=None,
                                   reason="not one number (write it as printed, e.g. -0.087, (0.044), 1,204)", **base))
                 continue
             kind, hit = ptc.compare_number(tok, anchor_toks)
-            near = {lane: any(ptc.number_near_spans(tok, norm, spans, ptc.NUMBER_NEAR_CHARS)
-                              for norm, spans in located[lane]) for lane in located}
+            near = {lane: any(ptc.number_near_view(tok, v, spans, ptc.NUMBER_NEAR_CHARS)
+                              for v, spans, _ in located[lane]) for lane in located}
             in_row = bool(row and row["status"] == "unique" and ptc.number_in_row(tok, row["row"]))
             locality = None
+            # INTENT (1.5.0, D-23): which lane's quote span cleared the number
+            #   in-quote ("anchor" or "ocr"), for the column label below.
+            clear_lane = None
             row_note = ""
             if row is not None:
                 row_note = {"unique": f"; the quote's leading label identifies one {rowsrc} row, which does not "
@@ -1477,6 +1970,8 @@ def check_card(card, ingest, fuzz, integrity=None):
                             "ambiguous": f"; the quote's leading label matches {row['candidates']} {rowsrc} rows "
                                          "(ambiguous: no row path)",
                             "none": f"; the quote's leading label identifies no {rowsrc} row"}[row["status"]]
+            elif row_refused:
+                row_note = f"; no row path ({row_refused})"
             not_near = ("printed on the cited " + nouns + " as {!r} but not inside the claim's quote where it matched"
                         + ("" if located["anchor"] or located["ocr"] else
                            " (the claim's quote is not located on the cited " + nouns + ")") + row_note
@@ -1485,11 +1980,15 @@ def check_card(card, ingest, fuzz, integrity=None):
                 status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(hit["raw"], 40))
             elif kind == "exact":
                 locality = "in-quote" if near["anchor"] else "row"
+                clear_lane = "anchor" if near["anchor"] else None
                 notes = []
                 if hit["paren"] != tok["paren"]:
                     notes.append(f"page prints it {'in' if hit['paren'] else 'without'} parentheses")
                 if hit["percent"] != tok["percent"]:
                     notes.append(f"page prints it {'with' if hit['percent'] else 'without'} %")
+                if hit.get("sup") and not tok.get("sup"):
+                    notes.append(f"page prints the superscript mark(s) {safe_line(hit['sup'], 12)!r} after it (a "
+                                 "footnote mark or an exponent)")
                 if c["source"] == "vision":
                     notes.append("the text layer corroborates the vision reading")
                 if locality == "row":
@@ -1510,7 +2009,7 @@ def check_card(card, ingest, fuzz, integrity=None):
                     status, reason = "NUMBER_NOT_NEAR_QUOTE", not_near.format(safe_line(ohit["raw"], 40)) + \
                         " (OCR text)"
                 elif okind == "exact":
-                    locality = "in-quote"
+                    locality, clear_lane = "in-quote", "ocr"
                     status = "NUMBER_OCR_VISION" if c["source"] == "both" else "NUMBER_OCR_ONLY"
                     reason = "only in the page's OCR text" + (", corroborated by a vision reading"
                                                               if c["source"] == "both" else "")
@@ -1532,9 +2031,38 @@ def check_card(card, ingest, fuzz, integrity=None):
                         reason = "not on the cited page(s) in any text lane" + (
                             f"; found on page(s) {elsewhere}" if elsewhere else "") + (
                             "; source \"both\" declares a text reading" if c["source"] == "both" else "")
-            items.append(item("claim_number", status, label=NUMBER_LABELS[status], reason=reason,
-                              number_digits=tok["digits"], locality=locality,
-                              row_match=row["status"] if row is not None else None, **base))
+            # INTENT (1.5.0, D-23): the column label. The clearing text is the
+            #   quote's matched span(s) in the lane that cleared the number, or
+            #   the identified row after its label; column_values() counts the
+            #   distinct comparable values printed there (None: nothing to
+            #   label). The largest count over matched spans is kept (the
+            #   conservative side when a quote matched more than once).
+            # REASONING: a number that clears cannot tell WHICH cell of a
+            #   multi-number row or quote the claim means (residual (a)); the
+            #   label makes that visible for a later human check without
+            #   changing the verdict now.
+            col = None
+            if locality == "row":
+                col = ptc.column_values(tok, row["row"]["line"], row["row"]["cut"], len(row["row"]["line"]))
+            elif clear_lane is not None:
+                counted = [ptc.column_values(tok, v, s, e) for v, spans, _ in located[clear_lane] for s, e in spans]
+                counted = [v for v in counted if v is not None]
+                col = max(counted) if counted else None
+            unchecked = col is not None and col > 1
+            it_num = item("claim_number", status, label=NUMBER_LABELS[status], reason=reason,
+                          number_digits=tok["digits"], locality=locality,
+                          row_match=row["status"] if row is not None else ("ineligible" if row_refused else None),
+                          column_checked=None if col is None else not unchecked,
+                          column_label=COLUMN_UNCHECKED_LABEL if unchecked else None, column_values=col,
+                          column_severity=COLUMN_UNCHECKED_SEVERITY if unchecked else None, **base)
+            if unchecked and SEVERITY_RANK.get(COLUMN_UNCHECKED_SEVERITY, -1) > SEVERITY_RANK.get(
+                    it_num["severity"], 0):
+                # HOOK (D-23): only when COLUMN_UNCHECKED_SEVERITY is flipped from
+                #   "label" to a verdict-bearing level; "label" never raises.
+                it_num["severity"] = COLUMN_UNCHECKED_SEVERITY
+                it_num["reason"] = safe_line(f"{reason}; column not checked: the clearing text prints {col} "
+                                             "comparable values (a human checks which cell the claim means)", 600)
+            items.append(it_num)
 
     if units:
         to_sections(items, labels)
@@ -1580,7 +2108,10 @@ def result_of(items, page_summaries, summaries, card, fuzz, vision_ok, redaction
     grade = {"PASS": "FULL_TEXT_VERIFIED", "PARTIAL": "FULL_TEXT_PARTIAL"}.get(verdict)
     if_confirmed = None
     if verdict == "NEEDS_REVIEW":
-        if_confirmed = "FULL_TEXT_PARTIAL" if "partial" in sev else "FULL_TEXT_VERIFIED"
+        # 1.6.0: a QUOTE_NUMBERS_DIFFER item keeps the partial weight of the
+        #   pass it replaced (e.g. PASS_OCR_LAYER) for the if-confirmed grade.
+        held = any(SEVERITY.get(it.get("status_if_confirmed")) == "partial" for it in items)
+        if_confirmed = "FULL_TEXT_PARTIAL" if "partial" in sev or held else "FULL_TEXT_VERIFIED"
     counts = {s: sum(1 for it in items if it["severity"] == s) for s in ("pass", "partial", "review", "fail",
                                                                           "warning")}
     covered = sum(1 for ps in summaries if ps["coverage_status"] in (
@@ -1595,13 +2126,21 @@ def result_of(items, page_summaries, summaries, card, fuzz, vision_ok, redaction
                       claims=len(card["claims"]),
                       numbers=sum(len(c["numbers"]) for c in card["claims"]),
                       pages_scanned=sum(1 for v in classes.values() if v[0] == "scanned"),
-                      pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"))
+                      pages_sparse=sum(1 for v in classes.values() if v[0] == "sparse"),
+                      pages_ocr_layer=sum(1 for s in summaries if s.get("ocr_layer")))
+    # INTENT (1.5.0, D-23): the column label, counted and listed apart from
+    #   the severity lists (a "label" never enters them or the verdict).
+    labeled = [it for it in items if it.get("column_label")]
+    counts["numbers_column_not_checked"] = len(labeled)
     lists = {s: [summary_line(it) for it in items if it["severity"] == s] for s in ("fail", "review", "partial",
                                                                                      "warning")}
     return {"verdict": verdict, "evidence_grade_suggested": grade, "evidence_grade_if_review_confirmed": if_confirmed,
             "vision_available": vision_ok, "fuzzy_tier_run": fuzz is not None, "counts": counts,
             "failures": lists["fail"], "review_items": lists["review"], "partial_items": lists["partial"],
-            "warnings": lists["warning"], "pages": [] if units else page_summaries,
+            "warnings": lists["warning"],
+            "column_not_checked_items": [safe_line(f"{summary_line(it)} [{COLUMN_UNCHECKED_LABEL}: "
+                                                   f"{it['column_values']} comparable values]", 460) for it in labeled],
+            "pages": [] if units else page_summaries,
             "sections": summaries if units else [], "items": items, "redaction_count": redactions[0],
             "secret_redactions": sorted(secret_names)}
 
@@ -1639,7 +2178,11 @@ def write_card_check(paper_dir, card_name, payload):
 
 # §§ SELFTEST
 SELFTEST_KEYS = {"A": "user_5e1f7e5a", "B": "user_5e1f7e5b", "T": "user_5e1f7e5c", "R": "user_5e1f7e5e",
-                 "H": "user_5e1f7e60"}
+                 "H": "user_5e1f7e60", "S": "user_5e1f7e61", "F": "user_5e1f7e62", "G": "user_5e1f7e63",
+                 "W": "user_5e1f7e64"}
+# 1.7.0 (review W1): the sentence the forged ingest set F plants (invented).
+SELFTEST_FABRICATED = ("The violet ferry returned with ninety cheerful cartographers and a cargo of invented "
+                       "silver lanterns.")
 # 1.4.0 (D-21 N5): paper H, a synthetic arXiv HTML (LaTeXML-shaped, the same
 #   shape as tests/python/fixtures/pdf_ingest/html/synthetic_latexml.html),
 #   ingested by pdf_ingest's REAL arxiv-html lane, so the selftest also checks
@@ -1740,17 +2283,55 @@ SELFTEST_PAGES = {
                    "The counts in Table 5 are invented to exercise the row rule of the verification gate.\n",
          "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 5"]}},
     ],
+    # 1.6.0 (S3-A): the review findings, planted. A spaced minus ("Est = -
+    #   0.041", B1), a U+2212 minus inside a sentence a quote can drop (B2),
+    #   and a prose lane B line whose label a prose quote names (B3) on a page
+    #   flagged table, with the quote at a line start, so only the cell-like
+    #   tail guard refuses it. Every word and number is invented.
+    "S": [
+        {"anchor": "Synthetic Sign Page\nThe invented harbour model estimated the tide slope (Est = - 0.041, SE = "
+                   "0.050) for the northern quay.\nThe lantern slope was −0.164 for the amber lanterns and nobody on "
+                   "the quay checked it twice.\nwhich lanterns burned while the keepers counted the gulls along the "
+                   "invented quay wall\n27\nThe counts on this page are invented to exercise the sign and row rules "
+                   "of the verification gate.\n\f",
+         "lane_b": "Synthetic Sign Page\nThe invented harbour model estimated the tide slope (Est = - 0.041, SE = "
+                   "0.050) for the northern quay.\nThe lantern slope was −0.164 for the amber lanterns and nobody on "
+                   "the quay checked it twice.\nwhich 27 lanterns burned while the keepers counted the gulls along the "
+                   "invented quay wall\nThe counts on this page are invented to exercise the sign and row rules of "
+                   "the verification gate.\n",
+         "flags": ["table", "numeric"], "evidence": {"table": ["caption: none (selftest)"]}},
+    ],
+    # 1.7.0 (numbers-v5, S3-A2 open question 1): a column-major table page whose
+    #   prose line STARTS with a row label ("Harbour gulls (counted at dawn) and
+    #   other birds ..."); on the anchor line where a quote matches, the label
+    #   stands alone (a cell) or is followed by prose. Every word is invented.
+    "W": [
+        {"anchor": "Table 6: Invented gull counts by quay\nQuay\nHarbour gulls (counted at dawn)\nRiver terns (counted "
+                   "at dusk)\nSpring\n41\n13\nAutumn\n21\n17\nHarbour gulls (counted at dawn) and other birds were "
+                   "counted by the keepers along the invented quay wall.\nThe counts in Table 6 are invented to exercise "
+                   "the anchor cell guard of the row rule.\n\f",
+         "lane_b": "Table 6: Invented gull counts by quay\nQuay Spring Autumn\nHarbour gulls (counted at dawn) 41 21\n"
+                   "River terns (counted at dusk) 13 17\nHarbour gulls (counted at dawn) and other birds were counted by "
+                   "the keepers along the invented quay wall.\nThe counts in Table 6 are invented to exercise the anchor "
+                   "cell guard of the row rule.\n",
+         "flags": ["table", "numeric"], "evidence": {"table": ["caption: Table 6"]}},
+    ],
 }
 
 
-def build_synthetic_ingest(papers_dir, key, pages, write_parquet):
+def build_synthetic_ingest(papers_dir, key, pages, write_parquet, with_row=True):
     # Writes a minimal pdf_ingest-shaped ingest (anchor/, ocr/, page_index,
-    # ingest_manifest.json LAST) plus a pdf_ingest-kind MANIFEST row marked
-    # synthetic. Returns the fake source sha256. Inputs only: the checks run
-    # through the real card gate.
+    # ingest_manifest.json LAST) plus (with_row) a pdf_ingest-kind MANIFEST
+    # row marked synthetic. Returns the fake source sha256. Inputs only: the
+    # checks run through the real card gate. 1.7.0: there is no source file,
+    # so the planted text is registered in SYNTHETIC_SOURCES (in-process
+    # only) as what re-derivation of this source yields.
     key_dir = os.path.join(papers_dir, key)
     os.makedirs(os.path.join(key_dir, "anchor"))
     src_sha = sha256_bytes(f"%PDF-1.7 lit_verify selftest synthetic source {key}".encode("utf-8"))
+    SYNTHETIC_SOURCES[src_sha] = {"pages": {n: pg["anchor"].encode("utf-8") for n, pg in enumerate(pages, 1)},
+                                  "lane_b": {n: pg["lane_b"].encode("utf-8") for n, pg in enumerate(pages, 1)
+                                             if pg.get("lane_b") is not None}}
     records = []
     cols = {"page_no": [], "anchor_sha256": [], "lane_b_sha256": [], "flag_scanned": [], "flag_evidence": []}
     for n, pg in enumerate(pages, 1):
@@ -1786,6 +2367,8 @@ def build_synthetic_ingest(papers_dir, key, pages, write_parquet):
                 "pages": records}
     mdata = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
     write_new(os.path.join(key_dir, "ingest_manifest.json"), mdata)
+    if not with_row:
+        return src_sha
     append_manifest(papers_dir, {"kind": "pdf_ingest", "tool_version": "synthetic (lit_verify selftest)",
                                  "paper_key": key, "version_suffix": "",
                                  "artifacts": {"ingest_manifest": {"path": f"{key}/ingest_manifest.json",
@@ -1794,7 +2377,39 @@ def build_synthetic_ingest(papers_dir, key, pages, write_parquet):
     return src_sha
 
 
-def selftest_card(key, src_sha, coverage, claims, vision_validated=True):
+def forge_ingest_set(papers_dir, key, fabricated, read_parquet, write_parquet):
+    # (1.7.0, review W1) Selftest only: the reviewer's forgery. A complete _a
+    # ingest set whose page 1 anchor starts with a fabricated sentence, every
+    # hash consistent (anchor_a/, page_index_a, ingest_manifest_a) and a
+    # forged pdf_ingest MANIFEST row for it: only re-derivation catches it.
+    key_dir = os.path.join(papers_dir, key)
+    with open(os.path.join(key_dir, "ingest_manifest.json"), encoding="utf-8") as f:
+        man = json.load(f)
+    with open(os.path.join(key_dir, "anchor", "p001.txt"), "rb") as f:
+        new = fabricated.encode("utf-8") + b"\n" + f.read()
+    os.makedirs(os.path.join(key_dir, "anchor_a"))
+    write_new(os.path.join(key_dir, "anchor_a", "p001.txt"), new)
+    with open(os.path.join(key_dir, "page_index.parquet"), "rb") as f:
+        rows = read_parquet(f.read())
+    for r in rows:
+        if r["page_no"] == 1:
+            r["anchor_sha256"] = sha256_bytes(new)
+    idx = write_parquet({k: [r[k] for r in rows] for k in rows[0]})
+    write_new(os.path.join(key_dir, "page_index_a.parquet"), idx)
+    man["version_suffix"] = "_a"
+    man["pages"][0]["anchor"] = {"path": "anchor_a/p001.txt", "bytes": len(new), "sha256": sha256_bytes(new)}
+    man["artifacts"]["page_index"] = {"path": "page_index_a.parquet", "bytes": len(idx), "sha256": sha256_bytes(idx)}
+    mdata = (json.dumps(man, indent=2) + "\n").encode("utf-8")
+    write_new(os.path.join(key_dir, "ingest_manifest_a.json"), mdata)
+    append_manifest(papers_dir, {"kind": "pdf_ingest", "paper_key": key, "version_suffix": "_a",
+                                 "artifacts": {"ingest_manifest": {"path": f"{key}/ingest_manifest_a.json",
+                                                                   "bytes": len(mdata), "sha256": sha256_bytes(mdata)}},
+                                 "exit_code": 0, "note": "FORGED by lit_verify selftest (review W1)"})
+
+
+def selftest_card(key, src_sha, coverage, claims, vision_validated=False):
+    # 1.6.0: vision_validated defaults to false (no model is on the vision
+    #   list; true is the planted VISION_NOT_ON_LIST case).
     # A complete synthetic card (front matter + prose + one lit-verify block).
     block = {"schema_version": CARD_SCHEMA_VERSION, "paper_key": key, "source_pdf_sha256": src_sha,
              "ingest_suffix": "", "reader_model": "selftest-synthetic", "vision_mode": "auto",
@@ -1839,7 +2454,8 @@ def selftest_card_html(key, src_sha, version, coverage, claims, over=None):
 def selftest_cases(src):
     # (name, paper, card coverage, claims, vision_validated, expected verdict,
     #  expected exit, a status that must appear (or None), item kind for it[,
-    #  card overrides (1.4.0; "v1": True builds a v1 card on paper H)]).
+    #  card overrides (1.4.0; "v1": True builds a v1 card on paper H; 1.5.0:
+    #  "column_checked": {number string: expected column_checked})]).
     a_cov = [
         {"page": 1, "anchors": ["The violet ferry carried nineteen patient cartographers across the silver estuary"],
          "summary": "the voyage begins"},
@@ -1877,6 +2493,9 @@ def selftest_cases(src):
           "claim": "North Quay with tide gauge, Autumn: 0.63"}
     r4 = {"claim_id": "R4", "page": 1, "quote": "All Harbours All Harbours Spring 0.62 0.71 0.55", "numbers": ["0.41"],
           "source": "text", "table_ref": "Table 5"}
+    # INTENT (1.5.0, D-23): a quote that prints exactly one number (in-quote).
+    r6 = {"claim_id": "R6", "page": 1, "quote": "The counts in Table 5 are invented to exercise the row rule",
+          "numbers": ["5"], "source": "text"}
     # INTENT (1.4.0, D-21 N5): paper H, cited by section label. H1 quotes the
     #   row-major anchor through the cells (in-quote); H2 stops before the last
     #   cell, so its number clears through the one rows/ row its label names.
@@ -1901,45 +2520,76 @@ def selftest_cases(src):
           "numbers": ["23"], "source": "text"}
     h_v1_cov = [{"page": 1, "anchors": ["An invented survey counted copper lanterns along the northern quay"],
                  "summary": "a PDF-style card on an HTML ingest"}]
+    # INTENT (1.6.0, S3-A): paper S. s1 quotes the spaced minus; s2 drops the
+    #   U+2212 minus inside its quote (no declared number: only the
+    #   quote-number rule sees it); s3 is a prose quote (no number) at a line
+    #   start that names the prose lane B line "which 27 lanterns ...".
+    s_cov = [{"page": 1, "anchors": ["The counts on this page are invented to exercise the sign and row rules"],
+              "summary": "the sign and row page"}]
+    s1 = {"claim_id": "S1", "page": 1, "quote": "estimated the tide slope (Est = - 0.041, SE = 0.050) for the northern "
+                                                "quay", "numbers": ["-0.041"], "source": "text"}
+    s2 = {"claim_id": "S2", "page": 1, "quote": "The lantern slope was 0.164 for the amber lanterns and nobody",
+          "numbers": [], "source": "text"}
+    s3 = {"claim_id": "S3", "page": 1, "quote": "which lanterns burned while the keepers counted the gulls along the "
+                                                "invented", "numbers": ["27"], "source": "text"}
+    # INTENT (1.7.0): paper F carries the forged _a set (fabricated p1 sentence);
+    #   paper G is genuine but has no pdf_ingest MANIFEST row.
+    f1 = {"claim_id": "F1", "page": 1, "quote": SELFTEST_FABRICATED, "numbers": [], "source": "text",
+          "claim": "a sentence planted in a forged ingest set"}
+    # INTENT (numbers-v5): paper W. w1 is a column-major run of row labels (the
+    #   first label alone on its anchor line): genuine, row path. w2 is a prose
+    #   sentence that starts with the same label: not a row.
+    w_cov = [{"page": 1, "anchors": ["The counts in Table 6 are invented to exercise the anchor cell guard"],
+              "summary": "Table 6, a column-major table page"}]
+    w1 = {"claim_id": "W1", "page": 1, "quote": "Harbour gulls (counted at dawn) River terns (counted at dusk) Spring",
+          "numbers": ["21"], "source": "text", "table_ref": "Table 6", "claim": "Harbour gulls, Autumn: 21"}
+    w2 = {"claim_id": "W2", "page": 1, "quote": "Harbour gulls (counted at dawn) and other birds were counted by the "
+                                                "keepers", "numbers": ["41"], "source": "text"}
     return [
-        ("genuine card", "A", a_cov, [c1, c2], True, "PASS", 0, None, None),
-        ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], True, "FAIL", 11,
+        ("genuine card", "A", a_cov, [c1, c2], False, "PASS", 0, None, None),
+        ("one digit changed in a claim number", "A", a_cov, [dict(c1, numbers=["-0.088"]), c2], False, "FAIL", 11,
          "NUMBER_MISSING", "claim_number"),
-        ("correct quote cited to the adjacent page", "A", a_cov, [c1, dict(c2, page=3)], True, "FAIL", 11,
+        ("correct quote cited to the adjacent page", "A", a_cov, [c1, dict(c2, page=3)], False, "FAIL", 11,
          "WRONG_PAGE", "claim_quote"),
         ("invented 12-word quote", "A", a_cov,
          [dict(c1, quote="The lighthouse keeper painted seven blue boats every second winter morning there"), c2],
-         True, "FAIL", 11, "NOT_FOUND", "claim_quote"),
-        ("dropped negative sign", "A", a_cov, [dict(c1, numbers=["0.087"]), c2], True, "FAIL", 11, "NUMBER_MISSING",
+         False, "FAIL", 11, "NOT_FOUND", "claim_quote"),
+        ("dropped negative sign", "A", a_cov, [dict(c1, numbers=["0.087"]), c2], False, "FAIL", 11, "NUMBER_MISSING",
          "claim_number"),
-        ("non-identifying short quote", "A", a_cov, [dict(c1, quote="Table 1 are invented"), c2], True, "FAIL", 11,
+        ("non-identifying short quote", "A", a_cov, [dict(c1, quote="Table 1 are invented"), c2], False, "FAIL", 11,
          "NON_IDENTIFYING", "claim_quote"),
-        ("tampered anchor file", "T", a_cov, [c1, c2], True, "FAIL", 11, "ANCHOR_HASH_MISMATCH", "integrity"),
+        ("tampered anchor file", "T", a_cov, [c1, c2], False, "FAIL", 11, "ANCHOR_HASH_MISMATCH", "integrity"),
         ("vision claim on a vision_validated: false card", "A", a_cov,
          [c1, c2, {"claim_id": "C3", "page": 3, "quote": None, "numbers": ["12"], "source": "vision"}], False,
          "FAIL", 11, "VISION_UNAVAILABLE_CLAIM", "vision"),
         ("synonym-swap paraphrase", "A", a_cov,
          [c1, c2, {"claim_id": "C3", "page": 1, "quote": "The violet ferry ferried nineteen patient cartographers "
                                                          "across the silver estuary", "numbers": [], "source": "text"}],
-         True, "NEEDS_REVIEW", 0, "NEAR", "claim_quote"),
-        ("quote from a truly scanned page's OCR text", "B", b_cov, [b1], True, "PARTIAL", 0, "PASS_OCR", "claim_quote"),
+         False, "NEEDS_REVIEW", 0, "NEAR", "claim_quote"),
+        ("quote from a truly scanned page's OCR text", "B", b_cov, [b1], False, "PARTIAL", 0, "PASS_OCR", "claim_quote"),
         ("fused compound hyphen (genuine card)", "A", None, None, None, "PASS", 0, "PASS_SKELETON", "claim_quote"),
         ("sparse non-image page (genuine card)", "A", None, None, None, "PASS", 0, "COVERED_SPARSE", "coverage"),
         ("number printed on the page, not in the quote", "A", a_cov,
          [dict(c1, quote="The estimates in Table 1 are invented and exist only to exercise the number rules"), c2],
-         True, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
-        ("claim on an existing OCR text layer page", "B", b_cov, [b1, b2], True, "PARTIAL", 0, "PASS_OCR_LAYER",
+         False, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        ("claim on an existing OCR text layer page", "B", b_cov, [b1, b2], False, "PARTIAL", 0, "PASS_OCR_LAYER",
          "claim_quote"),
-        ("table number found through its one lane B row", "R", r_cov, [r1], True, "PASS", 0, "NUMBER_OK",
+        ("table number found through its one lane B row", "R", r_cov, [r1], False, "PASS", 0, "NUMBER_OK",
          "claim_number"),
         # REASONING: residual (a), documented: a fabricated Spring value (0.62 -> 0.63) that
         #   the same row prints in another column clears; a validated vision check could catch it.
         ("fabricated value printed in the same row (residual)", "R", r_cov,
-         [dict(r1, claim="North Quay with tide gauge, Spring: 0.63")], True, "PASS", 0, "NUMBER_OK", "claim_number"),
-        ("fabricated value from a look-alike row", "R", r_cov, [dict(r1, numbers=["0.74"])], True, "NEEDS_REVIEW", 0,
+         [dict(r1, claim="North Quay with tide gauge, Spring: 0.63")], False, "PASS", 0, "NUMBER_OK", "claim_number"),
+        ("fabricated value from a look-alike row", "R", r_cov, [dict(r1, numbers=["0.74"])], False, "NEEDS_REVIEW", 0,
          "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
-        ("row label shared by two rows (falls back)", "R", r_cov, [r4], True, "NEEDS_REVIEW", 0,
+        ("row label shared by two rows (falls back)", "R", r_cov, [r4], False, "NEEDS_REVIEW", 0,
          "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        # 1.5.0 (D-23): the same residual case now carries the column label (its
+        #   row prints 0.62 and 0.63); a single-number quote on the same page is
+        #   column-checked. The verdict stays PASS: the label is not a verdict.
+        ("column label: multi-number row vs one number", "R", r_cov,
+         [dict(r1, claim="North Quay with tide gauge, Spring: 0.63"), r6], False, "PASS", 0, "NUMBER_OK",
+         "claim_number", {"column_checked": {"0.63": False, "5": True}}),
         # 1.4.0 (D-21 N5): arXiv HTML, cited by section
         ("arXiv HTML card, table row via rows/ (genuine)", "H", h_cov, [h1, h2], False, "PASS", 0, "NUMBER_OK",
          "claim_number"),
@@ -1951,6 +2601,25 @@ def selftest_cases(src):
          "integrity", {"source_version": "v2"}),
         ("PDF (v1) card on an arXiv HTML ingest", "H", h_v1_cov, [], False, "FAIL", 11, "ANCHOR_KIND_MISMATCH",
          "integrity", {"v1": True}),
+        # 1.6.0 (S3-A): the review findings, planted on paper S (see SELFTEST_PAGES["S"])
+        ("B1 spaced minus, genuine negative", "S", s_cov, [s1], False, "PASS", 0, "NUMBER_OK", "claim_number"),
+        ("B1 spaced minus, sign-flipped claim", "S", s_cov, [dict(s1, numbers=["0.041"])], False, "FAIL", 11,
+         "NUMBER_MISSING", "claim_number"),
+        ("B2 minus deleted inside a quote", "S", s_cov, [s2], False, "NEEDS_REVIEW", 0, "QUOTE_NUMBERS_DIFFER",
+         "claim_quote"),
+        ("B3 prose quote naming a prose lane B line", "S", s_cov, [s3], False, "NEEDS_REVIEW", 0,
+         "NUMBER_NOT_NEAR_QUOTE", "claim_number"),
+        ("vision_validated for a model not on the list", "A", a_cov, [c1, c2], True, "FAIL", 11, "VISION_NOT_ON_LIST",
+         "vision"),
+        # 1.7.0 (S3-B1): provenance (W1) and the anchor cell guard (numbers-v5)
+        ("forged ingest set, consistent hashes and row", "F", a_cov, [c1, c2, f1], False, "FAIL", 11,
+         "ANCHOR_REDERIVE_MISMATCH", "integrity"),
+        ("ingest without a pdf_ingest MANIFEST row", "G", a_cov, [c1, c2], False, "FAIL", 11, "NO_INGEST_ROW",
+         "integrity"),
+        ("row label alone on its anchor line (genuine)", "W", w_cov, [w1], False, "PASS", 0, "NUMBER_OK",
+         "claim_number"),
+        ("prose quote starting with a row label", "W", w_cov, [w2], False, "NEEDS_REVIEW", 0, "NUMBER_NOT_NEAR_QUOTE",
+         "claim_number"),
     ]
 
 
@@ -1974,7 +2643,13 @@ def run_selftest(a, scratch_dir, row):
         os.makedirs(papers)
         src = {"A": build_synthetic_ingest(papers, SELFTEST_KEYS["A"], SELFTEST_PAGES["A"], write_parquet),
                "B": build_synthetic_ingest(papers, SELFTEST_KEYS["B"], SELFTEST_PAGES["B"], write_parquet),
-               "R": build_synthetic_ingest(papers, SELFTEST_KEYS["R"], SELFTEST_PAGES["R"], write_parquet)}
+               "R": build_synthetic_ingest(papers, SELFTEST_KEYS["R"], SELFTEST_PAGES["R"], write_parquet),
+               "S": build_synthetic_ingest(papers, SELFTEST_KEYS["S"], SELFTEST_PAGES["S"], write_parquet),
+               "F": build_synthetic_ingest(papers, SELFTEST_KEYS["F"], SELFTEST_PAGES["A"], write_parquet),
+               "G": build_synthetic_ingest(papers, SELFTEST_KEYS["G"], SELFTEST_PAGES["A"], write_parquet,
+                                           with_row=False),
+               "W": build_synthetic_ingest(papers, SELFTEST_KEYS["W"], SELFTEST_PAGES["W"], write_parquet)}
+        forge_ingest_set(papers, SELFTEST_KEYS["F"], SELFTEST_FABRICATED, read_parquet, write_parquet)
         src["T"] = build_synthetic_ingest(papers, SELFTEST_KEYS["T"], SELFTEST_PAGES["A"], write_parquet)
         with open(os.path.join(papers, SELFTEST_KEYS["T"], "anchor", "p001.txt"), "ab") as f:
             f.write(b"A line added after ingest.\n")   # the planted tamper
@@ -2017,6 +2692,17 @@ def run_selftest(a, scratch_dir, row):
             got_status = "" if exp_status is None else (exp_status if (exp_kind, exp_status) in statuses else "absent")
             want = f"{exp_verdict} (exit {exp_exit})" + (f" + {exp_status}" if exp_status else "")
             have = f"{got_verdict} (exit {code})" + (f" + {got_status}" if exp_status else "")
+            # INTENT (1.5.0, D-23): optional column-label expectations, keyed by
+            #   the card number string: True = column_checked, False = labeled.
+            exp_cols = over.get("column_checked") or {}
+            if exp_cols:
+                got_cols = {it["number"]: it.get("column_checked") for it in (check or {}).get("items", [])
+                            if it["kind"] == "claim_number" and it["number"] in exp_cols}
+                ok = ok and got_cols == exp_cols
+                show = {True: "checked", False: "not-checked", None: "null"}
+                want += " + cols " + ",".join(f"{k}:{show[v]}" for k, v in exp_cols.items())
+                have += " + cols " + ",".join(f"{k}:{show[got_cols[k]] if k in got_cols else 'absent'}"
+                                              for k in exp_cols)
             lines.append(f"lit_verify: selftest {i:2d}/{len(cases)} {name:<46} expected {want:<40} got {have:<40} "
                          f"{'ok' if ok else 'MISMATCH'}")
             results.append({"case": name, "expected": want, "got": have, "ok": ok})
@@ -2068,6 +2754,16 @@ def _suffix_arg(value):
     return value
 
 
+def _timeout_arg(value):
+    try:
+        t = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("a number of seconds")
+    if not 0 < t <= 3600:
+        raise argparse.ArgumentTypeError("must be > 0 and <= 3600 seconds")
+    return t
+
+
 def build_parser():
     codes = "; ".join(f"{c} {m}" for c, m in EXIT_CODES.items())
     p = _UsageExitParser(prog="lit_verify.sh", description=(
@@ -2081,6 +2777,9 @@ def build_parser():
     c.add_argument("card_path", help="the evidence card, a file directly inside PAPER_DIR")
     c.add_argument("--ingest-suffix", type=_suffix_arg, default=None, metavar="S",
                    help="pin the ingest version ('' or _a.._z; default: the latest complete ingest)")
+    c.add_argument("--timeout", type=_timeout_arg, default=REDERIVE_TIMEOUT_DEFAULT_S, metavar="S",
+                   help=f"per-subprocess timeout in seconds for re-deriving the anchors from the source (default "
+                        f"{REDERIVE_TIMEOUT_DEFAULT_S:g}; exceeded -> SOURCE_REDERIVE_ERROR, a recorded FAIL)")
     s = sub.add_parser("selftest", help="planted-fabrication self-test on a synthetic ingest (needs no PDF tools)")
     s.add_argument("scratch_dir", help="a scratch directory under the DAAF root (a work dir is created and removed)")
     return p
@@ -2091,7 +2790,7 @@ def new_row(command, timestamp):
     return {"kind": "lit_verify", "tool_version": TOOL_VERSION, "command": command, "paper_key": None,
             "parameters": {}, "timestamp": timestamp,
             "requesting_context": os.environ.get("DAAF_FETCH_CONTEXT", "unknown"), "card": None, "ingest": None,
-            "artifacts": None, "verdict": None, "evidence_grade_suggested": None, "counts": None,
+            "rederive": None, "artifacts": None, "verdict": None, "evidence_grade_suggested": None, "counts": None,
             "redaction_count": 0, "secret_redactions": [], "exit_code": 1, "note": None}
 
 
@@ -2129,7 +2828,8 @@ def run_card(a, timestamp):
 
     paper_key = os.path.basename(paper_dir)
     row = new_row("card", timestamp)
-    row.update(paper_key=one_line(paper_key, 80), parameters={"ingest_suffix": a.ingest_suffix})
+    row.update(paper_key=one_line(paper_key, 80), parameters={"ingest_suffix": a.ingest_suffix,
+                                                              "timeout_s": a.timeout})
     finish = make_finish(papers_dir, row)
     try:
         return card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key)
@@ -2182,6 +2882,17 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                      "manifest_sha256": ingest["manifest_sha256"], "page_count": ingest["page_count"],
                      "anchor_kind": ingest.get("anchor_kind", ANCHOR_KIND_PDF), "unit_count": ingest.get("unit_count")}
 
+    # --- Re-derivation (1.7.0, D-24 W1): before any text is trusted ---
+    try:
+        rd_items, rd = rederive(ingest, a.timeout)
+    except LitVerifyError as exc:
+        return finish(exc.code, exc.note)
+    integrity = list(integrity) + rd_items
+    row["rederive"] = {k: rd[k] for k in ("version", "method", "outcome", "anchors_checked", "row_sources_checked",
+                                          "seconds")}
+    row["rederive"].update(anchor_mismatches=len(rd["anchor_mismatches"]),
+                           row_source_mismatches=len(rd["row_source_mismatches"]))
+
     # --- Check, then the result artifact ---
     result = check_card(card, ingest, fuzz, integrity)
     payload = {
@@ -2201,14 +2912,26 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                    "html_extract_version": ingest.get("html_extract_version"),
                    "pdf_ingest_tool_version": ingest["pdf_ingest_tool_version"],
                    "normalize_version": ingest["normalize_version"]},
+        "rederive": {**rd, "source_path": safe_line(str(rd["source_path"]), 300) if rd["source_path"] else None},
         "rule_versions": {"normalize": ptc.NORMALIZE_VERSION, "match_ladder": ptc.MATCH_LADDER_VERSION,
-                          "numbers": ptc.NUMBER_RULES_VERSION},
+                          "numbers": ptc.NUMBER_RULES_VERSION, "column_check": ptc.COLUMN_CHECK_VERSION,
+                          "rederive": REDERIVE_VERSION},
         "constants": {"MIN_QUOTE_CHARS": ptc.MIN_QUOTE_CHARS, "MIN_QUOTE_WORDS": ptc.MIN_QUOTE_WORDS,
                       "FUZZ_SCORE_CUTOFF": ptc.FUZZ_SCORE_CUTOFF, "FUZZ_WINDOW_CHARS": ptc.FUZZ_WINDOW_CHARS,
                       "FUZZ_WINDOW_STEP": ptc.FUZZ_WINDOW_STEP, "NUMBER_NEAR_CHARS": ptc.NUMBER_NEAR_CHARS,
                       "ROW_LABEL_MIN_CHARS": ptc.ROW_LABEL_MIN_CHARS,
+                      "ROW_TAIL_LETTER_SHARE_MAX": ptc.ROW_TAIL_LETTER_SHARE_MAX,
+                      "ROW_PAGE_FLAGS": list(ptc.ROW_PAGE_FLAGS),
+                      "OCR_LAYER_PAPER_CAP_PAGES": OCR_LAYER_PAPER_CAP_PAGES,
+                      "SOURCE_MAX_BYTES": SOURCE_MAX_BYTES, "REDERIVE_TIMEOUT_S": a.timeout,
+                      "REDERIVE_WORKERS": REDERIVE_WORKERS,
+                      "VISION_LIST_VERSION": VISION_LIST_VERSION,
+                      "VISION_VALIDATED_LISTS": {k: [list(r) for r in v] for k, v in VISION_VALIDATED_LISTS.items()},
                       "TRULY_SCANNED_IMAGE_AREA_MIN": TRULY_SCANNED_IMAGE_AREA_MIN,
                       "HTML_EXTRACT_VERSIONS_KNOWN": list(HTML_EXTRACT_VERSIONS_KNOWN),
+                      "COLUMN_UNCHECKED_SEVERITY": COLUMN_UNCHECKED_SEVERITY,
+                      "COLUMN_YEAR_MIN": ptc.COLUMN_YEAR_MIN, "COLUMN_YEAR_MAX": ptc.COLUMN_YEAR_MAX,
+                      "COLUMN_REFERENCE_WORDS": sorted(ptc.COLUMN_REFERENCE_WORDS),
                       "PROVISIONAL": ["MIN_QUOTE_CHARS", "MIN_QUOTE_WORDS", "TRULY_SCANNED_IMAGE_AREA_MIN"]},
         **result,
     }
@@ -2228,7 +2951,8 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
                f"{ingest.get('arxiv_id_version')})" if "sections" in cnt else
                f"{cnt['pages_covered']}/{cnt['pages']} pages covered")
     out = [f"lit_verify: {result['verdict']} {paper_key} card {safe_line(card_name, 80)} ({covered}; "
-           f"{cnt['claims']} claim(s), {cnt['numbers']} number(s); {cnt['fail']} fail, "
+           f"{cnt['claims']} claim(s), {cnt['numbers']} number(s), {cnt['numbers_column_not_checked']} "
+           f"column-not-checked; {cnt['fail']} fail, "
            f"{cnt['review']} review, {cnt['partial']} partial, {cnt['warning']} warning) -> {paper_key}/{art['name']}",
            f"  evidence grade suggested: {result['evidence_grade_suggested'] or 'none'}"
            + (f" (if the review items are confirmed: {result['evidence_grade_if_review_confirmed']})"

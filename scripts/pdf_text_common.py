@@ -46,14 +46,18 @@
 # NORMALIZE/SKELETON are covered by tests/python/test_pdf_ingest.py; the
 # ladder and number rules by tests/python/test_lit_verify.py.
 #
-# --- Versions (three independent rule sets; bump the one you change) --------
+# --- Versions (independent rule sets; bump the one you change) --------------
 #   NORMALIZE_VERSION     NORMALIZE + SKELETON (pdf_ingest agreement and
 #                         lit_verify matching both depend on it)
 #   MATCH_LADDER_VERSION  the quote match ladder, the identifying-quote rule
 #                         and their constants (lit_verify only)
 #   NUMBER_RULES_VERSION  number normalization, comparison and locality,
 #                         including the unique-row rule (lit_verify)
-#   lit_verify records all three in every card_check JSON. OVERLAP_VERSION
+#   COLUMN_CHECK_VERSION  (2026-10-23, FE-5g, D-23) the column-not-checked
+#                         LABEL on cleared numbers (§ COLUMN_CHECK); it
+#                         changes no number status, so it is versioned apart
+#                         from NUMBER_RULES_VERSION
+#   lit_verify records all of these in every card_check JSON. OVERLAP_VERSION
 #   (the overlap_score diagnostic) is recorded by pdf_ingest.
 #
 # --- Quote match ladder (added 2026-10-15, FE-3; note 08 §5) ----------------
@@ -86,11 +90,23 @@
 #   MIN_QUOTE_WORDS words AND its SKELETON occurs exactly once across all
 #   pages' anchor text and page boundaries (plus all OCR text when it matched
 #   in OCR). The caller applies this rule and the sparse-page waiver.
+#   ladder-v2 (2026-10-23, S3-A, review finding B2): the QUOTE-NUMBER rule,
+#   applied by the caller to every claim quote that passes on any tier. The
+#   number tokens of the quote (parse_numbers on the quote as written, sign
+#   included) must equal, in order, the number tokens of the page span it
+#   matched (number_view() of the page text, tokens overlapping the span,
+#   whole tokens: quote_numbers_agree()). SKELETON deletes "-", so without
+#   this rule "slope was 0.164" passes on a page printing "slope was −0.164"
+#   and "510%" on "5–10%". The two token lists are compared under both
+#   readings of a plain space between digit groups (equal under either is
+#   agreement). lit_verify grades a mismatch QUOTE_NUMBERS_DIFFER (review),
+#   never a pass. The tiers themselves are unchanged.
 #
 # --- Number rules (added 2026-10-15, FE-3; note 08 §5) ----------------------
 #   U+2212, U+2013, U+FE63, U+FF0D directly before a digit -> "-"; then NFKC
 #   (fullwidth digits). "-" is a SIGN only at the start or after whitespace
-#   or one of ( [ { = < > : ; , / ~ (so "2019-2020" is two positive numbers).
+#   or one of ( [ { = < > : ; , / ~ (so "2019-2020" is two positive numbers);
+#   numbers-v4 adds the spaced sign (below).
 #   Thousands separators "," U+2009 U+202F, and a plain space, are removed
 #   only between groups of exactly 3 digits (1,204 / 1 204 -> 1204). A plain
 #   space is ambiguous (two table cells "1" "204"), so number_candidates()
@@ -110,6 +126,45 @@
 #   that row prints the value. An ambiguous label falls back to in-quote.
 #   overlap_score() is the order-free character overlap (D-21 N4), a
 #   diagnostic pdf_ingest records beside `agreement` (OVERLAP_VERSION).
+#   column-check-v1 (2026-10-23, FE-5g, D-23): column_values() (§ COLUMN_CHECK
+#   at the end) counts the comparable values a cleared number's clearing
+#   text prints; lit_verify labels the number "column-not-checked" when there
+#   are two or more. A label only: no number status changes.
+#   numbers-v4 (2026-10-23, S3-A, review findings B1, B3 and the superscript
+#   finding):
+#     SPACED SIGN (B1): a "-" separated from the number by spaces/tabs and at
+#       most one newline is a sign when the char before the dash (skipping
+#       spaces/tabs) is one of SIGN_CONTEXT or the text starts there
+#       ("Est = - 0.041", "(- 0.044)"); after a digit or letter it stays a
+#       range or subtraction ("28 - 75", "(n − 1)"). U+2212, U+2013, U+FE63
+#       and U+FF0D fold to "-" before such a gap too.
+#     SUPERSCRIPTS: a superscript or subscript char (Unicode decomposition
+#       tag <super> or <sub>: "¹", "²", "⁻", "ᵃ", "₂") is a MARK, never a
+#       digit: number_text() keeps it out of NFKC (which folded "0.62¹" into
+#       "0.621") and parse_numbers() records it in `marks` and `sup`.
+#       compare_number() requires equal `sup` when the CLAIM writes one (a
+#       superscript can be an exponent, "10⁵", so a declared one is part of
+#       the value); a claim without one matches a page token that has one (a
+#       footnote mark the reader left out). Stars and daggers are NOT
+#       compared (they never change the value, and extracted text often
+#       detaches them from the cell); inside a claim quote they are kept by
+#       both NORMALIZE and SKELETON, so a quote cannot change them.
+#     NUMBER VIEW: number_view() reads the page text's numbers in NORMALIZE
+#       coordinates without NORMALIZE's losses (superscripts, thin-space
+#       groups, a sign "-" deleted by the line-break rejoin, and a token
+#       boundary where the rejoin fused a number with the word or number
+#       beside it: "749–\n756", "6-\nyear", "K-\n12"), via normalize_map();
+#       locality, the column label and the quote-number rule use it.
+#     ROW RULE GUARDS (B3): § ROW_RULE (label >= ROW_LABEL_MIN_CHARS = 3
+#       letters, a cell-like tail, a table/numeric page, a quote that starts
+#       at a row start).
+#   numbers-v5 (2026-10-23, S3-B1, S3-A2 open question 1): a fifth row-rule
+#     guard, the ANCHOR CELL: on the raw anchor line where the quote's match
+#     begins, the identified row label must stand as a cell (what follows it
+#     on that line is cell-like: row_label_is_cell()). Closes the two holes
+#     S3-A2 left (a prose sentence starting with a row label word,
+#     "ORGANIZATION and other models; ...", and a lane B fragment row "the 1"
+#     that any quote starting with "the" identified). Applied by the caller.
 #
 # rapidfuzz is NOT imported here: callers pass the `rapidfuzz.fuzz` module
 # (or None, which skips the NEAR tier), so this module stays stdlib-only at
@@ -122,8 +177,8 @@ from decimal import Decimal, InvalidOperation
 
 # §§ CONSTANTS
 NORMALIZE_VERSION = "normalize-v1"
-MATCH_LADDER_VERSION = "ladder-v1"
-NUMBER_RULES_VERSION = "numbers-v3"
+MATCH_LADDER_VERSION = "ladder-v2"
+NUMBER_RULES_VERSION = "numbers-v5"
 # The order-free overlap diagnostic (overlap_score); pdf_ingest records it.
 OVERLAP_VERSION = "overlap-v1"
 
@@ -163,6 +218,63 @@ def normalize(text):
 def skeleton(text):
     # Returns the SKELETON form: NORMALIZE, casefold, drop whitespace and "-".
     return SKELETON_DROP_RE.sub("", normalize(text).casefold())
+
+
+def normalize_map(text):
+    # (numbers-v4) (NORMALIZE(text), idx, lost): idx[i] is the index in
+    # `text` of the char that produced norm char i; `lost` holds the norm
+    # indices where step 5 (the line-break rejoin) deleted a "-" the number
+    # rules read as a sign (SIGN_CONTEXT or the start before it, one newline,
+    # a digit or ".digit" after). None when this char-wise construction does
+    # not reproduce normalize(text) exactly (e.g. an NFKC composition across
+    # chars); callers then fall back to NORMALIZE alone.
+    src = (text or "").replace("\r\n", "\n")
+    shift = [i for i, c in enumerate(text or "") if not (c == "\r" and (text or "")[i + 1:i + 2] == "\n")]
+    chars = []
+    i = 0
+    while i < len(src):
+        j = i + 1
+        while j < len(src) and unicodedata.combining(src[j]):
+            j += 1
+        piece = unicodedata.normalize("NFKC", src[i:j].translate(FOLD_TABLE)).translate(FOLD_TABLE)
+        chars.extend((c, shift[i], False) for c in piece)
+        i = j
+    s = "".join(c for c, _, _ in chars)
+    drop, lost_at, split_at = set(), set(), set()
+    for m in HYPHEN_BREAK_RE.finditer(s):
+        drop.update(range(m.start(), m.end()))
+        k = m.start() - 1
+        while k >= 0 and s[k] in " \t":
+            k -= 1
+        if m.group(0).count("\n") == 1 and (k < 0 or s[k] in SIGN_CONTEXT) and re.match(r"\.?\d", s[m.end():]):
+            lost_at.add(m.end())
+        elif m.start() > 0 and ((s[m.start() - 1].isdigit() and s[m.end():m.end() + 1].isalnum()) or (
+                s[m.start() - 1].isalpha() and s[m.end():m.end() + 1].isdigit())):
+            # INTENT: "749–\n756" / "6-\nyear": the rejoin fuses a number with
+            #   what follows; the number view splits there (a token boundary).
+            #   S3-A2: the mirror case "K-\n12" / "COVID-\n19" (a letter before
+            #   the dash, a digit after): the rejoin fuses the number INTO the
+            #   word before it ("K12"), which hides it from the number rules,
+            #   so a genuine quote "K-12" read as QUOTE_NUMBERS_DIFFER.
+            split_at.add(m.end())
+    kept = [(c, r, "lost" if k in lost_at else "split" if k in split_at else False)
+            for k, (c, r, _) in enumerate(chars) if k not in drop]
+    s2 = "".join(c for c, _, _ in kept)
+    out, pos = [], 0
+    for m in WHITESPACE_RE.finditer(s2):
+        out.extend(kept[pos:m.start()])
+        out.append((" ", kept[m.start()][1], False))
+        pos = m.end()
+    out.extend(kept[pos:])
+    while out and out[0][0] == " ":
+        out.pop(0)
+    while out and out[-1][0] == " ":
+        out.pop()
+    norm = "".join(c for c, _, _ in out)
+    if norm != normalize(text):
+        return None
+    return (norm, [r for _, r, _ in out], frozenset(i for i, (_, _, f) in enumerate(out) if f == "lost"),
+            frozenset(i for i, (_, _, f) in enumerate(out) if f == "split"))
 
 
 # §§ MATCH_LADDER (MATCH_LADDER_VERSION; added 2026-10-15, FE-3)
@@ -387,7 +499,15 @@ def quote_identity(quote, doc, include_ocr=False):
 
 
 # §§ NUMBERS (NUMBER_RULES_VERSION; added 2026-10-15, FE-3)
-NUMBER_MINUS_RE = re.compile("[\u2212\u2013\ufe63\uff0d](?=\\.?\\d)")
+# numbers-v4: also before a spaced gap (the spaced-sign rule decides whether
+#   the "-" is a sign).
+NUMBER_MINUS_RE = re.compile("[\u2212\u2013\ufe63\uff0d](?=[ \\t]*\\n?[ \\t]*\\.?\\d)")
+# INTENT (numbers-v4): every superscript / subscript char (decomposition tag
+#   <super> or <sub>); kept out of NFKC in number_text() and read as a mark.
+SUPSUB_CHARS = frozenset(chr(c) for c in range(0xA0, 0x20000)
+                         if unicodedata.decomposition(chr(c)).startswith(("<super>", "<sub>")))
+SUPSUB_SPLIT_RE = re.compile("([" + re.escape("".join(sorted(SUPSUB_CHARS))) + "]+)")
+THIN_SPACES = "\u2009\u202f"
 THIN_GROUP_SEP_RE = re.compile("(?<=\\d)[\u2009\u202f](?=\\d)")
 GROUP_PLACEHOLDER = "\x00"
 # INTENT: a "-" directly before a number is a sign only after one of these
@@ -405,10 +525,12 @@ NUMBER_MARKS = "*†‡"
 def number_text(text):
     # The number-rule preparation of a text: minus folds before digits, thin
     # spaces between digits marked as group separators, then NFKC.
+    # numbers-v4: superscript / subscript runs are kept verbatim (marks).
     text = (text or "").replace("\r\n", "\n")
     text = NUMBER_MINUS_RE.sub("-", text)
     text = THIN_GROUP_SEP_RE.sub(GROUP_PLACEHOLDER, text)
-    return unicodedata.normalize("NFKC", text)
+    parts = SUPSUB_SPLIT_RE.split(text)
+    return "".join(p if k % 2 else unicodedata.normalize("NFKC", p) for k, p in enumerate(parts))
 
 
 def parse_numbers(text, join_spaces=False):
@@ -428,12 +550,29 @@ def parse_numbers(text, join_spaces=False):
             before = t[s - 2] if s >= 2 else ""
             if before == "" or before.isspace() or before in SIGN_CONTEXT:
                 start, negative = s - 1, True
+        else:
+            # INTENT (numbers-v4, B1): the spaced sign. A "-" before spaces /
+            #   tabs and at most one newline is a sign when the char before it
+            #   (spaces/tabs skipped) is SIGN_CONTEXT or the text starts there.
+            j = s - 1
+            while j >= 0 and t[j] in " \t":
+                j -= 1
+            if j >= 0 and t[j] == "\n":
+                j -= 1
+                while j >= 0 and t[j] in " \t":
+                    j -= 1
+            if 0 <= j < s - 1 and t[j] == "-":
+                k = j - 1
+                while k >= 0 and t[k] in " \t":
+                    k -= 1
+                if k < 0 or t[k] in SIGN_CONTEXT:
+                    start, negative = j, True
         end, percent = e, False
         pm = PERCENT_RE.match(t, end)
         if pm:
             end, percent = pm.end(), True
         marks_at = end
-        while end < len(t) and t[end] in NUMBER_MARKS:
+        while end < len(t) and (t[end] in NUMBER_MARKS or t[end] in SUPSUB_CHARS):
             end += 1
         marks = t[marks_at:end]
         if not percent:
@@ -455,7 +594,8 @@ def parse_numbers(text, join_spaces=False):
             continue
         out.append({"raw": t[start:end].replace(GROUP_PLACEHOLDER, " "), "digits": digits, "value": value,
                     "negative": negative, "paren": start > 0 and t[start - 1] == "(" and after == ")",
-                    "percent": percent, "marks": marks, "start": start, "end": end})
+                    "percent": percent, "marks": marks, "sup": "".join(c for c in marks if c in SUPSUB_CHARS),
+                    "start": start, "end": end})
     return out
 
 
@@ -488,8 +628,12 @@ def compare_number(claim, candidates):
     # ("exact", token) for the same value and digit string; ("precision",
     # token) for the same value written with other digits (0.5 vs 0.50);
     # (None, None) otherwise. Sign is part of the value: 0.087 != -0.087.
+    # numbers-v4: a superscript the CLAIM writes must be printed (it may be
+    #   an exponent); a claim without one ignores the page's (a footnote mark).
     precision = None
     for tok in candidates:
+        if claim.get("sup") and tok.get("sup") != claim["sup"]:
+            continue
         if tok["value"] == claim["value"] and tok["negative"] == claim["negative"]:
             if tok["digits"] == claim["digits"]:
                 return "exact", tok
@@ -536,7 +680,27 @@ LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
 #   row on the page and that row prints the value (quote_row(),
 #   number_in_row()). A row label shorter than this many letters never
 #   identifies a row (single letters are footnote marks and panel labels).
-ROW_LABEL_MIN_CHARS = 2
+# numbers-v4 (2026-10-23, S3-A, review finding B3): the row path accepted any
+#   lane B line with letters before a number, on any page, so a PROSE quote
+#   "identified" a prose line and cleared its numbers (s3q r05: 62
+#   identifying prose windows in 4 papers; r07 P1). Four guards, all required:
+#     label  >= ROW_LABEL_MIN_CHARS letters (3; 2 let "of", "in" be labels)
+#     tail   cell-like: letters <= ROW_TAIL_LETTER_SHARE_MAX of the tail's
+#            non-space chars (a prose line's tail is mostly letters)
+#     page   the page (HTML unit) where the quote matched is flagged one of
+#            ROW_PAGE_FLAGS by pdf_ingest
+#     start  the quote's anchor match begins at a row start: no letter between
+#            the start of its raw anchor line and the quote (at_row_start();
+#            on arXiv HTML the anchor's table rows are lines too). A quote
+#            spanning two pages never takes the row path.
+#     cell   (numbers-v5) the identified label stands as a cell on the anchor
+#            line where the quote matched (row_label_is_cell())
+#   The page, start and cell guards are applied by the caller (lit_verify).
+# REASONING: measured in S3-A script 93 (genuine / fabricated rates before
+#   and after, over every page with lane B): see the dispatch report.
+ROW_LABEL_MIN_CHARS = 3
+ROW_TAIL_LETTER_SHARE_MAX = 0.25
+ROW_PAGE_FLAGS = ("table", "numeric")
 
 
 def skeleton_index(norm):
@@ -581,6 +745,109 @@ def number_near_spans(claim, norm, spans, window):
     toks = [t for t in number_candidates(norm)
             if any(t["end"] > s - window and t["start"] < e + window for s, e in spans)]
     return compare_number(claim, toks)[0] == "exact"
+
+
+# §§ NUMBER_VIEW (numbers-v4; added 2026-10-23, S3-A)
+# A page text's numbers in NORMALIZE coordinates (where quote_spans() puts a
+# quote), read without NORMALIZE's losses: `text` is NORMALIZE(page) with the
+# raw superscript / subscript chars and thin-space group separators put back
+# (1:1, so positions are unchanged), and `lost_signs` the positions of numbers
+# whose sign "-" the line-break rejoin deleted. When normalize_map() cannot
+# map the page, the view is NORMALIZE itself (`mapped` False; idx None).
+def number_view(text):
+    raw = text or ""
+    m = normalize_map(raw)
+    if m is None:
+        norm = normalize(raw)
+        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": frozenset(), "splits": frozenset(),
+                "mapped": False}
+    norm, idx, lost, splits = m
+    chars = list(norm)
+    for i, r in enumerate(idx):
+        c = raw[r]
+        alone = (i == 0 or idx[i - 1] != r) and (i + 1 == len(idx) or idx[i + 1] != r)
+        if alone and (c in SUPSUB_CHARS or (c in THIN_SPACES and not raw[r + 1:r + 2].isspace())):
+            chars[i] = c
+    view = "".join(chars)
+    if len(number_text(view)) != len(view):
+        return {"text": norm, "norm": norm, "raw": raw, "idx": None, "lost_signs": frozenset(), "splits": frozenset(),
+                "mapped": False}
+    return {"text": view, "norm": norm, "raw": raw, "idx": idx, "lost_signs": lost, "splits": splits, "mapped": True}
+
+
+def join_views(left, right):
+    # The view of a declared span: left + " " + right (as lit_verify matches
+    # it); no raw index (the row path never runs on a span).
+    norm = left["norm"] + " " + right["norm"]
+    if normalize(norm) != norm:
+        n2 = normalize(norm)
+        return {"text": n2, "norm": n2, "raw": norm, "idx": None, "lost_signs": frozenset(), "mapped": False}
+    off = len(left["text"]) + 1
+    return {"text": left["text"] + " " + right["text"], "norm": norm, "raw": norm, "idx": None,
+            "lost_signs": frozenset(left["lost_signs"]) | {p + off for p in right["lost_signs"]},
+            "splits": frozenset(left.get("splits", ())) | {p + off for p in right.get("splits", ())}, "mapped": False}
+
+
+def view_numbers(view, join_spaces=False):
+    # parse_numbers() on the view, with the lost signs applied and a token
+    # boundary at each split (a space is parsed there; positions map back).
+    text, cuts = view["text"], sorted(view.get("splits") or ())
+    for c in reversed(cuts):
+        text = text[:c] + " " + text[c:]
+    back = lambda p: p - sum(1 for k, c in enumerate(cuts) if c + k < p)  # noqa: E731
+    out = []
+    for t in parse_numbers(text, join_spaces):
+        if cuts:
+            t = dict(t, start=back(t["start"]), end=back(t["end"]))
+        if not t["negative"] and t["start"] in view["lost_signs"]:
+            t = dict(t, negative=True, digits="-" + t["digits"], value=-t["value"])
+        out.append(t)
+    return out
+
+
+def view_candidates(view):
+    # number_candidates() on the view (both readings of a plain space).
+    toks = view_numbers(view, False)
+    seen = {(x["start"], x["end"]) for x in toks}
+    toks.extend(x for x in view_numbers(view, True) if (x["start"], x["end"]) not in seen)
+    return toks
+
+
+def number_near_view(claim, view, spans, window):
+    # number_near_spans() on a number view.
+    toks = [t for t in view_candidates(view) if any(t["end"] > s - window and t["start"] < e + window
+                                                    for s, e in spans)]
+    return compare_number(claim, toks)[0] == "exact"
+
+
+def quote_numbers_agree(quote, view, spans):
+    # ladder-v2, the quote-number rule: (agree, quote digits, page digits).
+    # The quote's number tokens (parse_numbers on the quote as written) must
+    # equal, in order, the WHOLE page tokens overlapping each matched span,
+    # under one of the two readings of a plain space between digit groups.
+    # No span: (None, quote digits, None) (the caller fails closed).
+    q = {js: [t["digits"] for t in parse_numbers(quote, js)] for js in (False, True)}
+    if not spans:
+        return None, q[False], None
+    first = None
+    for s, e in spans:
+        p = {js: [t["digits"] for t in view_numbers(view, js) if t["end"] > s and t["start"] < e]
+             for js in (False, True)}
+        first = first or p[False]
+        if p[False] != q[False] and p[True] != q[True]:
+            return False, q[False], p[False]
+    return True, q[False], first
+
+
+def at_row_start(view, start):
+    # numbers-v4 (B3): True when no letter stands between the start of the
+    # raw line and the char at norm position `start` (a leading row number
+    # "7. " is allowed). False without a raw index (fail closed).
+    if view.get("idx") is None or not 0 <= start < len(view["idx"]):
+        return False
+    raw, r = view["raw"], view["idx"][start]
+    line_start = max(raw.rfind("\n", 0, r), raw.rfind("\f", 0, r)) + 1
+    return not any(c.isalpha() for c in raw[line_start:r])
 
 
 def row_label_skeleton(line):
@@ -631,7 +898,8 @@ def lane_b_row_hit(claim, quote, lane_b_text, min_shared):
 #             so rows "Grade 3" / "Grade 4" share the label "grade" (and are
 #             ambiguous, the safe side).
 #   row       a lane B line whose label has >= ROW_LABEL_MIN_CHARS letters and
-#             that prints at least one number after its label.
+#             that prints at least one number after its label, in a cell-like
+#             tail (numbers-v4).
 #   identify  the quote's LEADING label (its letters before its first number
 #             token that follows a letter; the whole quote when it holds no
 #             such number, e.g. a run of row labels on a column-major page)
@@ -671,7 +939,10 @@ def lane_b_rows(lane_b_text):
         norm = normalize(raw)
         cut = label_cut(norm)
         label = letter_skeleton(norm[:cut])[0]
-        if len(label) >= ROW_LABEL_MIN_CHARS and cut < len(norm) and parse_numbers(norm[cut:]):
+        tail = norm[cut:]
+        cell_like = sum(c.isalpha() for c in tail) <= ROW_TAIL_LETTER_SHARE_MAX * max(
+            1, sum(not c.isspace() for c in tail))
+        if len(label) >= ROW_LABEL_MIN_CHARS and cut < len(norm) and parse_numbers(tail) and cell_like:
             rows.append({"label": label, "line": norm, "cut": cut})
     return rows
 
@@ -703,6 +974,29 @@ def quote_row(quote, lane_b_texts):
             "label": winners[0]["label"], "candidates": len(winners)}
 
 
+def row_label_is_cell(view, start, label_letters):
+    # numbers-v5 (2026-10-23, S3-B1, S3-A2 open question 1): True when the
+    # identified row label stands as a CELL on the raw anchor line where the
+    # quote's match begins at norm position `start`: what follows the label's
+    # last letter up to the end of that line is cell-like (letters <=
+    # ROW_TAIL_LETTER_SHARE_MAX of its non-space chars; empty counts). A
+    # column-major label alone on its line ("Huber-White (HW)\n") or a
+    # row-major label followed by cells passes; a prose sentence that merely
+    # starts with a label word ("ORGANIZATION and other models", "the SEs
+    # are ...") does not. `label_letters` is len(row["label"]). False without
+    # a raw index (fail closed).
+    if view.get("idx") is None or not 0 <= start < len(view["norm"]) or label_letters < 1:
+        return False
+    letters, idx = letter_skeleton(view["norm"][start:])
+    if len(letters) < label_letters:
+        return False
+    raw = view["raw"]
+    r = view["idx"][start + idx[label_letters - 1]] + 1
+    ends = [x for x in (raw.find("\n", r), raw.find("\f", r)) if x != -1]
+    tail = raw[r:min(ends) if ends else len(raw)]
+    return sum(c.isalpha() for c in tail) <= ROW_TAIL_LETTER_SHARE_MAX * max(1, sum(not c.isspace() for c in tail))
+
+
 def number_in_row(claim, row):
     # True when the row prints the claimed number exactly after its label.
     toks = [t for t in number_candidates(row["line"]) if t["start"] >= row["cut"]]
@@ -723,3 +1017,96 @@ def overlap_score(a, b):
         cb[c] = cb.get(c, 0) + 1
     common = sum(min(v, cb.get(k, 0)) for k, v in ca.items())
     return round(2.0 * common / (len(sa) + len(sb)), 4)
+
+
+# §§ COLUMN_CHECK (COLUMN_CHECK_VERSION; added 2026-10-23, FE-5g, user decision D-23)
+# A LABEL, not a number rule: it changes no number status. When a number
+# clears (in-quote or row), the gate knows WHERE the value is printed but not
+# WHICH of several cells the claim means. In "Overage 0.58 0.57 0.59 0.56"
+# a claim of 0.59 for the first column clears (residual (a) of numbers-v3).
+# column_values() counts the distinct values the clearing text prints that
+# could be confused with the claimed one; two or more means the column (or,
+# in a column-major quote, the row) was not checked. lit_verify records it
+# per number item (column_checked, column_label "column-not-checked").
+#   clearing text  in-quote: the quote's matched span in the page text the
+#                  number was found in (anchor, or OCR); row: the identified
+#                  lane B / rows row after its label (as number_in_row)
+#   number token   parse_numbers() (one reading: a plain space between digit
+#                  groups splits, so "1 204" is "1" and "204"); tokens that
+#                  overlap a token printing the claim exactly are the claim
+#                  itself ("1 204" read as 1204), not other cells
+#   comparable     same shape as the token that printed the claim: integer vs
+#                  decimal, and with vs without "%" ("1,204 boats" is not a
+#                  candidate for a coefficient 0.05). Parentheses and sign do
+#                  NOT split shapes (a coefficient and its SE are confusable)
+#   not counted    a year (a bare 4-digit integer COLUMN_YEAR_MIN..MAX, unless
+#                  the claim is itself a year) and a reference number (an
+#                  integer right after one of COLUMN_REFERENCE_WORDS, "Table 5",
+#                  "Fig. 2", "p. 14"), so an ordinary prose sentence with one
+#                  data number is not labeled
+#   value          distinct digit strings, the claim's own value counted once
+#                  however often it is printed (a row "0.57 0.57" with nothing
+#                  else comparable makes the claim true in either column)
+# REASONING: residual (a) measured at 1.8% of last-digit fabrications on PDF
+#   true-row quotes (FE-5c s76) and ~9% on whole-row arXiv HTML quotes
+#   (FE-5f s86); D-23 asked for a visible label so such numbers can go to a
+#   human later, not a verdict change now.
+COLUMN_CHECK_VERSION = "column-check-v1"
+COLUMN_YEAR_MIN = 1900
+COLUMN_YEAR_MAX = 2099
+COLUMN_REFERENCE_WORDS = frozenset((
+    "table", "tables", "tab", "figure", "figures", "fig", "figs", "section", "sections", "sec", "chapter", "ch",
+    "appendix", "panel", "model", "models", "column", "columns", "col", "equation", "eq", "eqs", "page", "pages", "p",
+    "pp", "note", "notes", "footnote", "step", "wave", "hypothesis"))
+# INTENT: the word (letters) right before a token, an optional "." after it
+#   ("Fig. 2", "p. 14"), then optional whitespace.
+COLUMN_REFERENCE_RE = re.compile(r"([^\W\d_]+)\.?\s*$")
+
+
+def column_shape(tok):
+    # (decimal?, percent?): what kind of cell a token is.
+    return ("." in tok["digits"], tok["percent"])
+
+
+def column_is_year(tok):
+    # A bare 4-digit integer in the year range (no separator, sign, % or
+    # parentheses).
+    d = tok["digits"]
+    return (len(d) == 4 and d.isdigit() and COLUMN_YEAR_MIN <= int(d) <= COLUMN_YEAR_MAX and not tok["percent"]
+            and not tok["paren"] and "," not in tok["raw"])
+
+
+def column_is_reference(tok, text):
+    # An integer right after a reference word ("Table 5", "Fig. 2").
+    if "." in tok["digits"] or tok["negative"]:
+        return False
+    m = COLUMN_REFERENCE_RE.search(number_text(text)[:tok["start"]])
+    return bool(m) and m.group(1).casefold() in COLUMN_REFERENCE_WORDS
+
+
+def column_values(claim, text, start, end):
+    # The number of distinct comparable values printed in text[start:end]
+    # (the clearing text), counting the claim's own value once; None when no
+    # token there prints the claim exactly (nothing to label). 1 = the claim
+    # is the only candidate cell (column checked); >= 2 = column not checked.
+    # numbers-v4: `text` may be a number_view() (its tokens and lost signs).
+    if isinstance(text, dict):
+        cands, singles, text = view_candidates(text), view_numbers(text), text["text"]
+    else:
+        cands, singles = number_candidates(text), parse_numbers(text)
+    hits = [t for t in cands if t["end"] > start and t["start"] < end
+            and t["value"] == claim["value"] and t["negative"] == claim["negative"]
+            and t["digits"] == claim["digits"]]
+    if not hits:
+        return None
+    shape, year = column_shape(hits[0]), column_is_year(hits[0])
+    values = {claim["digits"]}
+    for t in singles:
+        if not (t["end"] > start and t["start"] < end):
+            continue
+        if any(t["end"] > h["start"] and t["start"] < h["end"] for h in hits):
+            continue
+        if column_shape(t) != shape or (column_is_year(t) and not year) or column_is_reference(t, text):
+            continue
+        values.add(t["digits"])
+    return len(values)

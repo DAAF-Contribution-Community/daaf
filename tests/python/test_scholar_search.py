@@ -221,6 +221,23 @@ class GuardTests(Base):
         self.assertEqual(n, 5)
         self.assertNotIn("<system-reminder>", text)
 
+    def test_injection_scrub_tag_variants_w3(self):
+        # S3-B1 (review W3): spaced, attribute, line-broken and close variants
+        #   of the tag; the tag name is removed even without a closing ">".
+        for s in ("<system-reminder>", "</system-reminder>", "<system-reminder >", "<system-reminder\n>",
+                  "<system-reminder x=1>", "< /system-reminder>", "</system-reminder >", "</ system-reminder>",
+                  "<\tSystem-Reminder\tdata-x='y'>", "<system-reminder", "<system-reminder-x>"):
+            text, n = wrc.scrub_injection(f"before {s} after")
+            self.assertEqual(n, 1, repr(s))
+            self.assertNotIn("system-reminder", text.lower(), repr(s))
+            self.assertTrue(text.startswith("before ") and text.endswith(" after") or s == "<system-reminder", repr(s))
+        # bounded: the redaction never swallows text past the next "<" or 500 chars
+        text, n = wrc.scrub_injection("<system-reminder keep <b>bold</b>")
+        self.assertEqual((n, text), (1, wrc.REDACTION_TOKEN + " keep <b>bold</b>"))
+        self.assertEqual(wrc.scrub_injection("a system reminder, <systemreminder>, system-reminders")[1], 0)
+        self.assertEqual(wrc.one_line("x <system-reminder >y</system-reminder > z", 200),
+                         f"x {wrc.REDACTION_TOKEN}y{wrc.REDACTION_TOKEN} z")
+
 
 # --- Manifest + exit codes --------------------------------------------------
 class ManifestAndExitTests(Base):

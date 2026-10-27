@@ -445,6 +445,8 @@ This was verified with a privacy-safe probe on 2026-07-18 (a synthetic one-pixel
 
 Yes. When Claude Code reads a PDF with its Read tool, it turns the pages into text and images, and that works on the GPT route with any shim version. A PDF can also reach the shim whole, for example when you attach one directly to a message. Before shim 1.4.8 that was rejected, and because the PDF stays in the conversation, every later turn failed too. Since 1.4.8 the shim sends such PDFs to the model as file inputs. If your backend rejects them, set `SHIM_PDF_MODE=omit` in `environment_settings.txt` and recreate the container; each attached PDF is then replaced by a short note. An attached PDF is re-sent on every turn, so a large one uses more quota.
 
+For research reading (quoting a paper, taking numbers from its tables), DAAF does not rely on the Read tool's page images: agents follow the `pdf-reading` skill, which ingests the PDF with `scripts/pdf_ingest.sh` and checks quotes and numbers against the page text with `scripts/lit_verify.sh`, and which uses page images only for a model on its vision-validated list.
+
 ### Q: How do I diagnose a provider-shim server error mid-response?
 
 **Optional reading — you almost certainly don't need this entry.** It's a deep-dive for the rare case where a GPT request fails partway through a response and you want to file a precise bug report or trace exactly what the shim did. If that's not you, feel free to skip it — the shim keeps its own logs, and the earlier troubleshooting entries cover the common failures. If you *do* want to trace a specific failed request, here's how.

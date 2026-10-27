@@ -255,7 +255,11 @@ from pdf_text_common import NORMALIZE_VERSION, OVERLAP_VERSION, normalize, overl
 # table rows, conversion-error flags; exit 12 for a file that is not a
 # version-pinned LaTeXML article); every manifest records `anchor_kind`
 # ("pdf" for the PDF path). PDF artifacts and exit meanings unchanged.
-TOOL_VERSION = "1.2.0-daaf"
+# 1.2.1 (S3-B1, 2026-10-23, review W1): no artifact change. The lane A
+# invocation (anchor_argv), lane B page text (lane_b_page_text) and the arXiv
+# HTML unit extraction (html_units, unit_evidence) are module functions, so
+# lit_verify 1.7.0 re-derives anchors with this exact code.
+TOOL_VERSION = "1.2.1-daaf"
 
 EXIT_CODES = {
     0: "ingested (incl. flagged pages / degraded lanes) or already ingested",
@@ -267,8 +271,8 @@ EXIT_CODES = {
     9: "empty text layer on every page, OCR off/unavailable/empty",
     10: "required dependency missing (pdftotext, pdfinfo, pdftoppm, polars)",
     11: "extractor or internal error",
-    12: "--source arxiv-html: not a version-pinned arXiv LaTeXML article (no ltx_document article, no version "
-        "watermark, or a watermark that contradicts the fetched URL)",
+    12: "--source arxiv-html: not a version-pinned arXiv LaTeXML article (not UTF-8, no ltx_document article, no "
+        "version watermark, or a watermark that contradicts the fetched URL)",
 }
 
 # --- arXiv HTML lane (1.2.0, D-21 N5) ---
@@ -532,6 +536,23 @@ def run_tool(argv, timeout, extra_env=None):
     except subprocess.TimeoutExpired:
         raise IngestError(6, f"{os.path.basename(argv[0])} timed out after {timeout:g}s ({' '.join(argv[1:6])} ...)")
     return p.returncode, p.stdout, p.stderr
+
+
+def anchor_argv(src, n):
+    # (1.2.1) The lane A invocation for page n, shared with lit_verify, which
+    # re-runs it at check time to re-derive the anchor (lit_verify 1.7.0).
+    return ["pdftotext", "-f", str(n), "-l", str(n), "-enc", "UTF-8", src, "-"]
+
+
+def lane_b_page_text(pdfium_doc, n):
+    # (1.2.1) Lane B text of page n (pypdfium2), shared with lit_verify's
+    # re-derivation. Stored as UTF-8 by write_artifact.
+    pg = pdfium_doc[n - 1]
+    tp = pg.get_textpage()
+    text_b = tp.get_text_bounded(errors="replace").replace("\r\n", "\n")
+    tp.close()
+    pg.close()
+    return text_b
 
 
 def tool_version(binary, timeout):
@@ -923,9 +944,11 @@ def unit_labels(units):
     return out
 
 
-def ingest_html(a, ctx, row):
-    # The arXiv HTML run. Returns (exit code, note); raises IngestError.
-    key_dir, html = ctx["key_dir"], ctx["html"]
+def html_units(html):
+    # (1.2.1) The HTML_EXTRACT_VERSION extraction of one LaTeXML article,
+    # shared with lit_verify's re-derivation (lit_verify 1.7.0): (parser,
+    # [(unit, anchor text, table-row lines)] in document order, [(label,
+    # label_source)]). Raises IngestError(12) when there is no article.
     p = LatexmlText()
     p.feed(html)
     p.close()
@@ -937,12 +960,34 @@ def ingest_html(a, ctx, row):
         if i == 0 and not text:
             continue                                   # no front matter outside the sections
         parsed.append((u, text, rows))
-    if len(parsed) > a.max_pages:
-        raise IngestError(7, f"{len(parsed)} units > --max-pages {a.max_pages}")
     pos = {id(u): k for k, (u, _, _) in enumerate(parsed)}
     for u, _, _ in parsed:
         u["pidx"] = pos.get(id(p.units[u["parent"]])) if u["parent"] is not None else None
-    labels = unit_labels([u for u, _, _ in parsed])
+    return p, parsed, unit_labels([u for u, _, _ in parsed])
+
+
+def unit_evidence(u, text, rows):
+    # (1.2.1) ({flag: [evidence]} for UNIT_FLAG_NAMES, non-whitespace chars)
+    # of one parsed unit; shared with lit_verify's re-derivation.
+    ev = {f: [] for f in UNIT_FLAG_NAMES}
+    if u["tables"]:
+        ev["table"].append(f"{u['tables']} ltx_tabular table(s), {len(rows)} row(s)")
+    if u["figures"]:
+        ev["figure"].append(f"{u['figures']} ltx_figure element(s)")
+    nonws = nonws_count(text)
+    if nonws < SPARSE_UNIT_MAX_CHARS:
+        ev["sparse"].append(f"unit has {nonws} non-whitespace chars < {SPARSE_UNIT_MAX_CHARS}")
+    if u["errors"]:
+        ev["conversion_error"].append(f"{u['errors']} ltx_ERROR span(s): LaTeXML could not convert a macro here")
+    return ev, nonws
+
+
+def ingest_html(a, ctx, row):
+    # The arXiv HTML run. Returns (exit code, note); raises IngestError.
+    key_dir, html = ctx["key_dir"], ctx["html"]
+    p, parsed, labels = html_units(html)
+    if len(parsed) > a.max_pages:
+        raise IngestError(7, f"{len(parsed)} units > --max-pages {a.max_pages}")
     n_units = len(parsed)
     row["page_count"] = None
     row["unit_count"] = n_units
@@ -963,16 +1008,7 @@ def ingest_html(a, ctx, row):
                "heading_tag": safe_line(u["tag"] or "", 40) or None,
                "parent_unit": u["pidx"] + 1 if u["pidx"] is not None else None,
                "anchor": write_artifact(key_dir, f"{dirs['anchor']}/{un}.txt", text), "text": text}
-        ev = {f: [] for f in UNIT_FLAG_NAMES}
-        if u["tables"]:
-            ev["table"].append(f"{u['tables']} ltx_tabular table(s), {len(rows)} row(s)")
-        if u["figures"]:
-            ev["figure"].append(f"{u['figures']} ltx_figure element(s)")
-        nonws = nonws_count(text)
-        if nonws < SPARSE_UNIT_MAX_CHARS:
-            ev["sparse"].append(f"unit has {nonws} non-whitespace chars < {SPARSE_UNIT_MAX_CHARS}")
-        if u["errors"]:
-            ev["conversion_error"].append(f"{u['errors']} ltx_ERROR span(s): LaTeXML could not convert a macro here")
+        ev, nonws = unit_evidence(u, text, rows)
         rec.update(nonws=nonws, evidence=ev, flags=[f for f in UNIT_FLAG_NAMES if ev[f]],
                    conversion_error=bool(u["errors"]), conversion_error_count=u["errors"],
                    footnote_count=len(u["notes"]), table_rows=None)
@@ -1245,7 +1281,7 @@ def ingest(a, ctx, row):
     try:
         for n in range(1, n_pages + 1):
             pn = f"p{n:0{width}d}"
-            code, anchor, err = run_tool(["pdftotext", "-f", str(n), "-l", str(n), "-enc", "UTF-8", src, "-"], t)
+            code, anchor, err = run_tool(anchor_argv(src, n), t)
             if code != 0:
                 msg = safe_line(err.decode("utf-8", "replace"), 200)
                 if encrypted:
@@ -1257,11 +1293,7 @@ def ingest(a, ctx, row):
             rec["text_b"] = None
             if pdfium_doc is not None:
                 try:
-                    pg = pdfium_doc[n - 1]
-                    tp = pg.get_textpage()
-                    text_b = tp.get_text_bounded(errors="replace").replace("\r\n", "\n")
-                    tp.close()
-                    pg.close()
+                    text_b = lane_b_page_text(pdfium_doc, n)
                     rec["text_b"] = text_b
                     rec["lane_b"] = write_artifact(key_dir, f"{dirs['lane_b']}/{pn}.txt", text_b)
                 except Exception as exc:  # noqa: BLE001

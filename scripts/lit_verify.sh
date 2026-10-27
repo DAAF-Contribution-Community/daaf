@@ -33,9 +33,11 @@
 #   2   refused path (PAPER_DIR / papers dir / SCRATCH_DIR guard, CARD_PATH
 #       outside PAPER_DIR, paper key, artifact path, secret value)
 #   -   (3 is reserved by run_with_capture.sh; never used)
-#   8   card cannot be parsed (missing, duplicate or invalid lit-verify block)
-#   10  ingest artifacts missing or incomplete, or a required library missing
-#       (rapidfuzz; polars or pyarrow)
+#   8   card cannot be parsed (missing, duplicate or invalid lit-verify block;
+#       oversize or non-UTF-8 card)
+#   10  ingest artifacts missing or incomplete, or a required dependency
+#       missing (rapidfuzz; polars or pyarrow; pdftotext and pdfinfo, which
+#       re-derive PDF anchors, from 1.7.0)
 #   11  FAIL as a recorded result (card_check written); selftest: an
 #       expectation did not hold
 #   12  internal error (no verdict)

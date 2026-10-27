@@ -2,8 +2,8 @@
 
 Everything an agent needs to run `scripts/pdf_ingest.sh` and to read what it
 writes. Source of truth: the header, `EXIT_CODES`, `build_parser()` and the
-manifest writer in `scripts/pdf_ingest.py` (`TOOL_VERSION = "1.2.0-daaf"`,
-2026-10-22; `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the rule header of
+manifest writer in `scripts/pdf_ingest.py` (`TOOL_VERSION = "1.2.1-daaf"`,
+2026-10-23; `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the rule header of
 `scripts/pdf_text_common.py` (`NORMALIZE_VERSION = "normalize-v1"`,
 `OVERLAP_VERSION = "overlap-v1"`). If this page and the code disagree, the
 code wins: report the drift. Since 1.2.0 every manifest records
@@ -13,7 +13,7 @@ mode.
 **Contents:** Syntax · Inputs and guards · Provenance of the source ·
 Lanes · Reading aid · Page flags · Renders and crops · Artifact layout · ingest_manifest ·
 page_index columns · MANIFEST.jsonl row · Stdout · Exit codes · Re-ingest ·
-Determinism · Known limits · arXiv HTML mode
+Determinism · Functions lit_verify reuses · Known limits · arXiv HTML mode
 
 ## Syntax
 
@@ -288,6 +288,30 @@ For the same PDF and tool versions, every artifact except
 `ingest_manifest{S}.json` (which carries `ingested_at`) is byte-identical on
 re-run; the reading copies carry the source hash, not a timestamp.
 
+## Functions lit_verify reuses
+
+*(1.2.1, S3-B1, 2026-10-23; no artifact change.)* `lit_verify` 1.7.0
+re-derives an ingest's anchors from its source at check time
+(`evidence-card.md` § Re-derivation) by importing this module and calling
+the same code the ingest ran, so the two can never drift apart:
+
+| Function | What it is | lit_verify uses it for |
+|----------|-----------|------------------------|
+| `anchor_argv(src, n)` | Lane A's exact `pdftotext` argument list for page `n` (run with `LC_ALL=C`) | Re-deriving every anchor page byte-for-byte |
+| `lane_b_page_text(pdfium_doc, n)` | Lane B's text of page `n` from an open pypdfium2 document (CRLF → LF) | Re-deriving each lane B file (the row source) |
+| `html_units(html)` / `unit_evidence(u, text, rows)` | The arXiv HTML unit extraction (`HTML_EXTRACT_VERSION`) and per-unit flags | Re-deriving unit text, labels, flags and table rows |
+| `arxiv_identity(html, web_fetch)` | The watermark's arXiv id and version | Re-checking the HTML source's identity |
+| `run_tool(argv, timeout)`, `tool_version(binary, timeout)`, `parse_pdfinfo(text)` | Subprocess runner with timeout, tool version probe, `pdfinfo` parser | The page count and the `EXTRACTOR_VERSION_DIFFERS` check |
+| `MAX_BYTES_DEFAULT`, `TIMEOUT_DEFAULT_S` | The `--max-bytes` and `--timeout` defaults | `lit_verify`'s `SOURCE_MAX_BYTES` and `--timeout` default |
+
+Two consequences for anyone running `pdf_ingest`:
+- **Keep the source where it was ingested** (the manifest's `source.path`):
+  web_fetch's raw artifact stays in `web_fetches/`, a user PDF in
+  `user_pdfs/`. `lit_verify` reads it at every check; a moved, renamed or
+  deleted source is `SOURCE_MISSING` (fail).
+- A change to any function above changes both CLIs: run both test suites
+  (CONTRIBUTING change-surface rows for the two CLIs).
+
 ## Known limits
 
 - Agreement uses `fuzz.ratio`, which is reading-order-sensitive. S3
@@ -306,8 +330,9 @@ re-run; the reading copies carry the source hash, not a timestamp.
 - Tables in the anchor: pdftotext's default mode serializes most tables
   column-major (all row labels, then each column), while lane B
   (`lane_b{S}/`) keeps rows together. A claimed number must be local to
-  its quote: inside it, or (`numbers-v3`, `lit_verify` 1.3.0, D-22) in the
-  one lane B row the quote's leading row label identifies
+  its quote: inside it, or (`numbers-v3`, `lit_verify` 1.3.0, D-22; guarded
+  by `numbers-v4`/`-v5`) in the one lane B row the quote's leading row label
+  identifies
   (`evidence-card.md` § Numbers). To tell which value belongs to which row,
   read the render when vision is available, or the reading aid
   `pages{S}/pNNN_rows.txt`; never quote lane B.
@@ -363,7 +388,7 @@ and labels are built, version pinning and grades: `arxiv-and-html.md`.
 |------|------|
 | `anchor{S}/uNNN.txt` | The unit text as extracted (UTF-8, LF): what `lit_verify` matches. The raw HTML is the hashed source |
 | `pages{S}/uNNN.txt` | Reading copy: scrubbed, wrapped, secret-redacted, fenced ("unit N/TOTAL section LABEL") |
-| `rows{S}/uNNN.txt` | Units with tables only: one `ltx_tabular` row per line, cells tab-separated; the row source of `numbers-v3`'s unique-row path |
+| `rows{S}/uNNN.txt` | Units with tables only: one `ltx_tabular` row per line, cells tab-separated; the row source of the unique-row path (`numbers-v3`, guarded by `numbers-v4`/`-v5`) |
 | `fulltext{S}.md` | Header (`anchor_kind=arxiv_html`, `arxiv=IDvN`, units, source SHA-256, versions), then per unit `<!-- unit N/TOTAL section=LABEL id=ID anchor_sha256=… -->`, `<!-- flags: … \| conversion_errors: n \| table_rows: path -->` and the reading copy |
 | `page_index{S}.parquet` | One row per unit: `unit_no`, `label`, `label_source`, `latexml_id`, `section_class`, `parent_unit`, `heading`, anchor path/bytes/chars/non-whitespace chars/SHA-256, `table_rows_path`, `table_rows_sha256`, `table_row_count`, `flag_table`, `flag_figure`, `flag_sparse`, `flag_conversion_error`, `conversion_error_count`, `footnote_count`, `flag_evidence`, reading path/SHA-256, `scrub_count` |
 | `ingest_manifest{S}.json` | Written last. `anchor_kind: "arxiv_html"`, `html_extract_version`, `source` (with `format: "text/html (LaTeXML)"`), `arxiv` (`id`, `version`, `id_version`, `watermark`, `category`, `date`, `license_text`, `fetched_url_version`), `generator` (LaTeXML version), `page_count: null`, `unit_count`, `units` (per unit: label, label_source, latexml_id, section_class, parent_unit, heading, heading_tag, anchor, reading, table_rows, flags, conversion_error, conversion_error_count, footnote_count), `vision: {available: false, …}`, `flag_counts`, `conversion_error_units`, `conversion_error_count`, `label_fallbacks`, `merged_sections`, `skipped_elements`, `pages_needing_vision: []`, constants (`HTML_EXTRACT_VERSION`, `SPARSE_UNIT_MAX_CHARS`, `UNIT_SECTION_CLASSES`, …) |

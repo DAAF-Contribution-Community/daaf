@@ -63,18 +63,23 @@ with the names.
 
 ## Tests
 
-Tool versions: `pdf_ingest` 1.2.0-daaf (`HTML_EXTRACT_VERSION`
-`arxiv-html-v1`), `lit_verify` 1.4.0-daaf (card schemas v1 and v2, result
-schema `lit-verify-card-check-v2`), `pdf_text_common` `normalize-v1`,
-`ladder-v1`, `numbers-v3`, `overlap-v1`. The arXiv HTML lane uses only the
+Tool versions: `pdf_ingest` 1.2.1-daaf (`HTML_EXTRACT_VERSION`
+`arxiv-html-v1`), `lit_verify` 1.7.0-daaf (card schemas v1 and v2, result
+schema `lit-verify-card-check-v2`, re-derivation `rederive-v1`),
+`pdf_text_common` `normalize-v1`, `ladder-v2`, `numbers-v5`,
+`column-check-v1`, `overlap-v1`. The arXiv HTML lane uses only the
 Python standard library (`html.parser`) and polars: no new dependency.
+`lit_verify` re-derives PDF anchors with poppler's `pdftotext` and `pdfinfo`
+(exit 10 without them) and lane B with pypdfium2 (without it lane B is not
+used).
 
-| Suite | Count (FE-5f run, 2026-10-22) | Needs |
+| Suite | Count (S3-B2 run, 2026-10-23) | Needs |
 |-------|------------------|-------|
 | `tests/python/test_pdf_ingest.py` | 58 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
-| `tests/python/test_lit_verify.py` | 79 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` |
-| `tests/python/test_scholar_search.py` (regression, shares `web_retrieval_common.py`) | 249 (6 expected failures) | none beyond the image |
-| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 24 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`) |
+| `tests/python/test_lit_verify.py` | 106 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` and re-derivation (poppler, pypdfium2) |
+| `tests/python/test_scholar_search.py` (regression, shares `web_retrieval_common.py`) | 250 (6 expected failures) | none beyond the image |
+| `tests/python/test_web_fetch_scrub.py` (`web_fetch.py`'s own injection scrub, kept in step with the shared one) | 7 | none (reads the source; no network) |
+| `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 34 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`); no PDF tools (its ingests are synthetic) |
 
 Run the suites file-first: a captured `.py` under the session's `scripts/`
 calls `python3 -m unittest discover -s /daaf/tests/python -p "test_pdf_ingest.py"`
