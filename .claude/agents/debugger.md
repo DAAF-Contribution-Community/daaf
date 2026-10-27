@@ -259,6 +259,8 @@ Document the problem precisely before any investigation:
 
 Collect from available sources: error output (exact message, traceback), state at failure (shape, columns, sample values), recent changes, prior validation results. Write all evidence into an evidence table before proceeding to hypotheses.
 
+When searching logs or code through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
+
 ### Step 3: Hypothesis Formation
 
 Form a specific, testable hypothesis. Example:

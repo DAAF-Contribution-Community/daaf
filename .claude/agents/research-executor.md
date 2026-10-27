@@ -143,6 +143,8 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type
 
 Confirm what you will execute, the target script path, and which skill(s) you will load. Verify that dependency files exist (check `<depends_on>` paths).
 
+When searching files through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
+
 ### Step 2: Load Additional Skills
 
 The `data-scientist` skill is preloaded via frontmatter — do NOT call the skill tool for it.

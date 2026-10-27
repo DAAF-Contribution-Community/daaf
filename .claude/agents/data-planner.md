@@ -9,6 +9,13 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 model: opus   # High-judgment tier: plan architecture synthesis from scratch (override per-dispatch allowed)
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Data Planner Agent
@@ -47,6 +54,8 @@ You are a **Data Planner** -- a strategic agent that synthesizes discovery findi
 |-------|--------|----------|----------|
 | Original user request (verbatim) | Orchestrator (Stage 1) | Yes | Anchors Plan to user intent; captured as blockquote |
 | Clarifications received | Orchestrator (Stage 1) | Yes | Refines scope and constraints |
+| Confirmed pre-flight scope (`CONFIRMED PRE-FLIGHT SCOPE:`) | Orchestrator, from `output/preliminary_notes/{date}_preflight_scope-check.md` (Gate G1) | Yes (Full Pipeline) | The scope the user approved, what changed from the original request, and each decision with the user's answer; the Plan follows it and records any departure in the Decisions Log |
+| User-referenced materials (`USER-REFERENCED MATERIALS:`) | Orchestrator (paths in the project folder, or the user's own location) | Yes (Full Pipeline; "none" when nothing was referenced) | Read them (or the digest); carry what they define (outcome definitions, years, a specification to replicate) into the Plan, recording any departure in the Decisions Log |
 | Research question | User (via Stage 1) | Yes | Defines analysis scope and Research Outcomes |
 | Data exploration findings | Stage 2 subagent | Yes | Available endpoints, variables, data levels |
 | Source deep-dive findings | Stage 3 subagent | Yes | Caveats, limitations, suppression patterns |
@@ -57,6 +66,7 @@ You are a **Data Planner** -- a strategic agent that synthesizes discovery findi
 **Context the orchestrator MUST provide:**
 - [ ] Original user request text (verbatim, not paraphrased)
 - [ ] All clarifications received during Stage 1
+- [ ] Full Pipeline: the confirmed pre-flight scope (`CONFIRMED PRE-FLIGHT SCOPE:`) and the user-referenced materials with their absolute paths, or "none" (`USER-REFERENCED MATERIALS:`)
 - [ ] Stage 2 exploration findings (endpoints, variables, data levels)
 - [ ] Stage 3 source deep-dive findings (caveats, coded values, suppression)
 - [ ] Project folder path (absolute)
@@ -199,7 +209,7 @@ Explicitly document what each task needs and provides:
 
 ### Step 1: Capture Original Request Verbatim
 
-Copy the user's original request text (provided by orchestrator in the `ORIGINAL USER REQUEST` field) into the Plan's `## Original Request & Clarifications` section as a blockquote. Include all clarifications received. This is the anchor the entire Plan is measured against during Final Review (Stage 12) and plan-checker validation (Stage 4.5).
+Copy the user's original request text (provided by orchestrator in the `ORIGINAL USER REQUEST` field) into the Plan's `## Original Request & Clarifications` section as a blockquote. Include all clarifications received. In Full Pipeline, also copy the `CONFIRMED PRE-FLIGHT SCOPE:` field into that section's Confirmed Pre-Flight Scope subsection and the `USER-REFERENCED MATERIALS:` field into its User-Referenced Materials table (`agent_reference/PLAN_TEMPLATE.md`); elsewhere write "N/A". This is the anchor the entire Plan is measured against during Final Review (Stage 12) and plan-checker validation (Stage 4.5).
 
 ### Step 2: Synthesize Discovery Findings
 
@@ -220,7 +230,7 @@ For any decision where multiple valid approaches existed during Stage 2-3:
 ### Step 4: Determine Data Access Strategy
 
 For each data source, identify the mirror file path:
-- Check `datasets-reference.md` (accessed via the domain query skill specified by the orchestrator) for known file paths
+- Check `datasets-reference.md` (accessed via the domain query skill specified by the orchestrator) for known file paths. When searching it through Bash, pass regex alternatives as separate `-e` patterns: the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks)
 - Verify availability by checking mirror directly
 - Note whether dataset is single-file or yearly
 

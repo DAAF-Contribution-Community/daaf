@@ -336,6 +336,12 @@ Skills are for AI execution, not human documentation.
 - CONTRIBUTING.md
 - LICENSE
 
+### Reference Files Named `report*`, `summary*`, `findings*`, `analysis*`
+
+**Problem:** Skills are often written by a subagent (framework-engineer, or a `general-purpose` agent in Data Onboarding), and on Claude Code 2.1.281 (observed 2026-10-19) the Write tool rejects any subagent Write to a `.md` basename starting with `report`, `summary`, `findings` or `analysis`, in any case, before any hook runs. The prefix match also catches ordinary words: `reporting.md`, `analysis-patterns.md`, `summary-statistics.md`. Such a file cannot be created with Write, or rewritten in full with Write, by a subagent. Edit of an existing file still works; creating the file with Edit or a shell write instead is routing around the check, not a fix. See CLAUDE.md § Project Conventions > Subagent File Output.
+
+**Fix:** Name new reference files so the basename starts with another word: `model-reporting.md`, `patterns-for-analysis.md`, `descriptive-statistics.md`. Five existing files already match and are **Edit-only** for subagents: `agent_reference/REPORT_TEMPLATE.md`, `.claude/agents/report-writer.md`, `.claude/skills/fixest/references/reporting.md`, `.claude/skills/r-stats/references/reporting.md`, `.claude/skills/academic-manuscript/references/reporting-guidelines.md`.
+
 ### Library Skill Version Drift
 
 **Problem (library/tool skills):** The skill pins a version that was never published to the package index, or documents an API that differs from the build actually installed in the container. Both look authoritative but mislead — `pip install pkg==X.Y` fails because the GitHub release tag has no corresponding published package, or a documented function signature does not exist in the installed build because upstream docs describe a newer API than what is installed.
@@ -408,6 +414,7 @@ Skills are for AI execution, not human documentation.
 - [ ] No CHANGELOG.md
 - [ ] No auxiliary documentation
 - [ ] Only necessary files included
+- [ ] No new `.md` file whose name starts with `report`, `summary`, `findings` or `analysis` (a subagent cannot Write it)
 
 ### Testing
 

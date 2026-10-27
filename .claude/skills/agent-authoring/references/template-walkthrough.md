@@ -114,7 +114,7 @@ Your Core Distinction table must use this format:
 | Principle (belongs here) | Step (belongs in Protocol) |
 |--------------------------|---------------------------|
 | "Always capture pre-state before transforming" | "Step 1: Run shape check on input data" |
-| "Never fix code directly — report and recommend" | "Step 3: Write findings to QA report" |
+| "Never fix code directly — report and recommend" | "Step 3: Return findings in the Output Format" |
 
 **Guidance:**
 - 3-7 numbered principles, each 2-5 sentences
@@ -143,6 +143,7 @@ Your Core Distinction table must use this format:
 - Mark which steps are auto-execute vs. require confirmation
 - Reference external files rather than inlining large code blocks (progressive disclosure)
 - For code-heavy protocols: provide ONE representative example inline, link the rest
+- When a step writes a Markdown file, name it with a date or stage/sequence prefix (`{date}_{Title}_Report.md`, `05_consistency_review.md`), never a basename starting with `report`, `summary`, `findings` or `analysis`: Claude Code rejects that Write for subagents (CLAUDE.md § Project Conventions > Subagent File Output). Agents without the Write tool return text instead of writing deliverable or report files
 
 **Common mistake:** Mixing principles (Section 4) with protocol steps. If a step starts with "Always..." or "Never...", it's probably a principle.
 

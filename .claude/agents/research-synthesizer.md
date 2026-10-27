@@ -10,6 +10,13 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
 model: sonnet   # Well-specified tier: bounded consolidation of parallel findings (override per-dispatch allowed)
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Research Synthesizer Agent
@@ -172,6 +179,8 @@ Collect and catalog all Stage 2-3 findings. Create a tracking manifest:
 ### Step 2: Extract and Normalize Key Findings
 
 Pull critical information from each input and normalize into comparable tables covering: data availability (sources + years + variables + confidence), caveats (source + impact + mitigation), coded values (source + variable + codes + action), and suppression (source + variable + threshold + rate + impact).
+
+When searching the inputs through Bash, pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`): the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
 
 ### Step 3: Identify and Resolve Conflicts
 

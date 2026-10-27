@@ -110,6 +110,11 @@ Follow the format of existing agent subsections in this file.
 **Condition:** Agent uses one or more skills during execution
 **What to add:** Ensure the agent's `skills:` frontmatter field lists preloaded skills. Stage-specific skill loading is documented in the agent's Protocol section and the corresponding `agent_reference/WORKFLOW_PHASE*.md` invocation templates.
 
+### 14b. Agent file — `hooks:` frontmatter field (`enforce-file-first.sh`)
+
+**Condition:** `Bash` is in the agent's `tools` list. Required for every Bash holder, read-only agents included: under auto mode Claude Code ignores a subagent's `permissionMode`, so the tool list and this hook are the only constraints on what its Bash runs.
+**What to add:** The `hooks:` block from the agent-authoring skill's "Per-Agent Hooks" section (FRAMEWORK_INTEGRATION_CHECKLIST.md item A13).
+
 ---
 
 ## Tier 3: CONDITIONAL Narrative Updates
@@ -214,6 +219,7 @@ done
 - [ ] .claude/agents/README.md — Orchestration Flow diagram (if changes workflow)
 - [ ] agent_reference/ERROR_RECOVERY.md — Error Recovery Routing (if handles errors)
 - [ ] Agent file — `skills:` frontmatter field (if uses skills)
+- [ ] Agent file — `hooks:` registers `enforce-file-first.sh` (if `Bash` is in `tools`)
 
 ### Tier 3: CONDITIONAL (review applicability)
 - [ ] Appropriate agent_reference/WORKFLOW_PHASE*.md (if implements workflow phase)

@@ -177,8 +177,9 @@ Every agent MUST include YAML frontmatter:
 name: agent-name-here           # lowercase, hyphens, matches filename
 description: >
   Third person. What it does AND when to use it.
-tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist (omit for all)
-permissionMode: default          # Or: plan (read-only agents)
+tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist; never omit, never list Agent/Task
+permissionMode: default          # Or: plan (read-only agents; ignored under an auto, bypassPermissions or acceptEdits parent, so read-only = no Write/Edit in tools)
+# With Bash in tools: register enforce-file-first.sh under hooks (FRAMEWORK_INTEGRATION_CHECKLIST.md A13)
 model: sonnet                    # DAAF two-tier routing: opus | sonnet
 ---
 ```
