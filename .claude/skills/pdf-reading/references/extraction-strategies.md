@@ -3,8 +3,9 @@
 How to read each kind of page so the evidence card stays anchorable, how to
 use the secondary readings (lane B, OCR, renders) without letting them
 overwrite the anchor, and how to judge and log reading quality. Adapted from
-the user's source skill (`research/2026-10-02_FrameworkDev_ScholarlySearch/pdf-reading/references/extraction-strategies.md`
-and `quality-rubrics.md`) per preliminary note 10 § 1: PyMuPDF, Gemini,
+the user's source skill (maintainer-only copies, not shipped:
+`research/2026-10-02_FrameworkDev_ScholarlySearch/pdf-reading/references/extraction-strategies.md`
+and `quality-rubrics.md`; preliminary note 10 § 1 there): PyMuPDF, Gemini,
 LlamaParse and in-skill subagent dispatch are dropped; the "authority
 hierarchy" that let vision replace text is rewritten as the reconciliation
 rule below.
@@ -26,9 +27,9 @@ DAAF never merges two readings into one text. Each reading keeps its lane:
 
 When two readings disagree, record both in the card's text/vision
 discrepancy log with the page, what each lane shows, and which one the claim
-relies on. Never pick one silently (spec §7.3). The user's source skill said
-"prefer vision" for conflicts; DAAF's rule replaces that (user decision D-20
-item 4).
+relies on. Never pick one silently: the reviewer needs to see that two
+readings differed. The user's source skill said "prefer vision" for
+conflicts; DAAF's rule replaces that (user decision, 2026-10-13).
 
 ## Page types
 
@@ -38,13 +39,13 @@ item 4).
 | Fused compound hyphens | Quote "natural-language" vs anchor "naturallanguage" | Quote the page as printed; SKELETON matching absorbs it (`PASS_SKELETON`). Never "correct" the anchor |
 | Small caps | "I NLINE S EARCH" in the anchor | SKELETON absorbs the split; quote the visible words |
 | Ligatures and DTP exports (InDesign, Pages) | `garbled`, `(cid:` evidence, or words like "defned" | NFKC folds U+FB00–FB04 ligatures. Where a glyph is unmapped, the anchor lacks the text: quote a nearby clean sentence, or use vision when validated; log the garbling. The source skill's benchmark: PyMuPDF turned "defined" into "defned" on an InDesign export |
-| Tables (ruled) | `table` via `find_tables`, `numeric` | Numbers come from the anchor text of that page, as printed. `-layout` would keep the grid but interleave columns, so the anchor (default mode) can list cells in an unusual order: match numbers, not row layout. Use the 300-DPI crop when vision is validated |
+| Tables (ruled) | `table` via `find_tables`, `numeric` | Numbers come from the anchor text of that page, as printed. `-layout` would keep the grid but interleave columns, so the anchor (default mode) can list cells in an unusual order: match numbers, not row layout. Use the 300-DPI crop when vision is validated (crops were not part of the vision probe, which used full 2000 px pages: `vision-validation.md` § The validation probe) |
 | Tables (borderless, booktabs) | Caption-only `table`, often `numeric` | `find_tables` (`lines` strategy) misses them. Read the anchor; check that the row and column you attribute a number to are right (`table_ref`); a validated vision reading is the main help here |
 | Equations | Unicode symbols in the anchor | Quote prose around an equation, not the equation; describe the equation in a summary field. For LaTeX fidelity on arXiv papers see `arxiv-and-html.md` |
 | Figures | `figure` (caption or image ≥ 5%) | Text in a figure is usually not in the anchor. Quote the caption; numbers read off a chart are `vision-only` at best and are never effect sizes |
 | Sparse pages | `scanned` without a large image (a figure page with a caption) | A short exact anchor covers it (`COVERED_SPARSE`, no cap) |
-| Truly scanned pages | `scanned` + one image ≥ 50% of the page, `ocr` | Read `pages/pNNN_ocr.txt`; quotes are `source: "ocr"`. The card is capped at PARTIAL. With empty OCR and no validated vision the page cannot be covered: report it |
-| Scans with an existing OCR layer | `ocr_layer_suspected` | Both lanes read the same, possibly noisy, OCR layer, so agreement looks fine. Check suspicious words and numbers; vision when validated |
+| Truly scanned pages | `scanned` + one image ≥ 50% of the page, `ocr` | Read `pages/pNNN_ocr.txt`; quotes are `source: "ocr"`. The card is capped at PARTIAL. No model is validated on scans (SKILL.md § Vision-validated model list). With empty OCR and an unlisted reader the page cannot be covered: report it. A listed reader may still look, but the reading is unvalidated: write `?` for any digit you cannot read (never infer from context or trends), label it in the card as an unvalidated reading of a scan, log every text/vision/OCR disagreement, and report it to the orchestrator (`evidence-card.md` § Coverage statuses) |
+| Scans with an existing OCR layer | `ocr_layer_suspected` | Both lanes read the same, possibly noisy, OCR layer, so agreement looks fine. Check suspicious words and numbers. No model is validated on these pages either: a listed reader's vision reading is unvalidated, handled as on a truly scanned page (`?` for unreadable digits, labelled, disagreements logged, reported) |
 | Rotated pages | `rotated` | The anchor still holds the text. Renders honor `/Rotate`; crops are skipped on such pages. Models misread rotated images more often, so treat vision there with extra care |
 | CJK text | `cjk_risk` | poppler-data is not installed, so glyphs may be dropped or mis-mapped. Say so in the card; do not quote CJK text the anchor lacks |
 | Running headers and footers | `header_footer` in the manifest | They stay in the anchor; do not use them as anchors (they are not unique) |
@@ -66,7 +67,7 @@ The source skill's structured figure description (Type, Components, Layout,
 Key relationships, Annotations, Trends, Significance, Visual notes) is useful
 reader prose. Keep it in the card's prose sections, labeled as the reader's
 description, never inside a `quote`. "Significance" is interpretation and
-belongs with reader-assessed content (spec §7.6 keeps author-stated and
+belongs with reader-assessed content (the card keeps author-stated and
 reader-assessed material apart).
 
 ## Reading-quality rubric
@@ -90,7 +91,7 @@ Spot-check scoring (per page, rendered page against the anchor):
 There is no "skip review" option: the source skill's `review: false` for
 batches conflicts with DAAF's rigor rules and was dropped. Every card goes
 through `lit_verify card`; the Literature Review mode adds a claim spot-check
-audit on a sample (spec §12).
+audit on a sample.
 
 ## Re-read triggers
 

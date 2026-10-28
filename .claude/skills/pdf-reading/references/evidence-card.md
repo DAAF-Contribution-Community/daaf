@@ -437,10 +437,20 @@ Every anchor is checked: a `NOT_FOUND` or `WRONG_PAGE` anchor always fails
 (a fabricated quote), even on a page another anchor covers. An extra
 NON_IDENTIFYING or NEAR anchor on a covered page is a warning.
 
-**Consequence of the empty vision list (today).** A truly scanned page whose
-OCR text is empty can only be covered by a validated `vision_only` digest, so
-with no validated model it is `NOT_COVERED` and the card FAILs. Report such a
-paper to the orchestrator rather than forcing the card.
+**A truly scanned page with empty OCR text** can only be covered by a
+validated `vision_only` digest (`VISION_ONLY`, partial). Without a listed
+reader it is `NOT_COVERED` and the card FAILs: report such a paper to the
+orchestrator rather than forcing the card. A listed reader's digest passes
+the gate, but no model is validated on scanned pages (the list covers table
+pages without a `scanned` or `ocr_layer_suspected` flag,
+`vision-validation.md` § The validation probe), so say in the card that the digest is an unvalidated
+reading of a scan, and tell the orchestrator. The same holds for any vision
+reading (a digest, or a claim with `source` `vision` or `both`) of a page
+flagged `scanned` or `ocr_layer_suspected`: write `?` for digits you cannot
+read and never infer them from context or trends, mark the reading as
+unvalidated in the card, log every difference from the OCR or text lane, and
+tell the orchestrator (its audit checks these pages:
+`vision-validation.md` § Gating, orchestrator step 5).
 
 ## Numbers (`numbers-v6`)
 
@@ -596,8 +606,9 @@ both in-quote and the `numbers-v3` rule.
 **Residuals (documented, not caught):**
 - (a) *same row, another column.* In a row `Overage 0.58 0.57 0.59 …`, a
   claim of 0.59 for the first column clears: the gate knows the row, not the
-  column. The same holds inside a quote that holds the whole row. A validated
-  vision cross-check could catch it (none is validated yet). Since 1.5.0
+  column. The same holds inside a quote that holds the whole row. A vision
+  cross-check by a listed reader can catch it, as the reader's own check:
+  the gate does not compare vision readings with columns. Since 1.5.0
   such a number carries the visible label `column-not-checked` (below).
 - (b) *look-alike rows* are closed: under B6, "Time III (Inclusive with
   co-teaching)" matched the "… without co-teaching" row and "Full Sample"
@@ -712,7 +723,9 @@ With `vision_mode: "off"` or `vision_validated: false`, every claim with
 
 **Fail-closed on the list (1.6.0).** `lit_verify` embeds the vision-validated
 list (`VISION_VALIDATED_LISTS`, one entry per `vision_list_version`; the
-current `vision-list-2026-10-19` is empty) and records it in `card_check`
+current `vision-list-2026-10-28` holds five model IDs on the two Anthropic
+routes, and `vision-list-2026-10-19`, empty, is kept so older cards stay
+interpretable) and records it in `card_check`
 `constants`. `vision_validated: true` for a `reader_model` that is not on the
 entry for the card's `vision_list_version`, or for a list version the tool
 does not know, is `VISION_NOT_ON_LIST` (fail), and vision then counts as
@@ -1017,12 +1030,17 @@ is verdict PARTIAL, `FULL_TEXT_PARTIAL`. A minimal block:
 {"schema_version": "lit-verify-card-v1", "paper_key": "user_00000001",
  "source_pdf_sha256": "<64 hex from ingest_manifest source.sha256>",
  "reader_model": "claude-opus-5-5", "vision_mode": "auto",
- "vision_validated": false, "vision_list_version": "vision-list-2026-10-19",
+ "vision_validated": true, "vision_list_version": "vision-list-2026-10-28",
  "coverage": [{"page": 1, "anchors": ["<a verbatim, distinctive sentence from page 1>"],
                "summary": "one line"}],
  "claims": [{"claim_id": "C1", "page": 1, "quote": "<verbatim sentence>",
              "numbers": ["-0.087", "(0.044)"], "source": "text"}]}
 ```
+
+Here `vision_validated` is `true` because `claude-opus-5-5` is on the list and
+the dispatch in this example named the route `anthropic-subscription`
+(front matter `reader_route`). A reader whose route was not given, or whose
+model and route have no row, writes `false`.
 
 (Placeholders shown in angle brackets are for illustration; a real card has
 none, and a card holding this block verbatim would fail its hash check.)
@@ -1042,7 +1060,7 @@ unit (PASS_CONVERSION_ERROR). Expected: verdict PARTIAL,
 {"schema_version": "lit-verify-card-v2", "paper_key": "user_00000002",
  "anchor_kind": "arxiv_html", "source_sha256": "<64 hex: ingest_manifest source.sha256>",
  "source_version": "v4", "reader_model": "claude-opus-5-5", "vision_mode": "off",
- "vision_validated": false, "vision_list_version": "vision-list-2026-10-19",
+ "vision_validated": false, "vision_list_version": "vision-list-2026-10-28",
  "coverage": [{"section": "front", "anchors": ["<a verbatim, distinctive sentence>"],
                "summary": "title and abstract"}],
  "claims": [{"claim_id": "C1", "section": "3.2", "quote": "<verbatim sentence>",

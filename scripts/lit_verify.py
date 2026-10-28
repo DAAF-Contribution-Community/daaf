@@ -654,6 +654,29 @@ import pdf_text_common as ptc  # noqa: E402
 # 0 -> 999 of 999 (spaced after a word) and 0 -> 18 of 18 (glued after a
 # bracket). Still 1.8.0 (unreleased); no new status, card and result schemas
 # unchanged.
+# 1.8.0, part 4 (2026-10-28, user decision): the vision-validated list
+# vision-list-2026-10-28, after the table-transcription probe run on
+# 2026-10-28 on the anthropic-subscription route (13 synthetic table pages,
+# 381 numeric cells; 16 real pages from five open papers, of which 11 table
+# pages from four papers were scored, 1,081 cells, and five were transcribed
+# but not scored: three figure pages, one table of text entries, one 1973
+# scan flagged ocr_layer_suspected).
+# claude-opus-5-5 and claude-sonnet-5 passed it: 3 of 3 runs each, every
+# cell exact, 0 sign errors, 0 decimal shifts, 0 invented numbers.
+# claude-sonnet-5-5, claude-fable-5-1 and claude-fable-5 are listed too,
+# admitted by user policy decision, not by DAAF quality validation (not
+# probed). Each model has an anthropic-subscription and an anthropic-api row;
+# the API route is inference for every model (same models, same Anthropic
+# image rules; not probed on that route). Every row covers table pages
+# without a `scanned` or `ocr_layer_suspected` flag; pages with either flag
+# were not probed. vision-list-2026-10-19 (empty) is kept, so a card read
+# under it still fails VISION_NOT_ON_LIST with vision_validated true.
+# Why part 4 and not a patch bump: this is a data change, not a rule change
+# (no status, rule version, card or result schema changes), and every
+# card_check already records the list it was judged against (constants
+# VISION_LIST_VERSION and VISION_VALIDATED_LISTS), so the list version, not
+# the tool version, is what tells two results apart. 1.8.0 is unreleased, and
+# parts 2 and 3 set the pattern of one unreleased version per round.
 TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
@@ -807,8 +830,34 @@ OCR_LAYER_PAPER_CAP_PAGES = 2
 #   vision_list_version but not the route (front matter, reader_route), so the
 #   gate checks the model ID only: on the list for ANY route of the card's
 #   version. Identity and route stay with the Option C audit (orchestrator).
-VISION_LIST_VERSION = "vision-list-2026-10-19"
-VISION_VALIDATED_LISTS = {"vision-list-2026-10-19": ()}
+#   Older versions are never removed, so a card keeps the meaning of the list
+#   it was read under. tests/python/test_lit_verify.py asserts that the rows
+#   of VISION_LIST_VERSION equal SKILL.md's table.
+# ASSUMES (1.8.0 part 4): every row covers table pages without a `scanned` or
+#   `ocr_layer_suspected` flag (pages with either flag were not probed). The
+#   gate does NOT enforce that limit: it re-derives the page flags, classes
+#   truly scanned pages (SCANNED_PAGE, pages[].class) and records OCR-layer
+#   pages (pages[].ocr_layer), but it accepts a listed reader's vision reading
+#   on either at PARTIAL. The limit stays with the reader and the
+#   orchestrator audit (vision-validation.md § Gating, steps 4-5).
+VISION_LIST_VERSION = "vision-list-2026-10-28"
+VISION_VALIDATED_LISTS = {
+    # 2026-10-19: created empty (no probe run yet).
+    "vision-list-2026-10-19": (),
+    # 2026-10-28. Probed on anthropic-subscription and passed (3 of 3 runs,
+    #   every cell exact): claude-opus-5-5, claude-sonnet-5; IDs
+    #   transcript-derived. Admitted by user policy decision, not by DAAF
+    #   quality validation, not probed: claude-sonnet-5-5, claude-fable-5-1,
+    #   claude-fable-5; IDs not transcript-derived. Every anthropic-api row
+    #   is inference (not probed on that route).
+    "vision-list-2026-10-28": (
+        ("claude-opus-5-5", "anthropic-subscription"), ("claude-opus-5-5", "anthropic-api"),
+        ("claude-sonnet-5", "anthropic-subscription"), ("claude-sonnet-5", "anthropic-api"),
+        ("claude-sonnet-5-5", "anthropic-subscription"), ("claude-sonnet-5-5", "anthropic-api"),
+        ("claude-fable-5-1", "anthropic-subscription"), ("claude-fable-5-1", "anthropic-api"),
+        ("claude-fable-5", "anthropic-subscription"), ("claude-fable-5", "anthropic-api"),
+    ),
+}
 
 # INTENT (1.7.0): re-derivation (§ Re-derivation in the header).
 #   rederive-v2 (1.8.0): read once from sealed bytes; header/footer, page
@@ -2946,8 +2995,9 @@ def forge_manifest_set(papers_dir, key, change, files=None):
 
 
 def selftest_card(key, src_sha, coverage, claims, vision_validated=False):
-    # 1.6.0: vision_validated defaults to false (no model is on the vision
-    #   list; true is the planted VISION_NOT_ON_LIST case).
+    # 1.6.0: vision_validated defaults to false; true is the planted
+    #   VISION_NOT_ON_LIST case (list version "selftest" is not a version
+    #   this tool knows, so it fails whatever the shipped lists hold).
     # A complete synthetic card (front matter + prose + one lit-verify block).
     block = {"schema_version": CARD_SCHEMA_VERSION, "paper_key": key, "source_pdf_sha256": src_sha,
              "ingest_suffix": "", "reader_model": "selftest-synthetic", "vision_mode": "auto",

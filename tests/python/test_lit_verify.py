@@ -1313,11 +1313,109 @@ class SoundnessFixTests(unittest.TestCase):
         self.assertEqual(lv.check_card(mk_card(c, reader_model="claude-unlisted-0", vision_validated=False), ing,
                                        None)["verdict"], "PASS")
         self.assertEqual(lv.check_card(mk_card(c), ing, None)["verdict"], "PASS")   # the module's test-only list
-        # the shipped list mirrors SKILL.md: same version, no entries yet
+        # the shipped list mirrors SKILL.md: same version line, same (model ID, route) rows
         skill = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "SKILL.md").read_text()
         self.assertIn(f'`vision_list_version: "{lv.VISION_LIST_VERSION}"`', skill)
-        self.assertEqual(REAL_VISION_LISTS, {lv.VISION_LIST_VERSION: ()})
-        self.assertIn("*(none yet)*", skill)
+        section = skill.split("### Vision-validated model list", 1)[1].split("\n### ", 1)[0]
+        rows = re.findall(r"^\| `([^`]+)` \| `([^`]+)` \|", section, re.M)
+        self.assertEqual(sorted(rows), sorted(REAL_VISION_LISTS[lv.VISION_LIST_VERSION]))
+        self.assertEqual(len(rows), len(set(rows)))
+        self.assertNotIn("*(none yet)*", skill)
+
+    # 1.8.0 part 4: vision-list-2026-10-28 (the probe of 2026-10-28 plus the user's policy admissions)
+    LISTED_2026_10_28 = ("claude-opus-5-5", "claude-sonnet-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5")
+
+    def test_vision_list_2026_10_28_rows(self):
+        self.assertEqual(lv.VISION_LIST_VERSION, "vision-list-2026-10-28")
+        self.assertEqual(set(REAL_VISION_LISTS), {"vision-list-2026-10-19", "vision-list-2026-10-28"})
+        self.assertEqual(REAL_VISION_LISTS["vision-list-2026-10-19"], ())   # kept, still empty
+        want = {(m, r) for m in self.LISTED_2026_10_28 for r in ("anthropic-subscription", "anthropic-api")}
+        got = REAL_VISION_LISTS["vision-list-2026-10-28"]
+        self.assertEqual((set(got), len(got)), (want, 10))
+        # every key is bare (no [1m] suffix), as the reader writes reader_model
+        self.assertFalse([m for m, _ in got if "[" in m or m != m.strip() or m != m.lower()])
+
+    def test_vision_list_skill_rows_and_basis_labels(self):
+        # Every data row of SKILL.md's list table has the backticked (ID, route) shape (a row without
+        # backticks would escape the mirror check), and each row's basis label is pinned.
+        skill = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "SKILL.md").read_text()
+        section = skill.split("### Vision-validated model list", 1)[1].split("\n### ", 1)[0]
+        lines = [ln for ln in section.splitlines() if ln.startswith("|")]
+        self.assertEqual(lines[0], "| Exact model ID | Route | Basis (date, result) | Validated on |")
+        self.assertTrue(set(lines[1]) <= set("|- "), lines[1])
+        data = lines[2:]
+        self.assertEqual(len(data), 10)
+        probed, admitted = ("claude-opus-5-5", "claude-sonnet-5"), ("claude-sonnet-5-5", "claude-fable-5-1",
+                                                                     "claude-fable-5")
+        kinds = {"probed": 0, "probed-model api (inference)": 0, "admitted": 0}
+        policy = "admitted 2026-10-28 by user policy decision, not by DAAF quality validation"
+        for ln in data:
+            m = re.match(r"^\| `([^`]+)` \| `([^`]+)` \| ([^|]+) \| ([^|]+) \|$", ln)
+            self.assertIsNotNone(m, ln)
+            model, route, basis, scope = m.groups()
+            self.assertIn("`scanned` or `ocr_layer_suspected`", scope, ln)
+            if model in probed and route == "anthropic-subscription":
+                self.assertTrue(basis.startswith("Probed 2026-10-28: 3 of 3 runs passed"), ln)
+                kinds["probed"] += 1
+            elif model in probed and route == "anthropic-api":
+                self.assertIn("inference", basis, ln)
+                self.assertNotIn("admitted", basis, ln)
+                kinds["probed-model api (inference)"] += 1
+            else:
+                self.assertIn(model, admitted, ln)
+                self.assertIn(policy, basis, ln)
+                self.assertNotIn("Probed", basis, ln)
+                self.assertEqual("route by inference" in basis, route == "anthropic-api", ln)
+                kinds["admitted"] += 1
+        self.assertEqual(kinds, {"probed": 2, "probed-model api (inference)": 2, "admitted": 6})
+
+    def test_vision_list_2026_10_28_listed_ids_pass(self):
+        ing = mk_ingest([{"anchor": PROSE[3] + " The estimate was 0.50 in the invented pilot."}])
+        c = [cov(1, "Table 2 reports -0.087* (0.044) and 1,204 boats")]
+        vision = [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["31"], "source": "vision"}]
+        for model in self.LISTED_2026_10_28:
+            card = dict(reader_model=model, vision_list_version="vision-list-2026-10-28")
+            r = lv.check_card(mk_card(c, **card), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]), ("PASS", [], True), model)
+            # a listed reader's vision claim is a vision reading (partial), not an unavailable claim
+            r = lv.check_card(mk_card(c, vision, **card), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision")), ("PARTIAL", []), model)
+            self.assertIn("NUMBER_VISION_ONLY", statuses(r, "claim_number"))
+
+    def test_vision_list_2026_10_28_unlisted_ids_fail(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers")]
+        # an unlisted model, the [1m] form a reader must strip, a case or spacing variant, a shim candidate,
+        # an older Opus, the provider-prefixed and dotted (OpenRouter) forms, and leading spaces
+        for model in ("claude-unlisted-0", "claude-opus-5-5[1m]", "Claude-Opus-5-5", "claude-sonnet-5 ", "gpt-6-sol",
+                      "claude-opus-4-8", "anthropic/claude-opus-5-5", "claude-fable-5.1", " claude-opus-5-5",
+                      " claude-fable-5"):
+            r = lv.check_card(mk_card(c, reader_model=model, vision_list_version="vision-list-2026-10-28"), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]),
+                             ("FAIL", ["VISION_NOT_ON_LIST"], False), model)
+            reason = next(it["reason"] for it in r["items"] if it["status"] == "VISION_NOT_ON_LIST")
+            self.assertIn("is not on vision list 'vision-list-2026-10-28' (10 entries)", reason, model)
+
+    def test_vision_list_old_and_unknown_versions_fail(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers")]
+        vision = [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["31"], "source": "vision"}]
+        # a listed ID under the OLD version still fails: that list is empty, and cards keep the version
+        for model in self.LISTED_2026_10_28:
+            r = lv.check_card(mk_card(c, vision, reader_model=model, vision_list_version="vision-list-2026-10-19"),
+                              ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]),
+                             ("FAIL", ["VISION_NOT_ON_LIST", "VISION_UNAVAILABLE_CLAIM"], False), model)
+        # an unknown or missing version fails for a listed ID too
+        for version in ("vision-list-2026-10-29", "vision-list-2026-11-02", "VISION-LIST-2026-10-28", None):
+            r = lv.check_card(mk_card(c, reader_model="claude-opus-5-5", vision_list_version=version), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision")), ("FAIL", ["VISION_NOT_ON_LIST"]), version)
+            reason = next(it["reason"] for it in r["items"] if it["status"] == "VISION_NOT_ON_LIST")
+            self.assertIn("is not a list version this tool knows", reason, version)
+        # vision_validated false never consults the list
+        r = lv.check_card(mk_card(c, reader_model="claude-opus-5-5", vision_validated=False,
+                                  vision_list_version="vision-list-2026-10-19"), ing, None)
+        self.assertEqual(r["verdict"], "PASS")
 
     # W2 (1.6.0): the OCR-layer paper cap
     def test_ocr_layer_paper_cap(self):
