@@ -403,8 +403,8 @@ last_fetch_time <- 0.0
 # REASONING: Both arrow::read_parquet(url) and readr::read_csv(url) route their
 #   HTTP transfer through R's download.file(), which enforces getOption("timeout")
 #   (default 60s) on the ENTIRE transfer — not per-idle-period. Large mirror files
-#   (e.g., ccd/schools_ccd_directory.parquet, ~224MB) need 150-400s at real CDN
-#   throughput (~0.55-1.4 MB/s), so they truncate at ~60s with a
+#   (e.g., ccd/schools_ccd_directory.parquet, ~269MB at the pinned revision) need
+#   roughly 190-490s at real CDN throughput (~0.55-1.4 MB/s), so they truncate at ~60s with a
 #   "downloaded length X != reported length Y" warning and silently fall through
 #   to the next (CSV) mirror. mirrors.yaml declares timeout: 300 per mirror, but
 #   the R read functions never consult it — the setting must be applied here.
@@ -439,6 +439,7 @@ mirrors <- config$mirrors
 # All mirrors use the same path — only root_url and format differ.
 # Example for SAIPE district poverty:
 DATASET_PATH <- "saipe/districts_saipe"
+years <- NULL   # integer vector of years to keep, e.g. c(2020, 2021, 2022); NULL keeps all years
 
 # --- Single-File Fetch: Try each mirror in order ---
 # INTENT: Try each mirror in priority order. Return data frame on first success.
@@ -652,10 +653,14 @@ for (year in years) {
     if (is.null(year_df)) stop("All mirrors failed")
     year_df <- year_df |> filter(year == !!year)
     cat(sprintf("    -> %s rows\n", format(nrow(year_df), big.mark = ",")))
-    frames[[length(frames) + 1]] <<- year_df
+    # REASONING: plain <- here. This tryCatch expression is evaluated in the script's
+    #   global frame; a replacement-form <<- (frames[[i]] <<- x) looks `frames` up in
+    #   the parent of the global environment, where it does not exist, so every year
+    #   failed with "object 'frames' not found" and was reported as a SKIP.
+    frames[[length(frames) + 1]] <- year_df
     "success"
   }, error = function(e) {
-    cat(sprintf("    -> SKIP: Year %d not available from any mirror\n", year))
+    cat(sprintf("    -> SKIP: Year %d: %s\n", year, conditionMessage(e)))
     "skip"
   })
 }
@@ -669,9 +674,10 @@ cat(sprintf("\n  Combined: %s rows x %d cols\n", format(nrow(result), big.mark =
 
 For large mirror files, raising `options(timeout = ...)` (shown in the patterns
 above) is sufficient — `arrow::read_parquet(url)` completes once the timeout
-exceeds the transfer time (confirmed: `ccd/schools_ccd_directory.parquet`, ~224MB,
-read directly from URL in ~100-285s across observed runs — CDN throughput varies
-several-fold, so treat any single timing as an observation, not a guarantee).
+exceeds the transfer time (observed on the v1 copy of `ccd/schools_ccd_directory.parquet`,
+~224MB, read directly from URL in ~100-285s across observed runs; the pinned v2 file is
+~269MB, so expect proportionally longer — CDN throughput varies several-fold, so treat
+any single timing as an observation, not a guarantee).
 Prefer that in-memory path when it works, since it leaves no on-disk artifact to
 manage.
 
@@ -869,6 +875,11 @@ def discover_mirror_inventory(
             if path_key not in row or not isinstance(row[path_key], str):
                 raise ValueError("tree file row lacks the configured string path field")
             raw_path = row[path_key]
+            # REASONING: skip repo-root objects (build_manifest.parquet, README.md);
+            #   every canonical data or codebook path is "{source}/{filename}", so a
+            #   root-level parquet would otherwise be counted as a data key.
+            if "/" not in raw_path:
+                continue
 
         if not raw_path.lower().endswith(expected_extensions):
             continue
@@ -985,7 +996,7 @@ def get_codebook_url(
 
 # Usage:
 # url = get_codebook_url("saipe/codebook_districts_saipe")
-# → "{root_url}/saipe/codebook_districts_saipe.xls" (from first mirror with metadata config)
+# → "{root_url}/{revision}/saipe/codebook_districts_saipe.xls" (from first mirror with metadata config)
 ```
 
 ```r
@@ -1009,7 +1020,7 @@ if (is.null(codebook_url)) stop("No mirror with metadata configuration found")
 cat(sprintf("Codebook URL: %s\n", codebook_url))
 
 # Usage:
-# codebook_url  # e.g., "{root_url}/saipe/codebook_districts_saipe.xls"
+# codebook_url  # e.g., "{root_url}/{revision}/saipe/codebook_districts_saipe.xls"
 ```
 
 ### fetch_codebook()
@@ -1252,7 +1263,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Filters applied after loading into memory
 - **R only — view-safe parquet read required:** The mirror files are Polars-written,
   and some declare string columns as `string_view` in the parquet-native schema
-  (confirmed: `saipe/districts_saipe`, `edfacts/schools_edfacts_grad_rates_2015..2019`).
+  (75 of the 406 data parquets at rev `0ad00ce0`, probed 2026-10-28, all carried forward from v1, e.g. `edfacts/{schools,districts}_edfacts_grad_rates_2010..2019`; `saipe/districts_saipe` has none).
   The R `arrow` binding reads these at the C++ layer but fails at the
   Table->data.frame step with `cannot handle Array of type <utf8_view>`. Use the
   view-safe read pattern shown in the R mirror-loop `eager_parquet` branch above:
@@ -1264,7 +1275,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - **R only — large-file download timeout:** `arrow::read_parquet(url)` routes its
   transfer through R's `download.file()`, which caps the ENTIRE transfer at
   `getOption("timeout")` (default 60s). Large mirror files (e.g.,
-  `ccd/schools_ccd_directory.parquet`, ~224MB) truncate at ~60s with a
+  `ccd/schools_ccd_directory.parquet`, ~269MB) truncate at ~60s with a
   `downloaded length X != reported length Y` warning and silently fall through to
   the next mirror in priority order (the CSV fallback, in the default
   configuration). Raise the timeout before the mirror loop:
@@ -1277,7 +1288,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Set `infer_schema_length=10000` to avoid type inference errors on large files
 - Apply filters in the lazy frame before `.collect()` to minimize memory
 - Large files (500MB+) — always use lazy loading, never `pl.read_csv()` directly
-- **Zero-padded ID columns (CRDC, EDFacts, SAIPE) — general principle:** Portal ID columns (`ncessch`→12 chars, `leaid`→7 chars, and CRDC's `crdc_id`) are zero-padded strings whose leading zeros carry state-FIPS identity (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT — ~19% of school rows). CSV type inference reads them as Int64 and silently drops the leading zeros, splitting the join key for those states. Parquet reads preserve types automatically, so this only bites CSV-fallback reads. **Two defenses are needed, not one:** (1) force-string on read, AND (2) pad-and-assert *after* read. Force-string alone is insufficient because a source file can ship an ID that is *already* truncated — see the EDFacts 2019 note below — in which case `col_character()`/`schema_overrides` faithfully preserve a value that is already wrong. Only pad-to-width plus a width assertion recovers and verifies these.
+- **Zero-padded ID columns (CRDC, EDFacts, SAIPE) — general principle:** Portal ID columns (`ncessch`→12 chars, `leaid`→7 chars, and CRDC's `crdc_id`) are zero-padded strings whose leading zeros carry state-FIPS identity (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT — ~19% of school rows). CSV type inference reads them as Int64 and silently drops the leading zeros, splitting the join key for those states. Parquet reads preserve the stored type, and that does not protect the IDs: on the pinned mirror (rev `0ad00ce0`, probed 2026-10-28) `ncessch` is Int64 in `ccd/schools_ccd_enrollment_{year}` (1986-2023; String in 2024), `meps/schools_meps` and `edfacts/schools_edfacts_grad_rates_2019`, and `leaid` is Int64 in `ccd/school-districts_lea_directory`, `ccd/schools_ccd_lea_enrollment_{year}` (1986-2023; String in 2024) and `saipe/districts_saipe`, while `ccd/schools_ccd_directory` and `ccd/districts_ccd_finance` store String. Cast to String, pad and assert on every read, parquet or CSV, before joining. **Two defenses are needed, not one:** (1) force-string on read, AND (2) pad-and-assert *after* read. Force-string alone is insufficient because a source file can ship an ID that is *already* truncated — see the EDFacts 2019 note below — in which case `col_character()`/`schema_overrides` faithfully preserve a value that is already wrong. Only pad-to-width plus a width assertion recovers and verifies these.
 - **EDFacts 2019 truncated-ID trap (field-confirmed, HIGH impact):** In a native R-mode pipeline run, 2019 EDFacts grad-rate CSVs delivered 11-character `ncessch` for single-digit-FIPS states (1/2/4/5/6/8/9), versus 12-character in 2015-2018 — the source file itself had already lost the leading zero. Forcing string on read did **not** restore it (there was nothing to restore; the character was gone from the file). The working fix was `str_pad(ncessch, 12)` / `str_pad(leaid, 7)` immediately after each CSV read, before any bind/join, plus `stopifnot(nchar == 12/7)` (R) or an `assert` on `.str.len_chars()` (Python) to catch the failure loudly. In that run this repaired 43,223 short IDs, all localized to 2019. Treat force-string + pad + width-assert as the standard CSV-fallback ID recipe for EDFacts and SAIPE, not just CRDC.
 - **Force-string on read (Python, Polars):** `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8}` — add `"crdc_id": pl.Utf8` for CRDC datasets. This is defense (1).
 - **Pad-and-assert after read (Python, Polars):** defense (2) — recovers already-truncated IDs and fails loudly if a width is unexpected:
@@ -1340,9 +1351,9 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
-| Race | 1-7, 99 (total) | WH, BL, HI, AS |
-| Sex | 1 (Male), 2 (Female), 99 | M, F |
-| Grade | -1 to 13, 99 (total) | PK, KG, 01 |
+| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8 | WH, BL, HI, AS |
+| Sex | 1 (Male), 2 (Female), 9 (Unknown), 99 (Total); IPEDS declares 3 (Gender Not-Identified); its fall-enrollment-race files populate 3 and 4 in 2022, 3 and 9 in 2023 | M, F |
+| Grade | -1 to 15, 99 (total), 999 (not specified) | PK, KG, 01 |
 
 ### Grade Encoding (SEMANTIC TRAP!)
 

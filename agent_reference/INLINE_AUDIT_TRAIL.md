@@ -236,7 +236,7 @@ with open(MIRRORS_YAML) as f:
 #
 # REASONING: Using mirror-based download (not the REST API) because mirrors
 # serve complete files that Polars can read natively via HTTP — no pagination,
-# no rate limiting, and parquet format preserves schema and compresses 3-10x.
+# and parquet format preserves schema and compresses 3-10x.
 #
 # ASSUMES:
 #   - At least one mirror is available and serves this dataset

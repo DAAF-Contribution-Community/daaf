@@ -425,24 +425,24 @@ International Classification of Nonprofit Organizations:
 
 ### Filtering Examples
 
-> **Important:** NTEE codes are NOT included in the Portal dataset (`nccs/colleges_nccs_all`), which is already pre-filtered to higher education institutions. The filtering examples below apply to the **full NCCS BMF/Core data** downloaded directly from NCCS.
+> **Important:** NTEE codes are NOT included in the Portal dataset (`nccs/colleges_nccs_all`), which is already pre-filtered to higher education institutions. The filtering examples below apply to the **full NCCS BMF data** (the Unified BMF) downloaded directly from NCCS; the harmonized Core files have no NTEE column, so join the Unified BMF to them first.
 
 ```python
 import polars as pl
 
-# --- Full NCCS data (NOT Portal) ---
+# --- Full NCCS data (NOT Portal): Unified BMF, standardized 3-character NTEE code ---
 
 # All higher education (B40-B50)
-higher_ed = df.filter(pl.col("NTEECC").str.contains(r"^B4[0-9]|^B50"))
+higher_ed = df.filter(pl.col("ntee_code_clean").str.contains(r"^B4[0-9]|^B50"))
 
 # Just universities (B43)
-universities = df.filter(pl.col("NTEECC") == "B43")
+universities = df.filter(pl.col("ntee_code_clean") == "B43")
 
 # All K-12 schools (B20-B29)
-k12 = df.filter(pl.col("NTEECC").str.contains(r"^B2[0-9]"))
+k12 = df.filter(pl.col("ntee_code_clean").str.contains(r"^B2[0-9]"))
 
 # All education (B)
-all_education = df.filter(pl.col("NTEECC").str.starts_with("B"))
+all_education = df.filter(pl.col("ntee_code_clean").str.starts_with("B"))
 
 # Using NTEEV2 for universities
 universities_v2 = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
@@ -452,19 +452,19 @@ universities_v2 = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 library(dplyr)
 library(stringr)
 
-# --- Full NCCS data (NOT Portal) ---
+# --- Full NCCS data (NOT Portal): Unified BMF, standardized 3-character NTEE code ---
 
 # All higher education (B40-B50)
-higher_ed <- df |> filter(str_detect(NTEECC, "^B4[0-9]|^B50"))
+higher_ed <- df |> filter(str_detect(ntee_code_clean, "^B4[0-9]|^B50"))
 
 # Just universities (B43)
-universities <- df |> filter(NTEECC == "B43")
+universities <- df |> filter(ntee_code_clean == "B43")
 
 # All K-12 schools (B20-B29)
-k12 <- df |> filter(str_detect(NTEECC, "^B2[0-9]"))
+k12 <- df |> filter(str_detect(ntee_code_clean, "^B2[0-9]"))
 
 # All education (B)
-all_education <- df |> filter(str_starts(NTEECC, "B"))
+all_education <- df |> filter(str_starts(ntee_code_clean, "B"))
 
 # Using NTEEV2 for universities
 universities_v2 <- df |> filter(str_starts(nteev2, "UNI-"))

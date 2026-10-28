@@ -86,7 +86,7 @@ Need a variable?
 | school-districts | CCD, SAIPE, EDFacts | `leaid` | 7-char zero-padded string |
 | college-university | IPEDS, Scorecard, FSA, PSEO, EADA, NACUBO, NCCS, NHGIS, Campus Safety | `unitid` | 6-digit integer |
 
-> **Zero-padded IDs:** `ncessch` (12) and `leaid` (7) are zero-padded numeric strings — leading zeros are load-bearing (FIPS 01-09 states). `education-data-query` handles the force-string/pad-and-assert read recipe; discovery just needs to name the join key.
+> **Zero-padded IDs:** `ncessch` (12) and `leaid` (7) are zero-padded numeric strings — leading zeros are load-bearing (FIPS 01-09 states). `education-data-query` handles the force-string/pad-and-assert read recipe; discovery just needs to name the join key. Raw mirror dtypes differ by file: `ncessch`/`leaid` are String in some files (e.g. `ccd/schools_ccd_directory`, `crdc/schools_crdc_apib_enroll`) and Int64 without leading zeros in others (e.g. `meps/schools_meps`, `ccd/schools_ccd_enrollment_{year}` before 2024, `saipe/districts_saipe`); a Polars join across the two raises a SchemaError (pinned mirror, probed 2026-10-28). Emit the dtype normalization as a caveat with the join key.
 
 ## Quick Reference: Join Keys
 
@@ -107,7 +107,7 @@ Verified ranges from the endpoint-file bridge and route reconciliation. Non-cont
 | Family (representative) | Coverage | Note |
 |-------------------------|----------|------|
 | CCD directory / enrollment | 1986-2024 | Annual |
-| CCD district finance | 1991, 1994-2020 | Non-contiguous early years |
+| CCD district finance | 1989, 1991, 1994-2020 | Non-contiguous early years; 1989 is in the mirror file but not in the Portal catalog |
 | CRDC (most topics) | 2011, 2013, 2015, 2017, 2020, 2021 | Often called biennial, but no odd/even rule (2020 and 2021 are consecutive); chronic-absenteeism reaches 2022 |
 | EDFacts assessments | 2009-2018, 2020 | 2019 absent (COVID testing waivers) |
 | EDFacts grad rates | 2010-2019 | — |
@@ -162,11 +162,11 @@ Load a `education-data-source-*` skill when a question needs collection methodol
 
 - **Level / grain:** schools — one row per `ncessch` × `year`.
 - **Files:**
-  - `crdc/schools_crdc_apib_enroll` (Single; 2011-2021) — AP/IB enrollment. Key vars: `enrl_ap`, `enrl_ap_math`, `enrl_ap_science`, `enrl_ib`, `enrl_gifted_talented`. Grain adds `race`/`sex`/`disability`/`lep` columns — filter to totals for a school-level measure.
+  - `crdc/schools_crdc_apib_enroll` (Single; 2011, 2013, 2015, 2017, 2020, 2021) — AP/IB enrollment. Key vars: `enrl_ap`, `enrl_ap_math`, `enrl_ap_science`, `enrl_ib`, `enrl_gifted_talented`. Grain adds `race`/`sex`/`disability`/`lep` columns — filter to totals for a school-level measure.
   - `meps/schools_meps` (Single; 2009-2022) — modeled poverty. Key var: `meps_poverty_pct`.
-- **Join:** `ncessch` + `year`; overlap window 2011-2021.
+- **Join:** `ncessch` + `year` after normalizing both to a 12-character zero-padded string — `crdc/schools_crdc_apib_enroll` stores String, `meps/schools_meps` Int64, so cast each side first (`pl.col("ncessch").cast(pl.Utf8).str.zfill(12)`) and assert every key has length 12; overlap years 2011, 2013, 2015, 2017, 2020, 2021.
 - **Filter:** `fips == 6` (California), high schools via CCD `school_level == 3` (join `ccd/schools_ccd_directory`).
-- **Emit:** the three paths, the year window, the key variables, the `ncessch` join key, and the CRDC disaggregation-totals caveat. Then load `education-data-query` to fetch.
+- **Emit:** the three paths, the year window, the key variables, the `ncessch` join key with its dtype-normalization caveat, and the CRDC disaggregation-totals caveat. Then load `education-data-query` to fetch.
 
 ## Common Pitfalls
 

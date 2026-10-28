@@ -169,7 +169,7 @@ What type of analysis are you doing?
 |----------|----------------|-------------|
 | Race | 1-7, 99 (total) | Not WH, BL, HI, AS, etc. |
 | Sex | 1 (Male), 2 (Female), 3 (Another gender, IPEDS 2022+), 4 (Unknown gender, IPEDS 2022+), 9 (Unknown), 99 (Total) | Not M, F |
-| Grade | -1 to 13, 99 (total) | Not PK, KG, 01, etc. |
+| Grade | -1 to 15, 99 (total), 999 (not specified) | Not PK, KG, 01, etc. |
 
 **Race codes:**
 | Value | Meaning |
@@ -191,8 +191,13 @@ What type of analysis are you doing?
 | -1 | Pre-K (**SEMANTIC TRAP: NOT missing data!**) |
 | 0 | Kindergarten |
 | 1-12 | Grades 1-12 |
-| 13 | Ungraded |
+| 13 | Grade 13 |
+| 14 | Adult education (not "ungraded") |
+| 15 | Ungraded |
 | 99 | Total (all grades) |
+| 999 | Not specified |
+
+(Declared CCD `grade` values; the 2022 CCD school enrollment file populates all of them, per a 2026-10-28 probe of the pinned mirror. See `education-data-explorer/references/variable-codes.md`.)
 
 **SEMANTIC TRAP - Grade -1:**
 In CCD enrollment data, `grade = -1` means **Pre-Kindergarten**, NOT missing data. This is a common source of errors. Missing data in enrollment uses the separate coded value system (-1/-2/-3) only for numeric fields like enrollment counts, not for the grade categorical variable.

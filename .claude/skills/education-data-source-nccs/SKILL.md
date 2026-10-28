@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-07-21"
+  skill-last-updated: "2026-10-28"
 ---
 
 # NCCS Data Source Reference
@@ -63,9 +63,9 @@ Research need?
 │   ├─ Executive compensation → Part VII, Schedule J
 │   └─ Policies and procedures → Part VI (Governance)
 ├─ Organizational characteristics → ./references/nonprofit-data.md
-│   ├─ Basic info (name, address, EIN) → BMF
-│   ├─ Tax-exempt type → BMF (SUBSECCD)
-│   └─ NTEE classification → BMF (NTEECC)
+│   ├─ Basic info (name, address, EIN) → BMF (org_name_display, org_addr_*, ein / EIN2)
+│   ├─ Tax-exempt type → BMF (subsection_code)
+│   └─ NTEE classification → BMF (ntee_code_clean)
 └─ Identify institutions → ./references/ntee-codes.md
     ├─ All higher education (NTEEV2 'UNI') → B40, B41, B42, B43, B50
     ├─ Universities → B43
@@ -139,10 +139,10 @@ Linking NCCS to education data?
 
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
-| `EIN` | 9-digit number | Organization | `123456789` | Unique to each nonprofit |
-| `NTEECC` | Letter + 2 digits | Classification | `B42` (4-year college) | May be imprecise (~25%) (NCCS, NTEE codes page: 'roughly one organization in four'); NOT in Portal data |
-| `SUBSECCD` | 2-digit code | Tax subsection | `03` (501(c)(3) charity) | NOT in Portal data |
-| `FIPS` | 5-digit code | Geography | `06037` (LA County) | State + county; Portal uses state-level integer |
+| `ein` / `EIN2` | `XX-XXXXXXX` / `EIN-XX-XXXXXXX` | Organization | `04-2104327` / `EIN-04-2104327` | `ein` in the Unified BMF and harmonized Core panel; `EIN2` in the Unified BMF, Classic (HRMN) Core and Efile tables, so join those on `EIN2`. Raw legacy files, Efile `ORG_EIN` and the Portal `ein` use the 9-digit padded form (`042104327`): reformat before joining Portal data to the Unified BMF (NCCS EIN format convention) |
+| `ntee_code_clean` | Letter + 2 digits | Classification | `B42` (4-year college) | Unified BMF standardized code (`ntee_code_raw` = as in the source file); may be imprecise (~25%) (NCCS, NTEE codes page: 'roughly one organization in four'); NOT in Portal data |
+| `subsection_code` / `subsection_cd` | character / integer | Tax subsection | `"03"` / `3` (501(c)(3) charity) | `subsection_code` in the Unified BMF (character, keeps the leading zero); `subsection_cd` in the harmonized Core (integer); NOT in Portal data |
+| `geo_county_fips` | 5-character string | Geography | `06037` (LA County) | Not a Unified BMF column: join the geocoded BMF to the NCCS county FIPS crosswalk on (`geo_state_abbr`, `geo_county`) (NCCS BMF catalog); Portal uses state-level integer |
 
 ### Education NTEE Codes
 
@@ -161,25 +161,27 @@ Linking NCCS to education data?
 
 ### Portal Variable Name Mapping (Selected)
 
-The Portal dataset has 161 columns. Key mappings from original NCCS/990 names to Portal lowercase names:
+The Portal dataset has 161 columns. Key Portal columns, the legacy NCCS Core name each one likely came from (the Portal does not document its sources), and the column to use in current direct NCCS harmonized Core files:
 
-| Portal Name | Original NCCS/990 | Description |
-|-------------|-------------------|-------------|
-| `year` | — (Portal-derived) | Academic year (fall semester) — Portal-aligned year (1993-2016) |
-| `fiscal_year` | `FISYR` (fiscal year ending year) | IRS fiscal year ending year from 990 filing (1994-2017); typically `year` + 1 |
-| `unitid` | — | IPEDS institution ID (Portal addition) |
-| `ein` | `EIN` | Employer Identification Number |
-| `fips` | `FIPS` | State FIPS code (integer) |
-| `inst_name_nccs` | `NAME` | Organization name from 990 filing |
-| `mult_ein_flag` | — | Multiple-EIN indicator (0=No, 1=Yes) |
-| `contributions_total` | `CONT` | Total contributions |
-| `prog_serv_rev` | `PROGREV` | Program service revenue |
-| `revenue_total` | `TOTREV` | Total revenue |
-| `expenses_total` | `EXPS` | Total expenses |
-| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
-| `net_assets_eoy` | `NETASS` | Net assets (end of year) |
-| `compensation_officers` | `COMPENS` | Officer compensation |
-| `salaries_other` | `OTHSAL` | Other salaries |
+| Portal Name | Legacy NCCS Core name (pre-2026) | Current harmonized Core name (basis) | Description |
+|-------------|----------------------------------|--------------------------------------|-------------|
+| `year` | — (Portal-derived) | — | Academic year (fall semester) — Portal-aligned year (1993-2016) |
+| `fiscal_year` | `FISYR` (fiscal year ending year) | `tax_year` (DESC) | IRS fiscal year ending year from 990 filing (1994-2017); typically `year` + 1 |
+| `unitid` | — | — | IPEDS institution ID (Portal addition) |
+| `ein` | `EIN` | `ein`, formatted `XX-XXXXXXX` (SV) | Employer Identification Number (Portal: 9-digit padded) |
+| `fips` | `FIPS` | none in Core (NF); BMF geography instead | State FIPS code (integer) |
+| `inst_name_nccs` | `NAME` | none in harmonized Core (NF); Unified BMF `org_name_display` | Organization name from 990 filing |
+| `mult_ein_flag` | — | — | Multiple-EIN indicator (0=No, 1=Yes) |
+| `contributions_total` | `CONT` | `total_contributions` (SV) | Total contributions |
+| `prog_serv_rev` | `PROGREV` | `program_service_revenue` (SV) | Program service revenue |
+| `revenue_total` | `TOTREV` | `total_revenue` (SV) | Total revenue |
+| `expenses_total` | `EXPS` | `total_expenses` (SV) | Total expenses |
+| `total_assets_eoy` | `TOTASS` | `total_assets_eoy` (LOC) | Total assets (end of year) |
+| `net_assets_eoy` | `NETASS` | `total_net_assets_eoy` (LOC) | Net assets (end of year) |
+| `compensation_officers` | `COMPENS` | `compensation_current_officers` (SV) | Officer compensation |
+| `salaries_other` | `OTHSAL` | `other_salaries_wages` (SV) | Other salaries |
+
+> **Legacy names and basis tags.** No current NCCS file uses the uppercase legacy names as column names; they survive only in the `source_var` column of the harmonized Core legacy-tier data dictionaries. **SV** = the legacy name is listed in that column's `source_var`; **LOC** = matched by the Form 990 line the dictionary gives; **DESC** = matched by description only (inference); **NF** = no current column found. Full mapping, including Classic (HRMN) and Efile names: `./references/variable-definitions.md`.
 
 > **Note:** The full 161 columns include detailed revenue breakdowns (Part VIII), expense breakdowns (Part IX), and balance sheet items (Part X). Consult the codebook for the complete list. Use `get_codebook_url("nccs/codebook_colleges_nccs_form_990")` from `fetch-patterns.md` to download it.
 

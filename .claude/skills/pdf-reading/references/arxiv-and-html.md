@@ -35,8 +35,8 @@ it: the card's `anchor_kind` names it.
   derived from the ID), a URL on `arxiv.org`, or an ID the user gives.
 - When scanning text for an ID, require the `arXiv` prefix
   (`arXiv:2310.08726`). A bare `NNNN.NNNNN` pattern matches many unrelated
-  numbers; the source skill's analyzer regex had an optional prefix and
-  matched them [inf].
+  numbers; the source skill's analyzer regex had an optional prefix
+  (`(?:arxiv[:\s]*)?`) [obs] and so would match them [inf].
 - Note the **version** you are citing (`v1`, `v4`). The record or the abs
   page lists the versions; cite the one you read.
 
@@ -81,7 +81,7 @@ bash /daaf/scripts/pdf_ingest.sh <HTML_PATH> {PROJECT_DIR}/papers/ --paper-key K
 
 - `HTML_PATH` is the raw `.html` web_fetch saved (keep it in its
   `web_fetches/` folder, beside the MANIFEST that proves where it came from).
-  `lit_verify` 1.7.0 re-extracts the units from that file at every check
+  Since 1.7.0, `lit_verify` re-extracts the units from that file at every check
   (`evidence-card.md` § Re-derivation): moved or deleted, it is
   `SOURCE_MISSING` (fail).
 - `--render` and `--ocr` are refused with `--source arxiv-html` (exit 1):
@@ -106,7 +106,7 @@ line), `page_index{S}.parquet` (one row per unit) and
 ## Version pinning
 
 The ingest records the arXiv ID and version from the page's watermark
-(`<div id="watermark-tr">arXiv:2504.04906v4 [stat.ME] …`): manifest
+(`<div id="watermark-tr">arXiv:2504.04906v4 [stat.AP] …`): manifest
 `arxiv.id`, `arxiv.version`, `arxiv.id_version`, `watermark`, `category`,
 `date`, `license_text`. With web_fetch provenance, the watermark must agree
 with the fetched URL's ID and (when the URL names one) version, else exit 12.
@@ -225,7 +225,7 @@ ingested under their own keys [obs]:
 | Genuine 40-char / 6-word spans (560) | PASS 0.945, PASS_SKELETON 0.002, NON_IDENTIFYING 0.054 (PDF bake-off: 3–11% non-identifying) |
 | Planted fabrications (540: one-word swap, adjacent section, another paper's quote) | **0 passed** (NOT_FOUND, WRONG_SECTION) |
 | Quotes running into the next unit (121) | PASS_SPAN with `section_end`; WRONG_SECTION (or NEAR) without |
-| Table numbers from `rows/` (87, two papers), quote from the row label through the cell | genuine ok 1.000 (all in-quote; the row path never fired), last digit changed 0.093, sign flipped 0 |
+| Table numbers from `rows/` (87, two papers), quote from the row label through the cell | genuine ok 1.000 (all in-quote; the row path never fired), last digit changed 0.093 (8 of 86 on 2403.00922v1; 0 of 1 on 2504.04906v4), sign flipped 0 |
 | Table row quotes not identifying, even as the whole row | 58 of 86 on 2403.00922v1 |
 | Sparse units / label fallbacks | 12–25% / 2–16% of units |
 | Conversion errors | 1 unit (`front` of 2403.05420v1); 5 of 186 sampled quotes fell in it |
@@ -253,7 +253,13 @@ What this means for a reader:
 
 ## The LaTeX source
 
-`https://arxiv.org/e-print/{arxiv_id}` returns the source archive (source
-skill). `web_fetch.sh` saves it raw (exit 8, not extractable). Unpacking an
+`https://arxiv.org/e-print/{arxiv_id}` (the source skill's source-archive
+URL; it redirects to `https://arxiv.org/src/…`) does not always return a
+source archive. On 2026-10-28 `e-print/2403.00922v1` returned
+`application/gzip`, a tar holding the TeX source (`main_arXiv.tex`), but
+`e-print/2310.08726`, the paper with no HTML (§ Availability), returned
+`application/pdf`, the PDF itself [obs: web_fetch]; that is probably a
+PDF-only submission [inf]. `web_fetch.sh` saves either raw (exit 8, not
+extractable). Unpacking an
 archive is a separate, deliberate step (a captured script; no extraction into
 `/tmp`). Use it only when exact equations matter; the gate does not read it.

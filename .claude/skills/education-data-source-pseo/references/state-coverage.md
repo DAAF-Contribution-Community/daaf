@@ -127,7 +127,7 @@ The **PSEO Coalition** is "a collection of state and institutional representativ
 
 ### Partnership Process
 
-Higher education systems and individual colleges and universities join by signing a data-sharing agreement with the Census Bureau and transmitting graduation (transcript) records (PSEO Technical Documentation). Joining steps beyond that are not published in the sources checked; contact the Census PSEO team or the PSEO Coalition.
+Higher education systems and individual colleges and universities join through a data-sharing agreement with the Census Bureau and transmit graduation (transcript) records (PSEO Technical Documentation). Joining steps beyond that are not published in the sources checked; contact the Census PSEO team or the PSEO Coalition.
 
 ### Data Requirements
 

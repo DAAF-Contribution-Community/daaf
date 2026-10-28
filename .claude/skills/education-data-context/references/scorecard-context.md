@@ -57,7 +57,7 @@ Scorecard reports earnings from Treasury/IRS tax records (W-2 wages and deferred
 | Tax-record earnings only | Unreported (cash) and non-labor income excluded |
 | Working students only | Non-employed excluded from earnings |
 | Suppression | `PS` when privacy standards not met; DP noise; `*_SUPP` versions use a <30-student rule |
-| Time lag | 6-10 years after enrollment |
+| Time lag | Institution-level: 6, 8 and 10 years after entry (entry cohorts) and 1 and 5 years after completion (exit cohorts); see Earnings Timing below |
 
 ### What Earnings Excludes
 

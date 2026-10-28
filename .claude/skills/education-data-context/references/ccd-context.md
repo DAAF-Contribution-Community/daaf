@@ -276,8 +276,11 @@ The Portal uses integer encoding for grades:
 - `grade = -1` → Pre-Kindergarten (semantic trap!)
 - `grade = 0` → Kindergarten
 - `grade = 1-12` → Grades 1-12
-- `grade = 13` → Ungraded
+- `grade = 13` → Grade 13
+- `grade = 14` → Adult education
+- `grade = 15` → Ungraded
 - `grade = 99` → Total
+- `grade = 999` → Not specified
 
 ```python
 # WRONG - this filters out Pre-K students!
@@ -369,10 +372,10 @@ CCD data uses integer codes, not strings:
 
 | Variable | Values | Notes |
 |----------|--------|-------|
-| Grade | -1 to 13, 99 | -1=Pre-K (semantic trap!), 0=K, 99=Total |
-| Race | 1-7, 99 | 1=White, 2=Black, 3=Hispanic, etc. |
-| Sex | 1, 2, 99 | 1=Male, 2=Female, 99=Total |
+| Grade | -1 to 15, 99, 999 | -1=Pre-K (semantic trap!), 0=K, 14=Adult education, 15=Ungraded, 99=Total, 999=Not specified |
+| Race | 1-7, 9, 99 | 1=White, 2=Black, 3=Hispanic, etc.; 9=Unknown, 99=Total |
+| Sex | 1, 2, 9, 99 | 1=Male, 2=Female, 9=Unknown, 99=Total |
 | Charter | 0, 1 | 0=No, 1=Yes |
-| School Level | 0-4 | 1=Primary, 2=Middle, 3=High |
+| School Level | 0-7 | 0=Prekindergarten, 1=Primary, 2=Middle, 3=High, 4=Other, 5=Ungraded, 6=Adult Education, 7=Secondary |
 
 See `education-data-context` SKILL.md for complete encoding tables.

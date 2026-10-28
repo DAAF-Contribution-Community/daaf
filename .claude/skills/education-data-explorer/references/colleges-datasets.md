@@ -26,7 +26,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 
 - **Type / years:** Single-file · 1980, 1984-2024
 - **Grain:** one row per `unitid` × `year` (programs, services, and policies profile).
-- **Key variables:** `inst_affiliation`, `bach_offered`, `masters_offered`, `doctors_research_offered`, `oncampus_housing`, `dormitory_capacity`, `calendar_system`, `religious_affiliation`, `member_ncaa`, `study_abroad`, `disability_percentage` (full 128-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_institutional-characteristics`).
+- **Key variables:** `inst_affiliation`, `bach_offered`, `masters_offered`, `doctors_research_offered`, `oncampus_housing`, `dormitory_capacity`, `calendar_system`, `religious_affiliation`, `member_ncaa`, `study_abroad`, `disability_percentage` (full 126-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_institutional-characteristics`).
 - **Join keys:** `unitid` (+ `year`).
 - **Caveats:** offering flags are `yes/no` indicators, not counts. Distinct from `directory` — this file describes what the institution *offers/does*, the directory describes *who/where it is*.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_institutional-characteristics`
@@ -36,7 +36,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 
 - **Type / years:** Single-file · 2013-2023
 - **Grain:** one row per `unitid` × `year` (library collections, circulation, staffing, expenditures).
-- **Key variables:** `physical_books`, `electronic_books`, `total_collections`, `total_circulations`, `interlibrary_loans_provided`, `exp_total`, `librarians_fte`, `total_lib_staff_fte` (full 42-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_academic_libraries`).
+- **Key variables:** `physical_books`, `electronic_books`, `total_collections`, `total_circulations`, `interlibrary_loans_provided`, `exp_total`, `librarians_fte`, `total_lib_staff_fte` (full 41-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_academic_libraries`).
 - **Join keys:** `unitid` (+ `year`).
 - **Caveats:** collection/expenditure counts carry `-1`/`-2`/`-3` sentinels for missing/NA/suppressed.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_academic-libraries`
@@ -222,7 +222,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 
 - **Type / years:** Single-file · 2008-2021
 - **Grain:** one row per `unitid` × `year` × `income_level` × dimension columns (net price by family income band).
-- **Key variables:** `net_price`, `average_grant`, `total_grant`, `number_of_students`, `number_receiving_grants`, `income_level` (full 14-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_sfa_grants_and_net_price`).
+- **Key variables:** `net_price`, `average_grant`, `total_grant`, `number_of_students`, `number_receiving_grants`, `income_level` (full 15-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_sfa_grants_and_net_price`).
 - **Join keys:** `unitid` (+ `year`, `income_level`).
 - **Caveats:** `net_price` is reported by `income_level` band — the primary source for income-conditional net price. Filter to the intended income band.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_sfa_grants_and_net_price`
@@ -242,7 +242,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 
 - **Type / years:** Single-file · 1999-2021
 - **Grain:** one row per `unitid` × `year` × `tuition_type` × `type_of_cohort` × cohort dimensions.
-- **Key variables:** `number_of_students`, `percent_of_cohort`, `percent_of_undergrads`, `tuition_type`, `type_of_cohort` (complete 11-var family: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_sfa_by_tuition_type`).
+- **Key variables:** `number_of_students`, `percent_of_cohort`, `percent_of_undergrads`, `tuition_type`, `type_of_cohort` (complete 12-var family: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_sfa_by_tuition_type`).
 - **Join keys:** `unitid` (+ `year`, `tuition_type`).
 - **Caveats:** counts/shares of the cohort paying in-state vs out-of-state tuition; no dollar values.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_sfa_by_tuition_type`
@@ -336,7 +336,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 
 - **Type / years:** Single-file · 2015-2021
 - **Grain:** one row per `unitid` × `year` × `ftpt` × `class_level` × `fed_aid_type` (8-year outcomes for all entrants).
-- **Key variables:** `completion_rate_6yr`, `completion_rate_8yr`, `completers_6yr`, `still_enroll_8yr`, `transfer_8yr`, `cohort_adj_8yr` (full 41-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_outcome-measures`).
+- **Key variables:** `completion_rate_6yr`, `completion_rate_8yr`, `completers_6yr`, `still_enroll_8yr`, `transfer_8yr`, `cohort_adj_8yr` (full 38-var list: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_outcome-measures`).
 - **Join keys:** `unitid` (+ `year`, `ftpt`, `class_level`, `fed_aid_type`).
 - **Caveats:** designed to cover **all entering degree/certificate-seekers** (including part-time and non-first-time), addressing the FTFT-only limitation of `grad-rates`. Tracks awards, transfer, and still-enrolled at 4/6/8 years.
 - **Codebook:** `ipeds/codebook_colleges_ipeds_outcome-measures`
@@ -392,7 +392,7 @@ Post-enrollment outcomes linking Title IV aid records to IRS/Treasury data (six 
 
 - **Type / years:** Single-file · 1997-2016
 - **Grain:** one row per `unitid` × `year` (aided-student demographic/income composition).
-- **Key variables:** `faminc_mean`, `faminc_med`, `lowincome_pct`, `first_gen_student_pct`, `female_pct`, `dependent_pct`, `age_24orolder_pct`, `veteran_pct`, `fafsa_sent_2ormore_pct` (full 52-var list: `variable-dictionary-scorecard.md` § `scorecard/colleges_scorecard_student_body_nslds`).
+- **Key variables:** `faminc_mean`, `faminc_med`, `lowincome_pct`, `first_gen_student_pct`, `female_pct`, `dependent_pct`, `age_24orolder_pct`, `veteran_pct`, `fafsa_sent_2ormore_pct` (full 51-var list: `variable-dictionary-scorecard.md` § `scorecard/colleges_scorecard_student_body_nslds`).
 - **Join keys:** `unitid` (+ `year`); `opeid`.
 - **Caveats:** describes the **aid-applicant** population (FAFSA/NSLDS-derived), not the full student body. Income figures in real 2015 dollars where noted.
 - **Codebook:** `scorecard/codebook_colleges_scorecard_student-characteristics_aid-applicants`
@@ -418,7 +418,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 - **Type / years:** Single-file · 1999-2021
 - **Grain:** one row per `unitid` × `year` × `grant_type` (Pell and other Title IV grants).
-- **Key variables:** `grant_type`, `grant_recipients_unitid`, `value_grants_disbursed_unitid`, `grant_recipients_opeid`, `value_grants_disbursed_opeid`, `inst_name_fsa` (full 14-var list: `variable-dictionary-fsa.md` § `fsa/colleges_fsa_grants`).
+- **Key variables:** `grant_type`, `grant_recipients_unitid`, `value_grants_disbursed_unitid`, `grant_recipients_opeid`, `value_grants_disbursed_opeid`, `inst_name_fsa` (full 13-var list: `variable-dictionary-fsa.md` § `fsa/colleges_fsa_grants`).
 - **Join keys:** `unitid` and/or `opeid` (+ `year`, `grant_type`).
 - **Caveats:** counts/dollars reported by both unit ID and OPEID — pick one consistently; `allocation_flag`/`combined_flag` mark institutions where one ID spans multiple of the other.
 - **Codebook:** `fsa/codebook_colleges_fsa_grants`
@@ -428,7 +428,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 - **Type / years:** Single-file · 1999-2021 (rows; on the pinned mirror, probed 2026-10-27, disbursement volume sums to zero for both Direct and FFEL loans in 1999-2002, and FFEL disbursements are null in every row from 2010)
 - **Grain:** one row per `unitid` × `year` × `loan_type` (Direct/PLUS loan volume).
-- **Key variables:** `loan_type`, `loan_recipients_unitid`, `num_loans_originated_unitid`, `value_loans_originated_unitid`, `value_loan_disbursements_unitid`, `loan_recipients_opeid` (full 18-var list: `variable-dictionary-fsa.md` § `fsa/colleges_fsa_loans`).
+- **Key variables:** `loan_type`, `loan_recipients_unitid`, `num_loans_originated_unitid`, `value_loans_originated_unitid`, `value_loan_disbursements_unitid`, `loan_recipients_opeid` (full 19-var list: `variable-dictionary-fsa.md` § `fsa/colleges_fsa_loans`).
 - **Join keys:** `unitid` and/or `opeid` (+ `year`, `loan_type`).
 - **Caveats:** distinguishes originated vs disbursed volume; reported by both IDs. Filter to `loan_type` (subsidized, unsubsidized, PLUS).
 - **Codebook:** `fsa/codebook_colleges_fsa_loans`
@@ -486,7 +486,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 - **Type / years:** Single-file · 2002-2021 (`year` = start year of the reporting year: 2021 = 2021-22; verified for two institutions — see EADA skill)
 - **Grain:** one row per `unitid` × `year` (institution-level athletics participation, staffing, and finances by gender).
-- **Key variables:** `enrollment_men`, `enrollment_women`, `num_sports`, `athpartic_men`, `athpartic_women`, `ath_stuaid_total`, `hdcoach_salary_men`, `hdcoach_salary_women`, `ath_grnd_total_rev`, `ath_grnd_total_exp`, `ath_classification_name` (full 168-var list: `variable-dictionary-eada.md` § `eada/colleges_eada_inst_characteristics`).
+- **Key variables:** `enrollment_men`, `enrollment_women`, `num_sports`, `athpartic_men`, `athpartic_women`, `ath_stuaid_total`, `hdcoach_salary_men`, `hdcoach_salary_women`, `ath_grnd_total_rev`, `ath_grnd_total_exp`, `ath_classification_name` (full 165-var list: `variable-dictionary-eada.md` § `eada/colleges_eada_inst_characteristics`).
 - **Join keys:** `unitid` (+ `year`) — see caveat on sector.
 - **Caveats:** **no sector/control column** — join IPEDS `directory` on `unitid` to obtain institution type. This is athletics **gender-equity reporting**, not Title IX compliance data. Men's/women's/coed splits are pervasive; totals are provided (e.g., `ath_grnd_total_rev/_exp`).
 - **Codebook:** `eada/codebook_colleges_eada_inst-characteristics`
@@ -542,7 +542,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 - **Type / years:** Single-file · 2005-2021
 - **Grain:** intended as one row per `unitid` × `year` × `crime_type` × `bias` (hate-crime counts by location), but **not unique in the pinned mirror file** (observed on Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27). 5,994,330 of 15,230,698 rows are exact duplicates, with up to 128 copies of one key; duplicated keys rise about tenfold between 2008 (8,860) and 2009 (84,903). After dropping exact duplicates, 7,530 keys at 795 institutions still have 2-4 rows with differing counts (e.g., UC Riverside, unitid 110671, 2017-2020; its 2021 duplicates are all exact), and `opeid` and `inst_name` do not distinguish them. Drop exact duplicates; for the remaining multi-row keys the mirror cannot tell a second campus from a duplicated record, so inspect and decide (no default sum or max). See the Campus Safety skill's Common Pitfalls.
-- **Key variables:** `total_hate_crimes`, `on_campus_hate_crimes`, `residence_hall_hate_crimes`, `non_campus_hate_crimes`, `public_property_hate_crimes`, `crime_type`, `bias` (complete 14-var family: `variable-dictionary-csafety.md` § `csafety/colleges_csafety_hate_crimes`).
+- **Key variables:** `total_hate_crimes`, `on_campus_hate_crimes`, `residence_hall_hate_crimes`, `non_campus_hate_crimes`, `public_property_hate_crimes`, `crime_type`, `bias` (complete 13-var family: `variable-dictionary-csafety.md` § `csafety/colleges_csafety_hate_crimes`).
 - **Join keys:** `unitid` (+ `year`); `opeid`. `crime_type` and `bias` describe a row but do not make it unique (see Grain).
 - **Caveats:** the Portal mirror carries **hate crimes only** (2005-2021). Other Clery categories — primary offenses, VAWA offenses, arrests, disciplinary referrals, fire safety — are **not in the mirror** and require the Department of Education campus-safety source (ope.ed.gov) directly.
 - **Codebook:** `csafety/codebook_colleges_csafety_hate_crimes`

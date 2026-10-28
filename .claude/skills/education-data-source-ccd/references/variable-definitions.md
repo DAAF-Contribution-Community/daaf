@@ -121,8 +121,8 @@ Example: 0100001
 | 69 | Northern Mariana Islands |
 | 72 | Puerto Rico |
 | 78 | Virgin Islands |
-| 58 | Bureau of Indian Education |
-| 59 | DoD Education Activity |
+| 58 | Department of Defense Dependent Schools (overseas) |
+| 59 | Bureau of Indian Education |
 
 ---
 

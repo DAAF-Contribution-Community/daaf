@@ -56,7 +56,10 @@ library(arrow)
 # in sync with mirrors.yaml vintage.hf_revision).
 MIRROR_ROOT <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
 REVISION <- "0ad00ce0e232c96b0642459e4e7326607a8d26aa"   # immutable commit SHA of the v2 upload
-src <- sprintf("%s/%s/saipe/districts_saipe.parquet", MIRROR_ROOT, REVISION)
+# This file declares `lea_name` as string_view at the pinned revision (probed
+# 2026-10-28), so a plain read_parquet(src) fails on it; saipe/districts_saipe,
+# rebuilt for v2, no longer carries view types and would not show the hazard.
+src <- sprintf("%s/%s/edfacts/districts_edfacts_grad_rates_2019.parquet", MIRROR_ROOT, REVISION)
 
 tbl <- read_parquet(src, as_data_frame = FALSE)   # C++ read tolerates view types
 sch <- tbl$schema

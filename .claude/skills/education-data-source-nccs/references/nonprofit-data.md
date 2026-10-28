@@ -47,7 +47,7 @@ The BMF is the universe of all organizations granted tax-exempt status by the IR
 
 > Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
 
-> Uppercase BMF names used in other examples in this skill (`EIN`, `NAME`, `STATE`, `SUBSECCD`, `FNDNCD`, `NTEECC`, `INCOME_AMT`, `ASSET_AMT`) do not appear in the Unified BMF data dictionary; map them to the names above before running those examples on a Unified BMF file.
+> Uppercase BMF names from older NCCS BMF files and the raw IRS file (`EIN`, `NAME`, `STATE`, `SUBSECCD`, `FNDNCD`, `NTEECC`, `INCOME_AMT`, `ASSET_AMT`) do not appear in the Unified BMF data dictionary; the only uppercase Unified BMF column is `EIN2`. The legacy-to-raw renames are in NCCS's legacy BMF crosswalk (`XWALK-BMF-V2.0.csv`, nccs-data-bmf repository), and the raw-to-Unified renames are in the NCCS BMF transform reference; `variable-definitions.md` (Business Master File Variables) lists both.
 
 ### NCCS Unified BMF Enhancements
 
@@ -57,7 +57,7 @@ The NCCS Unified BMF adds:
 - **Vintage tracking**: first_vintage_ym / last_vintage_ym and first_year_in_bmf / last_year_in_bmf (BMF vintages, not Core)
 - **Historical record**: stacks current monthly IRS BMF files with legacy NCCS BMF vintages (1989 onward), so organizations no longer on the current IRS BMF remain
 
-### Foundation Codes (FNDNCD)
+### Foundation Codes (`foundation_code`; legacy `FNDNCD`)
 
 IRS EO BMF codes (IRS `eo_info.pdf`, Wayback capture 2022-12-18):
 
@@ -79,7 +79,7 @@ IRS EO BMF codes (IRS `eo_info.pdf`, Wayback capture 2022-12-18):
 | 18 | Public safety testing 509(a)(4) |
 | 21-24 | 509(a)(3) Type I, II, III functionally integrated, III non-functionally integrated |
 
-**For higher education**: FNDNCD = 11 (school); other affiliates 15/16 or 17/21-24 (supporting organizations). Code 21 is a 509(a)(3) Type I supporting organization, not a publicly supported charity.
+**For higher education**: `foundation_code` = 11 (school); other affiliates 15/16 or 17/21-24 (supporting organizations). Code 21 is a 509(a)(3) Type I supporting organization, not a publicly supported charity.
 
 ### Download
 
@@ -122,28 +122,26 @@ nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$form
 ```python
 import polars as pl
 
-# BMF universe file (large — ~3.1 GB)
+# BMF universe file (large — ~3.1 GB); all columns read as strings so codes keep leading zeros
 url = "https://nccsdata.s3.us-east-1.amazonaws.com/unified/bmf/bmf_unified.csv"
-bmf = pl.read_csv(url)
-# Unified BMF column names differ (e.g., nteev2, nteev2_code); verify the
-# upper-case names below against the Unified BMF dictionary before use
+bmf = pl.read_csv(url, infer_schema_length=0)
 
-# Filter to higher education by NTEE code (NOT available in Portal data)
-higher_ed = bmf.filter(pl.col("NTEECC").str.starts_with("B4"))
+# Filter to higher education by NTEE code (NOT available in Portal data);
+# ntee_code_clean is the Unified BMF's standardized 3-character NTEE code
+higher_ed = bmf.filter(pl.col("ntee_code_clean").str.starts_with("B4"))
 ```
 
 ```r
 library(dplyr)
 library(stringr)
 
-# BMF universe file (large — ~3.1 GB)
+# BMF universe file (large — ~3.1 GB); all columns read as character so codes keep leading zeros
 url <- "https://nccsdata.s3.us-east-1.amazonaws.com/unified/bmf/bmf_unified.csv"
-bmf <- read.csv(url)
-# Unified BMF column names differ (e.g., nteev2, nteev2_code); verify the
-# upper-case names below against the Unified BMF dictionary before use
+bmf <- read.csv(url, colClasses = "character")
 
-# Filter to higher education by NTEE code (NOT available in Portal data)
-higher_ed <- bmf |> filter(str_starts(NTEECC, "B4"))
+# Filter to higher education by NTEE code (NOT available in Portal data);
+# ntee_code_clean is the Unified BMF's standardized 3-character NTEE code
+higher_ed <- bmf |> filter(str_starts(ntee_code_clean, "B4"))
 ```
 
 > **Note:** The Portal mirror dataset contains NCCS Form 990 data matched to IPEDS institutions (~2,600 institutions). It does NOT include NTEE codes, BMF attributes, or the full nonprofit universe. For the full NCCS universe, NTEE-based filtering, or non-education nonprofits, download directly from NCCS.
@@ -182,42 +180,46 @@ Variable counts per NCCS Core catalog SOI-current tier.
 | **501CE-NONPROFIT** | All other 501(c) types (c)(4), (c)(6), etc. |
 | **PRIVATE-FOUNDATIONS** | 501(c)(3) private foundations (990-PF filers) |
 
-### Key Financial Variables (Common)
+### Key Financial Variables: Legacy Names and Current Columns
 
-| Variable | Description |
-|----------|-------------|
-| `TOTREV` | Total revenue |
-| `TOTREV2` | Total revenue (alternative calculation) |
-| `EXPS` | Total expenses |
-| `TOTASS` | Total assets (end of year) |
-| `TOTLIAB` | Total liabilities (end of year) |
-| `NETASS` | Net assets (assets - liabilities) |
-| `CONT` | Contributions and grants |
-| `PROGREV` | Program service revenue |
-| `DUES` | Membership dues |
-| `INVINC` | Investment income |
-| `OTHINC` | Other income |
-| `GRSRCPTS` | Gross receipts |
-| `FUNDSBAL` | Fund balance/net assets (beginning of year) |
+> **Legacy names.** The uppercase names in the first column are pre-2026 NCCS Core names. No current NCCS file uses them as column names: they survive only in the `source_var` column of the harmonized Core legacy-tier data dictionaries. The current products use the harmonized Core panel names (lowercase) or, in the Classic NCCS format (`CORE-…-HRMN-V1.csv`, dictionary `CORE-HRMN_dd.csv`) and Efile tables, `F9_PP_*` names. The Core catalog says column mapping tables are "rolling out"; until one is published, use the current-name columns below. **Basis** (for the harmonized name): **SV** = the legacy name is listed in that column's `source_var`; **LOC** = matched by the Form 990 line the dictionary gives; **DESC** = matched by description only (inference); **NF** = no current column found. Classic and Efile names are matched by Form 990 line. (Sources: NCCS harmonized Core data dictionaries, legacy tier 2000 and 2010, merged tier 2010 and 2016, SOI-current tier 2016 and 2021; `CORE-HRMN_dd.csv`; Efile data dictionary; all fetched 2026-10-28.) Full mapping: `variable-definitions.md`.
 
-### Key Financial Variables (PC Only)
+**Common to PC and PZ files:**
 
-| Variable | Description |
-|----------|-------------|
-| `COMPENS` | Compensation of officers, directors, etc. |
-| `OTHSAL` | Other salaries and wages |
-| `PAIDSRV` | Professional fees |
-| `OCCUP` | Occupancy expenses |
-| `TRAVEL` | Travel expenses |
-| `CONF` | Conferences and meetings |
-| `INTEREST` | Interest expense |
-| `DEPREC` | Depreciation and depletion |
-| `GRANTS` | Grants paid |
-| `ALLOC` | Payments to affiliates |
-| `FUNDFEES` | Fundraising fees |
-| `SECUR` | Securities (investments) |
-| `LANDBNB` | Land, buildings, equipment (net) |
-| `RETEARN` | Retained earnings/endowment |
+| Legacy name | Description | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|-----------------|-----------------|-------|
+| `TOTREV` | Total revenue | `total_revenue` | `F9_08_REV_TOT_TOT` | SV |
+| `TOTREV2` | Total revenue (alternative calculation) | `total_revenue` (one column for both) | `F9_08_REV_TOT_TOT` | SV |
+| `EXPS` | Total expenses | `total_expenses` | `F9_09_EXP_TOT_TOT` | SV |
+| `TOTASS` | Total assets (end of year) | `total_assets_eoy` | `F9_10_ASSET_TOT_EOY` | LOC |
+| `TOTLIAB` | Total liabilities (end of year) | `total_liabilities_eoy` | `F9_10_LIAB_TOT_EOY` | LOC |
+| `NETASS` | Net assets (assets - liabilities) | `total_net_assets_eoy` | `F9_10_NAFB_TOT_EOY` | LOC |
+| `CONT` | Contributions and grants | `total_contributions` | `F9_08_REV_CONTR_TOT` | SV (the legacy-tier row's description cites Schedule A line 15(e); check before relying on it) |
+| `PROGREV` | Program service revenue | `program_service_revenue` | `F9_08_REV_PROG_TOT_TOT` | SV |
+| `DUES` | Membership dues | `membership_dues_assessments_sec170` (legacy and merged tiers only) | — | SV; not in Core PC files from about 2011 (moved into program service revenue on the 2008 form) |
+| `INVINC` | Investment income | `investment_income` | `F9_08_REV_OTH_INVEST_INCOME_TOT` | SV |
+| `OTHINC` | Other income | `other_revenue_total_11e` | `F9_08_REV_MISC_TOT_TOT` | SV |
+| `GRSRCPTS` | Gross receipts | none (the similar `gross_receipts_total` is sourced from `GRREC`) | `F9_00_GRO_RCPT` (Classic PZ files only) | NF |
+| `FUNDSBAL` | Fund balance (beginning of year) | none | — | NF: not in the legacy dictionaries checked; the similar `FUNDBAL` maps to `total_net_assets_eoy`, an end-of-year value, so do not use it as a beginning-of-year balance |
+
+**Full Form 990 (PC) detail:**
+
+| Legacy name | Description | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|-----------------|-----------------|-------|
+| `COMPENS` | Compensation of officers, directors, etc. | `compensation_current_officers` | `F9_09_EXP_COMP_DTK_TOT` | SV |
+| `OTHSAL` | Other salaries and wages | `other_salaries_wages` | `F9_09_EXP_OTH_SAL_WAGE_TOT` | SV |
+| `PAIDSRV` | Professional fees | no single total; SOI-current `fees_for_services_*` by type | Efile `F9_09_EXP_FEE_SVC_*_TOT` (lines 11a-11g) | DESC |
+| `OCCUP` | Occupancy expenses | `occupancy` (SOI-current tier) | `F9_09_EXP_OCCUPANCY_TOT` | LOC |
+| `TRAVEL` | Travel expenses | `travel` (SOI-current tier) | `F9_09_EXP_TRAVEL_TOT` | LOC |
+| `CONF` | Conferences and meetings | `conferences_conventions_meetings` (SOI-current tier) | `F9_09_EXP_CONF_MEETING_TOT` | DESC |
+| `INTEREST` | Interest expense | `interest_expense` (SOI-current tier; the legacy-tier column of that name holds a different field, interest on savings and temporary cash investments) | `F9_09_EXP_INT_TOT` | LOC |
+| `DEPREC` | Depreciation and depletion | `depreciation_depletion` (SOI-current tier) | `F9_09_EXP_DEPREC_TOT` | LOC |
+| `GRANTS` | Grants paid | no single total; SOI-current `grants_to_govt` (line 1), `grants_to_individuals` (line 2) | `F9_09_EXP_GRANT_US_ORG_TOT`, `F9_09_EXP_GRANT_US_INDIV_TOT`, `F9_09_EXP_GRANT_FRGN_TOT` | LOC |
+| `ALLOC` | Payments to affiliates | `payments_to_affiliates` (SOI-current tier; the legacy-tier column is an estimate) | `F9_09_EXP_PAY_AFFIL_TOT` | DESC |
+| `FUNDFEES` | Fundraising fees | `professional_fundraising_fees` | `F9_09_EXP_FEE_SVC_FUNDR_TOT` | SV |
+| `SECUR` | Gross receipts from sales of securities (Part VIII line 7a(i)), **not** securities held | `gross_sales_securities` | — | SV; for securities held (Part X lines 11-12) use `investments_eoy` / `investments_other_eoy` (SOI-current tier), Classic `F9_10_ASSET_INVEST_SEC_EOY` / `F9_10_ASSET_INVEST_SEC_OTH_EOY` |
+| `LANDBNB` | Land, buildings, equipment (net) | `land_bldg_equip_eoy` (SOI-current tier; the legacy-tier column is an estimate) | `F9_10_ASSET_LAND_BLDG_NET_EOY` | LOC |
+| `RETEARN` | Retained earnings/endowment | `retained_earnings_eoy` | `F9_10_NAFB_EARNING_RETAINED_EOY` | SV |
 
 ### File Organization
 
@@ -318,9 +320,11 @@ Variables use the convention `FF_PP_NAME` (form, two-digit part, name), e.g. `F9
 | 4-5 | Part/Location | 01-12 (Part I-XII), 00 (header) |
 | 7+ | Variable name | Descriptive name |
 
-Any other efile variable names in this skill are illustrative; look up actual names in the efile data dictionary.
+In the efile v2_1 CSV files the column name is the prefix plus the variable name, as the data dictionary lists them (e.g. `SD_05_ENDOW_BALANCE_EOY_CY`). Every table also carries the keys `EIN2` (`EIN-XX-XXXXXXX`), `ORG_EIN` (9-digit), `URL` (unique per filing, the merge key between tables) and `TAX_YEAR`. Observed in the header lines of six 2024 v2_1 tables (Part VI, VII, VIII and IX, Schedule D Part V, Schedule J Part II) on 2026-10-28; the efile names used in this skill's examples were checked against those headers or the data dictionary.
 
 ### Access via R Package (Direct NCCS, Not Portal)
+
+> The package README (fetched 2026-10-28) says "This package has been **DEPRECATED**" and points to its replacement, the `ef2` package (Nonprofit-Open-Data-Collective/ef2). The `get_990_data()` call below was not checked against either package. The pre-processed v2_1 CSV tables are linked from the Efile catalog.
 
 ```r
 # Install the irs990efile package
@@ -440,7 +444,7 @@ nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$form
 - `fips`: Integer state FIPS codes (1-78, including territories); no -1/-2/-3 codes observed
 - `mult_ein_flag`: 0 (No) or 1 (Yes)
 - All variable names are lowercase
-- NTEE codes, SUBSECCD, and FNDNCD are NOT included (data is pre-filtered to higher ed)
+- NTEE codes, subsection codes, and foundation codes are NOT included (data is pre-filtered to higher ed)
 
 ### Direct NCCS Download (For Broader or Newer Data)
 

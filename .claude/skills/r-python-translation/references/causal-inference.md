@@ -533,7 +533,7 @@ print(fit.first_stage)
 | Diagnostic | R (fixest) | R (ivreg) | pyfixest | linearmodels |
 |-----------|-----------|-----------|----------|--------------|
 | First-stage F | `fitstat(, "ivf")` | `summary(, diag=T)` | `fit.IV_Diag()` | `fit.first_stage` |
-| Weak instrument | `fitstat(, "ivwald")` | Cragg-Donald F | Effective F (Montiel Olea-Pflueger 2013) | Cragg-Donald F |
+| Weak instrument | `fitstat(, "ivwald")` | Per-endogenous "Weak instruments" F in `summary(, diagnostics = TRUE)` | Effective F (Montiel Olea-Pflueger 2013) | Partial F per endogenous regressor in `fit.first_stage` (no Cragg-Donald F in linearmodels 7.0; 7.1 adds `fit.first_stage.cragg_donald_f`) |
 | Sargan/Hansen | `fitstat(, "sargan")` | `summary(, diag=T)` | Not built-in | `fit.sargan` |
 | Wu-Hausman | `fitstat(, "wh")` | `summary(, diag=T)` | Not built-in | `fit.wu_hausman()` |
 

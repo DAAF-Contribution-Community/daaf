@@ -15,31 +15,33 @@ This reference provides definitions for key variables in NCCS datasets, includin
 
 | Aspect | Education Data Portal | Direct NCCS |
 |--------|----------------------|-------------|
-| **Variable case** | lowercase (`contributions_total`) | UPPERCASE (`CONT`) |
-| **Naming style** | Descriptive (`prog_serv_rev`) | Abbreviated (`PROGREV`) |
+| **Variable case** | lowercase (`contributions_total`) | Depends on product: Unified BMF and harmonized Core panel are lowercase (`total_contributions`); Classic (HRMN) Core and Efile are uppercase (`F9_08_REV_CONTR_TOT`); the join key `EIN2` is uppercase everywhere |
+| **Naming style** | Descriptive (`prog_serv_rev`) | Descriptive (harmonized panel) or `FF_PP_NAME` form-location names (Classic, Efile); the abbreviated legacy names (`PROGREV`) are no longer used as column names |
 | **FIPS encoding** | Integer (`6` for California) | May be string (`"06"`) |
 | **Missing codes** | Integer (`-1`, `-2`, `-3`) | Integer or blank |
 | **Data format** | Parquet (via Portal mirror) | CSV |
 
 ### Portal Variable Mapping
 
-| Portal Name | NCCS Name | Description |
-|-------------|-----------|-------------|
-| `year` | — (Portal-derived) | Academic year — the Portal-aligned year corresponding to the fall semester of the academic year the filing is associated with (range 1993-2016). The codebook labels this "Academic year (fall semester)." |
-| `fiscal_year` | `FISYR` (fiscal year ending year) | Fiscal year — the IRS fiscal year ending year from the Form 990 filing (range 1994-2017). Typically differs from `year` by +1 because a fiscal year ending in e.g. June 2015 corresponds to the 2014-2015 academic year (`year`=2014, `fiscal_year`=2015). |
-| `unitid` | — | IPEDS institution ID (Portal addition) |
-| `ein` | `EIN` | Employer Identification Number (String, 9 characters with leading zeros, e.g. `042103580`; verify mirror dtype and zero-pad to 9 before joining) |
-| `fips` | `FIPS` | State FIPS code (integer in Portal, 1-78) |
-| `inst_name_nccs` | `NAME` | Organization name from 990 filing (String) |
-| `mult_ein_flag` | — | Multiple-EIN indicator (0=No, 1=Yes) |
-| `contributions_total` | `CONT` | Total contributions |
-| `prog_serv_rev` | `PROGREV` | Program service revenue |
-| `revenue_total` | `TOTREV` | Total revenue |
-| `expenses_total` | `EXPS` | Total expenses |
-| `total_assets_eoy` | `TOTASS` | Total assets (end of year) |
-| `net_assets_eoy` | `NETASS` | Net assets |
-| `compensation_officers` | `COMPENS` | Officer compensation |
-| `salaries_other` | `OTHSAL` | Other salaries |
+The second column is the legacy NCCS Core name each Portal column likely came from (the Portal does not document its sources); the third is the column to use in current harmonized Core files, with its basis tag (key under [Core Data Series Variables](#core-data-series-variables)).
+
+| Portal Name | Legacy NCCS Core name (pre-2026) | Current harmonized Core name (basis) | Description |
+|-------------|----------------------------------|--------------------------------------|-------------|
+| `year` | — (Portal-derived) | — | Academic year — the Portal-aligned year corresponding to the fall semester of the academic year the filing is associated with (range 1993-2016). The codebook labels this "Academic year (fall semester)." |
+| `fiscal_year` | `FISYR` (fiscal year ending year) | `tax_year` (DESC) | Fiscal year — the IRS fiscal year ending year from the Form 990 filing (range 1994-2017). Typically differs from `year` by +1 because a fiscal year ending in e.g. June 2015 corresponds to the 2014-2015 academic year (`year`=2014, `fiscal_year`=2015). |
+| `unitid` | — | — | IPEDS institution ID (Portal addition) |
+| `ein` | `EIN` | `ein`, formatted `XX-XXXXXXX` (SV) | Employer Identification Number (String, 9 characters with leading zeros, e.g. `042103580`; verify mirror dtype and zero-pad to 9 before joining; reformat to `XX-XXXXXXX` or `EIN-XX-XXXXXXX` before joining direct NCCS files) |
+| `fips` | `FIPS` | none in Core (NF); BMF geography instead | State FIPS code (integer in Portal, 1-78) |
+| `inst_name_nccs` | `NAME` | none in harmonized Core (NF); Classic `F9_00_ORG_NAME_L1`, Unified BMF `org_name_display` | Organization name from 990 filing (String) |
+| `mult_ein_flag` | — | — | Multiple-EIN indicator (0=No, 1=Yes) |
+| `contributions_total` | `CONT` | `total_contributions` (SV) | Total contributions |
+| `prog_serv_rev` | `PROGREV` | `program_service_revenue` (SV) | Program service revenue |
+| `revenue_total` | `TOTREV` | `total_revenue` (SV) | Total revenue |
+| `expenses_total` | `EXPS` | `total_expenses` (SV) | Total expenses |
+| `total_assets_eoy` | `TOTASS` | `total_assets_eoy` (LOC) | Total assets (end of year) |
+| `net_assets_eoy` | `NETASS` | `total_net_assets_eoy` (LOC) | Net assets |
+| `compensation_officers` | `COMPENS` | `compensation_current_officers` (SV) | Officer compensation |
+| `salaries_other` | `OTHSAL` | `other_salaries_wages` (SV) | Other salaries |
 
 > **Note:** The Portal dataset has 161 columns total. The table above shows selected key variables. Consult the codebook for the complete list. The full dataset includes detailed Part VIII revenue breakdowns (e.g., `prog_serv_rev_amt2a` through `prog_serv_rev_amt2f`), Part IX expense breakdowns, Part X balance sheet items, and support test variables (170/509).
 
@@ -59,16 +61,18 @@ This reference provides definitions for key variables in NCCS datasets, includin
 
 ### Core Data Series
 
-Core data variables use abbreviated names that evolved over time. Common patterns:
+Current NCCS Core products name columns two ways: the harmonized Core panel (merged, SOI-current and legacy tiers) uses lowercase descriptive names (`total_revenue`, `total_assets_eoy`), and the Classic NCCS format (`CORE-…-HRMN-V1.csv`) uses the same `FF_PP_NAME` naming scheme as Efile (`F9_08_REV_TOT_TOT`), keyed by `EIN2`.
+
+**Legacy NCCS Core naming (pre-2026 files).** Older NCCS Core files used abbreviated uppercase names. No current NCCS file uses them as column names; they survive only in the `source_var` column of the harmonized Core legacy-tier dictionaries. The patterns below help read older code and documentation:
 
 | Pattern | Meaning | Examples |
 |---------|---------|----------|
 | TOT* | Total | TOTREV (total revenue), TOTASS (total assets) |
 | NET* | Net | NETINC (net income), NETASS (net assets) |
-| *REV | Revenue | PROGREV (program revenue), INVREV (investment revenue) |
+| *REV | Revenue | PROGREV (program revenue), INVREV (investment revenue; not in the legacy dictionaries checked) |
 | *EXP | Expenses | FUNEXP (functional expenses) |
 | *INC | Income | INVINC (investment income) |
-| *ASS | Assets | TOTASS (total assets), SECASS (securities assets) |
+| *ASS | Assets | TOTASS (total assets), SECASS (securities assets; not in the legacy dictionaries checked) |
 | *LIAB | Liabilities | TOTLIAB (total liabilities) |
 
 ### Efile Database
@@ -88,148 +92,158 @@ FF_PP_VARIABLE_NAME
 | `F9_00_TAX_YEAR` | Form 990, header, tax year |
 | `F9_01_REV_TOT_CY` | Form 990, Part I, total revenue, current year |
 
-Other efile variable names in this skill are illustrative; look up actual names in the efile data dictionary.
+In the v2_1 CSV files a column name is the dictionary's prefix plus variable name (`F9_01_` + `REV_TOT_CY`), and every table also carries the keys `EIN2`, `ORG_EIN`, `URL` and `TAX_YEAR` (observed in six 2024 table headers, 2026-10-28). The efile names in this skill's examples were checked against those headers or the efile data dictionary.
 
 ---
 
 ## Core Data Series Variables
 
+> **Legacy names and current columns.** The first column of each table below is a pre-2026 NCCS Core name; no current NCCS file uses it as a column name. Use the current columns instead. **Harmonized Core** = the harmonized Core panel (merged, SOI-current and legacy tiers; the tier is named where a column is not in all three). **Classic / Efile** = the Classic NCCS format (`CORE-…-HRMN-V1.csv`, dictionary `CORE-HRMN_dd.csv`) and the Efile v2_1 tables, which use the same name for every Part VIII-X item listed here. The Core catalog says column mapping tables are "rolling out"; until NCCS publishes one, these tables are DAAF's own matches. **Basis** (for the harmonized name, or for the Unified BMF column where the harmonized Core has none): **SV** = the legacy name is listed in that column's `source_var` (legacy-tier dictionaries for 2000 and 2010); **LOC** = matched by the Form 990 line the current dictionary gives; **DESC** = matched by description only (inference); **XW** = a row of NCCS's legacy BMF crosswalk (`XWALK-BMF-V2.0.csv`); **NF** = no current column found. Classic and Efile names are matched by Form 990 line. (Sources: NCCS harmonized Core data dictionaries, legacy tier 2000 and 2010, merged tier 2010 and 2016, SOI-current tier 2016 and 2021; `CORE-HRMN_dd.csv`; Unified BMF data dictionary; Efile data dictionary and 2024 table headers; all fetched 2026-10-28.)
+
 ### Identification Variables
 
-| Variable | Description | Notes |
-|----------|-------------|-------|
-| `EIN` | Employer Identification Number | 9-digit unique ID |
-| `EIN2` | EIN with consistent formatting | Use for merging |
-| `NCCSKEY` | Unique key (EIN + return date) | Identifies specific filing |
-| `NAME` | Organization name | Legal name from 990 |
-| `SEC_NAME` | Secondary/DBA name | If applicable |
-| `FISYR` | Fiscal year (ending year) | YYYY format |
-| `TAXPER` | Tax period end date | YYYYMM format |
+| Legacy name | Description | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|-----------------|-----------------|-------|
+| `EIN` | Employer Identification Number | `ein` (`XX-XXXXXXX`) | `EIN2` (`EIN-XX-XXXXXXX`); 9-digit forms Classic `F9_00_ORG_EIN`, Efile `ORG_EIN` | SV |
+| `EIN2` | EIN with consistent formatting; use for merging | — (the panel uses `ein`) | `EIN2` (`EIN-XX-XXXXXXX`), also in the Unified BMF | name unchanged |
+| `NCCSKEY` | Unique key (EIN + return date) | none: the merged tier has one row per (`ein`, `tax_period`); SOI-current marks repeats with `is_amendment` | Efile `URL` (unique per filing) | NF |
+| `NAME` | Organization name (legal name from 990) | none; join the Unified BMF (`org_name_display`) | Classic `F9_00_ORG_NAME_L1`; Efile `ORG_NAME_L1` | NF |
+| `SEC_NAME` | Secondary/DBA name | none; Unified BMF `dba_name` (XW: `SEC_NAME` → `SORT_NAME`) | Classic `F9_00_ORG_NAME_DBA_L1` | NF |
+| `FISYR` | Fiscal year (ending year), YYYY | `tax_year` ("Calendar year the filing's fiscal period ended") | Classic `F9_00_TAX_YEAR`; Efile `TAX_YEAR` | DESC |
+| `TAXPER` | Tax period end date, YYYYMM | `tax_period` (character) | Classic `F9_00_TAX_PERIOD_END_DATE`; Efile `TAX_PERIOD_END_DATE` | SV |
 
 ### Location Variables
 
-| Variable | Description | Notes |
-|----------|-------------|-------|
-| `ADDRESS` | Street address | From 990 header |
-| `CITY` | City | |
-| `STATE` | Two-letter state code | |
-| `ZIP` | ZIP code | May include ZIP+4 |
-| `ZIP5` | First 5 digits of ZIP | |
-| `FIPS` | State + County FIPS code | 5 digits |
-| `MSA_NECH` | Metro Statistical Area | NCCS assignment |
+No harmonized Core tier has address or geography columns: join the Unified BMF on `ein` / `EIN2`, or use the Classic header fields.
+
+| Legacy name | Description | Harmonized Core | Classic / Unified BMF | Basis |
+|-------------|-------------|-----------------|-----------------------|-------|
+| `ADDRESS` | Street address | none | Classic `F9_00_ORG_ADDR_L1`; Unified BMF `org_addr_street` | NF (XW: `ADDRESS` → `STREET`) |
+| `CITY` | City | none | Classic `F9_00_ORG_ADDR_CITY`; Unified BMF `org_addr_city` | NF (XW) |
+| `STATE` | Two-letter state code | none | Classic `F9_00_ORG_ADDR_STATE`; Unified BMF `org_addr_state` | NF (XW) |
+| `ZIP` | ZIP code, may include ZIP+4 | none | Classic `F9_00_ORG_ADDR_ZIP`; Unified BMF `org_addr_zip` | NF (XW) |
+| `ZIP5` | First 5 digits of ZIP | none | Unified BMF `org_addr_zip5` | NF (XW: `ZIP5` → `ZIP`) |
+| `FIPS` | State + county FIPS code, 5 digits | none | Unified BMF has no FIPS column: join the geocoded BMF to the NCCS county FIPS crosswalk on (`geo_state_abbr`, `geo_county`) for `geo_county_fips` | NF (XW: dropped) |
+| `MSA_NECH` | Metro Statistical Area (NCCS assignment) | none | NCCS CBSA crosswalk on `county_fips`, built on the OMB 2023 delineations (whether those areas match the legacy assignment was not checked) | NF (XW: dropped) |
 
 ### Classification Variables
 
-| Variable | Description | Values |
-|----------|-------------|--------|
-| `NTEE1` | NTEE major group | A-Z |
-| `NTEECC` | Full NTEE code | Letter + 2 digits |
-| `ntee_code_raw` / `ntee_code_clean` | Original NTEE code from the source file (1-4 characters) / standardized 3-character code | Unified BMF |
-| `nteev2` | NCCS NTEEv2 code | SUBSECTOR-CODE-TYPE (Unified BMF) |
-| `SUBSECCD` | IRS subsection | 03 = 501(c)(3), etc. |
-| `FNDNCD` | Foundation code | See BMF documentation |
-| `ORGCD` | Organization form | Corporation, trust, etc. |
+No harmonized Core tier has NTEE, foundation or organization codes (only `subsection_cd` and `is_501c3`): join the Unified BMF.
+
+| Legacy name | Description | Harmonized Core | Unified BMF / Classic | Basis |
+|-------------|-------------|-----------------|-----------------------|-------|
+| `NTEE1` | NTEE major group, A-Z | none | Unified BMF `ntee_code_major_group` | DESC (XW: dropped, "derived in current pipeline") |
+| `NTEECC` | Full NTEE code (letter + 2 digits) | none | Unified BMF `ntee_code_clean` (standardized 3-character code); `ntee_code_raw` (as in the source file, 1-4 characters) | XW (`NTEECC` → `NTEE_CD`) |
+| `SUBSECCD` | IRS subsection (03 = 501(c)(3), etc.) | `subsection_cd` (integer, e.g. `3`); also `is_501c3` | Unified BMF `subsection_code` (character, e.g. `"03"`); Classic `F9_00_EXEMPT_STAT_501C3_X` (501(c)(3) indicator only) | SV |
+| `FNDNCD` | Foundation code | none | Unified BMF `foundation_code` | XW (`FNDNCD` → `FOUNDATION`) |
+| `ORGCD` | Organization form (corporation, trust, etc.) | none | Unified BMF `organization_code` | XW (`ORGCD` → `ORGANIZATION`) |
+
+The Unified BMF also has `nteev2` (NCCS NTEEv2 code, SUBSECTOR-CODE-TYPE). Types differ across products: `subsection_cd` is integer in all three harmonized tiers, while the Unified BMF stores `subsection_code` as character, so compare `3` in one and `"03"` in the other. The Unified BMF dictionary types `foundation_code` as character, while the BMF transform reference outputs it as integer; cast before comparing.
 
 > Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
 
 ### Revenue Variables
 
-| Variable | Description | 990 Location |
-|----------|-------------|--------------|
-| `TOTREV` | Total revenue | Part I, Line 12 |
-| `TOTREV2` | Total revenue (alt calculation) | Sum of components |
-| `CONT` | Contributions and grants | Part VIII, Line 1 |
-| `PROGREV` | Program service revenue | Part VIII, Line 2 |
-| `DUES` | Membership dues | Part VIII, Line 1b |
-| `INVINC` | Investment income | Part VIII, Line 3 (Part I line 10 = lines 3, 4, 7d) |
-| `DIVID` | Dividend income | Part VIII, Line 3 (dividends and interest combined on 2008+ form) |
-| `INTINC` | Interest income | Part VIII, Line 3 |
-| `NETRENT` | Net rental income | Part VIII, Line 6 |
-| `SALESEXP` | Net gain/loss from sales | Part VIII, Line 7 |
-| `OTHREV` | Other revenue | Part VIII, Line 11 |
-| `GRSRCPTS` | Gross receipts | Header item G |
+| Legacy name | Description | 990 Location | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|--------------|-----------------|-----------------|-------|
+| `TOTREV` | Total revenue | Part I, Line 12 | `total_revenue` | `F9_08_REV_TOT_TOT` (VIII-12); Efile Part I `F9_01_REV_TOT_CY` | SV |
+| `TOTREV2` | Total revenue (alt calculation) | Sum of components | `total_revenue` (one column for `TOTREV` and `TOTREV2`) | `F9_08_REV_TOT_TOT` | SV |
+| `CONT` | Contributions and grants | Part VIII, Line 1 | `total_contributions` | `F9_08_REV_CONTR_TOT` (VIII-1h) | SV (the legacy-tier description cites Schedule A line 15(e); the SOI-current tier gives VIII-1h) |
+| `PROGREV` | Program service revenue | Part VIII, Line 2 | `program_service_revenue` | `F9_08_REV_PROG_TOT_TOT` | SV |
+| `DUES` | Membership dues | Part VIII, Line 1b | `membership_dues_assessments_sec170` (legacy and merged tiers) | — | SV; the legacy dictionary says "DUES is not available in Core PC and CO files circa 2011 and newer" (reported as program service revenue from tax year 2008) |
+| `INVINC` | Investment income | Part VIII, Line 3 (Part I line 10 = lines 3, 4, 7d) | `investment_income` | `F9_08_REV_OTH_INVEST_INCOME_TOT` (VIII-3); Efile Part I `F9_01_REV_INVEST_TOT_CY` (I-10) | SV |
+| `DIVID` | Dividend income | Part VIII, Line 3 (dividends and interest combined on 2008+ form) | none; use `investment_income` | `F9_08_REV_OTH_INVEST_INCOME_TOT` | NF |
+| `INTINC` | Interest income | Part VIII, Line 3 | none; use `investment_income` | `F9_08_REV_OTH_INVEST_INCOME_TOT` | NF |
+| `NETRENT` | Net rental income | Part VIII, Line 6 | `net_rental_income` | `F9_08_REV_OTH_RENT_NET_TOT` (VIII-6d) | SV |
+| `SALESEXP` | Cost or other basis of securities sold, **not** a net gain or loss (legacy dictionary) | not given in the dictionary | `cost_basis_securities` | — | SV |
+| `OTHREV` | Other revenue | Part VIII, Line 11 | `other_revenue_total_11e` | `F9_08_REV_MISC_TOT_TOT` (VIII-11e) | LOC (its `source_var` is the legacy `OTHINC`) |
+| `GRSRCPTS` | Gross receipts | Header item G | none (the similar `gross_receipts_total`, legacy and merged tiers, is sourced from `GRREC`) | Classic `F9_00_GRO_RCPT` (PZ files only) | NF |
 
 ### Expense Variables
 
-| Variable | Description | 990 Location |
-|----------|-------------|--------------|
-| `EXPS` | Total expenses | Part I, Line 18 |
-| `TOTEXP` | Total functional expenses | Part IX, Line 25 |
-| `FUNEXP` | Functional expenses | Part IX |
-| `PROGEXP` | Program service expenses | Part IX, Col B |
-| `MGTEXP` | Management/general expenses | Part IX, Col C |
-| `FUNDEXP` | Fundraising expenses | Part IX, Col D |
-| `GRNTS` | Grants and allocations | Part IX, Lines 1-3 |
-| `COMPENS` | Compensation (officers) | Part IX, Line 5 |
-| `OTHSAL` | Other salaries | Part IX, Line 7 |
-| `PAIDSRV` | Professional fees | Part IX, Line 11 |
-| `OCCUP` | Occupancy expenses | Part IX, Line 16 |
-| `TRAVEL` | Travel expenses | Part IX, Line 17 |
-| `DEPREC` | Depreciation | Part IX, Line 22 |
-| `INTEREST` | Interest expense | Part IX, Line 20 |
+| Legacy name | Description | 990 Location | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|--------------|-----------------|-----------------|-------|
+| `EXPS` | Total expenses | Part I, Line 18 | `total_expenses` | `F9_09_EXP_TOT_TOT` (IX-25); Efile Part I `F9_01_EXP_TOT_CY` | SV |
+| `TOTEXP` | Total functional expenses | Part IX, Line 25 | `total_expenses` | `F9_09_EXP_TOT_TOT` | LOC |
+| `FUNEXP` | Functional expenses | Part IX | `total_expenses` | `F9_09_EXP_TOT_TOT` | DESC |
+| `PROGEXP` | Program service expenses | Part IX, Col B | none (the legacy-tier `program_service_expense` is an estimate in the "Authorized Users Only" supplemental fields) | Efile `F9_09_EXP_TOT_PROG` (not in Classic) | NF |
+| `MGTEXP` | Management/general expenses | Part IX, Col C | none | Efile `F9_09_EXP_TOT_MGMT` (not in Classic) | NF |
+| `FUNDEXP` | Fundraising expenses | Part IX, Col D | none | Efile `F9_09_EXP_TOT_FUNDR` (Classic: 501CE PZ files only) | NF |
+| `GRNTS` | Grants and allocations | Part IX, Lines 1-3 | no single total; SOI-current `grants_to_govt` (line 1), `grants_to_individuals` (line 2) | `F9_09_EXP_GRANT_US_ORG_TOT`, `F9_09_EXP_GRANT_US_INDIV_TOT`, `F9_09_EXP_GRANT_FRGN_TOT` (lines 1-3) | LOC |
+| `COMPENS` | Compensation (officers) | Part IX, Line 5 | `compensation_current_officers` | `F9_09_EXP_COMP_DTK_TOT` | SV |
+| `OTHSAL` | Other salaries | Part IX, Line 7 | `other_salaries_wages` | `F9_09_EXP_OTH_SAL_WAGE_TOT` | SV |
+| `PAIDSRV` | Professional fees | Part IX, Line 11 | no single total; SOI-current `fees_for_services_management`, `fees_for_services_lobbying`, `fees_for_services_investment_mgmt`, `fees_for_services_other`, plus `professional_fundraising_fees` (11e) | Efile `F9_09_EXP_FEE_SVC_*_TOT`, one per line 11a-11g | DESC |
+| `OCCUP` | Occupancy expenses | Part IX, Line 16 | `occupancy` (SOI-current) | `F9_09_EXP_OCCUPANCY_TOT` | LOC |
+| `TRAVEL` | Travel expenses | Part IX, Line 17 | `travel` (SOI-current; integer) | `F9_09_EXP_TRAVEL_TOT` | LOC |
+| `DEPREC` | Depreciation | Part IX, Line 22 | `depreciation_depletion` (SOI-current) | `F9_09_EXP_DEPREC_TOT` | LOC |
+| `INTEREST` | Interest expense | Part IX, Line 20 | `interest_expense` (SOI-current; the legacy-tier column of that name holds interest on savings and temporary cash investments, a different field) | `F9_09_EXP_INT_TOT` | LOC |
 
 ### Balance Sheet Variables
 
-| Variable | Description | 990 Location |
-|----------|-------------|--------------|
-| `TOTASS` | Total assets (EOY) | Part X, Line 16 |
-| `TOTASSBEG` | Total assets (BOY) | Part X, Line 16 |
-| `TOTLIAB` | Total liabilities (EOY) | Part X, Line 26 |
-| `TOTLIABBEG` | Total liabilities (BOY) | Part X, Line 26 |
-| `NETASS` | Net assets (EOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018) |
-| `NETASSBEG` | Net assets (BOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018) |
-| `FUNDSBAL` | Fund balance (BOY) | |
-| `CASH` | Cash | Part X, Lines 1-2 |
-| `SECUR` | Securities | Part X, Lines 11-12 |
-| `LANDBNB` | Land, buildings, equipment (net) | Part X, Line 10c |
-| `RETEARN` | Retained earnings/endowment | |
-| `ACCTSPAY` | Accounts payable | Part X, Line 17 |
-| `MORTG` | Mortgages and notes | Part X, Lines 23-24 |
+| Legacy name | Description | 990 Location | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|--------------|-----------------|-----------------|-------|
+| `TOTASS` | Total assets (EOY) | Part X, Line 16 | `total_assets_eoy` | `F9_10_ASSET_TOT_EOY`; Efile Part I `F9_01_NAFB_ASSET_TOT_EOY` | LOC (its legacy `source_var` is `ASS_EOY`, not `TOTASS`) |
+| `TOTASSBEG` | Total assets (BOY) | Part X, Line 16 | `total_assets_boy` (legacy and merged tiers) | `F9_10_ASSET_TOT_BOY` | LOC |
+| `TOTLIAB` | Total liabilities (EOY) | Part X, Line 26 | `total_liabilities_eoy` | `F9_10_LIAB_TOT_EOY`; Efile Part I `F9_01_NAFB_LIAB_TOT_EOY` | LOC |
+| `TOTLIABBEG` | Total liabilities (BOY) | Part X, Line 26 | `total_liabilities_boy` (legacy and merged tiers) | `F9_10_LIAB_TOT_BOY` | LOC |
+| `NETASS` | Net assets (EOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018, not confirmed: see the note below the table) | `total_net_assets_eoy` | `F9_10_NAFB_TOT_EOY`; Efile Part I `F9_01_NAFB_TOT_EOY` | LOC |
+| `NETASSBEG` | Net assets (BOY) | Part X, Line 33 (pre-2018 forms; Line 32 from 2018, not confirmed: see the note below the table) | `total_net_assets_boy` (legacy and merged tiers) | `F9_10_NAFB_TOT_BOY` | LOC |
+| `FUNDSBAL` | Fund balance (BOY) | | none | — | NF: not in the legacy dictionaries checked; the similar `FUNDBAL` maps to `total_net_assets_eoy`, an end-of-year value, so do not use it as a beginning-of-year balance |
+| `CASH` | Cash | Part X, Lines 1-2 | `noninterest_cash_eoy` (line 1) + `savings_and_temp_investments_eoy` (line 2), SOI-current | `F9_10_ASSET_CASH_EOY` + `F9_10_ASSET_SAVING_EOY` | LOC |
+| `SECUR` | Gross receipts from sales of securities, **not** securities held (legacy dictionary) | Part VIII, Line 7a(i) (legacy dictionary) | `gross_sales_securities` | — | SV. For securities held (Part X lines 11-12) use SOI-current `investments_eoy` / `investments_other_eoy`, Classic `F9_10_ASSET_INVEST_SEC_EOY` / `F9_10_ASSET_INVEST_SEC_OTH_EOY` |
+| `LANDBNB` | Land, buildings, equipment (net) | Part X, Line 10c | `land_bldg_equip_eoy` (SOI-current; the legacy-tier column is an estimate) | `F9_10_ASSET_LAND_BLDG_NET_EOY` | LOC |
+| `RETEARN` | Retained earnings/endowment | | `retained_earnings_eoy` | `F9_10_NAFB_EARNING_RETAINED_EOY` | SV |
+| `ACCTSPAY` | Accounts payable | Part X, Line 17 | `accounts_payable_eoy` (SOI-current) | `F9_10_LIAB_ACC_PAYABLE_EOY` | LOC |
+| `MORTG` | Mortgages and notes | Part X, Lines 23-24 | `secured_mortgages_eoy` (line 23) + `unsecured_notes_eoy` (line 24) | `F9_10_LIAB_MTG_NOTE_EOY` + `F9_10_LIAB_NOTE_UNSEC_EOY` | LOC |
+
+> **Net assets line number.** The NCCS dictionaries checked all give Part X line 33 and none splits by form year: SOI-current and merged `total_net_assets_eoy` "990 Core_Pt X-33(B)" (years 2012-2024), Classic `F9_10_NAFB_TOT_EOY` "F990-PC-PART-10-LINE-33-EOY" (2012-2022), Efile `F9_10_NAFB_TOT_BOY` / `_EOY` "F990-PC-PART-10-LINE-33-BOY" / "-EOY", and legacy `total_net_assets_boy` "New 990 (DocCD=93): Part X line 33 (A)". The same dictionaries give Part X line 32 to retained earnings (`retained_earnings_eoy` "990 Core_Pt X-32(B)"; Classic `F9_10_NAFB_EARNING_RETAINED_EOY` "F990-PC-PART-10-LINE-32-EOY"). They neither confirm nor refute the "Line 32 from 2018" renumbering, which DAAF has not checked against the IRS forms. Before citing a line number, read Part X of the Form 990 for the filing year. (Sources: NCCS harmonized Core data dictionaries, SOI-current, merged and legacy tiers; `CORE-HRMN_dd.csv`; Efile data dictionary; all fetched 2026-10-28.)
 
 ### Computed Variables
 
-| Variable | Description | Calculation |
-|----------|-------------|-------------|
-| `NETINC` | Net income | TOTREV - EXPS |
-| `PROGREV_PCT` | Program revenue ratio | PROGREV / TOTREV |
-| `ADMIN_PCT` | Administrative expense ratio | MGTEXP / TOTEXP |
-| `FUNDR_PCT` | Fundraising expense ratio | FUNDEXP / TOTEXP |
+| Legacy name | Description | Calculation (current names) | Harmonized Core | Classic / Efile | Basis |
+|-------------|-------------|-----------------------------|-----------------|-----------------|-------|
+| `NETINC` | Net income | Total revenue minus total expenses | `net_income` (legacy and merged tiers) | `F9_01_EXP_REV_LESS_EXP_CY` (Part I line 19; Efile, and Classic PZ files only) | SV |
+| `PROGREV_PCT` | Program revenue ratio | `program_service_revenue` / `total_revenue` | computed, not a file column | — | NF |
+| `ADMIN_PCT` | Administrative expense ratio | Efile `F9_09_EXP_TOT_MGMT` / `F9_09_EXP_TOT_TOT` | computed, not a file column | — | NF |
+| `FUNDR_PCT` | Fundraising expense ratio | Efile `F9_09_EXP_TOT_FUNDR` / `F9_09_EXP_TOT_TOT` | computed, not a file column | — | NF |
 
 ---
 
 ## Business Master File Variables
 
-### Core BMF Variables
+### Raw IRS BMF Columns and Their Unified BMF Names
 
-| Variable | Description | Notes |
-|----------|-------------|-------|
-| `EIN` | Employer ID Number | Primary key |
-| `NAME` | Organization name | Legal name |
-| `ICO` | In care of name | Contact person |
-| `STREET` | Street address | |
-| `CITY` | City | |
-| `STATE` | State | 2-letter code |
-| `ZIP` | ZIP code | |
-| `GROUP` | Group exemption number | For affiliated orgs |
-| `SUBSECTION` | IRS code subsection | 501(c)(3), etc. |
-| `AFFILIATION` | Affiliation code | Independent, central, subordinate |
-| `CLASSIFICATION` | Classification code | |
-| `RULING` | Ruling date | YYYYMM format |
-| `DEDUCTIBILITY` | Deductibility code | 1 = contributions deductible |
-| `FOUNDATION` | Foundation code | See FNDNCD |
-| `ACTIVITY` | Activity codes | Historical (pre-NTEE) |
-| `ORGANIZATION` | Organization type | Corporation, trust, etc. |
-| `STATUS` | Tax-exempt status | Active, revoked, etc. |
-| `TAX_PERIOD` | Tax period | Most recent filing |
-| `ASSET_CD` | Asset code | Size category |
-| `INCOME_CD` | Income code | Size category |
-| `FILING_REQ_CD` | Filing requirement | 990, 990-EZ, 990-N |
-| `PF_FILING_REQ_CD` | PF filing requirement | |
-| `ACCT_PD` | Accounting period | Month fiscal year ends |
-| `ASSET_AMT` | Asset amount | Most recent |
-| `INCOME_AMT` | Gross receipts | Most recent |
-| `REVENUE_AMT` | Revenue amount | Most recent |
-| `NTEE_CD` | NTEE code | Official IRS code |
+The uppercase names are the columns of the raw IRS Exempt Organizations BMF extract, which the NCCS Unified BMF renames. Use the Unified BMF column on Unified BMF files. Older NCCS BMF files (`501CX-NONPROFIT-PX`) used further legacy names; NCCS's legacy BMF crosswalk (`XWALK-BMF-V2.0.csv`) maps them to these raw names (e.g. `SUBSECCD` → `SUBSECTION`, `FNDNCD` → `FOUNDATION`, `NTEECC` → `NTEE_CD`, `INCOME` → `INCOME_AMT`). The raw-to-Unified links are the input and output columns of the NCCS BMF transform reference; rows marked † are linked by the transform function's name only (inference). Every Unified BMF column listed is typed character in the Unified BMF data dictionary.
+
+| Raw IRS name | Unified BMF column | Description | Notes |
+|--------------|--------------------|-------------|-------|
+| `EIN` | `ein` (`XX-XXXXXXX`); `EIN2` (`EIN-XX-XXXXXXX`) | Employer ID Number | Primary key |
+| `NAME` | `org_name_raw` / `org_name_display` | Organization name | Legal name |
+| `ICO` | `in_care_of_name_raw` / `in_care_of_name_clean` | In care of name | Contact person |
+| `STREET` | `org_addr_street` | Street address | |
+| `CITY` | `org_addr_city` | City | |
+| `STATE` | `org_addr_state` | State | 2-letter code |
+| `ZIP` | `org_addr_zip` (and `org_addr_zip5`) | ZIP code | |
+| `GROUP` | `group_exemption_number` | Group exemption number | For affiliated orgs |
+| `SUBSECTION` | `subsection_code` | IRS code subsection | 501(c)(3), etc.; character, e.g. `"03"` |
+| `AFFILIATION` | `affiliation_code` | Affiliation code | Independent, central, subordinate |
+| `CLASSIFICATION` | `classification_code` | Classification code | |
+| `RULING` | `ruling_date` (date), `ruling_date_ym_str` | Ruling date | YYYYMM format in the raw file |
+| `DEDUCTIBILITY` | `deductibility_code` | Deductibility code | 1 = contributions deductible |
+| `FOUNDATION` | `foundation_code` | Foundation code | See Foundation Codes in `nonprofit-data.md`; the transform reference outputs integer, the dictionary says character |
+| `ACTIVITY` | `activity_code` † | Activity codes | Historical (pre-NTEE) |
+| `ORGANIZATION` | `organization_code` | Organization type | Corporation, trust, etc. |
+| `STATUS` | `status_code` | Tax-exempt status | Active, revoked, etc. |
+| `TAX_PERIOD` | `tax_period_ymd`, `tax_period_ym_str` | Tax period | Most recent filing |
+| `ASSET_CD` | `asset_code` † | Asset code | Size category |
+| `INCOME_CD` | `income_code` † | Income code | Size category |
+| `FILING_REQ_CD` | `filing_requirement_code` | Filing requirement | 990, 990-EZ, 990-N |
+| `PF_FILING_REQ_CD` | `pf_filing_requirement_code` | PF filing requirement | |
+| `ACCT_PD` | `accounting_period` | Accounting period | Month fiscal year ends |
+| `ASSET_AMT` | `asset_amount` † | Asset amount | Most recent; stored as character |
+| `INCOME_AMT` | `income_amount` † | Income amount | Most recent; Unified BMF: "Total income in dollars (can be negative)", stored as character |
+| `REVENUE_AMT` | `revenue_amount` † | Revenue amount | Most recent; stored as character |
+| `NTEE_CD` | `ntee_code_raw` / `ntee_code_clean` | NTEE code | Official IRS code; `ntee_code_clean` is the standardized 3-character form |
 
 ### NCCS Unified BMF Additions
 
@@ -292,50 +306,52 @@ Other efile variable names in this skill are illustrative; look up actual names 
 
 ### Revenue Measures
 
-**Total Revenue** (`TOTREV`):
+Names in parentheses are harmonized Core columns (legacy NCCS Core name after the semicolon); where no harmonized column exists, the Efile name is given. See [Core Data Series Variables](#core-data-series-variables) for the Classic names and the basis of each match.
+
+**Total Revenue** (`total_revenue`; legacy `TOTREV`):
 - All income from all sources
 - Includes contributions, program revenue, investment income
 - Before expenses
 
-**Contributions and Grants** (`CONT`):
+**Contributions and Grants** (`total_contributions`; legacy `CONT`):
 - Donations from individuals, corporations, foundations
 - Government grants (non-exchange)
 - Does NOT include government contracts (those are program revenue)
 
-**Program Service Revenue** (`PROGREV`):
+**Program Service Revenue** (`program_service_revenue`; legacy `PROGREV`):
 - Revenue from mission-related activities
 - Tuition and fees for educational institutions
 - Government contracts
 - Fee-for-service activities
 
-**Investment Income** (`INVINC`):
-- Part I line 10 investment income = Part VIII lines 3, 4 and 7d (includes net gains from asset sales); royalties are line 5. Core `INVINC` definition: check the Core dictionary
+**Investment Income** (`investment_income`; legacy `INVINC`):
+- Part I line 10 investment income = Part VIII lines 3, 4 and 7d (includes net gains from asset sales); royalties are line 5. The legacy-tier dictionary sources `investment_income` from `INVINC` and, for the 2008 and later form, gives "Part VIII Line 3A" only, so by that description it is narrower than Part I line 10 (Efile `F9_01_REV_INVEST_TOT_CY`); values were not compared
 
 ### Expense Measures
 
-**Total Functional Expenses** (`TOTEXP` or `FUNEXP`):
+**Total Functional Expenses** (`total_expenses`, Part IX line 25 column A; legacy `TOTEXP` or `FUNEXP`):
 - All operating expenses
 - Allocated to program, management, fundraising
 
-**Program Expenses** (`PROGEXP`):
+**Program Expenses** (Efile `F9_09_EXP_TOT_PROG`; legacy `PROGEXP`; no harmonized column):
 - Direct costs of mission delivery
 - Educational instruction, student services
 
-**Management and General** (`MGTEXP`):
+**Management and General** (Efile `F9_09_EXP_TOT_MGMT`; legacy `MGTEXP`; no harmonized column):
 - Administrative overhead
 - Board expenses, finance, HR
 
-**Fundraising** (`FUNDEXP`):
+**Fundraising** (Efile `F9_09_EXP_TOT_FUNDR`; legacy `FUNDEXP`; no harmonized column):
 - Costs of soliciting contributions
 - Development office, events
 
 ### Balance Sheet Measures
 
-**Total Assets** (`TOTASS`):
+**Total Assets** (`total_assets_eoy`; legacy `TOTASS`):
 - All resources owned
 - Cash, investments, property, receivables
 
-**Net Assets** (`NETASS`):
+**Net Assets** (`total_net_assets_eoy`; legacy `NETASS`):
 - Assets minus liabilities
 - Equivalent to "fund balance" or "equity"
 - Through tax year 2017 (all Portal years): unrestricted, temporarily restricted, permanently restricted
@@ -345,11 +361,11 @@ Other efile variable names in this skill are illustrative; look up actual names 
 
 | Ratio | Calculation | Interpretation |
 |-------|-------------|----------------|
-| Program Ratio | PROGEXP / TOTEXP | Higher = more efficient |
-| Admin Ratio | MGTEXP / TOTEXP | Lower = less overhead |
-| Fundraising Efficiency | FUNDEXP / CONT | Lower = more efficient fundraising |
-| Revenue Concentration | Max source / TOTREV | Higher = more dependent |
-| Liquidity | Cash / TOTEXP × 12 | Months of operating reserves |
+| Program Ratio | `F9_09_EXP_TOT_PROG` / `F9_09_EXP_TOT_TOT` (Efile) | Higher = more efficient |
+| Admin Ratio | `F9_09_EXP_TOT_MGMT` / `F9_09_EXP_TOT_TOT` (Efile) | Lower = less overhead |
+| Fundraising Efficiency | `F9_09_EXP_TOT_FUNDR` / `F9_08_REV_CONTR_TOT` (Efile) | Lower = more efficient fundraising |
+| Revenue Concentration | Max source / `total_revenue` | Higher = more dependent |
+| Liquidity | (`noninterest_cash_eoy` + `savings_and_temp_investments_eoy`) / `total_expenses` × 12 (SOI-current) | Months of operating reserves |
 
 ---
 
@@ -441,23 +457,26 @@ df <- df |>
 
 **Using direct NCCS data (Polars):**
 
+Direct NCCS files handle negatives differently from the Portal blocks above. The `-1`/`-2`/`-3` codes are Portal-only, so in a direct NCCS file a negative amount is a value the filer reported, such as an investment loss. The Core catalog lists "Filer-supplied negatives on revenue fields — IRS-supplied as-filed; not amendments.", and the 2010 legacy-tier dictionary reports a minimum `investment_income` of -30,732,551. Do not null negatives here as the Portal blocks do: that would delete real losses. Keep them and flag them:
+
 ```python
 import polars as pl
 
-# Replace negative codes with null
+# Direct NCCS harmonized Core (e.g. core_2021_990.csv): the -1/-2/-3 codes are Portal-only,
+# and negative amounts are filer-supplied values (e.g. investment losses), so keep them and flag them
 df = df.with_columns(
-    pl.when(pl.col("INVINC") < 0)
-    .then(None)
-    .otherwise(pl.col("INVINC"))
-    .alias("INVINC")
+    (pl.col("investment_income").cast(pl.Float64, strict=False) < 0).alias("investment_income_negative")
 )
 ```
 
 ```r
-# Replace negative codes with null
+# Direct NCCS harmonized Core (e.g. core_2021_990.csv): the -1/-2/-3 codes are Portal-only,
+# and negative amounts are filer-supplied values (e.g. investment losses), so keep them and flag them
 df <- df |>
-  mutate(INVINC = ifelse(INVINC < 0, NA, INVINC))
+  mutate(investment_income_negative = suppressWarnings(as.numeric(investment_income)) < 0)
 ```
+
+In a Classic HRMN file the same Part VIII line 3 amount is `F9_08_REV_OTH_INVEST_INCOME_TOT`.
 
 ---
 
@@ -468,10 +487,10 @@ df <- df |>
 | Issue | Description | Detection |
 |-------|-------------|-----------|
 | **Outliers** | Extreme values (errors or real) | Check against organization size |
-| **Sign errors** | Negative revenue or assets | Values should be positive |
+| **Sign errors** | Negative revenue or assets | Most values should be positive; in direct NCCS files negatives are filer-supplied values, not codes, so investigate rather than null them |
 | **Rounding** | Values rounded to nearest thousand | Small values may be imprecise |
-| **Duplicates** | Same filing multiple times | Check NCCSKEY uniqueness |
-| **Fiscal year mismatch** | Comparing different periods | Verify TAXPER alignment |
+| **Duplicates** | Same filing multiple times | Harmonized Core: check (`ein`, `tax_period`) uniqueness (the merged tier keeps one row per pair; the SOI-current tier flags repeats with `is_amendment`). Efile: `URL` is unique per filing |
+| **Fiscal year mismatch** | Comparing different periods | Verify `tax_period` (harmonized Core) or `TAX_PERIOD_END_DATE` (Efile) alignment |
 
 ### Validation Checks
 
@@ -543,7 +562,7 @@ df <- df |>
 unusual <- df |> filter(abs(rev_change) > 1.0)  # >100% change
 ```
 
-**Using direct NCCS data (UPPERCASE variable names):** Replace Portal names with NCCS names (e.g., `TOTASS`, `TOTLIAB`, `NETASS`, `TOTREV`, `CONT`, etc.).
+**Using direct NCCS data:** Replace Portal names with the product's own names: harmonized Core `total_assets_eoy`, `total_liabilities_eoy`, `total_net_assets_eoy`, `total_revenue`, `total_contributions`; Classic (HRMN) Core `F9_10_ASSET_TOT_EOY`, `F9_10_LIAB_TOT_EOY`, `F9_10_NAFB_TOT_EOY`, `F9_08_REV_TOT_TOT`, `F9_08_REV_CONTR_TOT`. Direct files sort and group on `ein` (harmonized Core) or `EIN2` (Classic, Efile), and the year is `tax_year` (harmonized Core), `F9_00_TAX_YEAR` (Classic) or `TAX_YEAR` (Efile).
 
 ### Error Checking Recommendations
 

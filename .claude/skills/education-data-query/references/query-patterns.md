@@ -1,6 +1,6 @@
 # Query Patterns Reference
 
-> **LEGACY REFERENCE:** This file documents the deprecated REST API query approach using direct HTTP requests. For current mirror-based data fetching, see `fetch-patterns.md` in this skill directory. This file is retained for reference only.
+> **LEGACY REFERENCE:** This file documents the deprecated REST API query approach using direct HTTP requests. For current mirror-based data fetching, see `fetch-patterns.md` in this skill directory. This file is retained for reference only. On 2026-10-28 its example routes were checked against the current Portal endpoint catalog (130 endpoints): 26 route forms were not in it (among them `ipeds/completions`, `ipeds/completions-cip`, `ipeds/hr`, `ipeds/sfa`, `ipeds/net-price`, `ipeds/student-services`, `ipeds/athletics`, `fsa/program-volume`, `ccd/membership` and `crdc/gifted-and-talented`); each was replaced with its catalog route where a direct equivalent exists and deleted otherwise. Do not cite the removed forms. For current routes use each family's "Portal endpoint(s)" line in `education-data-explorer`.
 
 Comprehensive URL construction examples for the Education Data Portal API.
 
@@ -59,8 +59,9 @@ Basic school information (name, address, type, status).
 # Schools in a specific district
 "https://educationdata.urban.org/api/v1/schools/ccd/directory/2020/?leaid=0600001"
 
-# Multiple years
-"https://educationdata.urban.org/api/v1/schools/ccd/directory/?year=2018,2019,2020&fips=6"
+# Multiple years: one request per year (the catalog route takes {year} as a path segment)
+"https://educationdata.urban.org/api/v1/schools/ccd/directory/2018/?fips=6"
+"https://educationdata.urban.org/api/v1/schools/ccd/directory/2019/?fips=6"
 ```
 
 ### Enrollment
@@ -103,8 +104,11 @@ School enrollment data. **Requires grade disaggregator in path.**
 | `grade-pk` | `grade = -1` | Pre-kindergarten (**SEMANTIC TRAP!**) |
 | `grade-k` | `grade = 0` | Kindergarten |
 | `grade-1` to `grade-12` | `grade = 1` to `12` | Grades 1-12 |
-| `grade-13` | `grade = 13` | Ungraded |
+| `grade-13` | `grade = 13` | Grade 13 |
+| `grade-14` | `grade = 14` | Adult education (route form inferred, not tested) |
+| `grade-15` | `grade = 15` | Ungraded (route form inferred, not tested) |
 | `grade-99` | `grade = 99` | Total (all grades combined) |
+| (not documented) | `grade = 999` | Not specified |
 
 **CRITICAL:** In downloaded data, `grade = -1` means Pre-K, NOT missing data!
 
@@ -120,18 +124,6 @@ Patterns that **FAIL** (return HTTP 500):
 - `/enrollment/2020/sex/` - Missing grade
 - `/enrollment/2020/race/grade-99/` - Wrong order
 
-### Membership
-
-Similar to enrollment but different counting methodology.
-
-```
-# Total membership
-"https://educationdata.urban.org/api/v1/schools/ccd/membership/2020/grade-99/"
-
-# Membership by grade and race
-"https://educationdata.urban.org/api/v1/schools/ccd/membership/2020/grade-3/race/"
-```
-
 ## Schools (CRDC)
 
 Civil Rights Data Collection - discipline, courses, staffing.
@@ -139,17 +131,14 @@ Civil Rights Data Collection - discipline, courses, staffing.
 ### Enrollment
 
 ```
-# CRDC enrollment
-"https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/"
-
-# By disability status
-"https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/disability/"
+# By disability status (and sex)
+"https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/disability/sex/"
 
 # By race and sex
 "https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/race/sex/"
 
-# LEP students
-"https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/lep/"
+# LEP students (and sex)
+"https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/lep/sex/"
 ```
 
 ### Discipline
@@ -166,8 +155,8 @@ Civil Rights Data Collection - discipline, courses, staffing.
 # Suspensions-days endpoint
 "https://educationdata.urban.org/api/v1/schools/crdc/suspensions-days/2020/race/sex/"
 
-# Restraint and seclusion
-"https://educationdata.urban.org/api/v1/schools/crdc/restraint-and-seclusion/2017/"
+# Restraint and seclusion (students, by disability and sex)
+"https://educationdata.urban.org/api/v1/schools/crdc/restraint-and-seclusion/2017/disability/sex/"
 ```
 
 **Note:** Endpoints like `/crdc/suspensions/` and `/crdc/expulsions/` may return 404. Use `/crdc/discipline/` with disaggregation instead.
@@ -183,13 +172,10 @@ Civil Rights Data Collection - discipline, courses, staffing.
 # Note: /crdc/ap-enrollment/ may return 404; use /crdc/ap-ib-enrollment/ instead
 
 # AP exams
-"https://educationdata.urban.org/api/v1/schools/crdc/ap-exams/2017/"
+"https://educationdata.urban.org/api/v1/schools/crdc/ap-exams/2017/race/sex/"
 
 # Algebra enrollment
-"https://educationdata.urban.org/api/v1/schools/crdc/algebra1/2017/"
-
-# Gifted/talented enrollment
-"https://educationdata.urban.org/api/v1/schools/crdc/gifted-and-talented/2017/"
+"https://educationdata.urban.org/api/v1/schools/crdc/algebra1/2017/race/sex"
 ```
 
 ## Schools (EDFacts)
@@ -224,9 +210,9 @@ Assessment and achievement data.
 # Specific district by LEAID
 "https://educationdata.urban.org/api/v1/school-districts/ccd/directory/2020/?leaid=0600001"
 
-# By agency type (1=regular local, 2=component, etc.)
-"https://educationdata.urban.org/api/v1/school-districts/ccd/directory/2020/?agency_type=1"
 ```
+
+`agency_type` is not an API filter (declared filter flag `no` in `education-data-explorer/references/variable-dictionary-ccd.md`): fetch the directory and filter locally.
 
 ### Enrollment
 
@@ -240,11 +226,11 @@ Assessment and achievement data.
 # By grade
 "https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/grade-3/"
 
-# By race
-"https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/race/"
+# By race (grade segment required, as for schools)
+"https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/grade-99/race/"
 
 # By sex
-"https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/sex/"
+"https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/grade-99/sex/"
 ```
 
 ### Finance
@@ -273,8 +259,8 @@ Small Area Income and Poverty Estimates.
 # Poverty estimates for California districts
 "https://educationdata.urban.org/api/v1/school-districts/saipe/2020/?fips=6"
 
-# Multiple years
-"https://educationdata.urban.org/api/v1/school-districts/saipe/?year=2018,2019,2020&fips=6"
+# Multiple years: one request per year
+"https://educationdata.urban.org/api/v1/school-districts/saipe/2019/?fips=6"
 ```
 
 ## School Districts (EDFacts)
@@ -345,33 +331,24 @@ Integrated Postsecondary Education Data System.
 **Requires level_of_study in path.**
 
 ```
-# All enrollment
-"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/"
+# Undergraduate FTE enrollment
+"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/undergraduate/"
 
-# Undergraduate enrollment
-"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/undergrad/"
+# Graduate FTE enrollment
+"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/graduate/"
 
-# Graduate enrollment
-"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/grad/"
-
-# By race
-"https://educationdata.urban.org/api/v1/college-university/ipeds/fall-enrollment/2020/race/"
-
-# By gender
-"https://educationdata.urban.org/api/v1/college-university/ipeds/fall-enrollment/2020/sex/"
+# Fall enrollment by race and sex
+"https://educationdata.urban.org/api/v1/college-university/ipeds/fall-enrollment/2020/undergraduate/race/sex/"
 
 # Headcount enrollment
-"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-headcount/2020/"
+"https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-headcount/2020/undergraduate/"
 ```
 
 ### Graduation Rates
 
 ```
-# Overall graduation rates
+# Overall graduation rates (race and sex are columns; the catalog has no race route)
 "https://educationdata.urban.org/api/v1/college-university/ipeds/grad-rates/2020/"
-
-# By race
-"https://educationdata.urban.org/api/v1/college-university/ipeds/grad-rates/2020/race/"
 
 # 200% time graduation rates
 "https://educationdata.urban.org/api/v1/college-university/ipeds/grad-rates-200pct/2020/"
@@ -396,30 +373,28 @@ Integrated Postsecondary Education Data System.
 # Academic year tuition and fees
 "https://educationdata.urban.org/api/v1/college-university/ipeds/academic-year-tuition/2020/"
 
-# Room and board
-"https://educationdata.urban.org/api/v1/college-university/ipeds/academic-year-room-and-board/2020/"
+# Room, board, and other expenses
+"https://educationdata.urban.org/api/v1/college-university/ipeds/academic-year-room-board-other/2020/"
 
-# Student financial aid
-"https://educationdata.urban.org/api/v1/college-university/ipeds/sfa/2020/"
+# Student financial aid, all undergraduates (the catalog also has sfa-ftft,
+# sfa-by-living-arrangement and sfa-by-tuition-type)
+"https://educationdata.urban.org/api/v1/college-university/ipeds/sfa-all-undergraduates/2020/"
 
-# Net price by income
-"https://educationdata.urban.org/api/v1/college-university/ipeds/net-price/2020/"
+# Grants and net price by income
+"https://educationdata.urban.org/api/v1/college-university/ipeds/sfa-grants-and-net-price/2020/"
 ```
 
 ### Institutional Characteristics
 
 ```
-# Student services
-"https://educationdata.urban.org/api/v1/college-university/ipeds/student-services/2020/"
+# Institutional characteristics
+"https://educationdata.urban.org/api/v1/college-university/ipeds/institutional-characteristics/2020/"
 
-# Athletics
-"https://educationdata.urban.org/api/v1/college-university/ipeds/athletics/2020/"
+# Completions (degrees awarded) by 2-digit CIP code
+"https://educationdata.urban.org/api/v1/college-university/ipeds/completions-cip-2/2020/"
 
-# Completions (degrees awarded)
-"https://educationdata.urban.org/api/v1/college-university/ipeds/completions/2020/"
-
-# Program completions by CIP code
-"https://educationdata.urban.org/api/v1/college-university/ipeds/completions-cip/2020/"
+# Program completions by 6-digit CIP code
+"https://educationdata.urban.org/api/v1/college-university/ipeds/completions-cip-6/2020/"
 ```
 
 ### Finance
@@ -427,9 +402,6 @@ Integrated Postsecondary Education Data System.
 ```
 # Institutional finance
 "https://educationdata.urban.org/api/v1/college-university/ipeds/finance/2020/"
-
-# Human resources
-"https://educationdata.urban.org/api/v1/college-university/ipeds/hr/2020/"
 ```
 
 ## Colleges (Scorecard)
@@ -452,8 +424,11 @@ College Scorecard data.
 Federal Student Aid data.
 
 ```
-# Title IV program volume
-"https://educationdata.urban.org/api/v1/college-university/fsa/program-volume/2020/"
+# Title IV grant volume
+"https://educationdata.urban.org/api/v1/college-university/fsa/grants/2020/"
+
+# Title IV loan volume
+"https://educationdata.urban.org/api/v1/college-university/fsa/loans/2020/"
 ```
 
 ## Combined Filters Examples
@@ -487,16 +462,15 @@ Federal Student Aid data.
 ### Time Series Queries
 
 ```
-# California schools across multiple years
-"https://educationdata.urban.org/api/v1/schools/ccd/directory/?year=2015,2016,2017,2018,2019,2020&fips=6"
+# California schools across multiple years: one request per year, 2015 through 2020
+"https://educationdata.urban.org/api/v1/schools/ccd/directory/2015/?fips=6"
 
-# Enrollment trends
-"https://educationdata.urban.org/api/v1/schools/ccd/enrollment/grade-99/?year=2015,2016,2017,2018,2019,2020&fips=6"
+# Enrollment trends: one request per year, 2015 through 2020
+"https://educationdata.urban.org/api/v1/schools/ccd/enrollment/2015/grade-99/?fips=6"
 ```
 
 ## Note on Data Fetching
 
 URL patterns in this file document the endpoint path structure of the Education Data Portal.
 For actual data fetching, use the mirror-based patterns in `./fetch-patterns.md` — no direct
-API calls are used. These URL patterns remain useful for understanding dataset naming conventions
-and constructing mirror file paths.
+API calls are used. These URL patterns remain useful for understanding dataset naming conventions.

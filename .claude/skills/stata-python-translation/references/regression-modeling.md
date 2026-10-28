@@ -389,7 +389,7 @@ print(fit.wu_hausman())              # Endogeneity test
 | `estat firststage` | `fit.IV_Diag()` | `fit.first_stage` |
 | `estat overid` | Not built-in | `fit.sargan` |
 | `estat endogeneity` | Not built-in | `fit.wu_hausman()` |
-| First-stage F | `fit.IV_Diag()` (effective F) | Cragg-Donald F |
+| First-stage F | `fit.IV_Diag()` (first-stage F and effective F) | `fit.first_stage` (partial F per endogenous regressor; linearmodels 7.0 has no Cragg-Donald F, 7.1 adds `fit.first_stage.cragg_donald_f`) |
 
 ---
 

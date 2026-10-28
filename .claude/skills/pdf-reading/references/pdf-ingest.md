@@ -159,9 +159,10 @@ the constants it used, so a later change is visible per ingest.
 ## Renders and crops
 
 - Pages chosen by `--render` get `pdftoppm -png -scale-to 2000` (long side
-  2000 px, page rotation honored): `renders{S}/pNNN.png`. Not 2576 px,
-  because the Anthropic route rejects images over 2000 px once a request
-  holds more than 20 images (`vision-validation.md` § Routes).
+  2000 px, page rotation honored): `renders{S}/pNNN.png`. Not 2576 px:
+  once a request holds more than 20 images the Anthropic route applies a
+  stricter per-image limit, and 2000 px is the size its documentation gives
+  for staying under it on every platform (`vision-validation.md` § Routes).
 - On rendered pages **without** a `/Rotate` attribute, each table box and
   each embedded image of at least 5% of the page gets a 300-DPI crop,
   `pNNN_tblK.png` / `pNNN_imgK.png`, at most 6 per page, 6 pt padding. On a
@@ -290,7 +291,7 @@ re-run; the reading copies carry the source hash, not a timestamp.
 
 ## Functions lit_verify reuses
 
-*(1.2.1, 2026-10-23; no artifact change.)* `lit_verify` 1.7.0
+*(1.2.1, 2026-10-23; no artifact change.)* Since 1.7.0, `lit_verify`
 re-derives an ingest's anchors from its source at check time
 (`evidence-card.md` § Re-derivation) by importing this module and calling
 the same code the ingest ran, so the two can never drift apart:

@@ -647,7 +647,7 @@ When joining or filtering, remember that the Portal uses **integer codes**, not 
 |----------|----------------|-------------------|
 | Race | 1-7, 99 (total) | WH, BL, HI |
 | Sex | 1, 2, 99 (total) | M, F |
-| Grade | -1 to 13, 99 (total) | PK, KG, 01 |
+| Grade | -1 to 15, 99 (total), 999 (not specified); 14 = Adult education, 15 = Ungraded | PK, KG, 01 |
 | FIPS | Integers (6, 36, 48) | CA, NY, TX |
 
 **SEMANTIC TRAP:** `grade = -1` means **Pre-K**, NOT missing data!

@@ -113,7 +113,7 @@ All SAIPE estimate columns in the Education Data Portal use the `est_` prefix:
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `fips` | Integer | State | `6` | State FIPS code (no leading zeros in Portal) |
-| `leaid` | String | District | `0100005` | NCES district ID; join key to CCD |
+| `leaid` | Integer | District | `622710` | NCES district ID stored without leading zeros (`0622710` → `622710`); zero-pad to 7 characters before joining to CCD — see `./references/variable-definitions.md` |
 | `year` | Integer | Time | `2022` | Estimate reference year |
 
 ### School District Estimates

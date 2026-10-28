@@ -688,7 +688,7 @@ U.S. Census Bureau. *ACS PUMS Documentation*.
 https://www.census.gov/programs-surveys/acs/microdata/documentation.html
 
 Agency documentation cited by report number in the text (CPS Technical Paper 77; NCES
-2015-074, 2018-140, 2014-364) was not re-verified in this review.
+2015-074, 2018-140, 2014-364) was not re-verified against the source documents.
 
 ### Teaching Resources
 

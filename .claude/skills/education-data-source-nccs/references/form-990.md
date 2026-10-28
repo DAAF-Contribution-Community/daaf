@@ -2,7 +2,7 @@
 
 Form 990 is the annual information return that tax-exempt organizations file with the IRS. This reference covers the form's structure and the data elements available for research.
 
-> **Variable naming context:** This file uses original IRS/NCCS variable names (e.g., `CONT`, `TOTREV`, `COMPENS`) which are UPPERCASE and abbreviated. In the Portal dataset, these are mapped to lowercase descriptive names (e.g., `contributions_total`, `revenue_total`, `compensation_officers`). See SKILL.md Portal Variable Name Mapping for the crosswalk. Governance and schedule detail variables (Part VI, VII, Schedule D/J) are available only in the full NCCS Efile database, not in the Portal mirror dataset.
+> **Variable naming context:** Older NCCS documentation used legacy NCCS Core names (e.g., `CONT`, `TOTREV`, `COMPENS`), which no current NCCS file uses as column names. This file gives the Efile names. In the Portal dataset the same items have lowercase descriptive names (e.g., `contributions_total`, `revenue_total`, `compensation_officers`); see SKILL.md Portal Variable Name Mapping, and `variable-definitions.md` for the full legacy-to-current mapping. Governance and schedule detail variables (Part VI, VII, Schedule D/J) are available only in the full NCCS Efile database, not in the Portal mirror dataset.
 
 ## Contents
 
@@ -87,18 +87,20 @@ The Form 990 was substantially redesigned in 2008, affecting data comparability:
 
 High-level organizational overview and key financial totals.
 
-| Line | Description | Variable (approx.) |
-|------|-------------|-------------------|
-| 1 | Mission/activities description | Text field |
-| 8 | Contributions and grants | CONT |
-| 9 | Program service revenue | PROGREV |
-| 10 | Investment income | INVINC |
-| 12 | Total revenue | TOTREV |
-| 18 | Total expenses | EXPS |
-| 19 | Revenue less expenses | NETINC |
-| 20 | Total assets (EOY) | TOTASS |
-| 21 | Total liabilities (EOY) | TOTLIAB |
-| 22 | Net assets (EOY) | NETASS |
+| Line | Description | Efile name (current year) | Legacy NCCS Core name |
+|------|-------------|---------------------------|-----------------------|
+| 1 | Mission/activities description | Text field | — |
+| 8 | Contributions and grants | `F9_01_REV_CONTR_TOT_CY` | `CONT` |
+| 9 | Program service revenue | `F9_01_REV_PROG_TOT_CY` | `PROGREV` |
+| 10 | Investment income | `F9_01_REV_INVEST_TOT_CY` | `INVINC` |
+| 12 | Total revenue | `F9_01_REV_TOT_CY` | `TOTREV` |
+| 18 | Total expenses | `F9_01_EXP_TOT_CY` | `EXPS` |
+| 19 | Revenue less expenses | `F9_01_EXP_REV_LESS_EXP_CY` | `NETINC` |
+| 20 | Total assets (EOY) | `F9_01_NAFB_ASSET_TOT_EOY` | `TOTASS` |
+| 21 | Total liabilities (EOY) | `F9_01_NAFB_LIAB_TOT_EOY` | `TOTLIAB` |
+| 22 | Net assets (EOY) | `F9_01_NAFB_TOT_EOY` | `NETASS` |
+
+Efile names are matched by the Form 990 line the Efile data dictionary gives. The Classic HRMN Core dictionary has the Part VIII-X equivalents for the full-990 (PC) files instead (`F9_08_REV_TOT_TOT`, `F9_09_EXP_TOT_TOT`, `F9_10_ASSET_TOT_EOY`, `F9_10_LIAB_TOT_EOY`, `F9_10_NAFB_TOT_EOY`); harmonized Core names are in `variable-definitions.md`.
 
 ### Part II: Signature Block
 

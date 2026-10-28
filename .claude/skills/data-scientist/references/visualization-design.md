@@ -149,7 +149,7 @@ When you have more than 5 series, small multiples almost always beat an overload
 | Pie charts (>3 slices, rule of thumb) | Angle encoding is weak; cross-pie comparison is impossible | Horizontal bar, stacked bar |
 | Dual-axis charts | Scale choices create false implied correlations; deeply misleading | Two separate panels; index to common baseline |
 | 3D effects | Add no information; distort perception via perspective | Standard 2D charts |
-| Spaghetti plots (>5 lines) | Colors become indistinguishable; tracking is impossible | Small multiples; gray + highlight one series |
+| Spaghetti plots (>5 lines, rule of thumb) | Colors become indistinguishable; tracking is impossible | Small multiples; gray + highlight one series |
 | Truncated bar chart axes | Bars encode *length* — not starting at zero breaks that mapping | Start at zero, or switch to dot plot |
 | Rainbow color scales | Perceptually non-uniform; bright yellows can read as false peaks (Nuñez et al. 2018, on jet); colorblind-hostile | viridis, cividis, or single-hue sequential |
 

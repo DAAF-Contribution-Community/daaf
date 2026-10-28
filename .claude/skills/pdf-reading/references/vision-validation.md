@@ -19,14 +19,23 @@ history
 ## Why vision is gated
 
 Vision transcription of tables is not cell-level numeric fidelity.
-ParseBench's table metric (GriTS + TableRecordMatch, a structure score) gave
-Opus 5.5 93.86 and Fable 5.1 91.52 [doc, vendor benchmark,
-https://github.com/run-llama/ParseBench README]; WildTableBench reports "Only
-one model exceeds 50% accuracy" [doc, https://arxiv.org/abs/2605.01018]; a
-meta-analysis extraction study found "near-zero reliability" for full
-numeric tuples [doc, https://arxiv.org/abs/2602.10881] (all three accessed
-2026-10-12). A structure score near 94 says nothing about whether a sign or
-a decimal survived [inf]. So vision stays a **second reading**: it may
+ParseBench's table metric is GTRM, "the unweighted average of GriTS and
+TableRecordMatch"; TableRecordMatch scores "each matched pair" of row
+records "by binary cell-level agreement", and GriTS covers "cell content
+recognition" as well as structure [doc, https://arxiv.org/html/2604.08538v3
+and https://arxiv.org/abs/2203.12555, accessed 2026-10-28]. On it Opus 5.5
+scored 93.86 and Fable 5.1 91.52 [doc, vendor benchmark,
+https://github.com/run-llama/ParseBench README, accessed 2026-10-12]. The
+93.86 is the row named plain "Anthropic Opus 5.5"; an "Anthropic Opus 5.5
+(Effort High)" row scores 94.25 (README, 2026-10-12), and the
+`leaderboard.csv` fetched 2026-10-28 still has both and adds "(Effort
+Low)" at 92.69 [doc]. WildTableBench reports "Only one model exceeds 50%
+accuracy" [doc, https://arxiv.org/abs/2605.01018]; a meta-analysis
+extraction study found "near-zero reliability" for full numeric tuples
+[doc, https://arxiv.org/abs/2602.10881] (both accessed 2026-10-12). An
+aggregate table score near 94 does not show that every sign and decimal
+survived: it still allows individual cells with a flipped sign or a shifted
+decimal [inf]. So vision stays a **second reading**: it may
 corroborate the text layer or flag a text-layer problem, and on a page
 flagged `scanned` or `ocr_layer_suspected` it is an unvalidated reading (no
 model is validated there, § The validation probe). It is never ground truth, and every text/vision disagreement is
@@ -149,7 +158,7 @@ differs by route [inf].
 
 | Route family | Image rules | DAAF consequence |
 |--------------|-------------|------------------|
-| Anthropic (subscription, API) | Once a request holds more than 20 images, earlier turns included, every image is capped at 2000 px and larger ones "are rejected with an invalid_request_error" [doc, Anthropic's vision documentation, fetched 2026-10-12]. On Amazon Bedrock and Google Cloud, PDF document blocks also count toward the 20 [doc]. Token cost ≈ ⌈width / 28⌉ × ⌈height / 28⌉ [doc] | `pdf_ingest` renders at 2000 px (long side), so a long reading conversation never trips the rejection |
+| Anthropic (subscription, API) | Once a request holds more than 20 images, earlier turns included, "a stricter per-image dimension limit applies"; images over it "are rejected with an invalid_request_error", and keeping both dimensions at or under 2000 px stays under that limit "on all platforms" [doc, Anthropic's vision documentation, fetched 2026-10-12, same wording 2026-10-28]. On Amazon Bedrock and Google Cloud, PDF document blocks also count toward the 20 [doc]. Token cost ≈ ⌈width / 28⌉ × ⌈height / 28⌉ [doc] | `pdf_ingest` renders at 2000 px (long side), so a long reading conversation never trips the rejection |
 | GPT shim (chatgpt-subscription, openai-api) | The shim sends each image as `input_image` with `detail: "auto"` and does no resizing of its own [obs, shim session]. In the shim session's 10-request image test (shim 1.4.9, ChatGPT lane), `auto` delivered native resolution on gpt-6-sol, gpt-6.1-sol, gpt-6-luna, gpt-6-astra and gpt-5.6-sol: 3,705 image tokens each for a 1547×2000 page, 20/20 normal and 20/20 small numbers [obs; one synthetic page per model, not a repeatability study, no dense tables or reading order]. OpenAI has **no** "more than 20 images" rule: within a model's patch budget oversize images are downscaled **silently**; an image above 30,000 patches is rejected, not resized; up to 1,500 images and 512 MB per request [doc, OpenAI's image documentation as quoted by the shim session]. A 2000 px page is about 3,100 patches [inf, arithmetic] | Our renders pass at native size today; a downscale would be silent, so the table probe, not the absence of errors, is the gate |
 | OpenRouter | No DAAF observation recorded | Treat as unprobed |
 
@@ -297,8 +306,9 @@ strict improvements"). None of these IDs was transcript-derived in a probe:
 | `claude-fable-5-1` | The model list in Claude Code's environment, and DAAF's `context-reporter` tests, which call `claude-fable-5-1` the real model ID on Claude Code 2.1.261 [obs] |
 | `claude-fable-5` | The ID used in DAAF's context-threshold registry (the `context-reporter` hook matches `*fable-5*`; its tests use `claude-fable-5`), and seen as `ANTHROPIC_MODEL` (`claude-fable-5[1m]`) in the environment of an `anthropic-subscription` deploy smoke-test run on 2026-07-15 [obs] |
 
-Anthropic's models overview (fetched 2026-10-12) lists Opus 5.5 and Fable 5.1
-as current and Sonnet 5 under Legacy models, replaced by Sonnet 5.5 [doc].
+Anthropic's models overview (fetched 2026-10-12, re-fetched 2026-10-28)
+lists Opus 5.5, Sonnet 5.5 and Fable 5.1 among the current models and
+Sonnet 5 under Legacy models [doc].
 
 ## Candidates (to be probed)
 

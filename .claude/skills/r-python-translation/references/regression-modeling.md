@@ -267,7 +267,7 @@ summary(fit, stage = 1)          # First-stage results
 **Python (pyfixest):**
 ```python
 fit = pf.feols("y ~ 1 | fe | x_endog ~ z1 + z2", data=df)
-fit.IV_Diag()                    # Comprehensive diagnostics
+fit.IV_Diag()                    # First-stage F and effective F only (pyfixest 0.60.0)
 first_stage = fit._model_1st_stage
 first_stage.summary()
 ```

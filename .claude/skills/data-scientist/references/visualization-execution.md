@@ -40,7 +40,7 @@ What kind of data are you coloring?
 
 - **Maximum useful categories: 5-7 (rule of thumb).** Beyond that, viewers can't reliably distinguish colors. Group small categories into "Other," use faceting, or label directly.
 - **Gray is your best friend.** Set everything to gray by default, then add color only where it encodes information or draws attention. This is the single most effective technique for directing focus.
-- **Never use rainbow/jet.** It's perceptually non-uniform (bright yellows can read as false peaks; Nuñez et al. 2018), colorblind-hostile, and doesn't convert to grayscale meaningfully.
+- **Never use rainbow/jet.** It's perceptually non-uniform (bright yellows can read as false peaks; Nuñez et al. 2018), colorblind-hostile, and unreadable in grayscale: its lightness rises and then falls along the scale, so low and high values print as similar dark grays (Matplotlib, "Choosing Colormaps").
 - **Muted fills, vivid accents.** Use desaturated colors for large areas (bars, choropleth). Reserve saturated colors for small elements that need to stand out.
 
 ## Colorblind Accessibility
@@ -220,4 +220,5 @@ Build a reusable theme or configuration that encodes these standards. Apply it t
 - WCAG 2.1: 4.5:1 for normal text (3:1 for large text; SC 1.4.3) and 3:1 for graphical objects needed to understand the content (SC 1.4.11)
 - Birch, J. (2012). "Worldwide prevalence of red-green color deficiency." *Journal of the Optical Society of America A* 29(3):313. doi:10.1364/JOSAA.29.000313
 - Nuñez, J.R., Anderton, C.R., & Renslow, R.S. (2018). "Optimizing colormaps with consideration for color vision deficiency to enable accurate interpretation of scientific data." *PLOS ONE* 13(7):e0199239. doi:10.1371/journal.pone.0199239
+- Matplotlib Development Team. "Choosing Colormaps in Matplotlib," § Grayscale conversion. Matplotlib documentation. https://matplotlib.org/stable/users/explain/colors/colormaps.html
 - Okabe, M. & Ito, K. (2002, modified 2008). [Color Universal Design (CUD): How to make figures and presentations that are friendly to Colorblind people](https://jfly.uni-koeln.de/color/)

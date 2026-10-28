@@ -64,8 +64,10 @@ analyses or joining across files.
   String); `enrollment_k12_2020` has `crdc_id` as Int64; `harass_bully_students_2020`
   has all three as Int64. There is no universal String contract, which is exactly
   why the general rule below (normalize on read) matters. Where these ids are String
-  they are zero-padded **numeric** strings (e.g. `0100002`, FIPS 01), not alphanumeric
-  — the letter-bearing pattern is CCD-`districts_ccd_finance`-specific.
+  they are mostly zero-padded **numeric** strings (e.g. `0100002`, FIPS 01), but the
+  2020 and 2021 discipline files also carry alphanumeric values (2,184 of 8,196,300
+  and 2,100 of 8,232,840 rows; e.g. `crdc_id` `19SOP0200001`, `leaid` `19SOP02`;
+  mirror probe 2026-10-28), so never cast them to Int.
 - **Why it matters for joins:** a script written against the old vintage may have
   keyed these columns as integers. Against the v2 mirror the same columns are
   strings, so a naive join can silently produce zero matches. Cast **both sides to
