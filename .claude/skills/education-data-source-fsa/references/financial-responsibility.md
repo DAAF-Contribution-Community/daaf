@@ -34,9 +34,9 @@ The financial responsibility standards aim to:
 ### Reporting Requirements
 
 - Annual submission of audited financial statements
-- Due within six months of fiscal year end
+- Due by the earlier of 30 days after the later of the two auditor's reports (compliance audit; audited financial statements) or six months after fiscal year end, except as provided by the Single Audit Act (34 CFR 668.23(a)(4))
 - Combined with compliance audit submission
-- Submitted through eZ-Audit system
+- Submission system (eZ-Audit) not checked against an FSA source; 34 CFR 668.23 does not name one (checked 2026-10-28)
 
 ## Composite Score Calculation
 
@@ -54,18 +54,18 @@ The composite score combines three ratios into a single measure of financial hea
 The weights differ by sector:
 
 ```
-Private nonprofit (Appendix B; per ED's negotiated-rulemaking draft Appendix B):
+Private nonprofit (34 CFR 668 subpart L, Appendix B, 84 FR 49788, 2019):
   0.40 × Primary Reserve SF + 0.40 × Equity SF + 0.20 × Net Income SF
 
-Proprietary (Appendix A; per the 2002-03 FSA Handbook, Vol. 2 Ch. 4):
+Proprietary (34 CFR 668 subpart L, Appendix A, 84 FR 49788, 2019):
   0.30 × Primary Reserve SF + 0.40 × Equity SF + 0.30 × Net Income SF
 ```
 
-Composite is rounded to one decimal (34 CFR 668.172(a)(5)). Verify against the current Appendices A/B (84 FR 49914/49919).
+Composite is rounded to one decimal (34 CFR 668.172(a)(5); Appendices A/B, Step 2).
 
 ### Weighting
 
-| Ratio | Proprietary weight (App. A, per 2002-03 FSA Handbook) | Nonprofit weight (App. B, per ED negotiated-rulemaking draft) | Purpose |
+| Ratio | Proprietary weight (App. A) | Nonprofit weight (App. B) | Purpose |
 |-------|--------|--------|---------|
 | Primary Reserve | 30% | 40% | Measures expendable resources relative to expenses |
 | Equity | 40% | 40% | Measures asset base relative to liabilities |
@@ -79,17 +79,17 @@ Measures the institution's ability to support operations from expendable resourc
 
 **For Proprietary Institutions:**
 ```
-Primary Reserve Ratio = Adjusted Equity / Total Expenses
+Primary Reserve Ratio = Adjusted Equity / Total Expenses and Losses
 ```
 
 **For Private Non-Profit Institutions:**
 ```
-Primary Reserve Ratio = Expendable Net Assets / Total Expenses
+Primary Reserve Ratio = Expendable Net Assets / Total Expenses and Losses Without Donor Restrictions
 ```
 
 **Components:**
 - Expendable Net Assets = Net Assets Without Donor Restrictions + Net Assets With Donor Restrictions (expendable portion)
-- Total Expenses = Operating and non-operating expenses
+- Total Expenses and Losses (nonprofit: Without Donor Restrictions) = the appendices' denominator line items
 
 **Interpretation (illustrative; not a regulatory category):**
 
@@ -133,12 +133,12 @@ Measures the institution's profitability and operating sustainability.
 
 **For Proprietary Institutions:**
 ```
-Net Income Ratio = Income Before Taxes / Total Revenues
+Net Income Ratio = Income Before Taxes / Total Revenues and Gains
 ```
 
 **For Private Non-Profit Institutions:**
 ```
-Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Revenue
+Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Revenues and Gains Without Donor Restrictions
 ```
 
 **Interpretation (illustrative; not a regulatory category):**
@@ -151,13 +151,13 @@ Net Income Ratio = Change in Net Assets Without Donor Restrictions / Total Reven
 
 ### Strength Factor Conversion
 
-| Ratio | Nonprofit SF (App. B, per ED negotiated-rulemaking draft) | Proprietary SF (App. A, per 2002-03 FSA Handbook) |
+| Ratio | Nonprofit SF (App. B) | Proprietary SF (App. A) |
 |---|---|---|
 | Primary reserve | 10 × ratio (3.0 at ≥0.30) | 20 × ratio (3.0 at ≥0.15) |
 | Equity | 6 × ratio (3.0 at ≥0.50) | 6 × ratio |
-| Net income | 1 + 50 × ratio if ≥0; 1 + 25 × ratio if <0 | 1 + 33.3 × ratio |
+| Net income | 1 + 50 × ratio if > 0; 1 + 25 × ratio if < 0; 1 if 0 | 1 + 33.3 × ratio |
 
-Nonprofit SFs are capped at 3.0 and floored at −1.0 (ED negotiated-rulemaking draft Appendix B); the composite scale for both sectors runs −1.0 to 3.0 (2002-03 FSA Handbook). Verify against the current Appendices A/B (84 FR 49914/49919).
+Every strength factor, in both sectors, is set to 3 if ≥ 3 and to −1 if ≤ −1 (Appendices A and B, Step 1), so the composite runs −1.0 to 3.0. The current appendices are published as images in eCFR (graphics er23se19.000-.016); values here were read from those images on 2026-10-28.
 
 ## Score Classification and Consequences
 
@@ -175,7 +175,7 @@ Scores are reported to one decimal (34 CFR 668.172(a)(5)), so band bounds read 1
 
 #### Financially Responsible (1.5 - 3.0)
 
-- Standard certification period (up to 6 years)
+- Certification period of up to six years (34 CFR 668.13(b))
 - No additional financial oversight
 - No letter of credit required
 - Full Title IV participation
@@ -188,13 +188,10 @@ Scores are reported to one decimal (34 CFR 668.172(a)(5)), so band bounds read 1
 |-------------|-------------|
 | Duration | No more than three consecutive years |
 | Payment method | Heightened cash monitoring or reimbursement (required) |
-| Financial reporting | More frequent submissions may be required |
-| Zone monitoring | Department tracks progress |
+| Event reporting | Must report realized contingent liabilities and unusual/infrequent losses within 10 days (668.175(d)(2)(ii), (d)(3)(i)) |
+| Audit | Auditor must opine on zone-alternative compliance; ED may require earlier audit submission (668.175(d)(2)(iii), (d)(3)(ii)) |
 
-**Additional Requirements May Include:**
-- More frequent financial reporting
-- Compliance audits
-- On-site reviews
+**ED may also require** information about current operations and future plans (668.175(d)(2)(iv)).
 
 #### Not Financially Responsible (Below 1.0)
 
@@ -210,16 +207,12 @@ Scores are reported to one decimal (34 CFR 668.172(a)(5)), so band bounds read 1
 - Duration: Until financial improvement demonstrated
 - Callable if institution fails to meet obligations
 
-### Triggers for Recalculation
+### Triggering Events (34 CFR 668.171(c)-(d))
 
-Institutions may need to recalculate composite scores mid-year if:
-
-- Accreditor places institution on probation or equivalent
-- State agency places institution on probation
-- Audit finding of material weakness
-- Going concern opinion
-- Significant teach-out activity
-- Ownership change
+- **Mandatory triggers with recalculation** (668.171(c)(2)(i)(A), (C)-(D), (ii), (x); recalculation under (e)): e.g., final monetary judgments or settlements, borrower-defense recoveries, withdrawals of owner's equity; failing if the recalculated score is below 1.0.
+- **Mandatory triggers that are automatic failures**: e.g., a teach-out plan required for financial reasons (668.171(c)(2)(iv)), a declaration of financial exigency.
+- **Discretionary triggers** (668.171(d)): e.g., accreditor or government probation or show-cause orders, negative interim-reporting indicators; ED may require financial protection of at least 10% of prior-year Title IV funds.
+- Separately, a going-concern disclosure (668.171(h)) and a change in ownership (668.176) carry their own requirements.
 
 ## Alternative Standards
 
