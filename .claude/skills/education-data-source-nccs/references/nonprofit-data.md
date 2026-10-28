@@ -31,27 +31,31 @@ The BMF is the universe of all organizations granted tax-exempt status by the IR
 
 | Variable | Description |
 |----------|-------------|
-| `EIN` | Employer Identification Number (9-digit unique ID) |
-| `NAME` | Organization legal name |
-| `ADDRESS`, `CITY`, `STATE`, `ZIP` | Location information |
-| `NTEE_IRS` | Official IRS NTEE classification |
-| `NTEE_NCCS` | NCCS-corrected NTEE code |
-| `SUBSECCD` | IRS subsection code (03 = 501(c)(3), etc.) |
-| `FNDNCD` | Foundation code (type of public charity/foundation) |
-| `RULEDATE` | Date IRS granted tax-exempt status |
-| `ACCPER` | Accounting period (fiscal year end month) |
-| `INCOME_AMT` | Most recent reported gross receipts |
-| `ASSET_AMT` | Most recent reported total assets |
+| `ein` / `EIN2` | Employer Identification Number formatted as XX-XXXXXXX / legacy-compatibility alias (EIN-XX-XXXXXXX) |
+| `org_name_display` / `org_name_raw` | Title-cased display name / original name as in the source file |
+| `org_addr_street`, `org_addr_city`, `org_addr_state`, `org_addr_zip` | Location information (cleaned; `*_raw` columns keep the source values) |
+| `ntee_code_raw` / `ntee_code_clean` | Original NTEE code from the source file (1-4 characters) / standardized 3-character code (Unified BMF) |
+| `nteev2` | NCCS NTEEv2 code (SUBSECTOR-CODE-TYPE) |
+| `subsection_code` | IRS subsection code (03 = 501(c)(3), etc.) |
+| `foundation_code` | Foundation status code (00-99) per IRS determination |
+| `ruling_date` | Date of IRS ruling granting exempt status (missing assigned 1900-01-01) |
+| `accounting_period` | Month the accounting period ends (01-12) |
+| `income_amount` | Total income in dollars (can be negative; stored as character) |
+| `asset_amount` | Total assets in dollars, most recent return (stored as character) |
+
+(Source: NCCS Unified BMF data dictionary, fetched 2026-10-28.)
+
+> Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
+
+> Uppercase BMF names used in other examples in this skill (`EIN`, `NAME`, `STATE`, `SUBSECCD`, `FNDNCD`, `NTEECC`, `INCOME_AMT`, `ASSET_AMT`) do not appear in the Unified BMF data dictionary; map them to the names above before running those examples on a Unified BMF file.
 
 ### NCCS Unified BMF Enhancements
 
 The NCCS Unified BMF adds:
 
-- **Geocoded variant**: latitude/longitude, with optional county/metro crosswalks (TIGER 2023 / OMB 2023)
-- **Census FIPS codes**: State, county, tract identifiers
-- **Metro area codes**: CBSA metropolitan/micropolitan definitions
-- **First/last year indicators**: When organization appears in Core data
-- **Historical record**: Includes inactive organizations removed from current IRS BMF
+- **Geocoded variant**: geo_lat/geo_lon plus geocoder county and metro-area names; canonical county FIPS and metro (CBSA) codes come from optional crosswalk join layers (TIGER 2023 / OMB 2023)
+- **Vintage tracking**: first_vintage_ym / last_vintage_ym and first_year_in_bmf / last_year_in_bmf (BMF vintages, not Core)
+- **Historical record**: stacks current monthly IRS BMF files with legacy NCCS BMF vintages (1989 onward), so organizations no longer on the current IRS BMF remain
 
 ### Foundation Codes (FNDNCD)
 
@@ -217,9 +221,7 @@ Variable counts per NCCS Core catalog SOI-current tier.
 
 ### File Organization
 
-Files are named with convention: `SCOPE_FORMTYPE_YEAR.csv`
-
-Example: `CHARITIES_PC_2021.csv` = 501(c)(3) charities, full 990 filers, 2021 tax year
+Scope files are named `CORE-{YEAR}-{501C3-CHARITIES|501CE-NONPROFIT|501C3-PRIVFOUND}-{PC|PZ|PF}[-HRMN-V{n}].csv` (NCCS Core catalog; the harmonized charity and nonprofit files are V1, the private-foundation files V0). Example: `CORE-2021-501C3-CHARITIES-PC-HRMN-V1.csv` = 501(c)(3) charities, full-990 filers (PC), file year 2021. Check in the catalog whether the year is a tax or processing year.
 
 ### Download
 

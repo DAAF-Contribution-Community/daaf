@@ -130,7 +130,7 @@ The Portal uses **LONG format** with time horizon as a column, NOT the WIDE form
 | `unitid` | Int64 | IPEDS institution ID | `UNITID` |
 | `opeid` | String | OPE ID (8-digit, zero-padded) | `OPEID` |
 | `year` | Int64 | Calendar year in which earnings are measured (= `cohort_year` + `years_after_entry`; 2003-2014, 2018) | Measurement year |
-| `years_after_entry` | Int64 | Years since first enrollment (6-10) | Encoded in variable name |
+| `years_after_entry` | Int64 | Years since the estimated entry year at the institution (6-10) | Encoded in variable name |
 | `cohort_year` | Int64 | Entry cohort year | Encoded in variable name |
 | `earnings_med` | Int64 | Median earnings (W-2 wages + Schedule SE self-employment) | `MD_EARN_WNE_P*` |
 | `earnings_mean` | Int64 | Mean earnings | `MN_EARN_WNE_P*` |
@@ -170,7 +170,7 @@ The Portal uses **LONG format** with time horizon as a column, NOT the WIDE form
 | Default | `years_since_entering_repay` | 2, 3 | Varies |
 | Repayment | `years_since_entering_repay` | 1, 3, 5, 7 | Varies |
 
-**"After entry" means after first enrollment**, not after graduation.
+**"After entry" means after the estimated entry year at the institution** (first Title IV aid receipt there, adjusted by the FAFSA grade level), not after graduation.
 
 ### Categorical Value Encodings (Institutional Characteristics Dataset)
 
@@ -318,8 +318,9 @@ valid <- valid |> left_join(
 
 Scorecard tracks ONLY students who received federal financial aid (Title IV):
 - Pell Grants
-- Federal student loans (Direct, Perkins, PLUS)
-- Federal work-study
+- Federal student loans (undergraduate)
+
+(Scorecard's NSLDS cohorts include students who receive a Pell Grant or an undergraduate federal loan; Federal Work-Study alone does not place a student in the cohort — Scorecard technical documentation)
 
 | Excluded Group | Impact |
 |----------------|--------|
@@ -338,7 +339,7 @@ Coverage varies widely by sector and selectivity; no published national ranges a
 |----------|----------------|
 | Non-Title IV students | Often higher-income; different outcomes |
 | Unreported / non-labor income | Not in tax-record earnings |
-| Students still in school | Not working = not in earnings data |
+| Students still in school | Enrolled (in-school deferment for at least 30 days of the measurement year) = not in earnings data, whether or not working |
 | Private student loans | Only federal loans tracked |
 | Students who left the country | Lost to follow-up |
 

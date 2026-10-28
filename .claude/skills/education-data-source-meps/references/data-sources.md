@@ -111,16 +111,17 @@ The Identified Student Percentage is identified students ÷ enrollment as of Apr
 
 Students are identified through participation in:
 
-| Program | Typical Income Threshold | Coverage |
-|---------|-------------------------|----------|
-| SNAP | 130% FPL | Nationwide |
-| TANF | Varies by state | Nationwide |
-| Medicaid | Varies by state | Select states |
+| Program | Income limit relevant to identification | Coverage |
+|---------|------------------------------------------|----------|
+| SNAP | Gross income ≤130% FPL for households without an elderly or disabled member; categorically eligible households (7 CFR 273.2(j)(2), (j)(4)) need not meet the income standards (7 CFR 273.9(a)) | Nationwide |
+| TANF | State-set eligibility (DAAF inference; no federal income threshold cited) | Nationwide |
+| FDPIR | Program-specific (not sourced here) | Where operated |
+| Medicaid (direct certification) | Free-meal certification only for household Medicaid income ≤130% FPL (USDA DC-M demonstration); reduced-price DC-M certification, up to 185% FPL, exists in free-and-reduced-price demonstration states (whether it counts toward ISP not verified) | 44 demonstration states for SY 2024-25 (USDA FNA) |
 | Foster Care | N/A (categorical) | Nationwide |
 | Homeless | N/A (categorical) | Nationwide |
 | Migrant | N/A (categorical) | Nationwide |
 | Runaway | N/A (categorical) | Nationwide |
-| Head Start | 100% FPL | Where applicable |
+| Head Start | Income at or below the poverty line, with exceptions (e.g., up to 35% of participants below 130% FPL; 45 CFR 1302.12) | Where applicable |
 
 ### ISP Advantages Over FRPL
 

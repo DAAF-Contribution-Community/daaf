@@ -19,7 +19,7 @@ Understanding methodology changes over time and their implications for longitudi
 
 Before 2005:
 - State/county models used CPS ASEC (Annual Social and Economic Supplement)
-- CPS sample size: ~100,000 households nationally
+- CPS ASEC sample: roughly 100,000 addresses a year by the mid-2000s, after a sample increase from income year 2000 (Bell et al. 2007, Census Bureau)
 - Limited geographic detail
 
 After 2005:
@@ -169,7 +169,7 @@ Between 2008 and 2009, the method for calculating standard errors was modified:
 
 | Period | Comparable Within? | Notes |
 |--------|-------------------|-------|
-| 1999-2009 | With caution | Census 2000 baseline |
+| 1999-2009 | With caution | Census 2000 baseline (2006-2009 estimates also use aggregated tax data; Census 2006-2009 overview) |
 | 2010-present | Yes | ACS 5-year baseline |
 
 **DO NOT compare school districts across 2009/2010 boundary.**
@@ -224,8 +224,7 @@ Reasons:
 | Years | Available | Notes |
 |-------|-----------|-------|
 | 1989, 1993, 1995 | Yes | Early estimates |
-| 1997-present | Annual | Even years added 1998 |
-| 1996 | No county estimates | Gap year |
+| 1997-present | Annual | No 1996 county file (Census lists only a US-and-states file for 1996) |
 
 ### States
 

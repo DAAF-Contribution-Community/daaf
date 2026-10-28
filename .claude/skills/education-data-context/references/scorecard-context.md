@@ -20,8 +20,9 @@ The College Scorecard provides federal data on student outcomes, focusing on ear
 
 Scorecard data covers ONLY students who received federal financial aid (Title IV). This includes:
 - Pell Grants
-- Federal student loans
-- Federal work-study
+- Federal student loans (undergraduate)
+
+(Scorecard's NSLDS cohorts include students who receive a Pell Grant or an undergraduate federal loan; Federal Work-Study alone does not place a student in the cohort — Scorecard technical documentation)
 
 ### Who Is Excluded
 
@@ -62,7 +63,7 @@ Scorecard reports earnings from Treasury/IRS tax records (W-2 wages and deferred
 
 - Unreported (cash-economy) income
 - Self-employment or gig income not reported on Schedule SE (inference)
-- Graduate school students (not working)
+- Students enrolled in school during the measurement year (any school, not only graduate school) and those with no earnings that year (Scorecard FoS technical documentation, Version: October 2026; the FoS CY2018/CY2019 three-year measure included non-workers)
 - Stay-at-home parents
 - Deceased individuals
 - Those who left the country
@@ -76,7 +77,7 @@ Scorecard reports earnings from Treasury/IRS tax records (W-2 wages and deferred
 | 8-year earnings | 8 years after entry |
 | 10-year earnings | 10 years after entry |
 
-**"After entry" means after first enrollment**, not after graduation.
+**"After entry" means after the estimated entry year at the institution** (first Title IV aid receipt there, adjusted by the FAFSA grade level), not after graduation.
 
 ### Interpreting Earnings
 
@@ -251,9 +252,9 @@ Scorecard provides some earnings by field (CIP code):
 | Issue | Impact |
 |-------|--------|
 | Small programs suppressed | Many fields unavailable |
-| Double majors | Counted in one field |
+| Double majors | Counted once per four-digit CIP and credential level; double majors in different four-digit CIPs are counted in each (FoS technical documentation, October 2026) |
 | Field changes | Student may have changed majors |
-| Graduate school | Students in grad school not working |
+| Enrolled in school | Graduates enrolled in school during the measurement year are excluded from FoS earnings, as are those with no earnings, except that the CY2018/CY2019 three-year measure included non-workers (FoS technical documentation, October 2026) |
 
 ### Using Field Data
 

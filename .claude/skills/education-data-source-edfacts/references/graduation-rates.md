@@ -198,27 +198,18 @@ Some states have multiple diploma pathways:
 
 ## Timing and Reporting
 
-### Cohort Year vs. Graduation Year
+### Cohort Year vs. Reporting Year
 
-| Cohort Enters 9th Grade | 4-Year Graduation | Data Reported |
-|-------------------------|-------------------|---------------|
-| Fall 2019 | Spring/Summer 2023 | 2023-24 school year |
-| Fall 2020 | Spring/Summer 2024 | 2024-25 school year |
+EDFacts labels ACGR data by the school year in which the cohort graduates: the SY 2023-24 four-year ACGR is for students who first entered grade 9 in SY 2020-21 (class of 2024). Inference from the FS150 SY 2023-24 file specification, whose five-year rate reported for SY 2023-24 covers students who entered grade 9 in SY 2019-20. The Portal follows the same convention: `year` = fall of the graduating school year (year=2019 = SY 2019-20 = class of 2020; 9th-grade entry = `year` − 3).
 
-### Data Lag
+| Cohort Enters 9th Grade | 4-Year Graduation | EDFacts reporting year | Portal `year` |
+|-------------------------|-------------------|------------------------|---------------|
+| Fall 2019 | Spring/Summer 2023 | SY 2022-23 | 2022 |
+| Fall 2020 | Spring/Summer 2024 | SY 2023-24 | 2023 |
 
-Graduation data has a **1-year lag**:
-- School year 2023-24 reporting includes 2022-23 graduates
-- Data for Class of 2023 available in fall 2024
+### Release Timing
 
-### Reporting Timeline
-
-| Event | Typical Timing |
-|-------|----------------|
-| Students graduate | May-August |
-| States compile data | September-December |
-| EDFacts submission | January-March |
-| Public release | Fall of following year |
+States submit ACGR data to ED after the cohort's graduation year, and ED/NCES publish it later. The exact submission due dates and public-release lag were not verified (FS150 states no due date); check the EDFacts submission schedule for the year you need. Portal grad-rates years end at 2019.
 
 ## Cross-State Comparability
 

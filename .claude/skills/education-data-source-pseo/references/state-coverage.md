@@ -123,30 +123,15 @@ When analyzing PSEO data:
 
 ### PSEO Coalition
 
-The **PSEO Coalition** coordinates partnerships between:
-- State higher education agencies
-- University systems
-- Individual institutions
-- Census Bureau LEHD program
+The **PSEO Coalition** is "a collection of state and institutional representatives" (from 27 states in its January 2024 toolkit) who are, or plan to be, partners of the Census Bureau's LEHD program. In voluntary monthly meetings members discuss sharing data with and getting data from Census, agree on a list of priorities and requests for LEHD, and share data-literacy practices; once a quarter they meet Census staff (PSEO Coalition Toolkit, Chapter 1, Troutman, January 2024). Data-sharing agreements are made with the Census Bureau (PSEO Technical Documentation).
 
 ### Partnership Process
 
-1. **Initial contact**: Institution/agency contacts Census Bureau or PSEO Coalition
-2. **Data sharing agreement**: Legal framework established
-3. **Data specification review**: Ensure transcript data meets requirements
-4. **Secure data transmission**: Transfer graduation records to Census
-5. **Processing and validation**: Census matches and validates data
-6. **Publication**: Data included in next release
+Higher education systems and individual colleges and universities join by signing a data-sharing agreement with the Census Bureau and transmitting graduation (transcript) records (PSEO Technical Documentation). Joining steps beyond that are not published in the sources checked; contact the Census PSEO team or the PSEO Coalition.
 
 ### Data Requirements
 
-Partners must provide for each graduate:
-- Social Security Number (required for matching)
-- Date of birth
-- Graduation year
-- Degree/credential type
-- Major (CIP code)
-- Institution identifier (OPEID)
+Partners submit, for every graduate (PSEO Coalition methodology page, Wayback 2026-06-09): date of birth, graduation year, Social Security number, degree or credential earned, and major (with CIP codes, per ECS 2025). Census's technical documentation adds degree field, graduation date, institution and student demographics. Census tabulates institutions by 6-digit OPEID; how partners identify the institution in their files is not documented here.
 
 ### Contact Information
 

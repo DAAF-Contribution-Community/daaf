@@ -271,7 +271,7 @@ Understanding when data refers to:
 | Fall enrollment | As of fall census date |
 | Completions | Academic year ENDING in the indicated year (`year`=2022 = 2021-22 awards; inferred, medium confidence — see education-data-source-ipeds) |
 | Graduation rates | NOT the entry year: status is measured at the end of the `year` academic year (Aug 31 of `year`+1). Use `cohort_year` (4-year 150%: `year` − 5; less-than-4-year: `year` − 2; GR200/OM 4-year: `year` − 7) |
-| Student financial aid | For indicated academic year |
+| Student financial aid | Academic year BEGINNING in the indicated year (`year`=2021 = 2021-22; verified 2026-10-28 for one institution: Portal net price for unitid 110635 equals College Navigator's 2021-22 values) |
 | Finance | Fiscal year BEGINNING in the indicated year (`year`=2017 = FY2018, ending June 30, 2018 for June fiscal-year institutions) |
 
 ### Graduation Rate Timing Example

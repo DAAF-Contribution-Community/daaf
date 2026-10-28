@@ -91,10 +91,9 @@ But labels and cut scores vary by state.
 
 ### 2019-20 Testing Waivers
 
-**Critical**: Most states did not test in spring 2020 due to COVID-19:
-- 2019-20 assessment data largely missing
-- States received federal waivers
-- Cannot calculate SY 2019-20 proficiency for most states (Portal assessment year 2019 is absent; Portal year 2020 = SY 2020-21)
+**Critical**: ED waived the 2019-20 assessment requirement for all 50 States, DC, Puerto Rico and the BIE (85 FR 29935, May 19, 2020):
+- The Portal has no assessment file for Portal year 2019 (SY 2019-20)
+- Cannot calculate SY 2019-20 proficiency from Portal data (Portal year 2020 = SY 2020-21)
 
 ### Other Missing Data
 

@@ -294,7 +294,7 @@ df |> filter(enrollment >= 0) |> pull(enrollment) |> mean()
 | Data Type | Year Interpretation |
 |-----------|---------------------|
 | Fall enrollment | Fall of indicated year |
-| Academic-year totals | Varies by family (IPEDS completions: year ENDING in `year`, inferred; 12-month enrollment not verified — check the codebook) |
+| Academic-year totals | Varies by family (IPEDS completions: year ENDING in `year`, inferred; IPEDS SFA/net price: year BEGINNING in `year`, one-institution check; 12-month enrollment not verified — check the codebook) |
 | Graduation rates | NOT the entry year. IPEDS: use the `cohort_year` column (4-year 150%: `year` − 5). EDFacts (no `cohort_year` column): `year` = fall of the graduating school year; 9th-grade entry = `year` − 3 |
 | Completions (IPEDS) | Academic year ENDING in `year` (`year`=2022 = 2021-22 awards; inferred, medium confidence) |
 

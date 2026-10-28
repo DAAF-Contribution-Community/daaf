@@ -30,7 +30,7 @@ EDFacts is the U.S. Department of Education's centralized data collection system
 
 - **Collector**: U.S. Department of Education, via State Education Agencies (SEAs)
 - **Coverage**: All public schools and districts in 50 states + DC
-- **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates, accountability indicators
+- **Content**: State assessment proficiency rates, ACGR graduation rates, participation rates (in ED's own files, not the Portal), accountability indicators
 - **Frequency**: Annual collection
 - **Available years (Portal)**: Assessments 2009–2018 and 2020 (no 2019); Graduation rates 2010–2019. For assessments, Portal `year` is the fall of the school year (2019 = SY 2019-20, 2020 = SY 2020-21)
 - **Primary identifiers**: `ncessch` (school ID, Int64), `leaid` (district ID, Int64), `fips` (state FIPS code, Int64)
@@ -96,7 +96,7 @@ What are you comparing?
 | Data Element | Description | Available Years |
 |--------------|-------------|-----------------|
 | Proficiency rates | % meeting state standards in reading/math | Portal years 2009–2018, 2020 (no 2019) |
-| Participation rates | % of students assessed | From 2012-13; Portal assessment years end at 2020 (no 2019) |
+| Participation rates | % of students assessed | Not in the Portal assessment files (no participation variable in the Portal or the mirror); ED's public EDFacts participation files start with SY 2012-13 (ED "EDFacts Data Files" page, archived 2022-01-19) |
 | Achievement levels | Below Basic, Basic, Proficient, Advanced | Varies by state |
 | Grade levels | Grades 3-8, high school (varies) | Portal years 2009–2018, 2020 (no 2019) |
 
@@ -212,10 +212,10 @@ For `homeless`, `migrant`, `econ_disadvantaged`, `foster_care`, `military_connec
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-1` | Missing/not applicable | Data not reported |
-| `-2` | Not reported | Item doesn't apply to this entity |
+| `-1` | Missing/not reported | Data not reported |
+| `-2` | Not applicable | Item doesn't apply to this entity |
 | `-3` | Suppressed for privacy | Data suppressed for small N-size |
-| `-9` | Rounds to zero | Value rounds to zero |
+| `-9` | Not found in Portal data | Not in the Portal varlist corpus (explorer `variable-codes.md`) and in no pinned-mirror school assessment (2009-2018, 2020) or grad-rate (2010-2019) value column (probed 2026-10-28; district files not probed); filters that also drop `-9` are harmless |
 | Range values | Exact value suppressed | Range provided instead of exact value |
 | `_midpt` suffix | Calculated midpoint of suppressed range | Use for analysis when exact values are suppressed |
 
@@ -436,7 +436,7 @@ state_comparison <- df |>
 | Suppression codes | `./references/variable-definitions.md` |
 | Missing data values | `./references/variable-definitions.md` |
 | Range/midpoint variables | `./references/variable-definitions.md` |
-| Participation rates | `./references/variable-definitions.md` |
+| Participation rates (not in the Portal; use ED's own files) | `./references/variable-definitions.md` |
 | COVID-19 data gaps | `./references/data-quality.md` |
 | State reporting variations | `./references/data-quality.md` |
 | Known data issues | `./references/data-quality.md` |

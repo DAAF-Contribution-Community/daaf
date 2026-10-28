@@ -484,7 +484,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 ### EADA Institutional Characteristics — `eada/colleges_eada_inst_characteristics`
 
-- **Type / years:** Single-file · 2002-2021 (`year` = start year of the reporting year: 2021 = 2021-22; medium confidence — see EADA skill)
+- **Type / years:** Single-file · 2002-2021 (`year` = start year of the reporting year: 2021 = 2021-22; verified for two institutions — see EADA skill)
 - **Grain:** one row per `unitid` × `year` (institution-level athletics participation, staffing, and finances by gender).
 - **Key variables:** `enrollment_men`, `enrollment_women`, `num_sports`, `athpartic_men`, `athpartic_women`, `ath_stuaid_total`, `hdcoach_salary_men`, `hdcoach_salary_women`, `ath_grnd_total_rev`, `ath_grnd_total_exp`, `ath_classification_name` (full 168-var list: `variable-dictionary-eada.md` § `eada/colleges_eada_inst_characteristics`).
 - **Join keys:** `unitid` (+ `year`) — see caveat on sector.

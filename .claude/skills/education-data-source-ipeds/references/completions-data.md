@@ -167,6 +167,10 @@ NCES documentation and raw IPEDS data files use a different numbering system (`A
 | 17 | 22 | Doctor's - research/scholarship |
 | 18 | 23 | Doctor's - professional practice |
 | 19 | 24 | Doctor's - other |
+| 20 | 30 | Certificate (<12 weeks; NCES code from 2019-20) |
+| 21 | 31 | Certificate (12 weeks to <1 year; NCES code from 2019-20) |
+
+NCES codes 20 and 21 are not Portal codes 20 and 21 (Portal 20/21 = doctor's/first-professional until 2008). NCES files also carry totals 12-15 (degrees; sub-baccalaureate certificates; post-baccalaureate certificates; all awards) (NCES C2023_A dictionary).
 
 ### Award Level Groupings (Portal Codes)
 

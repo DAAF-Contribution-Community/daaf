@@ -494,7 +494,7 @@ df_clean <- df |> mutate(
 - **Integers**: Count variables (participants, coaches)
 - **Decimals**: Financial variables (may have cents)
 - **Strings**: Names, identifiers
-- **Years**: Start year of the reporting year (e.g., 2021 = 2021-22, typically July 1–June 30); EADA lets each institution designate its 12-month period (34 CFR 668.47(b)(4)). Portal convention: `year` is the year the reporting year begins (Portal metadata description "Year that the academic year begins", label "Academic year (fall semester)"; cross-checked 2026-10-19 against one institution's FY2021-22 revenue, so treat as medium confidence)
+- **Years**: Start year of the reporting year (e.g., 2021 = 2021-22, typically July 1–June 30); EADA lets each institution designate its 12-month period (34 CFR 668.47(b)(4)). Portal convention: `year` is the year the reporting year begins (Portal metadata description "Year that the academic year begins", label "Academic year (fall semester)"; verified for two institutions: Portal 2018 Ohio State revenue and expenses equal its "Equity in Athletics 2019" survey (reporting year 2018-19 under the User's Guide survey-year rule), and Portal 2021 Berkeley revenue matches its FY2021-22 report)
 
 ## Joining with Other Data
 
@@ -522,4 +522,4 @@ eada_df |> left_join(ipeds_df, by = c("unitid", "year"))
 
 ### Year Alignment
 
-EADA enrollment is pre-filled from IPEDS Fall Enrollment for the fall before the reporting year starts: the 2023 survey (reporting period 7/1/2022-6/30/2023; Portal year 2022 under the start-year convention) used fall 2021 IPEDS. To reproduce EADA enrollment from IPEDS, join EADA year Y to IPEDS fall-enrollment year Y-1 (verified for the 2023 User's Guide only; Portal-year mapping rests on EA1, medium confidence). Characteristics that do not vary by year can join on the same year.
+EADA enrollment is pre-filled from IPEDS Fall Enrollment for the fall before the reporting year starts: the 2023 survey (reporting period 7/1/2022-6/30/2023; Portal year 2022 under the start-year convention) used fall 2021 IPEDS. To reproduce EADA enrollment from IPEDS, join EADA year Y to IPEDS fall-enrollment year Y-1 (verified for the 2023 User's Guide only; the Portal start-year mapping is verified for two institutions, see `year` above). Characteristics that do not vary by year can join on the same year.

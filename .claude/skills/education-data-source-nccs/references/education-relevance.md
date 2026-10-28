@@ -118,7 +118,7 @@ This makes filtering easier (full NCCS data only, not Portal):
 import polars as pl
 
 # Filter for universities using NTEEV2 industry group
-universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 ```
 
 ```r
@@ -126,7 +126,7 @@ library(dplyr)
 library(stringr)
 
 # Filter for universities using NTEEV2 industry group
-universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities <- df |> filter(str_starts(nteev2, "UNI-"))
 ```
 
 ### Using Foundation Code
@@ -573,22 +573,22 @@ combined <- nccs |>
 
 ### Using Direct NCCS Data
 
-> **Note:** These examples use full NCCS data downloaded directly (not the Portal mirror). Variable names are UPPERCASE. For Portal data, use the lowercase Portal variable names shown in the "Using Education Data Portal" section above.
+> **Note:** These examples use full NCCS data downloaded directly (not the Portal mirror). Column names differ by product: the Unified BMF uses lowercase names (`ein`, `org_name_display`, `org_addr_state`, `subsection_code`, `ntee_code_clean`, `income_amount`, `asset_amount`; amounts are stored as character) plus an uppercase `EIN2` alias, and the harmonized Core files use uppercase `F9_*` names keyed by `EIN2` (NCCS Unified BMF and Core HRMN data dictionaries). That BMF `EIN2` and Core `EIN2` share one format is inference (the BMF dictionary calls its `EIN2` a legacy-compatibility alias "retained for existing merges"; the Core dictionary says only "Reformatted EIN"), so check a few values before relying on the join. For Portal data, use the lowercase Portal variable names shown in the "Using Education Data Portal" section above.
 
 **Find All Private Universities in a State:**
 
 ```python
 import polars as pl
 
-# Load BMF
-bmf = pl.read_csv("bmf_unified.csv")
+# Load BMF (all columns as strings: codes such as subsection_code "03" keep their leading zero)
+bmf = pl.read_csv("bmf_unified.csv", infer_schema_length=0)
 
 # Filter to California private universities
 ca_universities = bmf.filter(
-    (pl.col("STATE") == "CA") &
-    (pl.col("SUBSECCD") == "03") &  # 501(c)(3)
-    (pl.col("NTEECC").str.contains(r"^B4[0-3]")) &
-    (pl.col("INCOME_AMT") > 1_000_000)  # Revenue > $1M
+    (pl.col("org_addr_state") == "CA") &
+    (pl.col("subsection_code") == "03") &  # 501(c)(3)
+    (pl.col("ntee_code_clean").str.contains(r"^B4[0-3]")) &
+    (pl.col("income_amount").cast(pl.Float64, strict=False) > 1_000_000)  # Total income > $1M
 )
 
 print(f"Found {ca_universities.height} private universities in California")
@@ -598,16 +598,16 @@ print(f"Found {ca_universities.height} private universities in California")
 library(dplyr)
 library(stringr)
 
-# Load BMF
-bmf <- read.csv("bmf_unified.csv")
+# Load BMF (all columns as character: codes such as subsection_code "03" keep their leading zero)
+bmf <- read.csv("bmf_unified.csv", colClasses = "character")
 
 # Filter to California private universities
 ca_universities <- bmf |>
   filter(
-    STATE == "CA",
-    SUBSECCD == "03",
-    str_detect(NTEECC, "^B4[0-3]"),
-    INCOME_AMT > 1000000
+    org_addr_state == "CA",
+    subsection_code == "03",
+    str_detect(ntee_code_clean, "^B4[0-3]"),
+    suppressWarnings(as.numeric(income_amount)) > 1000000  # Total income > $1M
   )
 
 cat(sprintf("Found %d private universities in California\n", nrow(ca_universities)))
@@ -617,28 +617,30 @@ cat(sprintf("Found %d private universities in California\n", nrow(ca_universitie
 
 ```python
 # Find Stanford University
-stanford = bmf.filter(pl.col("NAME").str.contains("(?i)STANFORD UNIVERSITY"))
-stanford_ein = stanford["EIN"][0]
+stanford = bmf.filter(pl.col("org_name_display").str.contains("(?i)stanford university"))
+stanford_ein2 = stanford["EIN2"][0]
 
-# Load Core data
-core = pl.read_csv("CHARITIES_PC_2021.csv")
-stanford_990 = core.filter(pl.col("EIN") == stanford_ein)
+# Load Core data (harmonized file: uppercase F9_* names keyed by EIN2)
+core = pl.read_csv("CORE-2021-501C3-CHARITIES-PC-HRMN-V1.csv", infer_schema_length=0)
+# ASSUMES: BMF EIN2 and Core EIN2 share one format (inference; see the note above)
+stanford_990 = core.filter(pl.col("EIN2") == stanford_ein2)
 
-print(f"Total Revenue: ${stanford_990['TOTREV'][0]:,.0f}")
-print(f"Total Assets: ${stanford_990['TOTASS'][0]:,.0f}")
+print(f"Total Revenue: ${float(stanford_990['F9_08_REV_TOT_TOT'][0]):,.0f}")
+print(f"Total Assets: ${float(stanford_990['F9_10_ASSET_TOT_EOY'][0]):,.0f}")
 ```
 
 ```r
 # Find Stanford University
-stanford <- bmf |> filter(grepl("STANFORD UNIVERSITY", NAME, ignore.case = TRUE))
-stanford_ein <- stanford$EIN[1]
+stanford <- bmf |> filter(grepl("stanford university", org_name_display, ignore.case = TRUE))
+stanford_ein2 <- stanford$EIN2[1]
 
-# Load Core data
-core <- read.csv("CHARITIES_PC_2021.csv")
-stanford_990 <- core |> filter(EIN == stanford_ein)
+# Load Core data (harmonized file: uppercase F9_* names keyed by EIN2)
+core <- read.csv("CORE-2021-501C3-CHARITIES-PC-HRMN-V1.csv", colClasses = "character")
+# ASSUMES: BMF EIN2 and Core EIN2 share one format (inference; see the note above)
+stanford_990 <- core |> filter(EIN2 == stanford_ein2)
 
-cat(sprintf("Total Revenue: $%s\n", format(stanford_990$TOTREV[1], big.mark = ",")))
-cat(sprintf("Total Assets: $%s\n", format(stanford_990$TOTASS[1], big.mark = ",")))
+cat(sprintf("Total Revenue: $%s\n", format(as.numeric(stanford_990$F9_08_REV_TOT_TOT[1]), big.mark = ",", scientific = FALSE)))
+cat(sprintf("Total Assets: $%s\n", format(as.numeric(stanford_990$F9_10_ASSET_TOT_EOY[1]), big.mark = ",", scientific = FALSE)))
 ```
 
 **Compare Endowments Across Institutions:**

@@ -40,7 +40,7 @@ The largest federal grant program providing need-based aid to undergraduate stud
 |-----------|-------------|
 | **Type** | Need-based grant (does not require repayment) |
 | **Eligibility** | Undergraduate students with demonstrated financial need |
-| **Maximum Award (2025-26)** | $7,395 |
+| **Maximum Award (2025-26 and 2026-27)** | $7,395 (2026-27 per GEN-26-01, updated Feb. 18, 2026; minimum $740; Pell barred at SAI ≥ $14,790 except under the Special Rule) |
 | **Minimum Award (2025-26)** | $740 (10% of maximum, rounded to nearest $5) |
 | **Lifetime Eligibility** | 12 full-time semesters (600% Lifetime Eligibility Used) |
 | **Portability** | Follows student to any Title IV institution |
@@ -97,7 +97,7 @@ The federal government is the direct lender for all loans in this program.
 | **Eligibility** | Undergraduate students with financial need |
 | **Interest Subsidy** | Government pays interest while in school, grace period, and deferment |
 | **Interest Rate (2025-26)** | 6.39% (fixed) |
-| **Origination Fee** | 1.057% |
+| **Origination Fee** | 1.057% (loans made on or after Oct. 1, 2020; statutory 1% plus sequestration, CRS IF13147) |
 
 **Annual Limits by Grade Level:**
 
@@ -118,7 +118,7 @@ The federal government is the direct lender for all loans in this program.
 | **Interest Subsidy** | None - interest accrues from disbursement |
 | **Interest Rate - Undergrad (2025-26)** | 6.39% (fixed) |
 | **Interest Rate - Graduate (2025-26)** | 7.94% (fixed) |
-| **Origination Fee** | 1.057% |
+| **Origination Fee** | 1.057% (loans made on or after Oct. 1, 2020; statutory 1% plus sequestration, CRS IF13147) |
 
 **Annual Limits (Dependent Undergraduates):**
 
@@ -148,7 +148,7 @@ The federal government is the direct lender for all loans in this program.
 | **Borrower** | Parent of dependent undergraduate | Graduate/professional student |
 | **Credit Check** | Required | Required |
 | **Interest Rate (2025-26)** | 8.94% (fixed) | 8.94% (fixed) |
-| **Origination Fee** | 4.228% | 4.228% |
+| **Origination Fee** | 4.228% (loans made on or after Oct. 1, 2020; statutory 4% plus sequestration, CRS IF13147) | 4.228% (same basis) |
 | **Annual Limit** | Cost of attendance minus other aid | Cost of attendance minus other aid |
 | **Aggregate Limit** | None | None |
 
@@ -182,9 +182,9 @@ These programs provide funds directly to institutions, which then award aid to e
 |-----------|-------------|
 | **Type** | Need-based grant |
 | **Eligibility** | Undergraduates with exceptional financial need (Pell-first priority) |
-| **Award Range** | $100 to $4,000 per year |
+| **Award Range** | $100 to $4,000 per full academic year ($4,400 for credit-approved study abroad whose reasonable costs exceed the home institution's cost of attendance; 34 CFR 676.20(c)) |
 | **Funding** | Limited institutional allocation |
-| **Matching** | 25% institutional match required |
+| **Matching** | Non-federal share of at least 25% (federal share ≤ 75%); 100% federal share on request for institutions designated eligible under the Developing Hispanic-Serving Institutions, Strengthening Institutions, American Indian Tribally Controlled Colleges and Universities, Alaska Native and Native Hawaiian-Serving Institutions, or Strengthening Historically Black Colleges and Universities programs (34 CFR 676.21(b)) |
 
 **Priority**: Schools must award FSEOG first to students with lowest SAI who are Pell-eligible.
 

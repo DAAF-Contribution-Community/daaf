@@ -10,7 +10,7 @@ College Scorecard provides completion metrics from several sources: some reprodu
 |---|---|---|
 | `C100_*`, `C150_*`, `C200_*` (incl. `_POOLED`, race and Pell/loan splits) | IPEDS Graduation Rates / 200% GR | Full-time, first-time degree/certificate-seekers — the same cohort as IPEDS GR |
 | `OMAWDP8_*`, `OMENRAP8_*`, `OMENRYP8_*`, `OMENRUP8_*` | IPEDS Outcome Measures | FT/PT × first-time/non-first-time entering cohorts |
-| NSLDS-based completion/transfer outcomes (e.g., `COMP_ORIG_YR*_RT` — mapping is inference; verify in the data dictionary) | NSLDS | Title IV aid recipients; enrollment dates estimated from FAFSA |
+| NSLDS-based completion/transfer outcomes (e.g., `COMP_ORIG_YR*_RT` = completed at the original institution, at 2/3/4/6/8 years; not calculated in the most recent data file) | NSLDS | Title IV aid recipients; enrollment dates estimated from FAFSA |
 
 `C150_4` is NOT a Title IV-recipient rate and excludes part-time and transfer-in students; it should equal the IPEDS 150% graduation rate for the same cohort.
 
@@ -20,7 +20,7 @@ College Scorecard provides completion metrics from several sources: some reprodu
 
 Students in Scorecard completion cohorts:
 - Received Title IV aid
-- First-time undergraduate enrollment
+- Placed in an entry cohort from first Title IV aid receipt plus FAFSA grade level (not restricted to first-time students)
 - Both full-time AND part-time
 - All entry terms (not just fall)
 
@@ -29,8 +29,7 @@ Students in Scorecard completion cohorts:
 | Excluded Group | Why |
 |----------------|-----|
 | Non-Title IV students | Not in NSLDS |
-| Transfer students (at origin) | Counted at receiving institution |
-| Continuing students | Only first-time undergraduates |
+| — | Transfer students appear in both cohorts: separately for each institution where they received Title IV aid (transfer-ins join the receiving institution's cohort in the year first aided there) |
 
 ## Completion Time Frames
 

@@ -14,13 +14,13 @@ Complete reference for all IPEDS survey components, their collection periods, da
 
 ## Collection Schedule
 
-IPEDS collects data in three periods annually. Each collection opens ~2 months before the due date.
+IPEDS collects data in three periods annually: Fall (early September to mid-October), Winter (early December to mid-February) and Spring (early December to mid-April) (NCES collection-cycle page, fetched 2026-10-19).
 
 | Collection | Opens | Closes | Data Release |
 |------------|-------|--------|--------------|
-| Fall | August–early September (2024-25: Sept 4) | Mid-October | Following summer (2025-26 Fall: July 28, 2026) |
-| Winter | December | February | Following December |
-| Spring | December | April | Following January |
+| Fall | Early September (2024-25: Sept 4) | Mid-October | Following summer (2025-26 Fall: July 28, 2026) |
+| Winter | Early December | Mid-February | Following December (2024-25 provisional: Dec 9, 2025) |
+| Spring | Early December | Mid-April | Following January (2024-25 provisional: Jan 6, 2026) |
 
 ## Fall Collection
 
@@ -124,7 +124,7 @@ Degrees and certificates awarded during the academic year.
 | NCES `AWLEVEL` Code | Award Level |
 |------|-------------|
 | 1 | Postsecondary certificate (<1 year) |
-| 2 | Postsecondary certificate (1-2 years) |
+| 2 | Postsecondary certificate (at least 1 but less than 2 years) |
 | 3 | Associate's degree |
 | 4 | Postsecondary certificate (2-4 years) |
 | 5 | Bachelor's degree |
@@ -134,6 +134,10 @@ Degrees and certificates awarded during the academic year.
 | 17 | Doctor's degree - research/scholarship |
 | 18 | Doctor's degree - professional practice |
 | 19 | Doctor's degree - other |
+| 20 | Certificate of less than 12 weeks (from 2019-20) |
+| 21 | Certificate of at least 12 weeks but less than 1 year (from 2019-20) |
+
+NCES files also carry total rows: 12 = degrees total, 13 = sub-baccalaureate certificates total, 14 = post-baccalaureate certificates total, 15 = all degrees/certificates (NCES C2023_A dictionary).
 
 **CIP Code Structure**:
 - 2-digit: General field (e.g., 52 = Business)
@@ -496,7 +500,7 @@ Employees and compensation.
 | `sex` | Int64 | Sex | 1=Male, 2=Female, 99=Total |
 | `instruc_staff_count` | Float64 | Number of instructional staff | Float (may have fractional FTE) |
 | `salary_outlays` | Float64 | Total salary outlays ($) | Float |
-| `average_salary` | Float64 | Average salary ($) | Float; -1=Not applicable |
+| `average_salary` | Float64 | Average salary ($) | Float; -1=Missing/not reported (Portal varlist label) |
 | `total_months` | Float64 | Total months of contract | Float |
 | `avg_wgtd_mon_salary` | Float64 | Average weighted monthly salary ($) | Float |
 

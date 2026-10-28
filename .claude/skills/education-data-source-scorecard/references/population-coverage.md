@@ -30,10 +30,9 @@ To receive Title IV aid, students must:
 
 ### Who Is in Scorecard Data
 
-**Included:** Students who received any Title IV federal financial aid
+**Included:** Students who received Title IV aid as a Pell Grant or an undergraduate federal loan (the NSLDS cohorts admit "either a Pell Grant or an undergraduate federal loan"; Federal Work-Study alone does not place a student in a cohort — Scorecard institution-level technical documentation, Version: October 2026)
 - Pell Grant recipients
 - Federal loan borrowers
-- Federal work-study participants
 - Students with subsidized or unsubsidized loans
 
 **NOT Included:** Students who did not receive any federal aid

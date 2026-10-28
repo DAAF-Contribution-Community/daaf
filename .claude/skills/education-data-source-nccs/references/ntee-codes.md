@@ -256,16 +256,16 @@ XXX-Xxx-XX
 import polars as pl
 
 # Filter for all universities
-universities = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 
 # Filter for hospitals
-hospitals = df.filter(pl.col("NTEE_V2").str.starts_with("HOS-"))
+hospitals = df.filter(pl.col("nteev2").str.starts_with("HOS-"))
 
 # Filter for advocacy organizations in any sector
-advocacy = df.filter(pl.col("NTEE_V2").str.ends_with("-AA"))
+advocacy = df.filter(pl.col("nteev2").str.ends_with("-AA"))
 
 # Filter for education sector (excluding universities)
-education = df.filter(pl.col("NTEE_V2").str.starts_with("EDU-"))
+education = df.filter(pl.col("nteev2").str.starts_with("EDU-"))
 ```
 
 ```r
@@ -273,16 +273,16 @@ library(dplyr)
 library(stringr)
 
 # Filter for all universities
-universities <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities <- df |> filter(str_starts(nteev2, "UNI-"))
 
 # Filter for hospitals
-hospitals <- df |> filter(str_starts(NTEE_V2, "HOS-"))
+hospitals <- df |> filter(str_starts(nteev2, "HOS-"))
 
 # Filter for advocacy organizations in any sector
-advocacy <- df |> filter(str_ends(NTEE_V2, "-AA"))
+advocacy <- df |> filter(str_ends(nteev2, "-AA"))
 
 # Filter for education sector (excluding universities)
-education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
+education <- df |> filter(str_starts(nteev2, "EDU-"))
 ```
 
 ---
@@ -301,14 +301,16 @@ education <- df |> filter(str_starts(NTEE_V2, "EDU-"))
 | **Mission evolution** | Organizations change focus but code remains |
 | **Multi-mission orgs** | Single code can't capture multiple activities |
 
-### Two NTEE Variables in NCCS Data
+### NTEE Variables in NCCS Data
 
 | Variable | Description |
 |----------|-------------|
-| `NTEE_IRS` | Official code from IRS records |
-| `NTEE_NCCS` | NCCS-corrected code (may differ) |
+| `ntee_code_raw` / `ntee_code_clean` | Original NTEE code from the source file (1-4 characters) / standardized 3-character code (Unified BMF) |
+| `nteev2` | NCCS NTEEv2 code (SUBSECTOR-CODE-TYPE) |
 
-The `NTEE_NCCS` variable reflects manual corrections made by NCCS staff over time, but should be considered a research-quality estimate, not an official designation.
+> Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
+
+NCCS's guidance: treat the IRS code as the source of truth and NCCS corrections as a supplement (NCCS NTEE codes page).
 
 ### Best Practices
 
@@ -357,7 +359,7 @@ Include:
 - Process code change requests
 
 **NCCS does:**
-- Maintain enhanced `NTEE_NCCS` variable for research
+- Carried staff corrections in an `NTEE_NCCS` column in older NCCS BMF files (a supplement to the IRS code, per NCCS)
 - Provide documentation and resources
 - Develop improvements like NTEEV2
 
@@ -443,7 +445,7 @@ k12 = df.filter(pl.col("NTEECC").str.contains(r"^B2[0-9]"))
 all_education = df.filter(pl.col("NTEECC").str.starts_with("B"))
 
 # Using NTEEV2 for universities
-universities_v2 = df.filter(pl.col("NTEE_V2").str.starts_with("UNI-"))
+universities_v2 = df.filter(pl.col("nteev2").str.starts_with("UNI-"))
 ```
 
 ```r
@@ -465,5 +467,5 @@ k12 <- df |> filter(str_detect(NTEECC, "^B2[0-9]"))
 all_education <- df |> filter(str_starts(NTEECC, "B"))
 
 # Using NTEEV2 for universities
-universities_v2 <- df |> filter(str_starts(NTEE_V2, "UNI-"))
+universities_v2 <- df |> filter(str_starts(nteev2, "UNI-"))
 ```

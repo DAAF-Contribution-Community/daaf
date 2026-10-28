@@ -16,19 +16,19 @@ Known data quality issues, state reporting variations, COVID-19 impacts, and gui
 
 ### 2019-20 Testing Waivers
 
-**Critical**: Spring 2020 assessments were largely waived due to COVID-19:
+**Critical**: ED waived the requirement to administer all required assessments in school year 2019–2020 for each of the 50 States, the District of Columbia, Puerto Rico and the Bureau of Indian Education (Notice of Waivers Granted Under Section 8401 of the ESEA, 85 FR 29935, May 19, 2020; announced March 20, 2020):
 
 | Impact | Details |
 |--------|---------|
-| Assessment data | Most states have no 2019-20 data |
+| Assessment data | No Portal assessment file for Portal year 2019 (SY 2019-20) |
 | Participation rates | Not meaningful for 2019-20 |
-| Federal waivers | States received assessment waivers |
+| Federal waivers | All 50 States, DC, Puerto Rico and the BIE received 2019-20 assessment waivers (85 FR 29935) |
 
 ### What's Available for 2019-20
 
 | Data Type | Availability |
 |-----------|--------------|
-| Assessment proficiency | **Largely missing** |
+| Assessment proficiency | **Absent from the Portal** (no Portal year 2019 assessment file) |
 | Graduation rates | Mostly available (cohort-based) |
 | Directory data | Available |
 | Enrollment data | Available |
@@ -40,7 +40,7 @@ The 2020-21 school year had mixed testing:
 | Variation | Impact |
 |-----------|--------|
 | State decisions | Some states tested, some didn't |
-| Participation rates | Often below 95% |
+| Participation rates | Often below 95% (unsourced here; participation rates are in ED's own files, not the Portal) |
 | Comparability | Limited comparability to prior years |
 
 ### 2021-22 Onward
@@ -545,7 +545,7 @@ For any EDFacts analysis, document:
 
 ### Data Quality
 - Records suppressed (code -3): X%
-- Records not reported (code -2): X%
+- Records missing/not reported (code -1): X%
 - Records with ranges (not exact): X%
 
 ### Limitations
@@ -577,9 +577,9 @@ For any EDFacts analysis, document:
 
 ### Data Quality
 - 2019-20 (Portal year 2019) absent from the Portal due to COVID testing waivers
-- 2020-21 has participation below 95% in many states
+- 2020-21 participation rates are not in the Portal; check ED's own EDFacts participation files before comparing 2020-21 with earlier years
 - 12% of school-year-subgroup records suppressed (code -3)
-- 3% of records not reported (code -2)
+- 3% of records not applicable (code -2)
 
 ### Limitations
 - Proficiency rates NOT comparable across states

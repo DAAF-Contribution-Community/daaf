@@ -18,7 +18,7 @@ The NACUBO-Commonfund Study of Endowments (NCSE) is the most comprehensive annua
 | Results Published | Mid-February |
 | Fiscal Year | July 1 - June 30 |
 | Target Population | ~1,500 institutions |
-| Typical Respondents | 650-700 institutions |
+| Typical Respondents | 657-720 institutions (FY2020-FY2025; see Participation Trends) |
 | Assets Represented | $800B+ (FY25: $944.3B) |
 
 ### What NACUBO Is
@@ -27,20 +27,21 @@ The National Association of College and University Business Officers (NACUBO):
 
 - Nonprofit professional organization
 - Represents chief administrative and financial officers
-- Headquarters: Washington, DC
+- Headquarters: Washington, DC (nacubo.org footer address)
 
 ## Partnership History
 
 The study has had different partners over its 50+ year history:
 
-| Period | Study Name | Partner |
-|--------|------------|---------|
-| 1974-2008 | NACUBO Endowment Study (NES) | Various |
-| 2009-2017 | NACUBO-Commonfund Study of Endowments | Commonfund |
-| 2018-2022 | NACUBO-TIAA Study of Endowments (NTSE) | TIAA |
-| 2023-present | NACUBO-Commonfund Study of Endowments | Commonfund |
+| Fiscal years | Study name | Partner |
+|---|---|---|
+| FY1974-FY1985 | First study titled "Results of the 1974 NACUBO Comparative Performance Study and Investment Questionnaire" | Not documented here |
+| FY1986-FY2008 | NACUBO Endowment Study (NES) | Not documented here |
+| FY2009-FY2017 | NACUBO-Commonfund Study of Endowments (NCSE) | Commonfund Institute |
+| FY2018-FY2022 | NACUBO-TIAA Study of Endowments (NTSE) | TIAA |
+| FY2023-present | NACUBO-Commonfund Study of Endowments (NCSE) | Commonfund Institute ("renewed" for the 50th Study, FY23) |
 
-**Important**: When citing historical data, use the correct study name for the year.
+**Important**: cite the study name for the fiscal year (NACUBO public-table file names; 50-Year Retrospective, 2024). NACUBO's press releases count the Commonfund editions inconsistently with the FY2009-FY2017 NCSE table names ("seven editions" for FY24, "an eighth year" for FY25), so do not state an edition count.
 
 ### Methodology Consistency
 
@@ -129,14 +130,16 @@ Institutions less likely to participate:
 
 ### Participation Trends
 
+(Study participants and total endowment assets per NACUBO's annual press releases, FY2020-FY2025.)
+
 | Year | Respondents | Total Assets |
 |------|-------------|--------------|
 | FY2025 | 657 | $944.3B |
 | FY2024 | 658 | $873.7B |
-| FY2023 | 688 | $839B |
+| FY2023 | 688 | $839.1B |
 | FY2022 | 678 | $807B |
 | FY2021 | 720 | $821B |
-| FY2020 | 774 | $637B |
+| FY2020 | 705 | $637.7B |
 
 Participation has declined modestly over recent years but represents the vast majority of endowed assets due to concentration at large institutions.
 
@@ -149,7 +152,7 @@ Available at nacubo.org:
 - Average/median returns by size and type
 - Asset allocation averages
 - Spending rate averages
-- Historical data back to 2002
+- Historical public tables (NACUBO "Historic Endowment Study Data" page, fetched 2026-10-19): market values FY1974-FY2023 (combined workbook), average returns from FY1988, asset allocations from FY1999, endowment per FTE FY2003-FY2011
 
 ### Full Report (Paid)
 
@@ -178,15 +181,9 @@ Researchers can request access by contacting (NCSE FAQ, retrieved 2026-10-19):
 - Commonfund Institute: Allison.Kaspriske@commonfund.org
 - Subject to approval and data use agreements
 
-## 50th Anniversary (2024)
+## 50th Study (FY2023)
 
-The 2023 NCSE marked the study's 50th anniversary. NACUBO published a retrospective white paper documenting key developments:
-
-- Evolution from simple market value reporting to comprehensive analysis
-- Growth of alternative investments from near-zero to majority allocation
-- Development of modern portfolio theory applications
-- Changes in spending policies and governance
-- Impact of major market events (1987, 2000, 2008, 2020)
+The FY2023 NCSE was the 50th consecutive annual NACUBO endowment study. NACUBO and Commonfund Institute published *The NACUBO Endowment Study: A 50-Year Retrospective* (February 2024; ERIC ED657625). Its sections cover the value of endowments, the shift to total-return investing, alternative investments ("from fringe to foundational"), the turn to outsourced/external management, responsible investing, and trends in allocation, spending, operating-budget support and gifts.
 
 ## Survey Questions Categories
 

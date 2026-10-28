@@ -266,7 +266,7 @@ df <- df |> mutate(
 | Filing threshold confusion | Organizations with gross receipts < $200K **and** total assets < $500K may file 990-EZ with fewer variables | Check form type; use Core PZ files for combined 990/990-EZ coverage |
 | Fiscal year variation | Nonprofits have different fiscal year ends (June 30 common for colleges) | `year` = Portal academic year (fall semester); `fiscal_year` = IRS fiscal year end (typically `year` + 1). Filter on `year` for IPEDS joins. |
 | No NTEE in Portal data | Portal dataset does not include NTEE codes; pre-filtered to higher ed institutions | Cannot filter by NTEE code; use full NCCS BMF for NTEE-based filtering |
-| NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise (NCCS, NTEE codes page: 'roughly one organization in four') | Use NCCS-corrected codes (`NTEE_NCCS`) over IRS-assigned codes when available |
+| NTEE classification accuracy | ~25% of NTEE codes estimated to be imprecise (NCCS, NTEE codes page: 'roughly one organization in four') | Use the IRS code as the source of truth and NCCS corrections as a supplement (NCCS NTEE page); in the Unified BMF the columns are `ntee_code_raw` / `ntee_code_clean` and `nteev2` |
 | Consolidated filings | Some university systems file consolidated 990s covering multiple campuses | Check `mult_ein_flag`; one EIN may represent multiple institutions |
 | Form version changes | Form 990 was redesigned in 2008; variable definitions changed | Be cautious comparing pre-2008 and post-2008 data for governance variables |
 | Missing vs. zero | `0` means explicitly reported zero; `null` means not reported | Distinguish between zero-value and not-reported before aggregating |

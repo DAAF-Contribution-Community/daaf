@@ -50,7 +50,7 @@ Entry Cohort Example:
 ### Entry Cohort Construction
 
 Students included in entry cohorts:
-- First-time undergraduates who received Title IV aid
+- Title IV recipients (Pell Grant or undergraduate federal loan) assigned to an entry year from their first aid receipt at the institution, back-dated by up to two years using the FAFSA grade level (not restricted to first-time students)
 - Includes full-time AND part-time students
 - Includes students who transferred in (at receiving institution)
 - Includes students who did not complete
@@ -176,14 +176,14 @@ Disaggregated by FAFSA-reported family income tercile:
 
 | Excluded Group | Reason | Impact |
 |----------------|--------|--------|
-| Graduate school students | Enrolled, not working | Fields with high grad school rates (e.g., biology, pre-law) show higher earnings than they would if grads included |
+| Students enrolled in school (e.g., graduate school) | In-school deferment status for at least 30 days of the measurement year, whether or not working | Where many students are still enrolled, the earnings cohort is a selected subset; the technical documentation states the exclusion but not the direction of the bias |
 | Non-employed | No W-2 or Schedule SE earnings | Unemployed, stay-at-home parents, disabled excluded |
 | Deceased | No tax-record earnings | Small effect |
 | Living abroad | No U.S. tax-record earnings | May affect certain fields |
 
 ### Implications for Analysis
 
-- Fields with high graduate school attendance may appear to have HIGHER earnings (low earners are still in school)
+- Fields or institutions with high graduate-school attendance have a selected earnings cohort (enrolled students are excluded); the direction of the bias is not documented
 - Institutions/programs with higher unemployment rates are NOT penalized in earnings metrics
 
 ## Earnings Suppression
@@ -282,9 +282,8 @@ Institution A: Median 6-year earnings = $45,000
 
 What this means:
 - Half of Title IV aid recipients earned more, half less
-- Measured 6 years after first enrollment
+- Measured 6 years after the estimated entry year at the institution
 - Only includes those working and not enrolled
-- Excludes students in graduate school
 - Excludes the non-working and those still enrolled
 - Reflects cohort that entered ~6 years ago
 - May not reflect current program quality or labor market

@@ -197,17 +197,14 @@ Civil Rights Data Collection - discipline, courses, staffing.
 Assessment and achievement data.
 
 ```
-# Assessment participation
-"https://educationdata.urban.org/api/v1/schools/edfacts/assessments/2019/grade-3/"
+# Assessment proficiency (2009-2018, 2020; no 2019)
+"https://educationdata.urban.org/api/v1/schools/edfacts/assessments/2018/grade-3/"
 
 # By race
-"https://educationdata.urban.org/api/v1/schools/edfacts/assessments/2019/grade-3/race/"
+"https://educationdata.urban.org/api/v1/schools/edfacts/assessments/2018/grade-3/race/"
 
-# Math proficiency
-"https://educationdata.urban.org/api/v1/schools/edfacts/math-proficiency/2019/grade-3/"
-
-# Reading proficiency
-"https://educationdata.urban.org/api/v1/schools/edfacts/rla-proficiency/2019/grade-3/"
+# Math and reading proficiency are columns of the assessments endpoint above
+# (math_test_pct_prof_*, read_test_pct_prof_*); there is no separate proficiency endpoint
 
 # Graduation rates (EDFacts)
 "https://educationdata.urban.org/api/v1/schools/edfacts/grad-rates/2019/"
@@ -283,8 +280,8 @@ Small Area Income and Poverty Estimates.
 ## School Districts (EDFacts)
 
 ```
-# District assessments
-"https://educationdata.urban.org/api/v1/school-districts/edfacts/assessments/2019/"
+# District assessments (2009-2018, 2020; no 2019; grade segment required)
+"https://educationdata.urban.org/api/v1/school-districts/edfacts/assessments/2018/grade-8/"
 
 # District graduation rates
 "https://educationdata.urban.org/api/v1/school-districts/edfacts/grad-rates/2019/"

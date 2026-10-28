@@ -143,7 +143,7 @@ Labels are the Portal variable-metadata labels for endpoint 130 (fetched 2026-10
 | `17` | Nonforcible Sex Offense | Sex offense (pre-2014 category) | 2010 only |
 | `18` | Body Injury | Undocumented | Not observed |
 
-> **Note:** Crime type code `99` (Total) is documented in some references but does NOT appear in the actual Portal mirror data. The data contains individual crime types 1-18 only. VAWA offenses (domestic violence, dating violence, stalking) are **not** in the hate-crimes file and have no `crime_type` code. `crime_type == 16` is negligent manslaughter; it appeared in the 2010 probe but not the 2016 probe (the 2019 CSS hate-crime form has no negligent-manslaughter item, so code 16 likely appears only in pre-2014 data — inference from one form year).
+> **Note:** Crime type code `99` (Total) is documented in some references but does NOT appear in the actual Portal mirror data. The data contains individual crime types 1-18 only. VAWA offenses (domestic violence, dating violence, stalking) are **not** in the hate-crimes file and have no `crime_type` code. `crime_type == 16` is negligent manslaughter; it appeared in the 2010 probe but not the 2016 probe. The 2019 CSS hate-crime form has no negligent-manslaughter item, although 34 CFR 668.46(c)(1)(iii)(A) includes negligent manslaughter among hate-crime-reportable offenses. On the pinned mirror (HF revision `0ad00ce0`, probed 2026-10-28), code 16 rows occur only in years 2005-2013 and in no year from 2014 on, and no code-16 row in any year has a positive `total_hate_crimes`.
 
 ### Bias Category Codes (Portal Integer Encoding)
 

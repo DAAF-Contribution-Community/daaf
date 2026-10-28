@@ -6,9 +6,9 @@
 
 The Jeanne Clery Campus Safety Act (Clery Act; renamed by Pub. L. 118-173, Dec. 23, 2024; formerly the Jeanne Clery Disclosure of Campus Security Policy and Campus Crime Statistics Act) originated from a tragic incident:
 
-- **April 5, 1986**: Jeanne Clery, a 19-year-old freshman at Lehigh University, was raped and murdered in her residence hall
-- **Discovery**: Her parents later learned this was one of 38 violent crimes at Lehigh over three years—information not disclosed to prospective students
-- **Legal action**: The Clery family sued Lehigh and won a $2 million settlement
+- **April 5, 1986**: Jeanne Clery, a 19-year-old Lehigh University freshman, was raped and murdered in her residence hall by another Lehigh student (Clery Center; Lehigh University Libraries)
+- **Context**: Her parents "could not have known the danger she was in; standards for campus crime reporting simply did not exist in 1986" (Clery Center). The commonly cited count of 38 violent crimes in three years was not verified against a primary source.
+- **Legal action**: The Clerys sued Lehigh; the suit was settled out of court, and by mutual agreement the monetary terms were not disclosed (contemporaneous settlement notice)
 - **Advocacy**: The Clerys lobbied Congress for legislation requiring campus crime disclosure
 
 ### Legislative Evolution
@@ -175,22 +175,23 @@ CSAs must:
 
 ### Department of Education Oversight
 
-The Clery Act is enforced by the Department of Education's Clery Act Compliance Division within Federal Student Aid.
+The Clery Act is enforced by the Department of Education's Office of Federal Student Aid, through a dedicated Clery compliance unit formed in 2010 (Clery Center calls it the "Clery Compliance Group").
 
 **Enforcement Actions**:
 - Program reviews (desk and on-site)
 - Complaint investigations
 - Compliance agreements
-- Fines up to **$71,545 per violation** (34 CFR 36.2, as adjusted Jan. 21, 2025; adjusted annually for inflation)
+- Fines up to **$71,545 per violation** (34 CFR 36.2, Table 1: the 20 U.S.C. 1094(c)(3)(B) civil penalty for an IHE's violation of title IV of the HEA; section last amended 90 FR 6808, Jan. 21, 2025, per eCFR as of 2026-10-01; adjusted annually for inflation)
 - Suspension or termination of Title IV eligibility
 
 ### Notable Enforcement Actions
 
 | Institution | Year | Fine | Issues |
 |-------------|------|------|--------|
-| Penn State | 2012 | $2.4M | Underreporting, policy failures (Sandusky case) |
-| Virginia Tech | 2014 | $55K | Timely warning failures (2007 shooting) |
-| Michigan State | 2019 | $4.5M | Underreporting, Nassar case failures |
+| Penn State | 2016 | ~$2.4M | Clery violations found in review following the Sandusky case |
+| Virginia Tech | Settled 2014 | $55,000 proposed; $32,500 paid | Timely warning (2007 shooting) |
+| Michigan State | 2019 | $4.5M | Clery violations including Nassar-related failures |
+| Liberty University | 2024 | $14M | Failure to disclose crime information |
 
 ## Relationship to Other Laws
 
@@ -235,4 +236,4 @@ Many states have enacted additional campus safety laws:
 - **Federal Register Regulations**: 34 CFR 668.46
 - **Guidance**: The 2016 Handbook for Campus Safety and Security Reporting was rescinded and archived on October 9, 2020 and replaced by the Clery Act Appendix to the FSA Handbook (updated Jan. 19, 2021): https://fsapartners.ed.gov/knowledge-center/library/electronic-announcements/2020-10-09/rescission-and-replacement-2016-handbook-campus-safety-and-security-reporting-updated-jan-19-2021
 - **Clery Center**: https://www.clerycenter.org/
-- **Department of Education Campus Safety**: https://www2.ed.gov/admins/lead/safety/campus.html
+- **Department of Education Campus Security page**: https://www.ed.gov/teaching-and-administration/safe-learning-environments/school-safety-and-security/campus-security (the old www2.ed.gov/admins/lead/safety/campus.html URL redirected here by 2025-01-01, per Wayback; ed.gov blocks automated checks)

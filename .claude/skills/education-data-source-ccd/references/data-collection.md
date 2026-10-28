@@ -114,11 +114,9 @@ Finance data has a longer lag due to fiscal year-end reporting requirements.
 |----------|--------|-------|
 | Fiscal Year End | June 30 | Most states |
 | State Submission | Following fall/winter | After audits |
-| Data Release | 18-24 months after FY end | |
+| Data Release | About 22-23 months after FY end for state-level NPEFS First Looks and about 24-26 months for district-level F-33 First Looks (FY2022-FY2023 releases) | NCES 2024-301, 2024-309, 2025-302, 2025-305 |
 
-**Example**: For fiscal year 2022 (July 2021 - June 2022):
-- States submit: Late 2022 - Early 2023
-- Data release: Late 2023 - 2024
+**Example**: For fiscal year 2022 (July 2021 - June 2022), NCES released the state-level First Look in May 2024 (NCES 2024-301) and the district-level First Look on July 17, 2024 (NCES 2024-309). State submission timing was not verified.
 
 ## Data Submission Specifications
 

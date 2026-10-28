@@ -15,7 +15,7 @@ Reference for understanding coverage gaps, selection bias, and data quality issu
 | U.S. degree-granting institutions | ~4,000+ |
 | Institutions with endowments (IPEDS) | ~2,500+ |
 | NACUBO survey invitations | ~1,500 (NCSE FAQ) |
-| Typical NCSE respondents | 650-700 |
+| Typical NCSE respondents | 657-720 (FY2020-FY2025 press releases; see `endowment-study.md` § Participation Trends) |
 | Coverage rate (of institutions) | ~15-20% (illustrative; not from a NACUBO table) |
 | Coverage rate (of endowed assets) | ~90%+ (illustrative; not from a NACUBO table) |
 

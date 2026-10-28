@@ -159,14 +159,14 @@ FSA dataset selection?
 
 ### Title IV Programs
 
-| Program | Type | Eligibility | Max Amount (2025-26; see 2026-27 changes) |
+| Program | Type | Eligibility | Max Amount (2025-26; Pell unchanged for 2026-27 per GEN-26-01; see 2026-27 changes) |
 |---------|------|-------------|----------------------|
 | Federal Pell Grant | Need-based grant | Undergrad with financial need | $7,395 |
 | Direct Subsidized Loan | Need-based loan | Undergrad with financial need | $3,500-$5,500/yr |
 | Direct Unsubsidized Loan | Non-need loan | Undergrad/Grad students | $5,500-$20,500/yr |
 | Parent PLUS Loan | Credit-based loan | Parents of dependent undergrads | Cost of attendance minus other aid (from 7/1/2026: $20,000/yr, $65,000 aggregate per dependent student) |
 | Graduate PLUS Loan | Credit-based loan | Graduate/professional students | Cost of attendance (new Grad PLUS ended 7/1/2026) |
-| FSEOG | Need-based grant | Undergrad with exceptional need | $100-$4,000/yr |
+| FSEOG | Need-based grant | Undergrad with exceptional need | $100-$4,000/yr ($4,400 for credit-approved study abroad costing more than home cost of attendance; 34 CFR 676.20(c)) |
 | Federal Work-Study | Employment program | Students with financial need | Varies by school |
 | Perkins Loan | Need-based loan | Discontinued (no new loans after 2017) | N/A |
 

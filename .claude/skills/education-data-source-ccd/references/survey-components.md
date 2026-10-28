@@ -285,7 +285,7 @@ Data on students leaving school without completing, and those who complete.
 | Measure | Calculation | Notes |
 |---------|-------------|-------|
 | AFGR | Averaged Freshman Graduation Rate | Uses enrollment approximation |
-| ACGR | Adjusted Cohort Graduation Rate | Tracks actual cohort | Required under ESEA |
+| ACGR | Adjusted Cohort Graduation Rate | Tracks actual cohort; required under ESEA |
 
 **ACGR** (Adjusted Cohort Graduation Rate): Tracks a cohort of first-time 9th graders, adjusting for transfers in/out, and calculates percentage receiving diploma within 4 years (or extended time).
 
@@ -345,4 +345,4 @@ All data uses lowercase column names, integer-coded categoricals, and a consiste
 ### Release Schedule
 
 1. **Nonfiscal Files**: Since SY 2022-23 (EDPass), states submit by about July after the school year and NCES releases within about 4 months (SY 2023-24 example; see `data-collection.md`)
-2. **Finance Data**: ~24-30 months after fiscal year end
+2. **Finance Data**: about 22-23 months after fiscal year end (state-level NPEFS) and about 24-26 months (district-level F-33), per FY2022-FY2023 NCES First Look dates; the Portal's district finance endpoint ends at 2020 (live catalog, 2026-10-28)

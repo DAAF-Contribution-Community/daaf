@@ -49,8 +49,8 @@ IPEDS uses two main institutional identifiers:
 ### When UNITID Changes
 
 UNITID may change when:
-- Institution merges with another (the merged-away unit is deleted, `inst_status` = 3, and `newid` points to the receiving UNITID — do not assume a new UNITID is created)
-- Institution closes and reopens
+- Institution merges with another (the merged-away unit is deleted, `inst_status` = 3, and `newid` points to the UNITID of the merged entity; the IPEDS TRP #42 report (2014) says that "for IPEDS purposes" a new UNITID is created for the merged entity; whether a merger can instead keep a surviving UNITID is unverified — read `newid` rather than assuming either)
+- Institution closes and reopens (unverified; see the table under Institutional Changes)
 - Major restructuring of multi-campus system
 - Change in reporting structure (e.g., branches become separate)
 
@@ -197,11 +197,11 @@ merged <- directory |> inner_join(scorecard, by = "unitid")
 | Address change | No change | No change |
 | Sector change | May change | Usually no change |
 | Control change | May change | Usually changes |
-| Merger | Merged-away unit gets inst_status 3 and newid = receiving UNITID; do not assume a new UNITID | New OPEID usually (unverified) |
-| Acquisition | May get new UNITID | New OPEID usually |
+| Merger | Merged-away unit gets inst_status 3 and newid = the UNITID of the merged entity; the IPEDS TRP #42 report (2014) describes a new UNITID for the merged entity; whether a merger can instead keep a surviving UNITID is unverified — read newid rather than assuming either | New OPEID usually (unverified) |
+| Acquisition (purchase) | Keeps its original UNITID (IPEDS TRP #42 report, 2014) | Not documented here |
 | Closure | UNITID discontinued | OPEID discontinued |
-| Reopening | New UNITID | New OPEID |
-| Branch becoming independent | New UNITID | New OPEID |
+| Reopening | Not documented here (a new institution gets a new UNITID; whether a reopened one does is unverified) | Not documented here |
+| Branch becoming independent | Gets its own UNITID if not already a separate IPEDS reporting entity (an institution with its own PPA, OPEID ending in 00, must be one; TRP #43) | New 8-digit OPEID ending in 00 (inference from the PPA rule) |
 
 ### Tracking Sector Changes
 

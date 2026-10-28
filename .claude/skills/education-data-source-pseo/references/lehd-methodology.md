@@ -33,16 +33,16 @@ PSEO is one of several LEHD data products:
 
 ### Transcript Data (Education Input)
 
-Institutions and state agencies submit graduation files containing:
+Higher education systems and individual colleges and universities submit graduation files containing:
 
 | Field | Description |
 |-------|-------------|
-| Social Security Number | Primary identifier for matching |
-| Date of birth | Secondary identifier |
+| Social Security Number | Submitted with the graduation record (PSEO Coalition methodology page); the PSEO Technical Documentation names only a "personal identifier"; graduates whose identifier is of poor quality (less than one percent) are omitted from the published statistics |
+| Date of birth | Submitted with the graduation record |
 | Graduation year | When credential was awarded |
 | Degree/credential type | Certificate, Associate's, Bachelor's, Master's, Doctoral |
 | Major/discipline | CIP code (Classification of Instructional Programs) |
-| Institution | OPEID (Office of Postsecondary Education ID) |
+| Institution | Institution of award (Census tabulates by 6-digit OPEID) |
 
 ### Employment Data (LEHD Input)
 
@@ -70,7 +70,7 @@ State unemployment insurance (UI) wage records include:
               ┌─────────────────┐
               │  Person Record  │
               │    Linkage      │
-              │  (SSN/DOB)      │
+              │  (personal ID)  │
               └────────┬────────┘
                        │
                        ▼
@@ -101,7 +101,7 @@ State unemployment insurance (UI) wage records include:
 
 ### Key Matching Steps
 
-1. **Standardize identifiers**: Clean and format SSNs, dates of birth
+1. **Standardize identifiers**: Clean and format the personal identifiers submitted with each graduation record (the PSEO Technical Documentation names only a "personal identifier"; exact matching keys are not published here)
 2. **Link to Person Universe Infrastructure (PUI)**: Census's master person file
 3. **Attach employment histories**: All jobs in LEHD system for matched graduates
 4. **Calculate post-graduation outcomes**: Earnings and employment 1, 5, 10 years out
@@ -145,11 +145,11 @@ LEHD covers **over 96%** of U.S. employment (PSEO Technical Documentation):
 
 ### UI Coverage by State
 
-States have discretion in UI coverage rules. LEHD has varying historical coverage:
+States have discretion in UI coverage rules. LEHD's state coverage grew over time (PSEO Technical Documentation, updated June 12, 2023):
 
-- **Early 1990s**: ~10 states
-- **Late 1990s**: ~40 states
-- **2010**: All 50 states + D.C. (Massachusetts was last)
+- **Early 1990s**: about 10 states
+- **Late 1990s**: about 40 states
+- **2010**: Massachusetts, the last state, entered the LEHD system
 
 ## Differential Privacy Protection
 
@@ -203,13 +203,7 @@ PSEO coverage changes by release. The V4.14.1 count was verified on 2026-10-19 f
 
 ### PSEO Coalition
 
-The **PSEO Coalition** facilitates partnerships between institutions and Census Bureau:
-- Coordinates data sharing agreements
-- Develops best practices
-- Advocates for program expansion
-- Provides member support
-
-Members include state higher education agencies, university systems, and individual institutions.
+The **PSEO Coalition** "collaborates with LEHD at the U.S. Census to link postsecondary education data with national unemployment insurance wage data" (PSEO Coalition methodology page). Its members are state and institutional representatives who are, or plan to be, LEHD partners; they meet monthly, agree on priorities and requests for LEHD, share data-literacy practices, and meet Census staff quarterly (PSEO Coalition Toolkit, Chapter 1, January 2024). Data-sharing agreements are made with the Census Bureau (PSEO Technical Documentation).
 
 ## Technical References
 

@@ -124,11 +124,13 @@ Other efile variable names in this skill are illustrative; look up actual names 
 |----------|-------------|--------|
 | `NTEE1` | NTEE major group | A-Z |
 | `NTEECC` | Full NTEE code | Letter + 2 digits |
-| `NTEE_IRS` | Official IRS NTEE | From BMF |
-| `NTEE_NCCS` | NCCS-corrected NTEE | Research quality |
+| `ntee_code_raw` / `ntee_code_clean` | Original NTEE code from the source file (1-4 characters) / standardized 3-character code | Unified BMF |
+| `nteev2` | NCCS NTEEv2 code | SUBSECTOR-CODE-TYPE (Unified BMF) |
 | `SUBSECCD` | IRS subsection | 03 = 501(c)(3), etc. |
 | `FNDNCD` | Foundation code | See BMF documentation |
 | `ORGCD` | Organization form | Corporation, trust, etc. |
+
+> Older NCCS BMF files used NTEE_IRS (official) and NTEE_NCCS (NCCS corrections; a supplement, per NCCS).
 
 ### Revenue Variables
 
@@ -232,16 +234,14 @@ Other efile variable names in this skill are illustrative; look up actual names 
 ### NCCS Unified BMF Additions
 
 | Variable | Description | Notes |
-|----------|-------------|-------|
-| `BLOCK_FIPS` | Census Block FIPS | 15-digit geocode |
-| `TRACT_FIPS` | Census Tract FIPS | Derived from Block |
-| `COUNTY_FIPS` | County FIPS | 5-digit |
-| `CBSA` | Core-Based Statistical Area | Metro/micro area |
-| `LAT` | Latitude | Geocoded |
-| `LON` | Longitude | Geocoded |
-| `FIRST_YEAR_CORE` | First year in Core data | |
-| `LAST_YEAR_CORE` | Last year in Core data | |
-| `ACTIVE` | Currently active | Boolean |
+|---|---|---|
+| `geo_lat` / `geo_lon` | WGS 84 latitude/longitude | Geocoded variant only |
+| `geo_county` / `geo_metro_area` | County and metro-area names from the geocoder | Names, not FIPS/CBSA codes; join the crosswalk layers for codes |
+| `geo_score` / `geo_status` | Geocoder match score (1-100) / status (M/T/U) | |
+| `first_vintage_ym` / `last_vintage_ym` | First/last BMF vintage observed | `first_year_in_bmf` / `last_year_in_bmf` are the year forms |
+| `bmf_source` | current (monthly IRS BMF) or legacy (501CX-NONPROFIT-PX) | No "active" flag; use last_vintage_ym and status_code |
+
+(Source: NCCS Unified BMF data dictionaries, fetched 2026-10-28.)
 
 ---
 

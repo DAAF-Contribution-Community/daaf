@@ -107,7 +107,7 @@ Which study by year?
 ├─ FY2023-present → NACUBO-Commonfund Study of Endowments (NCSE)
 ├─ FY2018-FY2022 → NACUBO-TIAA Study of Endowments (NTSE)
 ├─ FY2009-FY2017 → NACUBO-Commonfund Study of Endowments (NCSE)
-└─ Before FY2009 → NACUBO Endowment Study (NES)
+└─ FY1986-FY2008 → NACUBO Endowment Study (NES); FY1974-FY1985 studies carried other titles
 ```
 
 ## Quick Reference: NACUBO Data

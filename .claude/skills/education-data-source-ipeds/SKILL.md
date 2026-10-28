@@ -220,7 +220,7 @@ Need variable definitions?
 | Completions | Academic year ENDING in the indicated year (awards July 1 of `year`−1 through June 30 of `year`; e.g., `year`=2022 = 2021-22 awards). Inferred 2026-10-19 from national bachelor's totals vs NCES Digest Table 318.10; confirm against the codebook before relying on it. |
 | Graduation rates | NOT the entry year. `year` = the academic year (fall-labeled) at whose end (Aug 31 of `year`+1) completion status is measured. 150% GR: 4-year institutions `cohort_year` = `year` − 5 (e.g., `year`=2023 → fall 2018 entrants); less-than-4-year `cohort_year` = `year` − 2. GR200 and Outcome Measures (4-year): `cohort_year` = `year` − 7. Always use the `cohort_year` column. (Verified 2026-10-19 against College Navigator for unitid 110635.) |
 | Finance | Fiscal year that BEGINS in the indicated year (e.g., `year`=2017 = FY2018, ending June 30, 2018 for June fiscal-year institutions). Verified 2026-10-19: Harvard `year`=2017 endowment beginning/end values equal NCES Digest Table 333.90 "Fiscal year 2018". |
-| Student financial aid | For indicated academic year |
+| Student financial aid | Academic year BEGINNING in the indicated year (`year`=2021 = 2021-22; verified 2026-10-28 for one institution: Portal net price for unitid 110635 equals College Navigator's 2021-22 values) |
 
 ## Data Access
 
