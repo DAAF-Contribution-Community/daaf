@@ -403,7 +403,25 @@
 #     entry for the card's vision_list_version (or an unknown version) is
 #     VISION_NOT_ON_LIST (fail; vision then counts as unavailable). Only the
 #     block is read: the route is front matter, so the model ID is checked
-#     against the version's rows for any route.
+#     against the version's rows for any route. From 1.8.0 part 5 (user
+#     decision 2026-10-28) a vision reading on a scan goes to a human: a
+#     claim with source "vision" or "both", or a vision_only digest, citing a
+#     page whose RE-DERIVED class is "scanned" or whose re-derived flags hold
+#     ocr_layer_suspected is VISION_ON_SCAN_PAGE (review; once per cited page
+#     and claim or digest), because the vision-validated list covers neither
+#     kind of page. Never fail: scans are where vision helps most. A page
+#     whose facts were not re-derived counts as a scan (fail closed; the card
+#     already fails then). It applies whatever the reader's list status: an
+#     unlisted reader's vision claims also fail (VISION_UNAVAILABLE_CLAIM),
+#     so that card is FAIL with this item listed beside the fail. A NEEDS_
+#     REVIEW card holding it records evidence_grade_if_review_confirmed
+#     FULL_TEXT_PARTIAL (a number checked by eye on a scan is still not
+#     verified by a text layer). PDF only: HTML units have no page images.
+#     Only the scan part of the list's scope is checked: a vision reading on
+#     a sparse page or a figure/chart page (class normal) raises nothing. A
+#     digest the gate ignores (VISION_ONLY_IGNORED, the page has text)
+#     raises nothing either. The reason text is plain language for the
+#     researcher. Recorded as rule_versions.vision_scope (VISION_SCOPE_VERSION).
 #
 # --- Page classes (user decision Q-B) ---------------------------------------
 #   normal   not flagged `scanned` by pdf_ingest
@@ -438,10 +456,10 @@
 #   only a number item's column_severity, and no verdict rule reads it.
 #   FAIL          any fail item (all listed)
 #   NEEDS_REVIEW  no fail; a NEAR, REDACTED_SPAN, NUMBER_PRECISION_DIFFERS,
-#                 NUMBER_NOT_NEAR_QUOTE, NUMBER_SIGN_AMBIGUOUS or
-#                 QUOTE_NUMBERS_DIFFER item, or a page whose coverage status
-#                 is NEEDS_REVIEW (best anchor NEAR or REDACTED_SPAN) (listed
-#                 for a human)
+#                 NUMBER_NOT_NEAR_QUOTE, NUMBER_SIGN_AMBIGUOUS,
+#                 QUOTE_NUMBERS_DIFFER or (1.8.0 part 5) VISION_ON_SCAN_PAGE
+#                 item, or a page whose coverage status is NEEDS_REVIEW (best
+#                 anchor NEAR or REDACTED_SPAN) (listed for a human)
 #   PARTIAL       no fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY,
 #                 ocr-only, ocr+vision, ocr-layer, ocr-layer+vision,
 #                 vision-only or SCANNED_PAGE item, a COVERED_SPARSE or
@@ -453,7 +471,8 @@
 #   evidence_grade_suggested: PASS -> FULL_TEXT_VERIFIED (no truly scanned
 #   page can be present); PARTIAL -> FULL_TEXT_PARTIAL; NEEDS_REVIEW and FAIL
 #   -> null. NEEDS_REVIEW also records evidence_grade_if_review_confirmed
-#   (FULL_TEXT_VERIFIED, or FULL_TEXT_PARTIAL when partial items exist).
+#   (FULL_TEXT_VERIFIED, or FULL_TEXT_PARTIAL when partial items or a
+#   VISION_ON_SCAN_PAGE item exist).
 #
 # --- Result artifact --------------------------------------------------------
 #   card_check{S}.json in PAPER_DIR, named after the card's version:
@@ -677,6 +696,29 @@ import pdf_text_common as ptc  # noqa: E402
 # VISION_LIST_VERSION and VISION_VALIDATED_LISTS), so the list version, not
 # the tool version, is what tells two results apart. 1.8.0 is unreleased, and
 # parts 2 and 3 set the pattern of one unreleased version per round.
+# 1.8.0, part 5 (2026-10-28, user decision): a vision reading on a scan goes
+# to a human. A claim with source "vision" or "both", or a vision_only
+# digest, citing a page whose re-derived class is truly scanned or whose
+# re-derived flags hold ocr_layer_suspected is VISION_ON_SCAN_PAGE (review,
+# kind "vision", once per cited page and claim or digest; plain-language
+# reason). The list (part 4) covers neither kind of page, and on the probe's
+# one scan, a 1973 report flagged ocr_layer_suspected, a listed model filled
+# unreadable digits from the column's trend in 2 of 3 runs. Review, never
+# fail: scans are where vision helps most. A page whose facts were not
+# re-derived counts as a scan (fail closed; ingest["page_facts_rederived"],
+# filled by rederive_page_facts). It applies whatever the reader's list
+# status, so an unlisted reader's card is FAIL (VISION_UNAVAILABLE_CLAIM)
+# with the review item beside it; evidence_grade_if_review_confirmed is
+# FULL_TEXT_PARTIAL while the item stands. Selftest: one case (45
+# expectations). Only the scan part of the list's scope is checked (sparse
+# and figure pages raise nothing; 2 sparse pages, both near-blank text pages,
+# in the five bake-off PDFs' 342). Review round (same day): plain-language
+# reasons (who read it, the PDF page, "looks like a scan"), an ignored digest
+# raises nothing. Why part 5 with a rule version: 1.8.0 is unreleased (one
+# version per round, as parts 2-4), but this part changes verdicts, so
+# rule_versions gains vision_scope (VISION_SCOPE_VERSION, "vision-scope-v1"):
+# a card_check made before the rule has no such key, as parts 2 and 3 marked
+# theirs with ladder-v3/-v4 and numbers-v6. Card and result schemas unchanged.
 TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
@@ -801,10 +843,18 @@ SEVERITY = {
     "FLAGS_NOT_REDERIVED": "warning",
     # 1.8.0 (S3-C1b, numbers-v6 W-a): a claimed number only a sign-ambiguous token prints
     "NUMBER_SIGN_AMBIGUOUS": "review",
+    # 1.8.0 part 5: a vision reading on a page that re-derives as a scan (outside the list's scope)
+    "VISION_ON_SCAN_PAGE": "review",
     "INGEST_SUFFIX_DIFFERS": "warning", "INCOMPLETE_INGEST_IGNORED": "warning",
     "NORMALIZE_VERSION_DIFFERS": "warning", "SPARSE_DECLARATION_MISMATCH": "warning",
     "VISION_ONLY_IGNORED": "warning", "HTML_EXTRACT_VERSION_DIFFERS": "warning",
 }
+# INTENT (1.8.0 part 5): the claim sources that declare a vision reading
+#   (SOURCES; "both" is a text reading plus a vision reading).
+VISION_SOURCES = ("vision", "both")
+# INTENT (1.8.0 part 5): the version of the vision-scope rule (VISION_ON_SCAN_PAGE), recorded in every
+#   card_check's rule_versions, so a result shows whether the rule ran (a result made before it has no key).
+VISION_SCOPE_VERSION = "vision-scope-v1"
 # INTENT (1.6.0, ladder-v2): the claim-quote statuses the quote-number rule
 #   checks (every passing tier, including the OCR and conversion variants).
 QUOTE_NUMBER_CHECKED = ("PASS", "PASS_SKELETON", "PASS_SPAN", "PASS_OCR", "PASS_OCR_LAYER", "PASS_CONVERSION_ERROR")
@@ -834,12 +884,15 @@ OCR_LAYER_PAPER_CAP_PAGES = 2
 #   it was read under. tests/python/test_lit_verify.py asserts that the rows
 #   of VISION_LIST_VERSION equal SKILL.md's table.
 # ASSUMES (1.8.0 part 4): every row covers table pages without a `scanned` or
-#   `ocr_layer_suspected` flag (pages with either flag were not probed). The
-#   gate does NOT enforce that limit: it re-derives the page flags, classes
-#   truly scanned pages (SCANNED_PAGE, pages[].class) and records OCR-layer
-#   pages (pages[].ocr_layer), but it accepts a listed reader's vision reading
-#   on either at PARTIAL. The limit stays with the reader and the
-#   orchestrator audit (vision-validation.md § Gating, steps 4-5).
+#   `ocr_layer_suspected` flag (pages with either flag were not probed).
+#   1.8.0 part 5: the gate checks the SCAN part of that limit. A claim with
+#   source "vision" or "both", or a used vision_only digest, citing a page
+#   that RE-DERIVES as truly scanned (pages[].class "scanned") or as
+#   carrying an OCR layer (pages[].ocr_layer) is VISION_ON_SCAN_PAGE (review),
+#   whatever the reader's list status. Sparse pages (flagged `scanned`, not
+#   mostly one image) and figure/chart pages (class normal) are outside the
+#   limit too but are not flagged: the orchestrator checks them by hand
+#   (vision-validation.md § Gating, step 5), as it does route and identity.
 VISION_LIST_VERSION = "vision-list-2026-10-28"
 VISION_VALIDATED_LISTS = {
     # 2026-10-19: created empty (no probe run yet).
@@ -1659,6 +1712,7 @@ def rederive_page_facts(ingest, texts, images_by_page, sizes, table_probe, plumb
                                      f"re-derived {[f for f in flags if f in GRADE_FLAGS]}): the re-derived flags "
                                      "are used"))
         pages[n]["flags"], pages[n]["evidence"] = flags, ev
+        ingest.setdefault("page_facts_rederived", []).append(n)
     ingest["lanes_unavailable"] = lanes_d
     if fr["not_rederived"]:
         items.append(item("integrity", "FLAGS_NOT_REDERIVED",
@@ -1694,6 +1748,13 @@ def rederive(ingest, timeout, number_pages=None):
     html = ingest.get("anchor_kind") == ANCHOR_KIND_HTML
     pages = ingest["pages"]
     noun = "unit" if html else "page"
+    if not html:
+        # INTENT (1.8.0 part 5): the pages whose grade flags and class were
+        #   re-derived from the source (filled by rederive_page_facts). A page
+        #   missing from it (the source could not be read, or does not give
+        #   that page) keeps only the manifest's flags, which check_card does
+        #   not trust for VISION_ON_SCAN_PAGE.
+        ingest["page_facts_rederived"] = []
     rec = {"version": REDERIVE_VERSION, "method": None, "source_path": None, "source_sha256": ingest["source_sha256"],
            "source_kind": None, "source_kind_ingest": (ingest.get("source") or {}).get("source_kind"),
            "web_fetch_row": None, "read": None, "extractor": None, "extractor_version": None,
@@ -2083,6 +2144,61 @@ def check_card(card, ingest, fuzz, integrity=None):
                               reason=f"vision_validated is true but {why}: vision is treated as unavailable"))
             vision_ok = False
 
+    # INTENT (1.8.0 part 5, user decision 2026-10-28): a vision reading on a
+    #   scan goes to a human. The vision-validated list covers table pages
+    #   without a `scanned` or `ocr_layer_suspected` flag; on the probe's one
+    #   scan a listed model filled unreadable digits from the column's trend in
+    #   2 of 3 runs, numbers that look plausible and often have no clean text
+    #   lane to check them against. Review, never fail: scans are where vision
+    #   helps most, and failing would push readers to avoid them.
+    # REASONING: the page type comes from the RE-DERIVED flags and class
+    #   (classes / pages[n]["flags"], set by rederive_page_facts from the hashed
+    #   source bytes), never from the card or the manifest. A page whose facts
+    #   were not re-derived (the source could not be read, or does not give
+    #   that page; the card already fails then) is treated as a scan: fail
+    #   closed. Under FLAGS_NOT_REDERIVED (no pdfplumber) the conservative
+    #   reading already keeps a recorded OCR layer and counts an unconfirmed
+    #   scan as truly scanned. A pure call without re-derivation (tests; the
+    #   CLI always re-derives first) takes the ingest's flags as given.
+    # ASSUMES: applies whatever the reader's list status. An unlisted or
+    #   vision-unavailable card's vision readings also fail
+    #   VISION_UNAVAILABLE_CLAIM, so its verdict is FAIL and this review item
+    #   is listed beside it. Scope: the SCAN part of the list's scope only. A
+    #   sparse page (class "sparse") and a figure or chart page (class
+    #   "normal") are outside the list too but raise nothing (measured on the
+    #   five bake-off PDFs, 342 pages: 2 sparse pages, both near-blank text
+    #   pages; all 10 born-digital figure pages class normal).
+    # REASONING (plain-language reasons, user requirement 2026-10-28): the
+    #   reason is read by a researcher. It says who read it (the AI reader),
+    #   that "page N" is the PDF page (its position in the file), and that the
+    #   page LOOKS like a scan: the flags also fire on a born-digital cover
+    #   drawn over a full-page picture, so the text never says it IS one.
+    facts = None if units else ingest.get("page_facts_rederived")
+    unverified = set() if facts is None else {n for n in pages if n not in set(facts)}
+
+    def scan_kind(n):
+        # "unverified", "scanned", "ocr_layer", or None when page n is not a scan.
+        if n in unverified:
+            return "unverified"
+        if classes[n][0] == "scanned":
+            return "scanned"
+        if OCR_LAYER_FLAG in (pages[n].get("flags") or []):
+            return "ocr_layer"
+        return None
+
+    def scan_reason(n, kind, lead, tail, action, numbers=False):
+        # The researcher-facing reason: `lead` + the PDF page + `tail` (who read what, from where), what the
+        # page looks like, what DAAF has tested, then the action. No str.format on card text (it may hold braces).
+        looks = {"unverified": "DAAF could not reopen the original PDF to check this page, so it treats it as a "
+                               "possible scan.",
+                 "scanned": "This page looks like a scan.",
+                 "ocr_layer": "This page looks like a scan, and its text was machine-recognized (OCR) when the PDF "
+                              "was made, so the text may contain errors."}[kind]
+        untested = "DAAF has tested AI reading of page pictures only on clean digital pages" + (
+            "; on a scan, a model can guess digits it cannot make out." if numbers else ".")
+        where_pdf = f"PDF page {n} (its position in the file; the printed page number may differ)"
+        return safe_line(f"{lead} {where_pdf}{tail} {looks} {untested} {action}", 600)
+
     # --- Locators: sections -> unit numbers (arXiv HTML) ---
     coverage, claims = card["coverage"], card["claims"]
     if units:
@@ -2204,6 +2320,16 @@ def check_card(card, ingest, fuzz, integrity=None):
             items.append(item("vision", "VISION_UNAVAILABLE_CLAIM", page=e["page"],
                               reason=f"vision_only digest but vision_mode={card['vision_mode']!r}, vision_validated="
                                      f"{card['vision_validated']}"))
+        # 1.8.0 part 5: a vision-only digest of a scan (once per page). A digest on a page with text in any
+        #   lane is ignored (VISION_ONLY_IGNORED: an anchor must cover the page), so it raises nothing here.
+        dp = e["page"]
+        used = not units and e.get("vision_only") and dp <= n_pages and not (
+            nonws_count(pages[dp]["anchor_text"]) > 0 or nonws_count(pages[dp].get("ocr_text")) > 0)
+        skind = scan_kind(dp) if used else None
+        if skind:
+            items.append(item("vision", "VISION_ON_SCAN_PAGE", page=dp, reason=scan_reason(
+                dp, skind, "The AI reader wrote its summary of", " from a picture of the page alone.",
+                f"Please compare the summary with PDF page {dp}.")))
     rank = {"PASS": 0, "PASS_SKELETON": 0, "PASS_SPAN": 0, "COVERED_SPARSE": 1, "COVERED_DUPLICATE": 1, "PASS_OCR": 2}
     for n in range(1, n_pages + 1):
         cls, area, basis = classes[n]
@@ -2302,6 +2428,27 @@ def check_card(card, ingest, fuzz, integrity=None):
             items.append(item("vision", "VISION_UNAVAILABLE_CLAIM", page=p, claim_id=cid,
                               reason=f"source {c['source']!r} but vision_mode={card['vision_mode']!r}, "
                                      f"vision_validated={card['vision_validated']}"))
+        # 1.8.0 part 5: a vision reading of a scan, once per cited page (p, and pe for a declared span)
+        if not units and c["source"] in VISION_SOURCES:
+            # REASONING: on a scan the page's own text is machine-read (DAAF's OCR, or the OCR made with the
+            #   PDF), never a digital text layer; on an unchecked page it is just "the page's text".
+            shown = ", ".join([safe_line(s, 40) for s in c["numbers"][:6]] + (["..."] if len(c["numbers"]) > 6 else []))
+            for n in [p] + ([pe] if pe else []):
+                skind = scan_kind(n)
+                if not skind:
+                    continue
+                also = "" if c["source"] == "vision" else (
+                    " and from the page's text" if skind == "unverified" else " and from the page's machine-read text")
+                if shown:
+                    noun = "number" if len(c["numbers"]) == 1 else "numbers"
+                    lead = f"The AI reader took the {noun} {shown} from a picture of"
+                    reason = scan_reason(n, skind, lead, also + ".", f"Please compare {shown} with PDF page {n}.",
+                                         numbers=True)
+                else:
+                    reason = scan_reason(n, skind, "The AI reader based this claim on a picture of",
+                                         also.replace(" from ", " on ") + ".",
+                                         f"Please compare the claim with PDF page {n}.")
+                items.append(item("vision", "VISION_ON_SCAN_PAGE", page=n, claim_id=cid, reason=reason))
         q = c["quote"]
         # 1.6.0: every claim_quote item carries the quote-number fields (null
         #   until the ladder-v2 rule runs on a passing quote).
@@ -2636,6 +2783,9 @@ def result_of(items, page_summaries, summaries, card, fuzz, vision_ok, redaction
         # 1.6.0: a QUOTE_NUMBERS_DIFFER item keeps the partial weight of the
         #   pass it replaced (e.g. PASS_OCR_LAYER) for the if-confirmed grade.
         held = any(SEVERITY.get(it.get("status_if_confirmed")) == "partial" for it in items)
+        # 1.8.0 part 5: a vision reading of a scan that a human confirms by eye
+        #   is still not verified by a text layer, so it keeps partial weight.
+        held = held or any(it["status"] == "VISION_ON_SCAN_PAGE" for it in items)
         if_confirmed = "FULL_TEXT_PARTIAL" if "partial" in sev or held else "FULL_TEXT_VERIFIED"
     counts = {s: sum(1 for it in items if it["severity"] == s) for s in ("pass", "partial", "review", "fail",
                                                                           "warning")}
@@ -2994,16 +3144,19 @@ def forge_manifest_set(papers_dir, key, change, files=None):
                                  "exit_code": 0, "note": "FORGED by lit_verify selftest (review cycle 2)"})
 
 
-def selftest_card(key, src_sha, coverage, claims, vision_validated=False):
+def selftest_card(key, src_sha, coverage, claims, vision_validated=False, reader=None):
     # 1.6.0: vision_validated defaults to false; true is the planted
     #   VISION_NOT_ON_LIST case (list version "selftest" is not a version
     #   this tool knows, so it fails whatever the shipped lists hold).
+    # 1.8.0 part 5: `reader` = (reader_model, vision_list_version) for a case
+    #   that needs a listed reader (a list version is never removed).
     # A complete synthetic card (front matter + prose + one lit-verify block).
+    model, list_version = reader or ("selftest-synthetic", "selftest")
     block = {"schema_version": CARD_SCHEMA_VERSION, "paper_key": key, "source_pdf_sha256": src_sha,
-             "ingest_suffix": "", "reader_model": "selftest-synthetic", "vision_mode": "auto",
-             "vision_validated": vision_validated, "vision_list_version": "selftest", "coverage": coverage,
+             "ingest_suffix": "", "reader_model": model, "vision_mode": "auto",
+             "vision_validated": vision_validated, "vision_list_version": list_version, "coverage": coverage,
              "claims": claims}
-    return (f"---\npaper_key: {key}\nsource_pdf_sha256: {src_sha}\nreader_model: selftest-synthetic\n---\n\n"
+    return (f"---\npaper_key: {key}\nsource_pdf_sha256: {src_sha}\nreader_model: {model}\n---\n\n"
             "# Evidence card (lit_verify selftest; synthetic)\n\n## 1. Reading coverage ledger\n\nSee the block.\n\n"
             "```lit-verify\n" + json.dumps(block, indent=2, ensure_ascii=False) + "\n```\n")
 
@@ -3260,6 +3413,11 @@ def selftest_cases(src):
         # 1.8.0 part 3 (S3-D, review cycle 3 W1): ladder-v4, the added dash
         ("sign-shaped dash added by the quote", "Q", q_cov, [q6], False, "NEEDS_REVIEW", 0, "QUOTE_NUMBERS_DIFFER",
          "claim_quote"),
+        # 1.8.0 part 5: a listed reader's vision reading on paper B's OCR-layer
+        #   page (re-derived from the synthetic source): review, not PARTIAL
+        ("listed reader's vision reading on a scan page", "B", b_cov, [dict(b2, claim_id="V1", source="both")], True,
+         "NEEDS_REVIEW", 0, "VISION_ON_SCAN_PAGE", "vision",
+         {"reader": ("claude-opus-5-5", "vision-list-2026-10-28")}),
     ]
 
 
@@ -3323,7 +3481,7 @@ def run_selftest(a, scratch_dir, row):
                 if paper == "H" and not over.get("v1"):
                     text = selftest_card_html(key, src[paper], h_version, cov, claims, over)
                 else:
-                    text = selftest_card(key, src[paper], cov, claims, vv)
+                    text = selftest_card(key, src[paper], cov, claims, vv, over.get("reader"))
                 write_new(card_path, text.encode("utf-8"))
                 with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                     code = main(["card", key_dir, card_path])
@@ -3575,7 +3733,7 @@ def card_body(a, timestamp, row, finish, paper_dir, papers_dir, paper_key):
         "rederive": {**rd, "source_path": safe_line(str(rd["source_path"]), 300) if rd["source_path"] else None},
         "rule_versions": {"normalize": ptc.NORMALIZE_VERSION, "match_ladder": ptc.MATCH_LADDER_VERSION,
                           "numbers": ptc.NUMBER_RULES_VERSION, "column_check": ptc.COLUMN_CHECK_VERSION,
-                          "rederive": REDERIVE_VERSION},
+                          "rederive": REDERIVE_VERSION, "vision_scope": VISION_SCOPE_VERSION},
         "constants": {"MIN_QUOTE_CHARS": ptc.MIN_QUOTE_CHARS, "MIN_QUOTE_WORDS": ptc.MIN_QUOTE_WORDS,
                       "FUZZ_SCORE_CUTOFF": ptc.FUZZ_SCORE_CUTOFF, "FUZZ_WINDOW_CHARS": ptc.FUZZ_WINDOW_CHARS,
                       "FUZZ_WINDOW_STEP": ptc.FUZZ_WINDOW_STEP, "NUMBER_NEAR_CHARS": ptc.NUMBER_NEAR_CHARS,

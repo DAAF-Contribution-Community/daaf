@@ -187,22 +187,12 @@ OCR acceptance (`HEADER_FOOTER_REDERIVE_MISMATCH`,
 hash-checked only (`OCR_NOT_REDERIVED`, a warning). `--timeout` (default
 120 s) bounds each re-derivation subprocess.
 
-**What the gate does not prove.** Re-derivation shows that the card and the
-ingest agree with the bytes on disk, not that those bytes came from the
-publisher. An agent with Write that authors the source file, a matching
-web_fetch MANIFEST row, the ingest and the card makes a self-consistent
-forgery that passes. The orchestrator's audit is what can catch it: it
-compares `card_check` `rederive.source_kind` (`web_fetch`,
-`web_fetch_row_conflict`, `user_supplied`, `synthetic`, or `unknown` when
-the web_fetch MANIFEST cannot be read) and `web_fetch_row` (MANIFEST line,
-`final_url`, fetch timestamp) with its own transcript and the MANIFEST rows
-of the fetches it dispatched (`references/evidence-card.md`
-§ Re-derivation; the audit step is built with the mode in S5). OCR text is
-hash-checked, not re-derived: forged OCR text on a page whose re-derived
-anchor has fewer than `SCANNED_MAX_CHARS` (200) non-whitespace characters
-is graded at most PARTIAL (`PASS_OCR`, `OCR_NOT_REDERIVED` warning), so the
-paper never reaches `FULL_TEXT_VERIFIED` on OCR evidence (a residual the
-user accepted on 2026-10-27).
+**What the gate does not prove.** Re-derivation proves agreement with the
+bytes on disk, not that they came from the publisher: a self-consistent
+forged source passes, and the orchestrator's audit compares
+`rederive.source_kind` and `web_fetch_row` with its own fetches. Forged OCR
+text is graded at most PARTIAL. Details: `references/evidence-card.md`
+§ Re-derivation.
 
 The card (`evidence_card{S}.md`, directly inside `papers/{key}/`) carries YAML
 front matter and free prose, plus **exactly one** fenced block with info
@@ -292,7 +282,10 @@ What the gate requires:
   false`, every `vision`/`both` claim and every `vision_only` digest fails.
   `vision_validated: true` for a `reader_model` not on the list below (as
   embedded in `lit_verify` for the card's `vision_list_version`) fails
-  (`VISION_NOT_ON_LIST`).
+  (`VISION_NOT_ON_LIST`). A vision reading (a `vision`/`both` claim or a
+  `vision_only` digest) of a page the gate finds, from the PDF itself, to be
+  a scan (truly scanned, or carrying an OCR text layer) goes to a person:
+  `VISION_ON_SCAN_PAGE` (review), whatever the reader's list status.
 
 Verdict: FAIL > NEEDS_REVIEW > PARTIAL > PASS. Suggested grade: PASS →
 `FULL_TEXT_VERIFIED`, PARTIAL → `FULL_TEXT_PARTIAL`, otherwise none. Every
@@ -302,7 +295,7 @@ non-identifying quote, a changed or missing number, a coverage gap, an
 unavailable or unlisted vision claim, a hash, re-derivation or provenance
 mismatch. Review: `NEAR`, `REDACTED_SPAN`, a page whose coverage is
 `NEEDS_REVIEW` (best anchor NEAR or REDACTED_SPAN), `QUOTE_NUMBERS_DIFFER`,
-`not-near-quote`, `precision-differs`, `sign-ambiguous`. Partial: OCR, OCR-layer,
+`not-near-quote`, `precision-differs`, `sign-ambiguous`, `VISION_ON_SCAN_PAGE`. Partial: OCR, OCR-layer,
 vision-only, scanned-page and conversion-error evidence, including a
 `COVERED_SPARSE` or `COVERED_DUPLICATE` page cover on a truly scanned page
 or in OCR text.
@@ -375,18 +368,21 @@ admitted, with the route by inference.
 
 **Scope: table pages with a digital text layer**, that is, pages with no
 `scanned` and no `ocr_layer_suspected` flag in the ingest manifest. Pages with
-either flag (truly scanned pages, and scans carrying an older OCR text layer)
-were not probed, and figure pages were not scored either, so no model is
-validated on them. `lit_verify` does not enforce this limit: it classes truly
-scanned pages (`SCANNED_PAGE`, a PARTIAL cap, `pages[].class`) and records
-OCR-layer pages (`pages[].ocr_layer`), but it accepts a listed reader's vision
-reading on either at PARTIAL. On a page flagged `scanned` or
-`ocr_layer_suspected` you may still look, but the reading is unvalidated:
-write `?` for any digit you cannot read and never infer one from context,
-the column or a trend; label the reading in the card as an unvalidated
-reading of a scan; log every text/vision/OCR disagreement; and tell the
-orchestrator, which checks such pages in its audit
-(`references/vision-validation.md` § Gating, orchestrator steps 4-5). On
+either flag (truly scanned and sparse pages, and scans carrying an OCR text
+layer) were not probed, and figure pages were not scored either, so no model
+is validated on them. `lit_verify` checks the **scan part** of this scope:
+on a page it re-derives from the source as truly scanned (`pages[].class`)
+or as carrying an OCR text layer (`pages[].ocr_layer`), each `vision`/`both`
+claim and `vision_only` digest is `VISION_ON_SCAN_PAGE` (review), so a
+person checks it against the page (`references/evidence-card.md` § Vision
+consistency). It does **not** flag a vision reading on a sparse page
+(flagged `scanned`, little text, not mostly one image) or on a figure or
+chart page (class `normal`). On any page outside the scope you may still
+look, but the reading is unvalidated: write `?` for any digit you cannot
+read and never infer one from context, the column or a trend; label the
+reading in the card as unvalidated; log every text/vision/OCR disagreement;
+and tell the orchestrator, which checks the readings the gate does not flag
+(`references/vision-validation.md` § Gating, orchestrator step 5). On
 every row vision stays a second reading, never ground truth. A number found
 in no text lane passes only at PARTIAL (`NUMBER_VISION_ONLY`): it is one
 unverified reading, never quoted as a finding without a text-lane or human
@@ -418,22 +414,18 @@ the probe's transcripts, and an admitted row names where its ID came from
    `transcript-confirmed` or a mismatch. Over the GPT shim that value echoes
    the requested model name: safe to key on, not independent proof of the
    serving model. It also checks your `reader_route` against the dispatch,
-   and any vision reading on a page that `card_check` classes `scanned` or
-   marks `ocr_layer`.
+   settles each `VISION_ON_SCAN_PAGE` item (a vision reading on a scan)
+   in the `card_check`, and checks by hand any vision reading on a sparse or
+   figure page, which the gate does not flag.
 
 `lit_verify` checks what the card declares and fails closed on the list: it
 embeds the list per `vision_list_version`, and `vision_validated: true` for a
 `reader_model` not on it is `VISION_NOT_ON_LIST` (fail). It reads only the
 block, so it checks the model ID, never the route or the identity: those
-stay with the audit above. Route details, image limits and the probe
-protocol: `references/vision-validation.md`.
-
-**Image limits by route.** Anthropic: once a request holds more than 20
-images (earlier turns included), every image is capped at 2000 px and larger
-ones are rejected, hence the 2000 px renders (~4k tokens a page). OpenAI and
-the shim: no such rule; oversize images are downscaled silently within the
-patch budget, and an image over 30,000 patches is rejected (a 2000 px page is
-about 3,100 patches, ~3,705 tokens at native size).
+stay with the audit above. Of the list's page scope it checks the scan part
+only (`VISION_ON_SCAN_PAGE` above). Route details, image limits per route
+(why renders are 2000 px) and the probe protocol:
+`references/vision-validation.md`.
 
 ## Privacy
 
@@ -497,5 +489,5 @@ Versions (2026-10-28): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
 (`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`; vision list
 `vision-list-2026-10-28`). Tests:
 `tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(126) and `lit_verify.sh selftest` (44 expectations), run file-first through
+(135) and `lit_verify.sh selftest` (45 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

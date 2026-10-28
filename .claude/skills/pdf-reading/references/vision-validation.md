@@ -90,13 +90,17 @@ reader and audited by the orchestrator.
    you put in the dispatch. `lit_verify` never reads the route. A mismatch,
    or a route the row does not list: treat every vision-derived item as
    unvalidated and tell the user.
-5. In the `card_check`, find the pages with `class: "scanned"` or
-   `ocr_layer: true` that carry a vision reading: a `VISION_ONLY` item (a
-   `vision_only` digest, or a `vision` claim with no quote) or a number
-   labelled `vision-only`, `ocr+vision` or `ocr-layer+vision` (claims with
-   `source` `vision` or `both`). No model is validated on such pages, so
-   treat each as an unvalidated reading (re-read text-only, downgrade the
-   claim, or send it to human review) and tell the user.
+5. Settle each `VISION_ON_SCAN_PAGE` item in the `card_check` (from
+   `lit_verify` 1.8.0 part 5; it lists them under `review_items`). The gate
+   raises one for every `vision`/`both` claim, and every `vision_only`
+   digest it uses, on a page it re-derives from the source as truly scanned
+   or as carrying an OCR text layer, so the list is complete for scan and
+   OCR-layer pages. Then check by hand what the gate does not flag: vision
+   readings on pages with `pages[].class: "sparse"` and on figure or chart
+   pages (`figure` flag, class `normal`), which are also outside the list's
+   scope. No model is validated on any of these pages, so treat each as an
+   unvalidated reading: have a person check it against the page, re-read it
+   text-only, or downgrade the claim, and tell the user.
 
 **Shim caveat.** Over the GPT provider shim, `.message.model` is the requested
 model name echoed back by the shim, not the upstream's own report of which
@@ -111,14 +115,23 @@ true for a `reader_model` that is not on the card's `vision_list_version`
 entry fails as `VISION_NOT_ON_LIST`, as does an unknown list version, and
 vision then counts as unavailable for that card. It reads only the block,
 never the front matter, so it checks the model ID, not the route; identity
-and route stay with the orchestrator audit above. Nor does it enforce the
-list's scope (§ The validation probe): it re-derives page flags, classes
-truly scanned pages (`SCANNED_PAGE`, a PARTIAL cap, `pages[].class`) and
-records OCR-layer pages (`pages[].ocr_layer`), but it accepts a listed
-reader's vision reading on either at PARTIAL. On such a page the reader
-writes `?` for digits it cannot read, labels the reading as an unvalidated
-reading of a scan, logs every disagreement and reports it; the orchestrator
-checks it (steps 4 and 5 above). The
+and route stay with the orchestrator audit above. Of the list's page scope
+(§ The validation probe) it checks the scan part, from 1.8.0 part 5: it
+re-derives the page flags from the source, and a vision reading on a page
+that comes out truly scanned (`pages[].class: "scanned"`) or with an OCR
+text layer (`pages[].ocr_layer: true`) is `VISION_ON_SCAN_PAGE`, a review
+item, so the card is NEEDS_REVIEW rather than PARTIAL. It does not flag
+vision readings on sparse pages or on figure and chart pages, which are
+outside the scope too (step 5 above checks them by hand). It applies
+whatever the reader's list status; a forged flag in the card or the
+manifest cannot hide a scan, except in one documented residual (a scan or
+OCR layer whose only image evidence is a pdfplumber image box, removed from
+a forged manifest in a document where pdfimages lists images; 0 such pages
+in the five bake-off PDFs), and a page whose type could not be re-derived
+counts as a scan (`evidence-card.md` § Vision consistency). On such a page
+the reader writes `?` for digits it cannot read, labels the reading as an
+unvalidated reading of a scan, logs every disagreement and reports it; the
+orchestrator settles the review items (step 5 above). The
 embedded copy is `VISION_LIST_VERSION` and `VISION_VALIDATED_LISTS` in
 `scripts/lit_verify.py` (since 1.8.0 part 4: two versions,
 `vision-list-2026-10-19` with no rows, kept so older cards stay
@@ -222,13 +235,18 @@ forbids. Readings of one damaged cell differed across runs.
 **The list's scope.** So this probe validates no model on scans. Every row
 covers table pages with a digital text layer: pages with no `scanned` and no
 `ocr_layer_suspected` flag in the ingest manifest. Pages with either flag
-(truly scanned pages, and scans carrying an older OCR text layer) were not
+(truly scanned and sparse pages, and scans carrying an OCR text layer) were not
 probed, and figure pages were not scored, so no model is validated on them.
 A listed reader may still look at such a page, but the reading is
 unvalidated: write `?` for any digit you cannot read, never infer one from
 context, the column or a trend; label the reading in the card as an
 unvalidated reading of a scan; log every text/vision/OCR disagreement; and
-tell the orchestrator (§ Gating, orchestrator step 5).
+tell the orchestrator (§ Gating, orchestrator step 5). `lit_verify` sends
+every vision reading on a truly scanned or OCR-layer page to a person
+(`VISION_ON_SCAN_PAGE`, review), because a plausible-looking number read
+from a scan often has no clean text to check it against. It does not flag
+readings on sparse pages (flagged `scanned`, little text, not mostly one
+image) or on figure pages; the orchestrator checks those by hand.
 
 **What the probe does not show:** fidelity on scanned or OCR-layer pages,
 figure pages or 300-DPI crops; any route other than `anthropic-subscription`

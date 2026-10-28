@@ -184,6 +184,7 @@ class ExitTableTests(unittest.TestCase):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
         self.assertEqual(lv.TOOL_VERSION, "1.8.0-daaf")
         self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v2", dict))
+        self.assertEqual(lv.VISION_SCOPE_VERSION, "vision-scope-v1")                 # 1.8.0 part 5
         self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
                          ("column-check-v1", "label", "column-not-checked"))
         self.assertEqual((lv.CARD_SCHEMA_VERSIONS, lv.CHECK_SCHEMA_VERSION),
@@ -461,18 +462,23 @@ class CheckCardTests(unittest.TestCase):
                                           "rowing boats", "numbers": ["41"], "source": "ocr"},
                                          {"claim_id": "B2", "page": 2, "quote": "HERON 2659 The calm bay sheltered "
                                           "41 painted", "numbers": ["2659"], "source": "both"}]))
-        self.assertEqual((r["verdict"], r["evidence_grade_suggested"]), ("PARTIAL", "FULL_TEXT_PARTIAL"),
-                         r["failures"])
+        # 1.8.0 part 5: B2's vision reading sits on a truly scanned page, so the card goes to review
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"], r["evidence_grade_if_review_confirmed"]),
+                         ("NEEDS_REVIEW", None, "FULL_TEXT_PARTIAL"), r["failures"])
+        self.assertEqual([(it["status"], it["claim_id"], it["page"]) for it in r["items"] if it["kind"] == "vision"],
+                         [("VISION_ON_SCAN_PAGE", "B2", 2)])
         self.assertIn("PASS_OCR", statuses(r, "coverage"))
         self.assertIn("SCANNED_PAGE", statuses(r, "page"))
         self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OCR_ONLY", "NUMBER_OCR_VISION"])
         labels = [it["label"] for it in r["items"] if it["kind"] == "claim_number"]
         self.assertEqual(labels, ["ocr-only", "ocr+vision"])
-        # no OCR text: a vision_only digest covers the page (PARTIAL); without vision it fails
+        # no OCR text: a vision_only digest covers the page (VISION_ONLY, partial) and, on a scan, goes to
+        #   review (1.8.0 part 5); without vision it fails
         ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "flags": ["scanned"], "evidence": SCANNED_EVIDENCE}])
         r = self.run_check(ing, mk_card(base + [cov(2, vision_only=True)]))
-        self.assertEqual(r["verdict"], "PARTIAL")
+        self.assertEqual((r["verdict"], r["evidence_grade_if_review_confirmed"]), ("NEEDS_REVIEW", "FULL_TEXT_PARTIAL"))
         self.assertIn("VISION_ONLY", statuses(r, "coverage"))
+        self.assertEqual(statuses(r, "vision"), ["VISION_ON_SCAN_PAGE"])
         r = self.run_check(ing, mk_card(base + [cov(2, vision_only=True)], vision_validated=False))
         self.assertEqual(r["verdict"], "FAIL")
         self.assertIn("VISION_UNAVAILABLE_CLAIM", statuses(r, "vision"))
@@ -595,7 +601,8 @@ class CheckCardTests(unittest.TestCase):
         self.assertEqual([it["label"] for it in r["items"] if it["kind"] == "claim_number"], ["ocr-layer"])
         r = self.run_check(ing, mk_card(c, [dict(cl, source="both")]))
         self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OCR_LAYER_VISION"])
-        self.assertEqual(r["verdict"], "PARTIAL")
+        # 1.8.0 part 5: a vision reading on an OCR-layer page goes to review
+        self.assertEqual((r["verdict"], statuses(r, "vision")), ("NEEDS_REVIEW", ["VISION_ON_SCAN_PAGE"]))
         # a claim on the other page is unaffected
         r = self.run_check(ing, mk_card(c, [{"claim_id": "P1", "page": 2, "numbers": [], "source": "text",
                                              "quote": "The violet ferry carried nineteen patient cartographers"}]))
@@ -1432,6 +1439,171 @@ class SoundnessFixTests(unittest.TestCase):
         self.assertEqual(lv.OCR_LAYER_PAPER_CAP_PAGES, 2)
 
 
+# --- 1.8.0 part 5: a vision reading on a scan page goes to review (VISION_ON_SCAN_PAGE) ---
+class VisionOnScanPageTests(unittest.TestCase):
+    LISTED = {"reader_model": "claude-opus-5-5", "vision_list_version": "vision-list-2026-10-28"}
+    OCR = "SCAN PAGE\nCOMPASS 7314 HERON 2659\nThe calm bay sheltered 41 painted rowing boats.\n"
+    LAYER = {"flags": ["figure", "ocr_layer_suspected"],
+             "evidence": {"ocr_layer_suspected": ["an image covers 100% of the page area (>= 80%)"]}}
+    COV = [cov(1, "The violet ferry carried nineteen patient cartographers"),
+           cov(2, "COMPASS 7314 HERON 2659 The calm bay sheltered 41")]
+    V1 = {"claim_id": "V1", "page": 2, "quote": None, "numbers": ["88"], "source": "vision"}
+    # the researcher-facing reason parts (plain language, user requirement 2026-10-28)
+    WHERE = " (its position in the file; the printed page number may differ)"
+    SCAN = "This page looks like a scan."
+    OCR_LAYER = ("This page looks like a scan, and its text was machine-recognized (OCR) when the PDF was made, so the "
+                 "text may contain errors.")
+    TESTED = "DAAF has tested AI reading of page pictures only on clean digital pages."
+    TESTED_NUM = ("DAAF has tested AI reading of page pictures only on clean digital pages; on a scan, a model can "
+                  "guess digits it cannot make out.")
+
+    def scanned(self):
+        return mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "ocr": self.OCR, "flags": ["scanned"],
+                                                "evidence": SCANNED_EVIDENCE}])
+
+    @staticmethod
+    def scan_items(r):
+        return [it for it in r["items"] if it["status"] == "VISION_ON_SCAN_PAGE"]
+
+    def test_listed_reader_vision_claim_on_a_scanned_page_is_review(self):
+        r = lv.check_card(mk_card(self.COV, [self.V1], **self.LISTED), self.scanned(), None)
+        self.assertEqual((r["verdict"], r["evidence_grade_suggested"], r["evidence_grade_if_review_confirmed"],
+                          r["vision_available"]), ("NEEDS_REVIEW", None, "FULL_TEXT_PARTIAL", True), r["failures"])
+        items = self.scan_items(r)
+        self.assertEqual([(it["kind"], it["severity"], it["page"], it["claim_id"]) for it in items],
+                         [("vision", "review", 2, "V1")])
+        self.assertEqual(items[0]["reason"], "The AI reader took the number 88 from a picture of PDF page 2" + self.WHERE
+                         + ". " + self.SCAN + " " + self.TESTED_NUM + " Please compare 88 with PDF page 2.")
+        self.assertIn("NUMBER_VISION_ONLY", statuses(r, "claim_number"))          # the number status is unchanged
+        self.assertTrue(any(s.startswith("VISION_ON_SCAN_PAGE p2 claim V1: The AI reader took the number 88")
+                            for s in r["review_items"]))
+        self.assertEqual(lv.SEVERITY["VISION_ON_SCAN_PAGE"], "review")
+        # a `both` claim on a truly scanned page: its text is DAAF's own OCR, so "machine-read text", never "text layer"
+        both = {"claim_id": "B2", "page": 2, "quote": "HERON 2659 The calm bay sheltered 41 painted", "numbers": ["2659"],
+                "source": "both"}
+        reason = self.scan_items(lv.check_card(mk_card(self.COV, [both], **self.LISTED), self.scanned(), None))[0][
+            "reason"]
+        self.assertEqual(reason, "The AI reader took the number 2659 from a picture of PDF page 2" + self.WHERE
+                         + " and from the page's machine-read text. " + self.SCAN + " " + self.TESTED_NUM
+                         + " Please compare 2659 with PDF page 2.")
+
+    def test_reason_texts_are_plain(self):
+        # user requirement (2026-10-28): no back-end jargon in a researcher-facing reason
+        cases = [mk_card(self.COV, [self.V1], **self.LISTED),
+                 mk_card(self.COV, [dict(self.V1, numbers=[])], **self.LISTED),
+                 mk_card(self.COV, [dict(self.V1, source="both", quote="HERON 2659 The calm bay sheltered 41 painted",
+                                         numbers=["2659"])], **self.LISTED)]
+        reasons = [it["reason"] for card in cases for it in self.scan_items(lv.check_card(card, self.scanned(), None))]
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "flags": ["scanned"], "evidence": SCANNED_EVIDENCE}])
+        reasons += [it["reason"] for it in self.scan_items(lv.check_card(
+            mk_card([self.COV[0], cov(2, vision_only=True)], **self.LISTED), ing, None))]
+        self.assertEqual(len(reasons), 4)
+        for r in reasons:
+            for jargon in ("text layer", "vision validation", "digest", "page image", "anchor", "vision-only"):
+                self.assertNotIn(jargon, r.lower(), r)
+            self.assertIn("(its position in the file; the printed page number may differ)", r)
+            self.assertRegex(r, r"Please compare .+ with PDF page 2\.$")
+
+    def test_vision_and_both_claims_on_an_ocr_layer_page(self):
+        ing = mk_ingest([dict(self.LAYER, anchor=CheckCardTests.TABLE), {"anchor": PROSE[1]}])
+        c = [cov(1, "The counts in Table 4 were invented for the locality rule"),
+             cov(2, "The violet ferry carried nineteen patient cartographers")]
+        both = {"claim_id": "L1", "page": 1, "quote": "Table 4: Invented harbour counts Herons Gulls Terns 0.31 0.47",
+                "numbers": ["0.31", "0.47"], "source": "both"}
+        r = lv.check_card(mk_card(c, [both], **self.LISTED), ing, None)
+        self.assertEqual((r["verdict"], r["evidence_grade_if_review_confirmed"]), ("NEEDS_REVIEW", "FULL_TEXT_PARTIAL"))
+        self.assertEqual(statuses(r, "claim_number"), ["NUMBER_OCR_LAYER_VISION"] * 2)
+        items = self.scan_items(r)
+        self.assertEqual([(it["page"], it["claim_id"]) for it in items], [(1, "L1")])   # once per page, not per number
+        self.assertEqual(items[0]["reason"], "The AI reader took the numbers 0.31, 0.47 from a picture of PDF page 1"
+                         + self.WHERE + " and from the page's machine-read text. " + self.OCR_LAYER + " "
+                         + self.TESTED_NUM + " Please compare 0.31, 0.47 with PDF page 1.")
+        r = lv.check_card(mk_card(c, [dict(both, numbers=[], source="vision")], **self.LISTED), ing, None)
+        self.assertEqual((r["verdict"], statuses(r, "claim_quote")), ("NEEDS_REVIEW", ["PASS_OCR_LAYER"]))
+        self.assertEqual(self.scan_items(r)[0]["reason"],
+                         "The AI reader based this claim on a picture of PDF page 1" + self.WHERE + ". " + self.OCR_LAYER
+                         + " " + self.TESTED + " Please compare the claim with PDF page 1.")
+
+    def test_normal_and_sparse_pages_and_non_vision_sources_raise_nothing(self):
+        ing = mk_ingest([{"anchor": PROSE[3]}])
+        c = [cov(1, "Table 2 reports -0.087* (0.044) and 1,204 boats")]
+        for cl in ({"claim_id": "V1", "page": 1, "quote": None, "numbers": ["31"], "source": "vision"},
+                   {"claim_id": "V2", "page": 1, "quote": "Table 2 reports −0.087* (0.044) and 1,204 boats with .05 as "
+                                                          "the threshold", "numbers": ["1,204"], "source": "both"}):
+            r = lv.check_card(mk_card(c, [cl], **self.LISTED), ing, None)
+            self.assertEqual((r["verdict"], self.scan_items(r)), ("PARTIAL" if cl["source"] == "vision" else "PASS", []),
+                             cl["claim_id"])
+        # text and OCR readings of a scan are not vision readings
+        ocl = {"claim_id": "O1", "page": 2, "quote": "The calm bay sheltered 41 painted rowing boats", "numbers": ["41"],
+               "source": "ocr"}
+        r = lv.check_card(mk_card(self.COV, [ocl], **self.LISTED), self.scanned(), None)
+        self.assertEqual((r["verdict"], self.scan_items(r)), ("PARTIAL", []))
+        # a sparse page (flagged scanned, not mostly one image: a figure with a caption) is not a scan
+        sparse = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "Figure 2: Gulls by tide\n\f", "flags": ["figure", "scanned"],
+                                                   "evidence": {"figure": ["pdfimages: image 400x300 px covers 53% x 31% "
+                                                                           "of the page"]}}])
+        r = lv.check_card(mk_card([self.COV[0], cov(2, "Figure 2: Gulls by tide")], [dict(self.V1, numbers=["5"])],
+                                  **self.LISTED), sparse, None)
+        self.assertEqual(([p["class"] for p in r["pages"]], self.scan_items(r)), (["normal", "sparse"], []))
+
+    def test_vision_only_digest_span_and_unlisted_reader(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}, {"anchor": "\f", "flags": ["scanned"], "evidence": SCANNED_EVIDENCE}])
+        digest = [self.COV[0], cov(2, vision_only=True)]
+        r = lv.check_card(mk_card(digest, **self.LISTED), ing, None)
+        items = self.scan_items(r)
+        self.assertEqual((r["verdict"], [(it["page"], it["claim_id"]) for it in items]), ("NEEDS_REVIEW", [(2, None)]))
+        self.assertIn("VISION_ONLY", statuses(r, "coverage"))
+        self.assertEqual(items[0]["reason"], "The AI reader wrote its summary of PDF page 2" + self.WHERE
+                         + " from a picture of the page alone. " + self.SCAN + " " + self.TESTED
+                         + " Please compare the summary with PDF page 2.")
+        # a digest on a page with text is ignored (VISION_ONLY_IGNORED: an anchor must cover it), so no review item
+        r = lv.check_card(mk_card([self.COV[0], cov(2, "COMPASS 7314 HERON 2659 The calm bay sheltered 41",
+                                                    vision_only=True)], **self.LISTED), self.scanned(), None)
+        self.assertEqual((statuses(r, "coverage").count("VISION_ONLY_IGNORED"), self.scan_items(r)), (1, []))
+        # a declared span over two scan pages: one item per cited page, for the claim and for each digest
+        two = mk_ingest([{"anchor": PROSE[1]}] + [{"anchor": "\f", "flags": ["scanned"], "evidence": SCANNED_EVIDENCE}
+                                                  for _ in range(2)])
+        span = {"claim_id": "S1", "page": 2, "page_end": 3, "quote": None, "numbers": ["12"], "source": "vision"}
+        r = lv.check_card(mk_card(digest + [cov(3, vision_only=True)], [span], **self.LISTED), two, None)
+        self.assertEqual(sorted((it["page"], it["claim_id"] or "") for it in self.scan_items(r)),
+                         [(2, ""), (2, "S1"), (3, ""), (3, "S1")])
+        # an unlisted reader, or vision declared unavailable: its vision readings fail (VISION_UNAVAILABLE_CLAIM),
+        #   so the card is FAIL, and the review items stand beside the fails
+        for over in ({"reader_model": "claude-unlisted-0", "vision_list_version": "vision-list-2026-10-28"},
+                     {"vision_validated": False}):
+            r = lv.check_card(mk_card(digest, [self.V1], **over), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision").count("VISION_UNAVAILABLE_CLAIM")), ("FAIL", 2), over)
+            self.assertEqual(sorted((it["page"], it["claim_id"] or "") for it in self.scan_items(r)),
+                             [(2, ""), (2, "V1")], over)
+            self.assertEqual(len([s for s in r["review_items"] if s.startswith("VISION_ON_SCAN_PAGE")]), 2, over)
+            self.assertEqual("VISION_NOT_ON_LIST" in statuses(r, "vision"), "reader_model" in over, over)
+
+    def test_page_facts_not_rederived_count_as_a_scan(self):
+        # fail closed: a page whose flags were not re-derived from the source (as after SOURCE_MISSING) is a scan
+        ing = mk_ingest([{"anchor": PROSE[3]}, {"anchor": PROSE[1]}])
+        c = [cov(1, "Table 2 reports -0.087* (0.044) and 1,204 boats"),
+             cov(2, "The violet ferry carried nineteen patient cartographers")]
+        claims = [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["31"], "source": "vision"},
+                  {"claim_id": "V2", "page": 2, "quote": None, "numbers": ["31"], "source": "vision"}]
+        ing["page_facts_rederived"] = [1]
+        items = self.scan_items(lv.check_card(mk_card(c, claims, **self.LISTED), ing, None))
+        self.assertEqual([(it["page"], it["claim_id"]) for it in items], [(2, "V2")])
+        self.assertIn("DAAF could not reopen the original PDF to check this page, so it treats it as a possible scan.",
+                      items[0]["reason"])
+        self.assertIn("from a picture of PDF page 2", items[0]["reason"])
+        ing["page_facts_rederived"] = [1, 2]
+        self.assertEqual(self.scan_items(lv.check_card(mk_card(c, claims, **self.LISTED), ing, None)), [])
+
+    def test_severity_table_count(self):
+        # every SEVERITY key is a status (one, COLUMN_NOT_CHECKED, a label); evidence-card.md § Status index counts them
+        self.assertEqual(len(lv.SEVERITY), 71)
+        self.assertEqual(lv.VISION_SOURCES, ("vision", "both"))
+        index = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "references" / "evidence-card.md").read_text()
+        self.assertIn(f"the {len(lv.SEVERITY)} keys of `SEVERITY`", index)
+        table = index.split("## Status index", 1)[1].split("\n## ", 1)[0]
+        self.assertEqual(sorted(k for k in lv.SEVERITY if f"`{k}`" not in table), [])
+
+
 # --- numbers-v6 / ladder-v3 (S3-C1b, review cycle 2 NB2 and W-a); every word invented ---
 class NumberParsingTests(unittest.TestCase):
     NB2_PAGE = ("Synthetic page: the invented lantern slope was −0.164a in the full model and the intercept was 1.20b "
@@ -1953,8 +2125,9 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 44/44", out)
+        self.assertIn("SELFTEST PASS: 45/45", out)
         self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
+        self.assertIn("listed reader's vision reading on a scan page", out)         # 1.8.0 part 5
         for case in ("forged header/footer line, span skips it", "forged page flags lift the OCR-layer cap",
                      "forged OCR text on a text page"):                         # 1.8.0 (review cycle 2)
             self.assertIn(case, out)
@@ -2173,6 +2346,69 @@ class RederiveFactsTests(ScratchCase):
         self.assertEqual(quote["severity"], "fail")
         self.assertEqual((check["rederive"]["ocr_on_text_pages"], check["rederive"]["ocr"]), ([1], None))
         self.assertEqual((check["rederive"]["source_kind"], lv.SEVERITY["OCR_ON_TEXT_PAGE"]), ("synthetic", "fail"))
+
+    def test_vision_on_a_scan_uses_the_rederived_flags(self):
+        # 1.8.0 part 5: the page type comes from the source, so neither forged manifest flags nor a card's
+        #   `sparse` field hide a scan (except the documented residual: a scan or OCR layer whose only image
+        #   evidence is a pdfplumber image box, removed from a forged manifest in a document where pdfimages
+        #   lists images; lit_verify header § Re-derivation, Facts), and a source that cannot be read fails
+        #   closed (every page a possible scan)
+        key_dir, src = self.synthetic("user_5e1f7e6b", pages="B")
+        case = self.CASES["listed reader's vision reading on a scan page"]
+        coverage = [dict(e, sparse=True) if e["page"] == 2 else e for e in case[2]]
+        claims = list(case[3]) + [{"claim_id": "V2", "page": 2, "quote": None, "numbers": ["88"], "source": "vision"}]
+        reader = case[9]["reader"]
+
+        def run(name):
+            card = self.write_card(key_dir, name, None, raw=lv.selftest_card(key_dir.name, src, coverage, claims, True,
+                                                                             reader))
+            code, out, err = run_main(["card", key_dir, card])
+            art = rows_of(self.papers)[-1]["artifacts"]["card_check"]
+            check = json.loads((key_dir / art["name"]).read_text())
+            return code, check, sorted((it["page"], it["claim_id"]) for it in check["items"]
+                                       if it["status"] == "VISION_ON_SCAN_PAGE"), out + err
+
+        code, check, scan, log = run("evidence_card.md")
+        self.assertEqual((code, check["verdict"], check["vision_available"]), (0, "NEEDS_REVIEW", True), log)
+        self.assertEqual(scan, [(2, "V2"), (3, "V1")])
+        self.assertEqual({p["page"]: (p["class"], p["ocr_layer"]) for p in check["pages"]},
+                         {1: ("normal", False), 2: ("scanned", False), 3: ("normal", True)})
+        self.assertEqual(check["evidence_grade_if_review_confirmed"], "FULL_TEXT_PARTIAL")
+        self.assertEqual(check["rule_versions"]["vision_scope"], "vision-scope-v1")
+        lv.forge_manifest_set(str(self.papers), key_dir.name, lambda m: [r.update(flags=[f for f in r["flags"] if f not in (
+            "scanned", "ocr_layer_suspected")]) for r in m["pages"]])
+        code, check, scan, log = run("evidence_card_a.md")
+        self.assertEqual((code, check["verdict"], check["ingest"]["suffix"]), (11, "FAIL", "_a"), log)
+        self.assertEqual([it["page"] for it in check["items"] if it["status"] == "FLAGS_REDERIVE_MISMATCH"], [2, 3])
+        self.assertEqual(scan, [(2, "V2"), (3, "V1")])                         # the re-derived flags decide
+        entry = lv.SYNTHETIC_SOURCES.pop(src)
+        try:
+            code, check, scan, log = run("evidence_card_b.md")
+        finally:
+            lv.SYNTHETIC_SOURCES[src] = entry
+        self.assertEqual((code, check["rederive"]["outcome"]), (11, "source missing"), log)
+        self.assertEqual(scan, [(2, "V2"), (3, "V1")])
+        self.assertTrue(all("DAAF could not reopen the original PDF to check this page" in it["reason"]
+                            for it in check["items"] if it["status"] == "VISION_ON_SCAN_PAGE"))
+
+    def test_vision_on_a_scan_without_pdfplumber(self):
+        # 1.8.0 part 5, FLAGS_NOT_REDERIVED path: pdfplumber missing and pdfimages listing no image, the scanned
+        #   page stays truly scanned and the recorded OCR layer is kept, so both readings still go to review
+        key_b, src_b = self.synthetic("user_5e1f7e6c", pages="B")
+        ing, _ = self.loaded(key_b)
+        texts_b = {n: b.decode("utf-8") for n, b in lv.SYNTHETIC_SOURCES[src_b]["pages"].items()}
+        items, rec = [], {"ocr_on_text_pages": []}
+        lv.rederive_page_facts(ing, texts_b, {}, {}, lambda n: None, lambda n: None, None, items, rec)
+        self.assertEqual(([it["status"] for it in items], ing["page_facts_rederived"]), (["FLAGS_NOT_REDERIVED"], [1, 2, 3]))
+        claims = [{"claim_id": "V2", "page": 2, "quote": None, "numbers": ["88"], "source": "vision"},
+                  {"claim_id": "V3", "page": 3, "quote": None, "numbers": ["23"], "source": "vision"}]
+        card = mk_card([cov(1, "x")], claims, key=key_b.name, src=src_b, reader_model="claude-opus-5-5",
+                       vision_list_version="vision-list-2026-10-28")
+        r = lv.check_card(card, ing, None, items)
+        self.assertEqual(sorted((it["page"], it["claim_id"]) for it in r["items"]
+                                if it["status"] == "VISION_ON_SCAN_PAGE"), [(2, "V2"), (3, "V3")])
+        self.assertIn("This page looks like a scan.", next(it["reason"] for it in r["items"]
+                                                            if it["status"] == "VISION_ON_SCAN_PAGE" and it["page"] == 2))
 
     def test_new_statuses_have_severities(self):
         self.assertEqual({s: lv.SEVERITY[s] for s in ("HEADER_FOOTER_REDERIVE_MISMATCH", "FLAGS_REDERIVE_MISMATCH",

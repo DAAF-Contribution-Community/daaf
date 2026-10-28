@@ -147,7 +147,8 @@ across all units and their boundaries. How units and labels are built:
 4. **Coverage** of every page 1..N, then the paper-level OCR-layer cap.
 5. **Numbers** of every claim.
 6. **Vision consistency** with what the card declares and the embedded
-   vision list.
+   vision list, and (1.8.0 part 5) a vision reading on a scanned page goes
+   to human review (`VISION_ON_SCAN_PAGE`).
 
 ## Re-derivation (1.7.0 `rederive-v1`; 1.8.0 `rederive-v2`)
 
@@ -440,17 +441,17 @@ NON_IDENTIFYING or NEAR anchor on a covered page is a warning.
 **A truly scanned page with empty OCR text** can only be covered by a
 validated `vision_only` digest (`VISION_ONLY`, partial). Without a listed
 reader it is `NOT_COVERED` and the card FAILs: report such a paper to the
-orchestrator rather than forcing the card. A listed reader's digest passes
-the gate, but no model is validated on scanned pages (the list covers table
+orchestrator rather than forcing the card. A listed reader's digest covers
+the page, but no model is validated on scanned pages (the list covers table
 pages without a `scanned` or `ocr_layer_suspected` flag,
-`vision-validation.md` § The validation probe), so say in the card that the digest is an unvalidated
-reading of a scan, and tell the orchestrator. The same holds for any vision
-reading (a digest, or a claim with `source` `vision` or `both`) of a page
-flagged `scanned` or `ocr_layer_suspected`: write `?` for digits you cannot
-read and never infer them from context or trends, mark the reading as
-unvalidated in the card, log every difference from the OCR or text lane, and
-tell the orchestrator (its audit checks these pages:
-`vision-validation.md` § Gating, orchestrator step 5).
+`vision-validation.md` § The validation probe), so from 1.8.0 part 5 the
+gate sends it to a person: `VISION_ON_SCAN_PAGE` (review, § Vision
+consistency), and the card is NEEDS_REVIEW, not PARTIAL. The same holds for
+any vision reading (a digest, or a claim with `source` `vision` or `both`)
+of a page the gate re-derives as truly scanned or as carrying an OCR text
+layer. Write `?` for digits you cannot read and never infer them from
+context or trends, mark the reading as unvalidated in the card, log every
+difference from the OCR or text lane, and tell the orchestrator.
 
 ## Numbers (`numbers-v6`)
 
@@ -735,6 +736,67 @@ matter, so the gate checks the model ID against the version's rows for any
 route. Whether the reader really ran as that model, on that route, stays
 with the orchestrator's audit (`vision-validation.md` § Gating).
 
+**A vision reading on a scan goes to a person (1.8.0 part 5, user decision
+2026-10-28).** The list covers table pages without a `scanned` or
+`ocr_layer_suspected` flag. On the probe's one scan, a listed model filled in
+digits it could not read from the column's trend in 2 of 3 runs: numbers that
+look plausible and often have no clean text to check them against. So every
+claim with `source` `vision` or `both`, and every `vision_only` digest the
+gate uses, that cites a page the gate classes as truly scanned
+(`pages[].class: "scanned"`) or as carrying an OCR text layer
+(`pages[].ocr_layer: true`) gets one `VISION_ON_SCAN_PAGE` item per cited
+page (kind `vision`, severity **review**). A card with one is NEEDS_REVIEW,
+and its `evidence_grade_if_review_confirmed` is `FULL_TEXT_PARTIAL`: a
+number a person checked against a scan by eye is still not verified by a
+text layer. The item's reason is written for the researcher, for example:
+
+> The AI reader took the number 88 from a picture of PDF page 2 (its
+> position in the file; the printed page number may differ). This page
+> looks like a scan. DAAF has tested AI reading of page pictures only on
+> clean digital pages; on a scan, a model can guess digits it cannot make
+> out. Please compare 88 with PDF page 2.
+
+The reason says the page *looks like* a scan: the flags also fire on a
+born-digital cover printed over a full-page picture. On a page with an OCR
+text layer it adds "its text was machine-recognized (OCR) when the PDF was
+made, so the text may contain errors"; a `both` claim was read "from a
+picture of PDF page N … and from the page's machine-read text"; a claim
+with no numbers ends "Please compare the claim with PDF page N", a digest
+"Please compare the summary with PDF page N"; a page whose type could not
+be checked says "DAAF could not reopen the original PDF to check this page,
+so it treats it as a possible scan."
+
+- **Review, not fail.** Scans are where vision helps most; a fail would push
+  readers to avoid them. Nothing else about the reading changes: its number
+  and quote statuses stay as they are.
+- **The page type comes from the source.** The class and the OCR-layer flag
+  are the ones the gate re-derives from the hashed source bytes
+  (§ Re-derivation), never the card's `sparse` field or the manifest's
+  flags, so a forged flag cannot hide a scan, except in the documented
+  residual (§ Re-derivation: a scan or OCR layer whose only image evidence
+  is a pdfplumber image box, removed from a forged manifest in a document
+  where pdfimages lists images; no such page in the five bake-off PDFs). A
+  page whose facts could not be re-derived (the source could not be read,
+  or does not give that page) is treated as a possible scan, and its reason
+  says so; the card already fails then. Without pdfplumber
+  (`FLAGS_NOT_REDERIVED`) the conservative reading keeps a recorded OCR
+  layer and counts an unconfirmed scan as truly scanned.
+- **Only the scan part of the list's scope.** A vision reading on a sparse
+  page (flagged `scanned`, little text, not mostly one image) or on a figure
+  or chart page (class `normal`) is outside the list too, but raises
+  nothing: it is still unvalidated, the reader labels and reports it, and
+  the orchestrator checks it by hand (`vision-validation.md` § Gating, step
+  5). Measured on the five bake-off PDFs (342 pages): 2 sparse pages, both
+  near-blank text pages; all 10 born-digital figure pages class `normal`.
+- **An ignored digest raises nothing.** A `vision_only` digest on a page
+  with text in any lane is `VISION_ONLY_IGNORED` (an anchor must cover the
+  page), so it gets no review item.
+- **Whatever the reader's list status.** An unlisted reader's vision
+  readings also fail (`VISION_NOT_ON_LIST`, `VISION_UNAVAILABLE_CLAIM`), so
+  that card is FAIL, with the review item listed beside the fails. A
+  revised card that keeps the vision reading gets the item again.
+- PDF only: arXiv HTML units have no page images.
+
 ## arXiv HTML statuses (1.4.0)
 
 On an HTML ingest the page checks run on units (class `sparse` when
@@ -791,7 +853,7 @@ another anchor covers is downgraded to `warning`.
 ## Status index
 
 What `lit_verify` 1.8.0 can write, with the severity and the section that
-explains each: the 70 keys of `SEVERITY` in `lit_verify.py` (one of them,
+explains each: the 71 keys of `SEVERITY` in `lit_verify.py` (one of them,
 `COLUMN_NOT_CHECKED`, is a label, never a status: last row), plus
 `COVERED_SPARSE`†. `COVERED_SPARSE` and `COVERED_DUPLICATE` take their
 severity from the page (§ Coverage statuses).
@@ -802,7 +864,7 @@ severity from the page (§ Coverage statuses).
 |----------|----------|
 | pass | `PASS`, `PASS_SKELETON`, `PASS_SPAN` (§ The match ladder); `COVERED_EMPTY`, `COVERED_DUPLICATE`, `COVERED_SPARSE`† (§ Coverage statuses); `NUMBER_OK` (§ Numbers) |
 | partial | `PASS_OCR`, `VISION_ONLY`, `SCANNED_PAGE`, `PASS_OCR_LAYER`, `OCR_LAYER_PAPER` (§ Page classes, § Coverage statuses); `NUMBER_OCR_ONLY`, `NUMBER_OCR_VISION`, `NUMBER_VISION_ONLY`, `NUMBER_OCR_LAYER`, `NUMBER_OCR_LAYER_VISION` (§ Numbers); `PASS_CONVERSION_ERROR`, `NUMBER_CONVERSION_ERROR` (§ arXiv HTML statuses) |
-| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers) |
+| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers); `VISION_ON_SCAN_PAGE` (§ Vision consistency) |
 | fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR`, `HEADER_FOOTER_REDERIVE_MISMATCH`, `FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE` (§ Re-derivation) |
 | warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation) |
 | label | `COLUMN_NOT_CHECKED` (a number item's `column_severity` only, never its `severity`; § Numbers, the column label) |
@@ -817,7 +879,7 @@ column label).
 | Verdict | When | `evidence_grade_suggested` | Exit |
 |---------|------|-----------------------------|------|
 | `FAIL` | Any fail item (all listed) | null | 11 |
-| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW (coverage: a page's best anchor NEAR or REDACTED_SPAN), QUOTE_NUMBERS_DIFFER, precision-differs, not-near-quote or sign-ambiguous item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items exist | 0 |
+| `NEEDS_REVIEW` | No fail; a NEAR, REDACTED_SPAN, NEEDS_REVIEW (coverage: a page's best anchor NEAR or REDACTED_SPAN), QUOTE_NUMBERS_DIFFER, precision-differs, not-near-quote, sign-ambiguous or VISION_ON_SCAN_PAGE item | null; `evidence_grade_if_review_confirmed` = `FULL_TEXT_VERIFIED`, or `FULL_TEXT_PARTIAL` when partial items or a VISION_ON_SCAN_PAGE item exist | 0 |
 | `PARTIAL` | No fail or review; an OCR_LAYER_PAPER, PASS_OCR, PASS_OCR_LAYER, VISION_ONLY, ocr-only, ocr+vision, ocr-layer, ocr-layer+vision, vision-only or SCANNED_PAGE item, a COVERED_SPARSE or COVERED_DUPLICATE on a truly scanned page or matched in OCR text, or (arXiv HTML) a PASS_CONVERSION_ERROR or conversion-error item | `FULL_TEXT_PARTIAL` | 0 |
 | `PASS` | Everything anchored in the text layer | `FULL_TEXT_VERIFIED` | 0 |
 
@@ -900,6 +962,12 @@ or a sign-shaped dash differ.
 is `ladder-v4`; a `QUOTE_NUMBERS_DIFFER` reason can also say that the quote
 prints a sign-shaped dash the matched span does not. No new status.
 
+**1.8.0, part 5 (result schema unchanged):** an item can carry the status
+`VISION_ON_SCAN_PAGE` (kind `vision`, review, with `page` and, for a claim,
+`claim_id`; § Vision consistency); `rule_versions` gains `vision_scope`
+(`vision-scope-v1`), so a result shows whether the rule ran (one made
+before it has no such key).
+
 ## MANIFEST row (papers dir, kind `lit_verify`)
 
 One row per attempt with a valid papers dir: `kind`, `tool_version`,
@@ -957,6 +1025,7 @@ At most **two** self-revisions, each a new card file
 | `QUOTE_NUMBERS_DIFFER` (review) | A minus, range dash, superscript or digit lost when the quote was retyped, or (`ladder-v4`) a sign-shaped dash added that the page does not print | Re-copy the quote with every number as printed (§ The quote-number rule); a non-sign dash on the page stays a human check |
 | `NUMBER_SIGN_AMBIGUOUS` (review) | The page prints the number after a spaced dash that follows a word or bracket (`of – 0.30`) | Nothing to fix in the card if the number is copied right: a human reads the page (or its render) and decides minus or subtraction |
 | `VISION_NOT_ON_LIST` | `vision_validated: true` for a model not on the card's list version | Set `vision_validated: false`, `vision: unavailable`, and re-read flagged pages from the text layer |
+| `VISION_ON_SCAN_PAGE` (review) | The AI reader took a number, a claim or a page summary from a picture of a page that looks like a scan (including a scan whose text was machine-recognized when the PDF was made). DAAF has not tested AI picture-reading on scans | Nothing to fix if the reading was copied carefully (`?` for digits you could not read, the reading labelled unvalidated, disagreements logged): a person compares it with the page. If the page's own text or OCR text prints the same thing, cite that lane instead (`source` `text` or `ocr`). Never drop the vision source to hide a disagreement: log it |
 | `SOURCE_MISSING` / `SOURCE_FILE_HASH_MISMATCH` | The ingest's source was moved, deleted or replaced after the ingest | Do not edit the card: report it; restore the source to its recorded path or re-ingest |
 | `ANCHOR_REDERIVE_MISMATCH` / `ROW_SOURCE_REDERIVE_MISMATCH` / `HEADER_FOOTER_REDERIVE_MISMATCH` / `FLAGS_REDERIVE_MISMATCH` / `OCR_ON_TEXT_PAGE` | The ingest's files (anchors, lane B or table rows, header/footer records, grade-moving page flags, OCR text on a text page) do not re-derive from its source (edited or forged after the ingest; for a page class, also a check run without pdfplumber, § Re-derivation) | Do not edit the card: report it; the orchestrator re-ingests |
 | `SOURCE_REDERIVE_ERROR` | A poppler tool (`pdftotext`, `pdfinfo`, `pdfimages`) failed or timed out on the source, the HTML no longer decodes, or memfd sealing is unavailable (non-Linux) | Re-run with a larger `--timeout` if it timed out; otherwise report it |
@@ -1010,12 +1079,14 @@ QUOTE_NUMBERS_DIFFER), a spaced minus after a word (NEEDS_REVIEW via
 NUMBER_SIGN_AMBIGUOUS), and a line-start cell `– 0.25`, genuine (PASS) and
 sign-flipped (FAIL via NUMBER_MISSING); (1.8.0 part 3, `ladder-v4`) a quote
 that adds a spaced dash before the positive `1.20b` (NEEDS_REVIEW via
-QUOTE_NUMBERS_DIFFER); plus one check that each card run wrote one MANIFEST
-row with a matching `card_check` hash: **44 expectations**. It needs
+QUOTE_NUMBERS_DIFFER); (1.8.0 part 5) a listed reader's vision reading on a
+page with an existing OCR text layer (NEEDS_REVIEW via VISION_ON_SCAN_PAGE);
+plus one check that each card run wrote one MANIFEST
+row with a matching `card_check` hash: **45 expectations**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 44/44 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 45/45 expectations held; work dir removed`.
 
 ## Worked examples
 
