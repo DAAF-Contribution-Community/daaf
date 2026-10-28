@@ -270,7 +270,7 @@ from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
-> Jordahl, K. et al. geopandas: Python tools for geographic data [Computer software]. https://geopandas.org/
+> Fleischmann, M., Van den Bossche, J., Jordahl, K., Richards, M.J., McBride, J., Wasserman, J., Ward, B., & Wolf, L.J. (2026). "GeoPandas: Fundamental Data Structures for Vector Spatial Data in Python." Computers, Environment and Urban Systems, 130, 102495. https://doi.org/10.1016/j.compenvurbsys.2026.102495
 
 **Cite when:** geopandas is used for spatial operations, spatial joins, or map visualization central to the analysis.
 **Do not cite when:** Only used to read a shapefile for a simple reference lookup.
@@ -278,7 +278,7 @@ Software & Tools references:
 If PySAL spatial analysis functions are also used (spatial weights, Moran's I, etc.),
 additionally cite:
 
-> Rey, S.J. et al. (2022). "The PySAL Ecosystem of Open-Source Python Packages for the Analysis of Spatial Data." Geographical Analysis, 54(3), 467-487.
+> Rey, S.J. et al. (2022). "The PySAL Ecosystem: Philosophy and Implementation." Geographical Analysis, 54(3), 467-487. https://doi.org/10.1111/gean.12276
 
 For method-specific citations (e.g., spatial statistics techniques),
 consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

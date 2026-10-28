@@ -225,7 +225,8 @@ For methodology guidance on when FE identification is credible, load the
 ## References
 
 - Bergé, L. (2018). "Efficient estimation of maximum likelihood models with
-  multiple fixed-effects: the R package FENmlm." CREA Discussion Paper 2018-13.
+  multiple fixed-effects: the R package FENmlm." DEM Discussion Paper Series, 18-13.
+  https://ideas.repec.org/p/luc/wpaper/18-13.html
 - Correia, S. (2016). "A Feasible Estimator for Linear Models with Multi-Way
   Fixed Effects." Working Paper.
 - fixest documentation — Fixed Effects:

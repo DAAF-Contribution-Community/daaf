@@ -282,7 +282,7 @@ must_haves:
 | **Outcomes too vague** | "Analysis is complete" | "Year-over-year enrollment change is measured and reported with statistical significance testing" |
 | **Outcomes not verifiable** | "Data is clean" | "No coded values (-1, -2, -3) remain in analysis columns" |
 | **Outcomes are confirmatory** | "Poverty is negatively correlated with enrollment (expect r < -0.3)" | "Relationship between poverty rate and enrollment is characterized (direction, magnitude, significance, confidence intervals)" |
-| **Hypotheses missing basis** | "We expect r > 0.5" | "H1: Based on Smith et al. 2020 selectivity literature, we expect \|r\| > 0.5 between admission rate and graduation rate" |
+| **Hypotheses missing basis** | "We expect r > 0.5" | "H1: Based on [Author, Year — a reference confirmed with `scholar_search.sh verify`] on institutional selectivity, we expect \|r\| > 0.5 between admission rate and graduation rate" |
 | **Artifacts too abstract** | "Analysis files" | "research/2026-01-31_School_Poverty/2026-01-31_School_Poverty.py" |
 | **Artifacts missing content spec** | path only | path + provides + contains/has_columns |
 | **Missing wiring** | Listing files without connections | "Notebook loads from data/processed/ via pl.read_parquet()" |

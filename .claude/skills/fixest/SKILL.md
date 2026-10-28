@@ -308,7 +308,8 @@ When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
 > Bergé, L. (2018). "Efficient estimation of maximum likelihood models with
-> multiple fixed-effects: the R package FENmlm." CREA Discussion Paper 2018-13.
+> multiple fixed-effects: the R package FENmlm." DEM Discussion Paper Series, 18-13.
+> https://ideas.repec.org/p/luc/wpaper/18-13.html
 > Updated as: Bergé, L. (2026). fixest: Fast Fixed-Effects Estimations
 > [Computer software]. https://CRAN.R-project.org/package=fixest
 
@@ -319,7 +320,7 @@ or difference-in-differences analysis.
 For the arXiv methods paper:
 
 > Bergé, L., Butts, K., & McDermott, G. (2026). "Fast and User-Friendly
-> Econometrics Estimations: The R Package fixest." arXiv:2601.21749.
+> Econometrics Estimations: The R Package fixest." arXiv:2601.21749 (arXiv v2 title, revised 3 Apr 2026: "fixest: A fast and feature-rich framework for econometric estimations in R").
 
 For method-specific citations (e.g., Sun-Abraham, individual DiD estimators),
 consult the reference files in this skill and `agent_reference/CITATION_REFERENCE.md`.

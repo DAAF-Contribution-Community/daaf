@@ -165,6 +165,8 @@ import polars as pl
 tracts_1990 = df_1990.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
 tracts_2020 = df_2020.filter(pl.col("county_fips_geo") == 6037).select("tract").n_unique()
 # Illustrative (unsourced): any change in the count signals boundary changes
+# 1990/2010/2020 files store county_fips_geo as 5-digit state+county (6037); the 2000 file does not
+# (values 10-990, mirror probe 2026-10-27), so this filter matches nothing there — see SKILL.md Common Pitfalls
 ```
 
 ```r
@@ -174,6 +176,8 @@ library(dplyr)
 tracts_1990 <- df_1990 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
 tracts_2020 <- df_2020 |> filter(county_fips_geo == 6037) |> distinct(tract) |> nrow()
 # Illustrative (unsourced): any change in the count signals boundary changes
+# 1990/2010/2020 files store county_fips_geo as 5-digit state+county (6037); the 2000 file does not
+# (values 10-990, mirror probe 2026-10-27), so this filter matches nothing there — see SKILL.md Common Pitfalls
 ```
 
 ### Method 2: Check Crosswalk

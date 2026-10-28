@@ -367,7 +367,7 @@ Having issues?
 When this library is used as a primary analytical tool, include in the report's
 Software & Tools references:
 
-> marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/
+> Agrawal, A., & Scolnick, M. (2023). *marimo - an open-source reactive notebook for Python* [Computer software]. https://doi.org/10.5281/zenodo.12735329
 
 **Cite when:** The analysis notebook is delivered as a marimo notebook (typically always true in DAAF pipelines).
 **Do not cite when:** marimo is not used for the analysis delivery format.

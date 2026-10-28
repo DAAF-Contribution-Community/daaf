@@ -38,6 +38,8 @@ FSA data provides valuable information on federal student aid programs but has i
 | `fsa/colleges_fsa_composite_scores` | 2006 | 2016 | 11 |
 | `fsa/colleges_fsa_90_10_revenue_percentages` | 2014 | 2021 | 8 |
 
+> **Loans: rows from 1999, volume from 2003.** The year range above is row presence. In the pinned mirror vintage (Portal v0.26.1, probed 2026-10-27), `fsa/colleges_fsa_loans` has rows for 1999-2002, but `value_loan_disbursements_unitid` sums to 0 in each of those years for both Direct Loan (codes 3+6+9) and FFEL (codes 10+11+14); the first non-zero year is 2003 (FFEL $36.1B, Direct $11.9B). Within FFEL PLUS, the combined code 14 carries volume from 2003, but its split is empty earlier: Parent PLUS (12) is null in every row before 2006, and Grad PLUS (13) first has positive values in 2005 (337 rows, $69M). Grad PLUS loans began with disbursements on or after 1 July 2006, so the 2005 values need a year-convention check before use (inference, not probed); use code 14 for FFEL PLUS totals before 2006. Only the unitid-level disbursement column was checked. Maintainer-only run log, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-27_mF_fsa_probe.py`.
+
 ### Timeline Visualization
 
 ```
@@ -229,7 +231,7 @@ df <- df |> mutate(
 
 | Year | Change | Impact |
 |------|--------|--------|
-| 2010 (= 2010-11) | First Portal year with no new FFEL loans (HCERA, P.L. 111-152) | FFEL codes 10-14 should drop sharply but may not be zero: FFEL lenders still made subsequent disbursements of loans first disbursed by June 30, 2010 (GEN-10-05); earlier years mix FFEL and Direct Loan |
+| 2010 (= 2010-11) | First Portal year with no new FFEL loans (HCERA, P.L. 111-152) | In the pinned mirror vintage (Portal v0.26.1; `fsa/colleges_fsa_loans`, probed 2026-10-27), FFEL codes 10-14 keep their rows every year through 2021 (the same row count as every other loan_type in a year, e.g. 5,266 in 2010), but from `year` 2010 every `value_loan_disbursements_unitid` value is null (0 of 300,570 rows above zero). Direct Loan disbursements (codes 3+6+9) rise from $42.6B (2009) to $91.1B (2010). FFEL subsequent disbursements still made in 2010-11 under GEN-10-05 do not appear in the file. Treat FFEL rows from 2010 as structurally empty, not as zero lending; earlier years mix FFEL and Direct Loan |
 | 2012 | Grad subsidized eliminated | Grad loan composition changes |
 | 2017 | Perkins discontinued | No new Perkins loans after September 30, 2017; final disbursements permitted through June 30, 2018, so Portal campus-based `year`=2017 (2017-18) can still contain Perkins disbursements |
 | 2023 (FYs beginning on/after Jan 1) | ARPA 90/10 definition | VA/DoD funds count as federal; outside Portal coverage |

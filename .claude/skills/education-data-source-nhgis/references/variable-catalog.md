@@ -59,7 +59,7 @@ When accessing NHGIS data through the Education Data Portal mirrors, categorical
 
 Geocoder match score. **Note:** This column is Float64 in schools data but Int64 in colleges data. Cast to a consistent type before cross-entity comparison.
 
-The Portal codebook labels this field 1=High confidence, 2=Medium confidence, 3=Low confidence, 4=Did not geocode, -2=Not applicable. Portal API records observed 2026-10-19 instead carry 0-100 Esri match scores (97-100 for well-matched addresses), matching the Esri "Score" field (1-100; 100 = perfect match) that the Portal endpoint description links to. Verify the observed range in your file before filtering; do not filter on the 1-4 codes.
+The Portal codebook labels this field 1=High confidence, 2=Medium confidence, 3=Low confidence, 4=Did not geocode, -2=Not applicable. The codebook's 1-4 labels do not describe the data. The pinned mirror files (Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27) instead hold Esri match scores, matching the Esri "Score" field (1-100; 100 = perfect match) that the Portal endpoint description links to: 61-100 in the college files and 4-100 in the school files (only 2 school rows at or below 4; 805 school nulls). No value of 1, 2 or 3 occurs. Every row is `-2` in college years 2018-2023 and school years 2017-2023, and no earlier row is `-2`. Filter on the score, never on the 1-4 codes, and treat those recent years as unscored. (Portal API records observed 2026-10-19 carried 97-100.)
 
 ### geocode_accuracy_detailed
 

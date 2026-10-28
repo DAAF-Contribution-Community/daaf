@@ -172,7 +172,7 @@ Interpretation question?
 | 10 | NAIA Division II | | |
 | 11 | NAIA Division III | | |
 
-> **Note:** Code 1 was historically labeled "NCAA Division I-A" and code 2 "NCAA Division I-AA" in earlier years. The `ath_classification_name` string column reflects the label used at the time of reporting.
+> **Note:** Code 1 was historically labeled "NCAA Division I-A" and code 2 "NCAA Division I-AA" in earlier years, and code 3 has carried both "NCAA Division I-AAA" and "NCAA Division I without football" (which label came first was not probed). The `ath_classification_name` string column reflects the label used at the time of reporting. On the pinned mirror vintage (Portal v0.26.1), code 11 (NAIA Division III) occurs only 2002-2014 and is missing from the Portal codebook; codes 17-20 start in 2015 (see `./references/variable-definitions.md`).
 
 ### Missing Data Codes
 

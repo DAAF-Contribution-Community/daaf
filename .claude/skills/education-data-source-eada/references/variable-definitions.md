@@ -100,6 +100,8 @@ Detailed definitions for key EADA variables available through the Education Data
 | -2 | Not applicable |
 | -3 | Suppressed |
 
+> **Note:** Code `11` (NAIA Division III) is missing from the Portal codebook (and so from the generated explorer dictionary) but occurs in the pinned mirror file (Portal v0.26.1, revision `0ad00ce0`, probed 2026-10-27): 37 rows in 2002-2014 and none from 2015. The 24 rows from 2004 on carry `ath_classification_name` "NAIA Division III"; the 2002-2003 rows carry no name. Codes 17-20 (CCCAA, Independent, NWAC, USCAA) occur only from 2015, the year code 8 (Other) falls from 249 rows (2014) to 84. Maintainer-only run log, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-27_mE_eada_probe.py`.
+
 > **Note:** Code `8` (Other) is used for institutions that don't fit the standard classifications. Check the `ath_classification_other` string field for additional detail.
 
 ## Participation Variables

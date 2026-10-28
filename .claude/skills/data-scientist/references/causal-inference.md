@@ -1017,7 +1017,7 @@ Wooldridge, J.M. (2021). "Two-Way Fixed Effects, the Two-Way Mundlak Regression,
 
 ### Key Papers -- Methods
 
-Abadie, A., Diamond, A., and Hainmueller, J. (2010). "Synthetic Control Methods for Comparative Case Studies." *Journal of the American Statistical Association*, 105(490), 493-505.
+Abadie, A., Diamond, A., and Hainmueller, J. (2010). "Synthetic Control Methods for Comparative Case Studies: Estimating the Effect of California's Tobacco Control Program." *Journal of the American Statistical Association*, 105(490), 493-505.
 
 Austin, P.C. (2011). "An Introduction to Propensity Score Methods for Reducing the Effects of Confounding in Observational Studies." *Multivariate Behavioral Research*, 46(3), 399-424. https://doi.org/10.1080/00273171.2011.568786
 

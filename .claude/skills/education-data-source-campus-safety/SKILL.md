@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-10-19"
+  skill-last-updated: "2026-10-27"
 ---
 
 # Campus Safety Data Source Reference
@@ -330,7 +330,7 @@ For data NOT available in Portal mirrors (primary offenses, VAWA, arrests, fire 
 | Assuming all crime data in mirror | Mirror only has hate crimes | Use Department of Education portal for primary offenses, VAWA, arrests, fire safety |
 | Using `instnm` as column name | Hate crimes data uses `inst_name`, not `instnm` (which is the IPEDS convention) | Check actual column names with `df.columns` |
 | Expecting `-1`/`-2` missing codes | Hate crimes data uses `null` for missing, not negative integer codes | Check for nulls with `pl.col("bias").is_null()`, not `pl.col("bias") == -1` |
-| Ignoring multi-campus institutions | Separate CSS campuses can appear as duplicate unitid × year × crime_type × bias row sets with no campus identifier (Portal API: UC Berkeley 2016, UC Riverside 2017); there is no `branch` column | Sum counts over duplicate keys per unitid-year before analysis (verify duplication in the mirror file); for campus-level detail use the full CSS download (see `./references/campus-geography.md`) |
+| Assuming one row per unitid × year × crime_type × bias | Observed on the pinned mirror (Portal v0.26.1, HF revision `0ad00ce0`, probed 2026-10-27): 5,994,330 of the file's 15,230,698 rows are exact duplicates, with up to 128 copies of one key. After dropping exact duplicates, 7,530 keys at 795 institutions still have 2-4 rows with differing counts (e.g., UC Riverside, unitid 110671, 2017-2020; its 2021 duplicates are all exact). `opeid` and `inst_name` do not distinguish them, and there is no `branch` or campus column. Before dedup, the number of duplicated keys rises about tenfold between 2008 (8,860) and 2009 (84,903). The Portal API showed the same multi-row keys for UC Berkeley 2016 and UC Riverside 2017 | Drop exact duplicate rows first (this would also merge two genuine rows that happen to report identical counts). For the multi-row keys that remain, do not apply a sum or max by default: the mirror cannot tell a second campus from a duplicated record. Inspect the affected institutions (Annual Security Reports, or the full CSS download per `./references/campus-geography.md`), decide, and state the rule as an analytic assumption. These counts are a mirror observation, not documented Portal behavior |
 | Ignoring underreporting | Many crimes go unreported; CSS captures only reported incidents | Acknowledge underreporting as a limitation in all analyses |
 
 ## Reporting Timeline

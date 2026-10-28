@@ -358,7 +358,7 @@ See `./references/filters-reference.md` for complete list.
 | Source | Skill | Key Fetch Considerations |
 |--------|-------|--------------------------|
 | CCD | `education-data-source-ccd` | Use grade-99 for totals; FRPL affected by CEP |
-| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
+| CRDC | `education-data-source-crdc` | Often called biennial, but no odd/even-year rule (2020 and 2021 are consecutive collections); universe collections since 2011-12, with year coverage varying by topic family; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
 | EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable; CSV fallback needs force-string + `str_pad`/`zfill` + width-assert on ncessch/leaid (2019 ships already-truncated IDs) |
 | IPEDS | `education-data-source-ipeds` | GRS limited to first-time full-time |
 | Scorecard | `education-data-source-scorecard` | High suppression; Title IV recipients only |

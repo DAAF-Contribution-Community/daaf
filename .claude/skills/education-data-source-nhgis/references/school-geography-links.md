@@ -180,12 +180,12 @@ The `year` column follows the CCD/IPEDS directory year (a 2016 NHGIS schools rec
 | `leaid` | NCES district ID | Int64 |
 | `tract` | Census tract number | Int64 |
 | `block_group` | Block group number (1-9; 0 = unassigned) | Int64 |
-| `geoid_block` | Block-group GEOID (12 characters; not a 15-character block ID despite the name) | Int64 |
+| `geoid_block` | 12-digit block-group GEOID in the 2010/2020 files; 11-digit tract GEOID in the 1990 file; unidentified encoding in the 2000 file (do not treat as a block or block-group GEOID). Never a 15-digit block ID; Int64, so zero-pad before use (pinned mirror, probed 2026-10-27) | Int64 |
 | `census_region` | Census region (1-4, 9 for territories) | Int64 |
 | `census_division` | Census division (1-9) | Int64 |
 | `cbsa` | CBSA code (2000+ census files only) | Int64 |
 | `cbsa_type` | 1=Metropolitan, 2=Micropolitan (2000+ only) | Int64 |
-| `geocode_accuracy` | Match score (0-100; -2=not applicable per codebook) | Float64 |
+| `geocode_accuracy` | Match score up to 100 (observed 4-100); -2 = not applicable, which is every row from 2017 onward in the school files (pinned mirror, probed 2026-10-27) | Float64 |
 
 ### Querying via Mirror
 

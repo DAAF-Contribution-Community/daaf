@@ -97,7 +97,7 @@ Major transformation of the collection:
 | Focus | Desegregation | Educational opportunity |
 | Collection | Paper/manual | Web-based |
 | Variables | Limited | Extensive |
-| Frequency | Irregular | Biennial |
+| Frequency | Irregular | Often described as biennial; no odd/even-year rule (2020-21 and 2021-22 consecutive) |
 | Coverage | Sample (except 1976 and 2000) | Universe (every collection from 2011-12 on, per OCR) |
 
 ---

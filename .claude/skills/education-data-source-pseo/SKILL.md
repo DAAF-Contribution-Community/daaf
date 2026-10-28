@@ -35,7 +35,7 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 - **Content**: Links university transcript data with national UI wage records to track graduate employment outcomes
 - **Two data types**: Graduate Earnings (percentile earnings) and Employment Flows (industry/geography)
 - **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows; verify the latest institution, partner, and version files before reporting coverage
-- **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (8-character string with leading zeros, e.g. `"00182600"`; may contain letters, e.g. `"0033290W"`)
+- **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (dtype differs by shard on the pinned mirror vintage, Portal v0.26.1: in `pseo/colleges_pseo_2001` through `_2018` an 8-character string with leading zeros, e.g. `"00182600"`, occasionally with a letter, e.g. `"0033290W"` (both examples carry `unitid` -1 in the 2018 shard, so a unitid join drops them); in `_2019` through `_2021` an Int64 with the leading zeros dropped, e.g. `365800`)
 - **Privacy method**: Differential privacy mechanisms protect individual data
 - **Available through**: Education Data Portal mirrors (restructured from Census Bureau LEHD format with integer encodings and lowercase variable names)
 
@@ -134,7 +134,7 @@ Checking data availability?
 | ID | Format | Level | Example | Notes |
 |----|--------|-------|---------|-------|
 | `unitid` | Integer | Institution | `100751` | IPEDS Unit ID (University of Alabama) |
-| `opeid` | String | Institution | `"00105100"` | 8-character, zero-padded OPEID; may be alphanumeric (`"0033290W"`, Penn State World Campus) |
+| `opeid` | String (2001-2018 shards) / Int64 (2019-2021 shards) | Institution | `"00105100"` / `105100` | On the pinned mirror vintage: 8-character zero-padded OPEID in the String shards, which may be alphanumeric (`"0033290W"`, Penn State World Campus); the Int64 shards drop leading zeros, so cast to string and zero-pad to 8 before concatenating shards or joining |
 | `fips` | Integer | State | `48` | State of institution (Texas) |
 | `cipcode` | 2-digit integer | Field of study | `11` | Computer Science; Portal uses integers, not "11.01" |
 
@@ -190,6 +190,9 @@ df = fetch_yearly_from_mirrors(
     path_template="pseo/colleges_pseo_{year}",
     years=[2018, 2019, 2020],
 )
+# opeid is String in the 2018 shard and Int64 in 2019-2021 (pinned mirror vintage);
+# the relaxed concat leaves "00365800" next to "365800". Zero-pad to 8 before any join.
+df = df.with_columns(pl.col("opeid").cast(pl.String).str.zfill(8))
 
 # Or fetch a single year
 df = fetch_from_mirrors("pseo/colleges_pseo_2020")
@@ -212,7 +215,10 @@ frames <- list()
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 for (y in c(2018, 2019, 2020)) {
   url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
-  frames[[length(frames) + 1]] <- arrow::read_parquet(url)
+  # opeid is character in shards 2001-2018 and integer in 2019-2021 (pinned mirror
+  # vintage); normalise to an 8-character zero-padded string so the shards bind and join.
+  frames[[length(frames) + 1]] <- arrow::read_parquet(url) |>
+    mutate(opeid = stringr::str_pad(as.character(opeid), width = 8, pad = "0"))
 }
 df <- bind_rows(frames)
 
@@ -283,7 +289,7 @@ As verified on 2026-10-19, version **V4.14.1 (2026Q2)** lists **1,117 institutio
 | Cross-institution comparison without controlling degree/CIP | Institutions offer different program mixes; aggregate comparison is misleading | Always filter to same `degree_level` and `cipcode` when comparing institutions |
 | Treating PSEO as comprehensive | Participation is voluntary and changes by release; no verified national graduate-coverage percentage is documented here | Report the release/version and partner roster used; acknowledge selection bias and do not generalize to all U.S. graduates |
 | Ignoring labor attachment | Graduates need annual earnings above a full-time minimum-wage equivalent (35 h × 50 wk) AND at least 3 quarters of non-zero earnings to appear in earnings data | Some graduates are employed but excluded; note this limitation |
-| Treating Portal opeid as integer | Portal `opeid` is an 8-character string (e.g., `"00182600"`; some are alphanumeric, e.g., `"0033290W"`); integer casts drop leading zeros and fail on letters | Compare as strings; zero-pad other sources' OPEIDs to 8 characters before joining |
+| Assuming one dtype for Portal opeid | On the pinned mirror vintage (Portal v0.26.1), PSEO shards 2001-2018 store `opeid` as an 8-character string (`"00182600"`; the 2018 shard has one alphanumeric value, `"0033290W"`) and shards 2019-2021 as Int64 (`365800`); a multi-year concat fails or mixes forms, and an integer cast fails on letters | In every shard, cast to string and zero-pad to 8 before concatenating or joining: Python `pl.col("opeid").cast(pl.String).str.zfill(8)`, R `stringr::str_pad(as.character(opeid), width = 8, pad = "0")`; zero-pad other sources' OPEIDs the same way |
 | Mixing cohort spans | Bachelor's uses 3-year cohorts; all others use 5-year | Filter by `degree_level` first, then verify cohort format matches |
 | Assuming inflation comparability | All earnings are in 2022 CPI-U dollars | No manual inflation adjustment needed; values are already real dollars (Portal snapshot; current Census PSEO releases since V4.13.0 are in 2023 dollars — do not mix sources without re-deflating) |
 

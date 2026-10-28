@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-10-19"
+  skill-last-updated: "2026-10-27"
 ---
 
 # NHGIS Data Source Reference
@@ -27,7 +27,7 @@ Census geography and demographic data source for education research. NHGIS provi
 > | `census_region` | `4` | West |
 > | `cbsa_type` | `1` | Metropolitan |
 > | `cbsa_type` | `2` | Micropolitan |
-> | `geocode_accuracy` | `0`-`100` (continuous score, not a code) | Esri geocoder match score (100 = perfect match); the codebook's 1-4 labels do not match observed values |
+> | `geocode_accuracy` | `-2`, or a score up to `100` (not a code) | Esri geocoder match score (100 = perfect match; observed minimum 61 in colleges, 4 in schools). Every row is `-2` in college years 2018-2023 and school years 2017-2023. The codebook's 1-4 labels do not describe the data (pinned mirror, probed 2026-10-27) |
 >
 > See `./references/variable-catalog.md` for complete encoding tables.
 
@@ -145,7 +145,7 @@ Time period?
 | `GEOID` | Numeric string | Any | `06001402100` | Census Bureau standard; use for non-NHGIS joins (not in Portal data) |
 | `tract` | Int64 | Tract | `402100` | Census tract number (in Portal data) |
 | `block_group` | Int64 | Block Group | `1` | Block group within tract (1-9; 0=unassigned) |
-| `geoid_block` | Int64 | Block group | `60014226001` | 12-character block-group GEOID (state+county+tract+block group) stored as Int64, so the leading zero drops for states with FIPS < 10. Despite the name and "Block identifier" label, Portal API values observed 2026-10-19 are 12 characters, not 15-character block GEOIDs; zero-pad to 12 before joining to block-group data |
+| `geoid_block` | Int64 | Varies by census vintage | `10730118025` (2010 file) | Despite the name and "Block identifier" label, never a 15-digit block GEOID; its form depends on the census-vintage file (observed on Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27: rebuilt from the file's own columns in the four college files and the 1990/2010 school files; the 2000/2020 school files checked by leading digits only). **2010/2020 files:** the 12-digit block-group GEOID (state+county+tract+block group). **1990 files:** the 11-digit tract GEOID (state+county+tract). **2000 files:** encoding not identified; it matches neither form rebuilt from the file's own columns, so do not treat it as a block or block-group GEOID. Stored as Int64 in every file, so the leading zero drops for states with FIPS < 10; zero-pad (12 or 11 digits) before joining |
 | `cbsa` | Int64 | Metro area | `41860` | Core Based Statistical Area code (2000+ census files only) |
 
 ### Key Education Variables
@@ -181,13 +181,13 @@ Key geographic and identifying columns in the schools NHGIS datasets. Census 202
 | `leaid` | NCES district ID | Int64 |
 | `tract` | Census tract number | Int64 |
 | `block_group` | Block group number (1-9; 0 = unassigned) | Int64 |
-| `geoid_block` | Block-group GEOID (12 characters; not a 15-character block ID despite the name) | Int64 |
+| `geoid_block` | 12-digit block-group GEOID in the 2010/2020 files; 11-digit tract GEOID in the 1990 file; unidentified encoding in the 2000 file. Never a 15-digit block ID; zero-pad before use (see Key Identifiers) | Int64 |
 | `census_region` | Census Bureau region (1-4, 9) | Int64 |
 | `census_division` | Census Bureau division (1-9) | Int64 |
 | `cbsa` | CBSA code (2000+ census files only) | Int64 |
 | `cbsa_type` | Metropolitan (1) or Micropolitan (2) | Int64 |
 | `cbsa_city` | Principal city indicator (0=No, 1=Yes; 2000+ only). See note below. | Int64 |
-| `geocode_accuracy` | Geocode match score, 0-100 (100 = perfect match; Esri geocoder score). The Portal codebook lists 1=High/2=Medium/3=Low/4=Did not geocode/-2=Not applicable, but Portal API values observed 2026-10-19 were 97-100 — check the observed range before filtering | Float64 |
+| `geocode_accuracy` | Geocode match score up to 100 (100 = perfect match; Esri geocoder score). The Portal codebook lists 1=High/2=Medium/3=Low/4=Did not geocode/-2=Not applicable, but the pinned mirror (probed 2026-10-27) holds scores of 4-100 in the school files (only 2 rows at or below 4; 805 nulls) and `-2` for every row in school years 2017-2023. Filter on the score, not on the 1-4 codes, and treat 2017 onward as unscored | Float64 |
 | `geocode_accuracy_detailed` | Geocode match type (1-12) | Int64 |
 | `class_code` | FIPS place class code | Int64 |
 | `lower_chamber_type` | State legislative district lower chamber type (1-8; census 2010 and census 2020 files). See `variable-catalog.md` for code mapping. | Int64 |
@@ -206,13 +206,13 @@ Colleges NHGIS datasets have 38 columns (2020 census). Different identifier set 
 | `opeid` | Office of Postsecondary Education ID | String |
 | `tract` | Census tract number | Int64 |
 | `block_group` | Block group number (1-9) | Int64 |
-| `geoid_block` | Block-group GEOID (12 characters; not a 15-character block ID despite the name) | Int64 |
+| `geoid_block` | 12-digit block-group GEOID in the 2010/2020 files; 11-digit tract GEOID in the 1990 file; unidentified encoding in the 2000 file. Never a 15-digit block ID; zero-pad before use (see Key Identifiers) | Int64 |
 | `census_region` | Census Bureau region (1-4, 9) | Int64 |
 | `census_division` | Census Bureau division (1-9) | Int64 |
 | `cbsa` | CBSA code | Int64 |
 | `cbsa_type` | Metropolitan (1) or Micropolitan (2) | Int64 |
 | `cbsa_city` | Principal city indicator (0=No, 1=Yes; 2000+ only) | Int64 |
-| `geocode_accuracy` | Geocode match score (Int64 in colleges, Float64 in schools) | Int64 |
+| `geocode_accuracy` | Geocode match score (Int64 in colleges, Float64 in schools); observed 61-100 in the college files, and `-2` for every row in college years 2018-2023 (pinned mirror, probed 2026-10-27) | Int64 |
 | `county_fips` | County FIPS code | Int64 |
 | `county_name` | County name | String |
 | `state_abbr` | State abbreviation | String |
@@ -221,7 +221,7 @@ Colleges NHGIS datasets have 38 columns (2020 census). Different identifier set 
 
 | Code | Meaning | When Used |
 |------|---------|-----------|
-| `-2` | Not applicable (codebook label) | `geocode_accuracy` field in Portal data; confirm against observed values |
+| `-2` | Not applicable (codebook label) | `geocode_accuracy` in Portal data: every row in college years 2018-2023 and school years 2017-2023, none earlier (pinned mirror, probed 2026-10-27) |
 | `-1` | Missing/not reported | General missing data indicator (e.g., `latitude`, `county_code`) |
 | `0` | Unassigned | `block_group` (rare, ~4 rows in schools) |
 | `null` | Not available | Variable not applicable to this record; many columns heavily null in early years |
@@ -300,6 +300,8 @@ recent <- df |> filter(year == 2023)
 | Schools vs colleges schema | Different column counts (47 vs 38 for 2020) and identifier sets | Check schema before joining; do not assume identical structures |
 | Census year schema drift | Earlier census files have fewer columns (e.g., 1990 lacks CBSA/legislative fields) | Check available columns per census year before relying on them |
 | geocode_accuracy type | Float64 in schools, Int64 in colleges | Cast to consistent type before cross-entity comparison |
+| Treating `geoid_block` as one ID type | Its form changes by census-vintage file: block-group GEOID (2010/2020), tract GEOID (1990), unidentified (2000); Int64, so leading zeros are lost | Zero-pad, and check the file's vintage before joining; do not join the 2000 file's `geoid_block` to block or block-group data |
+| Trusting 1990/2000 geo FIPS columns | Observed on the pinned mirror (Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27 over all rows with positive codes in all 8 files): in the 1990 files `state_fips_geo` is the state FIPS × 10 (Ohio = 390, Alabama = 10; 331,043 of 331,049 college rows and 3,627,315 of 3,627,352 school rows, against the same record's 2010-file value), while `county_fips_geo` is a correct 5-digit state+county code. In the 2000 files `state_fips_geo` is correct but `county_fips_geo` is not a county FIPS code (values 10-990, never 5-digit; about 70% equal 10 × the 3-digit county code, e.g. Ohio county 057 → 570). The 2010/2020 files are consistent | For state, use `fips` (or the leading digits of the 1990 `county_fips_geo`). For county in the 2000 files, use the 2010/2020 file of the same record, or `county_fips` (colleges) / `county_code` (schools), which mostly carry state+county codes (school `county_code` values start at 7, so check the width) but are not always populated (every checked row of the 2000 college file, about 61% of school rows; about a third of college rows in the other vintages) |
 | Using string codes | Portal data uses integer encodings, not string labels | Always verify codes against codebook (see encoding warning above) |
 
 ## Related Data Sources

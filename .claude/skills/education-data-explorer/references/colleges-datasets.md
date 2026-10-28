@@ -119,7 +119,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 ### IPEDS Completions by 2-digit CIP — `ipeds/colleges_ipeds_completions-2digcip_{year}`
 
 - **Type / years:** Yearly · 1991-2022, plus a **2023** v2-build addition (see caveat)
-- **Grain:** one row per `unitid` × `year` × `cipcode` (2-digit field) × `award_level` × `majornum` × `sex` × `race`.
+- **Grain:** one row per `unitid` × `year` × `cipcode` (2-digit field) × `award_level` × `majornum` × `sex` × `race`. On the pinned mirror (probed 2026-10-27, 1991 and 2023 shards) `cipcode` stores each 2-digit family as a 6-digit-style Int64 (CIP 11 → `110000`, CIP 01 → `10000`; `99` = all programs), so `cipcode == 11` matches no rows; a few first-professional programs carry full 6-digit codes (e.g. `220101`) outside their family row. Each award also appears in race, sex and total rows (`race == 99`, `sex == 99`; `majornum` 1 = first major), so sum total rows only (probed 2026-10-28; see the IPEDS skill's `completions-data.md`). PSEO uses the bare 2-digit code instead.
 - **Key variables:** `awards`, plus dimensions `cipcode`, `award_level`, `majornum`, `sex`, `race` (complete 9-var family: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_completions-2digcip_{year}`).
 - **Join keys:** `unitid` (+ `year`, `cipcode`, `award_level`).
 - **Caveats:** Yearly. `award_level` uses the full Portal scheme (`4` associate's, `7` bachelor's, `9` master's, `22/23` doctoral variants; codes `20/21` are the pre-2008 doctoral/first-professional labels) — see `variable-codes.md`. The **2023** shard (`ipeds/colleges_ipeds_completions-2digcip_2023`) exists as a mirror file in the v2 build but was not bridged to a Portal endpoint at vintage capture; treat it as present-but-unbridged.
@@ -129,7 +129,7 @@ IPEDS is the primary federal postsecondary source (~5,800 Title IV institutions,
 ### IPEDS Completions by 6-digit CIP — `ipeds/colleges_ipeds_completions-6digcip_{year}`
 
 - **Type / years:** Yearly · 1983-2023 (the 2023 shard is a v2-build addition; bridged shards run 1983-2022)
-- **Grain:** one row per `unitid` × `year` × `cipcode_6digit` (detailed program) × `award_level` × `majornum` × `sex` × `race`.
+- **Grain:** one row per `unitid` × `year` × `cipcode_6digit` (detailed program) × `award_level` × `majornum` × `sex` × `race`. `cipcode_6digit` is Int64 on the pinned mirror (2023 shard, probed 2026-10-27), so leading zeros drop (CIP 03.0101 → `30101`); zero-pad to 6 and insert the dot after the second digit (`30101` → `030101` → `03.0101`) before matching NCES CIP strings.
 - **Key variables:** `awards_6digit`, plus dimensions `cipcode_6digit`, `award_level`, `majornum`, `sex`, `race` (complete 9-var family: `variable-dictionary-ipeds.md` § `ipeds/colleges_ipeds_completions-6digcip_{year}`).
 - **Join keys:** `unitid` (+ `year`, `cipcode_6digit`, `award_level`).
 - **Caveats:** Yearly; the largest IPEDS family by row count (fine-grained program detail). The **2023** shard (`ipeds/colleges_ipeds_completions-6digcip_2023`) is a v2-build mirror file unbridged to a Portal endpoint at vintage capture. Use the 2-digit family when program granularity below CIP-2 is not needed.
@@ -426,7 +426,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 ### FSA Loans — `fsa/colleges_fsa_loans`
 
-- **Type / years:** Single-file · 1999-2021
+- **Type / years:** Single-file · 1999-2021 (rows; on the pinned mirror, probed 2026-10-27, disbursement volume sums to zero for both Direct and FFEL loans in 1999-2002, and FFEL disbursements are null in every row from 2010)
 - **Grain:** one row per `unitid` × `year` × `loan_type` (Direct/PLUS loan volume).
 - **Key variables:** `loan_type`, `loan_recipients_unitid`, `num_loans_originated_unitid`, `value_loans_originated_unitid`, `value_loan_disbursements_unitid`, `loan_recipients_opeid` (full 18-var list: `variable-dictionary-fsa.md` § `fsa/colleges_fsa_loans`).
 - **Join keys:** `unitid` and/or `opeid` (+ `year`, `loan_type`).
@@ -473,7 +473,7 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 - **Type / years:** Yearly · 2001-2021
 - **Grain:** one row per `unitid` × `year` × `pseo_cohort` × `degree_level` × `cipcode` × `years_after_grad` × `industry`/`census_division` (Census LEHD-linked graduate earnings). Each `pseo_cohort` repeats, with identical values, under every `year` in its span — de-duplicate before aggregating across years.
 - **Key variables:** `p25_earnings`, `p50_earnings`, `p75_earnings`, `employed_grads_count_e`, `total_grads_count`, `employed_instate_grads_count`, `degree_level`, `cipcode` (full 18-var family: `variable-dictionary-pseo.md` § `pseo/colleges_pseo_{year}`).
-- **Join keys:** `unitid` (+ `year`, `degree_level`, `cipcode`); `opeid`.
+- **Join keys:** `unitid` (+ `year`, `degree_level`, `cipcode`); `opeid`. On the pinned mirror (Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27), `opeid` is an 8-character String in the 2001-2018 shards but Int64 without leading zeros in the 2019-2021 shards (e.g. `365800` for `"00365800"`): cast to string and zero-pad to 8 before stacking shards or joining. PSEO `cipcode` is the bare 2-digit family code (Int64, e.g. `11`, plus `99`; values tabulated in the 2018 and 2021 shards only), while IPEDS `completions-2digcip` stores the family as a 6-digit-style integer (`110000`): map one to the other before joining the two (×10000, leaving `99`, is inferred from the two probes, not a tested join). IPEDS also carries a few full 6-digit codes (e.g. `220101`) beside and outside their family row; add them to the family before comparing totals (see the PSEO skill's `variable-definitions.md`).
 - **Caveats:** Yearly. Earnings are LEHD wage-record-based (broader universe than Scorecard's Title-IV-only earnings). **Partner-state coverage varies by release** — institutions in non-partner states are absent, and the covered set changes across vintages; do not treat missing institutions as zero. Earnings in 2022 dollars.
 - **Codebook:** `pseo/codebook_colleges_pseo`
 - **Portal endpoint(s):** `/college-university/pseo/earnings-and-flows/{year}/`
@@ -524,13 +524,13 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 
 ## NHGIS (Census Geography Linkage — Colleges)
 
-### NHGIS College Geography — `nhgis/colleges_nhgis_geog_{year}`
+### NHGIS College Geography — `nhgis/colleges_nhgis_geog_{census_vintage}`
 
-- **Type / years:** Yearly · file-year/linkage coverage 1980, 1984-2023 (census-geography vintages 1990-2020)
+- **Type / years:** four single-file census-geography vintages — `nhgis/colleges_nhgis_geog_1990`, `_2000`, `_2010`, `_2020` — each holding all file-years **1980, 1984-2023** (1981-1983 absent; observed on the pinned mirror, probed 2026-10-27). Choose the file by the census-geography boundaries you need, not by data year.
 - **Grain:** one row per `unitid` × `year` (institution geocoded to census geography).
 - **Key variables:** `county_fips`, `tract`, `block_group`, `geoid_block`, `census_region`, `census_division`, `cbsa`, `cbsa_name`, `puma`, `state_leg_district_upper`, `geo_latitude`, `geo_longitude` (full 39-var list: `variable-dictionary-nhgis.md` § `nhgis/colleges_nhgis_geog_{year}`).
-- **Join keys:** `unitid` (+ `year`) → downstream census-geography identifiers (`geoid_block` (12-char block-group GEOID), `tract`, `cbsa`).
-- **Caveats:** **geography linkage ONLY** — provides crosswalks from institutions to census tracts/block groups/CBSAs, not census demographics. To attach demographics, browse the public NHGIS Data Finder and submit an extract with a free IPUMS NHGIS account (retrieval concern, not discovery). Four Portal census-vintage routes (1990/2000/2010/2020) feed the one mirror family; pick the geography vintage matching the analysis.
+- **Join keys:** `unitid` (+ `year`) → downstream census-geography identifiers (`geoid_block`, `tract`, `cbsa`). `geoid_block` differs by census vintage (observed on Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27): the 12-digit block-group GEOID in the 2010/2020 files, the 11-digit tract GEOID in the 1990 file, and an unidentified encoding in the 2000 file (do not treat it as a block or block-group GEOID). It is Int64 in every file, so leading zeros are lost — zero-pad before use; it is never a 15-digit block GEOID.
+- **Caveats:** **geography linkage ONLY** — provides crosswalks from institutions to census tracts/block groups/CBSAs, not census demographics. To attach demographics, browse the public NHGIS Data Finder and submit an extract with a free IPUMS NHGIS account (retrieval concern, not discovery). Pick the geography vintage matching the analysis. In the 1990 and 2000 files the parsed geography columns are unreliable on the pinned mirror: 1990 `state_fips_geo` holds the state FIPS × 10 (Ohio = 390) and 2000 `county_fips_geo` is not a county FIPS code (values 10-990); use `fips`/`county_fips` or the 2010/2020 files instead. `geocode_accuracy` is a match score (61-100), not the codebook's 1-4 codes, and is `-2` for every row from 2018 on. See the NHGIS skill.
 - **Codebook:** `nhgis/codebook_colleges_nhgis_census1990` (also `_census2000`, `_census2010`, `_census2020` per geography vintage)
 - **Portal endpoint(s):** `/college-university/nhgis/census-1990/{year}/` (also `census-2000`, `census-2010`, `census-2020`)
 
@@ -541,9 +541,9 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 ### Campus Safety Hate Crimes — `csafety/colleges_csafety_hate_crimes`
 
 - **Type / years:** Single-file · 2005-2021
-- **Grain:** one row per `unitid` × `year` × `crime_type` × `bias` (hate-crime counts by location).
+- **Grain:** intended as one row per `unitid` × `year` × `crime_type` × `bias` (hate-crime counts by location), but **not unique in the pinned mirror file** (observed on Portal v0.26.1 / HF revision `0ad00ce0`, probed 2026-10-27). 5,994,330 of 15,230,698 rows are exact duplicates, with up to 128 copies of one key; duplicated keys rise about tenfold between 2008 (8,860) and 2009 (84,903). After dropping exact duplicates, 7,530 keys at 795 institutions still have 2-4 rows with differing counts (e.g., UC Riverside, unitid 110671, 2017-2020; its 2021 duplicates are all exact), and `opeid` and `inst_name` do not distinguish them. Drop exact duplicates; for the remaining multi-row keys the mirror cannot tell a second campus from a duplicated record, so inspect and decide (no default sum or max). See the Campus Safety skill's Common Pitfalls.
 - **Key variables:** `total_hate_crimes`, `on_campus_hate_crimes`, `residence_hall_hate_crimes`, `non_campus_hate_crimes`, `public_property_hate_crimes`, `crime_type`, `bias` (complete 14-var family: `variable-dictionary-csafety.md` § `csafety/colleges_csafety_hate_crimes`).
-- **Join keys:** `unitid` (+ `year`, `crime_type`, `bias`); `opeid`.
+- **Join keys:** `unitid` (+ `year`); `opeid`. `crime_type` and `bias` describe a row but do not make it unique (see Grain).
 - **Caveats:** the Portal mirror carries **hate crimes only** (2005-2021). Other Clery categories — primary offenses, VAWA offenses, arrests, disciplinary referrals, fire safety — are **not in the mirror** and require the Department of Education campus-safety source (ope.ed.gov) directly.
 - **Codebook:** `csafety/codebook_colleges_csafety_hate_crimes`
 - **Portal endpoint(s):** `/college-university/campus-crime/hate-crimes/{year}/`
@@ -564,4 +564,4 @@ Title IV aid volume at the institution level. All carry `unitid` and `opeid`; se
 | Graduate earnings | `pseo/colleges_pseo_{year}` (LEHD) or `scorecard/colleges_scorecard_earnings` (Title IV) | `unitid` + `year` (PSEO: each `pseo_cohort` repeats under every `year` in its span; de-duplicate before aggregating) |
 | Endowment wealth | `ipeds/colleges_ipeds_finance` (all inst.) or `nacubo/colleges_nacubo_endow` (~650) | `unitid` + `year` |
 | Athletics gender equity | `eada/colleges_eada_inst_characteristics` + `ipeds/colleges_ipeds_directory` (for sector) | `unitid` + `year` |
-| Link institutions to census geography | `nhgis/colleges_nhgis_geog_{year}` | `unitid` + `year` → `geoid_block` (12-char block-group GEOID)/`tract` |
+| Link institutions to census geography | `nhgis/colleges_nhgis_geog_{census_vintage}` | `unitid` + `year` → `geoid_block` (12-digit block-group GEOID in the 2010/2020 files, Int64 so zero-pad; not a block-group ID in the 1990/2000 files)/`tract` |

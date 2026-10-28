@@ -236,7 +236,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Funding & Conflicts of Interest (GUIDE-LLM G.1)
 
-`[RESEARCHER]` [Researcher must disclose: Funding sources for this research, approximate API costs incurred, and any relevant relationships with AI providers or other potential conflicts of interest.]
+`[RESEARCHER]` [Researcher must disclose: Funding sources for this research and any relevant relationships with AI providers or other potential conflicts of interest (GUIDE-LLM G.1). DAAF addition, not GUIDE-LLM G.1 text: also report approximate API costs incurred (nearest GUIDE-LLM item: the optional "Computational resources").]
 
 ---
 

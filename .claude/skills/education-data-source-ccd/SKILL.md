@@ -370,7 +370,7 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
 | `education-data-source-edfacts` | CCD nonfiscal data flows through EDFacts | Same underlying data |
-| `education-data-source-crdc` | Biennial; uses CCD school IDs | Need discipline, course access, equity data |
+| `education-data-source-crdc` | Often called biennial, but no odd/even-year rule (2020-21 and 2021-22 are consecutive collections); uses CCD school IDs | Need discipline, course access, equity data |
 | `education-data-source-saipe` | Uses CCD district IDs | Need poverty estimates (better than FRPL) |
 | `education-data-source-meps` | School-level poverty estimates | Need school-level poverty (better than FRPL) |
 | `education-data-source-ipeds` | Separate system for postsecondary | Need college/university data |

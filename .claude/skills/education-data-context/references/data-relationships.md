@@ -274,7 +274,7 @@ merged <- ipeds |> left_join(scorecard, by = "unitid", suffix = c("", "_scorecar
 | CCD | EDFacts | Generally aligned |
 | IPEDS | Scorecard | Cohort definitions differ |
 
-### CRDC Biennial Alignment
+### CRDC Year Alignment
 
 ```python
 # CRDC available years (most topics): 2011, 2013, 2015, 2017, 2020, 2021

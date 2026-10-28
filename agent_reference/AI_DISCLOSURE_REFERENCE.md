@@ -190,15 +190,15 @@ For researchers writing up DAAF-assisted work for publication, the following boi
 
 ## Journal-Specific Considerations
 
-AI disclosure requirements vary across journals and are evolving rapidly. The following is general guidance as of early 2026:
+AI disclosure requirements vary across journals and are evolving rapidly. The following is general guidance, last checked on 2026-10-27 against Nature's live page and Wayback captures of the APA (2026-10-14) and PNAS (2026-07-31) policy pages (Science could not be fetched):
 
 | Context | Typical Requirement | DAAF Coverage |
 |---|---|---|
 | **APA journals** | Disclose AI use in methods; AI cannot be listed as author | Full Pipeline disclosure section covers this; ensure researcher is sole author |
-| **Nature portfolio** | Disclose AI use in methods and/or acknowledgments; AI cannot be listed as author | Methods boilerplate + GUIDE-LLM checklist as supplement |
-| **Science** | Disclose AI use; no AI authorship | Methods boilerplate covers this |
+| **Nature portfolio** | Risk-tier policy: disclose AI use for transparency, and AI that influences methods or interpretation is permitted only with human oversight and disclosure; assigning authorship or accountability to AI is not permitted | Methods boilerplate + GUIDE-LLM checklist as supplement |
+| **Science** | Disclose AI use; no AI authorship (not re-verified: science.org blocks automated fetches; confirm on the live page) | Methods boilerplate covers this |
 | **PNAS** | Disclose AI use in methods | Methods boilerplate covers this |
-| **Funder requirements** | Varies — increasingly requiring AI disclosure | GUIDE-LLM checklist as supplement is broadly acceptable |
+| **Funder requirements** | Varies — increasingly requiring AI disclosure | DAAF judgment: a GUIDE-LLM checklist supplement is a reasonable default; confirm each funder's own rules |
 | **Preprint servers** | Generally no strict requirement, but disclosure is best practice | Include at minimum the short methods boilerplate |
 
 **General best practice:** Include the completed GUIDE-LLM checklist as supplementary material regardless of journal requirements. This future-proofs the submission against evolving standards and signals methodological rigor.

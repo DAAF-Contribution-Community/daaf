@@ -269,32 +269,34 @@ CIP codes are updated periodically:
 DHS designates STEM fields for OPT purposes. Common STEM 2-digit CIPs:
 
 ```python
-# 2-digit values; Portal `cipcode` may hold 6-digit-style values (110000) — tabulate before filtering (unverified)
+# Portal 2-digit `cipcode` stores each family as a 6-digit-style integer (CIP 11 -> 110000, CIP 01 -> 10000);
+# bare 2-digit values match no rows (observed on the pinned mirror vintage, Portal v0.26.1: 1991 and 2023 shards)
 stem_cips = [
-    1,   # Agriculture (some)
-    3,   # Natural Resources
-    11,  # Computer Science
-    14,  # Engineering
-    15,  # Engineering Tech
-    26,  # Biology
-    27,  # Math
-    40,  # Physical Sciences
-    41,  # Science Tech
+    10000,   # Agriculture (some)
+    30000,   # Natural Resources
+    110000,  # Computer Science
+    140000,  # Engineering
+    150000,  # Engineering Tech
+    260000,  # Biology
+    270000,  # Math
+    400000,  # Physical Sciences
+    410000,  # Science Tech
 ]
 ```
 
 ```r
-# 2-digit values; Portal `cipcode` may hold 6-digit-style values (110000) — tabulate before filtering (unverified)
+# Portal 2-digit `cipcode` stores each family as a 6-digit-style integer (CIP 11 -> 110000, CIP 01 -> 10000);
+# bare 2-digit values match no rows (observed on the pinned mirror vintage, Portal v0.26.1: 1991 and 2023 shards)
 stem_cips <- c(
-    1,   # Agriculture (some)
-    3,   # Natural Resources
-    11,  # Computer Science
-    14,  # Engineering
-    15,  # Engineering Tech
-    26,  # Biology
-    27,  # Math
-    40,  # Physical Sciences
-    41   # Science Tech
+    10000,   # Agriculture (some)
+    30000,   # Natural Resources
+    110000,  # Computer Science
+    140000,  # Engineering
+    150000,  # Engineering Tech
+    260000,  # Biology
+    270000,  # Math
+    400000,  # Physical Sciences
+    410000   # Science Tech
 )
 ```
 
@@ -307,18 +309,22 @@ Completions are reported by:
 - Gender (men, women)
 
 ```python
-# Demographic breakdown
-completions_by_race = df.group_by(["cipcode", "race"]).agg(pl.col("awards").sum())
-completions_by_gender = df.group_by(["cipcode", "sex"]).agg(pl.col("awards").sum())
+# Demographic breakdown: hold the other dimension at its total (99) and count first majors once;
+# the race == 99 / sex == 99 groups in each result are the totals, not an extra category
+completions_by_race = df.filter((pl.col("sex") == 99) & (pl.col("majornum") == 1)).group_by(["cipcode", "race"]).agg(pl.col("awards").sum())
+completions_by_gender = df.filter((pl.col("race") == 99) & (pl.col("majornum") == 1)).group_by(["cipcode", "sex"]).agg(pl.col("awards").sum())
 ```
 
 ```r
 library(dplyr)
 
-# Demographic breakdown
-completions_by_race <- df |> group_by(cipcode, race) |> summarise(awards = sum(awards), .groups = "drop")
-completions_by_gender <- df |> group_by(cipcode, sex) |> summarise(awards = sum(awards), .groups = "drop")
+# Demographic breakdown: hold the other dimension at its total (99) and count first majors once;
+# the race == 99 / sex == 99 groups in each result are the totals, not an extra category
+completions_by_race <- df |> filter(sex == 99, majornum == 1) |> group_by(cipcode, race) |> summarise(awards = sum(awards), .groups = "drop")
+completions_by_gender <- df |> filter(race == 99, majornum == 1) |> group_by(cipcode, sex) |> summarise(awards = sum(awards), .groups = "drop")
 ```
+
+> **Total rows (observed on the pinned mirror vintage, Portal v0.26.1, `completions-2digcip` 1991 and 2023 shards, probed 2026-10-28):** each award appears in a full race × sex cross plus `race == 99` and `sex == 99` total rows, so an unfiltered sum counts it several times. `majornum` has no total code: it is always 1 in 1991, and 1 or 2 in 2023, where every second-major total row has a first-major total row beside it. Neither shard has an `award_level` 99 row. Where sex rows exist, they add up to the `sex == 99` total in both shards, and the race rows do in 2023; in 1991 the race rows do not always (1,438 of 58,710 keys differ; race codes 6 and 7 are absent), and 11,424 of the 70,134 total rows have no race or sex rows at all, so take totals from the 99 rows. Maintainer-only run log, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-28_mB2_ipeds_completions_totals_probe_a.py`.
 
 ### Race/Ethnicity Categories (Portal Integer Encoding)
 
@@ -397,25 +403,26 @@ online_only <- completions |> filter(distance_ed == 1) |> summarise(total = sum(
 Estimate graduates entering workforce:
 
 ```python
-# 2-digit CIP column is `cipcode`; codebook labels use 6-digit-style values (110000 = Computer and information sciences) — tabulate `cipcode` before filtering (11 vs 110000 unverified)
-# CS graduates available
-cs_grads = completions.filter(
-    pl.col("cipcode") == 11
-).select(pl.col("awards").sum())
+# 2-digit CIP column is `cipcode`, stored as a 6-digit-style integer (110000 = Computer and information sciences);
+# `cipcode == 11` matches no rows (observed on the pinned mirror vintage).
+# race == 99 and sex == 99 are the total rows; majornum == 1 counts first majors once (2 = second majors).
+# Summing every 110000 row counts each award about 4 times (observed, 1991 and 2023 shards).
+cs_total = (pl.col("cipcode") == 110000) & (pl.col("race") == 99) & (pl.col("sex") == 99) & (pl.col("majornum") == 1)
+cs_grads = completions.filter(cs_total).select(pl.col("awards").sum())
 
 # By degree level
-cs_by_level = completions.filter(
-    pl.col("cipcode") == 11
-).group_by("award_level").agg(pl.col("awards").sum())
+cs_by_level = completions.filter(cs_total).group_by("award_level").agg(pl.col("awards").sum())
 ```
 
 ```r
-# 2-digit CIP column is `cipcode`; codebook labels use 6-digit-style values (110000 = Computer and information sciences) — tabulate `cipcode` before filtering (11 vs 110000 unverified)
-# CS graduates available
-cs_grads <- completions |> filter(cipcode == 11) |> summarise(total = sum(awards))
+# 2-digit CIP column is `cipcode`, stored as a 6-digit-style integer (110000 = Computer and information sciences);
+# `cipcode == 11` matches no rows (observed on the pinned mirror vintage).
+# race == 99 and sex == 99 are the total rows; majornum == 1 counts first majors once (2 = second majors).
+# Summing every 110000 row counts each award about 4 times (observed, 1991 and 2023 shards).
+cs_grads <- completions |> filter(cipcode == 110000, race == 99, sex == 99, majornum == 1) |> summarise(total = sum(awards))
 
 # By degree level
-cs_by_level <- completions |> filter(cipcode == 11) |> group_by(award_level) |> summarise(total = sum(awards))
+cs_by_level <- completions |> filter(cipcode == 110000, race == 99, sex == 99, majornum == 1) |> group_by(award_level) |> summarise(total = sum(awards))
 ```
 
 ### Program Growth Analysis
@@ -423,8 +430,10 @@ cs_by_level <- completions |> filter(cipcode == 11) |> group_by(award_level) |> 
 Track field trends over time:
 
 ```python
-# Year-over-year change
-field_trend = completions.group_by(["year", "cipcode"]).agg(
+# Year-over-year change (total rows only: race == 99, sex == 99, first majors; see "Total rows" above)
+field_trend = completions.filter(
+    (pl.col("race") == 99) & (pl.col("sex") == 99) & (pl.col("majornum") == 1)
+).group_by(["year", "cipcode"]).agg(
     pl.col("awards").sum().alias("total")
 ).sort(["cipcode", "year"])
 
@@ -437,8 +446,9 @@ field_trend = field_trend.with_columns(
 ```r
 library(dplyr)
 
-# Year-over-year change
+# Year-over-year change (total rows only: race == 99, sex == 99, first majors; see "Total rows" above)
 field_trend <- completions |>
+  filter(race == 99, sex == 99, majornum == 1) |>
   group_by(year, cipcode) |>
   summarise(total = sum(awards), .groups = "drop") |>
   arrange(cipcode, year)
@@ -458,10 +468,11 @@ Analyze representation:
 import polars as pl
 
 # Percent women in engineering (sex=2 is Female in Portal integer encoding)
-# `cipcode` value coding (14 vs 140000) unverified — tabulate `cipcode` before filtering
+# Engineering family is `cipcode` 140000 (6-digit-style integer; `== 14` matches no rows on the pinned mirror vintage)
 eng_by_gender = completions.filter(
-    (pl.col("cipcode") == 14) &
-    (pl.col("race") == 99)  # Total across races
+    (pl.col("cipcode") == 140000) &
+    (pl.col("race") == 99) &  # Total across races
+    (pl.col("majornum") == 1)  # First majors once (2 = second majors)
 ).group_by("sex").agg(pl.col("awards").sum())
 
 female_awards = eng_by_gender.filter(pl.col("sex") == 2)["awards"][0]
@@ -473,9 +484,9 @@ pct_women = female_awards / total_awards * 100
 library(dplyr)
 
 # Percent women in engineering (sex=2 is Female in Portal integer encoding)
-# `cipcode` value coding (14 vs 140000) unverified — tabulate `cipcode` before filtering
+# Engineering family is `cipcode` 140000 (6-digit-style integer; `== 14` matches no rows on the pinned mirror vintage)
 eng_by_gender <- completions |>
-  filter(cipcode == 14, race == 99) |>
+  filter(cipcode == 140000, race == 99, majornum == 1) |>
   group_by(sex) |>
   summarise(awards = sum(awards), .groups = "drop")
 
@@ -489,18 +500,21 @@ pct_women <- female_awards / total_awards * 100
 Understand institutional focus:
 
 ```python
-# Programs by field at institution
+# Programs by field at institution (total rows only: race == 99, sex == 99, first majors;
+# cipcode 99 is the all-programs row, excluded so it does not rank first)
 inst_mix = completions.filter(
-    pl.col("unitid") == 110635
+    (pl.col("unitid") == 110635) & (pl.col("race") == 99) & (pl.col("sex") == 99) & (pl.col("majornum") == 1)
+    & (pl.col("cipcode") != 99)
 ).group_by("cipcode").agg(
     pl.col("awards").sum().alias("completions")
 ).sort("completions", descending=True)
 ```
 
 ```r
-# Programs by field at institution
+# Programs by field at institution (total rows only: race == 99, sex == 99, first majors;
+# cipcode 99 is the all-programs row, excluded so it does not rank first)
 inst_mix <- completions |>
-  filter(unitid == 110635) |>
+  filter(unitid == 110635, race == 99, sex == 99, majornum == 1, cipcode != 99) |>
   group_by(cipcode) |>
   summarise(completions = sum(awards), .groups = "drop") |>
   arrange(desc(completions))
@@ -582,7 +596,7 @@ The `completions-2digcip` (yearly) dataset contains disaggregated rows by race, 
 |-----------------|-------------|
 | `unitid` | Institution identifier |
 | `year` | Data year (inferred: academic year ending in `year`; see SKILL.md § Year Field Meanings) |
-| `cipcode` | CIP code (2-digit family, integer; values may be 6-digit-style, e.g. 110000 — unverified, tabulate before filtering) |
+| `cipcode` | 2-digit CIP family stored as a 6-digit-style integer (110000 = CIP 11; 10000 = CIP 01; 99 = all programs); a few first-professional programs carry their full 6-digit code (e.g. 220101 Law, 511201 Medicine), outside their family row (`99` equals the family rows plus these rows). Observed on the pinned mirror vintage (Portal v0.26.1), 1991 and 2023 shards |
 | `award_level` | Award level code (Portal codes 1-9, 20-24, 30-33, 99; see Award Levels) |
 | `majornum` | Major number (1=first major, 2=second major) |
 | `awards` | Count of awards conferred |
@@ -600,7 +614,7 @@ The following variable names appear in NCES documentation and raw IPEDS data fil
 |-----------|-------------------|-------|
 | `AWLEVEL` | `award_level` | Different code sets — see Award Levels above (e.g., bachelor's = NCES 5, Portal 7) |
 | `CTOTALT` | `awards` (filtered to totals) | Portal uses disaggregated rows |
-| `CIPCODE` | `cipcode` | Same name, but 2-digit vs 6-digit depends on dataset |
+| `CIPCODE` | `cipcode` | Same name, but 2-digit vs 6-digit depends on dataset. Both Portal columns are integers: the 6-digit file's `cipcode_6digit` drops the leading zero (CIP 03.0101 is `30101`), so zero-pad to 6 and insert the dot after the second digit (`30101` → `030101` → `03.0101`) before matching NCES CIP strings |
 | `MAJORNUM` | `majornum` | Same concept |
 
 ### Completers Dataset

@@ -13,7 +13,7 @@ metadata:
 
 Civil Rights Data Collection (CRDC) — mandatory OCR collection measuring educational opportunity and civil rights compliance in U.S. public schools. Portal dataset families have topic-specific coverage, with year labels from 2011 through 2023; a Portal `year` is the fall (starting) year of the school year, so 2020 = 2020-21. Use them for school discipline disparities, course access equity, harassment, restraint/seclusion, or chronic absenteeism by race, sex, disability, and English learner status. OCR documents every collection since 2011-12 as a universe collection (the 2013-14 collection covered 16,758 districts and 95,507 schools). The 2020-21 collection (Portal year 2020) is COVID-impacted and not directly comparable to ordinary years.
 
-The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
+The Civil Rights Data Collection is a mandatory survey of all U.S. public schools, often described as biennial but with no odd/even-year rule (2020-21 and 2021-22 are consecutive collections; see Cadence and year labels below), measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
 
 > **CRITICAL: Value Encoding**
 >

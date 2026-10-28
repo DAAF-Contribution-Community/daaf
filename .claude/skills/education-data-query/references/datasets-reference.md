@@ -245,10 +245,10 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Census 1990 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_1990` | `nhgis/codebook_colleges_nhgis_census1990` |
-| Census 2000 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2000` | `nhgis/codebook_colleges_nhgis_census2000` |
-| Census 2010 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2010` | `nhgis/codebook_colleges_nhgis_census2010` |
-| Census 2020 | Single | 1980-2023 | `nhgis/colleges_nhgis_geog_2020` | `nhgis/codebook_colleges_nhgis_census2020` |
+| Census 1990 | Single | 1980, 1984-2023 | `nhgis/colleges_nhgis_geog_1990` | `nhgis/codebook_colleges_nhgis_census1990` |
+| Census 2000 | Single | 1980, 1984-2023 | `nhgis/colleges_nhgis_geog_2000` | `nhgis/codebook_colleges_nhgis_census2000` |
+| Census 2010 | Single | 1980, 1984-2023 | `nhgis/colleges_nhgis_geog_2010` | `nhgis/codebook_colleges_nhgis_census2010` |
+| Census 2020 | Single | 1980, 1984-2023 | `nhgis/colleges_nhgis_geog_2020` | `nhgis/codebook_colleges_nhgis_census2020` |
 
 ### NCCS (Nonprofit 990 Data)
 
@@ -265,6 +265,8 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Campus-Based Volume | Single | 2001-2021 | `fsa/colleges_fsa_campus_based_volume` | `fsa/codebook_colleges_fsa_campus_based_volume` |
 | Financial Responsibility | Single | 2006-2016 | `fsa/colleges_fsa_composite_scores` | `fsa/codebook_colleges_fsa_financial_responsibility` |
 | 90/10 Revenue | Single | 2014-2021 | `fsa/colleges_fsa_90_10_revenue_percentages` | `fsa/codebook_colleges_fsa_90-10_revenue_percentages` |
+
+> **FSA Loans coverage note:** "1999-2021" is row presence. On the pinned mirror (probed 2026-10-27), Direct and FFEL disbursement volume sums to zero in 1999-2002, and FFEL disbursements are null in every row from 2010; see `education-data-source-fsa/references/data-quality.md`.
 
 > **FSA naming note:** The Financial Responsibility dataset uses `composite_scores` in its data path but `financial_responsibility` in its codebook path. The 90/10 Revenue dataset uses underscores (`90_10`) in the data path but hyphens (`90-10`) in the codebook path. Always use the exact paths shown above.
 

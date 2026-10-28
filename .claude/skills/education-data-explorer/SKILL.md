@@ -108,7 +108,7 @@ Verified ranges from the endpoint-file bridge and route reconciliation. Non-cont
 |-------------------------|----------|------|
 | CCD directory / enrollment | 1986-2024 | Annual |
 | CCD district finance | 1991, 1994-2020 | Non-contiguous early years |
-| CRDC (most topics) | 2011, 2013, 2015, 2017, 2020, 2021 | Biennial; chronic-absenteeism reaches 2022 |
+| CRDC (most topics) | 2011, 2013, 2015, 2017, 2020, 2021 | Often called biennial, but no odd/even rule (2020 and 2021 are consecutive); chronic-absenteeism reaches 2022 |
 | EDFacts assessments | 2009-2018, 2020 | 2019 absent (COVID testing waivers) |
 | EDFacts grad rates | 2010-2019 | — |
 | IPEDS directory / inst-characteristics | 1980, 1984-2024 | — |
