@@ -616,7 +616,7 @@
 # 07_faq_technical.md, "Can I use my ChatGPT subscription instead of an OpenAI API key?"):
 #   1. CONFIRM CODEX. The pinned Codex CLI ships in every DAAF image; DAAF_DEV=1
 #      is NOT required merely to obtain it or log in. Verify inside the container
-#      with `codex --version` (expect 0.153.2; 0.153.1 is the minimum that lists
+#      with `codex --version` (expect 0.164.0; 0.153.1 is the minimum that lists
 #      gpt-6-astra). If the command is missing, update
 #      DAAF and rebuild the image (rebuild_daaf.sh / rebuild_daaf.ps1) so the host
 #      build uses the current Dockerfile.
@@ -885,7 +885,7 @@
 # form (Elicit has no keyless mode); Crossref, ERIC and Unpaywall never need
 # a key. Keys are sent only in request headers and are never printed.
 #
-# OpenAlex -- STRONGLY RECOMMENDED. Free key: https://openalex.org/settings/api
+# OpenAlex -- STRONGLY RECOMMENDED. Free key: https://openalex.org/settings/api-key
 # A free key gives a $1/day usage budget (about 1,000 searches; lookups by DOI
 # are free). Without a key the budget is $0.10/day.
 # --- To activate, remove the leading '#': ---
@@ -893,7 +893,8 @@
 #
 # Semantic Scholar -- optional, free. Request a key:
 # https://www.semanticscholar.org/product/api#api-key-form
-# Without a key, requests share a public pool that is heavily throttled.
+# Without a key, requests share a pool with all unauthenticated users, which
+# S2 may throttle further under heavy use.
 # --- To activate, remove the leading '#': ---
 #SEMANTIC_SCHOLAR_API_KEY=your_s2_key_here
 #
@@ -914,7 +915,7 @@
 # reports. Reports draw on your plan's usage and run only with --confirm-spend.
 # Elicit outputs are stored in restricted/ and never shared, and must be
 # deleted within 30 days if your API access ends (Elicit's terms). Create a
-# key: https://elicit.com/developer
+# key in your Elicit account settings: https://elicit.com/settings
 # --- To activate, remove the leading '#': ---
 #ELICIT_API_KEY=your_elicit_key_here
 #
