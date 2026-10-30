@@ -719,6 +719,31 @@ import pdf_text_common as ptc  # noqa: E402
 # rule_versions gains vision_scope (VISION_SCOPE_VERSION, "vision-scope-v1"):
 # a card_check made before the rule has no such key, as parts 2 and 3 marked
 # theirs with ladder-v3/-v4 and numbers-v6. Card and result schemas unchanged.
+# 1.8.0, part 6 (2026-10-30, user decision): the vision-validated list
+# vision-list-2026-10-30, after the same table-transcription probe (same 29
+# images at 2000 px, same pass bar) was run on 2026-10-28 on the
+# chatgpt-subscription route through DAAF's provider shim (1.4.13, as
+# recorded from each batch's preflight check) and scored on 2026-10-30.
+# gpt-6-sol, gpt-6.1-sol and gpt-6-astra passed: 3 of 3 runs each, every run
+# 381/381 synthetic and 1,081/1,081 real cells exact, 0 sign errors, 0
+# decimal shifts, 0 invented numbers; an independent recount of the numbers
+# per image agreed on all 18 runs. Their model IDs are the transcripts'
+# .message.model, which over the shim is the requested model name echoed
+# back, not the provider's own report of the serving model.
+# gpt-6-luna failed (runs 2 and 3 wrote the next image's table, a real
+# paper's page, into the file for the synthetic page they were given:
+# synthetic 89.50% exact, 24 of that table's 30 numbers counted as invented,
+# the other 6 matched numbers printed elsewhere on the synthetic page) and is
+# not listed. On the probe's damaged 1973 scan (unscored, outside every row's
+# scope) Claude and GPT runs alike sometimes wrote a number where the print
+# is unreadable. Each passing model also gets an openai-api row, listed by
+# inference: the user decided on 2026-10-30 to "assume parity with API for
+# now" (not probed on that route). OpenRouter is not covered (not probed).
+# The ten vision-list-2026-10-28 rows carry over unchanged (16 rows in all),
+# with the same scope (table pages without a `scanned` or
+# `ocr_layer_suspected` flag). vision-list-2026-10-19 and -10-28 are kept, so
+# a card read under either keeps its meaning. A data change, as part 4: no
+# status, rule version, card or result schema changes; selftest unchanged.
 TOOL_VERSION = "1.8.0-daaf"
 
 EXIT_CODES = {
@@ -893,7 +918,11 @@ OCR_LAYER_PAPER_CAP_PAGES = 2
 #   mostly one image) and figure/chart pages (class normal) are outside the
 #   limit too but are not flagged: the orchestrator checks them by hand
 #   (vision-validation.md § Gating, step 5), as it does route and identity.
-VISION_LIST_VERSION = "vision-list-2026-10-28"
+# ASSUMES (1.8.0 part 6): the key is the bare model ID as the reader writes
+#   reader_model (no [1m], no provider prefix). Over the GPT shim that ID is
+#   the requested model name the shim echoes back, safe to key on but not
+#   independent proof of the serving model (the orchestrator audit's caveat).
+VISION_LIST_VERSION = "vision-list-2026-10-30"
 VISION_VALIDATED_LISTS = {
     # 2026-10-19: created empty (no probe run yet).
     "vision-list-2026-10-19": (),
@@ -909,6 +938,23 @@ VISION_VALIDATED_LISTS = {
         ("claude-sonnet-5-5", "anthropic-subscription"), ("claude-sonnet-5-5", "anthropic-api"),
         ("claude-fable-5-1", "anthropic-subscription"), ("claude-fable-5-1", "anthropic-api"),
         ("claude-fable-5", "anthropic-subscription"), ("claude-fable-5", "anthropic-api"),
+    ),
+    # 2026-10-30. The ten 2026-10-28 rows, unchanged, plus: probed on
+    #   chatgpt-subscription (DAAF's provider shim) and passed (3 of 3 runs,
+    #   every cell exact): gpt-6-sol, gpt-6.1-sol, gpt-6-astra; IDs
+    #   transcript-derived (the shim's echo of the requested name). Every
+    #   openai-api row is inference (parity assumed by user decision
+    #   2026-10-30; not probed on that route). gpt-6-luna failed the probe and
+    #   is not listed; no OpenRouter rows (not probed).
+    "vision-list-2026-10-30": (
+        ("claude-opus-5-5", "anthropic-subscription"), ("claude-opus-5-5", "anthropic-api"),
+        ("claude-sonnet-5", "anthropic-subscription"), ("claude-sonnet-5", "anthropic-api"),
+        ("claude-sonnet-5-5", "anthropic-subscription"), ("claude-sonnet-5-5", "anthropic-api"),
+        ("claude-fable-5-1", "anthropic-subscription"), ("claude-fable-5-1", "anthropic-api"),
+        ("claude-fable-5", "anthropic-subscription"), ("claude-fable-5", "anthropic-api"),
+        ("gpt-6-sol", "chatgpt-subscription"), ("gpt-6-sol", "openai-api"),
+        ("gpt-6.1-sol", "chatgpt-subscription"), ("gpt-6.1-sol", "openai-api"),
+        ("gpt-6-astra", "chatgpt-subscription"), ("gpt-6-astra", "openai-api"),
     ),
 }
 
@@ -3414,7 +3460,11 @@ def selftest_cases(src):
         ("sign-shaped dash added by the quote", "Q", q_cov, [q6], False, "NEEDS_REVIEW", 0, "QUOTE_NUMBERS_DIFFER",
          "claim_quote"),
         # 1.8.0 part 5: a listed reader's vision reading on paper B's OCR-layer
-        #   page (re-derived from the synthetic source): review, not PARTIAL
+        #   page (re-derived from the synthetic source): review, not PARTIAL.
+        #   1.8.0 part 6: kept on vision-list-2026-10-28 on purpose (an older
+        #   version a card may still carry; versions are never removed), so the
+        #   selftest also shows an older list still checks. The unit tests
+        #   cover the current version.
         ("listed reader's vision reading on a scan page", "B", b_cov, [dict(b2, claim_id="V1", source="both")], True,
          "NEEDS_REVIEW", 0, "VISION_ON_SCAN_PAGE", "vision",
          {"reader": ("claude-opus-5-5", "vision-list-2026-10-28")}),

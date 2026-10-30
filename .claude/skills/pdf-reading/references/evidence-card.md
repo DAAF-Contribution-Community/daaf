@@ -724,9 +724,11 @@ With `vision_mode: "off"` or `vision_validated: false`, every claim with
 
 **Fail-closed on the list (1.6.0).** `lit_verify` embeds the vision-validated
 list (`VISION_VALIDATED_LISTS`, one entry per `vision_list_version`; the
-current `vision-list-2026-10-28` holds five model IDs on the two Anthropic
-routes, and `vision-list-2026-10-19`, empty, is kept so older cards stay
-interpretable) and records it in `card_check`
+current `vision-list-2026-10-30` holds eight model IDs, five on the two
+Anthropic routes and three GPT models on the two GPT shim routes, and the
+older `vision-list-2026-10-19` (empty) and `vision-list-2026-10-28` (the five
+Anthropic models) are kept so older cards stay interpretable) and records it
+in `card_check`
 `constants`. `vision_validated: true` for a `reader_model` that is not on the
 entry for the card's `vision_list_version`, or for a list version the tool
 does not know, is `VISION_NOT_ON_LIST` (fail), and vision then counts as
@@ -1101,7 +1103,7 @@ is verdict PARTIAL, `FULL_TEXT_PARTIAL`. A minimal block:
 {"schema_version": "lit-verify-card-v1", "paper_key": "user_00000001",
  "source_pdf_sha256": "<64 hex from ingest_manifest source.sha256>",
  "reader_model": "claude-opus-5-5", "vision_mode": "auto",
- "vision_validated": true, "vision_list_version": "vision-list-2026-10-28",
+ "vision_validated": true, "vision_list_version": "vision-list-2026-10-30",
  "coverage": [{"page": 1, "anchors": ["<a verbatim, distinctive sentence from page 1>"],
                "summary": "one line"}],
  "claims": [{"claim_id": "C1", "page": 1, "quote": "<verbatim sentence>",
@@ -1131,7 +1133,7 @@ unit (PASS_CONVERSION_ERROR). Expected: verdict PARTIAL,
 {"schema_version": "lit-verify-card-v2", "paper_key": "user_00000002",
  "anchor_kind": "arxiv_html", "source_sha256": "<64 hex: ingest_manifest source.sha256>",
  "source_version": "v4", "reader_model": "claude-opus-5-5", "vision_mode": "off",
- "vision_validated": false, "vision_list_version": "vision-list-2026-10-28",
+ "vision_validated": false, "vision_list_version": "vision-list-2026-10-30",
  "coverage": [{"section": "front", "anchors": ["<a verbatim, distinctive sentence>"],
                "summary": "title and abstract"}],
  "claims": [{"claim_id": "C1", "section": "3.2", "quote": "<verbatim sentence>",

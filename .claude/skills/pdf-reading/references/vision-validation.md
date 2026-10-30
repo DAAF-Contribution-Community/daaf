@@ -142,11 +142,13 @@ the reader writes `?` for digits it cannot read, labels the reading as an
 unvalidated reading of a scan, logs every disagreement and reports it; the
 orchestrator settles the review items (step 5 above). The
 embedded copy is `VISION_LIST_VERSION` and `VISION_VALIDATED_LISTS` in
-`scripts/lit_verify.py` (since 1.8.0 part 4: two versions,
-`vision-list-2026-10-19` with no rows, kept so older cards stay
-interpretable, and the current `vision-list-2026-10-28` with ten rows, five
-model IDs on the two Anthropic routes), recorded in every `card_check` under
-`constants`, so a check result shows which list it was judged against.
+`scripts/lit_verify.py` (since 1.8.0 part 6: three versions,
+`vision-list-2026-10-19` with no rows and `vision-list-2026-10-28` with ten
+rows, five model IDs on the two Anthropic routes, both kept so older cards
+stay interpretable, and the current `vision-list-2026-10-30` with sixteen
+rows: those ten plus three GPT model IDs on the two GPT shim routes),
+recorded in every `card_check` under `constants`, so a check result shows
+which list it was judged against.
 
 ## Routes
 
@@ -169,8 +171,14 @@ vision use, and the resolution and page choice are not ours. Use
 
 The shim session recommends keeping shim-routed GPT models `vision:
 unavailable` until the table probe below passes on that route: a downscale
-over the shim is silent, so only a passed probe shows fidelity. If a shim
-change alters image handling, re-run the probe after it.
+over the shim is silent, so only a passed probe shows fidelity. The probe
+passed on `chatgpt-subscription` for `gpt-6-sol`, `gpt-6.1-sol` and
+`gpt-6-astra` (§ The validation probe). The `openai-api` rows for the same
+models were not probed: the user decided on 2026-10-30 to assume parity with
+the subscription route, so they are labelled inference. They rest on that
+decision, not on a probe: the earlier plan, a parity probe of one GPT model
+on `openai-api`, has not been run. If a shim change alters image handling,
+re-run the probe after it.
 
 ## Cost
 
@@ -185,7 +193,10 @@ expensive mode. A 300-DPI crop is smaller than a full page.
 ## The validation probe (run 2026-10-28)
 
 The thresholds were approved by the user on 2026-10-13. The probe ran on
-2026-10-28 on the `anthropic-subscription` route, with this design:
+2026-10-28 on the `anthropic-subscription` route (Claude models) and, with
+the same images, prompt and pass bar, on the `chatgpt-subscription` route
+(GPT models, through DAAF's provider shim; scored 2026-10-30), with this
+design:
 
 1. **Synthetic fixtures**: 13 table pages typeset with typst from a seeded
    table, 381 numeric cells in all. They cover U+2212 and ASCII minus, SEs
@@ -208,7 +219,9 @@ The thresholds were approved by the user on 2026-10-13. The probe ran on
    2000 px on the long side (`pdftoppm -png -scale-to 2000`). No 300-DPI
    crops were used, so crops are outside what was measured. The
    transcribers saw only the images, never a text layer. No effort setting
-   was passed in the probe dispatches (Claude Code's default).
+   was passed in the probe dispatches (Claude Code's default). Over the
+   shim, the reasoning effort was the shim's configured default, "high",
+   not verified per request.
 4. **Prompt**: transcribe every table to TSV, verbatim, no inference, `?`
    for a cell that cannot be read.
 5. **Scorer**: a captured script (`run_with_capture.sh`) that runs a
@@ -220,10 +233,15 @@ The thresholds were approved by the user on 2026-10-13. The probe ran on
 6. **Promotion rule**: 3 independent runs, every one meeting **all** of:
    ≥ 99.5% numeric exact match overall; 0 sign errors; 0 decimal shifts;
    0 invented cells. The design research also proposed ≥ 98% on the 8-pt
-   and rotated subsets. No separate test was needed: every run was exact on
-   every cell, so those subsets were exact too.
+   and rotated subsets. No separate test was needed for the models listed by
+   probe: every run of theirs was exact on every cell, so those subsets were
+   exact too.
 7. **Model IDs** are transcript-derived (`.message.model`, read through the
-   `context-reporter` hook's cached value) and bare.
+   `context-reporter` hook's cached value) and bare. For the GPT runs they
+   were read from each transcriber's transcript; over the shim that value is
+   the requested model name echoed back by the shim, not the provider's
+   independent report of which model served the request (§ Gating, shim
+   caveat).
 8. **Record**: the full probe record (model IDs, route, effort, fixture
    version and hashes, per-cell results, run dates, captured scripts) is
    kept with the maintainers; the shipped rows state the date and the
@@ -236,10 +254,55 @@ The thresholds were approved by the user on 2026-10-13. The probe ran on
 | `claude-opus-5-5` | 3 of 3 | 381/381 | 1,081/1,081 | 0 | 0 | 0 |
 | `claude-sonnet-5` | 3 of 3 | 381/381 | 1,081/1,081 | 0 | 0 | 0 |
 
-**Behavior on the unscored 1973 scan** (flagged `ocr_layer_suspected`).
-Opus 5.5 wrote `?` for digits it could not read. Sonnet 5, in 2 of 3 runs,
-filled unreadable digits from the column's trend instead, which the prompt
-forbids. Readings of one damaged cell differed across runs.
+**Results (observed; runs 2026-10-28, scored 2026-10-30; `chatgpt-subscription`
+through DAAF's provider shim, in two batches, GPT-6 Astra and GPT-6.1 Sol,
+then GPT-6 Sol and GPT-6 Luna; shim version 1.4.13 for both, as recorded
+from each batch's preflight check):**
+
+| Model ID | Runs passing | Synthetic exact, each run | Real exact, each run | Sign errors | Decimal shifts | Invented numbers |
+|----------|--------------|---------------------------|----------------------|-------------|----------------|------------------|
+| `gpt-6-sol` | 3 of 3 | 381/381 | 1,081/1,081 | 0 | 0 | 0 |
+| `gpt-6.1-sol` | 3 of 3 | 381/381 | 1,081/1,081 | 0 | 0 | 0 |
+| `gpt-6-astra` | 3 of 3 | 381/381 | 1,081/1,081 | 0 | 0 | 0 |
+| `gpt-6-luna` | 1 of 3 (failed) | 381/381; 341/381; 341/381 | 981/1,081 + 100 awaiting a ruling (see below); 1,081/1,081; 1,081/1,081 | 0 | 0 | 0; 24; 24 |
+
+An independent recount of the numbers on each image (every key number
+present; on synthetic pages, exactly the key's numbers) agreed with the cell
+scores on all 18 runs, Claude and GPT: it found no problem in any passing
+run, and it found Luna's failure on the same page as the scorer. The
+transcripts were audited: each transcriber only read the images it was
+assigned and wrote its own run's output files.
+
+**Why `gpt-6-luna` failed.** It misread no digits. In runs 2 and 3 it wrote,
+into the file for one synthetic page it was asked to transcribe, the table
+from the next image in its list (a page from one of the real papers), the
+same way in both runs, and never transcribed the synthetic page itself. That
+page's cells count as missing (synthetic 89.50% exact), and 24 of the other
+page's 30 numbers count as invented (the scorer matched the other 6 to
+numbers printed elsewhere on the synthetic page). Run 1 counts as passing
+only because 100 numbers of one real table were set aside awaiting a
+person's ruling: the recount found all 100 present, but Luna added an extra
+indented column to that table's subgroup rows, which the scorer could not
+line up with the key. Runs 2 and 3 fail whatever that ruling, so the model
+fails. In a real reading, a page mix-up like this would put numbers from the
+wrong page into an evidence card [inf], so the model is not listed. DAAF's
+recommended GPT setup runs its lighter agents on GPT-6 Luna, including the
+search-agent that reads PDFs by default, so on that setup PDFs are read
+from their text only.
+
+**Behavior on the unscored 1973 scan** (flagged `ocr_layer_suspected`). Two
+cells are damaged. On the first (1961, first column), every Opus 5.5 run,
+one Sonnet 5 run and all 12 GPT runs wrote `?`; Sonnet 5, in the other 2
+runs, filled it from the column's trend instead (56.9, 56.6), which the
+prompt forbids. On the second (1959, eighth column), half the runs of both
+families wrote a definite number: 3 of 6 Claude runs (Opus 5.5 in 1 of 3,
+Sonnet 5 in 2 of 3) wrote 36.0, which is also what the page's OCR text
+layer reads, and 6 of 12 GPT runs, at least one run of each GPT model,
+wrote 36.2, 36.3 or 36.6, values that differ from one another and from the
+OCR layer. Whether such values are misreads or guesses cannot be told from
+the output [inf]. So on a damaged scan, Claude and GPT models alike
+sometimes write a number where the print is unreadable, which is why scans
+stay outside every row's scope.
 
 **The list's scope.** So this probe validates no model on scans. Every row
 covers table pages with a digital text layer: pages with no `scanned` and no
@@ -259,9 +322,12 @@ image) or on figure pages; the orchestrator checks those by hand.
 
 **What the probe does not show:** fidelity on scanned or OCR-layer pages,
 figure pages or 300-DPI crops; any route other than `anthropic-subscription`
-(the `anthropic-api` rows are inference: the same models under the same
-Anthropic image rules); the GPT models over the shim; the models admitted by
-policy (§ Promotion and demotion).
+and `chatgpt-subscription` (the `anthropic-api` rows are inference: the same
+models under the same Anthropic image rules; the `openai-api` rows are
+inference by user decision, parity assumed; OpenRouter is not covered at
+all); which model actually served a shim request (the ID is the shim's echo
+of the requested name); the models admitted by policy (§ Promotion and
+demotion).
 
 Re-probe when the model ID, the route's image handling (for example a shim
 `detail` change) or the render recipe changes. The shim session's own image
@@ -314,10 +380,11 @@ Sonnet 5 under Legacy models [doc].
 
 | Candidate | Route(s) | Note |
 |-----------|----------|------|
-| gpt-6-sol, gpt-6.1-sol, gpt-6-astra, gpt-6-luna | chatgpt-subscription (shim) | Not list entries. The shim lane's models (gpt-6-luna is the sonnet tier) |
-| One GPT model | openai-api (shim) | Not a list entry. Parity check: same translation code |
+| `gpt-6-luna` | chatgpt-subscription, openai-api (shim) | Probed 2026-10-28 on chatgpt-subscription and failed (runs 2 and 3 failed; scored 2026-10-30; § The validation probe): not a list entry. DAAF recommends it for the lighter (sonnet-tier) agents on GPT installs, so those agents, including the default PDF reader, read text only. A re-probe that passes could list it |
+| `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6-astra` | openai-api (shim) | Listed by inference since `vision-list-2026-10-30` (parity with chatgpt-subscription assumed by user decision 2026-10-30); a probe on that route would confirm it |
+| Any model | openrouter | Not probed, no rows. The GPT rows do not cover it (OpenRouter IDs are provider-prefixed, e.g. `openai/gpt-6-sol`, and DAAF has no observation of how that route handles images, § Routes) |
 | `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-fable-5` | anthropic-subscription, anthropic-api | Listed by policy admission, not probed; a probe would confirm or remove them |
-| All five listed models | anthropic-api | Listed by inference (the admitted models: admitted, route by inference); a probe on that route would confirm it |
+| All five Claude models | anthropic-api | Listed by inference (the admitted models: admitted, route by inference); a probe on that route would confirm it |
 | Any model, scanned pages and OCR-layer scans (`scanned` or `ocr_layer_suspected`) | any | No model is validated on them (§ The validation probe) |
 
 Exact model IDs for a probe promotion are taken from the probe runs'
@@ -330,3 +397,4 @@ transcripts, never from this table.
 | `vision-list-2026-10-19` | 2026-10-19 | List created empty. No probe run yet |
 | `vision-list-2026-10-19` | 2026-10-23 | Unchanged, now also embedded in `lit_verify` (1.6.0): `vision_validated: true` against it fails as `VISION_NOT_ON_LIST` until a model is promoted |
 | `vision-list-2026-10-28` | 2026-10-28 | Ten rows, five model IDs, each on `anthropic-subscription` and `anthropic-api`. Probed on `anthropic-subscription` and passed (3 of 3 runs, every cell exact): `claude-opus-5-5`, `claude-sonnet-5`. Admitted by user policy decision, not by DAAF quality validation (not probed): `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-fable-5`; the user's words: "if sonnet 5 passed, those will as well as strict improvements". Every `anthropic-api` row is inference (for the admitted models: admitted, route by inference). Every row covers table pages without a `scanned` or `ocr_layer_suspected` flag; pages with either flag were not probed. Embedded in `lit_verify` 1.8.0 (part 4); `vision-list-2026-10-19` is kept, still empty, so a card read under it still fails `VISION_NOT_ON_LIST` with `vision_validated: true` |
+| `vision-list-2026-10-30` | 2026-10-30 | Sixteen rows: the ten `vision-list-2026-10-28` rows unchanged, plus three GPT model IDs, each on `chatgpt-subscription` and `openai-api`. Tested on a ChatGPT subscription through DAAF's provider shim (runs 2026-10-28, scored 2026-10-30) and passed (3 of 3 runs, every cell exact): `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6-astra`. The model names come from DAAF's own records of each request; over the shim those repeat the name DAAF asked for, so DAAF cannot confirm which model OpenAI actually ran. Every `openai-api` row is inference: the user's decision of 2026-10-30 was to promote the passing subscription rows and "assume parity with API for now". `gpt-6-luna` was tested and failed (in 2 of 3 runs it copied a table from the wrong page), so it is not listed. OpenRouter is not covered. Same scope as before: table pages without a `scanned` or `ocr_layer_suspected` flag. Embedded in `lit_verify` 1.8.0 (part 6); `vision-list-2026-10-19` and `vision-list-2026-10-28` are kept, so a card read under either keeps its meaning (a GPT reader under `vision-list-2026-10-28` still fails `VISION_NOT_ON_LIST`) |

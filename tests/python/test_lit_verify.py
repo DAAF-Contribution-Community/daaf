@@ -1331,10 +1331,12 @@ class SoundnessFixTests(unittest.TestCase):
 
     # 1.8.0 part 4: vision-list-2026-10-28 (the probe of 2026-10-28 plus the user's policy admissions)
     LISTED_2026_10_28 = ("claude-opus-5-5", "claude-sonnet-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5")
+    # 1.8.0 part 6: vision-list-2026-10-30 adds the GPT models that passed on chatgpt-subscription (shim)
+    LISTED_GPT_2026_10_30 = ("gpt-6-sol", "gpt-6.1-sol", "gpt-6-astra")
 
     def test_vision_list_2026_10_28_rows(self):
-        self.assertEqual(lv.VISION_LIST_VERSION, "vision-list-2026-10-28")
-        self.assertEqual(set(REAL_VISION_LISTS), {"vision-list-2026-10-19", "vision-list-2026-10-28"})
+        # 1.8.0 part 6: no longer the current version (test_vision_list_2026_10_30_rows pins that); kept unchanged
+        self.assertIn("vision-list-2026-10-28", REAL_VISION_LISTS)
         self.assertEqual(REAL_VISION_LISTS["vision-list-2026-10-19"], ())   # kept, still empty
         want = {(m, r) for m in self.LISTED_2026_10_28 for r in ("anthropic-subscription", "anthropic-api")}
         got = REAL_VISION_LISTS["vision-list-2026-10-28"]
@@ -1351,17 +1353,30 @@ class SoundnessFixTests(unittest.TestCase):
         self.assertEqual(lines[0], "| Exact model ID | Route | Basis (date, result) | Validated on |")
         self.assertTrue(set(lines[1]) <= set("|- "), lines[1])
         data = lines[2:]
-        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data), 16)   # 1.8.0 part 6: vision-list-2026-10-30
         probed, admitted = ("claude-opus-5-5", "claude-sonnet-5"), ("claude-sonnet-5-5", "claude-fable-5-1",
                                                                      "claude-fable-5")
-        kinds = {"probed": 0, "probed-model api (inference)": 0, "admitted": 0}
+        kinds = {"probed": 0, "probed-model api (inference)": 0, "admitted": 0, "gpt probed": 0,
+                 "gpt api (inference)": 0}
         policy = "admitted 2026-10-28 by user policy decision, not by DAAF quality validation"
         for ln in data:
             m = re.match(r"^\| `([^`]+)` \| `([^`]+)` \| ([^|]+) \| ([^|]+) \|$", ln)
             self.assertIsNotNone(m, ln)
             model, route, basis, scope = m.groups()
             self.assertIn("`scanned` or `ocr_layer_suspected`", scope, ln)
-            if model in probed and route == "anthropic-subscription":
+            self.assertEqual(scope.endswith("(inference)"), route in ("anthropic-api", "openai-api")
+                             and model not in admitted, ln)
+            if model in self.LISTED_GPT_2026_10_30 and route == "chatgpt-subscription":
+                self.assertTrue(basis.startswith("Probed 2026-10-28 (scored 2026-10-30): 3 of 3 runs passed"), ln)
+                self.assertIn("381/381 synthetic and 1,081/1,081 real", basis, ln)
+                self.assertIn("echoed by the shim", basis, ln)        # the shim caveat travels with the row
+                kinds["gpt probed"] += 1
+            elif model in self.LISTED_GPT_2026_10_30 and route == "openai-api":
+                self.assertTrue(basis.startswith("Not probed on this route; listed by inference"), ln)
+                self.assertIn("parity with the subscription route assumed by user decision 2026-10-30", basis, ln)
+                self.assertNotIn("admitted", basis, ln)
+                kinds["gpt api (inference)"] += 1
+            elif model in probed and route == "anthropic-subscription":
                 self.assertTrue(basis.startswith("Probed 2026-10-28: 3 of 3 runs passed"), ln)
                 kinds["probed"] += 1
             elif model in probed and route == "anthropic-api":
@@ -1374,7 +1389,8 @@ class SoundnessFixTests(unittest.TestCase):
                 self.assertNotIn("Probed", basis, ln)
                 self.assertEqual("route by inference" in basis, route == "anthropic-api", ln)
                 kinds["admitted"] += 1
-        self.assertEqual(kinds, {"probed": 2, "probed-model api (inference)": 2, "admitted": 6})
+        self.assertEqual(kinds, {"probed": 2, "probed-model api (inference)": 2, "admitted": 6, "gpt probed": 3,
+                                 "gpt api (inference)": 3})
 
     def test_vision_list_2026_10_28_listed_ids_pass(self):
         ing = mk_ingest([{"anchor": PROSE[3] + " The estimate was 0.50 in the invented pilot."}])
@@ -1423,6 +1439,80 @@ class SoundnessFixTests(unittest.TestCase):
         r = lv.check_card(mk_card(c, reader_model="claude-opus-5-5", vision_validated=False,
                                   vision_list_version="vision-list-2026-10-19"), ing, None)
         self.assertEqual(r["verdict"], "PASS")
+
+    # 1.8.0 part 6: vision-list-2026-10-30 (the GPT probe on chatgpt-subscription, scored 2026-10-30)
+    def test_vision_list_2026_10_30_rows(self):
+        self.assertEqual(lv.VISION_LIST_VERSION, "vision-list-2026-10-30")
+        self.assertEqual(set(REAL_VISION_LISTS),
+                         {"vision-list-2026-10-19", "vision-list-2026-10-28", "vision-list-2026-10-30"})
+        claude = {(m, r) for m in self.LISTED_2026_10_28 for r in ("anthropic-subscription", "anthropic-api")}
+        gpt = {(m, r) for m in self.LISTED_GPT_2026_10_30 for r in ("chatgpt-subscription", "openai-api")}
+        got = REAL_VISION_LISTS["vision-list-2026-10-30"]
+        self.assertEqual((set(got), len(got)), (claude | gpt, 16))
+        # the ten 2026-10-28 rows carry over unchanged, and the older versions keep their own rows
+        self.assertEqual(set(REAL_VISION_LISTS["vision-list-2026-10-28"]), claude)
+        self.assertEqual((REAL_VISION_LISTS["vision-list-2026-10-19"], len(REAL_VISION_LISTS["vision-list-2026-10-28"])),
+                         ((), 10))
+        # every key is bare: no [1m] suffix, no provider prefix, lower case, no spaces
+        self.assertFalse([m for m, _ in got if "[" in m or "/" in m or m != m.strip() or m != m.lower()])
+        # no OpenRouter row and no failed or unprobed GPT model
+        self.assertFalse([row for row in got if row[1] == "openrouter" or row[0] in ("gpt-6-luna", "gpt-5.6-sol")])
+
+    def test_vision_list_2026_10_30_listed_ids_pass(self):
+        ing = mk_ingest([{"anchor": PROSE[3] + " The estimate was 0.50 in the invented pilot."}])
+        c = [cov(1, "Table 2 reports -0.087* (0.044) and 1,204 boats")]
+        vision = [{"claim_id": "V1", "page": 1, "quote": None, "numbers": ["31"], "source": "vision"}]
+        for model in self.LISTED_2026_10_28 + self.LISTED_GPT_2026_10_30:
+            card = dict(reader_model=model, vision_list_version="vision-list-2026-10-30")
+            r = lv.check_card(mk_card(c, **card), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]), ("PASS", [], True), model)
+            r = lv.check_card(mk_card(c, vision, **card), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision")), ("PARTIAL", []), model)
+            self.assertIn("NUMBER_VISION_ONLY", statuses(r, "claim_number"))
+        # A whole card as a GPT reader on chatgpt-subscription writes it: the route sits in the front matter,
+        # which the gate never reads (route and identity stay with the orchestrator audit), so the card passes
+        # on the model ID and the list version alone.
+        block = mk_card(c, vision, reader_model="gpt-6-sol", vision_list_version="vision-list-2026-10-30")
+        text = ("---\npaper_key: user_00000001\nreader_model: gpt-6-sol\nreader_model_source: self-report\n"
+                "reader_route: chatgpt-subscription\nvision: validated\n---\n\n# Evidence card\n\n"
+                "```lit-verify\n" + json.dumps(block, indent=2) + "\n```\n")
+        r = lv.check_card(lv.parse_card(text), ing, None)
+        self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]), ("PARTIAL", [], True))
+
+    def test_vision_list_2026_10_30_near_miss_ids_fail(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers")]
+        # the failed sonnet-tier model, the [1m] form a reader must strip, the OpenRouter-prefixed form, a -pro
+        # variant, an unprobed older Sol, case and spacing variants, and an unlisted Claude ID
+        for model in ("gpt-6-luna", "gpt-6-sol[1m]", "openai/gpt-6-sol", "gpt-6-sol-pro", "gpt-6.1-sol-pro",
+                      "gpt-6-astra-pro", "gpt-5.6-sol", "GPT-6-Sol", "gpt-6-sol ", " gpt-6-astra", "gpt-6.1-sol[1m]",
+                      "openai/gpt-6-astra", "openai/gpt-6-luna", "gpt-6-luna[1m]", "claude-opus-5-5[1m]",
+                      "claude-unlisted-0"):
+            r = lv.check_card(mk_card(c, reader_model=model, vision_list_version="vision-list-2026-10-30"), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision"), r["vision_available"]),
+                             ("FAIL", ["VISION_NOT_ON_LIST"], False), model)
+            reason = next(it["reason"] for it in r["items"] if it["status"] == "VISION_NOT_ON_LIST")
+            self.assertIn("is not on vision list 'vision-list-2026-10-30' (16 entries)", reason, model)
+
+    def test_vision_list_older_versions_keep_their_rows(self):
+        # A card keeps the meaning of the list it was read under: the GPT models are NOT on the 2026-10-28 or
+        # 2026-10-19 lists, the Claude models stay on 2026-10-28, and an unknown later version fails.
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        c = [cov(1, "The violet ferry carried nineteen patient cartographers")]
+        for model in self.LISTED_GPT_2026_10_30:
+            for version, entries in (("vision-list-2026-10-28", "10 entries"), ("vision-list-2026-10-19", "0 entries")):
+                r = lv.check_card(mk_card(c, reader_model=model, vision_list_version=version), ing, None)
+                self.assertEqual((r["verdict"], statuses(r, "vision")), ("FAIL", ["VISION_NOT_ON_LIST"]), (model, version))
+                reason = next(it["reason"] for it in r["items"] if it["status"] == "VISION_NOT_ON_LIST")
+                self.assertIn(f"is not on vision list '{version}' ({entries})", reason, (model, version))
+        for model in self.LISTED_2026_10_28:
+            r = lv.check_card(mk_card(c, reader_model=model, vision_list_version="vision-list-2026-10-28"), ing, None)
+            self.assertEqual((r["verdict"], r["vision_available"]), ("PASS", True), model)
+        for version in ("vision-list-2026-10-31", "vision-list-2026-10-30 ", "VISION-LIST-2026-10-30"):
+            r = lv.check_card(mk_card(c, reader_model="gpt-6-sol", vision_list_version=version), ing, None)
+            self.assertEqual((r["verdict"], statuses(r, "vision")), ("FAIL", ["VISION_NOT_ON_LIST"]), version)
+            reason = next(it["reason"] for it in r["items"] if it["status"] == "VISION_NOT_ON_LIST")
+            self.assertIn("is not a list version this tool knows", reason, version)
 
     # W2 (1.6.0): the OCR-layer paper cap
     def test_ocr_layer_paper_cap(self):

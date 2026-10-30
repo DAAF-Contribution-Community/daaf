@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-access
   skill-authored: "2026-10-19"
-  skill-last-updated: "2026-10-28"
+  skill-last-updated: "2026-10-30"
 ---
 
 # PDF Reading
@@ -337,7 +337,20 @@ text/vision disagreement in the card.
 
 ### Vision-validated model list
 
-`vision_list_version: "vision-list-2026-10-28"` (written into every card)
+`vision_list_version: "vision-list-2026-10-30"` (written into every card)
+
+**In short:** a model may look at pictures of PDF pages only if listed below
+for the way DAAF is installed, only on clean digital table pages (never
+scans), and only as a second reading checked against the text. Tested and
+passed: Opus 5.5 and Sonnet 5 (Claude subscription); GPT-6 Sol, GPT-6.1 Sol
+and GPT-6 Astra (ChatGPT subscription, through DAAF's provider shim). Listed
+without a test: Sonnet 5.5, Fable 5.1 and Fable 5 (the user's decision), and
+every listed model on an Anthropic or OpenAI API key (assumed to behave as
+on the subscription; nobody has checked: "inference"). Text only: GPT-6 Luna
+(failed: it copied a table from the wrong page), OpenRouter (not tested) and
+every other model. On DAAF's recommended GPT setup the specialist that reads
+PDFs by default runs on GPT-6 Luna, so it reads text only; pictures need
+GPT-6 Sol, GPT-6.1 Sol or GPT-6 Astra.
 
 | Exact model ID | Route | Basis (date, result) | Validated on |
 |----------------|-------|----------------------|--------------|
@@ -351,52 +364,48 @@ text/vision disagreement in the card.
 | `claude-fable-5-1` | `anthropic-api` | Not probed: admitted 2026-10-28 by user policy decision, not by DAAF quality validation; route by inference | Admitted for table pages without a `scanned` or `ocr_layer_suspected` flag |
 | `claude-fable-5` | `anthropic-subscription` | Not probed: admitted 2026-10-28 by user policy decision, not by DAAF quality validation | Admitted for table pages without a `scanned` or `ocr_layer_suspected` flag |
 | `claude-fable-5` | `anthropic-api` | Not probed: admitted 2026-10-28 by user policy decision, not by DAAF quality validation; route by inference | Admitted for table pages without a `scanned` or `ocr_layer_suspected` flag |
+| `gpt-6-sol` | `chatgpt-subscription` | Probed 2026-10-28 (scored 2026-10-30): 3 of 3 runs passed, each 381/381 synthetic and 1,081/1,081 real table cells exact; model ID as echoed by the shim (see below) | Table pages without a `scanned` or `ocr_layer_suspected` flag |
+| `gpt-6-sol` | `openai-api` | Not probed on this route; listed by inference (parity with the subscription route assumed by user decision 2026-10-30) | Table pages without a `scanned` or `ocr_layer_suspected` flag (inference) |
+| `gpt-6.1-sol` | `chatgpt-subscription` | Probed 2026-10-28 (scored 2026-10-30): 3 of 3 runs passed, each 381/381 synthetic and 1,081/1,081 real table cells exact; model ID as echoed by the shim (see below) | Table pages without a `scanned` or `ocr_layer_suspected` flag |
+| `gpt-6.1-sol` | `openai-api` | Not probed on this route; listed by inference (parity with the subscription route assumed by user decision 2026-10-30) | Table pages without a `scanned` or `ocr_layer_suspected` flag (inference) |
+| `gpt-6-astra` | `chatgpt-subscription` | Probed 2026-10-28 (scored 2026-10-30): 3 of 3 runs passed, each 381/381 synthetic and 1,081/1,081 real table cells exact; model ID as echoed by the shim (see below) | Table pages without a `scanned` or `ocr_layer_suspected` flag |
+| `gpt-6-astra` | `openai-api` | Not probed on this route; listed by inference (parity with the subscription route assumed by user decision 2026-10-30) | Table pages without a `scanned` or `ocr_layer_suspected` flag (inference) |
 
-Rows have three bases. **Probed:** the model passed the table-transcription
-probe on that route (`references/vision-validation.md` § The validation
-probe): 3 independent runs, each needing ≥ 99.5% numeric exact match, 0 sign
-errors, 0 decimal shifts and 0 invented cells; both probed models were exact
-on every cell in every run, with model IDs taken from the probe transcripts.
-**Admitted:** listed by user policy decision, not by DAAF quality validation.
-The user's words: "if sonnet 5 passed, those will as well as strict
-improvements"; DAAF has not measured this. These models were not probed and
-their IDs were not transcript-derived. **Inference:** a route the probe did
-not run on. The probe ran on `anthropic-subscription` only, so the probed
-models' `anthropic-api` rows are inference (the same models under the same
-Anthropic image rules), and the admitted models' `anthropic-api` rows are
-admitted, with the route by inference.
+Rows have three bases. **Probed:** passed the table-transcription probe on
+that route (3 runs, each ≥ 99.5% numeric exact, 0 sign errors, 0 decimal
+shifts, 0 invented cells); all five models listed as probed were exact on
+every cell in every run (GPT-6 Luna, also probed, failed). IDs come from the
+probe transcripts (over the GPT shim, the requested name echoed back: Gating
+step 3). **Admitted:** listed by user policy decision, not by DAAF quality
+validation ("if sonnet 5 passed, those will as well as strict
+improvements"); not probed, IDs not transcript-derived. **Inference:** a
+route the probe did not run on, assumed to behave like the tested one;
+nobody has checked: every `anthropic-api` and `openai-api` row (user
+decision 2026-10-30: "assume parity with API for now"). Never add a guessed
+model ID (`references/vision-validation.md` § Promotion and demotion).
 
-**Scope: table pages with a digital text layer**, that is, pages with no
-`scanned` and no `ocr_layer_suspected` flag in the ingest manifest. Pages with
-either flag (truly scanned and sparse pages, and scans carrying an OCR text
-layer) were not probed, and figure pages were not scored either, so no model
+**Scope: table pages with a digital text layer** (no `scanned` and no
+`ocr_layer_suspected` flag in the ingest manifest). Truly scanned, sparse
+and OCR-layer pages were not probed and figure pages not scored, so no model
 is validated on them. `lit_verify` checks the **scan part** of this scope:
-on a page it re-derives from the source as truly scanned (`pages[].class`)
-or as carrying an OCR text layer (`pages[].ocr_layer`), each `vision`/`both`
-claim and `vision_only` digest is `VISION_ON_SCAN_PAGE` (review), so a
-person checks it against the page (`references/evidence-card.md` § Vision
-consistency). It does **not** flag a vision reading on a sparse page
-(flagged `scanned`, little text, not mostly one image) or on a figure or
-chart page (class `normal`). On any page outside the scope you may still
-look, but the reading is unvalidated: write `?` for any digit you cannot
-read and never infer one from context, the column or a trend; label the
-reading in the card as unvalidated; log every text/vision/OCR disagreement;
-and tell the orchestrator, which checks the readings the gate does not flag
-(`references/vision-validation.md` § Gating, orchestrator step 5). On
-every row vision stays a second reading, never ground truth. A number found
-in no text lane passes only at PARTIAL (`NUMBER_VISION_ONLY`): it is one
-unverified reading, never quoted as a finding without a text-lane or human
-check. Note on `claude-sonnet-5`: on the probe's 1973 scan (flagged
-`ocr_layer_suspected`, transcribed but not scored), Opus 5.5 wrote `?` for
-digits it could not read, while Sonnet 5 in 2 of 3 runs filled unreadable
-digits from the column's trend, which the prompt forbids; readings of one
-damaged cell differed across runs.
-
-Still candidates (not entries): gpt-6-sol, gpt-6.1-sol, gpt-6-astra and
-gpt-6-luna over the shim on chatgpt-subscription, plus one openai-api model
-for parity. Never add a guessed model ID: a probed row uses the ID taken from
-the probe's transcripts, and an admitted row names where its ID came from
-(`references/vision-validation.md` § Promotion and demotion).
+on a page it re-derives as truly scanned (`pages[].class`) or as carrying an
+OCR text layer (`pages[].ocr_layer`), each `vision`/`both` claim and
+`vision_only` digest is `VISION_ON_SCAN_PAGE` (review: a person checks it,
+`references/evidence-card.md` § Vision consistency). It does **not** flag a
+vision reading on a sparse page (flagged `scanned`, little text, not mostly
+one image) or on a figure or chart page (class `normal`). On any page
+outside the scope you may still look, but the reading is unvalidated: write
+`?` for any digit you cannot read and never infer one from context, the
+column or a trend; label the reading in the card as unvalidated; log every
+text/vision/OCR disagreement; and tell the orchestrator, which checks what
+the gate does not flag (`references/vision-validation.md` § Gating, step 5).
+On every row vision stays a second reading, never ground truth: a number
+found in no text lane passes only at PARTIAL (`NUMBER_VISION_ONLY`), never
+quoted as a finding without a text-lane or human check. The GPT probe ran
+at the shim's default effort (high, not verified per request); lower
+efforts were not measured. Note on `claude-sonnet-5` and scans: Claude and
+GPT models alike sometimes wrote a number where the probe's damaged scan
+is unreadable (`references/vision-validation.md` § The validation probe).
 
 ### Gating (Option C)
 
@@ -422,10 +431,8 @@ the probe's transcripts, and an admitted row names where its ID came from
 embeds the list per `vision_list_version`, and `vision_validated: true` for a
 `reader_model` not on it is `VISION_NOT_ON_LIST` (fail). It reads only the
 block, so it checks the model ID, never the route or the identity: those
-stay with the audit above. Of the list's page scope it checks the scan part
-only (`VISION_ON_SCAN_PAGE` above). Route details, image limits per route
-(why renders are 2000 px) and the probe protocol:
-`references/vision-validation.md`.
+stay with the audit above. Route details, image limits per route (why
+renders are 2000 px) and the probe protocol: `references/vision-validation.md`.
 
 ## Privacy
 
@@ -485,9 +492,9 @@ cannot run. Never install at runtime; the fix is a rebuild
 
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
 `scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
-Versions (2026-10-28): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
+Versions (2026-10-30): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
 (`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`; vision list
-`vision-list-2026-10-28`). Tests:
+`vision-list-2026-10-30`). Tests:
 `tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(135) and `lit_verify.sh selftest` (45 expectations), run file-first through
+(139) and `lit_verify.sh selftest` (45 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

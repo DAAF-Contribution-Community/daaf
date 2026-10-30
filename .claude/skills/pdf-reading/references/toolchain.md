@@ -79,10 +79,10 @@ Re-derivation cost per card (2026-10-27, the nine bake-off cards):
 extra `pdfimages -list` and `pdfinfo -f 1 -l N` passes plus `find_tables`
 on its 2 cited caption-less table pages).
 
-| Suite | Count (run 2026-10-28) | Needs |
+| Suite | Count (run 2026-10-30) | Needs |
 |-------|------------------|-------|
 | `tests/python/test_pdf_ingest.py` | 59 | poppler-utils, tesseract, quarto (bundled typst) for the regeneration test, pypdfium2, pdfplumber, rapidfuzz, polars; skipped without them |
-| `tests/python/test_lit_verify.py` | 135 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` and re-derivation (poppler, pypdfium2) |
+| `tests/python/test_lit_verify.py` | 139 | rapidfuzz and polars or pyarrow (polars for the arXiv HTML cases); end-to-end tests run real `pdf_ingest` and re-derivation (poppler, pypdfium2) |
 | `tests/python/test_scholar_search.py` (regression, shares `web_retrieval_common.py`) | 250 (6 expected failures) | none beyond the image |
 | `tests/python/test_web_fetch_scrub.py` (`web_fetch.py`'s own injection scrub, kept in step with the shared one) | 7 | none (reads the source; no network) |
 | `bash /daaf/scripts/lit_verify.sh selftest <scratch dir>` | 45 expectations | rapidfuzz, polars or pyarrow, and polars (the arXiv HTML case runs `pdf_ingest --source arxiv-html`); no PDF tools (its ingests are synthetic) |
