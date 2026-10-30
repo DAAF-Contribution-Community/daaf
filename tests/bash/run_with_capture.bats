@@ -42,16 +42,20 @@ setup() {
 }
 
 # --- Block: R install calls inside a .R script ------------------------------
+# Install-scan block fixtures (R and Python, here through the NUL-byte case)
+# name only the fake package daaf-fixture-nonexistent-pkg: if the scan ever
+# regressed, the wrapper would EXECUTE the fixture, and a fake name keeps that
+# run from changing any environment.
 
 @test "blocks .R with install.packages() (exit 3, cites Dockerfile, no log appended)" {
     local f="${BATS_TEST_TMPDIR}/01_fetch.R"
-    printf '%s\n' '# --- Load ---' 'library(sf)' 'install.packages("sf")' 'cat("done\n")' > "$f"
+    printf '%s\n' '# --- Load ---' 'library(sf)' 'install.packages("daaf-fixture-nonexistent-pkg")' 'cat("done\n")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "Dockerfile"
     assert_output --partial "install.packages"
     # The offending line number and text must be surfaced.
-    assert_output --partial "3:install.packages(\"sf\")"
+    assert_output --partial "3:install.packages(\"daaf-fixture-nonexistent-pkg\")"
     # Immutable versioning must NOT have engaged: no execution log appended.
     run grep -q "^# EXECUTION LOG" "$f"
     assert_failure
@@ -59,7 +63,7 @@ setup() {
 
 @test "blocks .R with remotes::install_github (exit 3)" {
     local f="${BATS_TEST_TMPDIR}/02_deps.R"
-    printf '%s\n' 'remotes::install_github("user/repo")' 'cat("hi\n")' > "$f"
+    printf '%s\n' 'remotes::install_github("daaf-fixture-nonexistent-pkg/daaf-fixture-nonexistent-pkg")' 'cat("hi\n")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "runtime package install detected"
@@ -69,7 +73,7 @@ setup() {
 
 @test "blocks .R with renv::rebuild() (exit 3, aligned with hook R_INSTALL_TOKENS)" {
     local f="${BATS_TEST_TMPDIR}/02b_renv.R"
-    printf '%s\n' 'renv::rebuild()' 'cat("hi\n")' > "$f"
+    printf '%s\n' 'renv::rebuild("daaf-fixture-nonexistent-pkg")' 'cat("hi\n")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "runtime package install detected"
@@ -81,7 +85,7 @@ setup() {
 
 @test "blocks .py with os.system pip install (exit 3, no log appended)" {
     local f="${BATS_TEST_TMPDIR}/01_fetch.py"
-    printf '%s\n' 'import os' 'os.system("pip install requests")' 'print("done")' > "$f"
+    printf '%s\n' 'import os' 'os.system("pip install daaf-fixture-nonexistent-pkg")' 'print("done")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "Dockerfile"
@@ -91,7 +95,7 @@ setup() {
 
 @test "blocks .py with subprocess.run([\"uv\",\"add\",...]) (exit 3, list-form uv coverage)" {
     local f="${BATS_TEST_TMPDIR}/01b_uv.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv","add","httpx"])' 'print("done")' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv","add","daaf-fixture-nonexistent-pkg"])' 'print("done")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "runtime package install detected"
@@ -107,7 +111,7 @@ setup() {
 
 @test "blocks .py string form: os.system pip uninstall" {
     local f="${BATS_TEST_TMPDIR}/rm_01.py"
-    printf '%s\n' 'import os' 'os.system("pip uninstall -y requests")' > "$f"
+    printf '%s\n' 'import os' 'os.system("pip uninstall -y daaf-fixture-nonexistent-pkg")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "2:os.system"
@@ -117,7 +121,7 @@ setup() {
 
 @test "blocks .py string form: subprocess shell=True pip3 uninstall" {
     local f="${BATS_TEST_TMPDIR}/rm_02.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run("pip3 uninstall -y requests", shell=True)' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run("pip3 uninstall -y daaf-fixture-nonexistent-pkg", shell=True)' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "runtime package install detected"
@@ -125,42 +129,42 @@ setup() {
 
 @test "blocks .py string form: python -m pip uninstall" {
     local f="${BATS_TEST_TMPDIR}/rm_03.py"
-    printf '%s\n' 'import os' 'os.system("python -m pip uninstall -y requests")' > "$f"
+    printf '%s\n' 'import os' 'os.system("python -m pip uninstall -y daaf-fixture-nonexistent-pkg")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py string form: python3 -m pip uninstall" {
     local f="${BATS_TEST_TMPDIR}/rm_04.py"
-    printf '%s\n' 'import os' 'os.system("python3 -m pip uninstall -y requests")' > "$f"
+    printf '%s\n' 'import os' 'os.system("python3 -m pip uninstall -y daaf-fixture-nonexistent-pkg")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py string form: uv pip uninstall" {
     local f="${BATS_TEST_TMPDIR}/rm_05.py"
-    printf '%s\n' 'import os' 'os.system("uv pip uninstall -y pillow")' > "$f"
+    printf '%s\n' 'import os' 'os.system("uv pip uninstall -y daaf-fixture-nonexistent-pkg")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py string form: shlex.split uv pip sync (sync can remove packages)" {
     local f="${BATS_TEST_TMPDIR}/rm_06.py"
-    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip sync requirements.txt"))' > "$f"
+    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip sync daaf-fixture-missing-requirements.txt"))' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py string form: uv remove" {
     local f="${BATS_TEST_TMPDIR}/rm_07.py"
-    printf '%s\n' 'import os' 'os.system("uv remove httpx")' > "$f"
+    printf '%s\n' 'import os' 'os.system("uv remove daaf-fixture-nonexistent-pkg")' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py string form: pipx uninstall, uv tool uninstall, conda remove" {
     local f n=0
-    for form in 'os.system("pipx uninstall black")' 'os.system("uv tool uninstall ruff")' 'os.system("conda remove -y numpy")'; do
+    for form in 'os.system("pipx uninstall daaf-fixture-nonexistent-pkg")' 'os.system("uv tool uninstall daaf-fixture-nonexistent-pkg")' 'os.system("conda remove -y daaf-fixture-nonexistent-pkg")'; do
         n=$((n + 1))
         f="${BATS_TEST_TMPDIR}/rm_08_${n}.py"
         printf '%s\n' 'import os' "$form" > "$f"
@@ -172,7 +176,7 @@ setup() {
 
 @test "blocks .py list form: [\"pip\", \"uninstall\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_09.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["pip", "uninstall", "-y", "requests"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["pip", "uninstall", "-y", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     run grep -q "^# EXECUTION LOG" "$f"
@@ -181,56 +185,56 @@ setup() {
 
 @test "blocks .py list form: [sys.executable, \"-m\", \"pip\", \"uninstall\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_10.py"
-    printf '%s\n' 'import subprocess, sys' 'subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "requests"])' > "$f"
+    printf '%s\n' 'import subprocess, sys' 'subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form: [\"uv\", \"pip\", \"uninstall\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_11.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "uninstall", "pillow"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "uninstall", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form: [\"uv\", \"pip\", \"sync\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_12.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "sync", "requirements.txt"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "sync", "daaf-fixture-missing-requirements.txt"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form: [\"uv\", \"remove\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_13.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "remove", "httpx"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "remove", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form: [\"uv\", \"pip\", \"install\", ...] (narrowed list rule still refuses install)" {
     local f="${BATS_TEST_TMPDIR}/rm_14.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "install", "pillow"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "install", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form with a flag before the verb: [\"uv\", \"pip\", \"--quiet\", \"install\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_14b.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "--quiet", "install", "pillow"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "--quiet", "install", "daaf-fixture-nonexistent-pkg"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form with a flag before the verb: [\"uv\", \"pip\", \"-q\", \"sync\", ...]" {
     local f="${BATS_TEST_TMPDIR}/rm_14c.py"
-    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "-q", "sync", "requirements.txt"])' > "$f"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "-q", "sync", "daaf-fixture-missing-requirements.txt"])' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
 }
 
 @test "blocks .py list form with flags before the verb: [\"pip\", \"-q\", \"install\"] and [\"uv\", \"--quiet\", \"remove\"]" {
     local f n=0
-    for form in 'subprocess.run(["pip", "-q", "install", "httpx"])' 'subprocess.run(["uv", "--quiet", "remove", "httpx"])'; do
+    for form in 'subprocess.run(["pip", "-q", "install", "daaf-fixture-nonexistent-pkg"])' 'subprocess.run(["uv", "--quiet", "remove", "daaf-fixture-nonexistent-pkg"])'; do
         n=$((n + 1))
         f="${BATS_TEST_TMPDIR}/rm_14d_${n}.py"
         printf '%s\n' 'import subprocess' "$form" > "$f"
@@ -242,7 +246,7 @@ setup() {
 
 @test "blocks .py list form: [\"conda\", \"remove\", ...] and [\"conda\", \"install\", ...]" {
     local f n=0
-    for form in 'subprocess.run(["conda", "remove", "x"])' 'subprocess.run(["conda", "install", "x"])'; do
+    for form in 'subprocess.run(["conda", "remove", "daaf-fixture-nonexistent-pkg"])' 'subprocess.run(["conda", "install", "daaf-fixture-nonexistent-pkg"])'; do
         n=$((n + 1))
         f="${BATS_TEST_TMPDIR}/rm_14e_${n}.py"
         printf '%s\n' 'import subprocess' "$form" > "$f"
@@ -252,9 +256,9 @@ setup() {
     done
 }
 
-@test "blocks .py string form: shlex.split(\"uv pip install pillow\") (regression, CVE session)" {
+@test "blocks .py string form: shlex.split(\"uv pip install daaf-fixture-nonexistent-pkg\") (regression, CVE session)" {
     local f="${BATS_TEST_TMPDIR}/rm_15.py"
-    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip install pillow"))' > "$f"
+    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip install daaf-fixture-nonexistent-pkg"))' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     assert_output --partial "2:subprocess.run(shlex.split"
@@ -265,7 +269,7 @@ setup() {
     # behaviour is deliberate; the header comment documents the workaround
     # (keep such text in a non-.py data file the script reads).
     local f="${BATS_TEST_TMPDIR}/rm_16.py"
-    printf '%s\n' 'EXPECTED_LINE = "RUN uv pip install --system pillow==13.0.0"' 'print(len(EXPECTED_LINE))' > "$f"
+    printf '%s\n' 'EXPECTED_LINE = "RUN uv pip install --system daaf-fixture-nonexistent-pkg==13.0.0"' 'print(len(EXPECTED_LINE))' > "$f"
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
     run grep -q "^# EXECUTION LOG" "$f"
@@ -895,7 +899,7 @@ _expect_scan_pass() {
 @test "scans still refuse when the script contains a NUL byte (install scan and secret scan)" {
     _inert_interpreters
     local f="${BATS_TEST_TMPDIR}/nul_install.py"
-    printf 'import os\nraise SystemExit(0)  # inert guard\nx = "a\000b"\nos.system("pip install requests")\n' > "$f"
+    printf 'import os\nraise SystemExit(0)  # inert guard\nx = "a\000b"\nos.system("pip install daaf-fixture-nonexistent-pkg")\n' > "$f"
     [ "$(tr -cd '\000' < "$f" | wc -c)" -eq 1 ]
     run bash "$RUN_WITH_CAPTURE_SH" "$f"
     [ "$status" -eq 3 ]
