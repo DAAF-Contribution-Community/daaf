@@ -17,6 +17,8 @@
 #   - Serves on port 2720 (mapped in docker-compose.yml)
 #   - Binds to 0.0.0.0 for Docker container access
 #   - Password authentication enabled (password displayed on launch)
+#   - code-server's bundled Node verifies TLS against the OS CA store
+#     (NODE_OPTIONS gains --use-openssl-ca; see "TLS trust store" below)
 #
 # Exit codes:
 #   0 — success (or server stopped by Ctrl+C)
@@ -160,6 +162,41 @@ if [ -n "$LISTEN_INODE" ]; then
         exit 1
     fi
 fi
+
+# --- TLS trust store for code-server's bundled Node ---
+
+# code-server runs on its own bundled Node (v22.22.1 in the pinned 4.117.0),
+# which by default trusts Node's compiled-in root list. That list still contains
+# "emSign ECC Root CA - G3", the root of the 2026-10-20 eMudhra compromise (see
+# the Dockerfile section "Distrust compromised CA roots"). --use-openssl-ca
+# makes it use the OS store instead (OPENSSLDIR /etc/ssl, so the hashed
+# /etc/ssl/certs directory), from which the image removes G3. Observed
+# 2026-10-24: with --use-openssl-ca and a G3-free store, this Node rejected a
+# chain to G3 and accepted the control host (maintainer-only, not shipped:
+# research/2026-10-24_FrameworkDev_CVE_Security_Audit/preliminary_notes/
+# 01_trust_store_emudhra.md § 5, row "code-server Node 22"). Any NODE_OPTIONS
+# already set is kept and the flag is appended once. Node refuses
+# --use-openssl-ca together with --use-bundled-ca (exit 9), so an explicit
+# --use-bundled-ca is left alone, with a warning; a value that already holds
+# both flags gets its own warning, because code-server would not start at all.
+# Child processes inherit NODE_OPTIONS. From reading code-server 4.117.0's
+# server code (2026-10-28, not run): its terminals and the extension host keep
+# it, so `node --use-bundled-ca` typed in a code-server terminal exits 9; the
+# Copilot agent host deletes it (that extension is not in DAAF's set).
+HAS_OPENSSL_CA=false
+HAS_BUNDLED_CA=false
+case " ${NODE_OPTIONS:-} " in *" --use-openssl-ca "*) HAS_OPENSSL_CA=true ;; esac
+case " ${NODE_OPTIONS:-} " in *" --use-bundled-ca "*) HAS_BUNDLED_CA=true ;; esac
+if [ "$HAS_OPENSSL_CA" = true ] && [ "$HAS_BUNDLED_CA" = true ]; then
+    echo "WARNING: NODE_OPTIONS contains both --use-openssl-ca and --use-bundled-ca. Node refuses" >&2
+    echo "  that combination (exit 9), so code-server will not start. Remove --use-bundled-ca." >&2
+elif [ "$HAS_BUNDLED_CA" = true ]; then
+    echo "WARNING: NODE_OPTIONS contains --use-bundled-ca, so code-server keeps Node's built-in root" >&2
+    echo "  list, which still trusts the compromised emSign ECC Root CA - G3. Remove it to use the OS store." >&2
+elif [ "$HAS_OPENSSL_CA" = false ]; then
+    NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--use-openssl-ca"
+fi
+export NODE_OPTIONS
 
 # --- Launch code-server ---
 

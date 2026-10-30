@@ -1,9 +1,11 @@
 #!/usr/bin/env bats
 # ============================================================================
 # Tests for run_vscode.sh -- DAAF Code Browser (VS Code in the browser)
+# and for the container-side launcher it calls, scripts/launch_code_server.sh
 # ============================================================================
 # Thin wrapper script -- tests focus on preflight checks, container lifecycle,
-# dry-run behavior, and structural markers.
+# dry-run behavior, and structural markers. The last section tests
+# launch_code_server.sh (NODE_OPTIONS trust-store flag) with a fake code-server.
 # ============================================================================
 
 load 'test_helper'
@@ -270,4 +272,109 @@ teardown() {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/run_vscode.sh"
     assert_success
     assert_output --partial "Code Browser"
+}
+
+# =========================================================================
+# Container-side launcher (launch_code_server.sh): TLS trust store
+# =========================================================================
+# code-server's bundled Node must use the OS CA store (--use-openssl-ca), not
+# its built-in root list, which still trusts emSign ECC Root CA - G3. A fake
+# code-server on PATH records the NODE_OPTIONS it was started with. Port 1 is
+# passed so the launcher's own listener probe never finds a running server.
+
+_fake_code_server() {
+    mkdir -p "${TEST_DIR}/bin"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${NODE_OPTIONS-<unset>}" > "%s/node_options.log"\n' "${TEST_DIR}" > "${TEST_DIR}/bin/code-server"
+    chmod +x "${TEST_DIR}/bin/code-server"
+}
+
+@test "launch_code_server.sh adds --use-openssl-ca when NODE_OPTIONS is unset" {
+    _fake_code_server
+    run env -u NODE_OPTIONS PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+    assert_success
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--use-openssl-ca"
+}
+
+@test "launch_code_server.sh appends --use-openssl-ca to an existing NODE_OPTIONS" {
+    _fake_code_server
+    run env NODE_OPTIONS="--max-old-space-size=4096" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+    assert_success
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--max-old-space-size=4096 --use-openssl-ca"
+}
+
+@test "launch_code_server.sh does not duplicate --use-openssl-ca" {
+    _fake_code_server
+    run env NODE_OPTIONS="--use-openssl-ca --max-old-space-size=4096" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+    assert_success
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--use-openssl-ca --max-old-space-size=4096"
+}
+
+@test "launch_code_server.sh leaves an explicit --use-bundled-ca alone and warns" {
+    # Node refuses --use-openssl-ca together with --use-bundled-ca (exit 9), so
+    # appending would stop code-server from starting at all.
+    _fake_code_server
+    run env NODE_OPTIONS="--use-bundled-ca" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+    assert_success
+    assert_output --partial "WARNING: NODE_OPTIONS contains --use-bundled-ca"
+    refute_output --partial "contains both"
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--use-bundled-ca"
+}
+
+@test "launch_code_server.sh treats an empty NODE_OPTIONS like an unset one" {
+    _fake_code_server
+    run env NODE_OPTIONS="" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+    assert_success
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--use-openssl-ca"
+}
+
+@test "launch_code_server.sh warns when NODE_OPTIONS holds both CA flags" {
+    # Node exits 9 on that combination, so code-server would not start; the
+    # value is passed on unchanged, in either order, adjacent or not.
+    local value
+    for value in "--use-openssl-ca --use-bundled-ca" "--use-bundled-ca --max-old-space-size=64 --use-openssl-ca"; do
+        _fake_code_server
+        rm -f "${TEST_DIR}/node_options.log"
+        run env NODE_OPTIONS="${value}" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1
+        assert_success
+        assert_output --partial "WARNING: NODE_OPTIONS contains both --use-openssl-ca and --use-bundled-ca"
+        run cat "${TEST_DIR}/node_options.log"
+        assert_output "${value}"
+    done
+}
+
+@test "launch_code_server.sh --background hands code-server the same NODE_OPTIONS" {
+    # The background path starts code-server under nohup with output discarded,
+    # so wait (up to 5 s) for the fake to write what it inherited.
+    _fake_code_server
+    run env NODE_OPTIONS="--max-old-space-size=4096" PATH="${TEST_DIR}/bin:${PATH}" bash "${REPO_ROOT}/scripts/launch_code_server.sh" "${TEST_DIR}" --port 1 --background
+    assert_success
+    assert_output --partial "Server started in background"
+    local i=0
+    while [ ! -s "${TEST_DIR}/node_options.log" ] && [ "${i}" -lt 50 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+    run cat "${TEST_DIR}/node_options.log"
+    assert_output "--max-old-space-size=4096 --use-openssl-ca"
+}
+
+@test "launch_code_server.sh exports NODE_OPTIONS before both code-server launch lines" {
+    local export_line launch_lines line
+    export_line="$(grep -n '^export NODE_OPTIONS$' "${REPO_ROOT}/scripts/launch_code_server.sh" | cut -d: -f1)"
+    [ -n "${export_line}" ]
+    launch_lines="$(grep -n -E '^[[:space:]]*(exec |nohup )code-server' "${REPO_ROOT}/scripts/launch_code_server.sh" | cut -d: -f1)"
+    [ "$(printf '%s\n' "${launch_lines}" | wc -l)" -eq 2 ]
+    for line in ${launch_lines}; do
+        [ "${export_line}" -lt "${line}" ]
+    done
+}
+
+@test "launch_code_server.sh leaves the password logic unchanged" {
+    run grep -F 'PASSWORD="${PASSWORD:-daaf}"' "${REPO_ROOT}/scripts/launch_code_server.sh"
+    assert_success
 }
