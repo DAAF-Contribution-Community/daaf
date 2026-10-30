@@ -322,13 +322,13 @@ for m in margins:
     print(m.to_polars())                     # ['term','margin','se','lci','uci']
 ```
 
-> **Quantified caveat + coverage gap (cross-validated 2026-07-15).** The continuous-predictor AME agrees with R `marginaleffects::avg_slopes()` to ~0.1% on the point estimate and ~0.9% on the SE — a small numerical-method difference (finite-difference / delta-method conventions), not a design error, so the continuous AME is safe to report. **The more important limitation is coverage:** `margins()` emits **only** continuous-predictor slopes. Categorical-level contrasts (e.g., a gender effect) are **absent** from its output — the returned `list[GLMMargins]` contains only the continuous term(s). Compute categorical-level contrasts from the coefficient table (`model.to_polars()`) or in R (`avg_slopes()` reports them). Evidence: `/daaf/scripts/scratch/xval_svy_r_05_compare.py`.
+> **Quantified caveat + coverage gap (cross-validated 2026-07-15).** The continuous-predictor AME agrees with R `marginaleffects::avg_slopes()` to ~0.1% on the point estimate and ~0.9% on the SE — a small numerical-method difference (finite-difference / delta-method conventions), not a design error, so the continuous AME is safe to report. **The more important limitation is coverage:** `margins()` emits **only** continuous-predictor slopes. Categorical-level contrasts (e.g., a gender effect) are **absent** from its output — the returned `list[GLMMargins]` contains only the continuous term(s). Compute categorical-level contrasts from the coefficient table (`model.to_polars()`) or in R (`avg_slopes()` reports them). Evidence: `/daaf/scripts/smoke_tests/xval_svy_survey_r/xval_svy_r_05_compare.py`.
 
 ---
 
 ## Cross-Validating Inference (p-values / margins vs. R)
 
-GLM inference has been cross-validated against R (2026-07-15; evidence `/daaf/scripts/scratch/xval_svy_r_05_compare.py`):
+GLM inference has been cross-validated against R (2026-07-15; evidence `/daaf/scripts/smoke_tests/xval_svy_survey_r/xval_svy_r_05_compare.py`, with its svy and R inputs beside it):
 
 1. **Coefficients, SEs, p-values, and residual df** — verified equal to R `survey::svyglm(family=quasibinomial()/quasipoisson())` to **<1e-6 relative** on a matched stratified-clustered design (24 PSUs, Taylor variance, logistic + Poisson). The df convention is identical: `df = degf(design) − n_predictors`, and both use a **t-statistic on that df** (no t-vs-z discrepancy). The historical upstream issue-#5 report of "slightly different p-values" did **not** reproduce at 0.19.0; it plausibly originated from comparing svy against R `family=binomial()` (normal / z-based) rather than `quasibinomial()` — *labeled inference, not tested (only `quasibinomial()` was compared here).*
 2. **`margins()`** — continuous-predictor AME matches R `marginaleffects::avg_slopes()` to ~0.1% (point) / ~0.9% (SE); see "Marginal Effects" for the caveat and the categorical-contrast coverage gap.
