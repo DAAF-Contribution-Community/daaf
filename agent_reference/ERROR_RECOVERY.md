@@ -367,7 +367,10 @@ def fetch_from_mirrors(mirrors: list[dict], dataset_path: str) -> pl.DataFrame:
     errors = []
 
     for mirror in mirrors:
-        url = mirror["url_template"].format(path=dataset_path)
+        # Fill every url_template placeholder; the HF template pins {revision} to
+        # vintage.hf_revision (str.format ignores it for the Urban CSV template).
+        revision = str((mirror.get("vintage") or {}).get("hf_revision", "main"))
+        url = mirror["url_template"].format(root_url=mirror["root_url"], revision=revision, path=dataset_path, format=mirror["format"])
         try:
             if mirror.get("read_strategy") == "eager_parquet":
                 df = pl.read_parquet(url)
@@ -401,7 +404,11 @@ errors <- character(0)
 
 for (i in seq_along(mirrors)) {
   mirror <- mirrors[[i]]
-  url <- sprintf(mirror$url_template, path = dataset_path)
+  # url_template uses {name} placeholders, so fill it with glue (not sprintf); the
+  # HF template pins {revision} to vintage$hf_revision, ignored by the Urban CSV one
+  revision <- if (is.null(mirror$vintage$hf_revision)) "main" else as.character(mirror$vintage$hf_revision)
+  url <- glue::glue(mirror$url_template, root_url = mirror$root_url, revision = revision,
+                    path = dataset_path, format = mirror$format)
   tryCatch({
     if (identical(mirror$read_strategy, "eager_parquet")) {
       # NOTE: plain read shown for template brevity — mirror parquet may be
