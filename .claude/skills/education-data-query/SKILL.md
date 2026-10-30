@@ -287,8 +287,8 @@ See `./references/fetch-patterns.md` for complete code patterns.
 
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
-| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8 | WH, BL, HI, AS, etc. |
-| Sex | 1 (Male), 2 (Female), 3 (Another gender, IPEDS 2022+), 4 (Unknown gender, IPEDS 2022+), 9 (Unknown), 99 (Total) | M, F |
+| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8; 9 is populated only in CCD (2016+) and IPEDS, and EDFacts has no 6 | WH, BL, HI, AS, etc. |
+| Sex | 1 (Male), 2 (Female), 9 (Unknown), 99 (Total); every dictionary also declares 3 (Gender Not-Identified). Populated 3/9: CCD 9 from 2016; CRDC 3 in the 2021 enrollment file only; IPEDS 3 and 9 from 2022 (admissions-enrollment, fall-enrollment-race), plus an undeclared 4 in fall-enrollment-race 2022, which has no 9 | M, F |
 | Grade | -1 to 15, 99 (total), 999 (not specified) | PK, KG, 01, etc. |
 
 ### Grade Encoding (SEMANTIC TRAP!)

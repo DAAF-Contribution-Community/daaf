@@ -251,7 +251,7 @@ Assets, liabilities, and net assets at beginning and end of year.
 | 25 | Other liabilities |
 | 26 | Total liabilities |
 
-> Line numbers below are for the 2018+ form. Forms through 2017 (all Portal years) used 27 Unrestricted, 28 Temporarily restricted, 29 Permanently restricted, 30-32 capital stock / paid-in / retained earnings, 33 Total net assets, 34 Total liabilities and net assets.
+> Line numbers below are for the 2019+ form, the first to use the "without/with donor restrictions" net-asset classes (IRS Form 990 for 2018 and 2019, https://www.irs.gov/pub/irs-prior/f990--2018.pdf and f990--2019.pdf, fetched 2026-10-30). The 2017 and 2018 forms used 27 Unrestricted, 28 Temporarily restricted, 29 Permanently restricted, 30-32 capital stock / paid-in / retained earnings, 33 Total net assets, 34 Total liabilities and net assets; that this layout holds back to the 2008 redesign is inference (the 2008-2016 forms were not checked). Forms before the 2008 redesign have a different balance sheet: on the 2007 form it is Part IV, with total net assets on line 73 (https://www.irs.gov/pub/irs-prior/f990--2007.pdf, fetched 2026-10-30). Portal years (1993-2016) span both layouts; see § 2008 Form Redesign.
 
 **Net Assets**:
 | Line | Category |

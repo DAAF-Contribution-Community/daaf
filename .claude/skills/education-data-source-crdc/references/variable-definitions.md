@@ -99,7 +99,7 @@ df |> filter(race == 2)  # Correct
 |------|----------|
 | `1` | Male |
 | `2` | Female |
-| `3` | Gender (non-binary/other, newer collections) |
+| `3` | Gender Not-Identified (Portal dictionary label; populated in the 2021 enrollment file) |
 | `9` | Unknown |
 | `99` | Total |
 | `-1` | Missing/not reported |
@@ -111,7 +111,7 @@ df |> filter(race == 2)  # Correct
 ### Important Notes
 
 - CRDC historically collected binary sex (male/female)
-- Sex code `3` ("Gender" / non-binary) is present in the data as of the 2021 collection -- rows exist for sex=3 but most contain `-1` or `-2` values, with approximately 174K rows having actual enrollment data
+- Sex code `3` ("Gender Not-Identified" in the Portal dictionary) is present in the 2021 enrollment file: most sex=3 rows carry `-2` (not applicable); about 174K hold a non-negative `enrollment_crdc` (173,823), but only 9,623 are above 0, and 2,354 school-total rows are above 0 (pinned-mirror probe, 2026-10-30)
 - The Portal data uses the `sex` column (integer-coded), not `male`/`female` column suffixes
 - Some guidance has addressed LGBTQ+ students under Title IX
 

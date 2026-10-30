@@ -305,7 +305,7 @@ States transitioned to 7-category system at different times. Data from 2007-2010
 | `9` | Unknown |
 | `99` | Total |
 
-> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1`, `2`, `9`, and `99`. Code `3` (Another gender) may appear in other Portal datasets but is NOT present in CCD K-12 enrollment data. Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
+> **CCD-specific:** Empirically verified codes in CCD enrollment data are `1`, `2`, `9`, and `99`. Code `3` (declared as "Gender Not-Identified" in every Portal dictionary, CCD's included) is populated in some IPEDS and CRDC files but is NOT present in CCD K-12 enrollment data; `9` appears from 2016 (mirror probe 2026-10-30). Missing data codes (`-1`, `-2`, `-3`) may appear in non-enrollment CCD datasets.
 
 ---
 

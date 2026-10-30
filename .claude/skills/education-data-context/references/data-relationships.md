@@ -645,8 +645,8 @@ When joining or filtering, remember that the Portal uses **integer codes**, not 
 
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
-| Race | 1-7, 99 (total) | WH, BL, HI |
-| Sex | 1, 2, 99 (total) | M, F |
+| Race | Differs by source (populated, newest files): CCD 1-7, 9, 99; CRDC 1-7, 99; EDFacts 1-5, 7, 99; IPEDS 1-9, 99 (see `variable-codes.md` in education-data-explorer) | WH, BL, HI |
+| Sex | Differs by source (populated, newest files): CCD 1, 2, 9, 99; CRDC and EDFacts 1, 2, 99 (CRDC 2021 enrollment adds 3); IPEDS 1, 2, 99, plus 3 and 9 in some 2022+ files and an undeclared 4 in fall-enrollment-race 2022 (see variable-codes.md in education-data-explorer) | M, F |
 | Grade | -1 to 15, 99 (total), 999 (not specified); 14 = Adult education, 15 = Ungraded | PK, KG, 01 |
 | FIPS | Integers (6, 36, 48) | CA, NY, TX |
 

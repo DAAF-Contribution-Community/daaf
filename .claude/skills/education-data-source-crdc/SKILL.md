@@ -177,7 +177,7 @@ Data quality issue?
 |------|----------|
 | `1` | Male |
 | `2` | Female |
-| `3` | Non-binary/other (newer collections; rows exist but mostly contain -1 or -2 values) |
+| `3` | Gender Not-Identified (Portal dictionary label; populated only in the 2021 enrollment file, where most sex-3 rows carry -2; see `references/variable-definitions.md`) |
 | `99` | Total |
 
 ### Disability Status (Portal Integer Codes)

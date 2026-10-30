@@ -180,7 +180,7 @@ Application and admissions data for degree-granting institutions.
 | `number_enrolled_total` | `ENRLT` | Total enrolled |
 | `number_enrolled_ft` | `ENRLFT` | Enrolled full-time |
 | `number_enrolled_pt` | `ENRLPT` | Enrolled part-time |
-| `sex` | — | Sex (1=Male, 2=Female, 3=Nonbinary, 9=Unknown, 99=Total) |
+| `sex` | — | Sex (1=Male, 2=Female, 99=Total; 3=Gender Not-Identified and 9=Unknown appear for 2022-2024 only) |
 
 > **Note:** The Portal `admissions-enrollment` dataset has only 9 columns: `unitid`, `year`, `fips`, `sex`, `number_applied`, `number_admitted`, `number_enrolled_ft`, `number_enrolled_pt`, `number_enrolled_total`. SAT/ACT scores are in the separate `admissions-requirements` dataset.
 

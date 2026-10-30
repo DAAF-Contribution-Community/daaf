@@ -319,12 +319,12 @@ Returns records with `sex` field (integer, not string codes):
 |-------|-------------|
 | 1 | Male |
 | 2 | Female |
-| 3 | Another gender (IPEDS 2022+ only) |
-| 4 | Unknown gender (IPEDS 2022+ only) |
+| 3 | Gender Not-Identified (declared in every dictionary; populated only in some IPEDS 2022+ files and the CRDC 2021 enrollment file) |
+| 4 | Not declared; populated only in IPEDS `fall-enrollment-race_2022` |
 | 9 | Unknown |
 | 99 | Total |
 
-**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F". Codes 3 and 4 appear only in IPEDS data starting 2022-23.
+**Note:** The Portal uses integers (1, 2), NOT string codes like "M", "F". Codes 3, 4 and 9 are populated only in some files (mirror probe 2026-10-30); see `education-data-explorer/references/variable-codes.md` (Sex Codes) for which.
 
 ## Complete FIPS Code List
 

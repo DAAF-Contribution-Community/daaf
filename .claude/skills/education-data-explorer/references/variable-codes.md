@@ -157,19 +157,19 @@ constructing a route:
 | 7 | Two or More Races |
 | 8 | Nonresident Alien (colleges only) |
 | 9 | Unknown |
-| 20 | Other / Not Specified (legacy; not observed in any probed Portal source as of 2026-08-07) |
+| 20 | Other / Not Specified (legacy; on the pinned mirror only in some IPEDS `fall-enrollment-race` files from 1986-1997, probe 2026-10-30) |
 | 99 | Total (all races) |
 
 ### Race Codes in Different Data Sources
 
 | Source | Codes Available |
 |--------|-----------------|
-| CCD | 1-7, 9, 99 (live-verified) |
-| CRDC | 1-7, 99 (live-verified) |
-| IPEDS | 1-9, 99 (live-verified; code 8 IPEDS-only) |
-| EDFacts | 1-9, 20, 99 declared; 1-5, 7, 99 populated in the 2018 district assessments file (mirror probe 2026-10-28; other files and years not probed) |
+| CCD | 1-7, 9, 99 (live-verified; on the mirror, 6 and 7 from 2008 and 9 from 2016) |
+| CRDC | 1-7, 99 (live-verified; all 55 mirror files with `race`, probe 2026-10-30) |
+| IPEDS | 1-9, 99 (live-verified; code 8 IPEDS-only); 20 also in some `fall-enrollment-race` files from 1986-1997 (mirror probe 2026-10-30) |
+| EDFacts | 1-9, 20, 99 declared; 1-5, 7, 99 populated in all 42 mirror files with `race` (assessments and grad rates, every year; probe 2026-10-30) |
 
-> **EDFacts race — mirror probe, 2026-10-28.** The pinned mirror answers the question the API outage below blocked: `edfacts/districts_edfacts_assessments_2018` populates `race` `{1, 2, 3, 4, 5, 7, 99}`. Other EDFacts files and years were not probed, so treat the declared set as the outer bound elsewhere. Earlier history: the EDFacts `race` set `{1-9, 20, 99}` plus missing sentinels is taken from Portal metadata, not a live probe: 2026-08-08 live probes of EDFacts assessments were blocked by an Urban API outage (HTTP 500 on EDFacts assessments), so the populated subset could not be confirmed then, and a 2026-08-09 live re-probe (`scripts/mirror_maintenance/56_race-edfacts-reprobe.py`) again returned HTTP 500 on all three attempted slices. Valid `grade_edfacts` codes are `{3-8, 9="Grades 9-12", 99}`.
+> **EDFacts race — mirror probe, 2026-10-28.** The pinned mirror answers the question the API outage below blocked: `edfacts/districts_edfacts_assessments_2018` populates `race` `{1, 2, 3, 4, 5, 7, 99}`. A 2026-10-30 probe of all 42 EDFacts files with `race` (district and school assessments and grad rates, every year) found the same set in each. Earlier history: the EDFacts `race` set `{1-9, 20, 99}` plus missing sentinels is taken from Portal metadata, not a live probe: 2026-08-08 live probes of EDFacts assessments were blocked by an Urban API outage (HTTP 500 on EDFacts assessments), so the populated subset could not be confirmed then, and a 2026-08-09 live re-probe (`scripts/mirror_maintenance/56_race-edfacts-reprobe.py`) again returned HTTP 500 on all three attempted slices. Valid `grade_edfacts` codes are `{3-8, 9="Grades 9-12", 99}`.
 
 ### Historical Note
 
@@ -183,12 +183,18 @@ Prior to 2008, race categories differed. The current categories align with OMB s
 |------|-------------|
 | 1 | Male |
 | 2 | Female |
-| 3 | Another gender (IPEDS 2022+ only) |
-| 4 | Unknown gender (IPEDS 2022+ only) |
+| 3 | Gender Not-Identified (declared in every dictionary; populated only in some IPEDS 2022+ files and the CRDC 2021 enrollment file) |
+| 4 | Not declared in any dictionary; populated only in IPEDS `fall-enrollment-race_2022` |
 | 9 | Unknown / Not Reported |
 | 99 | Total (all sexes) |
 
-> **Note:** Codes 3 and 4 were added to IPEDS starting with the 2022-23 collection. Among K-12 sources, live CCD data **does** carry `sex=9` (Unknown) — verified live at `schools/ccd/enrollment/2020/grade-9/race/sex/?fips=11`, distinct sex = `[1, 2, 9, 99]`. CRDC in the same probe set showed only `{1, 2, 99}`. Do not assume K-12 sources are limited to `{1, 2, 99}`; inspect the actual distinct values per source and year.
+> **Mirror probe, 2026-10-30 (every IPEDS, CRDC and EDFacts file with a `sex` column; CCD school files 2013-2024 and district files at sampled years).** The CCD, CRDC, EDFacts and IPEDS dictionaries all declare sex `1, 2, 3, 9, 99` (`"3" : "Gender Not-Identified"`); none declares `4`. Populated values:
+> - **IPEDS:** 144 of 148 files hold only `{1, 2, 99}`. `admissions-enrollment` adds `3` and `9` for 2022-2024; `fall-enrollment-race` adds `3` and `4` in 2022 and `3` and `9` in 2023 and 2024. These rows carry real counts (e.g. 2022 `enrollment_fall` > 0 in 1,226 sex-3 rows and 2,878 sex-4 rows). That `4` in 2022 stands for what later files code `9` is inference; check the IPEDS documentation before pooling it with `9`.
+> - **CRDC:** `{1, 2, 99}`, except `enrollment_k12_2021`, which adds `3` (2,354 school total rows with enrollment > 0); `retention_2020` has no `99` rows.
+> - **EDFacts:** `{1, 2, 99}` in all 22 files with `sex`.
+> - **CCD:** `{1, 2, 9, 99}` from 2016; earlier files lack `9`, and district files through 1997 hold only `99`.
+>
+> **Note:** Among K-12 sources, live CCD data **does** carry `sex=9` (Unknown) — verified live at `schools/ccd/enrollment/2020/grade-9/race/sex/?fips=11`, distinct sex = `[1, 2, 9, 99]`. CRDC in the same probe set showed only `{1, 2, 99}`. Do not assume K-12 sources are limited to `{1, 2, 99}`; inspect the actual distinct values per source and year.
 
 ---
 

@@ -338,8 +338,8 @@ The `fall-enrollment-race` (yearly) dataset provides the main fall enrollment da
 | Portal Variable | Description |
 |-----------------|-------------|
 | `enrollment_fall` | Fall enrollment count |
-| `race` | Race/ethnicity (integer codes: 1-9, 99=Total) |
-| `sex` | Sex (1=Male, 2=Female, 3=Nonbinary, 4=Unknown, 99=Total) |
+| `race` | Race/ethnicity (integer codes: 1-9, 99=Total; some 1986-1997 files also carry 20=Other) |
+| `sex` | Sex (1=Male, 2=Female, 99=Total; 3=Gender Not-Identified from 2022; 9=Unknown in 2023 and 2024; the 2022 file has an undeclared 4 and no 9) |
 | `level_of_study` | 1=Undergraduate, 2=Graduate, 99=Total |
 | `ftpt` | 1=Full-time, 2=Part-time, 99=Total |
 | `class_level` | 1=First-time, 2=Transfer, 3=Continuing, 4=Other total, 99=Total |

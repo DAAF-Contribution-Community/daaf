@@ -282,7 +282,7 @@ def load_mirrors(yaml_path: Path = MIRRORS_YAML) -> list[dict]:
 MIRRORS = load_mirrors()
 
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 # Example for SAIPE district poverty:
 DATASET_PATH = "saipe/districts_saipe"
 
@@ -296,7 +296,7 @@ def fetch_from_mirrors(
 
     Args:
         path: Canonical dataset path string from datasets-reference.md.
-            All mirrors use the same path — only root_url and format differ.
+            All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
             Example: "saipe/districts_saipe"
         filters: Dict of column->value(s) filters to apply locally
         years: List of years to filter to (applied as pl.col("year").is_in(years))
@@ -436,7 +436,7 @@ config <- yaml::read_yaml(mirrors_yaml_path)
 mirrors <- config$mirrors
 
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 # Example for SAIPE district poverty:
 DATASET_PATH <- "saipe/districts_saipe"
 years <- NULL   # integer vector of years to keep, e.g. c(2020, 2021, 2022); NULL keeps all years
@@ -1351,8 +1351,8 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 
 | Variable | Integer Values | NOT These Strings |
 |----------|----------------|-------------------|
-| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8 | WH, BL, HI, AS |
-| Sex | 1 (Male), 2 (Female), 9 (Unknown), 99 (Total); IPEDS declares 3 (Gender Not-Identified); its fall-enrollment-race files populate 3 and 4 in 2022, 3 and 9 in 2023 | M, F |
+| Race | 1-7, 9 (Unknown), 99 (total); IPEDS adds 8; 9 is populated only in CCD (2016+) and IPEDS, and EDFacts has no 6 | WH, BL, HI, AS |
+| Sex | 1 (Male), 2 (Female), 9 (Unknown), 99 (Total); every dictionary also declares 3 (Gender Not-Identified). Populated 3/9: CCD 9 from 2016; CRDC 3 in the 2021 enrollment file only; IPEDS 3 and 9 from 2022 (admissions-enrollment, fall-enrollment-race), plus an undeclared 4 in fall-enrollment-race 2022, which has no 9 | M, F |
 | Grade | -1 to 15, 99 (total), 999 (not specified) | PK, KG, 01 |
 
 ### Grade Encoding (SEMANTIC TRAP!)
@@ -1396,9 +1396,10 @@ Every fetch script must include these IAT comments:
 # REASONING: Mirrors are tried in priority order per mirrors.yaml config.
 #   Format-specific read strategy is driven by each mirror's read_strategy field.
 # ASSUMES: Mirror URLs are current and accessible; each mirror uses the same canonical
-#   path with its own root_url and format.
+#   path with its own root_url and format (plus the pinned revision on the HF mirror).
 #   Year/filter columns exist in the dataset with expected names.
-#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing), race=1-7, sex=1-2.
+#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing); race/sex code sets
+#   vary by source and year (education-data-explorer variable-codes.md).
 # REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for canonical paths.
 ```
 
@@ -1408,8 +1409,9 @@ Every fetch script must include these IAT comments:
 # REASONING: Mirrors are tried in priority order per mirrors.yaml config.
 #   Format-specific read strategy is driven by each mirror's read_strategy field.
 # ASSUMES: Mirror URLs are current and accessible; each mirror uses the same canonical
-#   path with its own root_url and format.
+#   path with its own root_url and format (plus the pinned revision on the HF mirror).
 #   Year/filter columns exist in the dataset with expected names.
-#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing), race=1-7, sex=1-2.
+#   Portal uses integer encoding: grade=-1 is Pre-K (NOT missing); race/sex code sets
+#   vary by source and year (education-data-explorer variable-codes.md).
 # REFERENCE: mirrors.yaml for mirror config, datasets-reference.md for canonical paths.
 ```

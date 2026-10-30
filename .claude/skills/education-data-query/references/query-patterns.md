@@ -78,7 +78,7 @@ School enrollment data. **Requires grade disaggregator in path.**
 # Grade 3 enrollment
 "https://educationdata.urban.org/api/v1/schools/ccd/enrollment/2020/grade-3/"
 
-# Kindergarten enrollment in Texas
+# Pre-K enrollment in Texas (grade-pk; grade = -1 in the data)
 "https://educationdata.urban.org/api/v1/schools/ccd/enrollment/2020/grade-pk/?fips=48"
 
 # Grade 12 enrollment in charter schools

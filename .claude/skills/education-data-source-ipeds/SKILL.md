@@ -191,15 +191,15 @@ Need variable definitions?
 |------|----------|
 | `1` | Male |
 | `2` | Female |
-| `3` | Nonbinary/Another gender |
-| `4` | Unknown/Prefer not to say |
+| `3` | Gender Not-Identified |
+| `4` | Not declared in the dictionary (appears only in `fall-enrollment-race` 2022) |
 | `9` | Unknown |
 | `99` | Total |
 | `-1` | Missing/not reported |
 | `-2` | Not applicable |
 | `-3` | Suppressed |
 
-> **Note:** Codes 3 and 4 are recent additions for non-binary gender reporting. Historical data may only have codes 1, 2, and 99. The exact meaning of codes 3 vs 4 may vary by endpoint — check the specific codebook.
+> **Note:** The dictionary declares `1, 2, 3, 9, 99` for every IPEDS `sex` column, with `3` = "Gender Not-Identified", and no `4`. On the pinned mirror (probe 2026-10-30), 144 of the 148 files with `sex` hold only `1, 2, 99`. The exceptions: `admissions-enrollment` adds `3` and `9` for 2022-2024; `fall-enrollment-race` adds `3` and `4` in 2022 and `3` and `9` in 2023 and 2024. These rows carry real counts. Whether `4` in 2022 means what `9` means later is inference; check the IPEDS documentation for that year before pooling them.
 
 ### Missing Data Codes
 
