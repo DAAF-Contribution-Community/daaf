@@ -187,7 +187,7 @@ its adapter path, its docs URL and the fetch date.>
 3. `test_registry_contract` already validates every registered adapter; if
    the backend is keyed, extend `BehaviorTests.test_backends_never_prints_key_values`
    with a sentinel value for its `KEY_ENV`.
-4. Run `python3 -m unittest discover -s /daaf/tests/python -p "test_scholar_search.py"`
+4. Run `python3 -m unittest discover -s /daaf/tests/python -p "test_scholar*.py"` (every scholar suite)
    file-first, from a captured script under the session's `scripts/`
    executed with `run_with_capture.sh` (checklist SB15), and quote the result
    line.

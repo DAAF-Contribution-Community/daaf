@@ -142,7 +142,7 @@ What are you comparing?
 | Foster care | `FCS` | `1` | foster_care | Assessments, Grad Rates |
 | Migrant | `MIG` | `1` | migrant | Assessments only |
 | Military connected | `MIL` | `1` | military_connected | Assessments only |
-| Race/ethnicity | Multiple | `1-7, 99` | race | Assessments, Grad Rates |
+| Race/ethnicity | Multiple | `1-5, 7, 99` (no `6`; see Race Codes) | race | Assessments, Grad Rates |
 | Sex | `M/F` | `1, 2, 99` | sex | Assessments only |
 
 **EDFacts Filter Column Pattern:**

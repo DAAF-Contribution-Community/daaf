@@ -258,7 +258,7 @@ ACGR must be reported for these subgroups. In the Portal data, subgroups are rep
 | English learners | LEP | lep | `1` |
 | Homeless | HOM | homeless | `1` |
 | Foster care | FCS | foster_care | `1` |
-| Each race/ethnicity | Multiple | race | `1-7` |
+| Each race/ethnicity | Multiple | race | `1-5, 7` (no `6`; see SKILL.md Race Codes) |
 
 > **Note:** `migrant` and `military_connected` columns are NOT present in grad rate datasets (only in assessment datasets).
 
