@@ -2,7 +2,7 @@
 # ============================================================================
 # Tests for .claude/hooks/bash-safety.sh
 # ============================================================================
-# SCOPE: the full hook. Four dated passes are represented, in file order.
+# SCOPE: the full hook. Six dated passes are represented, in file order.
 #
 #   2026-07-17 (cases 1-60) -- the quote-aware `git commit -m` carve-out
 #     (stage 0b): excision of shell-provably-inert message bodies from the
@@ -29,39 +29,66 @@
 #     ALLOW-today pins for the documented residuals (variable-indirected eval,
 #     runtime-computed stdin piped into a shell).
 #
-#   2026-09-26 (harmonization blocks at the end) -- the merged hook shared
-#     with the Claude Code Starter Kit (one body; only its SITE CONFIG block
-#     differs). Mirrored 1:1 with scripts/test_safety_hooks.sh (same IDs,
+#   2026-09-26 (merge blocks at the end) -- the hook became one shared body
+#     (since hf4, 2026-10-27, the body is site-neutral and every site setting
+#     lives in the sibling bash-safety.site.sh). Mirrored 1:1 with
+#     scripts/test_safety_hooks.sh (same IDs,
 #     strings, verdicts): FC85-FC125 fix cycle 4 (pipe-receiver terminators,
 #     quoted receivers, dot-source, mksh, flag-ARG wrappers, the `$(curl ...)`
 #     download-execute family, and the `$mount` / capture-as-data FP fixes);
-#     HZA*/HZB* harmonization pins incl. G10/G29 DAAF forms and a SITE CONFIG
+#     HZA*/HZB* merge pins incl. G10/G29 DAAF forms and a site-file
 #     smoke row; FC126-FC168 pins for the merged header's documented residuals
 #     (ALLOW today) and accepted false positives (BLOCK today); FC169-FC183, the
 #     G29 quoted-form fix (FC169 was a KNOWN GAP pinned ALLOW) with its
 #     project-root variable siblings, controls and the braced HOME/PWD forms
-#     FC181-FC183 (residual pins until harmonization fix 1, BLOCK since);
-#     FC184-FC238, harmonization fix 1 -- wrapper flag arguments before a
+#     FC181-FC183 (residual pins until merge fix 1, HF1; BLOCK since);
+#     FC184-FC238, merge fix 1 (HF1) -- wrapper flag arguments before a
 #     command-position verb with no-new-FP controls, the quoted HOME/PWD
 #     siblings, and the one-object stdin gate (FC227-FC238 feed RAW stdin via
 #     _run_hook_raw instead of a jq envelope), plus FC239 (2026-09-27, placed
 #     after FC212: the shared-flag-letter accepted FP) and FC240 (2026-09-27,
 #     placed after FC238: the non-string `tool_name` residual, ALLOW today,
-#     raw stdin); and the starter kit's permanent
-#     PT*/R4*/R5* rows (their IDs;
-#     `/workspace` -> `/daaf` where the row is about the project root). Rows
-#     that exercise site values FAIL against the starter-kit variant by design.
+#     raw stdin); and the permanent rows from the 2026-09-24 red-team port,
+#     PT*/R4*/R5* (IDs as issued; the project root written
+#     `/daaf` where the row is about the project root). Rows
+#     that exercise site values FAIL against a different site file by design.
 #
-#   2026-10-02 (section-10 block at the end, FC241-FC280) -- the accidental
-#     environment-disclosure guard (hook marker ENV_DISCLOSURE_GUARD). Four
-#     categories, tagged §10-A/B/C/D: A whole-env dump, B credential-named value
+#   2026-10-02 (section-9 block at the end, FC241-FC280) -- the accidental
+#     environment-disclosure guard (hook marker ENV_DISCLOSURE_GUARD; section
+#     10 until hf4, 2026-10-27). Four
+#     categories, tagged §9-A/B/C/D: A whole-env dump, B credential-named value
 #     to output/file (incl. the 0a heredoc and 0c excised-span accumulator
 #     paths), C /proc/<pid>/environ read, D interpreter one-liner env print.
 #     Mirrored 1:1 with scripts/test_safety_hooks.sh. Credential-named cases
 #     build their names from split fragments via fake_env10_cmd (loaded above),
 #     so no whole credential-shaped name literal appears here. All rows are
 #     site-neutral; the BLOCK rows FAIL against a live hook that predates
-#     section 10 by design.
+#     the guard by design.
+#
+#   2026-10-27 (hf4 blocks, then the hf5 block, at the end) -- the one-body /
+#     site-file split.
+#     Mirrored 1:1 with scripts/test_safety_hooks.sh, both generated from one
+#     row specification. FC281-FC440: the guard changes of the hook header's
+#     CHANGE LEDGER — hf4 (the output-flag writers into protected paths and
+#     /tmp, the §7 opener set, the right-hand terminators, the SEG_OPEN_TOK
+#     anchors of §6k/§6l/§8, §1 backtick-closed targets, §7 output-argument
+#     writers, /usr/local/bin/ qualifiers), their ALLOW controls, the site
+#     file's own §7 protection, and residual / accepted-FP pins (FC437-FC440,
+#     added in the Phase 4 review-fix cycle: two more stage-0 search-pattern
+#     accepted FPs and their workarounds). FC152 flipped
+#     from an ALLOW-today residual pin to BLOCK. FA*/FG*/FB* (tag `site`, 41
+#     cases): the SITE FILE CONTRACT's load paths, each run on a COPY of the
+#     hook under test beside a crafted (or absent) bash-safety.site.sh in its
+#     own fixture directory (_run_site_case; deleted in teardown). Against a
+#     body that predates hf4 these FAIL by design. Then hf5 (same day,
+#     FC441-FC531, mirrored 1:1 and generated from one row specification):
+#     the CHANGE LEDGER — hf5 items, (a) the /bin/, /usr/bin/ and
+#     /usr/local/bin/ qualifier on the §7 sed/perl, tar/unzip, find -delete
+#     and G10 tar-extract rules and (b) §6m, an output flag or output
+#     argument aimed at an ephemeral root, with ALLOW controls and pins for
+#     the residuals hf5 leaves. FC148, FC421 and FC422 flipped from
+#     ALLOW-today residual pins to BLOCK. Against a body that predates hf5
+#     the hf5 BLOCK rows FAIL by design.
 #
 # CONTRACT: text that merely DESCRIBES a dangerous command must NOT false-block
 # (ALLOW, exit 0) when its receiver is provably a data consumer; anything that
@@ -73,8 +100,13 @@
 # (the pass is exactly what makes them pass). To validate a staged draft before
 # the user installs it (.claude/hooks/ is deny-protected), point the override at
 # the draft:
-#   BASH_SAFETY_SH=/daaf/research/2026-09-18_FrameworkDev_SafetyHookHardening/bash-safety.sh.harmonized.proposed \
+#   BASH_SAFETY_SH=/path/to/drafts/bash-safety.sh \
 #     bats tests/bash/bash_safety.bats
+# The hook body is site-neutral and reads its site settings from the sibling
+# bash-safety.site.sh in its own directory, so a site file must sit beside the
+# draft (copy the live one, or the drafted one) -- without it every row BLOCKS,
+# as the site file contract requires. In-container, also set TMPDIR to a
+# project scratch folder (shell-scripting testing.md).
 #
 # Case strings live INSIDE this file and are fed to the hook via a jq envelope
 # (never on a command line), so the live PreToolUse hooks vetting the `bats`
@@ -84,7 +116,7 @@
 # ============================================================================
 
 load 'test_helper'
-# The 2026-10-02 section-10 env-disclosure cases (FC241-FC280) build their
+# The 2026-10-02 section-9 env-disclosure cases (FC241-FC280) build their
 # credential-NAMED fixtures from split fragments via fake_env10_cmd, so no whole
 # credential-shaped name literal appears in this file (the helper's NO-LITERAL
 # RULE). Shared with audit_log.bats.
@@ -99,6 +131,14 @@ setup() {
 }
 
 teardown() {
+    # The hf4 site-file cases (tag `site`) leave their fixture directory here.
+    # bats runs teardown after every test, on pass, failure and interrupt (a
+    # trap set inside a test would replace bats' own), so every runner deletes
+    # it: chmod first (FA7's mode-000 file), then a depth-first find -delete.
+    if [[ -n "${SITE_FIXTURE_DIR:-}" && -d "${SITE_FIXTURE_DIR}" ]]; then
+        chmod -R u+rwx "${SITE_FIXTURE_DIR}" 2>/dev/null || true
+        find "${SITE_FIXTURE_DIR}" -depth -delete 2>/dev/null || true
+    fi
     common_teardown
 }
 
@@ -114,6 +154,37 @@ _run_hook() {
 # tool_name).
 _run_hook_raw() {
     run bash -c 'printf "%s" "$1" | bash "$2"' _ "$1" "$BASH_SAFETY_SH"
+}
+
+# --- Helper: the 2026-10-27 hf4 site-file load cases (tag `site`) ---
+# The hook body reads bash-safety.site.sh from its OWN directory, so each case
+# copies the hook under test ($BASH_SAFETY_SH: a draft before deployment, the
+# live hook after) into a fresh fixture directory under the repo's tool scratch
+# (scripts/scratch/, git-ignored), puts a crafted site file (or none) beside
+# the copy and runs ONE command through it; teardown deletes the directory.
+#   _run_site_case CMD SITE [MODE] [TOOL]
+#   SITE  the site file's exact text, or __MISSING__ (no site file), or
+#         __SIBLING__ (a copy of the bash-safety.site.sh beside the hook under
+#         test); MODE a chmod mode for the site file; TOOL the envelope's
+#         tool_name (default Bash). Mirrors run_case_site in the battery.
+SITE_P="BLOCKED by bash-safety hook: the safety hook's site file (bash-safety.site.sh, next to the hook)"
+SITE_GOOD="SITE_ROOT='/daaf'
+SITE_EXTRA_PROTECTED_DIRS=('benchmarks/harness/hooks')
+SITE_SCRATCH_DIR='{PROJECT_DIR}/scripts/scratch/'
+SITE_REBUILD_HINT='(rebuild)'
+"
+_run_site_case() {
+    local cmd="$1" site="$2" mode="${3:-}" tool="${4:-Bash}"
+    mkdir -p "${REPO_ROOT}/scripts/scratch"
+    SITE_FIXTURE_DIR="$(mktemp -d -p "${REPO_ROOT}/scripts/scratch" bash_safety_site.XXXXXX)"
+    cp "$BASH_SAFETY_SH" "${SITE_FIXTURE_DIR}/bash-safety.sh"
+    case "$site" in
+        __MISSING__) ;;
+        __SIBLING__) cp "$(dirname "$BASH_SAFETY_SH")/bash-safety.site.sh" "${SITE_FIXTURE_DIR}/bash-safety.site.sh" ;;
+        *) printf '%s' "$site" > "${SITE_FIXTURE_DIR}/bash-safety.site.sh" ;;
+    esac
+    if [[ -n "$mode" ]]; then chmod "$mode" "${SITE_FIXTURE_DIR}/bash-safety.site.sh"; fi
+    run bash -c 'jq -n --arg c "$1" --arg t "$3" '\''{tool_name:$t,tool_input:{command:$c}}'\'' | bash "$2"' _ "$cmd" "${SITE_FIXTURE_DIR}/bash-safety.sh" "$tool"
 }
 
 # =========================================================================
@@ -295,8 +366,8 @@ _run_hook_raw() {
 # after start-of-string, a separator (; & | ( { ' " backtick $( ), a wrapper
 # (sudo env command exec xargs nohup setsid eval time nice busybox timeout N),
 # or find's ` -exec`. The word appearing mid-argument (prose in a heredoc,
-# `grep -n mount`, `see mount(8)`) must ALLOW. Cases mirror
-# scripts/scratch/mount_hook_e2e_2026-09-17.sh, which validated the change.
+# `grep -n mount`, `see mount(8)`) must ALLOW. These cases carry the
+# end-to-end probe that validated the change.
 
 _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 
@@ -486,13 +557,12 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # ============================================================================
 # 2026-09-18 HARDENING PASS (stages 0a-0e + sections 1-8)
 # ============================================================================
-# Every case below carries the ID it was derived from. FP*/BY*/HD* refer to
+# Every case below carries the ID it was derived from. FP*/BY*/HD* refer to the
+# probe results (DAAF maintainer-only, not shipped):
 # research/2026-09-18_FrameworkDev_SafetyHookHardening/output/
 # 2026-09-18_probe_results_live_hooks.txt; QS*/AD* are new cases written for
-# this pass. These cases FAIL against the pre-2026-09-18 LIVE hook by design —
-# that gap is exactly what this round closes. Run them against the staged draft:
-#   BASH_SAFETY_SH=/daaf/research/2026-09-18_FrameworkDev_SafetyHookHardening/bash-safety.sh.harmonized.proposed \
-#     bats tests/bash/bash_safety.bats
+# this pass. These cases failed against the pre-2026-09-18 live hook by design;
+# the pass is installed, so they run against the live hook.
 
 # ---------------------------------------------------------------------------
 # Stage 0a — heredoc-body classification
@@ -1520,7 +1590,7 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # settings.json deny rules), while in-project deletes stay allowed.
 # ---------------------------------------------------------------------------
 
-@test "§1 FC36: rm -rf of the project-root glob: BLOCK" {
+@test "§1 FC36: rm -rf of the project-root glob site-adapted: BLOCK" {
     _run_hook 'rm -rf /daaf/*'
     assert_failure
 }
@@ -1863,15 +1933,16 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 }
 
 # ===========================================================================
-# 2026-09-26 fix cycle 4 (FC85-FC125) -- DAAF round-4 red team, pinned at harmonization
+# 2026-09-26 fix cycle 4 (FC85-FC125) -- DAAF round-4 red team, pinned at the merge
 # ===========================================================================
 
 # Cycle 4 closed these in the hook but never pinned them. FC85-FC93 are the
 # orchestrator's round-4 adjudication rows V01-V09 (FC88/FC89 are also the
 # red team's S01/S02); FC94-FC103 are flag-ARG wrapper, stdbuf, dot-source and
 # mksh receivers (red-team P07/P28-P30, S06-S08, S10); FC104-FC108 are the
-# download-execute `$(curl ...)` family B01/B02/B03/B06/B07
-# (scripts/scratch/redteam_r4_cases_c.txt).
+# download-execute `$(curl ...)` family B01/B02/B03/B06/B07.
+# Probe corpus (DAAF maintainer-only, not shipped):
+# research/2026-09-18_FrameworkDev_SafetyHookHardening/probes/redteam_r4_cases_c.txt
 # ---------------------------------------------------------------------------
 # FC85-FC108 cycle-4 receivers and download-execute (BLOCK)
 # ---------------------------------------------------------------------------
@@ -2089,17 +2160,20 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 }
 
 # ===========================================================================
-# 2026-09-26 harmonization pins (HZ*) -- IDs from scripts/scratch/hz_port_cases.txt (Unit A); HZA18+ / HZB19+ added here
+# 2026-09-26 merge pins (HZ*) -- IDs from the
+# probe corpus (DAAF maintainer-only, not shipped):
+# research/2026-09-18_FrameworkDev_SafetyHookHardening/probes/hz_port_cases.txt
+# (Unit A); HZA18+ / HZB19+ added here
 # ===========================================================================
 
 # Shapes that exist only because the DAAF cycle-3/4 work was ported onto the
-# starter-kit round-5 base, plus the G10/G29 DAAF forms and one SITE CONFIG
-# smoke row. Already pinned elsewhere, so not repeated: `tar -xf a.tar -C
+# round-5 base (hook header PROVENANCE CHAIN), plus the G10/G29 DAAF forms and
+# one site-file smoke row. Already pinned elsewhere, so not repeated: `tar -xf a.tar -C
 # .claude` (R4G16), `rm -rf /daaf/.git` (R4A16 = HZB13), `rm -rf
 # .pytest_cache` (FP7), writes into `.claude/skills/<name>/` (R5FP50/R5FP51),
 # R4N33 (R4 section), heredoc `| ssh host` (R4A52 = HZB11).
 # ---------------------------------------------------------------------------
-# harmonization pins
+# merge pins
 # ---------------------------------------------------------------------------
 
 @test "0a HZA01: heredoc prose naming sudo piped into env LC_ALL=C sort: ALLOW" {
@@ -2197,10 +2271,10 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     assert_failure
 }
 
-# SITE CONFIG smoke row: DAAF's SITE_EXTRA_PROTECTED_DIRS adds
-# benchmarks/harness/hooks. This row FAILS against the starter-kit variant
-# (empty list) by design -- it proves the site config is wired in.
-@test "§7 HZB15: SITE CONFIG smoke cp into benchmarks/harness/hooks: BLOCK" {
+# Site-file smoke row: DAAF's bash-safety.site.sh lists benchmarks/harness/hooks
+# in SITE_EXTRA_PROTECTED_DIRS. This row FAILS against a site file whose list
+# is empty, by design -- it proves the site file beside the hook is loaded.
+@test "§7 HZB15: site file smoke cp into benchmarks/harness/hooks site-adapted: BLOCK" {
     _run_hook 'cp x benchmarks/harness/hooks/y.sh'
     assert_failure
 }
@@ -2328,9 +2402,13 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     assert_success
 }
 
-@test "residual FC148: tar -czf writing an archive into /tmp: ALLOW today" {
+# FC148 was the ALLOW-today pin of tar -czf into /tmp (a program-argument
+# /tmp write). hf5 (hook ledger item (b)) adds §6m, which applies the §7
+# output-writer shapes to an ephemeral-root destination, so the residual is
+# closed and the row BLOCKS.
+@test "§6m FC148: tar -czf writing an archive into /tmp, residual closed by hf5: BLOCK" {
     _run_hook 'tar -czf /tmp/a.tgz scratch'
-    assert_success
+    assert_failure 2
 }
 
 @test "residual FC149: find -exec cp into /tmp: ALLOW today" {
@@ -2348,9 +2426,13 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     assert_success
 }
 
-@test "residual FC152: keyword-opened pip install: ALLOW today" {
+# FC152 was the ALLOW-today pin of the keyword-opened install residual. hf4
+# (hook ledger item (e)) anchors §8 on SEG_OPEN_TOK, which includes the shell
+# keywords, so the residual is closed and the row BLOCKS (FC352 pins the same
+# string with the hf4 widening rows).
+@test "§8 FC152: keyword-opened pip install, residual closed by hf4: BLOCK" {
     _run_hook 'if true; then pip install x; fi'
-    assert_success
+    assert_failure 2
 }
 
 @test "residual FC153: R -f script with the install inside the file: ALLOW today" {
@@ -2443,12 +2525,12 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 
 # FC169 was a KNOWN GAP pinned ALLOW by Unit B: 0c rule 5b KEEPS a double-quoted
 # span containing `${`, so the quote survived and G29 (no quote before `$`)
-# missed it. Fixed 2026-09-26 (harmonization, G29 quoted form) with one shared
+# missed it. Fixed 2026-09-26 (merge, G29 quoted form) with one shared
 # `_ROOTVAR` fragment used by _RM_ROOT, G29 and G43; FC170-FC180 pin the sibling
 # project-root forms that shared the cause (BLOCK) and the token-exactness
 # controls (ALLOW). FC181-FC183 pin the braced home/cwd variables, which share
-# the cause; they were a documented residual (ALLOW) until harmonization fix 1
-# (2026-09-26) added _HOMEVAR/_CWDVAR, and now BLOCK (siblings: FC214-FC226).
+# the cause; they were a documented residual (ALLOW) until merge fix 1 (HF1,
+# 2026-09-26) added _HOMEVAR/_CWDVAR, and now BLOCK (siblings: FC214-FC226).
 @test "§1 FC169: G29 rm -rf of braced double-quoted CLAUDE_PROJECT_DIR/.git: BLOCK" {
     _run_hook 'rm -rf "${CLAUDE_PROJECT_DIR}/.git"'
     assert_failure
@@ -2525,13 +2607,13 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 }
 
 # ===========================================================================
-# 2026-09-26 harmonization fix 1 (FC184-FC238) -- wrapper flag arguments, quoted HOME/PWD roots, one-object stdin gate
+# 2026-09-26 merge fix 1, HF1 (FC184-FC238) -- wrapper flag arguments, quoted HOME/PWD roots, one-object stdin gate
 # ===========================================================================
 
 # HF1(a): a wrapper flag that takes a SEPARATE argument (`timeout -s KILL`,
 # `env -u HOME`, `exec -a x`) used to end the WRAPPERS run at its argument, so
 # the verb after it was never in command position. FC184-FC186 were
-# regressions vs the pre-2026-09-18 hook in both projects (the consistency
+# regressions vs the pre-2026-09-18 hook (the consistency
 # review's BLOCKER B1); FC187-FC198 are the same class across the other
 # WRAPPED guards, incl. `xargs -I {}`, the flock/taskset positional operand and
 # long flags. FC199-FC210 are the no-new-false-positive controls: FC205-FC210
@@ -2807,8 +2889,10 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # defect is in the envelope itself: two concatenated objects made
 # `jq -r .tool_name` print two lines, and malformed, empty, scalar or array
 # stdin made it print nothing, so TOOL_NAME was not exactly "Bash" and the hook
-# ALLOWED at the non-Bash gate (K03-K11 in
-# scripts/scratch/orch_concat_json_probe.sh). FC237-FC238 are the controls.
+# ALLOWED at the non-Bash gate (K03-K11 in the
+# probe (DAAF maintainer-only, not shipped):
+# research/2026-09-18_FrameworkDev_SafetyHookHardening/probes/orch_concat_json_probe.sh).
+# FC237-FC238 are the controls.
 @test "stdin FC227: K03 benign Read object then a Bash rm-root object: BLOCK" {
     _run_hook_raw '{"tool_name":"Read","tool_input":{}}{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}'
     assert_failure
@@ -2883,9 +2967,11 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # enforce-single-command.sh R7): documented residual "Non-string `tool_name`"
 # in the hook header, pinned ALLOW today. The gate checks that stdin is ONE
 # object but not the TYPE of tool_name, so a non-string tool_name reads as
-# "not Bash" and the command is never scanned (probe:
-# scripts/scratch/hf3_toolname_probe.sh). Comment-only in the hook, so it
-# passes on the installed hook and on bash-safety.sh.harmonized_a.proposed.
+# "not Bash" and the command is never scanned
+# (probe hf3 (DAAF maintainer-only, not shipped):
+# research/2026-09-18_FrameworkDev_SafetyHookHardening/probes/hf3_toolname_probe.sh).
+# The revision that documented it was comment-only in the hook, so the pin
+# passed on the hook installed then and on that revision's draft alike.
 # Mirrored in scripts/test_safety_hooks.sh. A change that flips it must update
 # both pins, the return rows and the BOUNDARIES.md row.
 @test "residual FC240: non-string tool_name (array) with an rm-root command: ALLOW today" {
@@ -2894,11 +2980,12 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 }
 
 # ===========================================================================
-# 2026-10-02 section 10 accidental environment-disclosure guard (FC241-FC280)
+# 2026-10-02 section 9 accidental environment-disclosure guard (FC241-FC280)
 # ===========================================================================
 
 # Mirrored 1:1 in scripts/test_safety_hooks.sh and tests/bash/bash_safety.bats.
-# Section 10 (hook marker ENV_DISCLOSURE_GUARD) blocks the FUNCTIONAL accidental
+# Section 9 (section 10 until hf4, 2026-10-27; hook marker
+# ENV_DISCLOSURE_GUARD) blocks the FUNCTIONAL accidental
 # shapes that would dump the environment or a credential-named value where it
 # lands in the audit log, a session archive or a file. Four categories mirror
 # run_with_capture.sh's env-print scan: A whole-env dump, B credential-named
@@ -2906,238 +2993,238 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # env print. The credential-named cases build their names from split fragments
 # via the shared helper tests/bash/helpers/fake_shapes.bash (fake_env10_cmd).
 # ---------------------------------------------------------------------------
-# section 10 category A -- whole-environment dump (BLOCK) and filtered-inspection controls (ALLOW)
+# section 9 category A -- whole-environment dump (BLOCK) and filtered-inspection controls (ALLOW)
 # ---------------------------------------------------------------------------
 
-@test "§10-A FC241: A bare env at end of string: BLOCK" {
+@test "§9-A FC241: A bare env at end of string: BLOCK" {
     _run_hook 'env'
     assert_failure
 }
 
-@test "§10-A FC242: A bare set at end of string: BLOCK" {
+@test "§9-A FC242: A bare set at end of string: BLOCK" {
     _run_hook 'set'
     assert_failure
 }
 
-@test "§10-A FC243: A bare printenv at end of string: BLOCK" {
+@test "§9-A FC243: A bare printenv at end of string: BLOCK" {
     _run_hook 'printenv'
     assert_failure
 }
 
-@test "§10-A FC244: export -p at end of string: BLOCK" {
+@test "§9-A FC244: export -p at end of string: BLOCK" {
     _run_hook 'export -p'
     assert_failure
 }
 
-@test "§10-A FC245: env redirected into a file: BLOCK" {
+@test "§9-A FC245: env redirected into a file: BLOCK" {
     _run_hook 'env > envdump.txt'
     assert_failure
 }
 
-@test "§10-A FC246: set then a terminator and echo: BLOCK" {
+@test "§9-A FC246: set then a terminator and echo: BLOCK" {
     _run_hook 'set; echo done'
     assert_failure
 }
 
-@test "§10-A FC247: env running a program stays allowed: ALLOW" {
+@test "§9-A FC247: env running a program stays allowed: ALLOW" {
     _run_hook 'env FOO=1 python3 run.py'
     assert_success
 }
 
-@test "§10-A FC248: env piped into grep PATH is filtered inspection: ALLOW today" {
+@test "§9-A FC248: env piped into grep PATH is filtered inspection: ALLOW today" {
     _run_hook 'env | grep PATH'
     assert_success
 }
 
-@test "§10-A FC249: set piped into wc -l is filtered inspection: ALLOW today" {
+@test "§9-A FC249: set piped into wc -l is filtered inspection: ALLOW today" {
     _run_hook 'set | wc -l'
     assert_success
 }
 
 # ---------------------------------------------------------------------------
-# section 10 category B -- credential-named value to output or a file (BLOCK) via fragment-assembled builders
+# section 9 category B -- credential-named value to output or a file (BLOCK) via fragment-assembled builders
 # ---------------------------------------------------------------------------
 
-# One BLOCK row per section-10 keyword (KEY APIKEY TOKEN SECRET PASSWORD PASSWD
+# One BLOCK row per section-9 keyword (KEY APIKEY TOKEN SECRET PASSWORD PASSWD
 # PASSPHRASE CREDENTIAL CREDS DSN PAT), across the print verbs and both
 # name-literal forms, plus the two accumulator paths.
-@test "§10-B FC250: echo expanding a KEY-suffixed name: BLOCK" {
+@test "§9-B FC250: echo expanding a KEY-suffixed name: BLOCK" {
     fake_env10_cmd echo key APP
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC251: echo of a braced TOKEN-suffixed name: BLOCK" {
+@test "§9-B FC251: echo of a braced TOKEN-suffixed name: BLOCK" {
     fake_env10_cmd echo_braced token SERVICE
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC252: printf of a PASSWORD-suffixed name: BLOCK" {
+@test "§9-B FC252: printf of a PASSWORD-suffixed name: BLOCK" {
     fake_env10_cmd printf password DB
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC253: declare -p of a SECRET-suffixed name: BLOCK" {
+@test "§9-B FC253: declare -p of a SECRET-suffixed name: BLOCK" {
     fake_env10_cmd declare_p secret MY
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC254: typeset -p of a CREDS-suffixed name: BLOCK" {
+@test "§9-B FC254: typeset -p of a CREDS-suffixed name: BLOCK" {
     fake_env10_cmd typeset_p creds X
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC255: printenv of an APIKEY-suffixed name: BLOCK" {
+@test "§9-B FC255: printenv of an APIKEY-suffixed name: BLOCK" {
     fake_env10_cmd printenv apikey APP
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC256: accumulator 0a heredoc body expanding a KEY-suffixed name: BLOCK" {
+@test "§9-B FC256: accumulator 0a heredoc body expanding a KEY-suffixed name: BLOCK" {
     fake_env10_cmd heredoc key APP
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC257: accumulator 0c grep span with a KEY-suffixed name redirected to a file: BLOCK" {
+@test "§9-B FC257: accumulator 0c grep span with a KEY-suffixed name redirected to a file: BLOCK" {
     fake_env10_cmd grep_redirect key APP
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC258: echo of a PASSPHRASE-suffixed name: BLOCK" {
+@test "§9-B FC258: echo of a PASSPHRASE-suffixed name: BLOCK" {
     fake_env10_cmd echo passphrase USER
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC259: echo of a DSN-suffixed name: BLOCK" {
+@test "§9-B FC259: echo of a DSN-suffixed name: BLOCK" {
     fake_env10_cmd echo dsn DB
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC260: echo of a PAT-suffixed name: BLOCK" {
+@test "§9-B FC260: echo of a PAT-suffixed name: BLOCK" {
     fake_env10_cmd echo pat GH
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC261: echo of a PASSWD-suffixed name: BLOCK" {
+@test "§9-B FC261: echo of a PASSWD-suffixed name: BLOCK" {
     fake_env10_cmd echo passwd SYS
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC262: echo of a CREDENTIAL-suffixed name: BLOCK" {
+@test "§9-B FC262: echo of a CREDENTIAL-suffixed name: BLOCK" {
     fake_env10_cmd echo credential AWS
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC263: echo of a plural KEYS-suffixed name stays allowed: ALLOW" {
+@test "§9-B FC263: echo of a plural KEYS-suffixed name stays allowed: ALLOW" {
     fake_env10_cmd plural key API
     _run_hook "$FS_TEXT"
     assert_success
 }
 
-@test "§10-B FC264: a presence check of a credential name stays allowed: ALLOW" {
+@test "§9-B FC264: a presence check of a credential name stays allowed: ALLOW" {
     fake_env10_cmd presence key X_API
     _run_hook "$FS_TEXT"
     assert_success
 }
 
-@test "§10-B FC265: echo of a single-segment PATH stays allowed: ALLOW" {
+@test "§9-B FC265: echo of a single-segment PATH stays allowed: ALLOW" {
     _run_hook 'echo $PATH'
     assert_success
 }
 
-@test "§10-B FC266: echo of a plain string stays allowed: ALLOW" {
+@test "§9-B FC266: echo of a plain string stays allowed: ALLOW" {
     _run_hook 'echo "hello world"'
     assert_success
 }
 
-@test "§10-B FC267: uppercase loop variable ending in a credential segment echoed: BLOCK today" {
+@test "§9-B FC267: uppercase loop variable ending in a credential segment echoed: BLOCK today" {
     fake_env10_cmd loop_fp token SERVICE
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC268: single-quoted single-token credential span that 0c canonicalizes: BLOCK today" {
+@test "§9-B FC268: single-quoted single-token credential span that 0c canonicalizes: BLOCK today" {
     fake_env10_cmd squote_fp key APP
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
-@test "§10-B FC269: a long credential-shaped identifier echoed stresses grep -E against backtracking: BLOCK" {
+@test "§9-B FC269: a long credential-shaped identifier echoed stresses grep -E against backtracking: BLOCK" {
     fake_env10_cmd stress key
     _run_hook "$FS_TEXT"
     assert_failure
 }
 
 # ---------------------------------------------------------------------------
-# section 10 category C -- process-environment file read (BLOCK)
+# section 9 category C -- process-environment file read (BLOCK)
 # ---------------------------------------------------------------------------
 
-@test "§10-C FC270: cat of proc self environ: BLOCK" {
+@test "§9-C FC270: cat of proc self environ: BLOCK" {
     _run_hook 'cat /proc/self/environ'
     assert_failure
 }
 
-@test "§10-C FC271: tr reading proc pid environ: BLOCK" {
+@test "§9-C FC271: tr reading proc pid environ: BLOCK" {
     _run_hook 'tr "\0" "\n" < /proc/1/environ'
     assert_failure
 }
 
-@test "§10-C FC272: cat of proc self status is not the environ file: ALLOW" {
+@test "§9-C FC272: cat of proc self status is not the environ file: ALLOW" {
     _run_hook 'cat /proc/self/status'
     assert_success
 }
 
 # ---------------------------------------------------------------------------
-# section 10 category D -- interpreter one-liner environment print (BLOCK) and controls (ALLOW)
+# section 9 category D -- interpreter one-liner environment print (BLOCK) and controls (ALLOW)
 # ---------------------------------------------------------------------------
 
-@test "§10-D FC273: python3 printing the whole os.environ: BLOCK" {
+@test "§9-D FC273: python3 printing the whole os.environ: BLOCK" {
     _run_hook 'python3 -c "import os; print(os.environ)"'
     assert_failure
 }
 
-@test "§10-D FC274: Rscript printing the whole Sys.getenv: BLOCK" {
+@test "§9-D FC274: Rscript printing the whole Sys.getenv: BLOCK" {
     _run_hook 'Rscript -e "print(Sys.getenv())"'
     assert_failure
 }
 
-@test "§10-D FC275: node printing the whole process.env: BLOCK" {
+@test "§9-D FC275: node printing the whole process.env: BLOCK" {
     _run_hook 'node -e "console.log(process.env)"'
     assert_failure
 }
 
-@test "§10-D FC276: perl printing keys of ENV: BLOCK" {
+@test "§9-D FC276: perl printing keys of ENV: BLOCK" {
     _run_hook 'perl -e "print for keys %ENV"'
     assert_failure
 }
 
-@test "§10-D FC277: ruby printing ENV as a hash: BLOCK" {
+@test "§9-D FC277: ruby printing ENV as a hash: BLOCK" {
     _run_hook 'ruby -e "pp ENV.to_h"'
     assert_failure
 }
 
-@test "§10-D FC278: python3 version has no env token: ALLOW" {
+@test "§9-D FC278: python3 version has no env token: ALLOW" {
     _run_hook 'python3 --version'
     assert_success
 }
 
-@test "§10-D FC279: grep for os.environ has no interpreter gate: ALLOW" {
+@test "§9-D FC279: grep for os.environ has no interpreter gate: ALLOW" {
     _run_hook 'grep -rn os.environ src/app.py'
     assert_success
 }
 
-@test "§10-D FC280: python3 reading a single env var falls through: ALLOW" {
+@test "§9-D FC280: python3 reading a single env var falls through: ALLOW" {
     _run_hook 'python3 -c "import os; print(os.environ['"'"'X'"'"'])"'
     assert_success
 }
@@ -3145,22 +3232,22 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 
 
 # ===========================================================================
-# 2026-09-26 starter-kit permanent rows (PT*, R4*, R5*) -- ported from their tests/test-safety-hooks.sh
+# 2026-09-26 permanent rows from the 2026-09-24 red-team port (PT*, R4*, R5*)
 # ===========================================================================
 
-# Source: research/2026-09-18_FrameworkDev_SafetyHookHardening/handoff/
-#   2026-09-24_starterkit_to_daaf_hook_handoff/tests/test-safety-hooks.sh
-#   (sections PORT-2026-09-24, R4-REGRESSIONS, R5-FIXES, R5-FALSE-POSITIVES).
-# IDs are theirs, so the two projects' rows cross-reference. Case strings are
-# copied verbatim (their quoting included), except `/workspace` -> `/daaf`
-# where the row is about the project root; those rows say `site-adapted`.
-# Rows whose string (after adaptation) equals an existing DAAF case are not
+# Sections PORT-2026-09-24, R4-REGRESSIONS, R5-FIXES and R5-FALSE-POSITIVES of
+# the regression rows that came with the round-5 base (hook header PROVENANCE
+# CHAIN, step 2). The IDs are kept as they were issued. Case strings are
+# copied verbatim (their quoting included), with the project root written
+# `/daaf` where the row is about the project root; those rows say
+# `site-adapted`.
+# Rows whose string equals an existing DAAF case are not
 # repeated: PT13=FC36, PT15=FP6, PT20=FP7, PT21=FC54, PT23=FP11, PT24=FP12,
 # PT25=FC58, PT26=FC59, PT31/PT32 = the settings.json read/backup rows,
 # R4A51=FC64, R4A54=FC63, R4N16=PT17, R5FP77=AD24, R5FP91=AD32. PT33 (`npm
-# install` ALLOW) is a starter-kit site policy and is not pinned here.
+# install` ALLOW) is a site policy and is not pinned here.
 # R4A46 is pinned exactly as typed: its `\n` is the two characters an agent
-# types inside single quotes, not a newline (starter-kit R5-C5).
+# types inside single quotes, not a newline (round-5 fix C5).
 # ---------------------------------------------------------------------------
 # PORT-2026-09-24 section 1 rm shapes (BLOCK)
 # ---------------------------------------------------------------------------
@@ -3555,7 +3642,7 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
 # R5-FIXES (round 5 parts B and C)
 # ---------------------------------------------------------------------------
 
-# G10 -- destination is the .claude directory itself (user-ratified at both sites)
+# G10 -- destination is the .claude directory itself (user-ratified 2026-09-26)
 @test "§7 R4G13: G10 cp -r hooks into .claude/: BLOCK" {
     _run_hook 'cp -r scratch/hooks .claude/'
     assert_failure
@@ -3593,7 +3680,7 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     assert_failure
 }
 
-# G29 -- recursive rm of the project .git (user-ratified at both sites)
+# G29 -- recursive rm of the project .git (user-ratified 2026-09-26)
 @test "§1 R4A16: G29 rm -rf of the absolute project .git site-adapted: BLOCK" {
     _run_hook 'rm -rf /daaf/.git'
     assert_failure
@@ -4249,3 +4336,1710 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     assert_success
 }
 
+# ===========================================================================
+# 2026-10-27 hf4 guard changes (FC281-FC440) -- hook header CHANGE LEDGER — hf4
+# ===========================================================================
+
+# Mirrored 1:1 in scripts/test_safety_hooks.sh (same IDs, strings, verdicts),
+# both blocks generated from one row specification (FC437-FC440 from a second
+# one, in the Phase 4 review-fix cycle). Every row was checked
+# against the drafted hf4 body before it was added; against a body that
+# predates hf4 the BLOCK rows of (d) and (e) FAIL by design (the pass is what
+# makes them block). Rows that name `/daaf` or benchmarks/harness/hooks are
+# tagged site-adapted.
+# ---------------------------------------------------------------------------
+# hf4(d)(a) output-flag writers into protected paths (§7)
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (d)(a): curl -o/--output/--output-dir, wget -O/-o/-P/
+# --output-document/--directory-prefix, firecrawl -o/--output and sort -o
+# whose ARGUMENT is a protected path BLOCK (all were ALLOWED before hf4).
+# Controls (ALLOW): the destination is not protected, a URL only names a
+# protected path, or the flag letter belongs to another program (grep -o).
+
+@test "§7 FC281: curl -o into .claude/hooks: BLOCK" {
+    _run_hook 'curl -o .claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC282: curl bundled -sSLo into the absolute project .claude/hooks site-adapted: BLOCK" {
+    _run_hook 'curl -sSLo /daaf/.claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC283: curl --output after the URL onto settings.json: BLOCK" {
+    _run_hook 'curl -sSL https://example.com/x --output .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC284: curl --output= onto settings.local.json: BLOCK" {
+    _run_hook 'curl -sSL --output=.claude/settings.local.json https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC285: curl -O with --output-dir .claude/hooks: BLOCK" {
+    _run_hook 'curl -O --output-dir .claude/hooks https://example.com/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC286: wget -O into .claude/hooks: BLOCK" {
+    _run_hook 'wget -O .claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC287: wget bundled -qO with an attached .claude/hooks path: BLOCK" {
+    _run_hook 'wget -qO.claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC288: wget -P .claude/hooks: BLOCK" {
+    _run_hook 'wget -P .claude/hooks https://example.com/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC289: wget --directory-prefix= .claude/logs: BLOCK" {
+    _run_hook 'wget --directory-prefix=.claude/logs https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC290: wget -o log file into .claude/logs: BLOCK" {
+    _run_hook 'wget -o .claude/logs/audit.jsonl https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC291: firecrawl -o into .claude/hooks: BLOCK" {
+    _run_hook 'firecrawl scrape https://example.com -o .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC292: firecrawl --output onto settings.json: BLOCK" {
+    _run_hook 'firecrawl scrape https://example.com --output .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC293: sort -o onto settings.json: BLOCK" {
+    _run_hook 'sort -o .claude/settings.json scratch/a.json'
+    assert_failure 2
+}
+
+@test "§7 FC294: bash -c carrying curl -so into .claude/hooks: BLOCK" {
+    _run_hook 'bash -c "curl -so .claude/hooks/x.sh https://example.com/x"'
+    assert_failure 2
+}
+
+@test "§7 FC295: env curl -o into a dot-segment double-slash hooks path: BLOCK" {
+    _run_hook 'env curl -o ./.claude//hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC296: timeout 30 curl -o into .claude/hooks: BLOCK" {
+    _run_hook 'timeout 30 curl -o .claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC297: cd to the project root then curl -fsSLo into .claude/hooks site-adapted: BLOCK" {
+    _run_hook 'cd /daaf && curl -fsSLo .claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC298: curl -O of a URL whose path names .claude/hooks writes to the cwd: ALLOW" {
+    _run_hook 'curl -sSLO https://raw.githubusercontent.com/o/r/main/.claude/hooks/bash-safety.sh'
+    assert_success
+}
+
+@test "§7 FC299: curl of a URL naming settings.json with -o into scratch: ALLOW" {
+    _run_hook 'curl -sSL https://example.com/.claude/settings.json -o scratch/settings.json'
+    assert_success
+}
+
+@test "§7 FC300: sort -o into scratch reading settings.json: ALLOW" {
+    _run_hook 'sort -o scratch/sorted.txt .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC301: curl -o into scratch: ALLOW" {
+    _run_hook 'curl -o scratch/x.html https://example.com'
+    assert_success
+}
+
+@test "§7 FC302: wget -O into scratch: ALLOW" {
+    _run_hook 'wget -O scratch/x.html https://example.com'
+    assert_success
+}
+
+@test "§7 FC303: firecrawl -o into web_fetches: ALLOW" {
+    _run_hook 'firecrawl scrape https://example.com -o web_fetches/page.md'
+    assert_success
+}
+
+@test "§7 FC304: grep -o over settings.json is not an output flag: ALLOW" {
+    _run_hook 'grep -o hooks .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC305: curl -o into .claude/skills is not a protected path: ALLOW" {
+    _run_hook 'curl -o .claude/skills/x/ref.md https://example.com'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(d)(b) output-flag writers into /tmp (§6e)
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (d)(b): curl bundled short flags ending in o, --output=,
+# firecrawl -o/--output and wget --output-document into an ephemeral root.
+
+@test "§6e FC306: curl bundled -sSLo into /tmp: BLOCK" {
+    _run_hook 'curl -sSLo /tmp/page.html https://example.com'
+    assert_failure 2
+}
+
+@test "§6e FC307: curl bundled -fsSLo into /var/tmp: BLOCK" {
+    _run_hook 'curl -fsSLo /var/tmp/x https://example.com'
+    assert_failure 2
+}
+
+@test "§6e FC308: firecrawl -o into /tmp: BLOCK" {
+    _run_hook 'firecrawl scrape https://example.com -o /tmp/page.md'
+    assert_failure 2
+}
+
+@test "§6e FC309: firecrawl --output into /tmp: BLOCK" {
+    _run_hook 'firecrawl scrape https://example.com --output /tmp/page.md'
+    assert_failure 2
+}
+
+@test "§6e FC310: firecrawl --output= into /tmp: BLOCK" {
+    _run_hook 'firecrawl scrape https://example.com --output=/tmp/x.md'
+    assert_failure 2
+}
+
+@test "§6e FC311: wget --output-document= into /tmp: BLOCK" {
+    _run_hook 'wget --output-document=/tmp/x.html https://example.com'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf4(d)(c) the §7 opener set SEG7 (subshell, group and substitution openers)
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (d)(c): SEG7 opens on the subshell, brace-group, backtick
+# and dollar-paren openers SEG_OPEN already had, so a §7 write behind one
+# BLOCKS. Controls (ALLOW): a read of a hook or a copy OUT of .claude.
+
+@test "§7 FC312: subshell-opened cp into .claude/hooks: BLOCK" {
+    _run_hook '(cp scratch/x .claude/hooks/y.sh)'
+    assert_failure 2
+}
+
+@test "§7 FC313: brace-group-opened cp into .claude/hooks: BLOCK" {
+    _run_hook '{ cp scratch/x .claude/hooks/y.sh; }'
+    assert_failure 2
+}
+
+@test "§7 FC314: substitution-opened rm of a hook: BLOCK" {
+    _run_hook 'x=$(rm .claude/hooks/y.sh)'
+    assert_failure 2
+}
+
+@test "§7 FC315: subshell-opened curl -o into .claude/hooks: BLOCK" {
+    _run_hook '(curl -o .claude/hooks/x.sh https://example.com/x)'
+    assert_failure 2
+}
+
+@test "§7 FC316: subshell cat of a hook piped into wc -l: ALLOW" {
+    _run_hook '(cat .claude/hooks/bash-safety.sh | wc -l)'
+    assert_success
+}
+
+@test "§7 FC317: substitution cp of settings.json into scratch then echo: ALLOW" {
+    _run_hook 'n=$(cp .claude/settings.json scratch/settings.bak && echo ok)'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(d)(b) /tmp output-flag controls (§6e, ALLOW)
+# ---------------------------------------------------------------------------
+# Controls for hf4 (d)(b): `ls -lo /tmp` is not an output flag, and a URL
+# path that merely contains /tmp is not a destination.
+
+@test "§6e FC318: curl -o into scratch then ls -lo /tmp: ALLOW" {
+    _run_hook 'curl -sSL https://example.com -o scratch/p.html; ls -lo /tmp'
+    assert_success
+}
+
+@test "§6e FC319: curl of a URL path containing /tmp with -o into scratch: ALLOW" {
+    _run_hook 'curl -sS https://example.com/tmp/page -o scratch/p.html'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §7 right-hand terminators accept a paren and a backtick
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): PROT_DEST_END, _CLDIR_END and the G10 end classes
+# accept a closing paren and a backtick, so a protected destination that
+# ends a subshell, a substitution or a process substitution BLOCKS.
+
+@test "§7 FC320: spaced subshell cp into .claude/hooks closed by a paren: BLOCK" {
+    _run_hook '( cp x .claude/hooks/y )'
+    assert_failure 2
+}
+
+@test "§7 FC321: process substitution cp into .claude/hooks closed by a paren: BLOCK" {
+    _run_hook 'diff <(cp x .claude/hooks/y) f'
+    assert_failure 2
+}
+
+@test "§7 FC322: subshell cp -r of a hooks dir into .claude/ closed by a paren: BLOCK" {
+    _run_hook '(cp -r scratch/hooks .claude/)'
+    assert_failure 2
+}
+
+@test "§7 FC323: backtick cp into .claude/hooks closed by a backtick: BLOCK" {
+    _run_hook '`cp x .claude/hooks/y`'
+    assert_failure 2
+}
+
+@test "§7 FC324: spaced substitution cp into .claude/hooks closed by a paren: BLOCK" {
+    _run_hook 'x=$( cp x .claude/hooks/y )'
+    assert_failure 2
+}
+
+@test "§7 FC325: subshell cp -t .claude closed after the operand: BLOCK" {
+    _run_hook '(cp -t .claude x)'
+    assert_failure 2
+}
+
+@test "§7 FC326: substitution mv onto settings.json closed by a spaced paren: BLOCK" {
+    _run_hook 'x=$(mv a .claude/settings.json )'
+    assert_failure 2
+}
+
+@test "§7 FC327: subshell cp out of .claude/hooks into scratch: ALLOW" {
+    _run_hook '(cp .claude/hooks/x scratch/ )'
+    assert_success
+}
+
+@test "§7 FC328: substitution cp of settings.json into scratch: ALLOW" {
+    _run_hook 'x=$(cp .claude/settings.json scratch/b.json)'
+    assert_success
+}
+
+@test "§7 FC329: subshell cp into .claude/skills: ALLOW" {
+    _run_hook '(cp x .claude/skills/new/ )'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §6l mktemp opens on SEG_OPEN_TOK and ends at a paren or a backtick
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): §6l mktemp opens on SEG_OPEN_TOK (SEG_OPEN with a
+# paren only at a token start) and its terminator accepts a paren and a
+# backtick. Controls (ALLOW): mktemp told to use a project directory.
+
+@test "§6l FC330: subshell mktemp: BLOCK" {
+    _run_hook '(mktemp)'
+    assert_failure 2
+}
+
+@test "§6l FC331: backtick mktemp: BLOCK" {
+    _run_hook '`mktemp`'
+    assert_failure 2
+}
+
+@test "§6l FC332: substitution mktemp assigned to a variable: BLOCK" {
+    _run_hook 'x=$(mktemp)'
+    assert_failure 2
+}
+
+@test "§6l FC333: brace-group mktemp: BLOCK" {
+    _run_hook '{ mktemp; }'
+    assert_failure 2
+}
+
+@test "§6l FC334: double-quoted substitution mktemp: BLOCK" {
+    _run_hook 'x="$(mktemp)"'
+    assert_failure 2
+}
+
+@test "§6l FC335: substitution mktemp -d assigned to a variable: BLOCK" {
+    _run_hook 'f=$(mktemp -d)'
+    assert_failure 2
+}
+
+@test "§6l FC336: mktemp -d -p a project path site-adapted: ALLOW" {
+    _run_hook 'mktemp -d -p /daaf/x'
+    assert_success
+}
+
+@test "§6l FC337: TMPDIR set to a project path before mktemp site-adapted: ALLOW" {
+    _run_hook 'TMPDIR=/daaf/x mktemp'
+    assert_success
+}
+
+@test "§6l FC338: mktemp --tmpdir= a project path site-adapted: ALLOW" {
+    _run_hook 'mktemp --tmpdir=/daaf/x'
+    assert_success
+}
+
+@test "§6l FC339: substitution mktemp -p a project scratch dir site-adapted: ALLOW" {
+    _run_hook 'x=$(mktemp -p /daaf/research/x/scripts/scratch)'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §6k ln opens on SEG_OPEN_TOK
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): §6k ln into /tmp behind a subshell, substitution or
+# backtick opener BLOCKS; `ls -ln` stays ALLOW.
+
+@test "§6k FC340: subshell ln -s into /tmp: BLOCK" {
+    _run_hook '(ln -s f /tmp/x)'
+    assert_failure 2
+}
+
+@test "§6k FC341: substitution ln -s into /tmp: BLOCK" {
+    _run_hook 'x=$(ln -s f /tmp/x)'
+    assert_failure 2
+}
+
+@test "§6k FC342: backtick ln -s into /tmp: BLOCK" {
+    _run_hook '`ln -s f /tmp/x`'
+    assert_failure 2
+}
+
+@test "§6k FC343: ls -ln /tmp carries the ln letters as a flag: ALLOW" {
+    _run_hook 'ls -ln /tmp'
+    assert_success
+}
+
+@test "§6k FC344: subshell ls -ln /tmp: ALLOW" {
+    _run_hook '(ls -ln /tmp)'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §8 package installs open on SEG_OPEN_TOK
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): every §8 install guard opens on SEG_OPEN_TOK, which
+# includes the shell keywords, so keyword-, subshell-, group- and
+# substitution-opened installs BLOCK. This closes the residual FC152 pinned
+# (now BLOCK; FC352 is the same string). Controls (ALLOW): an install
+# sentence inside interpreter code, a grep for an install call, and the
+# read-only pip verbs.
+
+@test "§8 FC345: subshell pip install: BLOCK" {
+    _run_hook '(pip install x)'
+    assert_failure 2
+}
+
+@test "§8 FC346: brace-group pip install: BLOCK" {
+    _run_hook '{ pip install x; }'
+    assert_failure 2
+}
+
+@test "§8 FC347: substitution pip install: BLOCK" {
+    _run_hook 'x=$(pip install x)'
+    assert_failure 2
+}
+
+@test "§8 FC348: backtick pip install: BLOCK" {
+    _run_hook '`pip install x`'
+    assert_failure 2
+}
+
+@test "§8 FC349: subshell R CMD INSTALL: BLOCK" {
+    _run_hook '(R CMD INSTALL pkg.tar.gz)'
+    assert_failure 2
+}
+
+@test "§8 FC350: subshell conda install: BLOCK" {
+    _run_hook '(conda install x)'
+    assert_failure 2
+}
+
+@test "§8 FC351: subshell Rscript -e install.packages: BLOCK" {
+    _run_hook '(Rscript -e '\''install.packages("x")'\'')'
+    assert_failure 2
+}
+
+@test "§8 FC352: if-then pip install: BLOCK" {
+    _run_hook 'if true; then pip install x; fi'
+    assert_failure 2
+}
+
+@test "§8 FC353: while-do uv add: BLOCK" {
+    _run_hook 'while true; do uv add x; done'
+    assert_failure 2
+}
+
+@test "§8 FC354: process substitution pip install: BLOCK" {
+    _run_hook 'diff <(pip install x) f'
+    assert_failure 2
+}
+
+@test "§8 FC355: python3 -c printing a pip install sentence: ALLOW" {
+    _run_hook 'python3 -c '\''print("pip install is blocked")'\'''
+    assert_success
+}
+
+@test "§8 FC356: grep -rn for an install.packages call in R/: ALLOW" {
+    _run_hook 'grep -rn "install.packages(" R/'
+    assert_success
+}
+
+@test "§8 FC357: subshell pip list: ALLOW" {
+    _run_hook '(pip list)'
+    assert_success
+}
+
+@test "§8 FC358: substitution pip show: ALLOW" {
+    _run_hook 'x=$(pip show x)'
+    assert_success
+}
+
+@test "§8 FC359: subshell pip download: ALLOW" {
+    _run_hook '(pip download x)'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §1 and G29 backtick-closed targets
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): when a backtick opens the segment, a backtick may end
+# the §1 / G29 target (home dir, filesystem root, project root, project
+# .git). Controls (ALLOW): ordinary relative targets and .git-rewrite.
+
+@test "§1 FC360: backtick rm -rf of the home dir: BLOCK" {
+    _run_hook '`rm -rf ~`'
+    assert_failure 2
+}
+
+@test "§1 FC361: backtick rm -rf of the home dir assigned to a variable: BLOCK" {
+    _run_hook 'x=`rm -rf ~`'
+    assert_failure 2
+}
+
+@test "§1 FC362: backtick rm -rf of the project root site-adapted: BLOCK" {
+    _run_hook '`rm -rf /daaf`'
+    assert_failure 2
+}
+
+@test "§1 FC363: echo of a backtick rm -rf of the home dir with a slash: BLOCK" {
+    _run_hook 'echo `rm -rf ~/`'
+    assert_failure 2
+}
+
+@test "§1 FC364: backtick rm -rf of the filesystem root: BLOCK" {
+    _run_hook '`rm -rf /`'
+    assert_failure 2
+}
+
+@test "§1 FC365: backtick rm -rf of the project root assigned to a variable site-adapted: BLOCK" {
+    _run_hook 'x=`rm -rf /daaf`'
+    assert_failure 2
+}
+
+@test "§1 FC366: backtick rm -rf of the relative project .git: BLOCK" {
+    _run_hook '`rm -rf .git`'
+    assert_failure 2
+}
+
+@test "§1 FC367: backtick rm -rf of the absolute project .git site-adapted: BLOCK" {
+    _run_hook '`rm -rf /daaf/.git`'
+    assert_failure 2
+}
+
+@test "§1 FC368: rm -rf of dot-slash plus a variable: ALLOW" {
+    _run_hook 'rm -rf ./$NAME'
+    assert_success
+}
+
+@test "§1 FC369: rm -rf of dot-slash plus a backtick echo: ALLOW" {
+    _run_hook 'rm -rf ./`echo build`'
+    assert_success
+}
+
+@test "§1 FC370: backtick rm -rf of build/: ALLOW" {
+    _run_hook '`rm -rf build/`'
+    assert_success
+}
+
+@test "§1 FC371: backtick rm -rf of ./build assigned to a variable: ALLOW" {
+    _run_hook 'x=`rm -rf ./build`'
+    assert_success
+}
+
+@test "§1 FC372: echo of a backtick ls of the home dir: ALLOW" {
+    _run_hook 'echo `ls ~`'
+    assert_success
+}
+
+@test "§1 FC373: backtick rm -rf of scratch/x: ALLOW" {
+    _run_hook '`rm -rf scratch/x`'
+    assert_success
+}
+
+@test "§1 FC374: backtick rm -rf of .git-rewrite: ALLOW" {
+    _run_hook '`rm -rf .git-rewrite`'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) §7 output-argument writers (tar, git archive, pandoc, gpg, wget -a, uniq)
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): tar -c/-r/-u/-A/--delete with a protected -f/--file,
+# git archive -o/--output, pandoc and gpg -o/--output, wget -a/
+# --append-output, and uniq IN OUT with a protected second operand BLOCK.
+# Controls (ALLOW): reading or listing a protected archive, writing the
+# output elsewhere, a single uniq operand.
+
+@test "§7 FC375: tar -cf an archive into .claude/hooks: BLOCK" {
+    _run_hook 'tar -cf .claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC376: tar -czf onto settings.json: BLOCK" {
+    _run_hook 'tar -czf .claude/settings.json f'
+    assert_failure 2
+}
+
+@test "§7 FC377: tar -c -f with split flags into .claude/hooks: BLOCK" {
+    _run_hook 'tar -c -f .claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC378: tar -f before -c into .claude/hooks: BLOCK" {
+    _run_hook 'tar -f .claude/hooks/x.tar -c f'
+    assert_failure 2
+}
+
+@test "§7 FC379: tar --create --file= into .claude/hooks: BLOCK" {
+    _run_hook 'tar --create --file=.claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC380: tar cf old-style flags into .claude/hooks: BLOCK" {
+    _run_hook 'tar cf .claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC381: tar -rf append into .claude/hooks: BLOCK" {
+    _run_hook 'tar -rf .claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC382: tar --delete -f on an archive in .claude/hooks: BLOCK" {
+    _run_hook 'tar --delete -f .claude/hooks/x.tar m'
+    assert_failure 2
+}
+
+@test "§7 FC383: git archive -o into .claude/hooks: BLOCK" {
+    _run_hook 'git archive -o .claude/hooks/x.tar HEAD'
+    assert_failure 2
+}
+
+@test "§7 FC384: git archive --output= into .claude/hooks: BLOCK" {
+    _run_hook 'git archive --output=.claude/hooks/x.zip HEAD'
+    assert_failure 2
+}
+
+@test "§7 FC385: git -C dir archive -o into .claude/hooks site-adapted: BLOCK" {
+    _run_hook 'git -C /daaf archive -o .claude/hooks/x.tar HEAD'
+    assert_failure 2
+}
+
+@test "§7 FC386: pandoc -o into .claude/hooks: BLOCK" {
+    _run_hook 'pandoc in.md -o .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC387: pandoc --output= onto settings.json: BLOCK" {
+    _run_hook 'pandoc --output=.claude/settings.json in.md'
+    assert_failure 2
+}
+
+@test "§7 FC388: gpg -o into .claude/hooks: BLOCK" {
+    _run_hook 'gpg -o .claude/hooks/x.sh -d f.gpg'
+    assert_failure 2
+}
+
+@test "§7 FC389: gpg --output onto settings.json: BLOCK" {
+    _run_hook 'gpg --output .claude/settings.json --decrypt f.gpg'
+    assert_failure 2
+}
+
+@test "§7 FC390: wget -a append-log into .claude/logs: BLOCK" {
+    _run_hook 'wget -a .claude/logs/x.log https://example.com'
+    assert_failure 2
+}
+
+@test "§7 FC391: wget --append-output= into .claude/logs: BLOCK" {
+    _run_hook 'wget --append-output=.claude/logs/x.log https://example.com'
+    assert_failure 2
+}
+
+@test "§7 FC392: uniq IN OUT with OUT in .claude/hooks: BLOCK" {
+    _run_hook 'uniq f .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC393: uniq -c IN OUT with OUT settings.json: BLOCK" {
+    _run_hook 'uniq -c f .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC394: uniq -f 1 IN OUT with OUT in .claude/hooks: BLOCK" {
+    _run_hook 'uniq -f 1 f .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC395: subshell tar -cf into .claude/hooks: BLOCK" {
+    _run_hook '(tar -cf .claude/hooks/x.tar f)'
+    assert_failure 2
+}
+
+@test "§7 FC396: env uniq IN OUT with OUT in .claude/hooks: BLOCK" {
+    _run_hook 'env uniq f .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC397: tar -cf into benchmarks/harness/hooks site-adapted: BLOCK" {
+    _run_hook 'tar -cf benchmarks/harness/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§7 FC398: tar -xf of an archive in .claude/hooks into scratch: ALLOW" {
+    _run_hook 'tar -xf .claude/hooks/a.tar -C scratch'
+    assert_success
+}
+
+@test "§7 FC399: tar -tf of an archive in .claude/hooks: ALLOW" {
+    _run_hook 'tar -tf .claude/hooks/a.tar'
+    assert_success
+}
+
+@test "§7 FC400: tar -czf into scratch archiving .claude/hooks: ALLOW" {
+    _run_hook 'tar -czf scratch/hooks.tgz .claude/hooks'
+    assert_success
+}
+
+@test "§7 FC401: tar -cf into scratch archiving settings.json: ALLOW" {
+    _run_hook 'tar -cf scratch/b.tar .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC402: git archive -o into scratch: ALLOW" {
+    _run_hook 'git archive -o scratch/x.tar HEAD'
+    assert_success
+}
+
+@test "§7 FC403: git grep -o over a hook is not an output flag: ALLOW" {
+    _run_hook 'git grep -o hooks .claude/hooks/bash-safety.sh'
+    assert_success
+}
+
+@test "§7 FC404: pandoc of a hooks README with -o into scratch: ALLOW" {
+    _run_hook 'pandoc .claude/hooks/README.md -o scratch/x.html'
+    assert_success
+}
+
+@test "§7 FC405: gpg -o into scratch decrypting a hooks file: ALLOW" {
+    _run_hook 'gpg -o scratch/x -d .claude/hooks/x.gpg'
+    assert_success
+}
+
+@test "§7 FC406: uniq of settings.json with one operand: ALLOW" {
+    _run_hook 'uniq .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC407: uniq of settings.json into out.txt: ALLOW" {
+    _run_hook 'uniq .claude/settings.json out.txt'
+    assert_success
+}
+
+@test "§7 FC408: uniq -f 1 of settings.json into out.txt: ALLOW" {
+    _run_hook 'uniq -f 1 .claude/settings.json out.txt'
+    assert_success
+}
+
+@test "§7 FC409: wget -a into scratch for a URL naming .claude/hooks: ALLOW" {
+    _run_hook 'wget -a scratch/w.log https://example.com/.claude/hooks/x'
+    assert_success
+}
+
+@test "§7 FC410: tar -cf into scratch with -C .claude: ALLOW" {
+    _run_hook 'tar -cf scratch/x.tar -C .claude hooks'
+    assert_success
+}
+
+@test "§7 FC411: uniq of a digit-led input file into out.txt: ALLOW" {
+    _run_hook 'uniq 01_list.txt out.txt'
+    assert_success
+}
+
+@test "§7 FC412: uniq of a digit-led input file into .claude/hooks: BLOCK" {
+    _run_hook 'uniq 01_list.txt .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf4(e) /usr/local/bin/ path qualifiers (§1, §3, §7)
+# ---------------------------------------------------------------------------
+# Hook ledger hf4 (e): /usr/local/bin/ is admitted wherever /bin/ and
+# /usr/bin/ were. Controls (ALLOW): a copy out of .claude, the path as an
+# argument.
+
+@test "§7 FC413: /usr/local/bin/curl -o into .claude/hooks: BLOCK" {
+    _run_hook '/usr/local/bin/curl -o .claude/hooks/x.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC414: /usr/local/bin/cp into .claude/hooks: BLOCK" {
+    _run_hook '/usr/local/bin/cp x .claude/hooks/y'
+    assert_failure 2
+}
+
+@test "§1 FC415: /usr/local/bin/rm -rf of the filesystem root: BLOCK" {
+    _run_hook '/usr/local/bin/rm -rf /'
+    assert_failure 2
+}
+
+@test "§1 FC416: /usr/local/bin/rm -rf of the home dir: BLOCK" {
+    _run_hook '/usr/local/bin/rm -rf ~'
+    assert_failure 2
+}
+
+@test "§7 FC417: /usr/local/bin/tar -cf into .claude/hooks: BLOCK" {
+    _run_hook '/usr/local/bin/tar -cf .claude/hooks/x.tar f'
+    assert_failure 2
+}
+
+@test "§3 FC418: /usr/local/bin/install -m 4755 setuid mode: BLOCK" {
+    _run_hook '/usr/local/bin/install -m 4755 x y'
+    assert_failure 2
+}
+
+@test "§7 FC419: /usr/local/bin/cp out of .claude/hooks into scratch: ALLOW" {
+    _run_hook '/usr/local/bin/cp .claude/hooks/x scratch/'
+    assert_success
+}
+
+@test "§7 FC420: ls of /usr/local/bin/cp names the path as an argument: ALLOW" {
+    _run_hook 'ls /usr/local/bin/cp'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4 residuals (ALLOW today) and accepted false positives (BLOCK today)
+# ---------------------------------------------------------------------------
+# Hook header DOCUMENTED RESIDUALS left by hf4, pinned at today's verdict:
+# path qualifiers the §7 rules do not admit, §6 has no sort rule, cwd-
+# relative evasion (ALLOW today); stage-0c search-pattern false positives
+# (BLOCK today). A deliberate future change that flips one should flip its
+# expectation here, not pass silently. hf5 closed the first two (FC421,
+# FC422 now BLOCK; see the hf5 block at the end).
+
+# FC421 and FC422 were ALLOW-today residual pins; hf5 closes both (hook
+# ledger items (a) the §7 path qualifiers and (b) §6m), so they BLOCK.
+@test "§7 FC421: /bin/sed -i on settings.json, residual closed by hf5 (§7 path qualifier): BLOCK" {
+    _run_hook '/bin/sed -i s/a/b/ .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§6m FC422: sort -o into /tmp, residual closed by hf5 (§6m): BLOCK" {
+    _run_hook 'sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "residual FC423: §7 /opt path-qualified cp into .claude/hooks: ALLOW today" {
+    _run_hook '/opt/x/bin/cp x .claude/hooks/y'
+    assert_success
+}
+
+@test "accepted-fp FC424: §6l stage-0c canonicalized grep -E tmp-or-mktemp alternation: BLOCK today" {
+    _run_hook 'grep -n -E "tmp|mktemp" file.sh'
+    assert_failure 2
+}
+
+@test "accepted-fp FC425: §7 stage-0c canonicalized grep pattern brace-cp over a hook: BLOCK today" {
+    _run_hook 'grep -n "{cp" .claude/hooks/bash-safety.sh'
+    assert_failure 2
+}
+
+@test "residual FC426: §7 cwd-relative subshell cd into .claude/hooks then rm: ALLOW today" {
+    _run_hook '(cd .claude/hooks && rm y)'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf4 the site file is protected like every hook file (§7)
+# ---------------------------------------------------------------------------
+# The site file bash-safety.site.sh sits in .claude/hooks, so §7 and the
+# Edit(.claude/hooks/*) deny rule protect it like every hook file.
+
+@test "§7 FC427: cp onto the site file: BLOCK" {
+    _run_hook 'cp x .claude/hooks/bash-safety.site.sh'
+    assert_failure 2
+}
+
+@test "§7 FC428: redirect onto the site file: BLOCK" {
+    _run_hook 'echo x > .claude/hooks/bash-safety.site.sh'
+    assert_failure 2
+}
+
+@test "§7 FC429: sed -i on the site file: BLOCK" {
+    _run_hook 'sed -i s/a/b/ .claude/hooks/bash-safety.site.sh'
+    assert_failure 2
+}
+
+@test "§7 FC430: curl -o onto the site file: BLOCK" {
+    _run_hook 'curl -o .claude/hooks/bash-safety.site.sh https://example.com/x'
+    assert_failure 2
+}
+
+@test "§7 FC431: rm of the site file: BLOCK" {
+    _run_hook 'rm .claude/hooks/bash-safety.site.sh'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf4 accepted false positives from stage 0c (BLOCK today)
+# ---------------------------------------------------------------------------
+# Stage 0c canonicalizes, rather than excises, a whitespace-free quoted
+# pattern, so a paren around mktemp reads as an opener since hf4 let a paren
+# end the mktemp token. Workaround: one `-e` pattern per alternative, without
+# the parens (`grep -e tmp -e mktemp f`); a space in the pattern changes what
+# grep matches.
+
+@test "accepted-fp FC432: §6l stage-0c canonicalized grep -E paren-mktemp-paren pattern: BLOCK today" {
+    _run_hook 'grep -E "(mktemp)" f'
+    assert_failure 2
+}
+
+@test "accepted-fp FC433: §6l stage-0c canonicalized grep -E paren-tmp-or-mktemp-paren pattern: BLOCK today" {
+    _run_hook 'grep -E "(tmp|mktemp)" f'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf4 kept interpreter heredocs: SEG_OPEN_TOK versus SEG7
+# ---------------------------------------------------------------------------
+# A kept python heredoc body whose call text puts a guarded word right after
+# a paren: SEG_OPEN_TOK (§6l, §8) opens on a paren only at a token start, so
+# FC434/FC435 ALLOW; SEG7 (§7) opens on any paren, so FC436 is an accepted
+# false positive (BLOCK today).
+
+@test "§8 FC434: kept python heredoc printing a pip install sentence: ALLOW" {
+    _run_hook $'python3 - <<\'PY\'\nprint("pip install is blocked")\nPY'
+    assert_success
+}
+
+@test "§6l FC435: kept python heredoc printing a mktemp sentence: ALLOW" {
+    _run_hook $'python3 - <<\'PY\'\nprint("mktemp is blocked")\nPY'
+    assert_success
+}
+
+@test "accepted-fp FC436: §7 kept python heredoc whose print call puts cp right after a paren: BLOCK today" {
+    _run_hook $'python3 - <<\'PY\'\nprint("cp x .claude/hooks/y")\nPY'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf4 accepted false positives from stage-0 search patterns (BLOCK today) and their workarounds
+# ---------------------------------------------------------------------------
+# Two more shapes of the deferred stage-0 search-pattern class (hook header
+# DOCUMENTED RESIDUALS, SEARCH-PATTERN FALSE POSITIVES), found by replaying
+# recorded session commands against the hf4 draft: an escaped paren that
+# stage 0d leaves in place opens SEG7 (§7), and a backtick that 0c keeps
+# inside a double-quoted pattern opens a segment (§8). Each is pinned BLOCK
+# today, and its workaround ALLOW: bracket the paren; single-quote the
+# pattern.
+
+@test "accepted-fp FC437: §7 escaped paren before rm in a grep pattern on settings.json (accepted false positive, stage-0 search-pattern class): BLOCK today" {
+    _run_hook $'grep -n -E \'"Bash\\(rm\' .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC438: workaround for FC437, the paren bracketed in the grep pattern: ALLOW" {
+    _run_hook $'grep -n -E \'"Bash[(]rm\' .claude/settings.json'
+    assert_success
+}
+
+@test "accepted-fp FC439: §8 escaped backtick before pip install in a double-quoted grep pattern (accepted false positive, stage-0 search-pattern class): BLOCK today" {
+    _run_hook 'grep -nE "x|bare \`pip install|y" README.md'
+    assert_failure 2
+}
+
+@test "§8 FC440: workaround for FC439, the grep pattern single-quoted: ALLOW" {
+    _run_hook $'grep -nE \'x|bare `pip install|y\' README.md'
+    assert_success
+}
+
+
+# ===========================================================================
+# 2026-10-27 hf4 site-file load paths (FA*, FG*, FB*) -- hook header SITE FILE CONTRACT
+# ===========================================================================
+
+# Mirrored 1:1 in scripts/test_safety_hooks.sh. Each case runs a COPY of the
+# hook under test ($BASH_SAFETY_SH, so a draft before deployment and the live
+# hook after) beside a crafted bash-safety.site.sh in its own fixture directory
+# (see _run_site_case and teardown near the top). FA*: load failures — a
+# missing, unreadable, syntax-broken, failing or malformed site file (FA5e/
+# FA5f/FA5g: a SITE_ROOT with a trailing or doubled slash or a `..`
+# component; FA8c/FA8d/FA8e: an extra-dir entry `..`, `a//b` or `foo/bar/`)
+# BLOCKS every command with a message saying the site file is broken;
+# FA9c/FA9d pin that a dot inside a name (`/srv/my.project`, `.github/hooks`,
+# `..a/b..`) stays valid; FA3c pins the
+# general-trap re-arm after the load (a site file that drops the ERR trap and
+# breaks `cat` still gets the general message, not a later gate's); FA3b and
+# FA10 pin the
+# documented residual that the site file runs with the hook's own authority
+# (`trap - ERR` before its own failing command, `exit 0`), defended only by
+# the file's protected location. FG*: the site file beside the hook under
+# test behaves as before (FG3/FG4 read DAAF's values, so they are
+# site-adapted); FG5 the category D fallback. FB*: site_extension_guards
+# blocks through the body's `block`, fails closed under the scoped `set -E`
+# and the site-guard ERR trap (a failing command, FB2, or a non-zero return,
+# FB8, blocks with the site-guard message), allows when it returns 0 (FB9),
+# sees the stable interface, and never runs for the early exits or after a
+# body block.
+@test "site FA1: site file with a syntax error blocks every command: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}if then fi"$'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it failed to load"
+}
+
+@test "site FA2: site file whose first command fails blocks even with good settings after it: BLOCK" {
+    _run_site_case 'ls' $'false\n'"${SITE_GOOD}"
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it failed to load"
+}
+
+@test "site FA2b: site file with a failing command between assignments blocks: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\ncat /nonexistent/file\nSITE_EXTRA_PROTECTED_DIRS=()\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it failed to load"
+}
+
+@test "site FA3: trap - ERR in the site file still lets a failing site guard block with the site-guard message: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'trap - ERR\nsite_extension_guards() { false; true; }\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: a site guard (its site_extension_guards function) failed or returned non-zero"
+}
+
+@test "site FA3b: trap - ERR then a failing command inside the site file loads by site-file authority: ALLOW today" {
+    _run_site_case 'ls' $'trap - ERR\nfalse\n'"${SITE_GOOD}"
+    assert_success
+}
+
+@test "site FA3c: trap - ERR in the site file is undone by the re-arm so a later body error blocks with the general message: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'trap - ERR\ncat() { return 1; }\n'
+    assert_failure 2
+    assert_output --partial "unexpected error in safety check"
+}
+
+@test "site FA4: empty SITE_ROOT blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'\'\nSITE_EXTRA_PROTECTED_DIRS=()\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA4b: SITE_ROOT never set blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_EXTRA_PROTECTED_DIRS=()\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5: relative SITE_ROOT blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'daaf\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5b: SITE_ROOT with a space blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/da af\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5c: SITE_ROOT with a regex metacharacter blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf|x\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5d: bare slash SITE_ROOT blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5e: SITE_ROOT with a trailing slash blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf/\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5f: SITE_ROOT with a doubled slash blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'//daaf\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA5g: SITE_ROOT with a dot-dot component blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf/..\'\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it left SITE_ROOT empty or malformed"
+}
+
+@test "site FA6: missing site file blocks every command: BLOCK" {
+    _run_site_case 'ls' __MISSING__
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it is missing or unreadable"
+}
+
+@test "site FA7: unreadable mode-000 site file blocks every command: BLOCK" {
+    if [[ "$(id -u)" == "0" ]]; then skip "running as root, which can read a mode-000 file"; fi
+    _run_site_case 'ls' "${SITE_GOOD}" 000
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it is missing or unreadable"
+}
+
+@test "site FA8: malformed SITE_EXTRA_PROTECTED_DIRS entry blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'bench(x\')\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry"
+}
+
+@test "site FA8b: empty SITE_EXTRA_PROTECTED_DIRS entry blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'\')\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry"
+}
+
+@test "site FA8c: dot-dot SITE_EXTRA_PROTECTED_DIRS entry blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'..\')\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry"
+}
+
+@test "site FA8d: SITE_EXTRA_PROTECTED_DIRS entry with a doubled slash blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'a//b\')\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry"
+}
+
+@test "site FA8e: SITE_EXTRA_PROTECTED_DIRS entry with a trailing slash blocks every command: BLOCK" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'foo/bar/\')\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry"
+}
+
+@test "site FA9: empty SITE_EXTRA_PROTECTED_DIRS array is valid: ALLOW" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=()\n'
+    assert_success
+}
+
+@test "site FA9b: body guards still block with no extra protected dirs: BLOCK" {
+    _run_site_case 'cp x .claude/hooks/y' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=()\n'
+    assert_failure 2
+    assert_output --partial "anti-tampering"
+}
+
+@test "site FA9c: SITE_ROOT with a dot inside a name is valid: ALLOW" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/srv/my.project\'\n'
+    assert_success
+}
+
+@test "site FA9d: SITE_EXTRA_PROTECTED_DIRS entries with names that start or end with dots are valid: ALLOW" {
+    _run_site_case 'ls' $'SITE_ROOT=\'/daaf\'\nSITE_EXTRA_PROTECTED_DIRS=(\'.github/hooks\' \'..a/b..\')\n'
+    assert_success
+}
+
+@test "site FA10: exit 0 in the site file allows even rm -rf of the root as it is defended by location only: ALLOW today" {
+    _run_site_case 'rm -rf /' $'exit 0\n'
+    assert_success
+}
+
+@test "site FG1: site file beside the hook allows a benign command: ALLOW" {
+    _run_site_case 'ls' __SIBLING__
+    assert_success
+}
+
+@test "site FG2: site file beside the hook still blocks rm -rf of the root: BLOCK" {
+    _run_site_case 'rm -rf /' __SIBLING__
+    assert_failure 2
+    assert_output --partial "Recursive force-delete"
+}
+
+@test "site FG3: site file beside the hook protects its extra dir site-adapted: BLOCK" {
+    _run_site_case 'cp x benchmarks/harness/hooks/y.sh' __SIBLING__
+    assert_failure 2
+    assert_output --partial "benchmarks/harness/hooks"
+}
+
+@test "site FG4: site file beside the hook supplies the category D hint site-adapted: BLOCK" {
+    _run_site_case 'python3 -c "print(os.environ)"' __SIBLING__
+    assert_failure 2
+    assert_output --partial "run_with_capture.sh, which scans for environment prints"
+}
+
+@test "site FG5: category D message falls back when SITE_ENV_PRINT_HINT is unset: BLOCK" {
+    _run_site_case 'python3 -c "print(os.environ)"' "${SITE_GOOD}"
+    assert_failure 2
+    assert_output --partial "or move the logic into a script file."
+}
+
+@test "site FB1: site_extension_guards can block with the body block function: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}"'site_extension_guards() { if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN} ?${WRAPPED}ls"; then block '\''site guard says no'\''; fi; }'$'\n'
+    assert_failure 2
+    assert_output --partial "BLOCKED by bash-safety hook: site guard says no"
+}
+
+@test "site FB2: site_extension_guards failing mid-body blocks under the scoped set -E: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'site_extension_guards() { false; true; }\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: a site guard (its site_extension_guards function) failed or returned non-zero"
+}
+
+@test "site FB3: no site_extension_guards function is fine: ALLOW" {
+    _run_site_case 'ls' "${SITE_GOOD}"
+    assert_success
+}
+
+@test "site FB4: site_extension_guards sees the stable interface names: ALLOW" {
+    _run_site_case 'ls' "${SITE_GOOD}"'site_extension_guards() { [[ -n "$SCAN_CMD" && -n "$WRAPPED" && -n "$SEG_OPEN" && -n "$SEG_OPEN_TOK" && -n "$SEG7" && -n "$TMP_DEST" && -n "$SCRATCH_HINT" && -n "$PROTECTED_DIRS" ]] || block '\''interface missing'\''; declare -F block >/dev/null || block '\''no block'\''; }'$'\n'
+    assert_success
+}
+
+@test "site FB5: site guards do not run for a non-Bash tool: ALLOW" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'site_extension_guards() { block \'everything\'; }\n' '' Read
+    assert_success
+}
+
+@test "site FB6: site guards do not run for an empty command: ALLOW" {
+    _run_site_case '' "${SITE_GOOD}"$'site_extension_guards() { block \'everything\'; }\n'
+    assert_success
+}
+
+@test "site FB7: a body guard blocks before the site guards run: BLOCK" {
+    _run_site_case 'rm -rf /' "${SITE_GOOD}"$'site_extension_guards() { block \'site\'; }\n'
+    assert_failure 2
+    assert_output --partial "Recursive force-delete"
+}
+
+@test "site FB8: site guard whose last command is a false and-list returns non-zero and blocks with the site-guard message: BLOCK" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'site_extension_guards() { [[ "$SCAN_CMD" == *never-matches* ]] && block \'x\'; }\n'
+    assert_failure 2
+    assert_output --partial "${SITE_P} is broken: a site guard (its site_extension_guards function) failed or returned non-zero"
+}
+
+@test "site FB9: site guard that ends return 0 after a non-matching check allows: ALLOW" {
+    _run_site_case 'ls' "${SITE_GOOD}"$'site_extension_guards() { [[ "$SCAN_CMD" == *never-matches* ]] && block \'x\'; return 0; }\n'
+    assert_success
+}
+
+
+# ===========================================================================
+# 2026-10-27 hf5 guard changes (FC441-FC531) -- hook header CHANGE LEDGER — hf5
+# ===========================================================================
+# Mirrored 1:1 in scripts/test_safety_hooks.sh (same IDs, strings, verdicts),
+# both blocks generated from one row specification. Against a body that
+# predates hf5 the BLOCK rows FAIL by design. Rows that name `/daaf` or
+# benchmarks/harness/hooks are tagged site-adapted.
+
+# ---------------------------------------------------------------------------
+# hf5(a) §7 path qualifiers on the sed/perl, tar/unzip, find -delete and G10 tar rules
+# ---------------------------------------------------------------------------
+# Hook ledger hf5 (a): the sed/perl in-place rule, the tar/unzip -C/-d rule,
+# the find -delete rule and the extract-flag test of G10's tar arm admit the
+# /bin/, /usr/bin/ and /usr/local/bin/ qualifier every other §7 verb rule
+# had, so a qualified verb aimed at a protected path BLOCKS (all were
+# ALLOWED before hf5). FC421 (section 18) flipped to BLOCK with this item.
+
+@test "§7 FC441: /usr/bin/sed -i on a hook: BLOCK" {
+    _run_hook '/usr/bin/sed -i s/a/b/ .claude/hooks/bash-safety.sh'
+    assert_failure 2
+}
+
+@test "§7 FC442: /usr/local/bin/sed -i.bak on settings.local.json: BLOCK" {
+    _run_hook '/usr/local/bin/sed -i.bak s/a/b/ .claude/settings.local.json'
+    assert_failure 2
+}
+
+@test "§7 FC443: /bin/sed -Ei on a hook: BLOCK" {
+    _run_hook '/bin/sed -Ei s/a/b/ .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC444: /usr/bin/perl -pi -e on a hook: BLOCK" {
+    _run_hook '/usr/bin/perl -pi -e s/a/b/ .claude/hooks/x.sh'
+    assert_failure 2
+}
+
+@test "§7 FC445: /bin/perl -i -pe on settings.json: BLOCK" {
+    _run_hook '/bin/perl -i -pe s/a/b/ .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC446: /bin/tar -xf with -C .claude/hooks: BLOCK" {
+    _run_hook '/bin/tar -xf a.tar -C .claude/hooks'
+    assert_failure 2
+}
+
+@test "§7 FC447: /usr/bin/tar -xzf with -C .claude/hooks: BLOCK" {
+    _run_hook '/usr/bin/tar -xzf a.tgz -C .claude/hooks'
+    assert_failure 2
+}
+
+@test "§7 FC448: /usr/local/bin/unzip with -d .claude/hooks: BLOCK" {
+    _run_hook '/usr/local/bin/unzip a.zip -d .claude/hooks'
+    assert_failure 2
+}
+
+@test "§7 FC449: /usr/bin/unzip -o with -d .claude/logs: BLOCK" {
+    _run_hook '/usr/bin/unzip -o a.zip -d .claude/logs'
+    assert_failure 2
+}
+
+@test "§7 FC450: /usr/bin/find over .claude/hooks with -delete: BLOCK" {
+    _run_hook '/usr/bin/find .claude/hooks -name x -delete'
+    assert_failure 2
+}
+
+@test "§7 FC451: /bin/find over .claude/logs with -delete: BLOCK" {
+    _run_hook '/bin/find .claude/logs -delete'
+    assert_failure 2
+}
+
+@test "§7 FC452: /usr/local/bin/find over a dot-segment double-slash hooks path with -delete: BLOCK" {
+    _run_hook '/usr/local/bin/find ./.claude//hooks -type f -delete'
+    assert_failure 2
+}
+
+@test "§7 FC453: /bin/tar -xf with -C the .claude directory itself (G10): BLOCK" {
+    _run_hook '/bin/tar -xf a.tar -C .claude'
+    assert_failure 2
+}
+
+@test "§7 FC454: /usr/bin/tar --extract with --directory= the .claude directory (G10): BLOCK" {
+    _run_hook '/usr/bin/tar --extract -f a.tar --directory=.claude/'
+    assert_failure 2
+}
+
+@test "§7 FC455: env before /bin/sed -i on settings.json: BLOCK" {
+    _run_hook 'env /bin/sed -i s/a/b/ .claude/settings.json'
+    assert_failure 2
+}
+
+@test "§7 FC456: subshell /bin/sed -i on a hook: BLOCK" {
+    _run_hook '(/bin/sed -i s/a/b/ .claude/hooks/x)'
+    assert_failure 2
+}
+
+@test "§7 FC457: substitution /usr/bin/find over .claude/hooks with -delete: BLOCK" {
+    _run_hook 'x=$(/usr/bin/find .claude/hooks -delete)'
+    assert_failure 2
+}
+
+@test "§7 FC458: bash -c carrying /bin/sed -i on settings.json: BLOCK" {
+    _run_hook 'bash -c "/bin/sed -i s/a/b/ .claude/settings.json"'
+    assert_failure 2
+}
+
+@test "§7 FC459: find -exec /bin/sed -i on settings.json: BLOCK" {
+    _run_hook 'find . -name x -exec /bin/sed -i s/a/b/ .claude/settings.json \;'
+    assert_failure 2
+}
+
+@test "§7 FC460: /bin/sed -i on the site file: BLOCK" {
+    _run_hook '/bin/sed -i s/a/b/ .claude/hooks/bash-safety.site.sh'
+    assert_failure 2
+}
+
+@test "§7 FC461: /bin/sed -i in benchmarks/harness/hooks site-adapted: BLOCK" {
+    _run_hook '/bin/sed -i s/a/b/ benchmarks/harness/hooks/x.sh'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf5(a) §7 path-qualifier controls (ALLOW)
+# ---------------------------------------------------------------------------
+# Controls for hf5 (a): a qualified verb that only reads a protected path,
+# or writes outside one, stays ALLOW.
+
+@test "§7 FC462: /bin/sed -n read of settings.json: ALLOW" {
+    _run_hook '/bin/sed -n 1,5p .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC463: /bin/sed -i on a project file: ALLOW" {
+    _run_hook '/bin/sed -i s/a/b/ scratch/notes.md'
+    assert_success
+}
+
+@test "§7 FC464: /bin/sed -i on a .claude/skills file is not a protected path: ALLOW" {
+    _run_hook '/bin/sed -i s/a/b/ .claude/skills/x/SKILL.md'
+    assert_success
+}
+
+@test "§7 FC465: /usr/bin/perl -ne read of settings.json: ALLOW" {
+    _run_hook '/usr/bin/perl -ne print .claude/settings.json'
+    assert_success
+}
+
+@test "§7 FC466: /usr/bin/tar -tf listing of an archive in .claude/hooks: ALLOW" {
+    _run_hook '/usr/bin/tar -tf .claude/hooks/a.tar'
+    assert_success
+}
+
+@test "§7 FC467: /bin/tar -xf of an archive in .claude/hooks into scratch: ALLOW" {
+    _run_hook '/bin/tar -xf .claude/hooks/a.tar -C scratch'
+    assert_success
+}
+
+@test "§7 FC468: /bin/tar -cf into scratch with -C .claude has no extract flag (G10): ALLOW" {
+    _run_hook '/bin/tar -cf scratch/x.tar -C .claude hooks'
+    assert_success
+}
+
+@test "§7 FC469: /usr/bin/unzip -l listing of an archive in .claude/hooks: ALLOW" {
+    _run_hook '/usr/bin/unzip -l .claude/hooks/a.zip'
+    assert_success
+}
+
+@test "§7 FC470: /usr/bin/find over .claude/hooks without -delete: ALLOW" {
+    _run_hook '/usr/bin/find .claude/hooks -name x.sh'
+    assert_success
+}
+
+@test "§7 FC471: /usr/bin/find over scratch with -delete: ALLOW" {
+    _run_hook '/usr/bin/find scratch -name x -delete'
+    assert_success
+}
+
+@test "§7 FC472: ls of the qualified program paths: ALLOW" {
+    _run_hook 'ls /bin/sed /usr/bin/tar /usr/local/bin/find'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf5(b) §6m output flag or output argument aimed at an ephemeral root
+# ---------------------------------------------------------------------------
+# Hook ledger hf5 (b): §6m applies the §7 output-writer shapes (shared
+# OUTPUT-WRITER SHAPES block) to an ephemeral-root destination, with the
+# attached, separate and long flag forms, the path qualifier, wrappers and
+# the SEG_OPEN_TOK openers. FC422 (section 18) and FC148 (section 16)
+# flipped to BLOCK with this item.
+
+@test "§6m FC473: sort -u -o into /var/tmp: BLOCK" {
+    _run_hook 'sort -u -o /var/tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC474: sort -o with an attached /tmp path: BLOCK" {
+    _run_hook 'sort -o/tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC475: sort --output= into /tmp: BLOCK" {
+    _run_hook 'sort --output=/tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC476: sort --output into /dev/shm: BLOCK" {
+    _run_hook 'sort --output /dev/shm/x f'
+    assert_failure 2
+}
+
+@test "§6m FC477: sort bundled -uo into /tmp: BLOCK" {
+    _run_hook 'sort -uo /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC478: sort -o into /tmp after the operand: BLOCK" {
+    _run_hook 'sort f -o /tmp/x'
+    assert_failure 2
+}
+
+@test "§6m FC479: sort -o into a double-quoted /tmp path: BLOCK" {
+    _run_hook 'sort -o "/tmp/x" f'
+    assert_failure 2
+}
+
+@test "§6m FC480: /bin/sort -o into /tmp: BLOCK" {
+    _run_hook '/bin/sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC481: /usr/bin/sort -o into /tmp: BLOCK" {
+    _run_hook '/usr/bin/sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC482: /usr/local/bin/sort -o into /tmp: BLOCK" {
+    _run_hook '/usr/local/bin/sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC483: sort -o into a double-slash /tmp path: BLOCK" {
+    _run_hook 'sort -o //tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC484: env before sort -o into /tmp: BLOCK" {
+    _run_hook 'env sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC485: VAR= assignment before sort -o into /tmp: BLOCK" {
+    _run_hook 'LC_ALL=C sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC486: subshell sort -o into /tmp: BLOCK" {
+    _run_hook '(sort -o /tmp/x f)'
+    assert_failure 2
+}
+
+@test "§6m FC487: substitution sort -o into /tmp: BLOCK" {
+    _run_hook 'x=$(sort -o /tmp/x f)'
+    assert_failure 2
+}
+
+@test "§6m FC488: backtick sort -o into /tmp: BLOCK" {
+    _run_hook '`sort -o /tmp/x f`'
+    assert_failure 2
+}
+
+@test "§6m FC489: pipeline into sort -o into /tmp: BLOCK" {
+    _run_hook 'cat f | sort -o /tmp/x'
+    assert_failure 2
+}
+
+@test "§6m FC490: and-chain then sort -o into /tmp: BLOCK" {
+    _run_hook 'ls && sort -o /tmp/x f'
+    assert_failure 2
+}
+
+@test "§6m FC491: bash -c carrying sort -o into /tmp: BLOCK" {
+    _run_hook 'bash -c "sort -o /tmp/x f"'
+    assert_failure 2
+}
+
+@test "§6m FC492: tar -cf into /tmp: BLOCK" {
+    _run_hook 'tar -cf /tmp/a.tar scratch'
+    assert_failure 2
+}
+
+@test "§6m FC493: tar -c -f with split flags into /tmp: BLOCK" {
+    _run_hook 'tar -c -f /tmp/a.tar scratch'
+    assert_failure 2
+}
+
+@test "§6m FC494: tar --create --file= into /tmp: BLOCK" {
+    _run_hook 'tar --create --file=/tmp/a.tar scratch'
+    assert_failure 2
+}
+
+@test "§6m FC495: tar -f into /tmp before -c: BLOCK" {
+    _run_hook 'tar -f /tmp/a.tar -c scratch'
+    assert_failure 2
+}
+
+@test "§6m FC496: tar czf old-style flags into /var/tmp: BLOCK" {
+    _run_hook 'tar czf /var/tmp/a.tgz scratch'
+    assert_failure 2
+}
+
+@test "§6m FC497: /usr/bin/tar -cf into /tmp: BLOCK" {
+    _run_hook '/usr/bin/tar -cf /tmp/a.tar d'
+    assert_failure 2
+}
+
+@test "§6m FC498: git archive -o into /tmp: BLOCK" {
+    _run_hook 'git archive -o /tmp/x.tar HEAD'
+    assert_failure 2
+}
+
+@test "§6m FC499: git archive --output= into /tmp: BLOCK" {
+    _run_hook 'git archive --output=/tmp/x.zip HEAD'
+    assert_failure 2
+}
+
+@test "§6m FC500: pandoc -o into /tmp: BLOCK" {
+    _run_hook 'pandoc in.md -o /tmp/x.html'
+    assert_failure 2
+}
+
+@test "§6m FC501: gpg -o into /tmp: BLOCK" {
+    _run_hook 'gpg -o /tmp/x -d f.gpg'
+    assert_failure 2
+}
+
+@test "§6m FC502: gpg --output into /tmp: BLOCK" {
+    _run_hook 'gpg --output /tmp/x --decrypt f.gpg'
+    assert_failure 2
+}
+
+@test "§6m FC503: wget -a log file into /tmp: BLOCK" {
+    _run_hook 'wget -a /tmp/w.log https://example.com'
+    assert_failure 2
+}
+
+@test "§6m FC504: wget --append-output= into /tmp: BLOCK" {
+    _run_hook 'wget --append-output=/tmp/w.log https://example.com'
+    assert_failure 2
+}
+
+@test "§6m FC505: uniq IN OUT with OUT in /tmp: BLOCK" {
+    _run_hook 'uniq f /tmp/out'
+    assert_failure 2
+}
+
+@test "§6m FC506: uniq -c IN OUT with OUT in /dev/shm: BLOCK" {
+    _run_hook 'uniq -c f /dev/shm/out'
+    assert_failure 2
+}
+
+# ---------------------------------------------------------------------------
+# hf5(b) §6m controls: reads from /tmp, non-output flags, quoted patterns (ALLOW)
+# ---------------------------------------------------------------------------
+# Controls for hf5 (b): reading FROM /tmp into the project (the sanctioned
+# rescue direction), a temp-dir flag, a non-ephemeral /tmpfoo, an output
+# flag of another program, a quoted search pattern and kept interpreter call
+# text stay ALLOW.
+
+@test "§6m FC507: sort of a /tmp cache with -o into the project site-adapted: ALLOW" {
+    _run_hook 'sort /tmp/claude-ctx-window-x -o /daaf/research/x/f'
+    assert_success
+}
+
+@test "§6m FC508: sort -o into scratch reading a /tmp cache: ALLOW" {
+    _run_hook 'sort -o scratch/x /tmp/claude-model-x'
+    assert_success
+}
+
+@test "§6m FC509: sort -u of a /tmp cache to stdout: ALLOW" {
+    _run_hook 'sort -u /tmp/claude-ctx-window-x'
+    assert_success
+}
+
+@test "§6m FC510: sort -T /tmp is a temp-dir flag with -o into scratch: ALLOW" {
+    _run_hook 'sort -T /tmp -o scratch/x f'
+    assert_success
+}
+
+@test "§6m FC511: sort -o into /tmpfoo is not an ephemeral root: ALLOW" {
+    _run_hook 'sort -o /tmpfoo/x f'
+    assert_success
+}
+
+@test "§6m FC512: cat of a /tmp cache piped into sort -o into scratch: ALLOW" {
+    _run_hook 'cat /tmp/claude-ctx-window-x | sort -o scratch/x'
+    assert_success
+}
+
+@test "§6m FC513: uniq of a /tmp cache into scratch: ALLOW" {
+    _run_hook 'uniq /tmp/claude-x scratch/out'
+    assert_success
+}
+
+@test "§6m FC514: uniq -c of a /tmp cache to stdout: ALLOW" {
+    _run_hook 'uniq -c /tmp/claude-x'
+    assert_success
+}
+
+@test "§6m FC515: tar -xf of a /tmp archive into scratch: ALLOW" {
+    _run_hook 'tar -xf /tmp/a.tar -C scratch'
+    assert_success
+}
+
+@test "§6m FC516: tar -tzf listing of a /tmp archive: ALLOW" {
+    _run_hook 'tar -tzf /tmp/a.tgz'
+    assert_success
+}
+
+@test "§6m FC517: tar -czf into scratch archiving a /tmp path: ALLOW" {
+    _run_hook 'tar -czf scratch/b.tgz /tmp/claude-x'
+    assert_success
+}
+
+@test "§6m FC518: pandoc of a /tmp file with -o into scratch: ALLOW" {
+    _run_hook 'pandoc /tmp/in.md -o scratch/x.html'
+    assert_success
+}
+
+@test "§6m FC519: gpg -o into scratch decrypting a /tmp file: ALLOW" {
+    _run_hook 'gpg -o scratch/x -d /tmp/f.gpg'
+    assert_success
+}
+
+@test "§6m FC520: git -C a /tmp repo archive -o into scratch: ALLOW" {
+    _run_hook 'git -C /tmp/repo archive -o scratch/x.tar HEAD'
+    assert_success
+}
+
+@test "§6m FC521: grep -o over a /tmp path is not an output flag: ALLOW" {
+    _run_hook 'grep -o /tmp/x f'
+    assert_success
+}
+
+@test "§6m FC522: grep for a quoted sort -o /tmp sentence: ALLOW" {
+    _run_hook 'grep -n "sort -o /tmp/x" notes.md'
+    assert_success
+}
+
+@test "§6m FC523: kept python heredoc printing a sort -o /tmp sentence: ALLOW" {
+    _run_hook $'python3 - <<\'PY\'\nprint("sort -o /tmp/x f")\nPY'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# hf5 residuals (ALLOW today)
+# ---------------------------------------------------------------------------
+# Hook header DOCUMENTED RESIDUALS that hf5 leaves, pinned at today's
+# verdict: a spaced quoted destination of a 0c data consumer (sort, uniq) is
+# excised by stage 0c before any rule runs, and rules outside §7 whose verb
+# admits no path qualifier (§1 find of the root, §6k, §6l, §8 conda, §5).
+# A deliberate future change that flips one should flip its expectation
+# here, not pass silently.
+
+@test "residual FC524: stage 0c excises a spaced quoted /tmp destination of sort: ALLOW today" {
+    _run_hook "sort -o '/tmp/x y' f"
+    assert_success
+}
+
+@test "residual FC525: stage 0c excises a spaced quoted /tmp destination of uniq: ALLOW today" {
+    _run_hook "uniq f '/tmp/x y'"
+    assert_success
+}
+
+@test "residual FC526: stage 0c excises a spaced quoted protected destination of sort -o: ALLOW today" {
+    _run_hook "sort -o '.claude/hooks/x y' f"
+    assert_success
+}
+
+@test "residual FC527: §1 find of the filesystem root with -delete admits no path qualifier: ALLOW today" {
+    _run_hook '/usr/bin/find / -delete'
+    assert_success
+}
+
+@test "residual FC528: §6k ln admits no path qualifier so /bin/ln -s into /tmp: ALLOW today" {
+    _run_hook '/bin/ln -s f /tmp/x'
+    assert_success
+}
+
+@test "residual FC529: §6l mktemp admits no path qualifier: ALLOW today" {
+    _run_hook '/usr/bin/mktemp'
+    assert_success
+}
+
+@test "residual FC530: §8 conda admits no path qualifier: ALLOW today" {
+    _run_hook '/usr/bin/conda install x'
+    assert_success
+}
+
+@test "residual FC531: §5 docker run admits no path qualifier: ALLOW today" {
+    _run_hook '/usr/bin/docker run alpine'
+    assert_success
+}

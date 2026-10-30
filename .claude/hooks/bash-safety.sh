@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # bash-safety.sh — PreToolUse hook that blocks dangerous Bash commands
 #
-# This is the primary safety guardrail for this project's container (DAAF and
-# the Claude Code Starter Kit share this body; see SITE CONFIG). It reads
+# This is the primary safety guardrail for this project's container. Every
+# site runs this body unchanged; site settings come from the sibling
+# bash-safety.site.sh (see SITE FILE CONTRACT below). It reads
 # the tool invocation JSON from stdin and inspects the command field for
 # patterns that are destructive, privilege-escalating, or data-exfiltrating.
 # It also enforces safety-system integrity (section 7): shell writes to the
@@ -25,7 +26,7 @@
 #   provenance guard follows the same principle: reading the hooks' own /tmp
 #   coordination caches is fine, but *writing* working files there is blocked.
 #
-# Fail-closed input posture (2026-09-26, harmonization fix 1): the hook BLOCKS
+# Fail-closed input posture (2026-09-26, merge fix 1): the hook BLOCKS
 #   (exit 2) when jq is missing, when stdin is empty, and when stdin is not
 #   exactly one JSON object (unparseable text, a bare scalar or array,
 #   whitespace only, or several concatenated JSON values). Before this, any
@@ -36,19 +37,18 @@
 #   Claude Code sends exactly one object per call, so this is defence in
 #   depth. CREDIT: the finding and the gate's wording come from DAAF's
 #   2026-09-24 hook-maintenance session (Claude Code 2.1.281 upgrade), which
-#   found the class in enforce-file-first.sh
-#   (research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/
+#   found the class in enforce-file-first.sh (hook patch
 #   enforce-file-first.diff); DAAF's orchestrator then confirmed it reached
 #   this hook (probe K03-K11: all ALLOWED before the gate).
 #
 # ===========================================================================
 # CLASSIFICATION PIPELINE (stages 0a-0e), rewritten 2026-09-18
 # ===========================================================================
-#   The pattern checks in sections 1-8 are raw-string regexes. They cannot,
+#   The pattern checks in sections 1-9 are raw-string regexes. They cannot,
 #   by themselves, tell a command that IS dangerous from a string that merely
 #   DESCRIBES one. Stage 0 builds SCAN_CMD — a working copy of the command in
 #   which every span of text has been classified as DATA or CODE — and
-#   sections 1-8 then scan SCAN_CMD instead of the raw text.
+#   sections 1-9 then scan SCAN_CMD instead of the raw text.
 #
 #   Classification vocabulary (used throughout the stage-0 comments):
 #     EXCISE       — remove the span entirely, leaving an inert placeholder
@@ -100,16 +100,16 @@
 #   the shell token itself is matched anywhere in the left context.
 #
 #   HEREDOC RECEIVER ALLOWLIST (0a): a heredoc body is DATA only when its
-#   receiver is a data consumer. SOURCE: qwen-code PR #10446, quoted in
-#   output/preliminary_notes/2026-09-18_research_community-guard-hooks.md §2 —
+#   receiver is a data consumer. SOURCE: qwen-code issue #10446, quoted in
+#   DAAF research note guardfall-and-data-vs-code §4 —
 #   "Removing it and stripping bodies for any bare receiver reintroduces 53
 #   hand-corpus and 91 fuzz cases where a deny'd command runs with no prompt
 #   at all — measured." A heredoc into bash/sh/python/node/R IS code and its
 #   body is KEPT (and `;`-joined so each body line is segment-anchored).
 #
-#   GUARDFALL CLASSES (Adversa AI taxonomy; see
-#   output/preliminary_notes/2026-09-18_research_guardfall-and-data-vs-code.md
-#   §1, §3, §4) and their status after this revision:
+#   GUARDFALL CLASSES (Adversa AI taxonomy; see DAAF research note
+#   guardfall-and-data-vs-code §1, §3, §4) and their status after this
+#   revision:
 #     A  quote/escape merge (`"rm"`, `r''m`, `s\udo`)   — CLOSED by 0c + 0d.
 #     B  `$IFS` word-splitting obfuscation              — CLOSED by 0e.
 #     C  substitution-computed binary names             — RESIDUAL (see below).
@@ -159,57 +159,188 @@
 # Registered in: .claude/settings.json
 #
 # ===========================================================================
-# HARMONIZED FILE (2026-09-26) — shared by DAAF and the Claude Code Starter Kit
+# ONE BODY, ONE SITE FILE (hf4, 2026-10-27)
 # ===========================================================================
+#   This file is IDENTICAL at every site that runs it: no site value or
+#   site-only guard lives here. Site settings and site-only guards live in the
+#   sibling file `bash-safety.site.sh` (same directory), which this body
+#   sources right after installing its ERR trap. A change to this file is a
+#   change for every site.
+#
+#   SITE FILE CONTRACT
+#     Settings. The body VALIDATES two of them and BLOCKS every command when
+#     either is wrong: SITE_ROOT (required: unset, empty or malformed blocks)
+#     and each SITE_EXTRA_PROTECTED_DIRS entry (a malformed or empty entry
+#     blocks; an unset array means no extra directories). SITE_SCRATCH_DIR,
+#     SITE_REBUILD_HINT and SITE_ENV_PRINT_HINT are used only in message text
+#     and are not checked: an unset SITE_SCRATCH_DIR or SITE_REBUILD_HINT
+#     leaves an empty gap in the §6 or §8 messages, and an unset
+#     SITE_ENV_PRINT_HINT falls back to the default below. Every site should
+#     set all five except SITE_ENV_PRINT_HINT.
+#       SITE_ROOT                   absolute project root, matching
+#                                   ^(/[A-Za-z0-9._-]+)+$: one or more `/name`
+#                                   components, so no bare `/`, no trailing
+#                                   slash and no `//` (regex-safe: the body
+#                                   escapes only `.`), and no component that
+#                                   is `.` or `..`. Drives the §1 root
+#                                   targets (`rm -rf <root>/*`, `<root>/.*`,
+#                                   F9 backstop, G28), G29 `<root>/.git`, G43
+#                                   `find <root> -delete`, G10
+#                                   `<root>/.claude`, and the
+#                                   `$VAR/<top-level>` list (_RM_VARTOP).
+#       SITE_EXTRA_PROTECTED_DIRS   bash ARRAY of extra §7 protected
+#                                   directories beyond `.claude/hooks`,
+#                                   `.claude/logs`, `.claude/settings*.json`
+#                                   (may be empty: `()`). Each entry is a
+#                                   relative path of `/`-separated names of
+#                                   letters, digits and `. _ -`: no leading,
+#                                   trailing or doubled slash, and no
+#                                   component that is `.` or `..` (with a
+#                                   trailing slash the derived pattern would
+#                                   not match the bare directory, so `cp`,
+#                                   `mv` and `rm -r` of it would pass). Dots
+#                                   are escaped and `/` widened to PSEP. Four
+#                                   §7 block messages (copy, target-verb,
+#                                   redirect, in-place edit) and the two
+#                                   output-writer messages name them via
+#                                   _PROT_LABEL.
+#       SITE_SCRATCH_DIR            where §6 tells the model to put temp files.
+#       SITE_REBUILD_HINT           the §8 "rebuild …" wording.
+#     Optional:
+#       SITE_ENV_PRINT_HINT         the closing alternative in the §9 category D
+#                                   message (default: "move the logic into a
+#                                   script file").
+#       site_extension_guards       a function the body calls once, after its
+#                                   last guard and before the final allow,
+#                                   under a scoped `set -E` (so a command failing
+#                                   anywhere in it trips the ERR trap and
+#                                   BLOCKS). It blocks with the body's `block`
+#                                   and reads the interface names below. It
+#                                   does not run for the early exits (a
+#                                   non-Bash tool, an empty command, a command
+#                                   a body guard already blocked).
+#                                   It MUST RETURN 0 WHEN IT ALLOWS: end it
+#                                   with `return 0`, and write each check as
+#                                   `if …; then block "…"; fi`, not
+#                                   `[[ … ]] && block "…"` as the last
+#                                   command (that returns 1 whenever the
+#                                   condition is false). A non-zero return,
+#                                   like any failing command inside it, BLOCKS
+#                                   every command that reaches it, with a
+#                                   message that names the site guard. A
+#                                   failing command substitution counts
+#                                   (`n=$(… | grep -c x)` fails when nothing
+#                                   matches, because `grep -c` then exits 1);
+#                                   put such a test in an `if` condition. A
+#                                   failure inside a subshell or a command
+#                                   substitution can print the site-guard
+#                                   message twice (the trap fires in the
+#                                   subshell and again in the hook); that is
+#                                   cosmetic, and the command is still
+#                                   blocked.
+#     Loading and failure semantics, in order: the general ERR trap is set
+#     first; a missing or unreadable site file BLOCKS; a loading-specific ERR
+#     trap is set and the file is sourced as a plain statement, so a syntax
+#     error or a failing command anywhere in it BLOCKS (assignments after the
+#     failure never take effect); the general trap is re-armed (which also
+#     undoes a `trap - ERR` in the site file); SITE_ROOT and each
+#     SITE_EXTRA_PROTECTED_DIRS entry are validated (malformed BLOCKS); then the
+#     derived values, the jq check and the stdin gates follow. The site file
+#     therefore loads BEFORE the jq and stdin gates: a broken site file blocks
+#     every call that reaches the hook, malformed stdin and non-Bash calls
+#     included (the hook's settings.json matcher is "Bash" only, so non-Bash
+#     calls never reach it). Every site-file failure (the four load failures
+#     and a failing site guard) prints one shape of message, "BLOCKED by
+#     bash-safety hook: the safety hook's site file (bash-safety.site.sh,
+#     next to the hook) is broken: <cause>. Every Bash command is blocked
+#     until it is fixed; hook files are user-only — ask the user to repair
+#     it.", and exits 2.
+#     The site file is looked up beside the path the hook is invoked by. If
+#     the hook is installed through a symlink, that is the directory of the
+#     link, not of its target; a link with no site file beside it fails
+#     closed (missing or unreadable).
+#     RESIDUAL (documented, by design): the site file runs with this hook's own
+#     authority. A site file that runs `exit 0`, redefines `block` or a
+#     command the body uses, or sets an EXIT trap can turn blocks into allows;
+#     the body cannot defend against its own trusted input. The defence is the
+#     file's protected location: §7 (`.claude/hooks` is in PROTECTED_DIRS) and
+#     the `Edit(.claude/hooks/*)` deny rule, which cover it like every hook
+#     file. Hook files, the site file included, are user-only.
+#     Values DERIVED from the settings (_ROOT_RE, _ROOT_TOP, _PROT_LABEL right
+#     after the load; _PROT_EXTRA in §7, next to PROTECTED_DIRS) are computed
+#     in this body — a site file never sets them.
+#     The home directory is matched generically (`/home/<any user>`), not by
+#     a site user name.
+#
+#   STABLE INTERFACE FOR site_extension_guards
+#     A site guard may rely on these names, with these meanings. Renaming or
+#     changing the meaning of any of them is a deliberate change that must be
+#     announced to every site, because a site guard that reads a vanished name
+#     silently stops matching. Names not listed here are internal and may
+#     change without notice: that includes every `_`-prefixed name (such as
+#     _PROT_LABEL, _BT, _ROOT_RE) and helpers such as PSEP, VARPRE, TMP_ROOT
+#     and WRAPPERS. The list holds only what a site guard plausibly needs: a
+#     segment anchor, the wrapper run, the /tmp and protected-path fragments,
+#     the /tmp message hint and `block`. A guard that needs a backtick writes
+#     its own ($'\x60'); a site that wants another protected directory lists
+#     it in SITE_EXTRA_PROTECTED_DIRS rather than matching paths itself.
+#       SCAN_CMD        the command after stage 0 (heredoc and quoted-span
+#                       classification, `git commit -m` excision, escape
+#                       canonicalization), whitespace collapsed to single
+#                       spaces with a trailing space. Scan it, not CMD.
+#       WRAPPED         ERE fragment: leading `VAR=value ` assignments and
+#                       wrapper commands (`env`, `timeout 5`, `sudo -u x`, …)
+#                       between a segment opener and the verb.
+#       SEG_OPEN        ERE fragment: a command-segment opener — start,
+#                       `; & | ( ) {`, a backtick, `$(`, ` -exec `/` -execdir `,
+#                       or a shell keyword (`then do else elif if while until
+#                       !`).
+#       SEG_OPEN_TOK    SEG_OPEN, except that `(` opens a segment only at a
+#                       token start (never right after a letter, digit, `_`
+#                       or `.`), so a function call in kept interpreter
+#                       code (`print("pip install …")`) is not a command.
+#       SEG7            §7's opener set; since hf4 the same set as SEG_OPEN.
+#       TMP_DEST        ERE fragment: an ephemeral root (/tmp, /var/tmp,
+#                       /dev/shm, repeated slashes and `./` tolerated) plus an
+#                       optional path, up to a token boundary.
+#       SCRATCH_HINT    the sentence the §6 /tmp messages end with (built
+#                       from SITE_SCRATCH_DIR).
+#       PROTECTED_DIRS  ERE fragment: `.claude/hooks`, `.claude/logs`, every
+#                       SITE_EXTRA_PROTECTED_DIRS entry, `.claude/settings.json`,
+#                       `.claude/settings.local.json` and a glob component
+#                       under `.claude/`, with PSEP separators.
+#       block           function: prints "BLOCKED by bash-safety hook: <arg>"
+#                       to stderr and exits 2.
+#       SITE_ROOT, SITE_EXTRA_PROTECTED_DIRS, SITE_SCRATCH_DIR,
+#       SITE_REBUILD_HINT, SITE_ENV_PRINT_HINT
+#                       the site's own settings, as loaded.
+#     SCAN_CMD, WRAPPED, SEG_OPEN, SEG_OPEN_TOK and block exist from stage 0 /
+#     the shared vocabulary onward; TMP_DEST and SCRATCH_HINT exist only from
+#     §6 onward and SEG7 and PROTECTED_DIRS only from §7 onward — all are set
+#     by the time site_extension_guards runs. Use the patterns the way the
+#     body does, and return 0 at the end:
+#     `if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN} ?${WRAPPED}<verb> …"; then
+#     block "<message>"; fi`, then `return 0`.
+#
 #   PROVENANCE CHAIN
 #     1. DAAF hardened draft, 2026-09-18 (stages 0a-0e + §1-§8 rewrite; DAAF
 #        red-team rounds 1-3, fix cycles 1-2; 1,415 lines).
-#     2. Starter-kit port, 2026-09-24: DAAF's R3-F1/R3-F2 applied, then the
-#        starter kit's own red-team rounds 3-5 (their REDTEAM_R4/R5 reports):
+#     2. Port of 2026-09-24: R3-F1/R3-F2 applied, then red-team rounds 3-5:
 #        F1-F20, R5-T1, G10-G43, C1-C5, D1-D6, S1 (1,992 lines, verdict SHIP).
 #     3. DAAF fix cycles 3-4, 2026-09-24, in parallel on DAAF's own draft: the
 #        shared pipe-receiver vocabulary, receiver terminators, quoted/escaped
 #        receivers, extra shells + dot-source, flag-ARG wrapper items, the
 #        `$mount` opener fix, and the `$(curl …)` family (b1/b2).
-#     4. Harmonized 2026-09-26: the starter-kit round-5 file is the BASE; the
-#        DAAF cycle-3/4 work in (3) is ported onto the base's regexes and
+#     4. Merged 2026-09-26: the round-5 file from (2) is the BASE; the DAAF
+#        cycle-3/4 work in (3) is ported onto the base's regexes and
 #        reconciled with its F6/F7/F7b/F12/F20 (one implementation each, no
 #        duplicates). Every ported change carries a dated comment
-#        `2026-09-26 (harmonization, DAAF cycle-3/4 port: …)` at its site.
+#        `2026-09-26 (merge, DAAF cycle-3/4 port: …)` at its site.
+#     5. hf4, 2026-10-27: the one-body / site-file split (see the ledger).
+#     6. hf5, 2026-10-27: §7 path qualifiers and the §6m output-writer rule
+#        (see the ledger).
 #
-#   SITE CONFIG (the block right after this header)
-#     Both projects run this BYTE-IDENTICAL body. Every project-specific value
-#     lives in the SITE CONFIG block, and `diff` of the two projects' files
-#     must show only lines inside that block. Values:
-#       SITE_ROOT                   absolute project root (regex-safe chars
-#                                   only: letters, digits, `_`, `-`, `.`, `/`).
-#                                   Drives the §1 root targets (`rm -rf
-#                                   <root>/*`, `<root>/.*`, F9 backstop, G28),
-#                                   G29 `<root>/.git`, G43 `find <root>
-#                                   -delete`, G10 `<root>/.claude`, the
-#                                   `$VAR/<top-level>` list (_RM_VARTOP), and
-#                                   the paths in the §9 Remotion message.
-#       SITE_EXTRA_PROTECTED_DIRS   extra §7 protected directories beyond
-#                                   `.claude/hooks`, `.claude/logs`,
-#                                   `.claude/settings*.json` (DAAF:
-#                                   `benchmarks/harness/hooks`). Dots are
-#                                   escaped and `/` widened to PSEP. Four §7
-#                                   block messages (copy, target-verb,
-#                                   redirect, in-place edit) name them via
-#                                   _PROT_LABEL; the others do not list paths.
-#       SITE_SCRATCH_DIR            where §6 tells the model to put temp files.
-#       SITE_REBUILD_HINT           the §8 "rebuild …" wording.
-#       SITE_ENABLE_REMOTION_GUARD  1 = run §9, the starter kit's Remotion
-#                                   bundle-per-call disk guard (site extension;
-#                                   0 at DAAF, where the section is inert).
-#       SITE_REMOTION_DIR           the Remotion project directory §9 names.
-#     Values DERIVED from these (_ROOT_RE, _ROOT_TOP, _PROT_LABEL right after
-#     the block; _PROT_EXTRA in §7, next to PROTECTED_DIRS) are computed in the
-#     shared body — never edit them per site.
-#     The home directory is matched generically (`/home/<any user>`), not by
-#     a site user name.
-#
-#   CHANGE LEDGER — starter-kit rounds 3-5 (fix ids are marked at their sites)
+#   CHANGE LEDGER — rounds 3-5 (fix ids are marked at their sites)
 #     R3-F1  §5 mount guard opens on a quote-bearing set (A03/A04); refined by
 #            the DAAF port to SEG_OPEN_MNT (below).
 #     R3-F2  `|&` and wrapper-prefixed 0c pipe receivers; superseded by the
@@ -242,8 +373,7 @@
 #            --reference=<system path>`; C4 0a line bail 4000 -> 1000; C5a/b a
 #            quoted span written to a file the command then executes is
 #            promoted, and a typed `\n` in a promoted body becomes `; `.
-#     G10 and G29 were user-ratified at BOTH sites (starter kit D8/D9; DAAF
-#     2026-09-26 decision (2)).
+#     G10 and G29 were user-ratified (2026-09-26 decision (2)).
 #
 #   CHANGE LEDGER — DAAF cycle-3/4 port (2026-09-26)
 #     P1  PIPE_OP / PIPE_RECV_PRE / PIPE_SHELLS / PIPE_INTERPS / PIPE_RECV_END:
@@ -260,20 +390,20 @@
 #         and friends stop false-blocking; the quote opener stays for R3-F1).
 #     P5  one `$(curl …)` download-execute guard = F7b ∪ DAAF b1 ∪ DAAF b2.
 #
-#   CHANGE LEDGER — post-merge (both sites)
-#     G29q  2026-09-26 (harmonization, G29 quoted form): _ROOTVAR, the project
+#   CHANGE LEDGER — post-merge (2026-09-26)
+#     G29q  2026-09-26 (merge, G29 quoted form): _ROOTVAR, the project
 #           root through a variable with an optional double quote on each side
 #           (0c rule 5b KEEPS `"${…}"` spans with their quotes), shared by
 #           _RM_ROOT, G29 and G43. Closes `rm -rf "${CLAUDE_PROJECT_DIR}/.git"`,
 #           `rm -rf "${BASE_DIR}"`, `rm -rf "${PROJECT_DIR}/*"`, `rm -rf
 #           $CLAUDE_PROJECT_DIR/`, `find "${CLAUDE_PROJECT_DIR}" -delete`.
-#     HF1   2026-09-26 (harmonization fix 1), both sites:
+#     HF1   2026-09-26 (merge fix 1):
 #           (a) WRAPPERS argument run: named argument-taking flags + one
 #               token, non-command-shaped tokens, and the flock/taskset
 #               positional operand (`timeout -s KILL 5 docker run`, `env -u
 #               HOME cp … .claude/hooks/`, `xargs -I {} cp …`, `flock lk
 #               docker run`) — consistency-review BLOCKER B1, a regression vs
-#               the pre-2026-09-18 hook in both projects;
+#               the pre-2026-09-18 hook;
 #           (b) _HOMEVAR/_CWDVAR: `rm -rf "${HOME}"`, `"${HOME}/"`,
 #               `"${PWD}"`, `"${OLDPWD}"`, `find "${HOME}" -delete` (the
 #               former braced-home/cwd residual; user-approved);
@@ -281,9 +411,11 @@
 #           (d) comment corrections (SEG_OPEN_Q users and quote-survival
 #               sources, §5 opener history, §4 receiver boundary).
 #
-#   CHANGE LEDGER — section 10 accidental environment-disclosure guard (2026-10-02)
-#     E1  New section 10 (ENV_DISCLOSURE_GUARD), placed after section 9, before
-#         the final allow. Four categories mirror run_with_capture.sh's env-
+#   CHANGE LEDGER — accidental environment-disclosure guard (2026-10-02; added
+#   as section 10, section 9 since hf4)
+#     E1  New section (ENV_DISCLOSURE_GUARD), placed after the last other
+#         section, before the final allow. Four categories mirror DAAF's
+#         run_with_capture.sh env-
 #         print scan: A whole-env dump (bare env/set/export -p/printenv, no
 #         operand); B credential-named value to output/file (echo/printf + an
 #         unescaped $NAME, or declare -p/typeset -p/printenv NAME); C a
@@ -302,21 +434,21 @@
 #         data-consumer heredoc body; 0c records a double-quoted excised span
 #         containing `$`. Category B scans it alongside SCAN_CMD. NO stage-0
 #         classification changed - the accumulator only keeps a copy, so no
-#         ALLOW->BLOCK or BLOCK->ALLOW shift in sections 1-9 is possible.
-#     E4  grep -E for all section-10 matching (not bash `=~`) to avoid nested-
+#         ALLOW->BLOCK or BLOCK->ALLOW shift in sections 1-8 is possible.
+#     E4  grep -E for all section-9 matching (not bash `=~`) to avoid nested-
 #         quantifier backtracking; a cheap bash substring prefilter skips the
 #         greps on the common path.
 #     E5  (_c, 2026-10-03, task B3 FP gate) category D's bare ENVIRON token
 #         gained a trailing boundary ([^A-Z0-9_[]|$). Without it, an interpreter
 #         one-liner naming an identifier that merely STARTS with ENVIRON
 #         (ENVIRONMENT, ENVIRON_LABEL) false-blocked (measured against the
-#         recorded-session + docs corpora). A pure tightening of a new section-10
-#         alternative: it can only turn a section-10 block into an allow, never
-#         create a block, so no ALLOW->BLOCK is introduced and no section-1..9
+#         recorded-session + docs corpora). A pure tightening of a new section-9
+#         alternative: it can only turn a section-9 block into an allow, never
+#         create a block, so no ALLOW->BLOCK is introduced and no section-1..8
 #         behavior changes. awk whole-env forms (`print ENVIRON`, `for (k in
 #         ENVIRON)`) still match via the EOL / `)` / space boundary.
 #     E6  (_d, 2026-10-03, COMMENT-ONLY — no code change) documentation
-#         refinements to the section-10 residual notes, proven comment-only
+#         refinements to the section-9 residual notes, proven comment-only
 #         (diff against _c touches `#`-lines only): (1) the B3-gate accepted-FP
 #         note now names the grep/regex SEARCH-PATTERN class explicitly — a
 #         grep whose quoted pattern contains the /proc/<pid>/environ path, a
@@ -327,11 +459,102 @@
 #         to any uppercase variable whose last `_`-segment is a credential
 #         keyword, echoed/printed (e.g. $CACHE_KEY, $SORT_KEY, $SESSION_TOKEN);
 #         (3) the `2>`-redirect sink exclusion is named next to the pipe
-#         exclusion in both the header residuals and the section 10 design
+#         exclusion in both the header residuals and the section 9 design
 #         comment. No regex, accumulator, prefilter, or stage-0 rule changed.
 #
-#   DOCUMENTED RESIDUALS (merged from both projects; all ALLOW today)
-#     Section 10 env-disclosure guard (2026-10-02; ALLOW today unless noted):
+#   CHANGE LEDGER — hf4 (2026-10-27): one body, one site file
+#     (a) SITE FILE SPLIT. The in-body SITE CONFIG block is gone; its settings
+#         live in the sibling bash-safety.site.sh, loaded fail-closed (see SITE
+#         FILE CONTRACT): ERR trap first, sibling-only path, readability
+#         check, loading-specific trap, plain-statement source, trap re-armed,
+#         SITE_ROOT and SITE_EXTRA_PROTECTED_DIRS validated. The optional
+#         site_extension_guards runs before the final allow under a scoped
+#         `set -E` and a site-guard ERR trap; it must return 0 when it allows.
+#         The stable interface list is new.
+#     (b) The old section 9 (a site-only disk guard, inert at DAAF) and its two
+#         settings left the body; a site that wants it carries it in its own
+#         site_extension_guards. The env-disclosure guard (section 10) is now
+#         section 9; its marker ENV_DISCLOSURE_GUARD and the `_ENV10_*`
+#         identifiers are unchanged.
+#     (c) §9 category D's closing hint is the site setting
+#         SITE_ENV_PRINT_HINT (fallback "move the logic into a script file"),
+#         so DAAF's message is byte-identical to before.
+#     (d) Output-writer and §7-opener fixes, ported as written (comments
+#         reworded):
+#           (a) §7 OUTPUT-FLAG WRITERS: curl -o/--output/--output-dir, wget
+#               -O/-o/-P/--output-document/--directory-prefix, firecrawl
+#               -o/--output and sort -o whose ARGUMENT is a protected path
+#               (`curl -sSLo .claude/hooks/x.sh URL` was ALLOWED). Its message
+#               ends "Draft hook or settings changes inside your project folder
+#               and ask the user to install them; these changes are user-only.";
+#           (b) §6e curl bundled short flags ending in `o` (`curl -sSLo /tmp/x
+#               URL` was ALLOWED), `--output=/tmp/…`, `firecrawl -o /tmp/…`,
+#               and wget `--output-document[=| ]/tmp/…`;
+#           (c) SEG7 gains the `( ) {` backtick `$(` openers SEG_OPEN had:
+#               `(cp x .claude/hooks/y)`, `{ cp x .claude/hooks/y; }` and
+#               `x=$(rm .claude/hooks/y)` were ALLOWED by every §7 rule.
+#     (e) Widenings, each closing a probed ALLOW:
+#           - §7 right-hand terminators PROT_DEST_END, _CLDIR_END and the three
+#             sibling G10 end classes accept `)` and a backtick (`( cp x
+#             .claude/hooks/y )`, `diff <(cp x .claude/hooks/y) f`, `(cp -r
+#             scratch/hooks .claude/)`);
+#           - §6k `ln`, §6l `mktemp` and every segment-anchored §8 install
+#             guard (the `python -m pip` and `ensurepip` guards have no
+#             segment anchor; they match on a word boundary) open on the new
+#             SEG_OPEN_TOK set (SEG_OPEN, with `(` only at a token start, so
+#             `print("pip install …")` in kept interpreter code stays ALLOW);
+#             §6l's terminator accepts `)` and a backtick
+#             (`(mktemp)`, `x=$(mktemp)`, `{ mktemp; }`, `(ln -s f /tmp/x)`,
+#             `(pip install x)`, `if …; then pip install x; fi`);
+#           - §1 and G29: a backtick-closed target when a backtick opened the
+#             segment (`` `rm -rf ~` ``, `` x=`rm -rf <root>` ``, `` `rm -rf /` ``);
+#           - §7 OUTPUT-ARGUMENT WRITERS: tar -c/-r/-u/-A/--delete with a
+#             protected -f/--file, git archive -o/--output, pandoc and gpg
+#             -o/--output, wget -a/--append-output, uniq IN OUT (protected
+#             second operand);
+#           - /usr/local/bin/ is admitted wherever /bin/ and /usr/bin/ were
+#             (§1, §3 install -m, §7, G10, G11, and the new rules).
+#     (f) Comments: site-neutral wording throughout, and no inline
+#         research-folder path: a comment cites a DAAF record by its probe,
+#         case, fix or note ID (`probe hf3`, `FC240`, `research note
+#         guardfall-and-data-vs-code §4`) and an outside source by name, and the
+#         RECORDS line at the end of this header says where DAAF keeps them.
+#     Unchanged on purpose: stage 0c (its search-pattern false positives are
+#     deferred; see DOCUMENTED RESIDUALS). Every pre-hf4 battery and bats
+#     verdict is unchanged except one intended flip: FC152 (`if …; then pip
+#     install x; fi`, the keyword-opened install residual) goes from ALLOW to
+#     BLOCK, because item (e) closes that residual.
+#
+#   CHANGE LEDGER — hf5 (2026-10-27): §7 path qualifiers, §6m output writers
+#     (a) §7 PATH QUALIFIERS. The four §7 tests whose verb admitted no program
+#         path now take the `(/(usr/(local/)?)?bin/)?` qualifier every other
+#         §7 verb rule already had: the sed/perl in-place rule, the tar/unzip
+#         -C/-d extraction rule, the find -delete rule, and the extract-flag
+#         test of G10's tar arm. `/bin/sed -i … .claude/settings.json`,
+#         `/usr/bin/tar -xf a.tar -C .claude/hooks`, `/usr/bin/find
+#         .claude/hooks -delete` and `/bin/tar -xf a.tar -C .claude` were
+#         ALLOWED.
+#     (b) §6m OUTPUT FLAG OR ARGUMENT AIMED AT AN EPHEMERAL ROOT. One general
+#         rule: the writer shapes of hf4's two §7 output-writer rules (curl,
+#         wget, firecrawl and sort with an output flag; tar -c/-r/-u/-A/
+#         --delete with -f/--file; git archive -o; pandoc and gpg -o; wget -a;
+#         uniq IN OUT) with TMP_DEST as the destination, on the SEG_OPEN_TOK
+#         anchor, WRAPPED and the path qualifier. `sort -o /tmp/x f` and
+#         `tar -czf /tmp/a.tgz d` were ALLOWED. The shapes moved, unchanged,
+#         into one shared OUTPUT-WRITER SHAPES block above §6, which §7 and
+#         §6m both read, so the two rules cannot drift; the set of §7 patterns
+#         is the same as before. Reads FROM /tmp into the project (the rescue
+#         direction) stay ALLOW.
+#     (c) Not changed, on purpose: stage 0c. Its search-pattern false
+#         positives stay deferred (DOCUMENTED RESIDUALS, SEARCH-PATTERN FALSE
+#         POSITIVES, which records why).
+#     Intended verdict flips, each a residual pin closed by (a) or (b): FC421
+#     (`/bin/sed -i` on settings.json), FC422 (`sort -o /tmp/x f`) and FC148
+#     (`tar -czf /tmp/a.tgz scratch`) go from ALLOW to BLOCK. Every other
+#     battery and bats verdict is unchanged.
+#
+#   DOCUMENTED RESIDUALS (all ALLOW today unless noted)
+#     Section 9 env-disclosure guard (2026-10-02; ALLOW today unless noted):
 #     - A value copied into another variable first, a name computed at run
 #       time, or a lowercase environment name (category B is uppercase-only).
 #     - A dump written to a file BY an interpreter, and process-listing env
@@ -358,7 +581,7 @@
 #       canonicalizes.
 #     - ACCEPTED FALSE POSITIVES (BLOCK today; task B3 FP gate, 2026-10-03):
 #       an env-disclosure token sitting inside a quoted DATA argument that a
-#       nested-quote shape kept out of stage-0 excision, so section 10 reads it
+#       nested-quote shape kept out of stage-0 excision, so section 9 reads it
 #       as an action. This is a SEARCH-PATTERN class that recurs specifically
 #       in hook-maintenance / grep work, where the quoted argument is itself a
 #       search pattern or interpreter string that merely NAMES an env token
@@ -373,7 +596,7 @@
 #         * a `python -c "..."` string that also names a whole-env token
 #           (category D's interpreter gate AND the token both land in the span).
 #       Root cause is stage-0 quote excision not reaching these nested-quote
-#       spans, not the section-10 regexes; narrowing A/C/D to defeat it safely
+#       spans, not the section-9 regexes; narrowing A/C/D to defeat it safely
 #       needs a stage-0 change, deferred as out of scope for this guard.
 #       Measured rate of the category-A/C data-token FPs: 4 / 1060 gated
 #       recorded-session commands.
@@ -409,10 +632,10 @@
 #       taking flag outside _WRAP_ARGFLAG whose argument is a plain word; and
 #       F12's own wrapper list (_WRAPRUN), which is separate: `env -u HOME echo
 #       mount /dev/sda /mnt | bash` ALLOWS (as on the live hook).
-#     - ADVERSARIAL COVERAGE GAP (user decision 2026-09-26, both projects):
+#     - ADVERSARIAL COVERAGE GAP (user decision 2026-09-26):
 #       R5-T1 (`_exec_recurs`, the execution-position recurrence test) and F12
 #       (`_EF1`, the unquoted echo/printf-into-a-shell rewrite) have NO
-#       adversarial red-team cases in either project. In both projects an
+#       adversarial red-team cases. An
 #       automated safety classifier stopped the red-team agent while it was
 #       authoring bypass strings for them. The rows that exist are functional
 #       pins, not an adversarial sweep. The user accepted this as a documented
@@ -431,10 +654,90 @@
 #     - cwd-relative evasion across calls (`cd .claude`, then `cp x hooks/y`)
 #       and `env -C <dir>` / `/usr/bin/env` before a relative write.
 #     - Program-argument /tmp writes (`python x.py /tmp/out/`), `find … -exec
-#       <writer> … /tmp/ …`, `TMPDIR=/tmp python3 x.py`, `sponge`, `split`,
-#       `tar -czf /tmp/…`.
-#     - Keyword-opened package installs (`if …; then pip install x; fi`): §8
-#       anchors on `^`/`;`/`&`/`|` only.
+#       <writer> … /tmp/ …`, `TMPDIR=/tmp python3 x.py`, `sponge`, `split`.
+#       (CLOSED by hf5 (b): `tar -czf /tmp/…`, `sort -o /tmp/…` and the other
+#       §6m writer shapes.)
+#     - A quoted destination that holds a space, given to a writer on 0c's
+#       data-consumer list (sort, uniq, tee): `sort -o '/tmp/x y' f`, `tee
+#       '/tmp/x y'`, `sort -o '.claude/hooks/x y' f`. Stage 0c EXCISES the
+#       span before any rule runs (the same on the hf4 hook); closing it is a
+#       stage-0c change (maintainer probe fe7/01).
+#     - (CLOSED by hf4: keyword-, subshell-, group- and substitution-opened
+#       package installs — `if …; then pip install x; fi`, `(pip install x)`,
+#       `x=$(pip install x)` — now block; §8 anchors on SEG_OPEN_TOK.)
+#     - Program paths other than /bin/, /usr/bin/ and /usr/local/bin/ before a
+#       §1/§3/§6m/§7 verb (`/opt/x/bin/cp …`) are not matched. (CLOSED by hf5
+#       (a): the §7 rules that admitted no path qualifier at all — `/bin/sed
+#       -i … <protected>`, `/usr/bin/tar -C <protected>`, `/usr/bin/find
+#       <protected> -delete`.) Rules outside §7 whose verb still admits no
+#       qualifier (ALLOW today; maintainer probe fe7/03; FC527-FC531): §1's
+#       `find / -delete` arm (`/usr/bin/find / -delete`), §5 `docker run`, §6k
+#       `ln`, §6l `mktemp`, and the §8 uv, conda/uvx/easy_install and R guards.
+#     - Spellings and writers the §6m and §7 checks do not model (ALLOW today,
+#       not pinned; hf5 quality review, maintainer probes review5q/01-02): the
+#       attached and long directory forms of an extraction into a protected
+#       path (`tar -xf a.tar --directory=.claude/hooks`, `tar -xf a.tar
+#       -C.claude/hooks`, `unzip a.zip -d.claude/hooks`); abbreviated or
+#       alternate writer flags (`sort --out=/tmp/x f`, `tar --cre -f /tmp/x
+#       d`, `uniq IN -- OUT`, wget `--output-file`, whose `=` form §7 does
+#       catch); writers not on the list (`git worktree add`, `git format-patch
+#       -o`, `git bundle create`, `git diff --output`, curl `-D`/`-c`/
+#       `--trace`, and those named at §7's OUTPUT-ARGUMENT WRITERS); and an
+#       ephemeral path reached through `..`
+#       (`sort -o <root>/../tmp/x f`, `echo x > <root>/../tmp/x`). These and
+#       the unqualified verbs above are recorded residuals, not planned work:
+#       a well-behaved agent does not type these spellings, and a regex
+#       classifier is not the boundary against a deliberate adversary.
+#     - SEARCH-PATTERN FALSE POSITIVES from stage 0c (BLOCK today; fail-closed;
+#       deferred): a whitespace-free quoted pattern is CANONICALIZED, not
+#       excised, so its `|`, `;`, `&`, `(`, `)`, `{` read as openers. Shapes:
+#       `grep -n -E "tmp|mktemp" f` (§6l), `grep -E "(mktemp)" f` and
+#       `grep -E "(tmp|mktemp)" f` (§6l, since hf4 let `)` end the mktemp
+#       token so `(mktemp)` blocks), `grep -n -E "x|mount" f` (§5),
+#       `grep -n "{cp" .claude/hooks/x` (§7, since hf4 widened SEG7), an
+#       alternation ending in an output-writer name, read against a
+#       protected path or a /tmp file, where `|uniq A B` reads as `uniq IN
+#       OUT` (`grep -nE "x|uniq" f .claude/hooks/x`, §7 since hf4; `grep -c
+#       -E "error|uniq" /tmp/claude-ctx-window-x /tmp/claude-model-x`, §6m
+#       since hf5; not pinned), and a kept interpreter body whose
+#       canonicalized call text puts a §7 verb right after `(`
+#       (`print("cp x .claude/hooks/y")` in a python heredoc; §7's SEG7,
+#       unlike §6k/§6l/§8's SEG_OPEN_TOK, opens on any `(`).
+#       Workaround: pass each alternative as its own `-e` pattern, without
+#       grouping parens (`grep -n -e tmp -e mktemp f`, `grep -e mktemp f`), or
+#       bracket the character (`"[{]cp"`); each returns the same lines as the
+#       original pattern (maintainer probe fe8/01). A space in the pattern is
+#       NOT a workaround: it is excised, but `"tmp | mktemp"` searches for
+#       other text (it matched nothing where `"tmp|mktemp"` matched 4 lines).
+#       The fix is a stage-0c change (excise a whitespace-free data-consumer
+#       span that holds a shell control character), not a change to these
+#       guards.
+#       Two more accepted shapes of the same deferred stage-0 search-pattern
+#       class, each through its own mechanism (found by replaying recorded
+#       session commands against the hf4 draft; pinned BLOCK today with their
+#       workarounds pinned ALLOW):
+#         * an escaped paren in a search pattern, such as `grep -n -E
+#           '"Bash\(rm' .claude/settings.json` (§7): stage 0d does not fold
+#           `\(`, SEG7 opens on any `(`, and the `rm` after it then reads as a
+#           command acting on a protected path. Workaround: bracket the paren,
+#           `'"Bash[(]rm'`.
+#         * a backtick, even an escaped one, inside a double-quoted search
+#           pattern, such as `grep -nE "x|bare \`pip install|y" README.md`
+#           (§8): 0c rule 5b KEEPS a double-quoted span that holds a backtick,
+#           and the kept backtick opens a segment before `pip install`.
+#           Workaround: single-quote the pattern.
+#       DEFERRED ON PURPOSE (user decision, hf5, 2026-10-27; still an open
+#       follow-up): this class is documented, not fixed. Why: (1) it fails
+#       CLOSED — a false positive blocks a read-only search, it never allows a
+#       dangerous command; (2) the fix is a stage-0c change, and every rule in
+#       this hook scans stage 0's output, so it carries classifier-wide
+#       regression risk; (3) it is rare: the replay of recorded session
+#       commands against the hf4 draft (a sample of 11,731 plus all 11,404
+#       commands a changed rule could read, out of 46,923 distinct) found 3
+#       such blocks, all read-only greps and all in the targeted subset (about
+#       3 of 46,923 overall, an estimate that assumes that filter was
+#       complete); the hf5 re-check (360 targeted + 10,029 sampled of 50,501)
+#       found no verdict change. Use the workarounds above.
 #     - The 0c 256-character left-context window (see TRUNCATION in 0c);
 #       spans beyond 64 / heredocs beyond 20 are KEPT (fail-closed); commands
 #       over 20,000 characters skip 0c/0d and are scanned raw (the prose
@@ -450,13 +753,12 @@
 #       does not check the TYPE of `tool_name`. An array (`["Bash"]`), an
 #       object, `null`, a number, or a missing key makes `jq -r '.tool_name //
 #       empty'` print something other than exactly `Bash` (or nothing), and the
-#       `!= "Bash"` gate reads that as "not a Bash call". Probe
-#       (scripts/scratch/hf3_toolname_probe.sh in DAAF's research workspace,
-#       command `rm -rf /`): the string form exits 2; array, object, null,
-#       number and missing exit 0, on the DAAF and starter-kit variants alike.
-#       Accepted because Claude Code always sends `tool_name` as a string, so
-#       a payload with any other type is not a real Bash call reaching this
-#       hook (inference from the hook input contract, not a harness test).
+#       `!= "Bash"` gate reads that as "not a Bash call". With the command
+#       `rm -rf /`, the string form exits 2; array, object, null, number and
+#       missing exit 0 (maintainer probe hf3). Accepted because Claude Code
+#       always sends `tool_name` as a string, so a payload with any other type
+#       is not a real Bash call reaching this hook (inference from the hook
+#       input contract, not a harness test).
 #       Closing it would be one more clause in the stdin gate's jq test
 #       (`(.[0].tool_name | type) == "string"`); deliberately not done in the
 #       revision that added this entry, which is comment-only. Pinned ALLOW
@@ -477,26 +779,89 @@
 #       Needs a no-argument flag, then a command whose FIRST argument is a
 #       guarded verb (fail-closed; per-wrapper letter sets would close it).
 #
-#   VERIFICATION: see the harmonization record in DAAF's research workspace
-#   (research/2026-09-18_FrameworkDev_SafetyHookHardening/SESSION_NOTES.md)
-#   and the starter kit's REDTEAM_R5_REPORT.md for the pre-merge baseline.
+#   VERIFICATION: the regression battery and its bats mirror pin every
+#   behaviour above that is not marked "not pinned".
+#   RECORDS (DAAF maintainer-only, not shipped): DAAF keeps the records for
+#   the probe, case, fix and note IDs cited in this file in its research
+#   workspace: research/2026-09-18_FrameworkDev_SafetyHookHardening/ (the
+#   2026-09-18 to 2026-10-03 revisions), research/2026-10-26_FrameworkDev_BashSafetySiteSplit/
+#   (hf4, hf5), and research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/
+#   (the enforce-file-first.diff hook patch).
 # ===========================================================================
 
 # ===========================================================================
-# ===== SITE CONFIG — the only section that differs between projects =====
+# FAIL-CLOSED POSTURE AND SITE FILE LOAD (hf4, 2026-10-27)
 # ===========================================================================
-# Site: DAAF (Data Analyst Augmentation Framework)
-SITE_ROOT='/daaf'
-SITE_EXTRA_PROTECTED_DIRS=('benchmarks/harness/hooks')
-SITE_SCRATCH_DIR='{PROJECT_DIR}/scripts/scratch/'
-# SC2016: backticks in the hint (if any) are literal message text, not expansions.
-# shellcheck disable=SC2016
-SITE_REBUILD_HINT='(exit the container, then run `bash rebuild_daaf.sh` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild'
-SITE_ENABLE_REMOTION_GUARD=0
-SITE_REMOTION_DIR=''
-# ===== END SITE CONFIG =====================================================
+# Fail CLOSED: if anything unexpected goes wrong, block the command.
+# This is a security hook — ambiguous failures must not silently allow execution.
+# The trap is installed FIRST, before anything else runs, because the site
+# file is sourced next: a source that runs with no ERR trap fails OPEN (a
+# missing or syntax-broken file printed an error and the hook went on to exit
+# 0 — observed before this layout).
+trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
 
-# --- Values DERIVED from the site config (shared body; never edit per site) ---
+# The site file is resolved ONLY as a sibling of this script — no environment
+# variable or argument can point it elsewhere — so it always lives in the
+# directory §7 and the Edit(.claude/hooks/*) deny rule already protect. A test
+# harness that runs a draft hook from another folder copies the site file next
+# to the draft. When this script is read from stdin (`bash < file`),
+# BASH_SOURCE[0] is empty and the lookup is cwd-relative; the readability check
+# below still fails closed.
+_SITE_FILE="$(dirname "${BASH_SOURCE[0]}")/bash-safety.site.sh"
+# `block` is defined further down, so the site-file failures print inline.
+# Every one has the same shape: the shared opening (_SITE_BROKEN), which says
+# the site file is broken, then the specific cause, then the shared closing
+# (_SITE_FIX), which says every Bash command is blocked and that hook files
+# are user-only.
+_SITE_BROKEN="BLOCKED by bash-safety hook: the safety hook's site file (bash-safety.site.sh, next to the hook) is broken:"
+_SITE_FIX="Every Bash command is blocked until it is fixed; hook files are user-only — ask the user to repair it."
+[[ -r "$_SITE_FILE" ]] || { echo "${_SITE_BROKEN} it is missing or unreadable. ${_SITE_FIX}" >&2; exit 2; }
+trap 'echo "${_SITE_BROKEN} it failed to load (a syntax error or a failing command). ${_SITE_FIX}" >&2; exit 2' ERR
+# The source is a PLAIN statement on purpose: inside an `if` condition or an
+# `||` list, bash suppresses the ERR trap, and a failing site file would then
+# load half-way and carry on.
+# shellcheck source=bash-safety.site.sh
+. "$_SITE_FILE"
+# Re-arm the general trap. This also undoes a `trap - ERR` (or any other ERR
+# trap) the site file may have set.
+trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
+
+# SITE_ROOT must be a non-empty absolute path of regex-safe characters: the
+# derived _ROOT_RE escapes only `.`, and an empty root degrades §1 in both
+# directions (`find <root> -delete` ALLOWED while every `rm -r <x>` BLOCKED —
+# observed with an empty root). It must also be one or more `/name`
+# components with no empty one, so `/` alone, a trailing slash (`/daaf/`) and
+# a doubled slash (`//daaf`) are refused: the root arms are built as
+# `${_ROOT_RE}/?`, and with `/daaf/` the bare `/daaf` no longer matched them.
+# A `.` or `..` component is refused too (_SITE_DOT_PART): the arms match the
+# root as written, so `/daaf/..` would guard that literal text while naming
+# another directory.
+_SITE_ROOT_FORM='^(/[A-Za-z0-9._-]+)+$'
+_SITE_DOT_PART='(^|/)\.\.?(/|$)'
+if [[ -z "${SITE_ROOT:-}" || ! "$SITE_ROOT" =~ $_SITE_ROOT_FORM || "$SITE_ROOT" =~ $_SITE_DOT_PART ]]; then
+    echo "${_SITE_BROKEN} it left SITE_ROOT empty or malformed (SITE_ROOT must be an absolute path made of /-separated names of letters, digits and . _ -, with no trailing or doubled slash and no . or .. component, such as /srv/project). ${_SITE_FIX}" >&2
+    exit 2
+fi
+# Each SITE_EXTRA_PROTECTED_DIRS entry joins §7's PROTECTED_DIRS alternation as
+# a regex, so it must be a non-empty relative path of the same safe characters:
+# a regex metacharacter (`(`, `|`, `[`) would make every §7 grep fail to
+# compile, and a failing grep inside an `if` reads as "no match" — §7 would
+# silently ALLOW everything — while an empty entry would make the alternation
+# match every command. Like SITE_ROOT, it is made of `/`-separated names (no
+# leading, trailing or doubled slash) with no `.` or `..` component, so an
+# entry cannot name a directory other than the text it adds. A trailing slash
+# is refused because §7 widens every `/` of the entry to PSEP: `foo/bar/` would
+# require a separator after `bar`, so `cp x foo/bar`, `mv foo/bar …` and
+# `rm -r foo/bar` would no longer match — a silent fail-open.
+_SITE_DIR_FORM='^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
+for _pe in "${SITE_EXTRA_PROTECTED_DIRS[@]}"; do
+    if [[ ! "$_pe" =~ $_SITE_DIR_FORM || "$_pe" =~ $_SITE_DOT_PART ]]; then
+        echo "${_SITE_BROKEN} it lists a malformed SITE_EXTRA_PROTECTED_DIRS entry (each entry must be a non-empty relative path made of /-separated names of letters, digits and . _ -, with no leading, trailing or doubled slash and no . or .. component). ${_SITE_FIX}" >&2
+        exit 2
+    fi
+done
+
+# --- Values DERIVED from the site settings (shared body; never edit per site) ---
 _ROOT_RE="${SITE_ROOT//./'\.'}"
 _ROOT_TOP="${SITE_ROOT#/}"
 _ROOT_TOP="${_ROOT_TOP%%/*}"
@@ -505,10 +870,6 @@ for _pe in "${SITE_EXTRA_PROTECTED_DIRS[@]}"; do
     _PROT_LABEL+="${_pe}, "
 done
 _PROT_LABEL+='or .claude/settings*.json'
-
-# Fail CLOSED: if anything unexpected goes wrong, block the command.
-# This is a security hook — ambiguous failures must not silently allow execution.
-trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
 
 # --- Dependency check (fail-closed) ---
 # Without jq, we cannot inspect the tool invocation JSON. Failing open here
@@ -520,7 +881,7 @@ fi
 
 INPUT=$(cat)
 
-# --- Fail-closed on malformed input (2026-09-26, harmonization fix 1) ---
+# --- Fail-closed on malformed input (2026-09-26, merge fix 1) ---
 # Claude Code always sends exactly one JSON object. Anything else (non-JSON
 # text, a scalar/array, whitespace only, empty stdin, concatenated values) is
 # abnormal and must not reach the `!= "Bash"` allow gate below, where a failed
@@ -566,8 +927,8 @@ block() {
 #   variable makes every command-position guard agree on what "a command starts
 #   here" means. SOURCE: RoaringFerrum/claude-code-bash-guardian —
 #   "Enhanced Wrapper Command Detection: Intelligently detects and scans
-#   wrapper commands (timeout, xargs, sudo, etc.)"
-#   (output/preliminary_notes/2026-09-18_research_community-guard-hooks.md §3).
+#   wrapper commands (timeout, xargs, sudo, etc.)" (DAAF research note
+#   community-guard-hooks §3).
 #
 #   2026-09-18 (fix cycle 1, red-team SB2): each wrapper may now carry its own
 #   flags and numeric/duration arguments. The previous alternation had a flag
@@ -579,15 +940,15 @@ block() {
 #   duration/number — so it cannot swallow an arbitrary command name. (`rm`,
 #   `mv`, `mount`, `cp` all contain characters outside `[0-9.smhd]`.)
 #
-#   2026-09-26 (harmonization fix 1, consistency-review BLOCKER B1): a wrapper
+#   2026-09-26 (merge fix 1, consistency-review BLOCKER B1): a wrapper
 #   flag that takes a SEPARATE argument ended the run at its argument, so
 #   `timeout -s KILL 5 docker run x`, `env -u HOME docker run x` and
 #   `exec -a x docker run x` walked past every WRAPPED anchor (the live
 #   pre-2026-09-18 hook blocked the docker forms — a regression in both
 #   projects), and `env -u HOME mount|pip install|cp … .claude/hooks/`,
 #   `xargs -I {} cp {} .claude/hooks/`, `flock <lockfile> docker run x` were
-#   never caught (probe corpus scripts/scratch/hf1_item1_cases.txt). Each
-#   wrapper token (_WRAP_ITEM) may now also be:
+#   never caught (maintainer probe corpus hf1 item 1).
+#   Each wrapper token (_WRAP_ITEM) may now also be:
 #     (a) a NAMED argument-taking flag plus ONE non-flag token: the short
 #         letters in _WRAP_ARGFLAG (`timeout -s KILL`, `env -u HOME`,
 #         `env -C dir`, `env -S str`, `exec -a name`, `xargs -a file`,
@@ -608,7 +969,7 @@ block() {
 #   after a flag that takes no argument, making that command's first argument
 #   the "verb": `xargs -0 grep -l mount`, `env -i grep mount /etc/fstab`,
 #   `time -p grep …`, `stdbuf -oL grep …`, `strace -f grep …` all
-#   false-blocked in a prototype (six new FPs in hf1_item1_cases.txt, rows
+#   false-blocked in a prototype (six new FPs in the hf1 item 1 corpus, rows
 #   AN07-AN10/AN16/AN22). So the flag letters are an allowlist that excludes
 #   every common no-argument wrapper flag (`-i -0 -p -r -t -v -x -f -l`) and
 #   the letters whose argument is always numeric (covered by (b)). Over-
@@ -629,8 +990,8 @@ block() {
 #   argument is a guarded verb — rare in agent use and fail-closed. A
 #   per-wrapper flag table would close the class at the cost of a much larger
 #   regex; not done.
-#   Timing: +~10 ms per call, no super-linear growth
-#   (scripts/scratch/hf1_perf_stress.sh, 15-17 kB ambiguous wrapper runs).
+#   Timing: +~10 ms per call, no super-linear growth over 15-17 kB ambiguous
+#   wrapper runs (maintainer probe hf1_perf_stress).
 _WRAP_ARGFLAG='-[adegosuCDESU]|--(signal|kill-after|unset|chdir|split-string|user|group|arg-file|delimiter|max-args|max-procs|adjustment|output|input|error|format|wait|timeout|conflict-exit-code|command|class|classdata)'
 _WRAP_ITEM="(-[^ ;|&]+|[0-9.smhd]+|[0-9{%@=,+][^ ;|&]*|(${_WRAP_ARGFLAG}) +[^- ;|&][^ ;|&]*)"
 WRAPPERS="((sudo|doas|env|command|exec|xargs|nohup|setsid|eval|time|nice|ionice|chrt|taskset|stdbuf|unshare|nsenter|strace|ltrace|flock|chronic|busybox|timeout)( +${_WRAP_ITEM})*|(flock|taskset)( +${_WRAP_ITEM})* +[^- ;|&][^ ;|&]*)"
@@ -661,6 +1022,18 @@ VARPRE="([A-Za-z_][A-Za-z0-9_]*=(${_SQ}[^${_SQ}]*${_SQ}|${_DQ}[^${_DQ}]*${_DQ}|[
 #   command (GuardFall Class E; probe BY47).
 SEG_OPEN="(^|[;&|(){]|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:space:]]|[[:space:]](then|do|else|elif|if|while|until|!)[[:space:]]|^![[:space:]])"
 
+#   SEG_OPEN_TOK (hf4, 2026-10-27): SEG_OPEN, except that `(` opens a segment
+#   only at a token start — after start of string or a character that cannot
+#   end a word (`(pip …)`, `<(pip …)`, `$(pip …)`, `; (pip …)`), never after a
+#   letter, digit, `_` or `.`. A subshell `(` cannot follow a word character in
+#   shell, but a function call in KEPT interpreter code can: a python heredoc
+#   body `print("pip install is blocked")` reaches the scan canonicalized as
+#   `print(pip install is blocked)` (pinned ALLOW, HD9), and a search pattern
+#   `"install.packages("` as `install.packages( …`. Used by the hf4-widened
+#   anchors of §6k, §6l and §8; SEG_OPEN and SEG7 (the same set since hf4)
+#   still open on any `(`.
+SEG_OPEN_TOK="(^|[;&|){]|(^|[^A-Za-z0-9_.])\\(|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:space:]]|[[:space:]](then|do|else|elif|if|while|until|!)[[:space:]]|^![[:space:]])"
+
 #   SEG_OPEN_Q: SEG_OPEN plus the quote characters and `$`. Used by §1's main
 #   rm guard and its G29 `.git` guard. §5's two mount guards use SEG_OPEN_MNT
 #   (below): the same quote openers without the bare `$`. Every other anchor
@@ -688,7 +1061,7 @@ SEG_OPEN_Q="(^|[;&|(){${_SQ}${_DQ}\$]|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:sp
 #   §7, §8 — agree on the same notion of "a command starts here".
 WRAPPED="${VARPRE}(${WRAPPERS} ${VARPRE})*"
 
-#   SEG_OPEN_MNT — 2026-09-26 (harmonization, DAAF cycle-3/4 port: DAAF fix
+#   SEG_OPEN_MNT — 2026-09-26 (merge, DAAF cycle-3/4 port: DAAF fix
 #   cycle 4 FIX-3). §5's mount/umount/chroot opener set: SEG_OPEN_Q's quote
 #   characters, `$(`, backtick and keyword openers, but WITHOUT the bare `$`.
 #   The quote opener is needed for a KEEP'd `VAR=` value (`A='mount /dev/sda
@@ -696,12 +1069,12 @@ WRAPPED="${VARPRE}(${WRAPPERS} ${VARPRE})*"
 #   not: after 0c CANONICALIZES `"$mount"` to `$mount`, it made `mount`
 #   command-anchored in benign `ls $mount`, `df -h "$mount"`, `echo $chroot`,
 #   `cd "$umount"`, `findmnt | grep "$mount"` (DAAF r4 M40-M43, M56 — false
-#   blocks in the starter-kit round-5 file). `$(` and the backtick stay, so a
+#   blocks in the round-5 base file). `$(` and the backtick stay, so a
 #   substitution-opened `$(mount …)` is still caught. §1 keeps SEG_OPEN_Q
 #   (its bare `$` catches `RM=rm; $RM -rf /`, probe BY29).
 SEG_OPEN_MNT="(^|[;&|(){${_SQ}${_DQ}]|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:space:]]|[[:space:]](then|do|else|elif|if|while|until|!)[[:space:]]|^![[:space:]])"
 
-#   PIPE RECEIVER VOCABULARY — 2026-09-26 (harmonization, DAAF cycle-3/4 port:
+#   PIPE RECEIVER VOCABULARY — 2026-09-26 (merge, DAAF cycle-3/4 port:
 #   DAAF fix cycle 3 R3-F2/R3-F3 and fix cycle 4 FIX-1/FIX-4). ONE definition
 #   of "the program that receives a pipe", shared by every pipe-into-an-
 #   interpreter test: 0a `_HD_PIPE_RE`, 0c `_PIPEFEED_RE` (rule 5a), the F12
@@ -720,7 +1093,7 @@ SEG_OPEN_MNT="(^|[;&|(){${_SQ}${_DQ}]|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:sp
 #                  Degenerate `| env -u bash` blocks (backtracking leaves
 #                  `bash` as the receiver) — fail-closed, documented.
 #                  This generic item stays generic ON PURPOSE: WRAPPERS
-#                  (2026-09-26 harmonization fix 1) uses an allowlisted
+#                  (2026-09-26 merge fix 1) uses an allowlisted
 #                  flag set instead, because its run ends at any guarded
 #                  verb, not only at an interpreter name (see WRAPPERS).
 #   PIPE_SHELLS    shell receivers. Adds `mksh ash fish csh tcsh` and the
@@ -788,7 +1161,7 @@ HEREDOC_DATA_CONSUMERS=" cat tee head tail wc grep egrep fgrep sort uniq cut tr 
 _HD_WRAP_RE="^(${WRAPPERS})\$"
 _HD_ASSIGN_RE='^[A-Za-z_][A-Za-z0-9_]*='
 _HD_DELIM_RE="^(-?)[[:space:]]*(${_SQ}([A-Za-z_][A-Za-z0-9_]*)${_SQ}|${_DQ}([A-Za-z_][A-Za-z0-9_]*)${_DQ}|([A-Za-z_][A-Za-z0-9_]*))"
-#   _HD_PIPE_RE — 2026-09-26 (harmonization, DAAF cycle-3/4 port): the heredoc
+#   _HD_PIPE_RE — 2026-09-26 (merge, DAAF cycle-3/4 port): the heredoc
 #   line's pipe receiver uses the shared PIPE_OP/PIPE_RECV_PRE/PIPE_RECV_END
 #   vocabulary, so `| bash; echo done` (DAAF r4 H40), `| bash|cat` (H46),
 #   `| mksh` (H43) and `| timeout -s KILL 5 bash` (H44) keep the body. Round
@@ -805,7 +1178,7 @@ _HDWF_RE='(>>?|tee([[:space:]]+-a)?)[[:space:]]*([^[:space:];&|<>]+)'
 # same command later RUNS that file. Round 4 counted ANY later mention of the
 # filename, so the everyday idiom "write notes that name a dangerous command,
 # then `git add` / `wc -l` / `cat` / `grep` / `diff` the notes file" was
-# false-blocked (13 of 14 rows in redteam_r5_fp_notes.txt). Execution positions
+# false-blocked (13 of 14 rows of the round-5 false-positive notes corpus). Execution positions
 # recognised, each after a command-position opener (start of line, `; & | ( {`,
 # backtick, `$(`, a shell keyword, find's -exec) plus VAR= assignments and
 # wrappers (WRAPPED):
@@ -839,12 +1212,12 @@ _exec_recurs() {
         -e "(^|[[:space:];&|])chmod([[:space:]]+-[^[:space:];&|]+)*[[:space:]]+([^[:space:];&|]*[+=][^[:space:];&|]*x[^[:space:];&|]*|[0-7]*[1357][0-7]*)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+${_fq}"
 }
 
-# §10 ENV-DISCLOSURE ACCUMULATOR (added with §10, 2026-10-02): stage 0a/0c
+# §9 ENV-DISCLOSURE ACCUMULATOR (added 2026-10-02 with the guard): stage 0a/0c
 # EXCISE or `;`-join text that the shell would NOT execute, but that text can
-# still expand a `$NAME` and so DISCLOSE a value. §10 cannot see such a span in
+# still expand a `$NAME` and so DISCLOSE a value. §9 cannot see such a span in
 # SCAN_CMD once it is excised. This additive accumulator records the bodies of
 # the two excised shapes that still expand (an unquoted-delimiter data-consumer
-# heredoc body; a double-quoted data span containing `$`) so §10 can scan them
+# heredoc body; a double-quoted data span containing `$`) so §9 can scan them
 # for credential-named expansions (category B). It changes NO stage-0
 # classification — it only keeps a copy. Empty on the common path.
 _ENV10_ACC=""
@@ -855,7 +1228,7 @@ if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
     _hd_out=""
     _hd_delim=""      # active terminator; empty = not inside a body
     _hd_keep=0        # 1 = this body is CODE (keep, `;`-join)
-    _hd_dc=0          # 1 = receiver is a DATA consumer (for the §10 accumulator)
+    _hd_dc=0          # 1 = receiver is a DATA consumer (for the §9 accumulator)
     _hd_quoted=0      # 1 = delimiter was quoted
     _hd_open=""       # the opener line (F11a)
     _hd_body=""       # accumulated body lines (newline separated)
@@ -890,10 +1263,10 @@ if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
                     done <<< "$_hd_body"
                     _hd_out+="; ${_hd_t}"$'\n'
                 fi
-                # §10 (additive): an UNQUOTED-delimiter heredoc fed to a data
+                # §9 (additive): an UNQUOTED-delimiter heredoc fed to a data
                 # consumer still expands `$NAME` in its body, whether 0a excised
                 # it (inert data) or kept it (a pipe-into-shell flipped _hd_keep,
-                # which is why _hd_dc is a separate flag). Record the body so §10
+                # which is why _hd_dc is a separate flag). Record the body so §9
                 # can scan it for credential-named expansions (category B).
                 if [[ $_hd_dc -eq 1 && $_hd_quoted -eq 0 ]]; then
                     _ENV10_ACC+="${_hd_body}"$'\n'
@@ -1010,11 +1383,11 @@ if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
         _hd_dc=0          # reset per heredoc; set only for a data-consumer receiver
         if [[ "$HEREDOC_DATA_CONSUMERS" == *" ${_hd_recv} "* ]]; then
             _hd_keep=0
-            _hd_dc=1      # §10: body still expands $NAME even though it is data
+            _hd_dc=1      # §9: body still expands $NAME even though it is data
         elif [[ "$_hd_recv" == "git" ]] && [[ "$_hd_pre" == *"git commit"* ]]; then
             _hd_keep=0
         fi
-        # 2026-09-26 (harmonization, DAAF cycle-3/4 port: DAAF FIX-2, r4 H47):
+        # 2026-09-26 (merge, DAAF cycle-3/4 port: DAAF FIX-2, r4 H47):
         # also test a quote- and backslash-stripped COPY of the heredoc line, so
         # a receiver hidden by quoting (`| "bash"`, `| ba\sh`, `| env 'bash'`)
         # still keeps the body. Only this decision uses the copy; the emitted
@@ -1071,8 +1444,8 @@ NORM_CMD=$(printf '%s ' "$_nc" | tr -s '[:space:]' ' ')
 #   spans as data" recommendation, which names the commit-message case exactly.)
 #
 #   RETAINED VERBATIM in the 2026-09-18 revision even though 0c below
-#   generalizes it: every case in tests/bash/bash_safety.bats and
-#   scripts/test_safety_hooks.sh that exercises the `-m"attached"` form, the
+#   generalizes it: every case in the regression battery and its bats mirror
+#   that exercises the `-m"attached"` form, the
 #   `--message=` form, the `-am` bundle, and the pipe-revert guard depends on
 #   this stage's exact behavior. 0c is additive, not a replacement.
 #
@@ -1171,9 +1544,10 @@ fi
 #   SOURCE for the design: the dcg SpanKind table (single-quoted = Data,
 #   Unknown → Executed) and Continue's five-stage evaluator, Step 1 —
 #   "Quote pairs are absorbed: `r''m` becomes `rm`. Class A is closed."
-#   (output/preliminary_notes/2026-09-18_research_guardfall-and-data-vs-code.md
-#   §3, §4.) Classifying by POSITION rather than by quote style is what lets
-#   one mechanism fix an FP class and close a bypass class at the same time.
+#   (DAAF research notes community-guard-hooks §1 and
+#   guardfall-and-data-vs-code §2.) Classifying by
+#   POSITION rather than by quote style is what lets one mechanism fix an FP
+#   class and close a bypass class at the same time.
 #
 #   The loop walks single-quoted `'[^']*'` and escape-aware double-quoted spans
 #   left to right (bounded at 64 spans; anything past that is KEPT). For each
@@ -1219,7 +1593,7 @@ fi
 #   Rule 5a replaces the "global revert" sketched in the design. A global
 #   revert is coarser than it needs to be: it would restore EVERY span in the
 #   command, re-breaking `git commit -m 'sudo prose' | bash`, which the live
-#   hook allows and scripts/test_safety_hooks.sh asserts must keep allowing
+#   hook allows and the regression battery asserts must keep allowing
 #   (§3's opener set deliberately excludes a bare single quote). Deciding
 #   per-span at classification time is strictly stronger for non-message spans
 #   (PROMOTE > KEEP: `echo 'sudo id' | bash` now BLOCKS) while preserving the
@@ -1289,7 +1663,7 @@ _MSGFLAG_RE='(^|[[:space:]])(-[aeinopqsv]*m|--message=?)[[:space:]]*$'
 # + bare-word shape, so the span was merely canonicalized instead of promoted
 # to a command segment. `curl … | jq .` and `curl … | sha256sum` stay ALLOW:
 # jq and sha256sum are not interpreters and are absent from the receiver list.
-# 2026-09-26 (harmonization, DAAF cycle-3/4 port): the receiver now uses the
+# 2026-09-26 (merge, DAAF cycle-3/4 port): the receiver now uses the
 # shared PIPE_OP/PIPE_RECV_PRE/PIPE_SHELLS/PIPE_INTERPS/PIPE_RECV_END
 # vocabulary (flag-ARG wrapper items, quoted VAR= values, `mksh ash fish csh
 # tcsh \.`, terminators `; & | )` backtick). The LEFT run (DAAF fix cycle 3,
@@ -1375,7 +1749,7 @@ fi
 # _WRAPRUN must keep EXACTLY four capturing groups: _EF1's `\8` counts them (N5
 # warning below).
 _WRAPRUN='((sudo|env|command|exec|xargs|nohup|setsid|eval|time|nice|busybox|timeout)( +(-[^ ;|&]+|[0-9.smhd]+))* +)*'
-# 2026-09-26 (harmonization, DAAF cycle-3/4 port): the RECEIVER half of _EF1
+# 2026-09-26 (merge, DAAF cycle-3/4 port): the RECEIVER half of _EF1
 # (everything after the pipe) uses the shared PIPE_RECV_PRE / PIPE_SHELLS /
 # PIPE_INTERPS / PIPE_RECV_END vocabulary, so `echo mount x y | env -u HOME
 # bash`, `| mksh`, `| bash; echo` are rewritten like `| bash`. The change sits
@@ -1448,10 +1822,10 @@ while [[ $_qs_skip -eq 0 && $_iter -lt 64 ]]; do
         # is STILL QUOTED when §1-§8 run. Traced on `MSG='hello world' rm -rf /`:
         #   PROMOTE      → `MSG=; hello world rm -rf /` — `rm` is preceded by
         #                  `world`, so no segment-start anchor matches → MISS.
-        #   CANONICALIZE → `MSG=hello world rm -rf /` — same miss (verified with
-        #                  scripts/scratch/r2f_make_dump.sh on the fix-cycle-1
-        #                  draft: `SCAN_CMD=[MSG=hello world rm -rf / ]`).
-        #   KEEP         → `MSG='hello world' rm -rf /` — VARPRE's quoted-value
+        #   CANONICALIZE → `MSG=hello world rm -rf /` — same miss (verified on
+        #                  the fix-cycle-1 draft: `SCAN_CMD=[MSG=hello world rm -rf / ]`,
+        #                  maintainer probe r2f_make_dump).
+        #   KEEP        → `MSG='hello world' rm -rf /` — VARPRE's quoted-value
         #                  alternation consumes the whole assignment and `rm`
         #                  lands on the §1 anchor → BLOCK.
         # KEEP is also no weaker than CANONICALIZE for a dangerous VALUE
@@ -1476,8 +1850,9 @@ while [[ $_qs_skip -eq 0 && $_iter -lt 64 ]]; do
         # world")'`) is not shell code and must keep falling through to
         # CANONICALIZE, which preserves the pre-2026-09-18 literal-pattern scan
         # without inventing segment boundaries inside foreign-language source.
-        # REACHABLE TODAY (probed with scripts/scratch/r2f_fallback_probe.sh):
-        # `sh - -c 'mount x y'` — the POSIX bare `-` argument fails _SHELLC_RE's
+        # REACHABLE TODAY, as probed with the maintainer
+        # probe r2f_fallback_probe.
+        # The case: `sh - -c 'mount x y'` — the POSIX bare `-` argument fails _SHELLC_RE's
         # `-[^[:space:]]+` flag run (it needs at least one character after the
         # dash) but is caught here (case FC46). The same probe confirms
         # `python3 -c` / `perl -c` do NOT reach this branch. Beyond that one
@@ -1489,7 +1864,7 @@ while [[ $_qs_skip -eq 0 && $_iter -lt 64 ]]; do
     elif { [[ -n "$_qs_lc" && "$_qs_lc" != ' ' && "$_qs_lc" != '=' ]]; } || { [[ -n "$_qs_rc" ]] && [[ ! "$_qs_rc" =~ $_RCBOUND_RE ]]; }; then
         _qs_repl="$_qs_body"
     elif [[ "$_qs_tail" =~ $_PIPEFEED_RE ]] || { _qs_tail_n="${_qs_tail//[\'\"\\]/}"; [[ "$_qs_tail_n" =~ $_PIPEFEED_RE ]]; }; then
-        # 2026-09-26 (harmonization, DAAF cycle-3/4 port: DAAF FIX-2, r4
+        # 2026-09-26 (merge, DAAF cycle-3/4 port: DAAF FIX-2, r4
         # P05/P09/P10/P41): rule 5a runs on the RAW tail, before later spans are
         # canonicalized, so a receiver hidden by quotes or backslashes
         # (`| "bash"`, `| ba\sh`, `| env 'bash'`, `| env -S 'bash -x'`) escaped
@@ -1512,10 +1887,10 @@ while [[ $_qs_skip -eq 0 && $_iter -lt 64 ]]; do
          && { { [[ "$_qs_body" == *" "* ]] && { [[ "$_qs_lt" =~ $_DATACONS_RE ]] \
          || { [[ "$_qs_lt" =~ $_MSGFLAG_RE ]] && [[ "$_qs_left" == *"git commit"* ]]; }; }; } \
          || [[ "$_qs_lt" =~ $_GITDATA_RE ]]; }; then
-        # §10 (additive): a DOUBLE-quoted data span excised here still has its
+        # §9 (additive): a DOUBLE-quoted data span excised here still has its
         # `$NAME` expanded by the shell (a span with `${`/`$(`/backtick was
         # already KEPT by the rule-5b branch above, so a surviving `$` is a bare
-        # $NAME). Record it so §10 can scan it for credential-named expansions
+        # $NAME). Record it so §9 can scan it for credential-named expansions
         # (category B). Single-quoted spans cannot expand, so they are skipped.
         if [[ "${_qs_span:0:1}" == "$_DQ" && "$_qs_body" == *'$'* ]]; then
             _ENV10_ACC+="${_qs_body}"$'\n'
@@ -1615,12 +1990,13 @@ fi
 #    r and f in ONE bundle, so `rm -r -f /`, `rm --recursive --force /` and
 #    `rm -rf -- /` (BY1-BY3) all walked past.
 #
-#    The rewrite: a segment-anchored verb (optionally /bin/ or /usr/bin/
-#    qualified, optionally wrapper-prefixed, optionally after `find -exec`), a
+#    The rewrite: a segment-anchored verb (optionally /bin/, /usr/bin/ or —
+#    since hf4 — /usr/local/bin/ qualified, optionally wrapper-prefixed,
+#    optionally after `find -exec`), a
 #    flag run that must contain a recursive flag in ANY order or spelling, and
 #    a TOKEN-EXACT dangerous target. `--force` is no longer required, matching
 #    dcg's rule — "Recursive deletion outside temp, with or without --force"
-#    (output/preliminary_notes/2026-09-18_research_community-guard-hooks.md §P4).
+#    (DAAF research note community-guard-hooks §P4).
 #      CLOSES: BY1, BY2, BY3, BY27 (via 0c), BY28 (via 0d), BY47 (find rule).
 #      FIXES:  FP5, FP6, FP7, FP8.
 #      RESIDUAL: a dangerous target reached through a variable whose value the
@@ -1643,7 +2019,7 @@ _RM_REC='(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)'
 #    `${PROJECT_DIR}`/`${BASE_DIR}` are covered in bare and `/*` forms because
 #    agent-written scripts and prompts address the root through those names.
 #
-#    2026-09-26 (harmonization, G29 quoted form): _ROOTVAR is the ONE spelling of
+#    2026-09-26 (merge, G29 quoted form): _ROOTVAR is the ONE spelling of
 #    "the project root through a variable", shared by _RM_ROOT, G29 and G43. It
 #    admits an optional double quote on each side because 0c rule 5b KEEPS a
 #    double-quoted span containing `${` byte-for-byte, so `"${CLAUDE_PROJECT_DIR}"`
@@ -1687,7 +2063,7 @@ _RM_ROOT="${_ROOT_RE}"'/\*|'"${_ROOT_RE}"'/?|'"${_ROOTVAR}"'(/\*|/)?'
 #    (`rm -r "$OUT_DIR"/frames`), so the shape is left to the instruction layer
 #    and the settings.json deny rules. GuardFall Class C, unchanged.
 #
-#    2026-09-26 (harmonization fix 1, quoted HOME/PWD forms — user-approved):
+#    2026-09-26 (merge fix 1, quoted HOME/PWD forms — user-approved):
 #    _CWDVAR and _HOMEVAR are the _ROOTVAR idea applied to the working-directory
 #    and home variables. 0c rule 5b KEEPS a double-quoted span containing `${`
 #    byte-for-byte, so `rm -rf "${HOME}"`, `"${HOME}/"`, `"${HOME}/*"`,
@@ -1716,15 +2092,31 @@ _RM_DOTS='(\./)?(\.\./)+(\*|\.\*)?|\./(\*|\.\*)?|\.\.|\.|\*(\.\*)?|\.\*|\.claude
 _RM_SLASH='//*\*?|/\*/?|/\.\./\*?|/\.\*'
 _RM_WS="${_ROOT_RE}"'/\*|'"${_ROOT_RE}"'/?|'"${_ROOT_RE}"'/\.\*'
 _RM_TGT="(${_RM_ROOT}|${_RM_WS}|${_RM_CWDVAR}|${_RM_CMDSUB}|${_RM_VARTOP}|${_RM_BSLASH}|${_RM_LITTOP}|${_RM_HOME}|${_RM_DOTS}|${_RM_SLASH})"
-if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_Q}[[:space:]]*${WRAPPED}(/(usr/)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +${_RM_TGT}([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_Q}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +${_RM_TGT}([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)"; then
+    block "Recursive force-delete targeting dangerous path. Use targeted 'rm' on specific files instead."
+fi
+#    hf4 (2026-10-27): BACKTICK-CLOSED TARGET. When a backtick OPENS the segment
+#    (`` `rm -rf ~` ``, `` x=`rm -rf <root>` ``, `` echo `rm -rf /` ``), the next
+#    unescaped backtick CLOSES the substitution, so a target followed directly
+#    by a backtick is the whole target. The main rule's trailing class has no
+#    backtick, on purpose: there it would also end the target `./` in a benign
+#    `rm -rf ./` + a backtick substitution computing the name (see R5-G28), so
+#    the backtick-wrapped forms ALLOWED. This rule adds the backtick
+#    terminator ONLY when a backtick opened the segment, and no other backtick
+#    may sit between the opener and the target (the argument run excludes
+#    one), so the closing backtick is the opener's partner. `rm -rf ./$NAME`,
+#    `rm -rf ./` + a backtick substitution, and a backtick-wrapped `rm -rf
+#    build/` stay ALLOW. The G29 `.git` rule below carries the same
+#    backtick-closed alternative.
+if echo "$SCAN_CMD" | grep -qiE "${_BT}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&${_BT}]+)* +${_RM_TGT}${_BT}"; then
     block "Recursive force-delete targeting dangerous path. Use targeted 'rm' on specific files instead."
 fi
 # F9 (r4 prototype): word-anywhere BACKSTOP for the catastrophic targets only, so an
 # unknown wrapper (ionice, stdbuf, taskset, strace ...) or an unmodelled keyword cannot
 # hide them. Prose is already excised upstream; unquoted prose naming `rm -rf /` blocks,
-# exactly as the pre-hardening hook did. 2026-09-26 (harmonization fix 1): the home
+# exactly as the pre-hardening hook did. 2026-09-26 (merge fix 1): the home
 # arm is _HOMEVAR, so the quoted/braced `"${HOME}"` spellings are backstopped too.
-if echo "$SCAN_CMD" | grep -qE "(^|[[:space:]])(/(usr/)?bin/)?rm +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(/|//*\\*|/\\*/?|~|~/|~/\\*|${_HOMEVAR}/?|${_ROOT_RE}/?|${_ROOT_RE}/\\*|/home/[^/ ;|&]+/?)([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)"; then
+if echo "$SCAN_CMD" | grep -qE "(^|[[:space:]])(/(usr/(local/)?)?bin/)?rm +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(/|//*\\*|/\\*/?|~|~/|~/\\*|${_HOMEVAR}/?|${_ROOT_RE}/?|${_ROOT_RE}/\\*|/home/[^/ ;|&]+/?)([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)"; then
     block "Recursive force-delete targeting dangerous path (backstop). Use targeted 'rm' on specific files instead."
 fi
 
@@ -1734,7 +2126,7 @@ fi
 #    boundary class does not include `$`/backtick (adding it there would also catch
 #    benign `rm -rf ./$NAME` / `rm -rf <root>/$PROJECT`), so only the catastrophic
 #    GLOB forms get the extra boundary here.
-if echo "$SCAN_CMD" | grep -qE "(^|[[:space:];&|(])(/(usr/)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(//*\\*|/\\*/?|${_ROOT_RE}/\\*|~/\\*|\\\$\\{?HOME\\}?/\\*)(\\\$|${_BT})"; then
+if echo "$SCAN_CMD" | grep -qE "(^|[[:space:];&|(])(/(usr/(local/)?)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(//*\\*|/\\*/?|${_ROOT_RE}/\\*|~/\\*|\\\$\\{?HOME\\}?/\\*)(\\\$|${_BT})"; then
     block "Recursive force-delete of a root-level glob followed by a substitution (it expands to the glob when the substitution is empty). Use targeted 'rm' on specific files instead."
 fi
 
@@ -1745,18 +2137,23 @@ fi
 #    the target must START with `.git`/`./.git`/the project root, so deleting a
 #    NESTED clone's metadata (`rm -rf scratch/tpl/.git`) and git's own temp dirs
 #    (`rm -rf .git-rewrite`) stay ALLOW.
-#    2026-09-26 (harmonization, G29 quoted form): the variable prefix is now
+#    2026-09-26 (merge, G29 quoted form): the variable prefix is now
 #    _ROOTVAR (see _RM_ROOT above), so the double-quoted braced spelling
 #    `rm -rf "${CLAUDE_PROJECT_DIR}/.git"` — KEPT with its quotes by 0c rule 5b
 #    — blocks like its unquoted and `"$CLAUDE_PROJECT_DIR/.git"` siblings (FC169).
-if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_Q}[[:space:]]*${WRAPPED}(/(usr/)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(${_ROOT_RE}/+|\\./+|${_ROOTVAR}/+)?\\.git(/+|/+\\*)?([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)"; then
+#    hf4 (2026-10-27): the second pattern is the backtick-closed form (a
+#    backtick opens the segment and the next one closes the target), as in the
+#    hf4 BACKTICK-CLOSED TARGET rule above.
+if echo "$SCAN_CMD" | grep -qiE \
+     -e "${SEG_OPEN_Q}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&]+)* +(${_ROOT_RE}/+|\\./+|${_ROOTVAR}/+)?\\.git(/+|/+\\*)?([[:space:]]|[;&|)${_SQ}${_DQ}]|\$)" \
+     -e "${_BT}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?rm( +${_RM_FLAG})* +${_RM_REC}( +${_RM_FLAG})*( +[^ ;|&${_BT}]+)* +(${_ROOT_RE}/+|\\./+|${_ROOTVAR}/+)?\\.git(/+|/+\\*)?${_BT}"; then
     block "Recursive deletion of the repository's .git directory destroys all local history. If this is really intended, ask the user to do it."
 fi
 
 #    find with a destructive action rooted at / or the home directory. Only the
 #    dangerous ROOTS are matched, so `find . -name '*.tmp' -delete` and
 #    `find scratch -delete` stay allowed (GuardFall Class E, probe BY47).
-#    2026-09-26 (harmonization fix 1): the home root is _HOMEVAR plus an
+#    2026-09-26 (merge fix 1): the home root is _HOMEVAR plus an
 #    optional `/` and closing quote, so the braced and double-quoted spellings
 #    (`find ${HOME} -delete`, `find "${HOME}" -delete`, `find "${HOME}/" …`)
 #    join `$HOME`; `find "${HOME}/.cache" -type f -delete` stays ALLOW.
@@ -1770,15 +2167,15 @@ fi
 #    (-maxdepth/-mindepth/-type/-xdev/-depth/-L/-P/-H …) may sit between root and
 #    -delete, so `find . -name '*.pyc' -delete`, `find . -type d -empty -delete` and
 #    `find scratch -delete` stay ALLOW.
-#    2026-09-26 (harmonization, G29 quoted form): the project root reached through
+#    2026-09-26 (merge, G29 quoted form): the project root reached through
 #    a variable (`find $CLAUDE_PROJECT_DIR -delete`, `find "${BASE_DIR}" -delete`,
 #    `find "${PROJECT_DIR}/" -delete`) joins the root set via _ROOTVAR; it had no
 #    variable arm at all. `find "${PROJECT_DIR}/scripts/scratch" -delete` and
 #    `find "${CLAUDE_PROJECT_DIR}" -name '*.pyc' -delete` stay ALLOW.
-#    2026-09-26 (harmonization fix 1): the home arm is _HOMEVAR (optional
+#    2026-09-26 (merge fix 1): the home arm is _HOMEVAR (optional
 #    quotes, braces), matching the project-root arm, so `find "${HOME}" -type f
 #    -delete` blocks while `find "${HOME}/.cache" -type f -delete` stays ALLOW.
-if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN}[[:space:]]*${WRAPPED}(/(usr/)?bin/)?find +(\\.|\\./|\\.\\./?|${_ROOT_RE}/?|${_ROOTVAR}/?${_DQ}?|/home(/[^/ ;|&]+)?/?|~/?|${_HOMEVAR}/?${_DQ}?)( +-(maxdepth|mindepth|type|xtype|xdev|mount|depth|follow|L|P|H|noleaf|ignore_readdir_race)( +[^- ;|&][^ ;|&]*)?)* +-delete([[:space:]]|[;&|)]|\$)"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?find +(\\.|\\./|\\.\\./?|${_ROOT_RE}/?|${_ROOTVAR}/?${_DQ}?|/home(/[^/ ;|&]+)?/?|~/?|${_HOMEVAR}/?${_DQ}?)( +-(maxdepth|mindepth|type|xtype|xdev|mount|depth|follow|L|P|H|noleaf|ignore_readdir_race)( +[^- ;|&][^ ;|&]*)?)* +-delete([[:space:]]|[;&|)]|\$)"; then
     block "An unfiltered 'find <project or home root> -delete' deletes everything under it. Add a -name/-path filter or scope the search to a specific subdirectory."
 fi
 
@@ -1909,7 +2306,7 @@ fi
 if echo "$SCAN_CMD" | grep -qE "chmod${_CHMOD_FLAGS} +${_CHMOD_PRECL}[ugoa]*[+=][rwxXt]*s"; then
     block "Setting setuid/setgid permissions is not permitted."
 fi
-if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN}[[:space:]]*${WRAPPED}(/(usr/)?bin/)?install [^|;&]*(-m *|--mode(=| +))(0?777|1777|[2467][0-7][0-7][0-7])([[:space:]]|[;&|]|$)"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN}[[:space:]]*${WRAPPED}(/(usr/(local/)?)?bin/)?install [^|;&]*(-m *|--mode(=| +))(0?777|1777|[2467][0-7][0-7][0-7])([[:space:]]|[;&|]|$)"; then
     block "install -m with a world-writable (777) or setuid/setgid mode is not permitted."
 fi
 
@@ -1931,7 +2328,7 @@ fi
 #    `sh` prefix. The receiver name must now be followed by PIPE_RECV_END
 #    (whitespace, `; & | )`, backtick, or end) — originally
 #    `([[:space:]]|$|[;&|])`, widened by the 2026-09-26 port below.
-#    2026-09-26 (harmonization, DAAF cycle-3/4 port): both downloader guards use
+#    2026-09-26 (merge, DAAF cycle-3/4 port): both downloader guards use
 #    the shared receiver vocabulary (_DL_PIPE_PRE below = PIPE_OP +
 #    PIPE_RECV_PRE + optional path), superseding round 4's F7 per-site wrapper
 #    run. New: flag-ARG wrapper items (`| env -u HOME bash`, `| timeout -s KILL
@@ -1950,15 +2347,15 @@ fi
 #    `| python3 -m json.tool`, `| python3 script.py`, `| jq .`, `| sha256sum`
 #    all stay allowed — SOURCE: Continue's Step 4 warning that treating every
 #    pipe into python as risky over-prompts
-#    (output/preliminary_notes/2026-09-18_research_guardfall-and-data-vs-code.md §4).
+#    (DAAF research note guardfall-and-data-vs-code §2).
 if echo "$SCAN_CMD" | grep -qE "${_DL_PIPE_PRE}(${PIPE_INTERPS})([[:space:]]+-[^[:space:];&|]*)*[[:space:]]*(\$|[;&|)${_BT}])"; then
     block "Piping downloaded content into a bare interpreter is arbitrary code execution. Download first, review, then execute."
 fi
 
 #    COMMAND-SUBSTITUTION DOWNLOAD-EXECUTE — ONE guard, three shapes.
-#    2026-09-26 (harmonization, DAAF cycle-3/4 port): round 4's F7b and DAAF
+#    2026-09-26 (merge, DAAF cycle-3/4 port): round 4's F7b and DAAF
 #    fix cycle 4's add-on (b) guards b1/b2 closed overlapping parts of the same
-#    family; they are merged here so the coverage is their UNION (starter-kit
+#    family; they are merged here so the coverage is their UNION (round 4
 #    R4D05-R4D07; DAAF r4 B01-B03, B06, B07):
 #      F7b  a shell word, eval, source or `.` whose (optionally flag-bearing,
 #           optionally 0c-promoted `; `) argument is a `$(curl …)`/backtick
@@ -2003,7 +2400,7 @@ fi
 
 # 5. CONTAINER ESCAPE ATTEMPTS
 #    OPENER/WRAPPER DESIGN (comment rewritten 2026-09-18; history corrected
-#    2026-09-26, harmonization fix 1). All three guards below — `docker run`,
+#    2026-09-26, merge fix 1). All three guards below — `docker run`,
 #    mount/umount/chroot, and the path-qualified mount/umount/chroot — fire only
 #    when the verb is in COMMAND POSITION: immediately after
 #      - start of string,
@@ -2021,8 +2418,7 @@ fi
 #    busybox timeout`, each with its own flags, numbers and flag arguments —
 #    see WRAPPERS). The 2026-09-17 pass narrowed these guards from a bare
 #    word-anywhere match to this shape, because `grep -n mount file.sh` and
-#    prose mentioning `mount` were false-blocking
-#    (scripts/scratch/mount_hook_e2e_2026-09-17.sh).
+#    prose mentioning `mount` were false-blocking.
 #
 #    OPENER HISTORY of the mount guards, in three steps:
 #      1. 2026-09-17: the single and double quote characters were ADDED to the
@@ -2043,7 +2439,7 @@ fi
 #    fired on unquoted prose (`echo docker run is blocked`) and missed wrapper
 #    forms (`timeout 5 docker run x`). Its flag-argument wrapper forms
 #    (`timeout -s KILL 5 docker run x`, `env -u HOME docker run x`) block
-#    again since harmonization fix 1 (FC184-FC186).
+#    again since merge fix 1 (FC184-FC186).
 if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN}[[:space:]]*${WRAPPED}docker +run([[:space:]]|[;&|]|$)"; then
     block "Running nested Docker containers is not permitted in this environment."
 fi
@@ -2059,7 +2455,7 @@ fi
 #    `mount` is excised upstream by 0c (its receiver is a data consumer), so
 #    FP11/FP12 (`echo 'mount the volume first'`,
 #    `grep -n 'mount point' /etc/fstab`) stay ALLOW.
-#    2026-09-26 (harmonization, DAAF cycle-3/4 port: DAAF FIX-3): both mount
+#    2026-09-26 (merge, DAAF cycle-3/4 port: DAAF FIX-3): both mount
 #    guards open on SEG_OPEN_MNT — SEG_OPEN_Q minus the bare `$` — so the quote
 #    opener that R3-F1 needs is kept while `ls $mount`, `df -h "$mount"`,
 #    `echo $chroot`, `cd "$umount"`, `findmnt | grep "$mount"` stop false-
@@ -2072,6 +2468,53 @@ fi
 if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_MNT}[[:space:]]*${WRAPPED}/([^[:space:];&|]*/)?(mount|umount|chroot)([[:space:]]|\$)"; then
     block "Filesystem mount/chroot (path-qualified) is not permitted in this environment."
 fi
+
+# ---------------------------------------------------------------------------
+# OUTPUT-WRITER SHAPES — shared by §6m and §7 (hf5, 2026-10-27, ledger (b))
+# ---------------------------------------------------------------------------
+#   One list of the programs that write to a file named by their own flag or
+#   argument, used by §7 (destination: a protected path) and §6m (destination:
+#   an ephemeral root), so the two rules cannot drift. Each fragment stops
+#   right BEFORE the destination token; the section appends its own
+#   destination. hf4 defined these in §7 (its output-flag and output-argument
+#   writer rules); hf5 moved them here unchanged, so every §7 pattern expands
+#   to the same text as before.
+#     _OUTW_FLAG      the output flags of curl, wget, firecrawl and sort: a
+#                     short-flag bundle ending in o, O or P, --output,
+#                     --output-document, --output-dir, --directory-prefix.
+#     _OW_LEAD_FLAG   one of those four programs, any arguments, the flag,
+#                     then `=` or spaces (so the argument may be attached).
+#     _OW_TAR_MODE    a tar mode that writes the archive: -c/-r/-u/-A in a
+#                     bundle, --create/--append/--update/--concatenate/
+#                     --catenate/--delete.
+#     _OW_TAR_FLAG    tar's -f (end of a bundle) or --file.
+#     _OW_END_LEADS   the shapes whose destination ENDS the match: tar mode
+#                     then -f, a tar bundle with a write mode ending in f, the
+#                     old-style `tar cf`, git archive -o/--output (git's
+#                     global options allowed before `archive`), pandoc and
+#                     gpg/gpg2 -o/--output, wget -a/--append-output.
+#     _OW_TAR_MIDLEAD, _OW_TAR_MIDTRAIL
+#                     `tar -f <dest> … -c`: the destination sits between them.
+#     _OW_UNIQ_LEAD   uniq's flags and FIRST operand (never a purely numeric
+#                     token, so the argument of -f/-s/-w N is not taken for
+#                     it); the destination is the second operand.
+#   The program name may carry the /bin/, /usr/bin/ or /usr/local/bin/
+#   qualifier (added by each section's prefix, as before).
+_OUTW_FLAG='(-[a-zA-Z]*[oOP]|--output(-document|-dir)?|--directory-prefix)'
+_OW_LEAD_FLAG="(curl|wget|firecrawl|sort)( [^|;&<>]*)? ${_OUTW_FLAG}(=| *)"
+_OW_TAR_MODE='(-[a-zA-Z]*[cruA][a-zA-Z]*|--(create|append|update|concatenate|catenate|delete))'
+_OW_TAR_FLAG='(-[a-zA-Z]*f *|--file(=| +))'
+_OW_END_LEADS=(
+    "tar ([^|;&<>]* )?${_OW_TAR_MODE} ([^|;&<>]* )?${_OW_TAR_FLAG}"
+    "tar ([^|;&<>]* )?-[a-zA-Z]*[cruA][a-zA-Z]*f *"
+    "tar [a-zA-Z]*[cruA][a-zA-Z]*f +"
+    "git( +(-[Cc] *[^ ;|&]+|--[a-z-]+(=[^ ;|&]+)?|-[a-zA-Z]+))* +archive( [^|;&<>]*)? (-o *|--output(=| +))"
+    "(pandoc|gpg2?)( [^|;&<>]*)? (-[a-zA-Z]*o *|--output(=| +))"
+    "wget( [^|;&<>]*)? (-[a-zA-Z]*a *|--append-output(=| +))"
+)
+_OW_TAR_MIDLEAD="tar ([^|;&<>]* )?${_OW_TAR_FLAG}"
+_OW_TAR_MIDTRAIL="( [^|;&<>]*)? ${_OW_TAR_MODE}([[:space:]]|[;&|)${_BT}]|\$)"
+_OW_UNIQ_LEAD='uniq( +-[^ ;|&<>]+( +[0-9]+)?)* +([^- ;|&<>0-9][^ ;|&<>]*|[0-9]+[^0-9 ;|&<>][^ ;|&<>]*|-) +'
 
 # 6. PROVENANCE BOUNDARY — /tmp WRITES
 #    /tmp is outside the Docker-volume backup boundary and the audit trail, and
@@ -2157,11 +2600,20 @@ if echo "$SCAN_CMD" | grep -qiE "\btouch\b.* ${TMP_DEST}"; then
 fi
 
 #    6e. Downloads written into /tmp: curl -o/--output, wget -O.
-if echo "$SCAN_CMD" | grep -qiE "\bcurl\b.*(-o|--output|--output-dir) *${TMP_DEST}"; then
-    block "Downloading (curl -o) into /tmp is blocked. $SCRATCH_HINT"
+#        hf4 (2026-10-27, ledger (d)(b)): curl's `-o` may end a bundled
+#        short-flag run (`curl -sSLo /tmp/x URL` was ALLOWED while `-sSL -o /tmp/x`
+#        blocked), and `firecrawl -o/--output` writes a scrape to a file the
+#        same way. The original `.*(-o|--output|--output-dir)` alternative is
+#        kept as it was (so no previously blocked form can start to pass); the
+#        bundled form is confined to the same command segment (`[^;&|]*`), so a
+#        later `ls -lo /tmp` in another segment is not read as curl's `-o`.
+#        The long flags also accept `=` (`--output=/tmp/x`), and wget gains
+#        `--output-document[=| ]` (`wget --output-document=/tmp/x` was ALLOWED).
+if echo "$SCAN_CMD" | grep -qiE "\b(curl|firecrawl)\b(.*(-o|--output|--output-dir)(=| *)|[^;&|]* -[a-zA-Z]+o *)${TMP_DEST}"; then
+    block "Downloading (curl -o / firecrawl -o) into /tmp is blocked. $SCRATCH_HINT"
 fi
 
-if echo "$SCAN_CMD" | grep -qiE "\bwget\b.*(-[a-zA-Z]*O|-P|--directory-prefix=?) *${TMP_DEST}"; then
+if echo "$SCAN_CMD" | grep -qiE "\bwget\b.*(-[a-zA-Z]*O|-P|--directory-prefix=?|--output-document=?) *${TMP_DEST}"; then
     block "Downloading (wget -O) into /tmp is blocked. $SCRATCH_HINT"
 fi
 
@@ -2200,7 +2652,10 @@ fi
 #        to COMMAND-START position rather than a bare \bln\b word boundary,
 #        because `ln` is only two characters and appears inside common flags
 #        (e.g. `ls -ln /tmp`, where -ln is the ls long+numeric flag).
-if echo "$SCAN_CMD" | grep -qiE "(^|[;|&] *)ln .* ${TMP_DEST}"; then
+#        hf4 (2026-10-27): the anchor is SEG_OPEN_TOK (it was `^`, `;`, `|`,
+#        `&` only), so `(ln -s f /tmp/x)`, `x=$(ln -s f /tmp/x)` and a
+#        backtick-wrapped `ln` block too.
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} *ln .* ${TMP_DEST}"; then
     block "Symlinks involving /tmp (ln — either direction) are blocked; /tmp targets dangle after restart. $SCRATCH_HINT"
 fi
 
@@ -2213,7 +2668,18 @@ fi
 #        by putting a non-verb token first — now BLOCKS, while
 #        `TMPDIR=<root>/scratch mktemp` is recognised as an explicit redirect and
 #        ALLOWS.
-if echo "$SCAN_CMD" | grep -qE "(^|[;&|]) ?${WRAPPED}mktemp([[:space:]]|[;&|]|$)"; then
+#        hf4 (2026-10-27): the gate opens on SEG_OPEN_TOK and its
+#        right-hand terminator accepts `)` and a backtick, so `(mktemp)`,
+#        `{ mktemp; }`, a backtick-wrapped `mktemp`, `x=$(mktemp)` and
+#        `x="$(mktemp)"` block (all were ALLOWED: the anchor knew only `^ ; & |`
+#        and the terminator only whitespace, `; & |` and end). The explicit
+#        redirects (`-p <dir>`, `--tmpdir=<dir>`, `TMPDIR=<dir>`) still ALLOW.
+#        Accepted false positives (stage 0c canonicalizes a whitespace-free
+#        quoted search pattern, so its `|` and `(` read as openers): `grep -n
+#        -E "tmp|mktemp" f` blocks, as before this change, and since this
+#        change `grep -E "(mktemp)" f` and `grep -E "(tmp|mktemp)" f` block
+#        too (the `)` after `mktemp` now ends the token).
+if echo "$SCAN_CMD" | grep -qE "${SEG_OPEN_TOK} ?${WRAPPED}mktemp([[:space:]]|[;&|)${_BT}]|$)"; then
     _mk_ok=0
     if echo "$SCAN_CMD" | grep -qE "(TMPDIR=|--tmpdir=|-p +)${TMP_ROOT}"; then
         _mk_ok=0
@@ -2223,6 +2689,36 @@ if echo "$SCAN_CMD" | grep -qE "(^|[;&|]) ?${WRAPPED}mktemp([[:space:]]|[;&|]|$)
     if [[ $_mk_ok -eq 0 ]]; then
         block "mktemp defaults to /tmp, which is outside the backup and audit boundary. $SCRATCH_HINT"
     fi
+fi
+
+#    6m. hf5 (2026-10-27, ledger (b)): an OUTPUT FLAG OR OUTPUT ARGUMENT AIMED
+#        AT AN EPHEMERAL ROOT. The same writer shapes §7 blocks into a
+#        protected path (OUTPUT-WRITER SHAPES, above §6), with TMP_DEST as
+#        the destination: curl/wget/firecrawl/sort -o (and the other
+#        _OUTW_FLAG flags), tar -c/-r/-u/-A/--delete with -f/--file, git
+#        archive -o, pandoc and gpg -o, wget -a, and uniq IN OUT whose second
+#        operand is the ephemeral path. `sort -o /tmp/x f` and `tar -czf
+#        /tmp/a.tgz d` were ALLOWED (no §6 rule modelled them). Attached
+#        (`-o/tmp/x`), separate (`-o /tmp/x`) and long (`--output=/tmp/x`,
+#        `--output /tmp/x`) forms all match, and the program may carry the
+#        /bin/, /usr/bin/ or /usr/local/bin/ qualifier. The anchor is
+#        SEG_OPEN_TOK (as §6k/§6l), so a writer named inside kept interpreter
+#        call text (`print("sort -o /tmp/x")`) is not a command here. The
+#        destination must be the ephemeral path itself, so the rescue
+#        direction stays ALLOW: `sort /tmp/claude-x -o <project file>`,
+#        `uniq /tmp/a <project file>`, `tar -xf /tmp/a.tar -C <project dir>`
+#        and `tar -czf <project file> /tmp/x` read FROM /tmp. Several curl/wget
+#        forms were already blocked by 6e, which runs first; this rule repeats
+#        them so §6m and §7 share one list.
+_OW6_PRE="${SEG_OPEN_TOK} ?${WRAPPED}(/(usr/(local/)?)?bin/)?"
+_OW6_ARGS=(-e "${_OW6_PRE}${_OW_LEAD_FLAG}${TMP_DEST}")
+for _owl in "${_OW_END_LEADS[@]}"; do
+    _OW6_ARGS+=(-e "${_OW6_PRE}${_owl}${TMP_DEST}")
+done
+_OW6_ARGS+=(-e "${_OW6_PRE}${_OW_TAR_MIDLEAD}${TMP_ROOT}(/[^ ;|&<>]*)?${_OW_TAR_MIDTRAIL}")
+_OW6_ARGS+=(-e "${_OW6_PRE}${_OW_UNIQ_LEAD}${TMP_DEST}")
+if echo "$SCAN_CMD" | grep -qE "${_OW6_ARGS[@]}"; then
+    block "Writing program output into /tmp via an output flag or output argument (sort -o, curl/wget/firecrawl -o, tar -cf/--file, git archive -o, pandoc -o, gpg -o, wget -a, uniq IN OUT) is blocked. $SCRATCH_HINT"
 fi
 
 # 7. SAFETY-SYSTEM TAMPERING (added 2026-07-11; hardened 2026-09-18)
@@ -2294,19 +2790,36 @@ PROTECTED_DIRS="(\.claude${PSEP}(hooks|logs)${_PROT_EXTRA}|\.claude${PSEP}settin
 #    verbs (round 4, finding 3 / fix F2): moving FROM a protected path removes
 #    it (`mv .claude/hooks .claude/hooks.bak` disables every hook), so for `mv`
 #    the source position is itself a mutation.
-SEG7="(^|[;&|]|[[:space:]]-exec(dir)?[[:space:]]|[[:space:]](then|do|else|elif|if|while|until|!)[[:space:]]|^![[:space:]])"
+#    hf4 (2026-10-27, ledger (d)(c)): SEG7 now also opens on `(`, `)`, `{`, a
+#    backtick and `$(` — the openers SEG_OPEN already had (SEG7 and SEG_OPEN
+#    are now the same set; `}` is in neither). Before, a §7
+#    mutation inside a subshell, group or substitution (`(cp x
+#    .claude/hooks/y)`, `{ cp …; }`, `x=$(rm .claude/hooks/y)`) walked past
+#    every §7 anchor. SEG7 is part of the site-guard interface (header).
+#    Accepted false positive (stage 0c canonicalizes a whitespace-free quoted
+#    search pattern): `grep -n "{cp" .claude/hooks/x` blocks, because the bare
+#    `{` then opens a segment before `cp`. Likewise an escaped paren that
+#    stage 0d leaves in place (`grep -n -E '"Bash\(rm' .claude/settings.json`;
+#    see the header's SEARCH-PATTERN FALSE POSITIVES).
+SEG7="(^|[;&|(){]|${_BT}|\\\$\\(|[[:space:]]-exec(dir)?[[:space:]]|[[:space:]](then|do|else|elif|if|while|until|!)[[:space:]]|^![[:space:]])"
 #    The trailing run tolerates GNU flags placed AFTER the destination
 #    (`cp evil.sh .claude/hooks/ -v`, probe BY23) and find's `-exec` terminators
 #    (`\;` / `+`), so `find … -exec cp {} .claude/hooks/x.sh \;` is caught too.
-PROT_DEST_END="(/[^ ;|&<>]*)?( +(\\\\;|\\+|-[-a-zA-Z0-9=]+))* *(\$|[;&|<>]|[0-9]?[<>])"
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?(cp|mv|install) [^|;&<>]*(-t|--target-directory[= ]) *[^ ;|&]*${PROTECTED_DIRS}"; then
+#    hf4 (2026-10-27): the end class also accepts `)` and a backtick, so a
+#    protected destination that closes a subshell or substitution after a
+#    space or before more text — `( cp x .claude/hooks/y )`, `diff <(cp x
+#    .claude/hooks/y) f`, a backtick-wrapped cp — blocks (the path tail only
+#    swallowed a `)` glued to the path). `}` is not added: a group closes with
+#    `; }`, and the `;` already ends the match.
+PROT_DEST_END="(/[^ ;|&<>]*)?( +(\\\\;|\\+|-[-a-zA-Z0-9=]+))* *(\$|[;&|<>)${_BT}]|[0-9]?[<>])"
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(cp|mv|install) [^|;&<>]*(-t|--target-directory[= ]) *[^ ;|&]*${PROTECTED_DIRS}"; then
     block "Copying/moving INTO the safety system via -t/--target-directory bypasses the Edit/Write deny rules (anti-tampering)."
 fi
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?(cp|rsync|install) [^|;&<>]*${PROTECTED_DIRS}${PROT_DEST_END}"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(cp|rsync|install) [^|;&<>]*${PROTECTED_DIRS}${PROT_DEST_END}"; then
     block "Copying (cp/rsync/install) INTO the safety system (${_PROT_LABEL}) via shell bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them. (Reading FROM a protected path — a source-position backup — is allowed.)"
 fi
 
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?(rm|mv|ln|dd|tee|touch|truncate|chmod|chown|chattr|shred|unlink|git +(rm|mv)) [^|;&<>]*${PROTECTED_DIRS}"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(rm|mv|ln|dd|tee|touch|truncate|chmod|chown|chattr|shred|unlink|git +(rm|mv)) [^|;&<>]*${PROTECTED_DIRS}"; then
     block "Modifying the safety system (${_PROT_LABEL}) via shell (rm/mv/ln/dd/tee/touch/truncate/chmod/chown/chattr/shred/unlink/git rm/git mv) bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them."
 fi
 
@@ -2317,18 +2830,81 @@ fi
 #    The sed verb is anchored to a command-segment start (plus wrappers and
 #    -exec), so a protected path named in descriptive prose no longer
 #    false-blocks — only a real in-place edit is caught.
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(sed [^|;&]*-[a-zA-Z]*i[^|;&]*|perl [^|;&]*-[a-zA-Z]*i[^|;&]*)${PROTECTED_DIRS}"; then
+#    hf5 (2026-10-27, ledger (a)): this rule and the tar/unzip and find
+#    -delete rules below admit the /bin/, /usr/bin/ and /usr/local/bin/
+#    qualifier every other §7 verb rule has (`/bin/sed -i … settings.json`
+#    was ALLOWED).
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(sed [^|;&]*-[a-zA-Z]*i[^|;&]*|perl [^|;&]*-[a-zA-Z]*i[^|;&]*)${PROTECTED_DIRS}"; then
     block "In-place editing of the safety system (${_PROT_LABEL}) bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them."
 fi
 
 #    Class E argv shapes against protected paths: archive extraction with an
 #    explicit output directory, and find's own delete action.
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(tar|unzip) [^|;&]*(-C|-d) +[^ ;|&]*${PROTECTED_DIRS}"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(tar|unzip) [^|;&]*(-C|-d) +[^ ;|&]*${PROTECTED_DIRS}"; then
     block "Extracting an archive INTO the safety system (tar -C / unzip -d) bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them."
 fi
 
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}find [^|;&]*${PROTECTED_DIRS}[^|;&]*-delete"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?find [^|;&]*${PROTECTED_DIRS}[^|;&]*-delete"; then
     block "Deleting safety-system files via find -delete bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them."
+fi
+
+#    hf4 (2026-10-27, ledger (d)(a)): OUTPUT-FLAG WRITERS. A program that writes
+#    to the file named by its own flag — curl -o/--output/--output-dir, wget
+#    -O/-o/-P/--output-document/--directory-prefix, firecrawl -o/--output,
+#    sort -o — is a writer the verb lists above did not model, so `curl -sSLo
+#    .claude/hooks/x.sh URL` replaced a hook with downloaded bytes and was
+#    ALLOWED. The flag may end a bundled short-flag run (`-sSLo`, `-qO`) and
+#    its argument may be attached (`-oPATH`, `--output=PATH`). The argument
+#    token must contain the protected path with no `:` before it, so a URL
+#    that merely contains `.claude/hooks` (`curl -sSLO https://…/.claude/hooks/
+#    x.sh`, which writes x.sh into the cwd) and a protected path read as INPUT
+#    (`sort -o out.txt .claude/settings.json`) stay ALLOW. Like every §7 rule
+#    the verb may be path-qualified with /bin/, /usr/bin/ or /usr/local/bin/.
+#    Accepted false positive: a SCHEME-LESS URL after `-O` (`curl -sSLO
+#    raw.githubusercontent.com/…/.claude/hooks/x.sh`) has no `:` and blocks —
+#    rare and fail-closed. Other output-argument writers are the next rule.
+#    hf5 (2026-10-27): _OUTW_FLAG and the program list now live in the shared
+#    OUTPUT-WRITER SHAPES block above §6 (_OW_LEAD_FLAG), which §6m reuses
+#    with an ephemeral-root destination; the expanded pattern is unchanged.
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?${_OW_LEAD_FLAG}[^ ;|&:]*${PROTECTED_DIRS}"; then
+    block "Writing a download or program output INTO the safety system (${_PROT_LABEL}) via an output flag (curl -o, wget -O/-P, firecrawl -o, sort -o) bypasses the Edit/Write deny rules (anti-tampering). Draft hook or settings changes inside your project folder and ask the user to install them; these changes are user-only."
+fi
+
+#    hf4 (2026-10-27): OUTPUT-ARGUMENT WRITERS beyond the four above, on the
+#    same SEG7 / WRAPPED / no-`:`-before-the-path discipline:
+#      - tar creating, appending to, updating or deleting from an archive
+#        whose -f/--file argument is protected (`tar -cf <prot> …`, `tar -c
+#        -f <prot>`, `tar -f <prot> -c`, `tar --create --file=<prot>`, the
+#        old-style `tar cf <prot> …`). A protected archive only READ (`tar
+#        -xf`/`-tf <prot>`) and a protected path archived as a SOURCE (`tar
+#        -czf scratch/b.tgz .claude/hooks`) stay ALLOW;
+#      - git archive -o/--output (git's global options may precede `archive`);
+#      - pandoc -o/--output and gpg/gpg2 -o/--output (a bundle ending in `o`
+#        and an attached argument included);
+#      - wget -a/--append-output (its log file);
+#      - uniq IN OUT, where the SECOND operand is the output file: it blocks
+#        only when that second operand is protected, so `uniq <prot>` and
+#        `uniq <prot> out.txt` (a protected INPUT) stay ALLOW. A purely
+#        numeric token is never taken as the first operand, so the argument of
+#        `-f N` / `-s N` / `-w N` cannot shift a protected INPUT into the
+#        output slot (`uniq -f 1 <prot> out.txt` stays ALLOW).
+#    Still a list, not the whole class: other programs that write to a named
+#    argument (`split`, `sponge`, `iconv -o`, `xxd -r IN OUT`) and a program
+#    reached through any path other than /bin, /usr/bin or /usr/local/bin are
+#    not modelled.
+#    hf5 (2026-10-27): the shapes come from the shared OUTPUT-WRITER SHAPES
+#    block above §6 (also used by §6m), each followed by this rule's
+#    protected destination; the set of expanded patterns is the same as hf4's
+#    (only their order in the grep changed, which a grep -e union ignores).
+_OW_PRE="${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?"
+_OW7_ARGS=()
+for _owl in "${_OW_END_LEADS[@]}"; do
+    _OW7_ARGS+=(-e "${_OW_PRE}${_owl}[^ ;|&:]*${PROTECTED_DIRS}")
+done
+_OW7_ARGS+=(-e "${_OW_PRE}${_OW_TAR_MIDLEAD}[^ ;|&:]*${PROTECTED_DIRS}[^ ;|&<>]*${_OW_TAR_MIDTRAIL}")
+_OW7_ARGS+=(-e "${_OW_PRE}${_OW_UNIQ_LEAD}[^ ;|&<>:]*${PROTECTED_DIRS}")
+if echo "$SCAN_CMD" | grep -qE "${_OW7_ARGS[@]}"; then
+    block "Writing program output INTO the safety system (${_PROT_LABEL}) via an output argument (tar -cf/--file, git archive -o, pandoc -o, gpg -o, wget -a, uniq IN OUT) bypasses the Edit/Write deny rules (anti-tampering). Draft hook or settings changes inside your project folder and ask the user to install them; these changes are user-only."
 fi
 
 #    R5-G10 (round 5, r4 finding 10 — a user judgement call, kept separable): the
@@ -2340,13 +2916,21 @@ fi
 #    `.claude/agents/`) and `.claude` as the SOURCE (`cp -r .claude scratch/bak`) stay
 #    ALLOW. tar needs an extract flag (`x`, --extract, --get), so archiving FROM
 #    `.claude` with `-C .claude` stays ALLOW.
+#    hf4 (2026-10-27): every end class below also accepts `)` and a backtick,
+#    like PROT_DEST_END, so `(cp -r scratch/hooks .claude/)` and its
+#    substitution forms block.
+#    hf5 (2026-10-27, ledger (a)): the tar extract-flag test (the second
+#    condition of the tar arm) admits the /bin/, /usr/bin/ and /usr/local/bin/
+#    qualifier its first condition already had, so `/bin/tar -xf a.tar -C
+#    .claude` blocks (it was ALLOWED: the test wanted a space or separator
+#    right before `tar`).
 _CLDIR='(\./)?(('"${_ROOT_RE}"'|~|\$\{?HOME\}?|/home/[^/ ;|&]+)/+)?\.claude(/+\.?)*'
-_CLDIR_END="( +(\\\\;|\\+|-[-a-zA-Z0-9=]+))* *(\$|[;&|<>]|[0-9]?[<>])"
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?(cp|mv|rsync|install) [^|;&<>]* ${_CLDIR}${_CLDIR_END}" \
-   || echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?(cp|mv|install) [^|;&<>]*(-t|--target-directory[= ]) *${_CLDIR}([[:space:]]|[;&|<>]|\$)" \
-   || echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?unzip [^|;&]* -d *${_CLDIR}([[:space:]]|[;&|<>]|\$)" \
-   || { echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?tar [^|;&]* (-C *|--directory(=| +))${_CLDIR}([[:space:]]|[;&|<>]|\$)" \
-        && echo "$SCAN_CMD" | grep -qE "(^|[;&|[:space:]])tar( +[^ |;&]+)* +(-?[a-zA-Z]*x[a-zA-Z]*|--extract|--get)([[:space:]]|[;&|]|\$)"; }; then
+_CLDIR_END="( +(\\\\;|\\+|-[-a-zA-Z0-9=]+))* *(\$|[;&|<>)${_BT}]|[0-9]?[<>])"
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(cp|mv|rsync|install) [^|;&<>]* ${_CLDIR}${_CLDIR_END}" \
+   || echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?(cp|mv|install) [^|;&<>]*(-t|--target-directory[= ]) *${_CLDIR}([[:space:]]|[;&|<>)${_BT}]|\$)" \
+   || echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?unzip [^|;&]* -d *${_CLDIR}([[:space:]]|[;&|<>)${_BT}]|\$)" \
+   || { echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?tar [^|;&]* (-C *|--directory(=| +))${_CLDIR}([[:space:]]|[;&|<>)${_BT}]|\$)" \
+        && echo "$SCAN_CMD" | grep -qE "(^|[;&|[:space:]])(/(usr/(local/)?)?bin/)?tar( +[^ |;&]+)* +(-?[a-zA-Z]*x[a-zA-Z]*|--extract|--get)([[:space:]]|[;&|]|\$)"; }; then
     block "Copying/moving/extracting INTO the .claude directory itself can overwrite the safety system (a source named hooks or settings.json lands on the protected path). Copy into a specific subdirectory such as .claude/skills/<name>/, or ask the user."
 fi
 
@@ -2356,8 +2940,8 @@ fi
 #    (`find .claude/hooks -name '*.sh'`, `-exec wc -l {} +`, `| xargs grep -l x`,
 #    `-exec cp {} scratch/ \;` — a backup) stay ALLOW: only mutating verbs count.
 _G11_VERBS='(rm|mv|chmod|chown|chattr|shred|unlink|truncate|tee|touch)([[:space:]]|[;&|)]|$)|(sed|perl) [^|;&]*-[a-zA-Z]*i'
-if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/)?bin/)?find [^|;&]*${PROTECTED_DIRS}[^|;&]*[[:space:]]-(exec|execdir|ok|okdir) +${WRAPPED}(/(usr/)?bin/)?(${_G11_VERBS})" \
-   || echo "$SCAN_CMD" | grep -qE "${PROTECTED_DIRS}[^;&]*\\|&? *${VARPRE}(/(usr/)?bin/)?xargs( +-[^ ;|&]+( +[^- ;|&][^ ;|&]*)?)* +${WRAPPED}(/(usr/)?bin/)?(${_G11_VERBS})"; then
+if echo "$SCAN_CMD" | grep -qE "${SEG7} ?${WRAPPED}(/(usr/(local/)?)?bin/)?find [^|;&]*${PROTECTED_DIRS}[^|;&]*[[:space:]]-(exec|execdir|ok|okdir) +${WRAPPED}(/(usr/(local/)?)?bin/)?(${_G11_VERBS})" \
+   || echo "$SCAN_CMD" | grep -qE "${PROTECTED_DIRS}[^;&]*\\|&? *${VARPRE}(/(usr/(local/)?)?bin/)?xargs( +-[^ ;|&]+( +[^- ;|&][^ ;|&]*)?)* +${WRAPPED}(/(usr/(local/)?)?bin/)?(${_G11_VERBS})"; then
     block "Mutating safety-system files through find -exec or xargs bypasses the Edit/Write deny rules (anti-tampering). These changes are user-only — ask the user to apply them."
 fi
 
@@ -2376,14 +2960,24 @@ fi
 #    residual (`'Rscript' -e …`) is closed upstream by stage 0c, which
 #    CANONICALIZES a quoted command-position token.
 #    `python -m ensurepip` (probe BY31) is added below. `npm` is deliberately
-#    NOT guarded at either site: DAAF's image has no npm (`command -v npm`
-#    printed nothing when this was decided), and the starter kit's image has a
-#    real npm project whose dependency installs are legitimate work (its
-#    battery row PT33). The block messages end with SITE_REBUILD_HINT.
+#    NOT guarded in the shared body: an image may have no npm at all, or a
+#    real npm project whose dependency installs are legitimate work. A site
+#    that wants an npm guard adds it in its site_extension_guards. The block
+#    messages end with SITE_REBUILD_HINT.
+#
+#    hf4 (2026-10-27): every segment-anchored guard below opens on
+#    SEG_OPEN_TOK (`(` at a token start, `)`, `{`, backtick, `$(`, `-exec`,
+#    shell keywords) instead of `^`/`;`/`&`/`|` only (the `python -m pip` and
+#    `ensurepip` guards have no segment anchor; they match on a word
+#    boundary), so `(pip install x)`, `{ pip install x; }`,
+#    `x=$(pip install x)`,
+#    a backtick-wrapped install and the keyword-opened `if …; then pip install
+#    x; fi` block too. (`x=$(uv pip install x)` already blocked, only because
+#    VARPRE's unquoted value run swallowed `x=$(uv` — not by design.)
 
 #    pip/pipx: `pipx run` and `pipx runpip` fetch+execute ephemeral packages, so
 #    they join install/uninstall.
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}([^ ;|&]*/)?(pip3?(\.[0-9]+)?|pipx)( +-[^ ;|&]+)* +(install|uninstall|run|runpip)\b"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}([^ ;|&]*/)?(pip3?(\.[0-9]+)?|pipx)( +-[^ ;|&]+)* +(install|uninstall|run|runpip)\b"; then
     block "Runtime package changes drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
@@ -2401,26 +2995,26 @@ fi
 
 #    uv: pip/add/remove/sync/tool subcommands, plus `uv run --with pkg` which
 #    installs pkg into the run's ephemeral environment.
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}uv( +-[^ ;|&]+)* +(pip( +-[^ ;|&]+)* +(install|uninstall|sync)|add|remove|sync|tool +(install|run))\b"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}uv( +-[^ ;|&]+)* +(pip( +-[^ ;|&]+)* +(install|uninstall|sync)|add|remove|sync|tool +(install|run))\b"; then
     block "Runtime package changes via uv drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}uv run [^|;&]*--with\b"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}uv run [^|;&]*--with\b"; then
     block "\`uv run --with\` implicitly installs the named package into an ephemeral environment (runtime drift). Add the package to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
 #    conda / uvx / easy_install, grouped under ONE command-segment anchor so a
 #    token named in descriptive prose no longer false-blocks.
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}(uvx\b|easy_install\b|conda (install|remove|update|create|env (update|create))\b)"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}(uvx\b|easy_install\b|conda (install|remove|update|create|env (update|create))\b)"; then
     block "Runtime package execution/installation (uvx/easy_install/conda) drifts from the Dockerfile. Add the tool to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
-#    R package installation (added 2026-07-16). Shared at both sites: DAAF runs
-#    R; the starter kit's image has no R (`command -v R` empty there), where the
-#    guard costs two greps, cannot false-fire on a command that could succeed,
-#    and is correct in advance should that Dockerfile gain r-base. The
-#    run_with_capture.sh / enforce-file-first.sh wrappers named below are DAAF
-#    components (no counterpart in the starter kit).
+#    R package installation (added 2026-07-16). Part of the shared body: on an
+#    image without R the guard costs two greps, cannot false-fire on a command
+#    that could succeed, and is correct in advance should that Dockerfile gain
+#    r-base. The run_with_capture.sh / enforce-file-first.sh wrappers named
+#    below are DAAF components; a site without them has only this hook's
+#    command-line coverage.
 #    The dominant R path —
 #    `install.packages()` written INSIDE a `.R` script and executed via
 #    scripts/run_with_capture.sh — is invisible to any shell-level hook; it is
@@ -2429,7 +3023,7 @@ fi
 #    covers the command-line R forms.
 #
 #    8a. `R CMD INSTALL pkg.tar.gz` — segment-anchored.
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}R CMD INSTALL\b"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}R CMD INSTALL\b"; then
     block "Runtime R package installation (R CMD INSTALL) drifts from the Dockerfile and vanishes on rebuild. Add the package to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
@@ -2444,77 +3038,13 @@ fi
 #        install lives in the file is not visible here — covered at the wrapper
 #        by run_with_capture.sh's scan.
 R_INSTALL_TOKENS='install\.packages|update\.packages|remove\.packages|install_(github|gitlab|bitbucket|cran|version|local|url|git|svn|bioc|dev)|pkg_install|pak::pak|renv::(install|restore|update|rebuild)|BiocManager::install|biocLite'
-if echo "$SCAN_CMD" | grep -qiE "(^|[;&|]) ?${WRAPPED}(Rscript[0-9.]*|R|r)\b" && echo "$SCAN_CMD" | grep -qiE "$R_INSTALL_TOKENS"; then
+if echo "$SCAN_CMD" | grep -qiE "${SEG_OPEN_TOK} ?${WRAPPED}(Rscript[0-9.]*|R|r)\b" && echo "$SCAN_CMD" | grep -qiE "$R_INSTALL_TOKENS"; then
     block "Runtime R package installation (install.packages / remotes / devtools / pak / renv / BiocManager, etc.) drifts from the Dockerfile and vanishes on rebuild. Add the package to the Dockerfile and rebuild ${SITE_REBUILD_HINT}."
 fi
 
 # ---------------------------------------------------------------------------
-# 9. REMOTION BUNDLE-PER-CALL DISK GUARD (added 2026-09-14)
-#    Marker for the regression battery: REMOTION_BUNDLE_GUARD
-#
-#    SITE EXTENSION (2026-09-26 harmonization): this section runs only when
-#    SITE_ENABLE_REMOTION_GUARD=1 (the Claude Code Starter Kit); at DAAF it is
-#    inert. Its message names SITE_ROOT and SITE_REMOTION_DIR.
-#    Carried forward (2026-09-24) from the starter kit's live hook, where it
-#    was section 9. The only change then was that it scans SCAN_CMD (the
-#    stage-0 classified copy) like
-#    every other section, instead of NORM_CMD — so a Remotion CLI invocation
-#    hidden inside `bash -c '...'` is promoted to a command segment and caught,
-#    while prose in a heredoc or an excised data argument that merely NAMES
-#    `remotion render` no longer false-blocks.
-#
-#    Every Remotion CLI render/bundle subcommand builds a fresh webpack bundle
-#    and COPIES the entire publicDir into a new `remotion-webpack-bundle-*`
-#    temp directory. A loop of `npx remotion still ...` calls therefore
-#    multiplies public/ by the number of stills, and any process killed
-#    mid-render orphans its bundle. On 2026-09-14 that filled this container's
-#    1 TB disk mid-arc and stopped work.
-#
-#    The sanctioned paths bundle ONCE per invocation against a curated small
-#    publicDir, pin TMPDIR inside the project, and always delete the bundle:
-#      <SITE_REMOTION_DIR>/tools/cards.mjs   - QA card stills (builders)
-#      <SITE_REMOTION_DIR>/tools/render.mjs  - renderMedia (orchestrator only)
-#    A command line that invokes either tool is exempt, so a wrapper that
-#    happens to mention the CLI in a comment or argument still passes.
-#
-#    NOT matched (deliberately allowed): `remotion studio` (serves in place,
-#    no per-call bundle copy), `remotion versions`, `--help`, and any other
-#    read-only subcommand.
-REMOTION_CLI_RENDER='(^|[;&|[:space:]])(npx[[:space:]]+(--[^[:space:]]+[[:space:]]+)*)?remotion[[:space:]]+(still|render|bundle|benchmark)([[:space:]]|$)'
-REMOTION_SAFE_TOOL='tools/(cards|render)\.mjs'
-
-if [[ "${SITE_ENABLE_REMOTION_GUARD:-0}" == "1" ]] \
-   && echo "$SCAN_CMD" | grep -qE "$REMOTION_CLI_RENDER" \
-   && ! echo "$SCAN_CMD" | grep -qE "$REMOTION_SAFE_TOOL"; then
-    # The message is a QUOTED heredoc (its backticks are literal text); the two
-    # site values are substituted afterwards with quoted replacements.
-    _rm_msg=$(cat <<'REMOTION_MSG'
-bare `remotion still|render|bundle|benchmark` is not permitted in this project.
-
-Each CLI call rebuilds a webpack bundle and copies the whole publicDir into a
-fresh temp directory; repeated calls filled this container's disk on 2026-09-14.
-
-Use the project tools instead - they bundle ONCE per invocation against a
-curated publicDir, pin TMPDIR to @RDIR@/.remotion-tmp/, and always
-remove the bundle:
-
-  QA card stills :  node @ROOT@/@RDIR@/tools/cards.mjs jobs.json
-  Renders        :  node @ROOT@/@RDIR@/tools/render.mjs --composition ID --out FILE
-                    (orchestrator only - builders never render media)
-
-Large media is served over HTTP, not from public/. Start the server first:
-  python3 @ROOT@/scripts/media_server.py --start
-
-`remotion studio` is unaffected and remains allowed.
-See @ROOT@/@RDIR@/tools/README.md.
-REMOTION_MSG
-)
-    _rm_msg="${_rm_msg//@ROOT@/"$SITE_ROOT"}"
-    block "${_rm_msg//@RDIR@/"$SITE_REMOTION_DIR"}"
-fi
-
-# ---------------------------------------------------------------------------
-# 10. ACCIDENTAL ENVIRONMENT-DISCLOSURE GUARD (added 2026-10-02)
+# 9. ACCIDENTAL ENVIRONMENT-DISCLOSURE GUARD (added 2026-10-02 as section 10;
+#     renumbered 9 by hf4, 2026-10-27)
 #     Marker for the regression battery: ENV_DISCLOSURE_GUARD
 #
 #     PURPOSE. Everything a command prints or writes can land in an audit log,
@@ -2548,7 +3078,7 @@ fi
 #          credentials). Path-valued credential variables are conventionally
 #          named `*_CREDENTIALS` / `*_FILE` / `*_PATH`, whose last segment is a
 #          plural or is not in the set, so they fall out naturally (B4). B scans
-#          SCAN_CMD AND the §10 accumulator (the stage-0-excised spans that still
+#          SCAN_CMD AND the §9 accumulator (the stage-0-excised spans that still
 #          expand). Case-SENSITIVE: lowercase shell names are usually loop or
 #          local variables, so matching them would cause many false positives.
 #       C  Process-environment file read: any `/proc/<pid>/environ` path. There
@@ -2578,7 +3108,7 @@ fi
 #     scanning the accumulator for them would only add false positives.
 #
 #     FAIL-CLOSED. Over 20,000 chars 0c is skipped and text stays visible in
-#     SCAN_CMD, so §10 still sees it (fail-closed). A 0a bail loses the receiver
+#     SCAN_CMD, so §9 still sees it (fail-closed). A 0a bail loses the receiver
 #     link, so a body is not accumulated (residual). The ERR trap does not fire
 #     inside an `if` condition, so the regression suites pin at least one BLOCK
 #     row per category to catch a malformed regex.
@@ -2653,8 +3183,42 @@ if [[ "$_env10_all" == *'$'* || "$_env10_all" == *env* || "$_env10_all" == *set*
         block "Accidental environment disclosure (category: process-environment file read). Reading a /proc/<pid>/environ file exposes that process's entire environment, credentials included. There is no benign need to read it here; to check a variable, print its presence or length instead."
     fi
     if echo "$SCAN_CMD" | grep -qE "$_ENV10_D_INTERP" && echo "$SCAN_CMD" | grep -qE "$_ENV10_D_TOK"; then
-        block "Accidental environment disclosure (category: interpreter one-liner environment print). An inline interpreter command that prints a whole environment object (os.environ, Sys.getenv(), process.env, %ENV, ENV, ENVIRON) writes every variable, credentials included, to output. Print a single variable's presence or length instead, or move the logic into a script run via run_with_capture.sh, which scans for environment prints."
+        # The closing hint is a site setting (SITE_ENV_PRINT_HINT, hf4): a site
+        # whose script runner scans for environment prints names it there; the
+        # fallback suits a site without one.
+        block "Accidental environment disclosure (category: interpreter one-liner environment print). An inline interpreter command that prints a whole environment object (os.environ, Sys.getenv(), process.env, %ENV, ENV, ENVIRON) writes every variable, credentials included, to output. Print a single variable's presence or length instead, or ${SITE_ENV_PRINT_HINT:-move the logic into a script file}."
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# SITE GUARDS (hf4, 2026-10-27) — the site file's optional
+# site_extension_guards function, called after every body guard and before
+# the final allow, so it sees the final SCAN_CMD and every interface name (see
+# the header's SITE FILE CONTRACT). `set -E` is scoped to the call: the ERR
+# trap is not inherited by a function, so without it a command failing
+# mid-function (anything but its last command) would be ignored; with it the
+# trap fires and the hook BLOCKS. The call is a plain statement in the `then`
+# body, never an `if` condition or an `||`/`&&` operand: in either of those
+# positions bash suppresses the ERR trap for the whole call.
+# The early exits above (non-Bash tool, empty command, a body block) end the
+# hook before this point, so site guards run only for a non-empty Bash
+# command that every body guard allowed.
+# A site-guard ERR trap replaces the general one for the call, so a failure
+# here names its cause. That includes the function's own non-zero RETURN: a
+# guard whose last command is `[[ <cond> ]] && block "…"` returns 1 whenever
+# the condition is false, and the call then fails like any other command.
+# It still BLOCKS (fail-closed); the message tells the site author that a
+# site guard must return 0 when it allows, because a guard written that way
+# would otherwise block every command with no hint of why. The general trap
+# is re-armed after a call that returned 0.
+# ---------------------------------------------------------------------------
+if declare -F site_extension_guards >/dev/null; then
+    _SITE_GUARD_MSG='a site guard (its site_extension_guards function) failed or returned non-zero; a site guard must return 0 when it allows (end it with return 0, and block with if ...; then block ...; fi rather than a final [[ ... ]] && block ...).'
+    trap 'echo "${_SITE_BROKEN} ${_SITE_GUARD_MSG} ${_SITE_FIX}" >&2; exit 2' ERR
+    set -E
+    site_extension_guards
+    set +E
+    trap 'echo "BLOCKED by bash-safety hook: unexpected error in safety check" >&2; exit 2' ERR
 fi
 
 # ---------------------------------------------------------------------------

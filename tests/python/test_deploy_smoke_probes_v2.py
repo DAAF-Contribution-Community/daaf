@@ -491,6 +491,43 @@ class VersionsToolchainIdentityIntegrityTests(unittest.TestCase):
         self.assertIn("not executable", r.detail)
 
 
+class HookRegistrationTests(unittest.TestCase):
+    """T0.6: every .claude/hooks/*.sh is registered, except per-agent hooks and
+    the files a hook sources (bash-safety.site.sh), which settings.json must not
+    register."""
+
+    def _tree(self, names):
+        root = _scratch(self, "t06")
+        hooks = root / ".claude" / "hooks"
+        hooks.mkdir(parents=True)
+        for name in names:
+            (hooks / name).write_text("#!/usr/bin/env bash\n")
+        (root / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command",
+                                           "command": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/bash-safety.sh'}]}]}}))
+        return root
+
+    def test_sourced_site_file_is_exempt(self):
+        root = self._tree(["bash-safety.sh", "bash-safety.site.sh", "enforce-file-first.sh"])
+        r = sp.probe_hook_registration(str(root))
+        self.assertEqual(r.verdict, Verdict.PASS, r.detail)
+        self.assertTrue(any("sourced by a hook" in (e.note or "") and "bash-safety.site.sh" in e.note
+                            for e in r.evidence))
+
+    def test_unregistered_real_hook_still_fails(self):
+        root = self._tree(["bash-safety.sh", "bash-safety.site.sh", "new-guard.sh"])
+        r = sp.probe_hook_registration(str(root))
+        self.assertEqual(r.verdict, Verdict.FAIL)
+        self.assertIn("new-guard.sh", r.detail)
+        self.assertNotIn("bash-safety.site.sh", r.detail)
+
+    def test_exemption_is_by_exact_name_not_suffix(self):
+        root = self._tree(["bash-safety.sh", "other.site.sh"])
+        r = sp.probe_hook_registration(str(root))
+        self.assertEqual(r.verdict, Verdict.FAIL)
+        self.assertIn("other.site.sh", r.detail)
+
+
 class TierNTests(unittest.TestCase):
     def test_tn1_mapping(self):
         up = {"url": "u", "reachable": True, "status": 401}

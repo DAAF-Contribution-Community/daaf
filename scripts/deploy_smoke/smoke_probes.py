@@ -801,12 +801,24 @@ def probe_cli_available() -> ProbeResult:
     return r
 
 
+# Files in .claude/hooks/ that carry the .sh name but are SOURCED by a hook,
+# never run as one, so settings.json must not register them. bash-safety.site.sh
+# holds DAAF's site settings for bash-safety.sh, which sources it from its own
+# directory (see that file's header). Exact names on purpose, not a `*.site.sh`
+# glob: a glob would also wave through a misnamed real hook that nobody
+# registered, and T0.6 exists to catch exactly that. A new sourced file is a
+# deliberate one-line addition here.
+_SOURCED_HOOK_FILES = frozenset({"bash-safety.site.sh"})
+
+
 def probe_hook_registration(base_dir: str = BASE_DIR) -> ProbeResult:
     """Verify every hook script in .claude/hooks/ is registered in settings.json.
 
     Extends benchmarks/harness/executor.py:check_hooks_active (which checked only
     6 named hooks by substring) to ALL .sh files in .claude/hooks/, cross-checking
-    each against the registered command strings in settings.json."""
+    each against the registered command strings in settings.json. Files named in
+    _SOURCED_HOOK_FILES are sourced by a hook rather than run, so they are
+    exempt and reported in the evidence instead."""
     r = ProbeResult(probe_id="T0.6", name="Hook registration (all hooks)", tier="0")
     hooks_dir = Path(base_dir) / ".claude" / "hooks"
     settings_path = Path(base_dir) / ".claude" / "settings.json"
@@ -842,8 +854,10 @@ def probe_hook_registration(base_dir: str = BASE_DIR) -> ProbeResult:
     # Note: some hooks legitimately live outside settings.json (per-agent
     # frontmatter, e.g. enforce-file-first.sh) — those are reported as INFO, not FAIL.
     per_agent_only = {"enforce-file-first.sh"}
-    missing = [h for h in hook_scripts if h not in blob and h not in per_agent_only]
+    missing = [h for h in hook_scripts
+               if h not in blob and h not in per_agent_only and h not in _SOURCED_HOOK_FILES]
     per_agent = [h for h in hook_scripts if h in per_agent_only and h not in blob]
+    sourced = [h for h in hook_scripts if h in _SOURCED_HOOK_FILES]
 
     r.add_evidence(
         "parse .claude/settings.json hook chains",
@@ -851,13 +865,16 @@ def probe_hook_registration(base_dir: str = BASE_DIR) -> ProbeResult:
     )
     if per_agent:
         r.add_evidence("", note=f"per-agent-frontmatter hooks (not in settings.json, expected): {', '.join(per_agent)}")
+    if sourced:
+        r.add_evidence("", note=f"sourced by a hook, not run as one (not in settings.json, expected): {', '.join(sourced)}")
 
     if missing:
         r.verdict = Verdict.FAIL
         r.detail = f"Hook scripts present but NOT registered in settings.json: {', '.join(missing)}"
     else:
         r.verdict = Verdict.PASS
-        r.detail = f"All {len(hook_scripts)} hook scripts accounted for (project-registered or per-agent)."
+        r.detail = (f"All {len(hook_scripts)} hook scripts accounted for "
+                    "(project-registered, per-agent, or sourced by a hook).")
     return r
 
 
@@ -3215,8 +3232,10 @@ def _evaluate_t21_routing(sub_models, agent_tier, env, route):
 # exact shapes (review Q-M2, 2026-10-13: the old bare "denied"/"permission" match
 # let an OS "Permission denied" from a pip that actually ran count as a block):
 #   * bash-safety's block() prefix, "BLOCKED by bash-safety hook" — the exact
-#     text of .claude/hooks/bash-safety.sh block() (line ~556), confirmed in the
-#     hook source and in stored transcripts ("Exit code 2\nBLOCKED by ...");
+#     text printed by the block() function in .claude/hooks/bash-safety.sh (and
+#     by its inline site-file load failures, which use the same prefix),
+#     confirmed in the hook source and in stored transcripts ("Exit code
+#     2\nBLOCKED by ...");
 #   * Claude Code's permission-rule denial (settings.json denies
 #     Bash(pip install*) and Read(.env)). Bash shape OBSERVED in a stored
 #     2026-09-29 subagent transcript (deny rule Bash(printenv*)): "Permission to
@@ -4834,8 +4853,9 @@ def _evaluate_t31(response_text):
     its last ~400 characters ask a confirmation question (_CONFIRM_Q_RE) — the
     DAAF contract is to stop at the gate. A reply that already gives the Pre-K
     answer did not stop there: FAIL when it asks nothing, WARN when it answers
-    and also asks (the gate was half-honoured; the template's "what I'll look
-    up" line can legitimately name the term, so this is not a FAIL)."""
+    and also asks (the gate was half-honoured; the goal restatement can
+    legitimately name the term (e.g. 'grade = -1'); echoing the Pre-K answer
+    is the half-honoured case this WARN catches, so this is not a FAIL)."""
     text = (response_text or "").strip()
     tail = text[-400:]
     m = _MODE_RE.search(text)

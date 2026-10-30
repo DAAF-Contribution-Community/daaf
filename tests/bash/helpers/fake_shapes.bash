@@ -54,9 +54,10 @@
 #   The quoted / at forms split the value in two halves joined by a space
 #   (or an "@"), so a check can tell when only the first half was redacted.
 #
-#   SECTION-10 NAME / COMMAND builders (bash-safety.sh accidental environment-
-#   disclosure guard). Unlike the value builders above these carry NO secret
-#   value — section 10 matches credential-shaped NAMES and whole-environment
+#   SECTION-9 NAME / COMMAND builders (bash-safety.sh accidental environment-
+#   disclosure guard; section 10 until 2026-10-27, hence the env10 names).
+#   Unlike the value builders above these carry NO secret
+#   value — section 9 matches credential-shaped NAMES and whole-environment
 #   commands, not values — so they set FS_NAME and FS_TEXT and CLEAR
 #   FS_VALUE/FS_NEEDLE/FS_MARKER. Feed FS_TEXT to a hook-verdict check
 #   (run_case / _run_hook), not the fake_expect_* redaction checks.
@@ -244,8 +245,8 @@ fake_token_assignment() {
 }
 
 # ---------------------------------------------------------------------------
-# SECTION-10 (bash-safety.sh accidental environment-disclosure guard) builders.
-# These carry NO secret VALUE: section 10 matches credential-shaped NAMES and
+# SECTION-9 (bash-safety.sh accidental environment-disclosure guard) builders.
+# These carry NO secret VALUE: section 9 matches credential-shaped NAMES and
 # whole-environment commands, not values. The credential last segment is still
 # assembled from two fragments so no whole credential-shaped name is ever a
 # single literal in this file (the NO-LITERAL RULE above). FS_VALUE/FS_NEEDLE/
@@ -254,7 +255,7 @@ fake_token_assignment() {
 
 # fake_env10_name SEGMENT [PREFIX] -> FS_NAME, an UPPERCASE credential-shaped
 # variable name whose LAST underscore segment is SEGMENT. SEGMENT selects one of
-# section 10's keywords, each split across two fragments so the keyword is never
+# section 9's keywords, each split across two fragments so the keyword is never
 # a single literal; PREFIX (default APP; may itself contain underscores) is
 # joined with "_" at run time, so the whole credential-shaped name is assembled,
 # never written.
@@ -278,7 +279,7 @@ fake_env10_name() {
 }
 
 # fake_env10_cmd FORM [SEGMENT] [PREFIX] -> FS_TEXT, a whole command line in a
-# section-10 shape around a credential-shaped name (built by fake_env10_name).
+# section-9 shape around a credential-shaped name (built by fake_env10_name).
 # FORMs:
 #   echo echo_braced printf declare_p typeset_p printenv   category-B BLOCK shapes
 #   heredoc        0a accumulator: unquoted-delimiter heredoc body expands $NAME
