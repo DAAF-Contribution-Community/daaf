@@ -59,7 +59,7 @@ url = get_codebook_url("fsa/codebook_colleges_fsa_grants")
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "fsa/codebook_colleges_fsa_grants", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/codebook_colleges_fsa_grants", ".xls")
 ```
 
 | Dataset | Codebook Path |
@@ -286,7 +286,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
 df_grants <- arrow::read_parquet(url) |>
   filter(year %in% c(2019, 2020, 2021))
 

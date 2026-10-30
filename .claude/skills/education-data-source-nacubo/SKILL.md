@@ -256,7 +256,7 @@ url = get_codebook_url("nacubo/codebook_colleges_nacubo_endowments")
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "nacubo/codebook_colleges_nacubo_endowments", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nacubo/codebook_colleges_nacubo_endowments", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:

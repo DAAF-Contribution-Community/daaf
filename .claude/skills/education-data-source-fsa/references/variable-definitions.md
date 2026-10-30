@@ -106,7 +106,7 @@ library(dplyr)
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -204,7 +204,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_loans", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_loans", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Get Direct Subsidized Undergraduate loan data for a specific institution
@@ -287,7 +287,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_campus_based_volume", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_campus_based_volume", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Get Federal Work-Study data for 2020
@@ -363,7 +363,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Get institutions in the "zone" (1.0 to 1.4)
@@ -446,7 +446,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_90_10_revenue_percentages", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_90_10_revenue_percentages", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Get institutions near the threshold (85%+ = 0.85 as proportion)

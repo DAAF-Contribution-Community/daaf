@@ -121,7 +121,7 @@ print(f"Codebook: {codebook_url}")
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-codebook_url <- paste0(mirror$root_url, "/", "eada/codebook_colleges_eada_inst-characteristics", ".xls")
+codebook_url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "eada/codebook_colleges_eada_inst-characteristics", ".xls")
 cat(sprintf("Codebook: %s\n", codebook_url))
 ```
 

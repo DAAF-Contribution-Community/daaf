@@ -229,8 +229,8 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", "nccs/colleges_nccs_all", ".", mirror$format))
-ipeds <- read_parquet(paste0(mirror$root_url, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nccs/colleges_nccs_all", ".", mirror$format))
+ipeds <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
 
 # Direct join on unitid and year
 combined <- nccs |>
@@ -525,7 +525,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter to California (FIPS = 6) - note: integer codes!
 ca_institutions <- nccs |> filter(fips == 6)
@@ -573,11 +573,11 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 NCCS_PATH <- "nccs/colleges_nccs_all"
-nccs <- read_parquet(paste0(mirror$root_url, "/", NCCS_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", NCCS_PATH, ".", mirror$format))
 
 # IPEDS directory for institution names
 IPEDS_PATH <- "ipeds/colleges_ipeds_directory"
-ipeds <- read_parquet(paste0(mirror$root_url, "/", IPEDS_PATH, ".", mirror$format))
+ipeds <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", IPEDS_PATH, ".", mirror$format))
 
 # Join on unitid and year
 combined <- nccs |>

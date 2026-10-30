@@ -218,7 +218,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
 
 # Filter to specific school and year
 school_data <- df |>

@@ -104,7 +104,7 @@ all_divisions = df.filter(
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the

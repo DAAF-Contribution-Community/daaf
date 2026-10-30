@@ -214,7 +214,7 @@ frames <- list()
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 for (y in c(2018, 2019, 2020)) {
-  url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
+  url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
   # opeid is character in shards 2001-2018 and integer in 2019-2021 (pinned mirror
   # vintage); normalise to an 8-character zero-padded string so the shards bind and join.
   frames[[length(frames) + 1]] <- arrow::read_parquet(url) |>
@@ -223,7 +223,7 @@ for (y in c(2018, 2019, 2020)) {
 df <- bind_rows(frames)
 
 # Or fetch a single year
-url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
 df <- arrow::read_parquet(url)
 ```
 

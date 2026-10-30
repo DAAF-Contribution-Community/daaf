@@ -110,7 +110,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Data is pre-filtered to higher education institutions matched to IPEDS
 # Variables are lowercase (e.g., fips, unitid, contributions_total)
@@ -253,7 +253,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Variables use Portal naming (lowercase, descriptive)
 # e.g., contributions_total, prog_serv_rev, revenue_total
@@ -433,7 +433,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+nccs <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Data is pre-matched to IPEDS UNITID
 # Covers 1993-2016 (24 years)

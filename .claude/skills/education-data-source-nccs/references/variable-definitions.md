@@ -440,7 +440,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-df <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter out null and rare negative codes
 df_clean <- df |>

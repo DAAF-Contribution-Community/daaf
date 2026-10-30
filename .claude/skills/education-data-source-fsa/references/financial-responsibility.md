@@ -298,7 +298,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Financially Responsible
@@ -351,7 +351,7 @@ mirror <- config$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
 df <- arrow::read_parquet(url)
 
 # Filter for institutions in the zone or below

@@ -275,7 +275,7 @@ valid = valid.join(
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -290,7 +290,7 @@ valid <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3)
 
 # Institution names/control are NOT in the earnings dataset.
 # Join to inst_characteristics or IPEDS directory (filter years locally):
-url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
 inst <- arrow::read_parquet(url) |> filter(year == 2020)
 valid <- valid |> left_join(
   inst |> select(unitid, inst_name, pred_degree_awarded_ipeds),

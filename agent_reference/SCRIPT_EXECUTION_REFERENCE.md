@@ -829,7 +829,7 @@ with open(MIRRORS_YAML) as f:
     MIRRORS = yaml.safe_load(f)["mirrors"]
 
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 DATASET_PATH = "ccd/schools_ccd_directory"  # Education domain example
 
 # [Include fetch_from_mirrors(path, ...) function from fetch-patterns.md]
@@ -915,7 +915,7 @@ def fetch_from_mirrors(
 
     Args:
         path: Canonical dataset path string from datasets-reference.md.
-            All mirrors use the same path — only root_url and format differ.
+            All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
             Example: "ccd/schools_ccd_directory"
         filters: Dict of column->value(s) filters to apply locally.
         years: List of years to filter to.
@@ -927,8 +927,11 @@ def fetch_from_mirrors(
         name = mirror["name"]
         strategy = mirror["read_strategy"]
 
-        # Build URL from mirror's url_template + canonical path
-        url = mirror["url_template"].format(root_url=mirror["root_url"], path=path, format=mirror["format"])
+        # Build URL from mirror's url_template + canonical path. The HF template has a
+        # {revision} segment (the pinned vintage.hf_revision); str.format ignores it
+        # for templates without one (the Urban CSV fallback).
+        revision = str((mirror.get("vintage") or {}).get("hf_revision", "main"))
+        url = mirror["url_template"].format(root_url=mirror["root_url"], revision=revision, path=path, format=mirror["format"])
 
         print(f"  Trying {name}: {url}")
 
@@ -2261,7 +2264,7 @@ OUTPUT_PATH <- file.path(DATA_RAW, "2026-01-24_ccd_directory.parquet")
 # Education domain example — substitute your domain's query skill path
 MIRRORS_YAML <- file.path(BASE_DIR, ".claude/skills/education-data-query/references/mirrors.yaml")
 # Dataset path: canonical path string from datasets-reference.md.
-# All mirrors use the same path — only root_url and format differ.
+# All mirrors use the same path — only root_url, format and the pinned revision (HF mirror only) differ.
 DATASET_PATH <- "ccd/schools_ccd_directory"
 TARGET_YEAR <- 2020
 
@@ -2281,9 +2284,13 @@ mirrors <- yaml::read_yaml(MIRRORS_YAML)$mirrors
 df <- NULL
 last_error <- NULL
 for (mirror in mirrors) {
-  # Build URL from the mirror's template + canonical dataset path
+  # Build URL from the mirror's template + canonical dataset path. The HF
+  # template has a {revision} segment (the pinned vintage$hf_revision); glue
+  # only substitutes referenced names, so the Urban CSV fallback ignores it.
+  revision <- if (is.null(mirror$vintage$hf_revision)) "main" else as.character(mirror$vintage$hf_revision)
   url <- glue::glue(mirror$url_template,
                     root_url = mirror$root_url,
+                    revision = revision,
                     path = DATASET_PATH,
                     format = mirror$format)
   cat(sprintf("  Trying %s: %s\n", mirror$name, url))

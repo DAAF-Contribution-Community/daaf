@@ -652,7 +652,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # `education-data-query/references/fetch-patterns.md`.
 
 # School-level assessments (yearly dataset)
-df <- read_parquet(paste0(mirror$root_url, "/",
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/",
                           "edfacts/schools_edfacts_assessments_2018", ".", mirror$format))
 
 # Filter to California, grade 4
@@ -660,7 +660,7 @@ ca_grade4 <- df |>
   filter(fips == 6, grade_edfacts == 4)
 
 # School-level graduation rates (yearly dataset)
-grad_df <- read_parquet(paste0(mirror$root_url, "/",
+grad_df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/",
                                "edfacts/schools_edfacts_grad_rates_2019", ".", mirror$format))
 ```
 

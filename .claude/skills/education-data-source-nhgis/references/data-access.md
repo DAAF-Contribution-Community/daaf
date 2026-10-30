@@ -36,10 +36,10 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
 
 # College-to-census geography (2020 Census boundaries)
-df_colleges <- read_parquet(paste0(mirror$root_url, "/", "nhgis/colleges_nhgis_geog_2020", ".", mirror$format))
+df_colleges <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "nhgis/colleges_nhgis_geog_2020", ".", mirror$format))
 
 # Available census years: 1990, 2000, 2010, 2020
 # All files contain ALL data years (schools: 1986-2023, colleges: 1980, 1984-2023)

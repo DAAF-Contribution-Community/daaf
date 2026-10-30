@@ -248,7 +248,7 @@ url = get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
 # get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
-url <- paste0(mirror$root_url, "/", "csafety/codebook_colleges_csafety_hate_crimes", ".xls")
+url <- paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/", "csafety/codebook_colleges_csafety_hate_crimes", ".xls")
 ```
 
 ### Fetching Data
@@ -290,7 +290,7 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
 # view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
-df <- read_parquet(paste0(mirror$root_url, "/",
+df <- read_parquet(paste0(mirror$root_url, "/", mirror$vintage$hf_revision, "/",
                           "csafety/colleges_csafety_hate_crimes", ".", mirror$format))
 
 # Filter by year
