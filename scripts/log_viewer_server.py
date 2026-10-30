@@ -9,6 +9,21 @@ regenerates the session manifest.
 Usage:
     python3 log_viewer_server.py --port 2719 --root /daaf --archive --logs-dir /daaf/.claude/logs/sessions
     python3 log_viewer_server.py --port 2719 --root /daaf --project-path /daaf/research/2026-03-29_Analysis
+
+Host check (DNS rebinding): the server answers only requests whose Host header
+names the loopback host -- localhost, 127.0.0.1 or [::1], any port. Everything
+else, including a request with no Host header or with two of them, gets HTTP 403
+and a short plain-text body, for every method.
+Why: Docker publishes the port on the host's 127.0.0.1 only, and a cross-site
+page cannot read a response it fetches from localhost. But a web page can make
+its own domain resolve to 127.0.0.1 after it has loaded ("DNS rebinding"); its
+requests then reach this server as same-origin requests that the page CAN read,
+and they would expose everything under the served root (session transcripts,
+research data, .git). Those requests carry the attacker's domain in the Host
+header, which the browser sets and a page cannot change, so refusing any
+non-loopback Host closes the hole. The server must still bind all container
+interfaces (TCPServer(("", PORT))), because Docker forwards the published port
+to the container's own address, not to its 127.0.0.1.
 """
 
 import argparse
@@ -50,10 +65,65 @@ if args.archive:
 else:
     GENERATOR_CMD = [sys.executable, GENERATOR_SCRIPT, args.project_path]
 
+# --- Allowed Host header names (DNS-rebinding guard; see the module docstring) ---
+
+ALLOWED_HOSTNAMES = {"localhost", "127.0.0.1", "::1"}
+
 # --- Request handler ---
 
 class LogViewerHandler(http.server.SimpleHTTPRequestHandler):
-    """Extends SimpleHTTPRequestHandler with a /api/refresh-manifest endpoint."""
+    """Extends SimpleHTTPRequestHandler with a /api/refresh-manifest endpoint
+    and a loopback-only Host header check."""
+
+    def parse_request(self):
+        """Parse the request as usual, then refuse a non-loopback Host.
+
+        parse_request runs before any do_<METHOD> dispatch, so the check covers
+        GET, HEAD, /api/refresh-manifest and every other method alike. Returning
+        False after sending the 403 tells handle_one_request to stop there.
+        """
+        if not super().parse_request():
+            return False
+        if self.host_is_loopback():
+            return True
+        body = b"Forbidden: the DAAF log viewer only answers requests addressed to localhost.\n"
+        self.send_response(403)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+        self.close_connection = True
+        return False
+
+    def host_is_loopback(self):
+        """True when exactly one Host header names localhost, 127.0.0.1 or [::1].
+
+        Accepted forms: name, name:port, [::1], [::1]:port, and a bare ::1;
+        matching is case-insensitive. A missing Host, a repeated Host, a
+        non-numeric port or any other name is refused.
+        """
+        values = self.headers.get_all("Host") or []
+        if len(values) != 1:
+            return False
+        value = values[0].strip().lower()
+        if value.startswith("["):
+            # Bracketed IPv6 literal, optionally followed by :port.
+            end = value.find("]")
+            if end == -1:
+                return False
+            hostname, rest = value[1:end], value[end + 1:]
+            if rest and not (rest.startswith(":") and rest[1:].isascii() and rest[1:].isdigit()):
+                return False
+        elif value.count(":") > 1:
+            # A bare IPv6 literal cannot carry a port; only ::1 itself passes.
+            hostname = value
+        else:
+            hostname, sep, port = value.partition(":")
+            if sep and not (port.isascii() and port.isdigit()):
+                return False
+        return hostname in ALLOWED_HOSTNAMES
 
     def do_GET(self):
         if self.path == "/api/refresh-manifest":
@@ -122,8 +192,13 @@ class LogViewerHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(response_body)
 
     def log_message(self, format, *log_args):
-        """Suppress noisy per-request logging for static files; log API calls."""
-        if self.path.startswith("/api/"):
+        """Suppress noisy per-request logging for static files; log API calls.
+
+        self.path is unset when parse_request rejects a malformed request line
+        before reading the path (send_error logs through here), so read it with
+        a default rather than raise AttributeError.
+        """
+        if getattr(self, "path", "").startswith("/api/"):
             super().log_message(format, *log_args)
 
 # --- Start server ---
