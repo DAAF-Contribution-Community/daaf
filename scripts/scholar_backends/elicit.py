@@ -13,8 +13,9 @@
 # 2026-10-11 into the S1 workspace web_fetches/s2_research/; API terms
 # "Last updated: July 15, 2026"):
 #   - Base https://elicit.com/api/v2; "Authorization: Bearer elk_live_…";
-#     "API access requires a Pro plan or above." Keys: elicit.com/developer
-#     (changelog: "generate a key at elicit.com/developer").
+#     "API access requires a Pro plan or above." Keys: elicit.com/settings
+#     (v2 API reference, openapi.json fetched 2026-10-11 and 2026-10-28; the
+#     changelog says "generate a key at elicit.com/developer").
 #   - "All endpoints share a burst limit of 100 requests per minute per IP
 #     address, including polling requests. Exceeding it returns 429 and
 #     blocks that IP for 5 minutes." The edge 429 body is FLAT
@@ -95,7 +96,7 @@ ATTRIBUTION = ("Search results and research reports from Elicit (https://elicit.
                "outputs are non-deterministic (§4.2), so the archived raw response is the only record; never "
                "submit personal data, names included (§2); restricted (stored in restricted/, never shared, "
                "deleted within 30 days if API access ends, §12.3)")
-GET_KEY_URL = "https://elicit.com/developer"
+GET_KEY_URL = "https://elicit.com/settings"   # openapi.json "account settings" link (fetched 2026-10-28)
 
 API = "https://elicit.com/api/v2"
 SEARCH_DEFAULT_MAX = 10

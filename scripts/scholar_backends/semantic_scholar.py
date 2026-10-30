@@ -6,8 +6,10 @@
 # exception). Never writes files; never handles provenance.
 #
 # Measured behavior (2026-09-27, the user's original tool):
-#   - Key terms (Ai2 key email + API tutorial): "1 request per second,
-#     cumulative across all endpoints" per key. The core's shared RateGate
+#   - Key terms: 1 request per second per key across all endpoints (S2
+#     tutorial, re-fetched 2026-10-28: "automatically gives a user a 1 request
+#     per second rate across all endpoints"; the Ai2 key email's "cumulative"
+#     wording is per the user's 2026-09-27 notes). The core's shared RateGate
 #     spaces requests 1.2 s apart container-wide.
 #   - Server-side throttling is heavy: ~30% of first attempts refused with a
 #     key; later 5 of 6 searches spaced 5 s apart refused. Hence few attempts
@@ -32,7 +34,7 @@ from ._common import BackendError, key_value, norm_doi, record
 NAME = "semantic_scholar"
 LABEL = "Semantic Scholar"
 KEY_ENV = "SEMANTIC_SCHOLAR_API_KEY"
-REQUIRED_KEY = False          # keyless = a shared, heavily throttled pool
+REQUIRED_KEY = False          # keyless = a pool shared by all unauthenticated users, which S2 may throttle further under heavy use
 LICENSE_CLASS = "cc-by-nc"    # S2 Data Licenses: CC BY-NC or ODC-BY; attribution REQUIRED
 RATE_LIMIT = {"semantic_scholar": 1.2}
 RATE_LIMIT_NOTE = "1 req/s per key, all endpoints (gated 1.2 s container-wide)"
@@ -69,8 +71,9 @@ def auth_headers():
 def degraded_note():
     if key_present():
         return None
-    return ("Semantic Scholar: SEMANTIC_SCHOLAR_API_KEY is not set; using the shared unauthenticated "
-            "pool, which is heavily throttled (expect BACKEND FAILED / exit 12).")
+    return ("Semantic Scholar: SEMANTIC_SCHOLAR_API_KEY is not set; using the pool shared by all "
+            "unauthenticated users, which S2 may throttle further under heavy use (expect BACKEND FAILED / "
+            "exit 12).")
 
 
 def parse_cost(headers):

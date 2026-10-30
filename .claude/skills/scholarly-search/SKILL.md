@@ -403,8 +403,10 @@ still means "read the matched title in the digest once against the citation").
 
 ## Rate limits (built in — do not work around)
 
-Semantic Scholar (1 request/second per key, all endpoints), OpenAlex semantic
-search (1/s), Crossref's public pool (5/s, 1 concurrent), Scite's keyless
+Semantic Scholar (1 request/second per key, all endpoints), OpenAlex (every
+request gated 0.04 s with a key, 0.11 s keyless; searches with more than 5
+upper-case `AND`/`OR`/`NOT` also 0.22 s / 1.1 s; semantic search 1/s; see
+`references/openalex.md`), Crossref's public pool (5/s, 1 concurrent), Scite's keyless
 bucket (60/minute, gated 1.1 s) and Elicit (100/minute per IP including
 polls, gated 0.75 s; a 429 blocks the IP 5 min, so the lane pauses 300 s, never
 retried) are shared by every agent in the container. All `scholar_search` processes book request
@@ -506,4 +508,4 @@ matrix is in `references/licensing.md`; `backends` prints attribution lines.
 Tool source: `scripts/scholar_search.py` (core; `§§` markers index it),
 `scripts/scholar_backends/` (one adapter per backend),
 `scripts/web_retrieval_common.py` (guards). Tests:
-`python3 -m unittest discover -s /daaf/tests/python -p "test_scholar_search.py"`.
+`python3 -m unittest discover -s /daaf/tests/python -p "test_scholar*.py"`.

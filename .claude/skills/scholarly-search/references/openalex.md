@@ -52,10 +52,33 @@ OpenAlex docs (authentication page), fetched 2026-10-28: 10 req/s keyless,
 30 with a free key or prepaid usage, 50 on an annual plan; searches with more
 than 5 `OR`/`AND`/`NOT` operators 1 / 5 / 25 req/s; "A per-second 429 costs
 nothing". The same page said 100 req/s on 2026-10-02. Semantic search 1 req/s
-and max 50 results; `per_page` max 100; 100 OR values per filter. The tool
-gates the semantic lane at 1.1 s container-wide; the main OpenAlex lane is
-currently ungated (set when the limit was 100 req/s; whether to gate it is a
-pending maintainer decision).
+and max 50 results; `per_page` max 100; 100 OR values per filter.
+
+**Gating (tool 1.6.0, user decision 2026-10-30).** Several agents may search
+at once, so the tool enforces the per-second limits container-wide through
+the shared rate gate instead of leaving them to 429 retries. Every OpenAlex
+request books the main `openalex` lane: 0.04 s apart with a key (25/s, under
+the free-key/prepaid 30; the tool cannot see an annual plan, so it assumes
+the free-key/prepaid tier), 0.11 s keyless (about 9/s, under 10). The docs
+say the heavy request types "have lower limits of their own", which the tool
+reads as limits that add to the main one: a semantic search also books
+`openalex-semantic` (1.1 s), and a search whose text carries more than 5
+upper-case `AND`/`OR`/`NOT` words also books `openalex-boolean` (0.22 s with a
+key, about 4.5/s under 5; 1.1 s keyless, under 1). Such a request books all
+its lanes in one step and leaves at a slot free on every one of them, so each
+lane's spacing holds for send times (a review probe on 2026-10-30 showed
+that booking them one after another let a main-lane backlog bunch sub-lane
+requests). The price is some idle main-lane capacity while a sub-lane
+request waits. The tier is read from `OPENALEX_API_KEY` when the adapter
+loads. Counting rule: whole upper-case words only, per the searching page
+(fetched 2026-10-30): "Use AND, OR, NOT (uppercase) for complex queries", so
+lower-case `and`/`or`/`not` are plain words. Two parts are DAAF's inference,
+because the docs do not address them: words inside quoted phrases are
+counted (conservative), and the text counted is the `search`/`search.*`
+parameters plus the whole `filter` value when any clause is on a `.search`
+field (the docs say "A comma in a search filter's text is part of the text",
+so a comma cannot hide operators). Code: `openalex.py` § CONTRACT and §
+RATE_LANES.
 
 Response headers (measured 2026-10-02 — **both** families are sent):
 `x-ratelimit-cost-usd`, `x-ratelimit-remaining-usd`, `x-ratelimit-limit-usd`,
@@ -69,6 +92,14 @@ MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
 
 ## Measured behavior
 
+- **Per-second gate** (re-measured 2026-10-30, tool 1.6.0, keyed; 7 free
+  `work <DOI>` lookups): every response carried the same nine
+  `x-ratelimit-*` headers as on 2026-10-02 (`-limit-usd 1`,
+  `-prepaid-remaining-usd 0`, `-cost-usd 0`, …) and **none states a
+  per-second limit or the plan tier**, so the gate's tier comes from key
+  presence, not from the API. Three processes started together queued on the
+  main lane (`rate_gate_wait_s` 0.0, 0.03, 0.07). Details: `api-notes.md` §
+  "Measured behavior: OpenAlex per-second gate (2026-10-30)".
 - **`search=` drifts** (2026-09-27): it matches full text and blends in
   citations; Chetty's teacher value-added paper ranked 4th for "school finance
   reform student outcomes". Hence keyword mode = `title_and_abstract.search` +
@@ -115,7 +146,12 @@ scholarly works, authors, venues, institutions, and concepts. arXiv:2205.01833.
 401/403 → 11 (check the key); 404 → 11 (`work`/`verify` record NOT FOUND);
 400 → 11 (bad filter — the message names the supported filters); 429 after
 retries → 11 (daily budget, or the per-second limit: 10/30/50 req/s by key
-tier, lower for searches with more than 5 boolean operators); gate queue too long → 12; network
+tier, lower for searches with more than 5 boolean operators; the gate spaces
+this container's requests under the keyless and free-key limits, so a
+per-second 429 most likely means other traffic on the same key or IP, an
+operator count the gate missed, or a server-side window stricter than even
+spacing, which the docs do not describe);
+gate queue too long → 12; network
 → 4; timeout → 6.
 
 ## Minimal smoke test

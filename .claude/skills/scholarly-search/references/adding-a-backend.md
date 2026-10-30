@@ -102,7 +102,10 @@ headers=None, lane=None, ok_statuses=(200,), idempotent=False,
 max_attempts=None, max_wait=GATE_DEFAULT_MAX_WAIT, penalize_429=None)`
 returns `(http_status, parsed)` (`parsed` is any JSON value, or None for an
 empty body), so an adapter can tell `202 Accepted` from `200`. `lane`
-overrides the rate lane (default: the backend name); `max_attempts` applies
+overrides the rate lane (default: the backend name); since tool 1.6.0 it may
+be a tuple of lanes, all booked in one step before the request leaves
+(OpenAlex passes zero, one or two sub-lanes, then its main lane; a lane
+without an interval is skipped; get() takes the same `lane`); `max_attempts` applies
 only to an idempotent POST; `max_wait` caps the rate-gate queue wait. It
 applies get()'s guards, with the secret guard covering the body too, logs the
 method and scrubbed body, and refuses a cross-origin POST redirect. **A

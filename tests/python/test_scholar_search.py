@@ -3381,7 +3381,7 @@ class ElicitTests(Base):
         self.assertEqual((elicit.NAME, elicit.KEY_ENV, elicit.REQUIRED_KEY, elicit.LICENSE_CLASS, elicit.DEFAULT_IN_FIND,
                           elicit.RATE_LIMIT, elicit.RETRY_POLICY, elicit.GET_KEY_URL),
                          ("elicit", "ELICIT_API_KEY", True, "restricted", False, {"elicit": 0.75},
-                          {"penalize_429_s": 300}, "https://elicit.com/developer"))
+                          {"penalize_429_s": 300}, "https://elicit.com/settings"))
         self.assertNotIn("elicit", scholar_search.selected_find_backends(types.SimpleNamespace(backends=None)))
 
     def test_usage_200_and_409(self):

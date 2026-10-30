@@ -243,7 +243,17 @@ from scholar_backends._common import (  # noqa: E402
 # `unknown` (or no status) closes nothing; a --new-session supersession takes
 # effect only if its own create may have started (outcome uncertain or
 # accepted, or an orphaned checkpoint), not when it ended "not started".
-TOOL_VERSION = "1.5.1-daaf"
+# 1.6.0 (2026-10-30, user decision): the OpenAlex main lane is gated by key
+# tier (keyed 0.04 s, keyless 0.11 s) instead of ungated, and a search with
+# more than 5 upper-case AND/OR/NOT operators also books the new
+# `openalex-boolean` lane (keyed 0.22 s, keyless 1.1 s). Http lanes may be a
+# tuple: a request with several gated lanes books one slot on all of them in
+# one locked step (reserve_lanes(); review fix: sequential booking let a
+# main-lane backlog bunch sub-lane requests); a single lane still uses
+# RateGate.reserve(). A 429 backoff pushes every lane of the request back. A
+# busy gate now records earlier attempts' waits in rate_gate_wait_s. Row
+# shapes are unchanged.
+TOOL_VERSION = "1.6.0-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -301,8 +311,13 @@ among between outcome outcomes research review toward towards via new
 """.split())
 
 # §§ RATE_LIMITS
-# Semantic Scholar: "1 request per second, cumulative across all endpoints"
-# per key (Ai2 key terms, 2026-09-27). OpenAlex semantic search: 1 req/s.
+# Semantic Scholar: 1 request per second per key across all endpoints (S2
+# tutorial, re-fetched 2026-10-28; the Ai2 key email per the user's 2026-09-27
+# notes). OpenAlex (docs, authentication page, fetched 2026-10-28): 10 req/s
+# keyless, 30 with a free key or prepaid usage, 50 annual; searches with more
+# than 5 OR/AND/NOT operators 1 / 5 / 25 req/s; semantic search 1 req/s. Every
+# OpenAlex request books the main "openalex" lane, gated by key tier since
+# 1.6.0 (scholar_backends/openalex.py § CONTRACT and § RATE_LANES).
 # Crossref public pool: 5 req/s, 1 concurrent. These limits belong to the KEY
 # (or IP), not to one process, so every scholar_search run books its slot
 # through a shared gate file; concurrent agents queue instead of colliding.
@@ -397,9 +412,10 @@ def gate_dir():
 
 
 class GateBusy(Exception):
-    def __init__(self, wait):
+    def __init__(self, wait, lane=None):
         super().__init__(f"queue {wait:.0f}s")
         self.wait = wait
+        self.lane = lane   # 1.6.0: set by reserve_lanes() (the lane whose queue was too long)
 
 
 class RateGate:
@@ -451,6 +467,69 @@ class RateGate:
 
     def penalize(self, seconds):
         self._update(lambda next_ok, now: (None, max(next_ok, now + seconds)))
+
+
+def reserve_lanes(named_gates, max_wait):
+    # INTENT (1.6.0, Phase 4 review W1): book ONE slot on every lane of a
+    #   multi-lane request in a single locked step, then sleep once, so the
+    #   request leaves at the time written into EVERY lane's marker. Booking
+    #   the lanes one after another (sub-lane, sleep, then main lane) let a
+    #   main-lane backlog release several sub-lane requests one main-lane
+    #   interval apart (review probes: 8 boolean-heavy requests within 0.32 s
+    #   against 5/s; two semantic searches 0.04 s apart against 1/s).
+    # REASONING: slot = max(now, every lane's marker), and every marker becomes
+    #   slot + that lane's own interval, so each lane's spacing holds for send
+    #   times. The busy check runs before any marker is written, so a refused
+    #   request books nothing on any lane. Locks are taken in sorted path order
+    #   and held only to read and write the markers, never while sleeping;
+    #   reserve() and penalize() hold one lock at a time, so no lock cycle can
+    #   form. Cost: while a request waits for a slower sub-lane, the main-lane
+    #   slot it will use stays idle (under-use only; review probe: main-lane
+    #   peak 20 per second instead of 26).
+    # ASSUMES: a lane named twice is booked once (a second flock on the same
+    #   file from this process would block on the first).
+    # Returns the seconds slept; raises GateBusy naming the lane that set the slot.
+    unique = {}
+    for name, gate in named_gates:
+        unique.setdefault(gate.path, (name, gate))
+    if len(unique) == 1:
+        ((name, gate),) = unique.values()
+        try:
+            return gate.reserve(max_wait)
+        except GateBusy as busy:
+            busy.lane = name
+            raise
+    held = []
+    try:
+        for path in sorted(unique):
+            name, gate = unique[path]
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+            held.append((name, gate, fd))
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        marks = []
+        for _, _, fd in held:
+            raw = os.read(fd, 64).decode("ascii", "ignore").strip()
+            try:
+                marks.append(float(raw) if raw else 0.0)
+            except ValueError:
+                marks.append(0.0)
+        now = time.time()
+        slot = max([now] + marks)
+        if slot - now > max_wait:
+            raise GateBusy(slot - now, held[marks.index(max(marks))][0])
+        for _, gate, fd in held:
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{slot + gate.interval:.3f}".encode("ascii"))
+    finally:
+        for _, _, fd in held:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+    delay = slot - time.time()
+    if delay > 0:
+        time.sleep(delay)
+        return delay
+    return 0.0
 
 
 # §§ HTTP_CLIENT
@@ -570,7 +649,20 @@ class Http:
 
     def _request(self, method, backend, url, params, headers, body, lane, want, max_attempts, max_wait,
                  ok_statuses, penalize_429, idempotent=True):
-        lane = lane or backend
+        # INTENT (1.6.0): `lane` is one lane name or a tuple of lane names. A
+        #   tuple with two or more gated lanes books one slot on ALL of them in
+        #   one step (reserve_lanes(): the slot is the latest of the lanes'
+        #   next free times, and every lane's marker moves to slot + its own
+        #   interval), so the request leaves at a time every lane booked and
+        #   each lane keeps its own spacing for send times. OpenAlex passes its
+        #   sub-lanes (semantic, boolean-heavy), if any, plus "openalex", so such
+        #   a search counts against its sub-lane's lower limit and the key's
+        #   per-second total on the main lane. A lane without an interval is
+        #   skipped.
+        # REASONING: a single gated lane (every other backend, and most OpenAlex
+        #   requests) goes through RateGate.reserve() exactly as before 1.6.0.
+        lanes = tuple(lane) if isinstance(lane, (tuple, list)) else (lane or backend,)
+        lane = "+".join(lanes)   # label for messages
         # REASONING: keys travel only in headers; a key VALUE showing up in the
         #   URL, params or a POST body means something upstream (a query, a
         #   template) is trying to carry it out — refuse before the request leaves.
@@ -590,20 +682,23 @@ class Http:
         mod = registry.BACKENDS.get(backend)
         if penalize_429 is None:
             penalize_429 = (getattr(mod, "RETRY_POLICY", None) or {}).get("penalize_429_s")
-        gate = RateGate(lane, GATE_INTERVALS[lane]) if lane in GATE_INTERVALS else None
+        gates = [(name, RateGate(name, GATE_INTERVALS[name])) for name in lanes if name in GATE_INTERVALS]
         extra = {"method": method, "body": scrub_body(body)} if method != "GET" else {}
         attempt, waited = 0, 0.0
         while True:
             attempt += 1
-            if gate:
+            booked = 0.0
+            if gates:
                 try:
-                    waited += gate.reserve(max_wait)
+                    booked = gates[0][1].reserve(max_wait) if len(gates) == 1 else reserve_lanes(gates, max_wait)
                 except GateBusy as busy:
-                    self.gate_skips.append({"lane": lane, "queue_s": round(busy.wait, 1)})
+                    self.gate_wait_s += waited   # earlier attempts' waits stay on the record
+                    self.gate_skips.append({"lane": busy.lane or gates[0][0], "queue_s": round(busy.wait, 1)})
                     raise BackendError(backend, "busy",
                                        f"{backend}: shared rate-limit queue is {busy.wait:.0f}s long "
                                        f"(> {max_wait:.0f}s max wait); skipped to stay within the "
                                        "backend's rate limit — retry later")
+            waited += booked
             try:
                 self.redirect_refused, self.redirect_refused_status = None, None
                 resp, chain, final_url, hop_statuses, final_method = self._send(backend, url, params, headers,
@@ -636,8 +731,10 @@ class Http:
             hops = ({"redirect_chain": chain, "redirect_statuses": hop_statuses, "final_url": final_url,
                      "final_method": final_method} if chain else {})
             if resp.status_code == 429 and penalize_429:
-                # No retry inside a declared block; the whole container waits it out.
-                RateGate(lane, GATE_INTERVALS.get(lane, 0.0)).penalize(float(penalize_429))
+                # No retry inside a declared block; the whole container waits it out
+                # (on every lane of the request; 1.6.0).
+                for gate_lane in lanes:
+                    RateGate(gate_lane, GATE_INTERVALS.get(gate_lane, 0.0)).penalize(float(penalize_429))
                 self.gate_wait_s += waited
                 self.log.append({"backend": backend, "endpoint": url, "params": log_params(params),
                                  "http_status": 429, "attempts": attempt, "retries": attempt - 1,
@@ -656,8 +753,9 @@ class Http:
                     delay = min(float(retry_after), BACKOFF_CAP)   # a hostile/huge value cannot stall us
                 else:
                     delay = min(2 ** attempt, BACKOFF_CAP) * random.uniform(0.8, 1.2)
-                if gate:
-                    gate.penalize(delay)
+                if gates:
+                    for _, gate in gates:
+                        gate.penalize(delay)
                 else:
                     time.sleep(delay)
                     waited += delay

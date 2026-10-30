@@ -105,6 +105,18 @@ Evidence locations:
   `…/scripts/26_check_elicit_openapi_status_codes.py`; unit-suite runs
   `…/scripts/28_run_scholar_search_suite_se_c.py` (245 tests) and
   `…/scripts/31_run_scholar_search_suite_sf_b.py` (248 tests) (execution logs appended).
+- 2026-10-30 (OpenAlex per-second gate, tool 1.6.0): a different maintainer-only workspace,
+  `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/`: live lookups
+  `lit_search/2026-10-30_openalex_gate/` (MANIFEST.jsonl, 8 rows, `DAAF_FETCH_CONTEXT="FrameworkDev
+  2026-10-30 OpenAlex gate SBM2 (free single-work lookups)"`), probe
+  `scripts/2026-10-30_openalex_gate_sbm2_live_lookups.py` and suite run
+  `scripts/2026-10-30_openalex_gate_run_scholar_suites.py` (execution logs appended); docs as
+  fetched 2026-10-28 under `output/preliminary_notes/web_fetches/batch8_R5B/`, and the
+  authentication and searching pages re-fetched 2026-10-30 under
+  `web_fetches/2026-10-30_openalex_docs/`; the review probes behind the one-step booking fix
+  under `probes/2026-10-30_phase4_openalex_quality_review/`,
+  `probes/2026-10-30_phase4_openalex_consistency_review/` and
+  `probes/2026-10-30_openalex_gate_cycle2/`.
 
 ## How far to trust the `verify` gate (standing summary, rules `2026-10-06f`)
 
@@ -143,6 +155,65 @@ depends on `verify`. What the calibration implies for use:
   word.
 - On `title:"…"`, a WEAK is "not verified", not "real but garbled": a
   fabricated title often lands on the real paper it imitated.
+
+## Measured behavior: OpenAlex per-second gate (2026-10-30)
+
+**Why.** The authentication page (fetched 2026-10-28, `…_0aebfa81.bin:86-94`)
+now gives per-second limits of 10 req/s keyless, 30 with a free key or
+prepaid usage, 50 on an annual plan, and for "searches with more than 5
+`OR`/`AND`/`NOT` operators" 1 / 5 / 25 req/s; the same page said 100 req/s on
+2026-10-02. The tool's main OpenAlex lane had been ungated since the 100 req/s
+days. User decision 2026-10-30: gate it, because several agents may search at
+once.
+
+**Tool 1.6.0.** Every OpenAlex request books the main `openalex` lane, 0.04 s
+apart with a key (25/s; the plan is not visible, so the free-key/prepaid tier
+is assumed), 0.11 s keyless (about 9/s). A semantic search also books
+`openalex-semantic` (1.1 s); a search with more than 5 upper-case
+`AND`/`OR`/`NOT` words (quoted phrases included) across its `search`/`search.*`
+parameters and `.search` filter clauses also books the new `openalex-boolean`
+lane (0.22 s keyed, 1.1 s keyless). The docs call these "lower limits of
+their own", read as limits that add to the main one. Counting rule: the
+upper-case requirement is the searching page's (fetched 2026-10-30): "Use
+AND, OR, NOT (uppercase) for complex queries". The page does not address
+whether a quoted operator counts or which parameters count, so counting
+quoted words and the `search`/`search.*` plus `.search`-filter text is DAAF's
+inference; because "A comma in a search filter's text is part of the text",
+the whole `filter` value is counted when any clause is a `.search` clause.
+**Booking (Phase 4 review fix, same day):** the first build booked each lane
+in turn and slept on it before booking the next, so under a main-lane
+backlog sub-lane requests left one main-lane interval apart (review probes:
+8 boolean-heavy requests within 0.32 s; two semantic searches 0.04 s apart).
+A multi-lane request now books every lane in one locked step: the slot is the
+latest of its lanes' next free times and each lane's marker moves to slot +
+its own interval. Single-lane requests are unchanged. Cost: idle main-lane
+capacity while a sub-lane request waits (review probe: main-lane peak 20 per
+second instead of 26). Unit suites: `test_scholar_search.py` 250 tests, OK (6
+expected failures), unchanged; `test_scholar_openalex_gate.py` 28 tests at
+first build, 34 after the review fix, all OK.
+
+**Live re-measure (keyed container; 7 free single-work lookups through the
+CLI, no search).** `work <DOI>` for 10.1093/qje/qjv036,
+10.1371/journal.pmed.0020124, 10.48550/arXiv.2205.01833 and
+10.1016/S0140-6736(97)11096-0 one after another, then the first three as
+three processes started together:
+- Every row: exit 0, `tool_version` 1.6.0-daaf, HTTP 200, request
+  `cost.cost_usd` 0.0 (the row-level `openalex_cost_usd` is null, which the
+  core writes when the spend is 0).
+- Rate headers on every response: `x-ratelimit-cost-usd 0`,
+  `-credits-used 0`, `-limit 10000`, `-limit-usd 1`, `-remaining 10000`,
+  `-remaining-usd 1`, `-reset 15139`→`15138`, `-onetime-remaining 0`,
+  `-prepaid-remaining-usd 0`. The same nine names as on 2026-10-02 (S1 row
+  3). **No header states a per-second limit or the plan tier**, so the gate
+  cannot read it from the API. `-limit-usd 1` and `-prepaid-remaining-usd 0`
+  match the documented free-key budget (inference: this container's key is a
+  free key, so the 30 req/s tier applies).
+- Cross-process gate: the three processes started together recorded
+  `rate_gate_wait_s` 0.0, 0.03 and 0.07, i.e. each queued about one 0.04 s
+  slot behind the one before. The sequential calls waited 0.0 (process start-up
+  is slower than the interval).
+- Not measured: keyless behavior (a key is set), any boolean-heavy search
+  (paid, $0.001), and the gate under real contention. No 429 was sought.
 
 ## Measured behavior: Elicit usage lag + S2 review fixes (2026-10-12)
 

@@ -20,6 +20,14 @@
 #   - Datasets ("Code for: …" ICPSR deposits) and paratext crowd out papers;
 #     excluded unless --all-types. `find` also drops dissertations by default
 #     (2026-09-27 cold test: 9 of the top 20 were theses).
+#   - Per-second limits (docs, authentication page, fetched 2026-10-28; the
+#     same page said 100 req/s on 2026-10-02): 10 req/s keyless, 30 with a
+#     free key or prepaid usage, 50 on an annual plan; searches with more than
+#     5 OR/AND/NOT operators 1 / 5 / 25 req/s; semantic search 1 req/s. Since
+#     tool 1.6.0 (user decision 2026-10-30) every request is gated
+#     container-wide by key tier (§§ RATE_LANES). Live re-measure 2026-10-30
+#     (free single-work lookups, keyed): see api-notes.md § "Measured
+#     behavior: OpenAlex per-second gate (2026-10-30)".
 # =============================================================================
 
 import difflib
@@ -35,17 +43,57 @@ LABEL = "OpenAlex"
 KEY_ENV = "OPENALEX_API_KEY"
 REQUIRED_KEY = False          # keyless works at $0.10/day (docs conflict; see api-notes.md)
 LICENSE_CLASS = "open"        # data is CC0 (help.openalex.org)
-# Lanes -> minimum spacing in seconds for the shared RateGate. None = no gate
-# (the 100 req/s account limit is far above what this tool sends).
-RATE_LIMIT = {"openalex": None, "openalex-semantic": 1.1}
-RATE_LIMIT_NOTE = "100 req/s per key; semantic search 1 req/s (gated 1.1 s); daily $ budget"
+# Rate lanes -> minimum spacing in seconds for the core's shared RateGate
+# (scholar_search.py §§ SHARED_RATE_GATE). EVERY OpenAlex request books the
+# main lane ("openalex"), so the main lane alone bounds the key's (or IP's)
+# per-second total; a semantic or boolean-heavy search also books its own
+# lane (lanes_for() below), in the same step as the main lane (core
+# reserve_lanes()), so each lane's spacing holds for the time the request is
+# sent. Documented limits: see the header.
+# REASONING (user decision 2026-10-30): several DAAF agents may search at
+#   once, so the per-second limit is enforced container-wide by the gate
+#   rather than left to 429 retries. The tool cannot see a key's plan, so a
+#   keyed container is gated for the free-key/prepaid tier (30 req/s,
+#   5 boolean-heavy) and a keyless one for 10 / 1, each with a
+#   margin: 0.04 s = 25/s and 0.22 s = ~4.5/s keyed; 0.11 s = ~9.1/s and
+#   1.1 s = ~0.9/s keyless. An annual-plan key (50 / 25) is under-used, not
+#   over-run.
+# ASSUMES: key presence is the same for every scholar_search process in the
+#   container (one environment, fixed at container start), so every process
+#   books the shared gate files with the same spacing. The tier is read once,
+#   when this module loads.
+MAIN_LANE = NAME
+SEMANTIC_LANE = "openalex-semantic"
+BOOLEAN_LANE = "openalex-boolean"
+SEMANTIC_INTERVAL = 1.1
+TIER_INTERVALS = {True: {MAIN_LANE: 0.04, BOOLEAN_LANE: 0.22},     # keyed (free key / prepaid tier)
+                  False: {MAIN_LANE: 0.11, BOOLEAN_LANE: 1.1}}     # keyless
+BOOLEAN_OPERATOR_MAX = 5      # docs: "more than 5 `OR`/`AND`/`NOT` operators" -> the lower limit
+
+
+def rate_limit(keyed):
+    # The RATE_LIMIT map for a key tier (keyed = OPENALEX_API_KEY set).
+    tier = TIER_INTERVALS[bool(keyed)]
+    return {MAIN_LANE: tier[MAIN_LANE], SEMANTIC_LANE: SEMANTIC_INTERVAL, BOOLEAN_LANE: tier[BOOLEAN_LANE]}
+
+
+def rate_limit_note(keyed):
+    tier = TIER_INTERVALS[bool(keyed)]
+    return (f"docs: 10 req/s keyless, 30 free key/prepaid, 50 annual; >5 OR/AND/NOT operators 1/5/25 req/s; "
+            f"semantic 1 req/s. Gated for this container ({'keyed' if keyed else 'keyless'}): every request "
+            f"{tier[MAIN_LANE]} s, boolean-heavy {tier[BOOLEAN_LANE]} s, semantic {SEMANTIC_INTERVAL} s; "
+            "daily $ budget")
+
+
+RATE_LIMIT = rate_limit(bool(key_value(KEY_ENV)))
+RATE_LIMIT_NOTE = rate_limit_note(bool(key_value(KEY_ENV)))
 CAPABILITIES = frozenset({"search", "lookup", "cites", "refs", "oa_locate", "fulltext", "retraction"})
 DEFAULT_IN_FIND = True
 FIND_LEGS = ("openalex_semantic", "openalex_keyword")   # leg names find_legs() returns
 COST_NOTE = "search/semantic $0.001, list+filter $0.0001, single lookup free, content download $0.01"
 ATTRIBUTION = ("Priem, J., Piwowar, H., & Orr, R. (2022). OpenAlex: A fully-open index of scholarly "
                "works, authors, venues, institutions, and concepts. arXiv:2205.01833")
-GET_KEY_URL = "https://openalex.org/settings/api"
+GET_KEY_URL = "https://openalex.org/settings/api-key"   # authentication page, fetched 2026-10-28
 
 API = "https://api.openalex.org"
 CONTENT = "https://content.openalex.org"
@@ -151,6 +199,70 @@ def to_record(w):
     )
 
 
+# §§ RATE_LANES
+# INTENT: pick the rate lanes a request books (RATE_LIMIT above). The docs'
+#   only words on these limits are "A few heavy request types have lower
+#   limits of their own: semantic search is 1 request per second, and
+#   searches with more than 5 OR/AND/NOT operators are limited to 1 (no key),
+#   5 (free key or prepaid usage) or 25 (annual plan) per second"
+#   (help.openalex.org/api/authentication, fetched 2026-10-28 and again
+#   2026-10-30). "Of their own" is read as a stricter limit that ADDS to the
+#   main per-second limit, so such a search books its sub-lane AND the main
+#   lane (the docs give no accounting rule beyond that phrase). They do not
+#   say how operators are counted.
+# Counting rule (DAAF's):
+#   - an operator is the whole word AND, OR or NOT in UPPER CASE; lower-case
+#     "and"/"or"/"not" are plain words. Docs: "Use AND, OR, NOT (uppercase)
+#     for complex queries" (help.openalex.org/api/searching, fetched
+#     2026-10-30);
+#   - INFERENCE (the docs do not address it): words inside double-quoted
+#     phrases ARE counted. The searching page treats a quoted phrase as text
+#     matched as typed, so a quoted "AND" may well be exempt; counting it is
+#     the conservative choice (over-counting only slows one request,
+#     under-counting risks a 429);
+#   - INFERENCE (the docs do not address it): the text counted is every
+#     `search` / `search.*` parameter and every `filter` clause whose field
+#     name contains ".search" (title_and_abstract.search, title.search,
+#     fulltext.search, …), summed over the request. When any filter clause
+#     is a .search clause, the WHOLE filter value is counted, because "A
+#     comma in a search filter's text is part of the text" (searching page,
+#     2026-10-30), so splitting on commas could hide operators that follow a
+#     comma. `|` alternation inside a filter value is not counted.
+BOOLEAN_OPERATOR_RE = re.compile(r"\b(?:AND|OR|NOT)\b")
+
+
+def search_texts(params):
+    # The free-text parts of a request's params (see the counting rule above).
+    out = []
+    for key, value in (params or {}).items():
+        if not isinstance(value, str):
+            continue
+        if key == "search" or key.startswith("search."):
+            out.append(value)
+        elif key == "filter":
+            # Whole value when any clause is a .search clause (a comma there is
+            # part of the text); non-search clauses add no operators in practice,
+            # and any they do add are over-counted, the safe direction.
+            if any(".search" in clause.partition(":")[0] for clause in value.split(",")):
+                out.append(value)
+    return out
+
+
+def boolean_operator_count(params):
+    return sum(len(BOOLEAN_OPERATOR_RE.findall(t)) for t in search_texts(params))
+
+
+def lanes_for(params, sub_lane=None):
+    # Returns the lanes a request books: its sub-lanes, if any, then the main
+    # lane. The core books them all in one step (scholar_search.py
+    # reserve_lanes()), so the order does not change the timing; the main lane
+    # stays last so the tuple reads as "sub-lanes + main lane".
+    lanes = [sub_lane] if sub_lane else []
+    if boolean_operator_count(params) > BOOLEAN_OPERATOR_MAX:
+        lanes.append(BOOLEAN_LANE)
+    return tuple(lanes) + (MAIN_LANE,)
+
+
 # §§ REQUEST_BUILDERS
 def filter_value(text):
     # Filter values are comma-separated in OpenAlex, so commas in free text
@@ -182,27 +294,29 @@ def search(http, query, mode, limit, years=None, extra_filter=None, sort=None, a
         params["search.semantic"] = query[:2000]
         params["per_page"] = min(limit, SEMANTIC_MAX)
         f = join_filters(year_filter(years), extra_filter)
-        lane = "openalex-semantic"
+        sub_lane = SEMANTIC_LANE
     elif mode == "keyword":
         f = join_filters(f"title_and_abstract.search:{filter_value(query)}",
                          year_filter(years), extra_filter)
         params["sort"] = sort or "relevance_score:desc"
         params["per_page"] = min(limit, PER_PAGE_MAX)
-        lane = "openalex"
+        sub_lane = None
     elif mode == "broad":
         params["search"] = query
         f = join_filters(year_filter(years), extra_filter)
         params["per_page"] = min(limit, PER_PAGE_MAX)
-        lane = "openalex"
+        sub_lane = None
     else:  # filter-only
         f = join_filters(year_filter(years), extra_filter)
         params["per_page"] = min(limit, PER_PAGE_MAX)
-        lane = "openalex"
+        sub_lane = None
     if f:
         params["filter"] = f
     if sort and mode != "keyword":
         params["sort"] = sort
-    parsed = http.get(NAME, f"{API}/works", params, auth_headers(), lane=lane)
+    # 1.6.0: the lanes are chosen from the FINAL params, so a boolean-heavy
+    # --filter on any mode is counted too.
+    parsed = http.get(NAME, f"{API}/works", params, auth_headers(), lane=lanes_for(params, sub_lane))
     results = parsed.get("results") or []
     total = (parsed.get("meta") or {}).get("count")
     return [to_record(w) for w in results if isinstance(w, dict)], total
@@ -220,7 +334,7 @@ def find_legs(http, a, keywords, ctx):
 def title_candidates(http, title, per_page=10, extra_select=""):
     params = {"filter": f"title.search:{filter_value(title)}", "per_page": per_page,
               "select": SELECT + extra_select}
-    parsed = http.get(NAME, f"{API}/works", params, auth_headers())
+    parsed = http.get(NAME, f"{API}/works", params, auth_headers(), lane=lanes_for(params))
     return parsed.get("results") or []
 
 

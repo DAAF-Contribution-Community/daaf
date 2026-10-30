@@ -97,9 +97,10 @@ Scite, any harder notice wins (`updated` > `commented`).
 `LICENSE_CLASS = "restricted"` (user decision D-4, 2026-10-11, "accepted for
 now"). Every endpoint, keyless included, is "subject to the Scite Terms of
 Use" (OpenAPI header of the Papers/Tallies reference). Quoted from
-https://scite.ai/terms (fetched 2026-10-11; a re-fetch on 2026-10-28
-answered HTTP 403, so these quotes were not re-checked against the live
-page):
+https://scite.ai/terms (fetched 2026-10-11). Re-fetches on 2026-10-28 and
+2026-10-30 answered HTTP 403; a copy the user took from the live page on
+2026-10-30 matches the 2026-10-11 text word for word, and every quote below
+was re-checked against it (the page shows no "last updated" date):
 - §8: "you agree not to: (a) retrieve Articles, Classifier Results or AI
   Content in bulk or systematically beyond what is reasonably needed for your
   own research use; (b) store, redistribute, sell, license or otherwise make
