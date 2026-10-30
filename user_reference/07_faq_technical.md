@@ -245,7 +245,7 @@ You're always in control. If DAAF is heading in a direction you didn't intend:
 - **Say "stop"** or "that's not what I meant" -- DAAF will pause and ask for clarification
 - **Type `/clear`** to start completely fresh if things have gone off the rails
 
-Remember: DAAF always presents a mode confirmation and research plan for your approval before doing substantial work. If something is happening you didn't approve, it's likely a continuation of a previously-approved step.
+Remember: DAAF always asks you to confirm the mode -- how it will work -- before doing anything. In the larger modes it then reads whatever you pointed it to and shows you a scope check -- what exactly it plans to do, and what your materials changed -- for your approval before substantial work begins (and in a Full Pipeline you approve the research plan, too). If something is happening you didn't approve, it's likely a continuation of a previously-approved step.
 
 ---
 
@@ -483,7 +483,7 @@ Yes — through a supported route we've built carefully; because it's a newer ro
 
 **Setup, in brief** (full step-by-step in the [installation guide](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend)):
 
-- The pinned **Codex CLI ships in every DAAF image**; confirm with `codex --version` inside the container (expect `0.153.2`). Its presence does not change the default provider or activate this lane. `DAAF_DEV=1` is only for contributor/testing tools and is not required merely to obtain Codex or log in.
+- The pinned **Codex CLI ships in every DAAF image**; confirm with `codex --version` inside the container (expect `0.164.0`). Its presence does not change the default provider or activate this lane. `DAAF_DEV=1` is only for contributor/testing tools and is not required merely to obtain Codex or log in.
 - **Enable device-code login in your ChatGPT security settings first.** This toggle is **off by default** and is the most common thing to miss — the login fails immediately without it.
 - Log in with `codex login --device-auth` inside the container — that exact flag (`codex auth` does not exist, and bare `codex login` uses a browser loopback that cannot complete headless). It prints a URL + one-time code you approve on any device (laptop/phone); no in-container browser or port forwarding. `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
 - Explicitly set `DAAF_PROVIDER_SHIM=openai`, `SHIM_BACKEND_MODE=chatgpt`, and exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines), then recreate the container with **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`) and start a new Claude Code session. If this turns the shim on for the first time, choose **Rebuild Container** instead, as for the API-key lane. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential. Confirm the lane is live in the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): it shows `backend_mode=chatgpt` and healthy `200`s.
@@ -651,15 +651,23 @@ Then start a new session. At user scope, Claude Code also moves the already-sync
 
 Because the container's environment is defined entirely by its Dockerfile, and anything installed at runtime disappears the next time the image is rebuilt — which makes analyses hard to reproduce. To keep the environment reproducible, DAAF blocks runtime package installs in **both** languages — Python (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv`/`uvx`, `conda install`, etc.) and R (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — and it blocks them whether typed at the command line or written inside a script (`run_with_capture.sh` scans the script body before executing it); read-only inspection like `pip list`, `pip show`, and R's `installed.packages()` still works. If you genuinely need a new package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. See [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the rebuild procedure.
 
+### Q: Where do Claude Code's temporary files and "scratchpad" live in DAAF?
+
+Inside your research data volume, in the top-level folder `/daaf/claude-code-tmp/`. Claude Code keeps its own temporary files (including a per-session "scratchpad" folder its built-in instructions tell it to use) under `/tmp` by default, which is outside DAAF's backup and audit trail and is wiped when the container is recreated. DAAF's `docker-compose.yml` sets `CLAUDE_CODE_TMPDIR` so they land in the volume instead (plus a few socket files in its `cc-socks/` subfolder, which backups skip). That folder belongs to Claude Code, which deletes a session's scratchpad together with its transcript after a while (30 days by default), so DAAF never keeps project work there: your files go in your project folder, and working files in its `scripts/scratch/`. There is one exception. When you point DAAF to a web page, a paper or other material at the start of a task, it reads that material before it shows you its scope check (its proposal of what the work will cover). If a folder for the task already exists at that moment (for example when you're revising an earlier project), the downloaded copies go straight into it, alongside the original work and without changing it. If no folder exists yet, they wait in the scratchpad. When you confirm the scope, DAAF moves them into the new project folder, and nothing it writes cites the scratchpad copy. If you decline, or the work never needed a project folder (a quick data lookup, a read-only data exploration, or a question about DAAF), the copies stay in the scratchpad and are deleted with it.
+
+**To confirm it is working,** in a DAAF session ask Claude to run `echo $CLAUDE_CODE_TMPDIR` (it should print exactly `/daaf/claude-code-tmp`) and `echo "${TMPDIR-unset}"` (it should print `unset`: DAAF leaves `TMPDIR` alone), or ask which scratchpad directory its environment lists (it should start with `/daaf/claude-code-tmp/`). Nothing new should appear under `/tmp/claude-1000/`. If the scratchpad path still starts with `/tmp/`, the container was started from an older `docker-compose.yml`: rebuild it (`bash rebuild_daaf.sh` from your `daaf-docker` folder).
+
+**Running Claude Code outside the container?** Set the variable in the shell before you launch it: `export CLAUDE_CODE_TMPDIR=<your DAAF folder>/claude-code-tmp`, then run `claude`. Putting it in the project's `.claude/settings.json` does not work: since Claude Code 2.1.251 a project's settings file can no longer set this variable (your user settings or managed settings still can, according to Claude Code's documentation).
+
 ---
 
 ### Q: Why are the notebook and log viewer ports bound to localhost only?
 
-DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook), 2719 (session log viewer), and 2720 (code-server browser editor) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks and code-server are **interactive**, so an unauthenticated server exposed to your local network would allow anyone on that network to execute arbitrary code inside your container.
+DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook), 2719 (session log viewer), and 2720 (code-server browser editor) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks and code-server are **interactive** (each can run code inside your container), and the log viewer serves your whole `/daaf` folder, so none of them should be reachable from other devices on your network.
 
-With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN. code-server additionally requires a password for defense-in-depth.
+With localhost binding, the ports are only reachable from your own machine, not from other devices on your WiFi or LAN. Each server also has its own protection, because a web page open in your own browser can still reach a localhost port: Marimo requires an access token that is new every time the notebook server starts (the link DAAF prints carries it), code-server requires a password (the published default `daaf` unless you set your own in `environment_settings.txt`; see the installation guide's code-server section), and the log viewer answers only requests addressed to `localhost`, `127.0.0.1` or `[::1]`.
 
-**If you need to revert this** (e.g., WSL2 port forwarding issues, or you need to access from another device on a trusted network), edit the `ports:` section in `docker-compose.yml` to remove the `127.0.0.1:` prefix:
+**If you need to revert this** (e.g., WSL2 port forwarding issues, or you need to access from another device on a trusted network), edit the `ports:` section in `docker-compose.yml` to remove the `127.0.0.1:` prefix. This works for Marimo and code-server only. The **log viewer is localhost-only by design**: a browser on another device addresses it by your computer's network name or IP address, and the log viewer refuses such requests with a 403 error, even with the port opened. For Marimo, open the tokenized link (`http://<your computer's address>:2718/?access_token=...`, with the token from the link DAAF prints) rather than the bare address:
 
 ```yaml
 # Localhost only (default, more secure):
@@ -712,7 +720,7 @@ No. DAAF requires an active internet connection for two reasons: Claude Code com
 
 Just ask! DAAF has a dedicated **User Support** mode for questions about the framework itself and the tools it runs on (Docker, Git, Claude Code) -- what it is, how it works, which mode fits your needs, how to troubleshoot setup or tool issues, or how to get the most out of the system. Simply type a question like "What is DAAF?", "How do engagement modes work?", "Something's not working right," "How do I give Docker more memory?", or "Help me understand the pipeline" and DAAF will recognize it as a User Support request. It can also look up official documentation for Docker, Git, and Claude Code online when needed.
 
-In User Support mode, DAAF loads its own documentation and responds conversationally -- no subagents, no formal outputs, no workspace creation. It's just a helpful conversation. When your questions naturally evolve into wanting to *do* something (run an analysis, look up data, debug a script), DAAF will suggest switching to the appropriate mode.
+In User Support mode, DAAF loads its own documentation and responds conversationally -- normally no subagents, no formal outputs, no workspace creation. It's just a helpful conversation. When your questions naturally evolve into wanting to *do* something (run an analysis, look up data, debug a script), DAAF will suggest switching to the appropriate mode.
 
 For self-guided reading, the full user documentation suite is in `user_reference/`:
 - [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) covers modes, architecture, and what to expect
@@ -752,7 +760,7 @@ Runtime installs are a different story. DAAF's agents are **blocked** from runti
 
 ### Q: Will rebuilding DAAF later give me exactly the same environment?
 
-Yes, for everything the Dockerfile freezes, and that is nearly everything. The Dockerfile ties the build to one **environment date**: the Ubuntu base image is pinned by digest, every Python package (dependencies of dependencies included) resolves as of that date through uv's `UV_EXCLUDE_NEWER` cutoff, and every system package comes from an Ubuntu snapshot of that date. R packages come from their own date-pinned P3M snapshot. A rebuild next year therefore installs the same versions as one today. The exceptions are tools pinned only by an exact version number (Quarto, code-server, Claude Code, and similar), plus a few residual risks covered in the guide.
+Yes, for everything the Dockerfile freezes, and that is nearly everything. The Dockerfile ties the build to one **environment date**: the Ubuntu base image is pinned by digest, every Python package (dependencies of dependencies included) resolves as of that date through uv's `UV_EXCLUDE_NEWER` cutoff, and every system package comes from a dated Ubuntu snapshot, normally of that same date. R packages come from their own date-pinned P3M snapshot. A rebuild next year therefore installs the same versions as one today. The exceptions are tools pinned only by an exact version number (Quarto, code-server, Claude Code, and similar), a few dated security exceptions (currently the `certifi` and Pillow packages and the Ubuntu snapshot, which runs one month ahead of the Python date; each is still fixed, just to a later date), plus a few residual risks covered in the guide.
 
 The flip side: a package or version released *after* the environment date can't be installed as-is. uv then reports `No solution found` without mentioning the date, which can look as if the version doesn't exist. See [**04. Extending DAAF -- How DAAF Freezes the Environment**](04_extending_daaf.md#how-daaf-freezes-the-environment-reproducible-rebuilds) for how to exempt one package, how to bump the date, the two-year snapshot retention window, and the current Apple Silicon caveat.
 
@@ -1084,7 +1092,9 @@ When more than 50% of your data is suppressed, any statistical analysis on the r
 
 ### Q: The notebook won't render in my browser
 
-The easiest way to view notebooks is the **DAAF Control Panel**: run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **4) View Marimo Notebooks (Python)**. (The same convenience script runs directly as `bash view_notebooks.sh` / `.\view_notebooks.ps1`.) This handles container startup, port binding, and flag configuration automatically, and includes built-in port conflict detection.
+The easiest way to view notebooks is the **DAAF Control Panel**: run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **4) View Marimo Notebooks (Python)**, which starts the notebook server in the background and opens it in your browser. (You can also run `bash view_notebooks.sh` / `.\view_notebooks.ps1` directly; that script runs the server in its own window until you press Ctrl+C.) Both handle container startup, port binding, and flag configuration automatically, and include built-in port conflict detection.
+
+**The browser shows a marimo page asking for a token or password.** The notebook browser requires an access token, new each time the server starts, and the link DAAF prints carries it (`http://localhost:2718/?access_token=...`). Option 4 also opens that link for you; `view_notebooks` opens it only when a notebook server was already running, and otherwise prints it for you to open. A bookmarked or old link has a stale token: choose option 4 again (or rerun `view_notebooks`) to reopen it with the current one. If the script says the running server was started *without* a token by an older DAAF version, stop it with **12) Stop Web Services** and open the notebooks again.
 
 If you're using the manual `marimo run` command and can't see anything at `http://localhost:2718`, check these things in order:
 
@@ -1206,6 +1216,10 @@ DAAF has extensive curated knowledge about its supported data sources, stored in
 4. Report persistent loading failures by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- patterns of failure help us improve DAAF's loading reliability.
 
 For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Loading](03_best_practices.md#monitoring-daafs-internal-reference-loading).
+
+### Q: I saw "Subagents should return findings as text, not write report files…" / a specialist returned its report inline
+
+This message comes from Claude Code itself, not from DAAF. On the Claude Code version DAAF pins (2.1.281, observed 2026-10-19), a specialist (subagent) cannot use its Write tool to save a Markdown file whose name starts with "report", "summary", "findings" or "analysis". DAAF names its files to avoid this, so you should rarely see it. When it does happen, the specialist either saves the file under a slightly changed name (for example with a date in front) and says so, or hands the full text back so DAAF saves it for you. Either way the content is kept; if a file name changed, the specialist's summary says so. You don't need to do anything.
 
 ### Q: How can I tell whether a problem comes from DAAF or from Claude Code itself?
 
