@@ -227,7 +227,8 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
 | In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
-| In-container bats/Pester runs: set `TMPDIR` to a project scratch dir (no `/tmp` fixtures; self-cleaning teardown) | `./references/testing.md` |
+| In-container bats/Pester runs: set `TMPDIR` to the workspace's `scripts/scratch/tmp` (no `/tmp` fixtures; self-cleaning teardown) | `./references/testing.md` |
+| In-container temp directories: `mktemp -d` with an in-project template, never the `/tmp` default; host scripts may use the system temp dir | `./references/bash-standards.md` |
 | Safety-hook regression batteries (`test_safety_hooks.sh`, `test_enforce_single_command.sh`) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
