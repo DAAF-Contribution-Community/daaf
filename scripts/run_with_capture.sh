@@ -128,18 +128,51 @@ fi
 # classify the file as binary and print no matching lines, and both scans
 # would silently pass. Scan tokens are extension-specific: R is
 # case-sensitive so its tokens match case-sensitively (fewer false positives);
-# Python tokens match case-insensitively and cover the common string call forms
-# (os.system/subprocess("pip install ..."), pipx/uv subcommands) and the
-# subprocess-LIST forms (["pip","install",...], ["uv","add",...],
-# ["pipx","install",...]). ACCEPTED RESIDUALS (Python): exotic forms are not
-# decoded — a package name built by variable interpolation or string-join, an
-# importlib/__import__("pip")._internal call, uv/pipx spelled via an absolute
-# path or a shell-var indirection, or an install verb split across list elements
-# with unusual whitespace. These mirror the shell-hook §8 residual class and are
-# accepted (the hook and, for coding agents, enforce-file-first.sh remain in
-# depth behind this scan).
+# Python tokens match case-insensitively and cover package installs AND
+# removals, in the common string call forms (os.system/subprocess("pip install
+# ..."), shlex.split("uv pip uninstall ...")) and the subprocess-LIST forms
+# (["pip","uninstall",...], [sys.executable,"-m","pip","install",...],
+# ["uv","pip","sync",...], ["uv","remove",...], ["pipx","install",...],
+# ["conda","remove",...]). In the pip and uv list forms, quoted flag elements
+# (`"-q"`, `"--quiet"`) between the command and its verb are skipped, as §8
+# skips `-` options (["uv","pip","-q","sync",...], ["pip","-q","install",...]).
+# Mutating verbs, close to the bash-safety.sh §8 lists (§8 also has pipx runpip
+# and conda update/create; this scan adds uv tool uninstall|upgrade): pip/pip3
+# install|uninstall (this also catches `python -m pip ...` and `uv pip
+# install|uninstall`), pipx install|uninstall|run, uv pip
+# install|uninstall|sync (sync can remove packages), uv add|remove|sync, uv
+# tool install|uninstall|upgrade|run, easy_install, conda
+# install|remove|uninstall. Read-only uv pip subcommands (compile, list,
+# freeze, show, tree, check) are deliberately NOT tokens, in string or list
+# form; the list form ["uv","tool",...] stays refused for every subcommand.
+# ACCEPTED FALSE POSITIVE (Python, fail-closed): a line whose string literal
+# merely HOLDS install-command text it never runs (e.g. a test fixture holding a
+# Dockerfile `RUN uv pip install ...` line) is refused, because a line grep
+# cannot tell a literal from a call. Workaround: keep such text in a non-.py
+# data file the script reads.
+# ACCEPTED RESIDUALS (Python): exotic forms are not decoded — a verb or
+# command built by interpolation, concatenation or join ("uv pip " +
+# "install"), an importlib/__import__("pip")._internal call, uv/pipx spelled
+# via an absolute path or a shell-var indirection, a versioned pip3.N, a
+# list verb held in a variable (["uv","pip",verb]), list concatenation
+# (["uv","pip"] + ["install", ...]), a flag whose value is a separate element
+# before the verb (["uv","pip","--python","3.12","install"]), or a list whose
+# elements sit on separate lines or have unusual whitespace. Forms
+# §8 blocks at the command line but this scan does not token (uvx, `uv run
+# --with`, conda update/create) are residuals too. These mirror the
+# shell-hook §8 residual class and are accepted (the hook and, for coding
+# agents, enforce-file-first.sh remain in depth behind this scan).
 if [ "$EXT" = "py" ]; then
-    SCAN_TOKENS="pip3? install|pip3?['\"], *['\"]install|pipx (install|run)|pipx['\"], *['\"](install|run)|uv (pip install|add|sync|tool install)|uv['\"], *['\"](add|sync|pip|tool)|easy_install|conda install"
+    # The Python SCAN_TOKENS is the four PY_*_TOKENS alternations joined with
+    # `|`; PY_LIST_FLAGS (zero or more quoted `-...` list elements) is spliced
+    # into the pip and uv list terms (reproducibility-verification-mode.md
+    # RV-P1 step 7 greps with SCAN_TOKENS).
+    PY_LIST_FLAGS="(['\"], *['\"]-[^'\"]*)*"
+    PY_PIP_TOKENS="pip3? (install|uninstall)|pip3?${PY_LIST_FLAGS}['\"], *['\"](install|uninstall)"
+    PY_PIPX_TOKENS="pipx (install|uninstall|run)|pipx['\"], *['\"](install|uninstall|run)"
+    PY_UV_TOKENS="uv (pip (install|uninstall|sync)|add|remove|sync|tool (install|uninstall|upgrade|run))|uv${PY_LIST_FLAGS}['\"], *['\"]pip${PY_LIST_FLAGS}['\"], *['\"](install|uninstall|sync)|uv${PY_LIST_FLAGS}['\"], *['\"](add|remove|sync|tool)"
+    PY_OTHER_TOKENS="easy_install|conda (install|remove|uninstall)|conda['\"], *['\"](install|remove|uninstall)"
+    SCAN_TOKENS="${PY_PIP_TOKENS}|${PY_PIPX_TOKENS}|${PY_UV_TOKENS}|${PY_OTHER_TOKENS}"
     INSTALL_HITS=$(grep -ainE "$SCAN_TOKENS" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
 else
     SCAN_TOKENS='install\.packages\(|update\.packages\(|remove\.packages\(|remotes::install_|devtools::install_|install_(github|gitlab|bitbucket|cran|version|local|url|git|svn|bioc|dev)\(|pak::(pak|pkg_install)\(|pkg_install\(|renv::(install|restore|update|rebuild)\(|BiocManager::install\(|biocLite\('

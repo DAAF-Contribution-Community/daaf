@@ -13,6 +13,9 @@
 # 2026-09-27: os.environ.items()/values() refused only with a sink or as a
 # loop header (W1, env-scrubbing allow test), NUL-byte case for both scans
 # (N1, grep -a), marker text names the three real carriers (N2).
+# 2026-10-30: Python package REMOVAL forms (string and list) are refused;
+# read-only uv pip subcommands in list form are allowed; the string-literal
+# false positive is pinned as refused.
 #
 # SCRIPT UNDER TEST is parameterized: RUN_WITH_CAPTURE_SH defaults to the
 # in-repo wrapper but can be pointed at a draft copy for pre-deployment testing.
@@ -94,6 +97,219 @@ setup() {
     assert_output --partial "runtime package install detected"
     run grep -q "^# EXECUTION LOG" "$f"
     assert_failure
+}
+
+# --- Block: Python package REMOVAL and other mutating verbs (2026-10-30) -----
+# Removal was never caught on the Python side (the R side always blocked
+# remove.packages()). Each case below writes a two-line fixture whose second
+# line holds the form under test; it must be refused with exit 3, the line
+# number cited, and no log appended.
+
+@test "blocks .py string form: os.system pip uninstall" {
+    local f="${BATS_TEST_TMPDIR}/rm_01.py"
+    printf '%s\n' 'import os' 'os.system("pip uninstall -y requests")' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "2:os.system"
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_failure
+}
+
+@test "blocks .py string form: subprocess shell=True pip3 uninstall" {
+    local f="${BATS_TEST_TMPDIR}/rm_02.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run("pip3 uninstall -y requests", shell=True)' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "runtime package install detected"
+}
+
+@test "blocks .py string form: python -m pip uninstall" {
+    local f="${BATS_TEST_TMPDIR}/rm_03.py"
+    printf '%s\n' 'import os' 'os.system("python -m pip uninstall -y requests")' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py string form: python3 -m pip uninstall" {
+    local f="${BATS_TEST_TMPDIR}/rm_04.py"
+    printf '%s\n' 'import os' 'os.system("python3 -m pip uninstall -y requests")' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py string form: uv pip uninstall" {
+    local f="${BATS_TEST_TMPDIR}/rm_05.py"
+    printf '%s\n' 'import os' 'os.system("uv pip uninstall -y pillow")' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py string form: shlex.split uv pip sync (sync can remove packages)" {
+    local f="${BATS_TEST_TMPDIR}/rm_06.py"
+    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip sync requirements.txt"))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py string form: uv remove" {
+    local f="${BATS_TEST_TMPDIR}/rm_07.py"
+    printf '%s\n' 'import os' 'os.system("uv remove httpx")' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py string form: pipx uninstall, uv tool uninstall, conda remove" {
+    local f n=0
+    for form in 'os.system("pipx uninstall black")' 'os.system("uv tool uninstall ruff")' 'os.system("conda remove -y numpy")'; do
+        n=$((n + 1))
+        f="${BATS_TEST_TMPDIR}/rm_08_${n}.py"
+        printf '%s\n' 'import os' "$form" > "$f"
+        run bash "$RUN_WITH_CAPTURE_SH" "$f"
+        echo "form: $form -> status $status"
+        [ "$status" -eq 3 ]
+    done
+}
+
+@test "blocks .py list form: [\"pip\", \"uninstall\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_09.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["pip", "uninstall", "-y", "requests"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_failure
+}
+
+@test "blocks .py list form: [sys.executable, \"-m\", \"pip\", \"uninstall\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_10.py"
+    printf '%s\n' 'import subprocess, sys' 'subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "requests"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form: [\"uv\", \"pip\", \"uninstall\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_11.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "uninstall", "pillow"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form: [\"uv\", \"pip\", \"sync\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_12.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "sync", "requirements.txt"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form: [\"uv\", \"remove\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_13.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "remove", "httpx"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form: [\"uv\", \"pip\", \"install\", ...] (narrowed list rule still refuses install)" {
+    local f="${BATS_TEST_TMPDIR}/rm_14.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "install", "pillow"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form with a flag before the verb: [\"uv\", \"pip\", \"--quiet\", \"install\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_14b.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "--quiet", "install", "pillow"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form with a flag before the verb: [\"uv\", \"pip\", \"-q\", \"sync\", ...]" {
+    local f="${BATS_TEST_TMPDIR}/rm_14c.py"
+    printf '%s\n' 'import subprocess' 'subprocess.run(["uv", "pip", "-q", "sync", "requirements.txt"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+}
+
+@test "blocks .py list form with flags before the verb: [\"pip\", \"-q\", \"install\"] and [\"uv\", \"--quiet\", \"remove\"]" {
+    local f n=0
+    for form in 'subprocess.run(["pip", "-q", "install", "httpx"])' 'subprocess.run(["uv", "--quiet", "remove", "httpx"])'; do
+        n=$((n + 1))
+        f="${BATS_TEST_TMPDIR}/rm_14d_${n}.py"
+        printf '%s\n' 'import subprocess' "$form" > "$f"
+        run bash "$RUN_WITH_CAPTURE_SH" "$f"
+        echo "form: $form -> status $status"
+        [ "$status" -eq 3 ]
+    done
+}
+
+@test "blocks .py list form: [\"conda\", \"remove\", ...] and [\"conda\", \"install\", ...]" {
+    local f n=0
+    for form in 'subprocess.run(["conda", "remove", "x"])' 'subprocess.run(["conda", "install", "x"])'; do
+        n=$((n + 1))
+        f="${BATS_TEST_TMPDIR}/rm_14e_${n}.py"
+        printf '%s\n' 'import subprocess' "$form" > "$f"
+        run bash "$RUN_WITH_CAPTURE_SH" "$f"
+        echo "form: $form -> status $status"
+        [ "$status" -eq 3 ]
+    done
+}
+
+@test "blocks .py string form: shlex.split(\"uv pip install pillow\") (regression, CVE session)" {
+    local f="${BATS_TEST_TMPDIR}/rm_15.py"
+    printf '%s\n' 'import shlex, subprocess' 'subprocess.run(shlex.split("uv pip install pillow"))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "2:subprocess.run(shlex.split"
+}
+
+@test "refuses .py whose string literal merely holds install text (documented fail-closed false positive)" {
+    # A line grep cannot tell a literal from a call. Pinned so a change to this
+    # behaviour is deliberate; the header comment documents the workaround
+    # (keep such text in a non-.py data file the script reads).
+    local f="${BATS_TEST_TMPDIR}/rm_16.py"
+    printf '%s\n' 'EXPECTED_LINE = "RUN uv pip install --system pillow==13.0.0"' 'print(len(EXPECTED_LINE))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_failure
+}
+
+# --- Allow: read-only uv pip subcommands (2026-10-30) ------------------------
+# The old list rule refused ANY ["uv","pip",...]. Only the mutating verbs are
+# tokens now. The fixtures hold the command as data and never run uv: the scan
+# is a line grep, so a list literal tests the same thing as a call.
+
+@test "allows .py list form: [\"uv\", \"pip\", compile|list|freeze|show|tree|check] (executes, log appended)" {
+    if ! command -v python3 >/dev/null 2>&1; then skip "python3 not available"; fi
+    local f
+    for sub in compile list freeze show tree check; do
+        f="${BATS_TEST_TMPDIR}/ro_${sub}.py"
+        printf '%s\n' "cmd = [\"uv\", \"pip\", \"${sub}\", \"requirements.in\"]" 'print("argc", len(cmd))' > "$f"
+        run bash "$RUN_WITH_CAPTURE_SH" "$f"
+        echo "subcommand: $sub -> status $status"
+        assert_success
+        run grep -q "^# EXECUTION LOG" "$f"
+        assert_success
+    done
+}
+
+@test "allows .py list form with a flag before a read-only verb: [\"uv\", \"pip\", \"-q\", \"list\"] (executes)" {
+    if ! command -v python3 >/dev/null 2>&1; then skip "python3 not available"; fi
+    local f="${BATS_TEST_TMPDIR}/ro_flag_list.py"
+    printf '%s\n' 'cmd = ["uv", "pip", "-q", "list"]' 'print("argc", len(cmd))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    assert_success
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_success
+}
+
+@test "allows .py string form: shlex.split(\"uv pip compile ...\") (CVE session form, executes)" {
+    if ! command -v python3 >/dev/null 2>&1; then skip "python3 not available"; fi
+    local f="${BATS_TEST_TMPDIR}/ro_shlex_compile.py"
+    printf '%s\n' 'import shlex' 'cmd = shlex.split("uv pip compile req.in --universal --exclude-newer 2026-09-24T13:20:00Z -o req.txt")' 'print("argc", len(cmd))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    assert_success
+    assert_output --partial "argc"
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_success
 }
 
 # --- Allow: token appears ONLY on a full-line comment -----------------------
