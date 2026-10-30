@@ -1076,7 +1076,12 @@ EOF
 
 @test "Dockerfile installs Codex in every image while developer tools remain opt-in" {
     # Match active ARG directives only; comments cannot satisfy either assertion.
-    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.153\.2[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.164\.0[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    # Each architecture's tarball is checksum-pinned (64 lowercase hex digits).
+    run grep -E '^ARG CODEX_SHA256_AMD64=[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^ARG CODEX_SHA256_ARM64=[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
     assert_success
     run grep -E '^[[:space:]]*ARG DAAF_DEV_CODEX_VERSION([=[:space:]]|$)' "${REPO_ROOT}/Dockerfile"
     assert_failure
@@ -1093,6 +1098,16 @@ EOF
     refute_output --partial 'if [ "${DAAF_DEV}" = "1" ]'
     assert_output --partial 'CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz"'
     assert_output --partial 'https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_TGZ}'
+    # The download is verified before extraction, selecting the arch's hash.
+    assert_output --partial 'amd64) CODEX_TRIPLE=x86_64; CODEX_SHA256="${CODEX_SHA256_AMD64}" ;;'
+    assert_output --partial 'arm64) CODEX_TRIPLE=aarch64; CODEX_SHA256="${CODEX_SHA256_ARM64}" ;;'
+    assert_output --partial '&& echo "${CODEX_SHA256}  /tmp/${CODEX_TGZ}" | sha256sum -c - \'
+    local verify_line extract_line
+    verify_line=$(printf '%s\n' "${output}" | grep -n -F 'sha256sum -c -' | cut -d: -f1)
+    extract_line=$(printf '%s\n' "${output}" | grep -n -F 'tar zxf "/tmp/${CODEX_TGZ}"' | cut -d: -f1)
+    [ -n "${verify_line}" ]
+    [ -n "${extract_line}" ]
+    [ "${verify_line}" -lt "${extract_line}" ]
     assert_output --partial 'mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex'
     assert_output --partial 'chmod +x /usr/local/bin/codex'
     assert_output --partial 'rm -f "/tmp/${CODEX_TGZ}"'
@@ -1120,7 +1135,7 @@ EOF
     assert_failure
 }
 
-@test "Dockerfile freezes the build to one environment date (digests, uv cutoff, apt snapshot)" {
+@test "Dockerfile freezes the build to its environment dates (digests, uv cutoff, apt snapshot same or later)" {
     # Base image: digest-pinned via a pre-FROM ARG, and the only FROM is that ARG.
     run grep -E '^ARG UBUNTU_BASE_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
     assert_success
@@ -1141,12 +1156,21 @@ EOF
     run grep -E '^ENV UV_EXCLUDE_NEWER=\$\{UV_EXCLUDE_NEWER\}$' "${REPO_ROOT}/Dockerfile"
     assert_success
 
-    # apt snapshot ID, and it must name the SAME instant as the uv cutoff.
+    # apt snapshot ID: the SAME instant as the uv cutoff by default, or LATER
+    # during a dated security exception listed in the Dockerfile banner (now
+    # exception (3), since 2026-10-28: 20261024T000000Z for Ubuntu's
+    # poppler/ca-certificates/openssl fixes, while the Python date stays;
+    # remove this note when the exception retires, Dockerfile banner RETIRING
+    # THEM). Never earlier: that would freeze apt before the Python date. Both
+    # IDs are fixed-width UTC (YYYYMMDDTHHMMSSZ), so a string comparison orders
+    # them. The next test fails a silent divergence.
     run grep -E '^ARG UBUNTU_SNAPSHOT=[0-9]{8}T[0-9]{6}Z$' "${REPO_ROOT}/Dockerfile"
     assert_success
     local snapshot_id="${output#ARG UBUNTU_SNAPSHOT=}"
     local cutoff_compact="${uv_cutoff//[-:]/}"
-    [ "${cutoff_compact}" = "${snapshot_id}" ]
+    [ "${#cutoff_compact}" -eq "${#snapshot_id}" ]
+    run bash -c '[[ "$1" == "$2" || "$1" > "$2" ]]' _ "${snapshot_id}" "${cutoff_compact}"
+    assert_success
 
     # apt is frozen by DIRECT snapshot URIs (architecture-independent), not by
     # apt's Snapshot: field / APT::Snapshot (shadowed live-archive fetches, or a
@@ -1185,4 +1209,41 @@ EOF
     run bash -c "grep -E '^[^#]*daaf-apt-update( |;|\$)' '${REPO_ROOT}/Dockerfile' | grep -vc '^COPY '"
     assert_success
     [ "${output}" -eq 9 ]
+}
+
+@test "Dockerfile banner states both frozen dates and names an apt snapshot that runs ahead" {
+    # The ENVIRONMENT DATE banner lists the values a rebuild reproduces; they
+    # must match the active ARGs. When UBUNTU_SNAPSHOT differs from the uv
+    # cutoff (allowed only as a dated security exception, see the test above),
+    # the banner's SECURITY EXCEPTIONS list must name that exception and the
+    # snapshot ID, so a divergence cannot happen silently. When the two are
+    # one instant again, the list must no longer describe that exception, so
+    # a retirement that leaves the text behind fails too (banner, RETIRING
+    # THEM). Both phrases are matched on the list with comment markers and
+    # line breaks squeezed to single spaces, so re-wrapping the comment does
+    # not matter; the exact wording is a contract with the banner.
+    local uv_cutoff snapshot_id
+    uv_cutoff="$(sed -n 's/^ARG UV_EXCLUDE_NEWER=//p' "${REPO_ROOT}/Dockerfile")"
+    snapshot_id="$(sed -n 's/^ARG UBUNTU_SNAPSHOT=//p' "${REPO_ROOT}/Dockerfile")"
+    [ -n "${uv_cutoff}" ]
+    [ -n "${snapshot_id}" ]
+
+    # Banner value lines (comments before the first FROM).
+    run awk '/^FROM / { exit } { print }' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local banner="${output}"
+    grep -qE "^#   UV_EXCLUDE_NEWER +${uv_cutoff}( |\$)" <<< "${banner}"
+    grep -qE "^#   UBUNTU_SNAPSHOT +${snapshot_id}( |\$)" <<< "${banner}"
+
+    run awk '/^# SECURITY EXCEPTIONS/ { on = 1 } /^# BUMPING:/ { on = 0 } on { print }' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local flat
+    flat="$(tr -s ' #\n' ' ' <<< "${output}")"
+    if [ "${uv_cutoff//[-:]/}" != "${snapshot_id}" ]; then
+        [[ "${flat}" == *"apt snapshot ahead of UV_EXCLUDE_NEWER"* ]]
+        # The exception names the ID it allows.
+        [[ "${flat}" == *"UBUNTU_SNAPSHOT is ${snapshot_id}"* ]]
+    else
+        [[ "${flat}" != *"apt snapshot ahead of UV_EXCLUDE_NEWER"* ]]
+    fi
 }
