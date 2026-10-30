@@ -31,6 +31,7 @@
       "Bash(chmod +x *)",
       "Bash(cd *)",
       "Bash(head *)",
+      "Bash(tail *)",
       "Bash(wc -l *)",
       "Bash(file *)",
       "Bash(git --version)",
@@ -102,6 +103,12 @@
       "Edit(//home/appuser/.claude/**/*.jsonl)",
       "Edit(/research/*/logs/**)",
       "Edit(//tmp/**)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git -C * push)",
+      "Bash(git -C * push *)"
     ]
   },
   "env": {

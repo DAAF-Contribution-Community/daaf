@@ -221,6 +221,27 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     assert_success
 }
 
+@test "settings permissions: git push is an ask rule, never allow-listed" {
+    # Auto mode runs a plain `git push` to the working repository without a
+    # prompt unless an ask rule names it (permission-modes docs), which would
+    # contradict CLAUDE.md § Repository & Remote Safety. The `git -C <dir>`
+    # forms need their own rules: the permissions docs state `Bash(git push *)`
+    # does not match `git -C . push`. No allow rule may start with `Bash(git -C`
+    # either: a wildcard such as `Bash(git -C * *)` would cover push too (today
+    # the allow list has no -C form at all; a read-only one would need this
+    # check narrowed on purpose). Static contract only: it proves the strings
+    # are present, not how the matcher applies them.
+    run jq -e '
+        . as $settings
+        | (["Bash(git push)", "Bash(git push *)",
+            "Bash(git -C * push)", "Bash(git -C * push *)"]
+           | all(. as $rule | ($settings.permissions.ask // []) | index($rule) != null))
+        and ([($settings.permissions.allow // [])[]
+              | select(startswith("Bash(git push") or startswith("Bash(git -C"))] | length == 0)
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
 @test "settings permissions: attribution is never the boolean form" {
     # Claude Code 2.1.281 added "attribution": false, but older CLIs (including
     # the rollback target) skip a settings file that holds the boolean form,
