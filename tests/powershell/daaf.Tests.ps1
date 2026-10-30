@@ -1169,13 +1169,42 @@ Describe "daaf.ps1 behavioral tests" {
             Mock docker {
                 $global:LASTEXITCODE = 0
                 if (($args -join ' ') -like "*discover_log_sources.sh*") { "ARCHIVE|3" }
+                # launch_marimo.sh --print-token answers with the running server's token.
+                if (($args -join ' ') -like "*launch_marimo.sh --print-token*") { "feedc0de42" }
             }
             Mock Read-DaafLine { "1" }
         }
 
-        It "Invoke-DaafNotebookBrowser opens the notebook URL on the DaafPortMarimo host port" {
+        It "Invoke-DaafNotebookBrowser opens the tokenized notebook URL on the DaafPortMarimo host port" {
             Invoke-DaafNotebookBrowser 6>$null
+            Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3718/?access_token=feedc0de42" }
+        }
+
+        It "Invoke-DaafNotebookBrowser asks for the token over a TTY-less exec (-T)" {
+            Invoke-DaafNotebookBrowser 6>$null
+            Should -Invoke docker -ParameterFilter { ($args -join ' ') -eq 'compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token' }
+        }
+
+        It "Invoke-DaafNotebookBrowser refuses to open an older --no-token server (print-token exit 5)" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 5 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
+            Should -Invoke Open-DaafUrl -Times 0 -Exactly
+            $out | Should -BeLike "*without an access token*"
+            $out | Should -BeLike "*12) Stop Web Services*"
+        }
+
+        It "Invoke-DaafNotebookBrowser names an unknown token (print-token exit 6) and opens nothing" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 6 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
+            Should -Invoke Open-DaafUrl -Times 0 -Exactly
+            $out | Should -BeLike "*access token is unknown*"
+        }
+
+        It "Invoke-DaafNotebookBrowser falls back to the bare URL with a hint when no token is readable yet" {
+            Mock docker { $global:LASTEXITCODE = 0; if (($args -join ' ') -like "*--print-token*") { $global:LASTEXITCODE = 4 } }
+            $out = Invoke-DaafNotebookBrowser 6>&1 | Out-String
             Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3718" }
+            $out | Should -BeLike "*If the browser asks for an access token, choose 4 again*"
         }
 
         It "Invoke-DaafVSCode opens the VS Code URL on the DaafPortVscode host port" {
@@ -1186,6 +1215,62 @@ Describe "daaf.ps1 behavioral tests" {
         It "Invoke-DaafLogViewer opens the viewer URL on the DaafPortLogViewer host port" {
             Invoke-DaafLogViewer 6>$null
             Should -Invoke Open-DaafUrl -Times 1 -Exactly -ParameterFilter { $Url -eq "http://localhost:3719/scripts/log_viewer.html?manifest=.claude/logs/sessions/session_manifest.json" }
+        }
+
+        # User report 2026-10-30: with Marimo on host port 3718, option 12 listed it
+        # as "port 2718", the fixed container-side port. The probes stay on the
+        # container ports (this mock answers only those); the list shows host ports.
+        It "Invoke-DaafServiceStop lists running services on the host ports while probing the container ports" {
+            Mock Test-DaafPort { $Port -in @("2718", "2719", "2720") }
+            Mock Read-DaafLine { "0" }
+            $out = Invoke-DaafServiceStop 6>&1 | Out-String
+            $out | Should -BeLike "*Running services*"
+            $out | Should -BeLike "*Notebooks    localhost:3718*"
+            $out | Should -BeLike "*Log Viewer   localhost:3719*"
+            $out | Should -BeLike "*VS Code      localhost:3720*"
+            $out | Should -Not -BeLike "*2718*"
+            $out | Should -Not -BeLike "*2719*"
+            $out | Should -Not -BeLike "*2720*"
+            foreach ($p in @("2718", "2719", "2720")) {
+                Should -Invoke Test-DaafPort -Times 1 -Exactly -ParameterFilter { $Port -eq $p }
+            }
+            Should -Invoke docker -Times 0 -Exactly
+        }
+
+        It "Invoke-DaafServiceStop 'Stop all' sends a payload on the container ports that names each service, matching daaf.sh" {
+            Mock Test-DaafPort { $Port -eq "2718" }
+            Mock Read-DaafLine { "1" }
+            $global:DaafTestStopArgs = $null
+            Mock docker { $global:LASTEXITCODE = 0; $global:DaafTestStopArgs = @($args) }
+            try {
+                Invoke-DaafServiceStop 6>$null
+                $global:DaafTestStopArgs | Should -Not -BeNullOrEmpty
+                ($global:DaafTestStopArgs[0..5] -join ' ') | Should -Be 'compose exec -T daaf-docker bash -c'
+                $payload = [System.Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($global:DaafTestStopArgs[-1]))
+            } finally {
+                Remove-Variable -Name DaafTestStopArgs -Scope Global -ErrorAction SilentlyContinue
+            }
+            $payload | Should -BeLike '*for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do*'
+            $payload | Should -BeLike '*echo "    Stopped $name (PID $pid)"*'
+            $payload | Should -BeLike '*echo "    Could not stop $name (PID $pid)"*'
+            $payload | Should -Not -BeLike '*on port $port*'
+
+            # The payload is documented as VERBATIM from daaf.sh handle_stop_services:
+            # compare line by line (trimmed), undoing bash's '\'' quote escapes.
+            $shContent = Get-Content "$RepoRoot/scripts/host/daaf.sh" -Raw
+            $m = [regex]::Match($shContent, "(?s)local stop_script='(.*?)\r?\n        '\r?\n")
+            $m.Success | Should -BeTrue
+            $shLines = @(($m.Groups[1].Value -replace "'\\''", "'") -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            $psLines = @($payload -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            ($psLines -join "`n") | Should -BeExactly ($shLines -join "`n")
+        }
+
+        It "Show-DaafHelp names the host-published VS Code and notebook ports" {
+            $out = Show-DaafHelp 6>&1 | Out-String
+            $out | Should -BeLike "*Open code-server (port 3720)*"
+            $out | Should -BeLike "*Open the marimo notebook browser (port 3718)*"
+            $out | Should -Not -BeLike "*port 2718*"
+            $out | Should -Not -BeLike "*port 2720*"
         }
     }
 
@@ -1449,6 +1534,45 @@ Describe "daaf.ps1 dry-run mode" {
         # HSM5: the dry-run restart path creates nothing in the working folder.
         $after = @(Get-ChildItem -Force -Path $script:TestDir | ForEach-Object { $_.Name } | Sort-Object)
         ($after -join '|') | Should -BeExactly ($before -join '|')
+    }
+
+    It "lists a running service under option 12 on the host port from environment_settings.txt (end to end)" {
+        # User report 2026-10-30, the full path (twin of the daaf.bats end-to-end
+        # test): the loader reads DAAF_PORT_MARIMO, Initialize-DaafPortDisplay
+        # derives the display port, and option 12 lists the notebook server there.
+        # Dry run: Test-DaafPort answers from DAAF_MOCK_PORTS (container ports).
+        $startDir = Join-Path $TestDrive ("stop-" + [guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $startDir
+        New-FakeComposeFile -Directory $startDir
+        Set-Content -LiteralPath (Join-Path $startDir "environment_settings.txt") -Value "DAAF_PORT_MARIMO=3718"
+        $origMockPorts = $env:DAAF_MOCK_PORTS
+        $origPortMarimo = $env:DAAF_PORT_MARIMO
+        Push-Location $startDir
+        try {
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_MOCK_PORTS = "2718:yes"
+            Remove-Item Env:DAAF_PORT_MARIMO -ErrorAction SilentlyContinue
+            Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+            $psExe = (Get-Process -Id $PID).Path
+            $output = @("12", "0", "q") | & $psExe -NoProfile -File "$RepoRoot/scripts/host/daaf.ps1" 2>&1 | Out-String
+            $output | Should -BeLike "*Running services*"
+            # Assert on option 12's own list only (from "Running services:" to
+            # "1) Stop all"): the dry-run status dashboard prints the same
+            # "Notebooks    localhost:3718" text, so a whole-output match would also
+            # pass if the list itself regressed to localhost:2718.
+            $listStart = $output.IndexOf("Running services:")
+            $listEnd = $output.IndexOf("1) Stop all", $listStart)
+            $listEnd | Should -BeGreaterThan $listStart
+            $list = $output.Substring($listStart, $listEnd - $listStart)
+            $list | Should -BeLike "*Notebooks    localhost:3718*"
+            $list | Should -Not -BeLike "*2718*"
+            $output | Should -Not -BeLike "*port 2718*"
+            $output | Should -BeLike "*Goodbye!*"
+        } finally {
+            Pop-Location
+            $env:DAAF_MOCK_PORTS = $origMockPorts
+            $env:DAAF_PORT_MARIMO = $origPortMarimo
+        }
     }
 
     It "exits 1 with the same two-line message as daaf.sh when environment_settings.txt is unreadable at startup" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows -or ((& id -u) -eq '0')) {

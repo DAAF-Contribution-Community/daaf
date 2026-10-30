@@ -80,6 +80,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             *"compose exec"*"git"*"log"*) echo "2026-06-21" ;;
             *"compose exec"*"git"*"branch"*) echo "main" ;;
             *"compose exec"*"git"*"rev-list"*) echo "0" ;;
+            *"compose exec"*"--print-token"*) echo "dryruntoken" ;;
             *"compose exec -d"*) return 0 ;;
             *"compose exec"*) echo "[DRY-RUN] docker $*" >&2; return 0 ;;
             *) echo "[DRY-RUN] docker $*" >&2; return 0 ;;
@@ -419,9 +420,36 @@ handle_notebooks() {
         fi
     fi
 
+    # marimo requires the access token launch_marimo.sh generates for each launch,
+    # so ask the running server for it (--print-token). Its stdout carries only
+    # the token, which stays in a local variable and is never written to a file or
+    # log. -T: no TTY, so the captured value has no CR. Exit 5: an older
+    # launcher's server without a token; 6: started outside the launcher, token
+    # unknown; anything else (4 = not listening yet): fall back to the bare URL.
+    local token="" token_rc=0
+    token=$(docker compose exec -T daaf-docker \
+        bash /daaf/scripts/launch_marimo.sh --print-token </dev/null 2>/dev/null) || token_rc=$?
+    token="$(printf '%s' "$token" | tr -d '\r\n')"
+
     # Browser URL uses the HOST-published port (PANEL_PORT_MARIMO); the container
     # port probed above stays fixed at 2718.
     local url="http://localhost:${PANEL_PORT_MARIMO}"
+    if [ "$token_rc" -eq 0 ] && [[ "$token" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        url="${url}/?access_token=${token}"
+    elif [ "$token_rc" -eq 5 ]; then
+        echo "  ${YELLOW}The running notebook server was started by an older DAAF launcher${RESET}"
+        echo "  ${YELLOW}without an access token, so any web page open in your browser could reach it.${RESET}"
+        echo "  Stop it with 12) Stop Web Services, then choose 4 again to restart it with a token."
+        return
+    elif [ "$token_rc" -eq 6 ]; then
+        echo "  ${YELLOW}The running notebook server was not started by DAAF's launcher, so its${RESET}"
+        echo "  ${YELLOW}access token is unknown.${RESET} Use the link printed when it started, or stop it"
+        echo "  with 12) Stop Web Services and choose 4 again."
+        return
+    else
+        echo "  If the browser asks for an access token, choose 4 again in a moment to"
+        echo "  reopen the notebooks with the token."
+    fi
     echo ""
     echo "  ${CYAN}${url}${RESET}"
     echo ""
@@ -989,6 +1017,10 @@ handle_stop_services() {
     local vscode_running=false
     local logs_running=false
 
+    # Two ports per service: check_port and the stop payload below run INSIDE the
+    # container, so they use the fixed container ports 2718/2719/2720; the list
+    # shows the HOST-published PANEL_PORT_* the user opens, like the status
+    # dashboard (a remapped DAAF_PORT_MARIMO=3718 was listed as "port 2718").
     if check_port 2718; then marimo_running=true; svc_running=true; fi
     if check_port 2719; then logs_running=true; svc_running=true; fi
     if check_port 2720; then vscode_running=true; svc_running=true; fi
@@ -1000,13 +1032,13 @@ handle_stop_services() {
 
     echo "  Running services:"
     if [ "$marimo_running" = true ]; then
-        echo "    ${GREEN}*${RESET} Notebooks    (port 2718)"
+        echo "    ${GREEN}*${RESET} Notebooks    localhost:${PANEL_PORT_MARIMO}"
     fi
     if [ "$logs_running" = true ]; then
-        echo "    ${GREEN}*${RESET} Log Viewer   (port 2719)"
+        echo "    ${GREEN}*${RESET} Log Viewer   localhost:${PANEL_PORT_LOGVIEWER}"
     fi
     if [ "$vscode_running" = true ]; then
-        echo "    ${GREEN}*${RESET} VS Code      (port 2720)"
+        echo "    ${GREEN}*${RESET} VS Code      localhost:${PANEL_PORT_VSCODE}"
     fi
     echo ""
     echo "    1) Stop all"
@@ -1022,8 +1054,12 @@ handle_stop_services() {
         # /proc/*/fd (socket symlink) -> PID, then kill it. `ss` is not present
         # in the image, so we reuse the /proc pattern from generate_log_viewer.sh.
         # Surface stderr (do NOT discard) so container-side failures are visible.
+        # Each result line names the service, not $port: $port is the container
+        # port, which differs from the host port the user knows when remapped.
         local stop_script='
-            for port in 2718 2719 2720; do
+            for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do
+                port=${svc%%:*}
+                name=${svc#*:}
                 ph=$(printf "%04X" "$port")
                 inode=$(awk -v ph="$ph" '\''$2 ~ ":"ph"$" && $4 == "0A" {print $10}'\'' \
                     /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -1)
@@ -1035,9 +1071,9 @@ handle_stop_services() {
                     ""|*[!0-9]*) continue ;;
                 esac
                 if kill "$pid" 2>/dev/null; then
-                    echo "    Stopped service on port $port (PID $pid)"
+                    echo "    Stopped $name (PID $pid)"
                 else
-                    echo "    Could not stop service on port $port (PID $pid)"
+                    echo "    Could not stop $name (PID $pid)"
                 fi
             done
         '
@@ -1065,7 +1101,7 @@ handle_help() {
     echo "     container. Type /exit within Claude to return to this menu."
     echo ""
     echo "  ${CYAN}2) Browse Files (VS Code)${RESET}"
-    echo "     Open code-server (port 2720) for browser-based file browsing"
+    echo "     Open code-server (port ${PANEL_PORT_VSCODE}) for browser-based file browsing"
     echo "     and editing. Useful for reviewing scripts and data files."
     echo ""
     echo "  ${CYAN}3) View Session Logs${RESET}"
@@ -1073,7 +1109,7 @@ handle_help() {
     echo "     Select a project or the full archive to view logs."
     echo ""
     echo "  ${CYAN}4) View Marimo Notebooks (Python)${RESET}"
-    echo "     Open the marimo notebook browser (port 2718). Browse, open,"
+    echo "     Open the marimo notebook browser (port ${PANEL_PORT_MARIMO}). Browse, open,"
     echo "     create, and edit research notebooks across all projects."
     echo ""
     echo "  ${CYAN}5) View Quarto Notebooks (R)${RESET}"

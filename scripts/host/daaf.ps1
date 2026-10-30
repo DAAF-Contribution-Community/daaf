@@ -97,6 +97,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*compose exec*git*log*" { Write-Output "2026-06-21" }
             "*compose exec*git*branch*" { Write-Output "main" }
             "*compose exec*git*rev-list*" { Write-Output "0" }
+            "*compose exec*--print-token*" { Write-Output "dryruntoken"; return }
             "*compose exec -d*" { return }
             "*compose exec*" { return }
             default { Write-Host "[DRY-RUN] docker $argStr"; return }
@@ -633,9 +634,42 @@ function Invoke-DaafNotebookBrowser {
         }
     }
 
+    # marimo requires the access token launch_marimo.sh generates for each launch,
+    # so ask the running server for it (--print-token). Its stdout carries only the
+    # token, which stays in a local variable and is never written to a file or log.
+    # -T: no TTY, so the captured value has no CR. Stdout only (2>$null): the exit
+    # code, not a stderr line, decides. Exit 5: an older launcher's server without a
+    # token; 6: started outside the launcher, token unknown; anything else (4 = not
+    # listening yet): fall back to the bare URL. Parity with daaf.sh handle_notebooks.
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $tokenOutput = docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token 2>$null
+        $tokenExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    $token = ($tokenOutput | Out-String) -replace '\s', ''
+
     # Browser URL uses the HOST-published port ($DaafPortMarimo); the container
     # port probed above stays fixed at 2718.
     $url = "http://localhost:$DaafPortMarimo"
+    if ($tokenExit -eq 0 -and $token -match '^[A-Za-z0-9_-]+$') {
+        $url = "$url/?access_token=$token"
+    } elseif ($tokenExit -eq 5) {
+        Write-Host "  The running notebook server was started by an older DAAF launcher" -ForegroundColor Yellow
+        Write-Host "  without an access token, so any web page open in your browser could reach it." -ForegroundColor Yellow
+        Write-Host "  Stop it with 12) Stop Web Services, then choose 4 again to restart it with a token."
+        return
+    } elseif ($tokenExit -eq 6) {
+        Write-Host "  The running notebook server was not started by DAAF's launcher, so its" -ForegroundColor Yellow
+        Write-Host "  access token is unknown. Use the link printed when it started, or stop it" -ForegroundColor Yellow
+        Write-Host "  with 12) Stop Web Services and choose 4 again."
+        return
+    } else {
+        Write-Host "  If the browser asks for an access token, choose 4 again in a moment to"
+        Write-Host "  reopen the notebooks with the token."
+    }
     Write-Host ""
     Write-Host "  $url" -ForegroundColor Cyan
     Write-Host ""
@@ -1322,6 +1356,10 @@ function Invoke-DaafRestart {
 function Invoke-DaafServiceStop {
     Write-Host ""
 
+    # Two ports per service: Test-DaafPort and the stop payload below run INSIDE
+    # the container, so they use the fixed container ports 2718/2719/2720; the
+    # list shows the HOST-published $DaafPort* the user opens, like the status
+    # dashboard (a remapped DAAF_PORT_MARIMO=3718 was listed as "port 2718").
     $marimoRunning = Test-DaafPort 2718
     $logsRunning   = Test-DaafPort 2719
     $vscodeRunning = Test-DaafPort 2720
@@ -1334,13 +1372,13 @@ function Invoke-DaafServiceStop {
 
     Write-Host "  Running services:"
     if ($marimoRunning) {
-        Write-Host "    " -NoNewline; Write-Host "* Notebooks    (port 2718)" -ForegroundColor Green
+        Write-Host "    " -NoNewline; Write-Host "* Notebooks    localhost:$DaafPortMarimo" -ForegroundColor Green
     }
     if ($logsRunning) {
-        Write-Host "    " -NoNewline; Write-Host "* Log Viewer   (port 2719)" -ForegroundColor Green
+        Write-Host "    " -NoNewline; Write-Host "* Log Viewer   localhost:$DaafPortLogViewer" -ForegroundColor Green
     }
     if ($vscodeRunning) {
-        Write-Host "    " -NoNewline; Write-Host "* VS Code      (port 2720)" -ForegroundColor Green
+        Write-Host "    " -NoNewline; Write-Host "* VS Code      localhost:$DaafPortVscode" -ForegroundColor Green
     }
     Write-Host ""
     Write-Host "    1) Stop all"
@@ -1369,8 +1407,12 @@ function Invoke-DaafServiceStop {
         # and the PS-pipeline -> docker.exe npipe stdin wiring is unreliable. The
         # b64 token is [A-Za-z0-9+/=] only, so PS 5.1's arg marshalling cannot
         # damage it. See the fully annotated Test-DaafPort note in daaf_lib.ps1.
+        # Each result line names the service, not $port: $port is the container
+        # port, which differs from the host port the user knows when remapped.
         $stopScript = @'
-            for port in 2718 2719 2720; do
+            for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do
+                port=${svc%%:*}
+                name=${svc#*:}
                 ph=$(printf "%04X" "$port")
                 inode=$(awk -v ph="$ph" '$2 ~ ":"ph"$" && $4 == "0A" {print $10}' \
                     /proc/net/tcp /proc/net/tcp6 2>/dev/null | head -1)
@@ -1382,9 +1424,9 @@ function Invoke-DaafServiceStop {
                     ""|*[!0-9]*) continue ;;
                 esac
                 if kill "$pid" 2>/dev/null; then
-                    echo "    Stopped service on port $port (PID $pid)"
+                    echo "    Stopped $name (PID $pid)"
                 else
-                    echo "    Could not stop service on port $port (PID $pid)"
+                    echo "    Could not stop $name (PID $pid)"
                 fi
             done
 '@
@@ -1427,7 +1469,7 @@ function Show-DaafHelp {
     Write-Host "     container. Type /exit within Claude to return to this menu."
     Write-Host ""
     Write-Host "  2) Browse Files (VS Code)" -ForegroundColor Cyan
-    Write-Host "     Open code-server (port 2720) for browser-based file browsing"
+    Write-Host "     Open code-server (port $DaafPortVscode) for browser-based file browsing"
     Write-Host "     and editing. Useful for reviewing scripts and data files."
     Write-Host ""
     Write-Host "  3) View Session Logs" -ForegroundColor Cyan
@@ -1435,7 +1477,7 @@ function Show-DaafHelp {
     Write-Host "     Select a project or the full archive to view logs."
     Write-Host ""
     Write-Host "  4) View Marimo Notebooks (Python)" -ForegroundColor Cyan
-    Write-Host "     Open the marimo notebook browser (port 2718). Browse, open,"
+    Write-Host "     Open the marimo notebook browser (port $DaafPortMarimo). Browse, open,"
     Write-Host "     create, and edit research notebooks across all projects."
     Write-Host ""
     Write-Host "  5) View Quarto Notebooks (R)" -ForegroundColor Cyan

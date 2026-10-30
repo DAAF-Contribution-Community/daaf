@@ -694,11 +694,72 @@ teardown() {
     # to the container port 2718 fails here. The container-side probe stays 2718.
     PANEL_PORT_MARIMO=3718
     mock_port_check "2718:yes"
+    # launch_marimo.sh --print-token answers with the running server's token.
+    MOCK_DOCKER_EXEC_OUTPUT="feedc0de42"
 
     run handle_notebooks
     assert_success
-    assert_output --partial "http://localhost:3718"
+    assert_output --partial "http://localhost:3718/?access_token=feedc0de42"
     refute_output --partial "localhost:2718"
+}
+
+@test "handle_notebooks asks launch_marimo.sh --print-token for the token over a TTY-less exec" {
+    run grep -A1 'docker compose exec -T daaf-docker' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_output --partial "launch_marimo.sh --print-token"
+}
+
+@test "handle_notebooks refuses to open an older --no-token server (print-token exit 5)" {
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 5 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "without an access token"
+    assert_output --partial "12) Stop Web Services"
+    refute_output --partial "http://localhost:"
+}
+
+@test "handle_notebooks names an unknown token (print-token exit 6) and opens nothing" {
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 6 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "access token is unknown"
+    refute_output --partial "http://localhost:"
+}
+
+@test "handle_notebooks falls back to the bare URL with a hint when no token is readable yet" {
+    PANEL_PORT_MARIMO=3718
+    mock_port_check "2718:yes"
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            *"--print-token"*) return 4 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run handle_notebooks
+    assert_success
+    assert_output --partial "If the browser asks for an access token, choose 4 again"
+    assert_output --partial "http://localhost:3718"
+    refute_output --partial "access_token="
 }
 
 @test "handle_vscode skips start when service already running" {
@@ -767,6 +828,74 @@ teardown() {
     assert_output --partial "Running services"
 }
 
+@test "handle_stop_services lists running services on their HOST-published ports" {
+    # User report 2026-10-30: with Marimo published on host port 3718
+    # (DAAF_PORT_MARIMO), option 12 listed it as "port 2718", the fixed
+    # container-side port. The probes must stay on the container ports (the mock
+    # answers only 2718/2719/2720, so probing 3718 would find nothing), and the
+    # listing must show the host ports the user opens, like the status dashboard.
+    PANEL_PORT_MARIMO=3718
+    PANEL_PORT_LOGVIEWER=3719
+    PANEL_PORT_VSCODE=3720
+    mock_port_check "2718:yes 2719:yes 2720:yes"
+
+    run handle_stop_services <<< "0"
+    assert_success
+    assert_output --partial "Running services"
+    assert_output --partial "Notebooks    localhost:3718"
+    assert_output --partial "Log Viewer   localhost:3719"
+    assert_output --partial "VS Code      localhost:3720"
+    refute_output --partial "2718"
+    refute_output --partial "2719"
+    refute_output --partial "2720"
+}
+
+@test "handle_stop_services 'Stop all' stops the container ports and reports each by service name" {
+    # The stop payload runs INSIDE the container, so it must target the fixed
+    # container ports 2718/2719/2720 and must not print them to the user as if
+    # they were the host ports: each result line names the service instead.
+    PANEL_PORT_MARIMO=3718
+    mock_port_check "2718:yes"
+    # Save the payload (the last argument of the `compose exec ... bash -c` call)
+    # verbatim, newlines included, so it can be parsed below. It is never run:
+    # here it would kill this container's real listeners.
+    docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
+        case "$*" in
+            "compose exec -T daaf-docker bash -c "*) printf '%s' "${!#}" > "${TEST_DIR}/stop_payload.sh" ;;
+        esac
+        return 0
+    }
+
+    run handle_stop_services <<< "1"
+    assert_success
+    assert_output --partial "Notebooks    localhost:3718"
+    assert_output --partial "Stopping services"
+    assert_output --partial "Done."
+
+    local payload
+    payload=$(cat "${TEST_DIR}/stop_payload.sh")
+    [[ "$payload" == *'for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do'* ]]
+    [[ "$payload" == *'Stopped $name (PID $pid)'* ]]
+    [[ "$payload" == *'Could not stop $name (PID $pid)'* ]]
+    [[ "$payload" != *'on port $port'* ]]
+    run bash -n "${TEST_DIR}/stop_payload.sh"
+    assert_success
+}
+
+@test "Stop Web Services shows the host port from environment_settings.txt end to end" {
+    # The full path the user took: the settings loader reads DAAF_PORT_MARIMO,
+    # set_panel_ports derives the display port, and option 12 lists the service
+    # there (dry-run: check_port answers from DAAF_MOCK_PORTS, container ports).
+    printf 'DAAF_PORT_MARIMO=3718\n' > "${TEST_DIR}/environment_settings.txt"
+    run env -u DAAF_PORT_MARIMO DAAF_DRY_RUN=1 DAAF_MOCK_PORTS="2718:yes" \
+        bash -c 'printf "12\n0\nq\n" | bash "'"${REPO_ROOT}"'/scripts/host/daaf.sh"'
+    assert_success
+    assert_output --partial "Running services"
+    assert_output --partial "Notebooks    localhost:3718"
+    refute_output --partial "port 2718"
+}
+
 # =========================================================================
 # Tier 10 -- Help and Exit
 # =========================================================================
@@ -805,6 +934,20 @@ teardown() {
     assert_output --partial "environment_settings.txt"
     assert_output --partial "no image build"
     assert_output --partial "  12) Stop Web Services"
+}
+
+@test "handle_help names the HOST-published VS Code and notebook ports" {
+    # Same remapped-port class as option 12: help said "port 2720"/"port 2718"
+    # (the container ports) even when the user opens 3720/3718.
+    PANEL_PORT_MARIMO=3718
+    PANEL_PORT_VSCODE=3720
+
+    run handle_help <<< ""
+    assert_success
+    assert_output --partial "Open code-server (port 3720)"
+    assert_output --partial "Open the marimo notebook browser (port 3718)"
+    refute_output --partial "port 2718"
+    refute_output --partial "port 2720"
 }
 
 @test "handle_quit exits with code 0" {
