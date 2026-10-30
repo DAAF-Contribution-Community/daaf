@@ -189,9 +189,12 @@ teardown() {
 
 @test "backup_daaf.sh staging program gates on tab/newline in symlink names" {
     # The gate lives INSIDE the container-side STAGE_PROGRAM, which the docker mock
-    # replaces wholesale -- so its runtime behavior is verified empirically against
-    # real sh in scripts/scratch/gate_test/ (CLEAN 0, TAB 3, NEWLINE 3, EMPTY 0),
-    # not here. This structural test asserts the gate is PRESENT and uses the
+    # replaces wholesale -- so its runtime behavior is not exercised here. Two cases
+    # below run the real extracted program under local sh: "staging program
+    # succeeds under set -e when no symlinks or special files exist" (CLEAN, exit 0)
+    # and "backup names (win): a TAB-named symlink still hits the fatal gate"
+    # (TAB, exit 3); the NEWLINE branch is checked only structurally, here.
+    # This structural test asserts the gate is PRESENT and uses the
     # newline-immune true-count idiom (`-exec printf x`) plus the octal-printf tab
     # pattern (`printf \\011`, double backslash so container sh hands printf one) fed
     # to `grep -qf` (avoids IFS word-splitting on a bare tab), and that it exits
@@ -210,9 +213,9 @@ teardown() {
 
 @test "backup_daaf.sh staging gate NAMES the offending symlink(s) to STDOUT before exit 3" {
     # On a gate trip the container-side program must print the offenders to STDOUT
-    # before `exit 3` (empirically verified against real sh in
-    # scripts/scratch/backup_gate_probe/run_probe.sh: tab -> the matching line via
-    # `grep -f` without -q; newline -> the full link_paths list, since the culprit
+    # before `exit 3` (the real-sh TAB case is "backup names (win): a TAB-named
+    # symlink still hits the fatal gate" below; this test pins the shape: tab ->
+    # the matching line via `grep -f` without -q; newline -> the full link_paths list, since the culprit
     # cannot be isolated from mismatched line counts). The offenders go to STDOUT, not
     # stderr: PS 5.1's native `2>&1` merge dropped the container's stderr in the field
     # (2026-07-14), so the offender list never reached the user; stdout is
@@ -358,8 +361,9 @@ teardown() {
 # --- Special-file strip (named pipes, sockets, device nodes) ---
 # Windows `docker cp` creates nothing for a FIFO/device tar entry, then aborts the
 # whole extraction on the follow-up timestamp call -- the same truncation class as
-# the symlink abort. Field report 2026-09-29 (sibling project, variant script): a stale
-# provider-shim output.fifo stopped a Windows backup, last progress reading 94%.
+# the symlink abort. Field report 2026-09-29 (another deployment of this script, a
+# variant of it): a stale provider-shim output.fifo stopped a Windows backup, last
+# progress reading 94%.
 # Separate probe of the maintainer volume: 714 of 71,820 files sort after the first
 # FIFO -- under the 1% (718) count tolerance, so a count check that applied it would
 # not flag it. (The backup now verifies against the staged snapshot at zero

@@ -112,8 +112,9 @@ Describe "backup_daaf.ps1" {
         It "staging program deletes named pipes, sockets, and device nodes after the symlink strip" {
             # Windows `docker cp` creates nothing for a FIFO/device entry, then aborts
             # the whole extraction on the follow-up timestamp call (field failure
-            # 2026-09-29, sibling project on a variant script: a stale provider-shim
-            # output.fifo stopped a backup; last progress reading 94%).
+            # 2026-09-29, another deployment of this script, a variant of it: a
+            # stale provider-shim output.fifo stopped a backup; last progress
+            # reading 94%).
             # The here-string's LAST line must be the grouped special-file strip,
             # directly after the symlink strip. (Byte parity with the .sh twin and
             # the zero-double-quote rule are enforced by backup_twin_parity.bats; the
@@ -154,9 +155,10 @@ Describe "backup_daaf.ps1" {
 
         It "staging gate NAMES the offending symlink(s) to STDOUT before exit 3" {
             # On a gate trip the container-side program prints the offenders to STDOUT
-            # before `exit 3` (empirically verified against real sh in
-            # scripts/scratch/backup_gate_probe/run_probe.sh: tab -> matching line via
-            # `grep -f`; newline -> the full link_paths list). The offenders go to
+            # before `exit 3` (the real-sh TAB case is "backup names (win): a TAB-named
+            # symlink still hits the fatal gate" in tests/bash/backup_daaf.bats; this
+            # test pins the shape: tab -> matching line via `grep -f`; newline -> the
+            # full link_paths list). The offenders go to
             # STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped the container's
             # stderr in the field (2026-07-14), so the offender list never reached the
             # user; stdout is version-agnostic. Structurally assert both branches emit a

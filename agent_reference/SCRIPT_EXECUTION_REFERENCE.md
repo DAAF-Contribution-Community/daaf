@@ -241,7 +241,7 @@ Everything a script prints is appended permanently to the script file as its exe
 
 Matching is case-insensitive and errs toward refusing. Reading a credential into a variable, passing it in a request, checking presence (`"X_API_KEY" in os.environ`), copying the environment for a subprocess, and the env-scrubbing idiom that builds a child environment with the keys removed are all allowed. The script header lists these deliberate non-matches and the accepted residuals, such as a two-step leak through an intermediate variable, which would need data-flow analysis.
 
-A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. Both scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. The command-line counterpart is `bash-safety.sh` §10, which applies the same accidental-dump posture to interactive shell commands (whole-environment dumps to a terminal or file, credential-named `echo`/`printf`, `/proc/<pid>/environ` reads, interpreter one-liners), backed by the `settings.json` environment-disclosure deny rules; see `BOUNDARIES.md` § Defense-in-Depth Architecture. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (43 cases).
+A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. Both scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. The command-line counterpart is `bash-safety.sh` §9, which applies the same accidental-dump posture to interactive shell commands (whole-environment dumps to a terminal or file, credential-named `echo`/`printf`, `/proc/<pid>/environ` reads, interpreter one-liners), backed by the `settings.json` environment-disclosure deny rules; see `BOUNDARIES.md` § Defense-in-Depth Architecture. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (43 cases).
 
 ---
 
@@ -380,7 +380,8 @@ research/YYYY-MM-DD_[Title]/
 │   │   └── stage8_02_crb1.py   # QA4b (viz quality) for 02_enrollment-plot.py
 │   ├── debug/                  # Debugger diagnostic scripts
 │   │   └── 01_diag-key-mismatch.py
-│   └── scratch/                # Temporary/intermediate working files (created on first use; never /tmp)
+│   ├── probes/                 # Probes moved out of scratch because a note or review cites them (created on first use)
+│   └── scratch/                # Working files, kept but never relied on (created on first use; never /tmp; see Scratch Graduation Check)
 ```
 
 **Data Onboarding profiling scripts** follow a parallel directory convention under `scripts/`:
@@ -391,7 +392,21 @@ research/YYYY-MM-DD_[Title]/
 
 Profiling scripts use the same file-first execution pattern, IAT documentation standards, and `run_with_capture.sh` wrapper. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for the profiling script template and part-specific details.
 
-**Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary and is blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Temporary/intermediate working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); see CLAUDE.md § Project Conventions > Scratch Files. (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
+**Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary. The `bash-safety.sh` hook and `settings.json` deny rules block the `/tmp` writes they can see, not all of them: a script that needs a temporary directory passes an explicit project path (`tempfile.mkdtemp(dir=...)` in Python, `tempfile(tmpdir = ...)` in R, `mktemp -d -p "$PROJECT_DIR/scripts/scratch"` in shell), because Python `tempfile`, R `tempdir()` and `mktemp` default to `/tmp` (CLAUDE.md § Provenance Boundary). Working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); they are kept but never relied on, and anything that something outside scratch will cite is moved to its named home first (CLAUDE.md § Project Conventions > Scratch Files). (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
+
+### Scratch Graduation Check
+
+The canonical procedure, run in every mode that creates a project or session workspace: before the mode's final deliverable or verification gate (Framework Development: before its Phase 4 review; Manuscript Preparation: an MP-4 precondition), or at wrap-up when there is none; a later run covers only citations added since. Running it before the final deliverable or gate means graduation never rewrites citations in an artifact that has already been verified. Each mode's report, synthesis, gate or wrap-up step points here. It exists because the damage from scratch drift is lost citations: `research/` is excluded from git, so a scratch file that a note cites and that is later cleaned up is gone unless a volume backup kept it.
+
+1. **Find the cited scratch paths.** Grep the citing files, not the scratch folder: the project's notes (`SESSION_NOTES.md`, `STATE.md`, `LEARNINGS.md`, preliminary notes, reports, plans) and any framework file this session changed, for `scripts/scratch/` and a root-level `scratch/` path (older workspaces have `{PROJECT_DIR}/scratch/`), and for `scope_staging/` and `claude-code-tmp/` (a scratchpad-staged path, orchestrator `SKILL.md` § Scope Check > Read First). Quote the grep command. Each path found is a cited scratch file, whichever session created it; a hit inside a dated move record (old → new) is history, not a citation. A staged path that is not history means a graduation was missed or a record cites the scratchpad: if the staged item still exists, graduate it per that section (its `mv`, then any `--reingest`) and cite the new path; if it is gone, cite the material by title or URL instead. A scratch file nothing cites stays where it is: scratch is never relied on, so it needs no action.
+2. **Move each cited file to its named home** with `mv` (one command per call), creating the folder first. Named homes are the project's purpose folders: `scripts/<stage>/` for a script whose output is reported, `scripts/probes/` for a cited probe in a research project, `data/` or `output/` for data and figures, `output/preliminary_notes/` (or `preliminary_notes/` in a Framework Development workspace) for notes, `web_fetches/` for fetch artifacts, `lit_search/` for `scholar_search.sh` artifacts, and `probes/` in a Framework Development workspace for a cited probe and its output. Move a script unchanged: it keeps its execution log, and renaming it to the stage pattern is optional and the only change allowed. Keep the subpath under the new folder when it carries meaning.
+3. **Update every live citation** to the new path: notes, `STATE.md`/`SESSION_NOTES.md` entries, and framework files. Do not rewrite historical records (execution logs appended to scripts, earlier review records, engineer returns, session logs); add one dated line to `SESSION_NOTES.md` or `STATE.md` listing each move as old path → new path, so a reader of an old record can follow it. In Full Pipeline before Stage 4, when neither file exists yet, the line goes in the pre-flight record, `output/preliminary_notes/{date}_preflight_scope-check.md` (STATE.md copies it at creation).
+4. **Check a framework citation's class.** A shipped framework file never cites scratch. A file users need moves to a tracked home in the repository; maintainer-only material is cited by its research workspace path with a note that it is maintainer-only and not shipped.
+5. **Tell the user** what was graduated (old → new), or that nothing was cited. Quote an `ls` of each new location.
+
+A recursive shell `grep -r` over `/daaf` passes `--exclude-dir=claude-code-tmp`: Claude Code's temp root, the top-level `/daaf/claude-code-tmp/`, keeps the verbatim output of earlier Bash commands under `tasks/*.output`, so it returns stale duplicate hits (observed 2026-10-23 in the temp root's old `/tmp` location). The built-in Grep tool respects `.gitignore`, which lists `/claude-code-tmp/`, so it should not be affected (inference, not tested).
+
+The check never deletes scratch and never moves a file that another session still uses. If a cited file's owner is unclear (a workspace another session is working in), report it to the user instead of moving it.
 
 ---
 
@@ -427,6 +442,8 @@ follows in the Naming Convention section below.
 
 > **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
 
+> **Note:** Every Markdown pattern above starts with a date or a non-matching word, so a subagent's Write tool accepts it. A new pattern must not start with `report`, `summary`, `findings` or `analysis` (CLAUDE.md § Project Conventions > Subagent File Output).
+
 ---
 
 ## Naming Convention
@@ -457,7 +474,8 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 | RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
 | Smoke Tests | `scripts/smoke_tests/` | `smoke_{skill-name}.R` | `smoke_tidyverse.R` |
-| Scratch (any) | `scripts/scratch/` | free-form (transient intermediates, no naming pattern) | `stripped_08_fetch.py` |
+| Probes, cited (Stage 3 source research, QA reviews, any) | `scripts/probes/` | name kept from `scripts/scratch/` (moved unchanged with its log; a rename to `{seq:02d}_probe-{slug}.py` is optional) | `01_probe-ccd-schema.py` |
+| Scratch (any) | `scripts/scratch/` | free-form (working files, never relied on or cited; see § Scratch Graduation Check) | `stripped_08_fetch.py` |
 
 **Examples (Python):**
 - Step 1.1 `fetch-ccd` → `01_fetch-ccd.py`

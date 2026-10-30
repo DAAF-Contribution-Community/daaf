@@ -223,17 +223,21 @@ Bare `# shellcheck disable=SCXXXX` without an explanation comment is not accepta
 set -euo pipefail
 
 # --- Variables ---
-TMPDIR=""
+WORK_DIR=""
 
 # --- Cleanup (register immediately after variables) ---
 cleanup() {
-    rm -f "${TMPDIR:?}/"*  # -f makes it idempotent
-    rmdir "$TMPDIR" 2>/dev/null || true
+    [ -n "$WORK_DIR" ] || return 0
+    rm -f "${WORK_DIR:?}/"*  # -f makes it idempotent
+    rmdir "$WORK_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 # --- Setup ---
-TMPDIR="$(mktemp -d)"
+# In the container, point mktemp at an in-project directory with -p: a bare
+# `mktemp -d` lands in /tmp, outside the backup and audit boundary
+# (CLAUDE.md § Provenance Boundary).
+WORK_DIR="$(mktemp -d -p "${PROJECT_DIR:?}/scripts/scratch")"
 
 # ... rest of script ...
 ```
@@ -242,7 +246,7 @@ TMPDIR="$(mktemp -d)"
 
 1. **Place `trap` immediately after variable declarations**, before any operations that create state needing cleanup
 2. **Use `trap ... EXIT`** — it fires on normal exit, errors (`set -e`), and most signals (SIGINT, SIGTERM)
-3. **Create temp files with `mktemp`**, then register for cleanup immediately
+3. **Create temp files with `mktemp`**, then register for cleanup immediately. In-container scripts name a directory inside the project with `-p` (`mktemp -d -p "$PROJECT_DIR/scripts/scratch"`), the form `bash-safety.sh` §6l also accepts at the command line (it blocks a positional template there), because `mktemp`, Python `tempfile` and R `tempdir()` default to `/tmp` and DAAF does not change `TMPDIR`; the shell hook cannot see a `mktemp` inside a script. Host scripts (`scripts/host/`) run on the user's machine, where the system temp directory is fine. Do not name the variable `TMPDIR`: an exported `TMPDIR` changes where every child program puts its own temp files
 4. **Make cleanup idempotent**: use `rm -f` (not `rm`), guard with `|| true` where needed
 5. **Use single quotes in trap string** to defer variable expansion:
 
@@ -288,7 +292,7 @@ readonly PROBE_DIR="${PROJECT_DIR}/scripts/scratch"
 mkdir -p "$PROBE_DIR"
 # Every hostile object goes under FIXTURE_DIR and nowhere else, so cleanup can
 # remove the whole fixture tree without touching the probe's real outputs.
-FIXTURE_DIR="$(mktemp -d "$PROBE_DIR/fixture.XXXXXX")"
+FIXTURE_DIR="$(mktemp -d -p "$PROBE_DIR" fixture.XXXXXX)"
 readonly FIXTURE_DIR
 
 # --- Cleanup (register before creating any objects) ---
@@ -316,7 +320,7 @@ In a bats suite the same rule applies to `teardown`: create fixtures under the `
 
 **Why cleanup lives in the probe, not the dispatch prompt.** A dispatch-prompt instruction ("clean up your fixtures before returning") binds only the agent it is addressed to. It does not bind a *future* runner, such as another engineer's harness or a reviewer re-running the gate logic by hand outside the harness's own trap. This has caused real failures twice. On 2026-07-14, verification probes left symlinks with tab/newline names under `scripts/scratch/`, and the leftovers broke real user backups **three separate times**: twice via engineers' harnesses, once via a reviewer running gate logic by hand outside any trap. On 2026-09-30, a leftover review-agent fixture (a file whose name contained a newline, next to case-only pairs) aborted a real **Windows** backup: Windows `docker cp` stops extracting at the first name Windows cannot create and drops every file after it. A `trap cleanup EXIT INT TERM` inside the probe covers every one of those runners. A prompt covers only the agent it addresses.
 
-**Why `find … -delete` and not `rm -rf`.** Any `rm -rf` is denied at the permission layer by the `settings.json` deny rule `Bash(rm -rf *)`, even for a scratch directory. The harmonized `bash-safety.sh` hook itself allows an in-project `rm -rf`; only the pre-2026-09-26 hook also blocked it. Plain `rm` and a `find … -delete` scoped to a subdirectory are allowed. The exception is an unfiltered `find <project root> -delete`, including one where only traversal options such as `-type` or `-depth` sit between the root and `-delete`: the hook's G43 guard blocks it, so always root the delete at the fixture directory, never at the project. Deleting only `FIXTURE_DIR` is also *narrower* than deleting the scratch tree. It removes exactly the hostile objects and leaves real scratch files in place for provenance.
+**Why `find … -delete` and not `rm -rf`.** Any `rm -rf` is denied at the permission layer by the `settings.json` deny rule `Bash(rm -rf *)`, even for a scratch directory. The `bash-safety.sh` hook itself allows an in-project `rm -rf`; only the pre-2026-09-26 hook also blocked it. Plain `rm` and a `find … -delete` scoped to a subdirectory are allowed. The exception is an unfiltered `find <project root> -delete`, including one where only traversal options such as `-type` or `-depth` sit between the root and `-delete`: the hook's G43 guard blocks it, so always root the delete at the fixture directory, never at the project. Deleting only `FIXTURE_DIR` is also *narrower* than deleting the scratch tree. It removes exactly the hostile objects and leaves the rest of scratch alone, including files another run may still be using. Scratch is never relied on, so a probe or output that a note, report or skill will cite is moved out of scratch to its named home first, not kept in scratch as evidence (CLAUDE.md § Project Conventions > Scratch Files).
 
 **Verification step.** After the probe runs, confirm the workspace is clean with the workspace invariant checker. Git cannot see untracked scratch, so the checker walks the live filesystem for three things:
 
