@@ -919,16 +919,16 @@ else:
             print(f"[FAIL] suppression '{var}': column absent from raw_df — rate untestable")
             cp2["failed"] += 1
             continue
-        # REASONING: Polars compares a string column against a numeric sentinel by
-        # returning all-False rather than raising, so an unguarded compare on a
-        # string-typed column reports "[PASS] 0.0%" over a fully suppressed column —
-        # the exact evidence-free pass this template exists to remove. Guard on
+        # REASONING: Polars' eager Series compare casts a numeric sentinel to text when the
+        # column is a string (so "-3" matches -3 but "-3.0" does not), and the expression and
+        # is_in forms raise instead; either way an unguarded rate depends on spelling or aborts —
+        # not the evidence this template exists to require. Guard on
         # comparability in BOTH directions: a numeric sentinel needs a numeric
         # column, and a string sentinel needs a non-numeric one.
         sentinel_is_numeric = isinstance(SUPPRESSION_CODE, numbers.Real) and not isinstance(SUPPRESSION_CODE, bool)
         column_is_numeric = raw_df[var].dtype in NUMERIC_DTYPES
         if sentinel_is_numeric != column_is_numeric:
-            print(f"[NOT VERIFIED] suppression '{var}': column dtype {raw_df[var].dtype} is not comparable to sentinel {SUPPRESSION_CODE!r} — the comparison would silently match 0 rows rather than raise")
+            print(f"[NOT VERIFIED] suppression '{var}': column dtype {raw_df[var].dtype} is not comparable to sentinel {SUPPRESSION_CODE!r} — the comparison would compare as text (or raise) rather than test the sentinel")
             cp2["not_verified"] += 1
             continue
         suppressed = int((raw_df[var] == SUPPRESSION_CODE).sum())
@@ -1069,8 +1069,8 @@ if ("suppression" %in% names(not_applicable)) {
       cp2["failed"] <- cp2["failed"] + 1L
       next
     }
-    # REASONING: R coerces silently in the other direction from Polars — comparing a
-    # character column to a numeric sentinel coerces the sentinel to a string and can
+    # REASONING: R, like Polars' eager Series compare, coerces a numeric sentinel to a
+    # string when the column is character, so it can
     # match (or miss) the wrong values without any warning. Guard comparability in
     # both directions so a non-comparable pair reports [NOT VERIFIED], not a rate.
     if (is.numeric(SUPPRESSION_CODE) != is.numeric(raw_df[[var]])) {
@@ -1212,7 +1212,7 @@ not_applicable <- list()  # e.g. list(suppression = "CCD directory file carries 
 - `SUPPRESSION_CODE = None` / `CODED_MISSING_VALUES = []` produce `[NOT VERIFIED]`, which makes the verdict `FAILED`. That is deliberate: a domain with no sentinel must say so via `not_applicable` so the log records the decision and its reason.
 - `PASSED WITH WARNINGS` on the log line maps to reported status **`WARNING`**.
 - `NUMERIC_DTYPES` in this block is the same list used by the substantiveness data check — keep them in sync so no integer width is exempted in one place and not the other.
-- **Dtype comparability is a precondition, not a detail.** Both the suppression and coded-values checks refuse to compare a column to a sentinel of the other kind: Polars returns all-False for a string-column-vs-number compare (yielding `[PASS] 0.0%` over a fully suppressed column), and R coerces and matches the wrong values. Either way the pair reports `[NOT VERIFIED]` naming the dtype, which fails the checkpoint. If a domain genuinely encodes suppression as a string, set `SUPPRESSION_CODE` to that string — the guard tests comparability, not numeric-ness.
+- **Dtype comparability is a precondition, not a detail.** Both the suppression and coded-values checks refuse to compare a column to a sentinel of the other kind: Polars' eager Series compare and R both cast a numeric sentinel to text against a string column (`"-3" == -3` is true, `"-3.0" == -3` is false; Polars 1.39.3, R 4.5.3), and Polars' expression and `is_in` forms raise instead, so an unguarded rate depends on how the sentinel is spelled or aborts the block. Either way the pair reports `[NOT VERIFIED]` naming the dtype, which fails the checkpoint. If a domain genuinely encodes suppression as a string, set `SUPPRESSION_CODE` to that string — the guard tests comparability, not numeric-ness.
 
 ---
 
@@ -10466,7 +10466,7 @@ else:
         cpsg_absent.append("a correlated column is absent from the synthetic frame")
     elif any(cpsg_class[n] not in ("integer", "float") for n in cpsg_names):
         # REASONING: the synthetic column is under validation, so one outside the
-        # integer and float classes is a [FAIL]; polars would silently coerce it and R's
+        # integer and float classes is a [FAIL]; polars would silently cast a Boolean or numeric-text column (and raise on other text) and R's
         # cor() would raise.
         cpsg_bad.append(f"column '{cpsg_esc[[n for n in cpsg_names if cpsg_class[n] not in ('integer', 'float')][0]]}' is correlated in the report but not numeric in the synthetic frame")
     else:

@@ -44,7 +44,9 @@ key terms, 2026-09-27). The tool gates the lane at 1.2 s container-wide;
   `plain_terms()` strips them.
 - **`/paper/search/bulk` accepts boolean syntax** (re-measured 2026-10-02):
   `'"high-dosage tutoring" + (achievement | outcomes) -college'` returned
-  HTTP 200, total 16, a continuation token, and three on-topic records. The
+  HTTP 200 after one retry, total 16 with all 16 records in one page
+  (`token: null`, so pagination was not exercised), and three on-topic
+  records at the top. The
   docs say bulk results come "without search relevance", so use it for
   exhaustive pulls, not triage. Whether each operator was interpreted (versus
   ignored) was not isolated with a contrasting query — re-measure before
@@ -61,10 +63,11 @@ key terms, 2026-09-27). The tool gates the lane at 1.2 s container-wide;
 
 ## Storage and ToS
 
-S2 Data Licenses: "CC BY-NC or ODC-BY"; third-party content keeps its own
-terms. **Attribution is required**: credit "Semantic Scholar" in published
-materials and cite The Semantic Scholar Open Data Platform (Kinney et al.,
-2023, arXiv:2301.10140). `LICENSE_CLASS = "cc-by-nc"`: raw JSON may be stored
+S2 Data Licenses: the licenses that accompany the data, "such as CC BY-NC or
+ODC-BY"; third-party content keeps its own terms. **Attribution is
+required**: credit "Semantic Scholar" in published materials, and in
+scientific publications that used the API to produce results cite The
+Semantic Scholar Open Data Platform (Kinney et al., 2023, arXiv:2301.10140). `LICENSE_CLASS = "cc-by-nc"`: raw JSON may be stored
 for research; do not redistribute commercially.
 
 ## Exit mapping

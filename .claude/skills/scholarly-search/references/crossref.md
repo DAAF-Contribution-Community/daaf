@@ -46,7 +46,10 @@ the lane at 0.25 s container-wide (public pool, one at a time).
   `filter=updates:{doi}` returned the 2010 retraction
   (`10.1016/s0140-6736(10)60175-4`) and a 2004 correction, each with
   `source: retraction-watch`. The adapter de-duplicates by (notice DOI, type)
-  and records every path that surfaced a notice (`via`).
+  and records every path that surfaced a notice (`via`). That merge came
+  after this run, whose digest listed each notice once per path; the merged
+  form (`via updated-by+updates-filter`) was confirmed in the 2026-10-11
+  `retractions` run.
 - For the QJE school-spending paper (`10.1093/qje/qjv036`) both signals were
   empty → status `none` ("no notice on record", not "sound").
 - Abstracts arrive as JATS XML; the mapper strips tags.

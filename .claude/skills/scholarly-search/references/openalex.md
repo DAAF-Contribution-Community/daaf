@@ -10,7 +10,7 @@ serves since late 2025) and an `is_retracted` flag. Adapter:
 ## Auth
 
 - Key: `OPENALEX_API_KEY` — optional but **strongly recommended**. Free from
-  https://openalex.org/settings/api.
+  https://openalex.org/settings/api-key (authentication page, 2026-10-28).
 - Sent as `Authorization: Bearer <key>` (works on `api.openalex.org` and
   `content.openalex.org`, verified 2026-09-27). The docs also show
   `?api_key=`; the tool never uses it, so the key never reaches a URL, a log
@@ -47,16 +47,23 @@ serves since late 2025) and an `is_retracted` flag. Adapter:
 | Content download (`fulltext`) | $0.01 | docs |
 | HTTP 400 (rejected request) | $0 | measured 2026-10-02 |
 
-Budget: $1/day with a free key, $0.10/day keyless; 100 req/s; semantic search
-1 req/s and max 50 results; `per_page` max 100; 100 OR values per filter.
-The tool gates the semantic lane at 1.1 s container-wide.
+Budget: $1/day with a free key, $0.10/day keyless. Per-second limits, per
+OpenAlex docs (authentication page), fetched 2026-10-28: 10 req/s keyless,
+30 with a free key or prepaid usage, 50 on an annual plan; searches with more
+than 5 `OR`/`AND`/`NOT` operators 1 / 5 / 25 req/s; "A per-second 429 costs
+nothing". The same page said 100 req/s on 2026-10-02. Semantic search 1 req/s
+and max 50 results; `per_page` max 100; 100 OR values per filter. The tool
+gates the semantic lane at 1.1 s container-wide; the main OpenAlex lane is
+currently ungated (set when the limit was 100 req/s; whether to gate it is a
+pending maintainer decision).
 
 Response headers (measured 2026-10-02 — **both** families are sent):
 `x-ratelimit-cost-usd`, `x-ratelimit-remaining-usd`, `x-ratelimit-limit-usd`,
 `x-ratelimit-prepaid-remaining-usd`, plus the documented credit family
 `x-ratelimit-limit` (10000 = $1), `x-ratelimit-remaining`,
 `x-ratelimit-credits-used` (10 per $0.001 search), `x-ratelimit-reset`
-(seconds to midnight UTC), `x-ratelimit-onetime-remaining`. The response
+(seconds to midnight UTC), and an undocumented
+`x-ratelimit-onetime-remaining` (sent, but not in the docs' header table). The response
 `meta` also carries `cost_usd`. The adapter parses both families into the
 MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
 
@@ -74,8 +81,8 @@ MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
   supported set: author.id, authorships.*, funders.id, has_abstract,
   has_fulltext, institution ids, is_oa, is_retracted, language,
   open_access.is_oa, primary_location.license, primary_location.source.id,
-  publication_year, type); `is_oa:true` is accepted. The docs' "most filters
-  work as usual" is therefore too generous; their two named exclusions
+  publication_year, type); `is_oa:true` is accepted. The docs' "Most filters
+  and the `select` parameter work as usual" is therefore too generous; their two named exclusions
   (`cited_by_count`, country codes) are not the only ones.
 - **Relevance score on semantic search** (re-measured 2026-10-02): returned
   when requested in `select` (`--with-score`; scores 0.89–0.90 for the top 3 of
@@ -107,7 +114,8 @@ scholarly works, authors, venues, institutions, and concepts. arXiv:2205.01833.
 
 401/403 → 11 (check the key); 404 → 11 (`work`/`verify` record NOT FOUND);
 400 → 11 (bad filter — the message names the supported filters); 429 after
-retries → 11 (daily budget or 100 req/s); gate queue too long → 12; network
+retries → 11 (daily budget, or the per-second limit: 10/30/50 req/s by key
+tier, lower for searches with more than 5 boolean operators); gate queue too long → 12; network
 → 4; timeout → 6.
 
 ## Minimal smoke test

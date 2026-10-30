@@ -38,7 +38,7 @@ by the PDF layer: see the `pdf-reading` skill § Privacy.
 | Backend | Class | Cache raw JSON? | OA PDFs | Attribution | Status |
 |---------|-------|-----------------|---------|-------------|--------|
 | OpenAlex | open | Yes — CC0, "no 'personal use only' carve-out" | Downloadable; "PDFs retain their original copyright" | Requested: Priem, Piwowar & Orr (2022), arXiv:2205.01833 | Built (S1) |
-| Semantic Scholar | cc-by-nc | Yes, under S2 Data Licenses (CC BY-NC or ODC-BY) | Not via S2 | **Required**: credit "Semantic Scholar"; cite the Open Data Platform paper (arXiv:2301.10140) | Built (S1) |
+| Semantic Scholar | cc-by-nc | Yes, under S2 Data Licenses (the licenses that accompany the data, "such as CC BY-NC or ODC-BY") | Not via S2 | **Required**: credit "Semantic Scholar"; cite the Open Data Platform paper (arXiv:2301.10140) | Built (S1) |
 | ERIC | open | Yes (U.S. federal metadata; abstracts may carry publisher rights) | `files.eric.ed.gov` PDFs: per-document rights | Courtesy: "ERIC, Institute of Education Sciences" | Built (S1) |
 | Crossref | open | Yes — "use it for any purpose"; some abstracts copyrighted | n/a | Not required | Built (S1) |
 | Unpaywall | open | Yes (same data as OpenAlex) | Points to PDFs that keep their own license | Not required | Built (S1) |

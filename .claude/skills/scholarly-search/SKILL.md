@@ -54,12 +54,12 @@ MANIFEST row.
 | Backend | Contributes | Key (optional unless noted) | License class |
 |---------|-------------|-----------------------------|---------------|
 | **OpenAlex** | The backbone: metadata, citation graph, semantic + keyword search, cached full text, OA locations, `is_retracted` | `OPENALEX_API_KEY` — **strongly recommended** ($1/day free vs $0.10/day keyless) | open (CC0) |
-| **Semantic Scholar** | Passage search inside OA papers; extra recall in `find`; boolean bulk search | `SEMANTIC_SCHOLAR_API_KEY` (keyless = shared, heavily throttled pool) | cc-by-nc (attribution required) |
+| **Semantic Scholar** | Passage search inside OA papers; extra recall in `find`; boolean bulk search | `SEMANTIC_SCHOLAR_API_KEY` (keyless = a pool shared by all unauthenticated users, which S2 may throttle further under heavy use) | cc-by-nc (attribution required) |
 | **ERIC** | Education journals OpenAlex ranks poorly, EdWorkingPapers, REL/IES reports, peer-review and full-text flags | none | open |
 | **Crossref** | Verification fallback; retraction / correction / expression-of-concern notices (Retraction Watch data) | none; `SCHOLARLY_CONTACT_EMAIL` unlocks the polite pool | open |
 | **Unpaywall** | OA-location fallback (same data as OpenAlex since late 2025) | needs `SCHOLARLY_CONTACT_EMAIL`; skipped with a note when unset | open |
 | **Scite** | Citation stance (Smart Citation tallies: supporting / contradicting / mentioning); a third retraction source (editorial notices) in `retractions`; Search (evaluation) | none for tallies and notices; `SCITE_API_KEY` (Pro) + `--ack-scite-license` for `scite-search` | **restricted** (`restricted/`) |
-| **Elicit** | Search with study-design tags and journal quartile; **paid** AI-generated research reports (async); never in default `find` | `ELICIT_API_KEY` **required** (Pro plan); `--confirm-spend` for reports | **restricted** (`restricted/`) |
+| **Elicit** | Search with study-design tags and journal quartile; **paid** AI-generated research reports (async); never in default `find` | `ELICIT_API_KEY` **required** (Pro plan or above); `--confirm-spend` for reports | **restricted** (`restricted/`) |
 
 Run `bash /daaf/scripts/scholar_search.sh backends` to see what is configured
 in this container: it reports key presence by **name only**, never values,
@@ -459,16 +459,19 @@ Exit 3 is reserved by `run_with_capture.sh` and never emitted.
   it is an optional extra that can come back as `BACKEND FAILED`. It lacks
   DOIs for many economics and education journal versions — trust OpenAlex
   metadata.
-- **About a quarter of education works have no OpenAlex abstract**, and
+- **About a quarter of education works (OpenAlex subfield 3304, 2015–2025;
+  measured 2026-09-27) have no OpenAlex abstract**, and
   semantic search cannot see works without abstracts; the keyword and ERIC
   legs partly compensate.
 - **Versions merge** on DOI, normalized title, or pre-colon stem plus
   first-author surname. A working paper renamed on publication stays
   separate: check authors and years before counting two entries as two
   studies.
-- **ERIC** has no citation counts and no DOIs; it stopped indexing 159
-  sources in 2025. EdWorkingPapers has no OpenAlex source record — reach it
-  through `eric`.
+- **ERIC** has no citation counts and no DOIs; in 2025 it stopped cataloging
+  new issues of many sources (about 45% from April 24, 2025 per the Help Desk notice,
+  159 per the June 2025 list, both as relayed by library pages; see
+  `references/eric.md`). EdWorkingPapers has no OpenAlex source record —
+  reach it through `eric`.
 - **Unpaywall** needs `SCHOLARLY_CONTACT_EMAIL`; without it the `oa` command
   relies on OpenAlex's identical OA data.
 - **No paywalled full text**, no Google Scholar, and deliberately no

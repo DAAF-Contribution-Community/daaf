@@ -97,16 +97,26 @@ Scite, any harder notice wins (`updated` > `commented`).
 `LICENSE_CLASS = "restricted"` (user decision D-4, 2026-10-11, "accepted for
 now"). Every endpoint, keyless included, is "subject to the Scite Terms of
 Use" (OpenAPI header of the Papers/Tallies reference). Quoted from
-https://scite.ai/terms (fetched 2026-10-11):
+https://scite.ai/terms (fetched 2026-10-11; a re-fetch on 2026-10-28
+answered HTTP 403, so these quotes were not re-checked against the live
+page):
 - §8: "you agree not to: (a) retrieve Articles, Classifier Results or AI
   Content in bulk or systematically beyond what is reasonably needed for your
   own research use; (b) store, redistribute, sell, license or otherwise make
   such content, or any dataset derived from it, available to any third
   party … Access through the Scite API … is licensed to you personally".
+- §8(c): you agree not to "use such content, or any data derived from it, to
+  train, fine-tune, evaluate or otherwise improve any machine learning or
+  artificial intelligence model". DAAF's reading (an inference, not Scite's
+  wording): keep Scite tallies and notices out of any model's training or
+  evaluation data, `verify` calibration sets included.
 - §4: you will not "(ii) create derivative works of any Classifier Results"
   or "(iii) remove, obscure, or change an author's name or affiliation or any
   Licensor's copyright notices", nor "(iv) knowingly permit anyone other than
-  authorized users of the Service to access or use any Classifier Results".
+  authorized users of the Service to access or use any Classifier Results",
+  nor "(v) make any use of the Classifier Results that is not for the purpose
+  of analyzing whether a scientific claim made in an Article has been
+  supported or contradicted by subsequent Articles".
 - "Classifier Results" are "the aggregated results of scientific articles
   and other commentaries" — the supporting/contradicting analyses, i.e.
   tallies.

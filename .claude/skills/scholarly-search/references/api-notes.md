@@ -98,8 +98,13 @@ Evidence locations:
   responses under `restricted/`); vendor docs in `…/web_fetches/s2_research/`.
 - 2026-10-11 (S2, Elicit adapter, tool 1.3.0 → 1.3.1): `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s2/elicit/`
   (`DAAF_FETCH_CONTEXT="FrameworkDev S2 Elicit live trial"`, then "… (re-attach after crash)" and
-  "… (step 5: usage after report)"; 6 MANIFEST rows, raw responses under `restricted/`); read-only
+  "… (step 5: usage after report)"; 7 MANIFEST rows (6 from the 2026-10-11 trial plus the
+  2026-10-12T15:44:52Z usage re-read), raw responses under `restricted/`); read-only
   state check `…/scripts/25_check_elicit_crash_recovery_state.py` (execution log appended).
+- 2026-10-12 (S2 fix rounds S-D to S-F, tools 1.4.0–1.5.1): openapi status-code read
+  `…/scripts/26_check_elicit_openapi_status_codes.py`; unit-suite runs
+  `…/scripts/28_run_scholar_search_suite_se_c.py` (245 tests) and
+  `…/scripts/31_run_scholar_search_suite_sf_b.py` (248 tests) (execution logs appended).
 
 ## How far to trust the `verify` gate (standing summary, rules `2026-10-06f`)
 
@@ -119,7 +124,8 @@ depends on `verify`. What the calibration implies for use:
   passed". It does not mean the same title. With `--year`, no labeled
   wrong or fabricated title reached it (0 of 40; the identical-title
   Cochrane update needs the year check to fail). Zero passes in this
-  sample bounds the true rate only loosely (about 7.7% at most, 95%
+  sample bounds the true rate only loosely (about 7.5% at most by the
+  rule of three on 40, or 7.7% on the 39 title-separable mismatches; 95%
   confidence, for titles like these).
 - Small edits that change the meaning still pass, because one changed
   word is a small share of a long title's characters. Measured: one
@@ -1671,11 +1677,11 @@ Spend for the whole smoke run: about $0.006 of the OpenAlex $1/day budget
 
 | # | Question (doc vs. earlier measurement) | Probe | Finding |
 |---|---|---|---|
-| 1 | Does semantic search accept "most filters" (docs) or reject most (2026-09-27)? | `openalex … --mode semantic --filter has_content.grobid_xml:true` then `--filter is_oa:true` | `has_content.grobid_xml` → HTTP 400 "not supported with semantic search" with the supported list (matches 2026-09-27); `is_oa:true` → 200. Docs' "most filters work" is too generous. A rejected request cost $0 (`x-ratelimit-cost-usd: 0`). |
+| 1 | Does semantic search accept "Most filters" (docs) or reject most (2026-09-27)? | `openalex … --mode semantic --filter has_content.grobid_xml:true` then `--filter is_oa:true` | `has_content.grobid_xml` → HTTP 400 "not supported with semantic search" with the supported list (matches 2026-09-27); `is_oa:true` → 200. Docs' "Most filters and the `select` parameter work as usual" (the semantic-search page, which names only `cited_by_count` and the country-code filter as unsupported; unchanged on 2026-10-28) is too generous. A rejected request cost $0 (`x-ratelimit-cost-usd: 0`). |
 | 2 | Does semantic search return a relevance score (docs: yes; 2026-09-27: no)? | `--with-score` (adds `relevance_score` to `select`) | Yes: 0.9018 / 0.8999 / 0.8933 for the top 3. The earlier "no score" came from a select list without the field. |
 | 3 | Usage header names: docs `X-RateLimit-{Limit,Remaining,Credits-Used,Reset}` vs measured `x-ratelimit-{cost,remaining,limit}-usd`? | headers logged per request (`rate_headers` in raw JSON) | **Both families are sent**: `x-ratelimit-cost-usd 0.001`, `-credits-used 10`, `-limit 10000`, `-limit-usd 1`, `-remaining 9959`, `-remaining-usd 0.9959`, `-reset 40054`, `-onetime-remaining 0`, `-prepaid-remaining-usd 0`. 10 credits = $0.001. `meta.cost_usd` is also present. The adapter parses both families. |
 | 4 | Does the new `corpus=` parameter (Aug 2026) work? | `openalex '"high-dosage tutoring"' --corpus core` vs `--corpus all` | Accepted. `meta.count` 47 (core) vs 70 (all). Default (no param) not separately measured. |
-| 5 | Does S2 `/paper/search/bulk` accept boolean syntax? | `s2-bulk '"high-dosage tutoring" + (achievement \| outcomes) -college' --limit 3` | HTTP 200 after one 429 retry; total 16, continuation token present, top 3 on-topic. Operator-by-operator interpretation not isolated (no contrasting query). Docs: results are "without search relevance". |
+| 5 | Does S2 `/paper/search/bulk` accept boolean syntax? | `s2-bulk '"high-dosage tutoring" + (achievement \| outcomes) -college' --limit 3` | HTTP 200 after one 429 retry; total 16, all 16 records in one page (`token: null`, so pagination was not exercised), top 3 on-topic. Operator-by-operator interpretation not isolated (no contrasting query). Docs: results are "without search relevance". |
 | 6 | Title lookup cost | `verify 'title:"Not Too Late…"'` | `filter=title.search:` billed $0.001 (search price), not the $0.0001 list price. DOI lookups free. |
 | 7 | Crossref retraction signals | `retractions '10.1016/S0140-6736(97)11096-0' 10.1093/qje/qjv036` | Lancet/Wakefield: `updated-by` and `filter=updates:` both list the 2010 retraction and 2004 correction with `source: retraction-watch`; OpenAlex `is_retracted: true`. QJE: none at either source. |
 | 8 | OA location for a gold-OA paper | `oa 10.1371/journal.pmed.0020124 10.48550/arXiv.2205.01833` | PLOS: PDF via OpenAlex, license cc-by, version reported `submittedVersion` (OpenAlex's own value). arXiv DOI: PDF via OpenAlex (`arxiv.org/pdf/2205.01833`). Two closed papers (QJE, an AER DOI): no OA copy at OpenAlex or ERIC. |
@@ -1688,9 +1694,14 @@ keyless behavior (a key is configured here).
 ## 2026-09-27 — the user's original measurements (imported)
 
 ### OpenAlex
-- **Auth:** keys mandatory since 2026-02-13 per the deprecations page; the old
-  `mailto` polite pool is ignored. `Authorization: Bearer` works on both
-  `api.` and `content.` hosts.
+- **Auth:** the deprecations page says the `mailto` polite pool is gone ("The
+  `mailto` parameter is ignored") and "All users need an API key (free)". The
+  user's 2026-09-27 notes date the change 2026-02-13; the page itself says
+  only "Before February 2026". The authentication page still allows keyless
+  use ("you can make basic queries with no key at all"), at $0.10/day per the
+  example-costs page; both re-checked 2026-10-28, and keyless use is what the
+  tool supports (see `openalex.md` § Auth). `Authorization: Bearer` works on
+  both `api.` and `content.` hosts.
 - **Pricing:** free key $1/day; ID lookup free, filter list $0.0001,
   search/semantic $0.001, content download $0.01.
 - **`search=`** matches title, abstract and full text and blends in
@@ -1715,13 +1726,18 @@ keyless behavior (a key is configured here).
 - **Versions:** NBER and journal versions are separate works (3–4 records).
 - **Abstract coverage:** ~75% in Education (subfield 3304), 2015–2025.
 - **`group_by=has_abstract`** returned a false 0.
-- **`find` dissertations:** 9 of the top 20 for a teacher-coaching question
-  were theses → excluded by default.
+- **`find` dissertations:** in a test, 9 of the top 20 results were theses →
+  excluded by default. This is the user's own note (their original SKILL.md,
+  copied as `…/scholarly-search/SKILL.md` of the S1 workspace), unverified
+  here: the query and raw results stayed in the user's project.
 
 ### Semantic Scholar
 - `x-api-key`; invalid key → 403, valid → 200/429.
-- "1 request per second, cumulative across all endpoints" (Ai2 key email +
-  tutorial). Shared gate: five concurrent calls sent 11 requests in 15 s, all
+- 1 request per second per key, across all endpoints. The tutorial says an
+  individual key "automatically gives a user a 1 request per second rate
+  across all endpoints" (re-fetched 2026-10-28). The Ai2 key email's "1
+  request per second, cumulative across all endpoints" is quoted from the
+  user's 2026-09-27 notes; the email is not in the workspace. Shared gate: five concurrent calls sent 11 requests in 15 s, all
   succeeded.
 - Throttling: ~30% of rapid first attempts refused (backoff recovered 10/10);
   later 5 of 6 searches 5 s apart refused; `/paper/search` with `abstract` at

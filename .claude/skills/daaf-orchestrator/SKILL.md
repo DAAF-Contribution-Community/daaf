@@ -657,7 +657,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 
 ### Model Selection for Subagent Dispatch
 
-DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": the cheapest models routinely take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, synthesis, and primary data-production roles.
+DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": in DAAF experience, the cheapest models take more turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, synthesis, and primary data-production roles.
 
 **Per-agent default tiers** (set in each agent's `model:` frontmatter):
 

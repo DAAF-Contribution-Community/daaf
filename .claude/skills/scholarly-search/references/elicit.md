@@ -20,9 +20,10 @@ updated: July 15, 2026".
 
 `ELICIT_API_KEY` is **required** by every `elicit-*` command. Without it the
 command exits 10 and sends no request. It is sent as `Authorization: Bearer
-elk_live_…`. "API access requires a Pro plan or above." Keys are generated
-at https://elicit.com/developer (changelog: "generate a key at
-elicit.com/developer"). `backends` shows the key by name only. There is no
+elk_live_…`. "API access requires a Pro plan or above." Keys are created in
+Elicit account settings (https://elicit.com/settings, per the v2 API
+reference, openapi.json fetched 2026-10-11 and 2026-10-28; the changelog,
+fetched 2026-10-11, says "generate a key at elicit.com/developer"). `backends` shows the key by name only. There is no
 keyless mode.
 
 **Personal data.** "You are expressly prohibited from submitting Personal Data
@@ -45,8 +46,9 @@ cannot detect it. It prints the reminder in `elicit-search` /
 | Opt-in search leg | the search call above, with the question and `--years` | `find "<q>" DEST --backends …,elicit` (the whole `find` becomes restricted) |
 
 Base URL `https://elicit.com/api/v2`. The default `--timeout` is 60 s for
-search/usage and 90 s for report commands ("creation can take tens of
-seconds").
+search/usage and 90 s for report commands (docs: "creation and control
+operations can take tens of seconds; clients should allow at least 60
+seconds per tool call").
 
 **Search details.** `searchMode` is `semantic` (natural language, the default)
 or `keyword` (Lucene syntax on the Elicit corpus, PubMed syntax on
@@ -221,8 +223,9 @@ closed row's `raw_artifact`, unique per call):
   `elicit_recovery_session_id` is this session is closed by a plain
   `elicit-resume <that ID>`, no flag needed (`matched_by: "recovery
   sessionId"`). A failed status read (404, 401, a network error) closes
-  nothing. **Since 1.5.1:** a status read of `unknown` ("Elicit does not
-  track this report") or with no status closes nothing either, and
+  nothing. **Since 1.5.1:** a status read of `unknown` (openapi.json: "Status
+  is not tracked for this report (legacy or user-created reports)") or with
+  no status closes nothing either, and
   `--for-question` then ties nothing (the row says why in
   `elicit_close_skipped`; stdout prints "nothing closed"). And a session
   this DEST_DIR's MANIFEST already ties to **another** question (it was
@@ -273,8 +276,10 @@ on 2026-10-11 `percentUsed` read 0 before and after a 1-result search and a
 monthly allowance (assuming no other use of the account, which cannot be
 verified; the per-call split is unknown), and a bracket read right after a
 call can show nothing yet. Re-read the next day before concluding. Pricing
-pages list Pro at $39 ("5x usage") or $49 ("Standard usage"), both "billed
-annually" (A/B variants, an inference).
+pages list Pro at $39 per user/month, "billed as $468 annually" ("5x usage"),
+or $49, "billed as $588 annually" ("Standard usage") (A/B variants, an
+inference; Pro prices unchanged between the 2026-10-11 and 2026-10-28
+fetches).
 
 **Rate limit.** "All endpoints share a burst limit of 100 requests per minute
 per IP address, including polling requests. Exceeding it returns 429 and
@@ -284,10 +289,16 @@ lane, `elicit`, shared by every process. A 429 is **never retried**
 every process and the call fails `busy` (exit 12). The edge 429 body is flat
 (`{"error": "Rate limit exceeded", "message": …}`), not the usual `{"error":
 {code, message}}` envelope; the adapter reads both shapes. No Elicit response
-carried rate-limit headers (2026-10-11: `rate_headers: null` on all 7).
+carried rate-limit headers (`rate_headers: null` on all 8 request entries in
+the raw logs of the 7 calls: the 2026-10-11 trial and the 2026-10-12 usage
+read).
 
 **Quota.** "402 insufficient_quota when starting work". Search is
-quota-gated too (`/search/papers` declares 402). A running report can pause
+quota-gated too (`/search/papers` declares 402). The docs fetched
+2026-10-28 add a reason, absent from the 2026-10-11 copies: "error.details.reason
+is credits_exhausted or, for an organization member over the weekly limit
+set by their admin, spend_limit_reached; error.details.resetsAt is when the
+block lifts". A running report can pause
 as `pausedForInsufficientQuota`, which never resumes by itself.
 
 ## Measured behavior
