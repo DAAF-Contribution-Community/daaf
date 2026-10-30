@@ -11,7 +11,7 @@ its appended log) [obs].
 
 | Component | Version | License (as declared) | Used by | Role |
 |-----------|---------|-----------------------|---------|------|
-| poppler-utils (`pdftotext`, `pdfinfo`, `pdftoppm`, `pdfimages`, `pdffonts`) | 24.02.0-1ubuntu9.9 | GPL-2 or GPL-3 (Debian copyright file) | pdf_ingest; lit_verify (`pdftotext`, `pdfinfo`, `pdfimages`: re-derivation) | Anchor text, page info, renders, image and font listings; called as separate programs |
+| poppler-utils (`pdftotext`, `pdfinfo`, `pdftoppm`, `pdfimages`, `pdffonts`) | 24.02.0-1ubuntu9.9 (read 2026-10-19); the Dockerfile's apt snapshot `20261024T000000Z` (2026-10-28) selects 24.02.0-1ubuntu9.11, Ubuntu security patches of the same upstream release, from the next rebuild | GPL-2 or GPL-3 (Debian copyright file) | pdf_ingest; lit_verify (`pdftotext`, `pdfinfo`, `pdfimages`: re-derivation) | Anchor text, page info, renders, image and font listings; called as separate programs |
 | tesseract-ocr (+ `-eng`, `-osd`) | 5.3.4-1build5 | Apache-2.0 | pdf_ingest | OCR on scanned pages only, CPU, `OMP_THREAD_LIMIT=1` |
 | pypdfium2 | 5.13.0 | "BSD-3-Clause, Apache-2.0, dependency licenses" | pdf_ingest, lit_verify | Lane B text (lit_verify re-derives it) |
 | pdfplumber | 0.11.10 | MIT (classifier) | pdf_ingest, lit_verify | Table hints, image boxes, char rotation (lit_verify: `find_tables` and image boxes where a flag needs it) |
@@ -19,9 +19,33 @@ its appended log) [obs].
 | rapidfuzz | 3.14.6 | MIT | pdf_ingest, lit_verify | Agreement score; the NEAR tier |
 | polars (or pyarrow) | as pinned elsewhere in the image | not re-read on 2026-10-19 (not part of the PDF stack block) | both | `page_index.parquet` |
 
-pdfminer.six also pulls in cryptography 50.0.1, cffi 2.1.1 and pycparser 3.0;
-the Dockerfile pins all nine distributions of the stack and names their
-licenses in the block comment.
+pdfminer.six also pulls in charset-normalizer 3.5.1 and cryptography 50.0.1
+(with cffi 2.1.1 and pycparser 3.0 beneath it), and pdfplumber pulls in
+pillow. pillow and charset-normalizer were already in the image;
+charset-normalizer is pinned at the version it had resolved, 3.5.1. pillow
+was 12.3.0 when these versions were read; since 2026-10-28 the Dockerfile
+pins 13.0.0 through a one-package `--exclude-newer-package` override (a
+security exception: 12.3.0 has 41 published advisories), effective from the
+next rebuild. The Dockerfile pins all nine distributions of the stack and
+names their licenses in the block comment.
+
+After that rebuild, re-check a few known papers, since a poppler patch
+release can still change extraction in rare cases. The cheapest whole-paper
+check is `lit_verify card` on an existing card: its `rederive` step re-runs
+`pdftotext` with the installed poppler on every page of the source PDF and
+compares the text byte for byte with the stored anchors (`rederive.method`),
+and `anchor_mismatches` lists the pages that changed. To compare the
+ingests themselves, re-ingest (`--reingest`, or a first ingest into a fresh
+folder) and compare the anchor text, but compare like with like: a
+re-ingest after a poppler update also picks up any `pdf_ingest` change
+since the older ingest, so compare two ingests with the same `tool_version`
+in `ingest_manifest.json`, for example one made just before the rebuild and
+one just after. The manifest does not tell the two poppler builds apart:
+its `lanes.anchor.version` is poppler's upstream version only
+(`pdftotext version 24.02.0` under 24.02.0-1ubuntu9.9, observed
+2026-10-28; 9.11 has the same upstream number, so the string is expected
+not to change, inference), so record Ubuntu's package revision with
+`dpkg-query -W poppler-utils` beside each ingest.
 
 **Excluded:** PyMuPDF / pymupdf4llm (AGPL; excluded by user decision), pypdf
 (not needed: pypdfium2 covers it), Gemini and LlamaParse (upload lanes,
@@ -37,7 +61,8 @@ poppler-data (CJK CMaps) is not installed; `pdf_ingest` records
   OCR (Tesseract)" apt layer (merged 2026-10-14 to share its index refresh).
 - Python packages: the "Install the DAAF PDF reading stack" `uv pip install
   --system` block in the Python section, before the provider-shim block,
-  pinned at or before the frozen environment date.
+  pinned at or before the frozen environment date, except pillow (one-package
+  override, above).
 
 All framework layers, never the USER ADDITIONS block (checklist FC17). The
 image was rebuilt with the stack on 2026-10-13.
@@ -51,11 +76,16 @@ update the `daaf-apt-update` count in `tests/bash/daaf_lib.bats` for a new
 apt layer), then the user rebuilds: exit the container, then
 `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from `daaf-docker`.
 After a rebuild that changes a lane, re-ingest with `--reingest`; the ingest
-manifest records the exact tool versions per lane.
+manifest records each lane's tool version as the tool reports it. For the
+Python packages that is the exact version (`pypdfium2` `5.13.0`); for
+poppler and Tesseract it is the upstream version without Ubuntu's package
+revision (`pdftotext version 24.02.0`, `tesseract 5.3.4`), so a patch
+release such as poppler 24.02.0-1ubuntu9.9 to 9.11 does not show there:
+`dpkg-query -W poppler-utils tesseract-ocr` gives the package versions.
 
 ## Checking the environment
 
-`pdf_ingest` records what it found: `lanes` (tool, exact version, invocation)
+`pdf_ingest` records what it found: `lanes` (tool, version as the tool reports it, invocation)
 and `lanes_unavailable` in every `ingest_manifest.json`, and
 `lanes_unavailable` on stdout and in the MANIFEST row. That record is the
 check: there is no separate probe to run. Missing required pieces exit 10

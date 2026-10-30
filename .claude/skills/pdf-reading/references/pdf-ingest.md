@@ -198,8 +198,9 @@ Top-level fields: `kind` (`pdf_ingest_manifest`), `tool`, `tool_version`,
 `supersedes`, `source` (`path`, `basename`, `sha256`, `bytes`, `source_kind`,
 `web_fetch`), `page_count`, `encrypted`, `pdfinfo` (Title, Author, Creator,
 Producer, dates, Pages, Page size, PDF version, …, scrubbed), `parameters`,
-`lanes` (tool, exact version and invocation per lane; Python and polars
-versions), `lanes_unavailable`, `lane_errors`, `poppler_data_present`,
+`lanes` (tool, version as the tool reports it and invocation per lane;
+for poppler and Tesseract the upstream version without Ubuntu's package
+revision, see `toolchain.md`; Python and polars versions), `lanes_unavailable`, `lane_errors`, `poppler_data_present`,
 `cjk_font_encodings`, `constants` (1.1.0 adds `OVERLAP_VERSION` and
 `READING_AID_FLAG`), `header_footer`, `artifacts` (`dirs`,
 `fulltext`, `page_index` with bytes and SHA-256), `pages` (per page: `anchor`,
