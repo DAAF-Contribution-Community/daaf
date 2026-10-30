@@ -4,8 +4,11 @@
 # ============================================================================
 # Opens marimo's notebook browser in your browser -- browse, open, create, and
 # edit marimo notebooks across all your research projects.
-# Starts the DAAF container if needed. Automatically opens the browser when
-# daaf_lib.sh is available.
+# Starts the DAAF container if needed. The notebook server requires an access
+# token that changes with every launch; the printed link carries it. A fresh
+# launch keeps the server in this window until Ctrl+C and only prints the link;
+# the browser opens automatically (when daaf_lib.sh is available) only when a
+# notebook server was already running.
 #
 # Usage:
 #   cd daaf-docker
@@ -89,6 +92,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         case "$*" in
             "info") return 0 ;;
             *"compose ps -q daaf-docker"*) echo "abc123" ;;
+            *"--print-token"*) echo "dryruntoken" ;;
             *"compose exec"*) return 0 ;;
             *)
                 echo "[DRY-RUN] docker $*" >&2
@@ -151,8 +155,22 @@ fi
 
 # Open browser automatically if library is available. URL uses the HOST-published
 # port (DAAF_PORT_MARIMO); the container port stays fixed at 2718.
+# marimo requires the access token launch_marimo.sh generates for each launch,
+# so ask the running server for it (--print-token). Its stdout carries only the
+# token, which stays in a shell variable and is never written to a file or log.
+# -T: no TTY, so the captured value has no CR. If nothing is running any more
+# (a foreground launch ended with Ctrl+C) or the server has no known token (an
+# older launcher's --no-token server; launch_marimo.sh printed what to do),
+# --print-token fails and no browser is opened.
 if command -v open_url >/dev/null 2>&1; then
-    open_url "http://localhost:${DAAF_PORT_MARIMO}"
+    MARIMO_TOKEN=""
+    TOKEN_RC=0
+    MARIMO_TOKEN=$(docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token </dev/null 2>/dev/null) || TOKEN_RC=$?
+    MARIMO_TOKEN="$(printf '%s' "${MARIMO_TOKEN}" | tr -d '\r\n')"
+    if [ "${TOKEN_RC}" -eq 0 ] && [[ "${MARIMO_TOKEN}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "Opening the notebook browser in your default browser..."
+        open_url "http://localhost:${DAAF_PORT_MARIMO}/?access_token=${MARIMO_TOKEN}"
+    fi
 fi
 
 # If marimo was already running, the container-side script returns immediately

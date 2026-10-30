@@ -99,6 +99,19 @@ Describe "view_notebooks.ps1" {
             $Content | Should -Match 'DAAF container is running'
         }
 
+        It "asks the running server for its token with launch_marimo.sh --print-token over a TTY-less exec, stdout only" {
+            $Content | Should -Match ([regex]::Escape('docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token 2>$null'))
+        }
+
+        It "opens the tokenized URL on the HOST-published port (DAAF_PORT_MARIMO, default 2718)" {
+            $Content | Should -Match ([regex]::Escape('"http://localhost:$MarimoHostPort/?access_token=$MarimoToken"'))
+            $Content | Should -Match ([regex]::Escape('$MarimoHostPort = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }'))
+        }
+
+        It "accepts only a URL-safe token" {
+            $Content | Should -Match ([regex]::Escape("`$MarimoToken -match '^[A-Za-z0-9_-]+$'"))
+        }
+
         It "extracts the settings key column-0 strict (no .Trim(), rejects padded keys like bash)" {
             # Import-DaafSettingsInline must extract the key WITHOUT .Trim() so a
             # whitespace-padded "  DAAF_PROJECT_NAME=..." line falls through as
@@ -151,6 +164,13 @@ Describe "view_notebooks.ps1 dry-run mode" {
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/view_notebooks.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*DAAF container is running*"
+    }
+
+    It "reaches the tokenized browser open in dry-run" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/view_notebooks.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Opening the notebook browser in your default browser*"
     }
 
     It "completes quickly in dry-run (no blocking)" {
@@ -236,5 +256,69 @@ Describe "view_notebooks.ps1 native stderr handling (dispatch #63)" {
         $out | Should -Not -BeLike "*DAAF container is running.*"
         $code | Should -Be 1
         @(Get-Content -LiteralPath $callLog) | Should -Contain 'compose up -d'
+    }
+}
+
+# ============================================================================
+# Access token (parity with view_notebooks.bats "Access token")
+# ============================================================================
+# A native fake docker on PATH answers launch_marimo.sh --print-token, and fake
+# openers (xdg-open on Linux, open on macOS -- what Start-Process resolves a URL
+# to off Windows) log the URL instead of launching a browser.
+
+Describe "view_notebooks.ps1 access token" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:ScriptPath = "$RepoRoot/scripts/host/view_notebooks.ps1"
+        $script:RunWithFakes = {
+            param([string]$PrintTokenArm)
+            $work = Join-Path $TestDrive ("tok-" + [guid]::NewGuid().ToString('N'))
+            $bin = Join-Path $work 'bin'
+            $null = New-Item -ItemType Directory -Force -Path $bin
+            New-FakeComposeFile -Directory $work
+            $openLog = Join-Path $work 'opened.log'
+            $fake = "#!/usr/bin/env bash`ncase `"`$*`" in`n    info) exit 0 ;;`n    'compose ps -q daaf-docker') echo abc123 ;;`n    *--print-token*) $PrintTokenArm ;;`n    *) exit 0 ;;`nesac`n"
+            [System.IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake)
+            $opener = "#!/usr/bin/env bash`nprintf '%s\n' `"`$1`" >> '$openLog'`n"
+            foreach ($name in @('docker', 'xdg-open', 'open')) {
+                if ($name -ne 'docker') { [System.IO.File]::WriteAllText((Join-Path $bin $name), $opener) }
+                & chmod +x (Join-Path $bin $name)
+            }
+            $saved = @{}
+            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED', 'DAAF_PORT_MARIMO')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+            Push-Location -LiteralPath $work
+            try {
+                $env:PATH = $bin + [System.IO.Path]::PathSeparator + $saved['PATH']
+                Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+                $env:DAAF_NESTED = "1"
+                $env:DAAF_PORT_MARIMO = "3001"
+                $out = & $ScriptPath *>&1 | Out-String
+            } finally {
+                Pop-Location
+                foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], 'Process') }
+            }
+            # Start-Process returns before the opener has run; give it a moment.
+            $deadline = (Get-Date).AddSeconds(5)
+            while (-not (Test-Path -LiteralPath $openLog) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            $opened = if (Test-Path -LiteralPath $openLog) { @(Get-Content -LiteralPath $openLog) } else { @() }
+            return @{ Out = $out; Opened = $opened }
+        }
+    }
+
+    It "opens the tokenized URL on the HOST-published port" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes 'echo feedc0de42'
+        $r.Out | Should -BeLike "*Opening the notebook browser in your default browser*"
+        $r.Opened | Should -Be @('http://localhost:3001/?access_token=feedc0de42')
+    }
+
+    It "opens nothing when --print-token fails (e.g. an older --no-token server, exit 5)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes 'echo started-without-token >&2; exit 5'
+        $r.Out | Should -Not -BeLike "*Opening the notebook browser in your default browser*"
+        @($r.Opened).Count | Should -Be 0
+    }
+
+    It "opens nothing when the token is malformed" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $r = & $RunWithFakes "echo 'abc&next=//evil.example'"
+        @($r.Opened).Count | Should -Be 0
     }
 }

@@ -250,11 +250,22 @@ marimo run notebook.py --token
 # Custom token
 marimo run notebook.py --token-password mysecret
 
-# marimo edit: disable the default token (trusted local setups only)
+# Token from a file ('-' reads stdin), so it never appears on a command line
+marimo edit notebook.py --token-password-file /path/to/private_token_file
+
+# marimo edit: disable the default token (unsafe for any server a browser can reach)
 marimo edit notebook.py --no-token
 ```
 
-DAAF's notebook browser (`scripts/launch_marimo.sh`) runs `marimo edit --no-token`; what keeps it private is that `docker-compose.yml` publishes the port on the host's `127.0.0.1` only.
+The browser logs in once with `http://HOST:PORT/?access_token=TOKEN`; marimo then strips the token from the URL and keeps the session in a `SameSite=Lax` cookie.
+
+DAAF's notebook browser (`scripts/launch_marimo.sh`) never uses `--no-token`. In an edit server, marimo's `/terminal/ws` WebSocket opens a shell, marimo checks it only when a token is set, and it checks no `Origin` or `Host` header. Publishing the port on the host's `127.0.0.1` therefore does not stop a web page in the user's browser from opening that shell on a no-token server. `launch_marimo.sh` writes a fresh 256-bit token for every launch to `$HOME/.local/state/daaf/marimo-token-PORT` (mode 0600, outside `/daaf`, which the log viewer serves) and passes it with `--token-password-file`. It prints the tokenized URL, and `launch_marimo.sh --print-token` returns the running server's token, which the host launchers use to open the browser. Keep `--no-token` out of any server you start where a browser could reach it; an agent's own `marimo edit`/`marimo run` inside the container binds `127.0.0.1` by default and is not published.
+
+**Treat the token like a password, and keep it out of the record.** Whoever holds the token of a running edit server can open its terminal, which is a shell in the container, so a token that lands in a file becomes a way in. Anything an agent runs or prints ends up in the session transcript under `/daaf/.claude/logs`, which the log viewer serves and backups copy. So:
+- Leave starting the notebook browser to the user (Control Panel option 4 or `view_notebooks`), which shows the tokenized link to the user without passing it through the session. Do not run `launch_marimo.sh --print-token` yourself; it exists for the host launchers.
+- If you do start `launch_marimo.sh` yourself, it prints the tokenized link (`?access_token=` followed by 64 hex characters) into your tool output, so that token is already in the session transcript. Do not repeat the link anywhere else. Point the user to option 4 or `view_notebooks`, which read the running server's token and open the browser for them. If the transcript will be shared beyond this machine, stop the server and launch it again so the token in the transcript no longer works.
+- When you quote launcher output in a report, notes, `STATE.md`, `SESSION_NOTES.md`, an issue, a commit message or a shared document, write the link as `http://localhost:2718/?access_token=<redacted>`.
+- A token works only for the server that was started with it. If one leaks, stop the server (Control Panel **12) Stop Web Services**) and launch it again; the new launch writes a new token, and the old link stops working.
 
 ### Custom Auth
 

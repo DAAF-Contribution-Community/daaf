@@ -6,7 +6,7 @@ metadata:
   audience: research-coders
   domain: python-library
   library-version: "0.25.0"
-  skill-last-updated: "2026-10-16"
+  skill-last-updated: "2026-10-28"
 ---
 
 # marimo
@@ -359,6 +359,7 @@ Having issues?
 | `marimo run` Is Not an Execution Test | `./references/apps-deployment.md` |
 | Export & Deploy | `./references/apps-deployment.md` |
 | Session snapshots (`__marimo__/`) | `./references/apps-deployment.md` |
+| Access tokens (DAAF notebook browser; keep tokenized links out of logs and notes) | `./references/apps-deployment.md` |
 | Common Errors | `./references/gotchas.md` |
 | Best Practices | `./references/gotchas.md` |
 

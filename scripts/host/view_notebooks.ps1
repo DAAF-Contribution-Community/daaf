@@ -3,7 +3,11 @@
 # ============================================================================
 # Opens marimo's notebook browser in your browser -- browse, open, create, and
 # edit marimo notebooks across all your research projects.
-# Starts the DAAF container if needed.
+# Starts the DAAF container if needed. The notebook server requires an access
+# token that changes with every launch; the printed link carries it. A fresh
+# launch keeps the server in this window until Ctrl+C and only prints the link;
+# the browser opens automatically only when a notebook server was already
+# running.
 #
 # Usage:
 #   cd daaf-docker
@@ -81,6 +85,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         switch -Wildcard ($argStr) {
             "*info*" { return }
             "*compose ps -q daaf-docker*" { Write-Output "abc123" }
+            "*--print-token*" { Write-Output "dryruntoken"; return }
             "*compose up*" { return }
             "*compose exec*" { return }
             default {
@@ -160,6 +165,40 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to start the notebook browser." -ForegroundColor Red
     Write-Host "  The container may not be running, or marimo may not be installed." -ForegroundColor Red
     Write-Host "  Try: docker compose logs daaf-docker" -ForegroundColor Yellow
+}
+
+# Open the browser (parity with view_notebooks.sh). The URL uses the HOST-published
+# port (DAAF_PORT_MARIMO); the container port stays fixed at 2718.
+# marimo requires the access token launch_marimo.sh generates for each launch, so
+# ask the running server for it (--print-token). Its stdout carries only the token,
+# which stays in a variable and is never written to a file or log. -T: no TTY, so
+# the captured value has no CR. Stdout only (2>$null): the exit code, not a stderr
+# line, decides. If nothing is running any more (a foreground launch ended with
+# Ctrl+C) or the server has no known token (an older launcher's --no-token server;
+# launch_marimo.sh printed what to do), --print-token fails and nothing is opened.
+$MarimoHostPort = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }
+$savedEAP = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "SilentlyContinue"
+    $MarimoTokenOutput = docker compose exec -T daaf-docker bash /daaf/scripts/launch_marimo.sh --print-token 2>$null
+    $TokenExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $savedEAP
+}
+$MarimoToken = ($MarimoTokenOutput | Out-String) -replace '\s', ''
+if ($TokenExit -eq 0 -and $MarimoToken -match '^[A-Za-z0-9_-]+$') {
+    Write-Host "Opening the notebook browser in your default browser..."
+    $NotebookUrl = "http://localhost:$MarimoHostPort/?access_token=$MarimoToken"
+    if ($env:DAAF_DRY_RUN -ne "1") {
+        try {
+            # FilePath-only open of a URL (no argv; pinned in native_arg_quoting.Tests.ps1).
+            $null = Start-Process $NotebookUrl
+        } catch {
+            # No handler available (headless, restricted shell) -- the link printed
+            # above by launch_marimo.sh still works when opened by hand.
+            Write-Verbose "Silenced: $_"
+        }
+    }
 }
 
 # If marimo was already running, the container-side script returns immediately

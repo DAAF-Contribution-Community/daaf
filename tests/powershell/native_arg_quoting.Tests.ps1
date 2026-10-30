@@ -456,17 +456,18 @@ Describe "Host-script Start-Process structural guards" {
         $violations | Should -BeNullOrEmpty
     }
 
-    It "pins the Start-Process call-site inventory (5 -ArgumentList sites + 2 FilePath-only opens)" {
+    It "pins the Start-Process call-site inventory (5 -ArgumentList sites + 3 FilePath-only opens)" {
         # A new or removed launch site must be a deliberate, reviewed change: update
-        # these pins together with the code. The two FilePath-only calls open a URL
-        # / an HTML file with the default handler (no argv, ExitCode never read).
+        # these pins together with the code. The three FilePath-only calls open a URL
+        # / an HTML file with the default handler (no argv, ExitCode never read);
+        # view_notebooks.ps1's opens the notebook browser's tokenized URL.
         $withArgs = @($script:HostSites | Where-Object { $null -ne $_.ArgumentList } |
             Group-Object Label | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Count)" })
         ($withArgs -join ', ') | Should -BeExactly 'backup_daaf.ps1=1, daaf.ps1=2, test_migration.ps1=2'
         $fileOnly = @($script:HostSites | Where-Object { $null -eq $_.ArgumentList } |
             ForEach-Object { "$($_.Label) $($_.FilePathText)" } | Sort-Object)
-        ($fileOnly -join ', ') | Should -BeExactly 'daaf_lib.ps1 $Url, view_quarto.ps1 $AbsHtml'
-        $script:HostSites.Count | Should -Be 7
+        ($fileOnly -join ', ') | Should -BeExactly 'daaf_lib.ps1 $Url, view_notebooks.ps1 $NotebookUrl, view_quarto.ps1 $AbsHtml'
+        $script:HostSites.Count | Should -Be 8
     }
 
     It "every Start-Process -PassThru in scripts/host caches .Handle before any other use of the result" {
