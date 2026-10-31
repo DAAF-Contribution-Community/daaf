@@ -160,7 +160,7 @@ What are you comparing?
 
 ### Race Codes
 
-> **Empirically verified** from 2018 school assessment data. Only these values appear in the `race` column:
+> **Empirically verified** from 2018 school assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only these values appear in the `race` column:
 
 | Code | Category |
 |------|----------|

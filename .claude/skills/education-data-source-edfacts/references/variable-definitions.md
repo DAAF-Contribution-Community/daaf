@@ -275,7 +275,7 @@ The Portal's EDFacts assessment files carry no participation-rate variable: the 
 
 ### Race/Ethnicity Codes (Portal Integer Encoding)
 
-> **Empirically verified** from 2018 assessment data. Only these values appear in the `race` column.
+> **Empirically verified** from 2018 assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only these values appear in the `race` column.
 
 | Portal Code | NCES Code | Description |
 |-------------|-----------|-------------|

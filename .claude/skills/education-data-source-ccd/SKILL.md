@@ -347,6 +347,7 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
 | Assuming `charter=1/2` | Portal uses `0=No, 1=Yes` | Empirically verified; not NCES `1=Yes, 2=No` |
 | Identifier type/width across files | Prior HF Parquet objects may expose integer `leaid`/`ncessch`, losing leading-zero/display-width semantics | Normalize to strings; validate `leaid` length 7 and `ncessch` length 12 before joining |
+| Float `race`/`sex` in one district file | `schools_ccd_lea_enrollment_2016` stores `race` and `sex` as Float64 (whole-number values); the other 77 CCD enrollment files store Int64. In Polars, filters such as `race == 1` still match, but a join to an Int64 `race` key and a strict concat with another year raise `SchemaError`, and a `diagonal_relaxed` multi-year concat makes both columns Float64 for every year (pinned mirror, probe 2026-10-31) | Cast `race` and `sex` to Int64 after reading, or after a multi-year concat (values are whole numbers, so the cast is lossless), before joining or filtering on code lists |
 
 ## Coverage Notes
 

@@ -88,7 +88,7 @@ NCES provides files for 2003-04 through 2005-06 that include both old and new co
 
 ### The Change
 
-In 2010, CCD adopted new OMB standards for race/ethnicity reporting, adding a "Two or More Races" category and separating Asian and Pacific Islander.
+Between 2008-09 and 2010-11 (optional for states until 2010-11), CCD adopted new OMB standards for race/ethnicity reporting, adding a "Two or More Races" category and separating Asian and Pacific Islander.
 
 ### Before 2010: 5 Categories
 

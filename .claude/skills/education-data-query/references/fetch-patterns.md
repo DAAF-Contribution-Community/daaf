@@ -579,6 +579,9 @@ def fetch_yearly_from_mirrors(
     if not frames:
         raise RuntimeError(f"No data retrieved for any year in {years}")
 
+    # NOTE: diagonal_relaxed upcasts a column whose dtype differs across years for EVERY year
+    # (e.g. CCD district race/sex are Float64 if 2016 is included); cast code columns back to Int64
+    # before joining (education-data-source-ccd SKILL.md, Common Pitfalls).
     result = pl.concat(frames, how="diagonal_relaxed")
     print(f"\n  Combined: {result.shape[0]:,} rows x {result.shape[1]} cols")
     return result

@@ -51,7 +51,7 @@ Under ESSA, states must report assessment and graduation data for these subgroup
 
 > **Portal Encoding Warning:** The Urban Institute Education Data Portal converts NCES string codes to integers.
 >
-> **Empirically verified** from 2018 assessment data. Only codes 1-5, 7, and 99 are observed in the `race` column. Code 6 (NH/PI) is NOT present in EDFacts data.
+> **Empirically verified** from 2018 assessment data, and confirmed in all 42 mirror files with `race` (assessments and grad rates, every year; pinned-mirror probe 2026-10-30). Only codes 1-5, 7, and 99 are observed in the `race` column. Code 6 (NH/PI) is NOT present in EDFacts data.
 
 EDFacts uses the federal OMB race/ethnicity categories:
 

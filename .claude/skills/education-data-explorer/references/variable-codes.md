@@ -164,7 +164,7 @@ constructing a route:
 
 | Source | Codes Available |
 |--------|-----------------|
-| CCD | 1-7, 9, 99 (live-verified; on the mirror, 6 and 7 from 2008 and 9 from 2016) |
+| CCD | 1-7, 9, 99 (live-verified; on the mirror, all 78 files with `race`: 1986 only 99, 1987-2007 1-5 and 99, 6 and 7 rows from 2008 (positive counts only in adopting states until 2010), 9 from 2016; probe 2026-10-31) |
 | CRDC | 1-7, 99 (live-verified; all 55 mirror files with `race`, probe 2026-10-30) |
 | IPEDS | 1-9, 99 (live-verified; code 8 IPEDS-only); 20 also in some `fall-enrollment-race` files from 1986-1997 (mirror probe 2026-10-30) |
 | EDFacts | 1-9, 20, 99 declared; 1-5, 7, 99 populated in all 42 mirror files with `race` (assessments and grad rates, every year; probe 2026-10-30) |
@@ -188,11 +188,11 @@ Prior to 2008, race categories differed. The current categories align with OMB s
 | 9 | Unknown / Not Reported |
 | 99 | Total (all sexes) |
 
-> **Mirror probe, 2026-10-30 (every IPEDS, CRDC and EDFacts file with a `sex` column; CCD school files 2013-2024 and district files at sampled years).** The CCD, CRDC, EDFacts and IPEDS dictionaries all declare sex `1, 2, 3, 9, 99` (`"3" : "Gender Not-Identified"`); none declares `4`. Populated values:
+> **Mirror probe, 2026-10-30 (every IPEDS, CRDC and EDFacts file with a `sex` column), completed for CCD on 2026-10-31 (all 78 CCD school and district enrollment files).** The CCD, CRDC, EDFacts and IPEDS dictionaries all declare sex `1, 2, 3, 9, 99` (`"3" : "Gender Not-Identified"`); none declares `4`. Populated values:
 > - **IPEDS:** 144 of 148 files hold only `{1, 2, 99}`. `admissions-enrollment` adds `3` and `9` for 2022-2024; `fall-enrollment-race` adds `3` and `4` in 2022 and `3` and `9` in 2023 and 2024. These rows carry real counts (e.g. 2022 `enrollment_fall` > 0 in 1,226 sex-3 rows and 2,878 sex-4 rows). That `4` in 2022 stands for what later files code `9` is inference; check the IPEDS documentation before pooling it with `9`.
 > - **CRDC:** `{1, 2, 99}`, except `enrollment_k12_2021`, which adds `3` (2,354 school total rows with enrollment > 0); `retention_2020` has no `99` rows.
 > - **EDFacts:** `{1, 2, 99}` in all 22 files with `sex`.
-> - **CCD:** `{1, 2, 9, 99}` from 2016; earlier files lack `9`, and district files through 1997 hold only `99`.
+> - **CCD:** `{1, 2, 9, 99}` from 2016 and `{1, 2, 99}` from 1998 to 2015; school and district files through 1997 hold only `99`.
 >
 > **Note:** Among K-12 sources, live CCD data **does** carry `sex=9` (Unknown) — verified live at `schools/ccd/enrollment/2020/grade-9/race/sex/?fips=11`, distinct sex = `[1, 2, 9, 99]`. CRDC in the same probe set showed only `{1, 2, 99}`. Do not assume K-12 sources are limited to `{1, 2, 99}`; inspect the actual distinct values per source and year.
 
