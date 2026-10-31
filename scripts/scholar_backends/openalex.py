@@ -357,7 +357,7 @@ def filter_value(text):
     #   spaces. A "?" ending a multi-word title is now harmless (2026-10-31:
     #   HTTP 200, meta.count 4 with and without it; on 2026-09-27 it was a 400).
     text = re.sub(r"[?*]+", " ", text)
-    text = re.sub(r",(?=\s*[A-Za-z_][A-Za-z0-9_.]*\s*:)", " ", text)
+    text = re.sub(r",(?=[\s,]*[A-Za-z_][A-Za-z0-9_.]*\s*:)", " ", text)   # [\s,]*: ",," and ", ," too
     return re.sub(r"^[\s,]+|[\s,]+$", "", text)
 
 

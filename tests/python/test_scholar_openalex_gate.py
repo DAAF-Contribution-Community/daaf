@@ -466,6 +466,8 @@ class FilterValueTests(unittest.TestCase):
         # the spaced forms were not measured and are neutralized conservatively.
         for text, want in (("tutoring,type:article", "tutoring type:article"),
                            ("tutoring,TYPE:article", "tutoring TYPE:article"),
+                           ("tutoring,,type:article", "tutoring  type:article"),
+                           ("tutoring, ,type:article", "tutoring   type:article"),
                            ("tutoring, type:article", "tutoring  type:article"),
                            ("tutoring,  type:book", "tutoring   type:book"),
                            ("tutoring,\ttype:book", "tutoring \ttype:book"),
