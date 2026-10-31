@@ -111,7 +111,8 @@
 #                                 --for-question is refused (exit 2) when the
 #                                 MANIFEST ties the session to another question
 #   backends  [DEST]              list adapters: key presence (NAMES only),
-#                                 capabilities, license class, rate limit
+#                                 capabilities, license class, rate limit,
+#                                 the effective OpenAlex rate tier (1.6.1)
 #
 # <ID> = OpenAlex work ID (W123…), a DOI (10.… or https://doi.org/…), or
 # title:"Exact or near title".
@@ -132,6 +133,11 @@
 #                             and replaced by [SCHOLARLY_CONTACT_EMAIL] in
 #                             every artifact, MANIFEST row, stdout and stderr
 #                             line (scrub_contact()).
+#   OPENALEX_RATE_TIER        optional SETTING, not a key (1.6.1): free |
+#                             prepaid | annual | keyless; unset -> free with a
+#                             key, keyless without. Sets the OpenAlex gate
+#                             intervals (openalex.py § RATE_TIERS); a bad value
+#                             falls back with a stderr warning.
 #   DAAF_FETCH_CONTEXT        label stamped into MANIFEST requesting_context
 #
 # Shared rate gate: ~/.cache/scholar_search/<lane>.gate (override with
@@ -253,7 +259,22 @@ from scholar_backends._common import (  # noqa: E402
 # RateGate.reserve(). A 429 backoff pushes every lane of the request back. A
 # busy gate now records earlier attempts' waits in rate_gate_wait_s. Row
 # shapes are unchanged.
-TOOL_VERSION = "1.6.0-daaf"
+# 1.6.1 (2026-10-31, user decision): the OpenAlex rate tier is a setting,
+# OPENALEX_RATE_TIER (free | prepaid | annual | keyless; unset = free with a
+# key, keyless without), resolved in scholar_backends/openalex.py § RATE_TIERS.
+# An unknown value, or a keyed tier without a key, falls back to the
+# conservative tier with a warning: on stderr for every command that uses the
+# adapter (and in the row's new `config_warnings`, present only then), and in
+# `backends`, which now also prints each adapter's effective rate tier. An
+# empty lane tuple now books the backend's own lane (it booked no gate).
+# filter_value() keeps commas in .search filter text (re-measured 2026-10-31,
+# api-notes.md), so keyword searches, `verify` title lookups and `fulltext`
+# sibling lookups now send commas; a comma that could start a filter clause
+# (", type:" in any spacing or case) becomes a space, `?`/`*` still become
+# spaces, and leading and trailing commas are dropped. Stdout now passes the
+# secret redactor too, and an unknown OPENALEX_RATE_TIER is echoed only when
+# it is close to a tier name.
+TOOL_VERSION = "1.6.1-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -316,8 +337,9 @@ among between outcome outcomes research review toward towards via new
 # notes). OpenAlex (docs, authentication page, fetched 2026-10-28): 10 req/s
 # keyless, 30 with a free key or prepaid usage, 50 annual; searches with more
 # than 5 OR/AND/NOT operators 1 / 5 / 25 req/s; semantic search 1 req/s. Every
-# OpenAlex request books the main "openalex" lane, gated by key tier since
-# 1.6.0 (scholar_backends/openalex.py § CONTRACT and § RATE_LANES).
+# OpenAlex request books the main "openalex" lane, gated by tier since 1.6.0
+# (the OPENALEX_RATE_TIER setting since 1.6.1; scholar_backends/openalex.py
+# § CONTRACT, § RATE_TIERS and § RATE_LANES).
 # Crossref public pool: 5 req/s, 1 concurrent. These limits belong to the KEY
 # (or IP), not to one process, so every scholar_search run books its slot
 # through a shared gate file; concurrent agents queue instead of colliding.
@@ -661,7 +683,11 @@ class Http:
         #   skipped.
         # REASONING: a single gated lane (every other backend, and most OpenAlex
         #   requests) goes through RateGate.reserve() exactly as before 1.6.0.
-        lanes = tuple(lane) if isinstance(lane, (tuple, list)) else (lane or backend,)
+        # REASONING (1.6.1): empty lane names are dropped, and a tuple left
+        #   empty books the backend's own lane, as lane=None does; an empty
+        #   tuple used to book no gate at all.
+        lanes = tuple(lane) if isinstance(lane, (tuple, list)) else (lane,)
+        lanes = tuple(name for name in lanes if name) or (backend,)
         lane = "+".join(lanes)   # label for messages
         # REASONING: keys travel only in headers; a key VALUE showing up in the
         #   URL, params or a POST body means something upstream (a query, a
@@ -2663,8 +2689,17 @@ def backends_report():
         lines.append(f"| {name} | {key} | {'yes' if m.REQUIRED_KEY else 'no'} | {caps} | {m.LICENSE_CLASS} | "
                      f"{m.RATE_LIMIT_NOTE} | {'yes' if m.DEFAULT_IN_FIND else 'no'} | {m.COST_NOTE} |")
         stdout.append(f"  {name:<17} key: {key:<45} license: {m.LICENSE_CLASS:<9} caps: {caps}")
+    # 1.6.1: an adapter whose spacing depends on a setting (OpenAlex:
+    #   OPENALEX_RATE_TIER) declares RATE_TIER_NOTE, and CONFIG_WARNING when
+    #   it fell back from a bad setting; both are shown here (stdout and digest).
+    tier_lines = [f"{m.NAME} rate tier: {m.RATE_TIER_NOTE}" for m in registry.BACKENDS.values()
+                  if getattr(m, "RATE_TIER_NOTE", None)]
+    tier_lines += [f"WARNING ({m.NAME}): {m.CONFIG_WARNING}" for m in registry.BACKENDS.values()
+                   if getattr(m, "CONFIG_WARNING", None)]
+    stdout += [f"  {t}" for t in tier_lines]
     attribution = [f"- {m.LABEL}: {m.ATTRIBUTION}" for m in registry.BACKENDS.values()]
-    lines += ["", f"Contact email env {CONTACT_ENV}: {'set' if contact_email() else 'not set'} "
+    lines += ([""] + tier_lines if tier_lines else []) + [
+              "", f"Contact email env {CONTACT_ENV}: {'set' if contact_email() else 'not set'} "
               "(Crossref polite pool; Unpaywall leg).", "",
               "Attribution obligations:"] + attribution
     # The attribution lines go to stdout too, so `backends` with no DEST_DIR
@@ -3039,11 +3074,21 @@ def main(argv=None):
 
     if a.command == "backends" and not a.dest_dir:
         lines, stdout = backends_report()
-        sys.stdout.write(scrub_contact("scholar_search backends: adapters registered (key presence by NAME "
-                                       "only)\n" + "\n".join(stdout)) + "\n")
+        # 1.6.1 (Phase 4 review W2): stdout passes the secret redactor too
+        #   (red()), as stderr, the digest and the row do: an adapter's
+        #   CONFIG_WARNING can echo a setting's value.
+        sys.stdout.write(red("scholar_search backends: adapters registered (key presence by NAME "
+                             "only)\n" + "\n".join(stdout)) + "\n")
         return 0
 
     mods = command_backends(a)
+    # 1.6.1: a setting an adapter could not honor (CONFIG_WARNING, e.g. an
+    #   unknown OPENALEX_RATE_TIER, which fell back to the conservative tier)
+    #   is reported on stderr by every command that uses the adapter, and
+    #   recorded in the MANIFEST row (config_warnings, present only then).
+    config_warnings = [f"{m.NAME}: {m.CONFIG_WARNING}" for m in mods if getattr(m, "CONFIG_WARNING", None)]
+    for warning in config_warnings:
+        sys.stderr.write(red(f"scholar_search: WARNING {warning}") + "\n")
     # INTENT (split storage): on a SPLIT_STORAGE_COMMANDS command mixing
     #   restricted and open backends, `license_class` describes what stays in
     #   DEST_DIR (the open raw log + the facts-only digest); the restricted
@@ -3074,6 +3119,8 @@ def main(argv=None):
     if split:
         row.update(restricted_backends=restricted_names, restricted_storage="restricted/",
                    restricted_raw_artifact=None, restricted_raw_bytes=None, restricted_raw_sha256=None)
+    if config_warnings:
+        row["config_warnings"] = config_warnings
 
     dest_dir, refusal = validate_dest_dir(a.dest_dir)
     if refusal:
@@ -3398,9 +3445,12 @@ def main(argv=None):
         out.append(f"  {redactions} injection-shaped string(s) redacted")
     if row["secret_redactions"]:
         out.append(f"  secret values redacted from artifacts: {', '.join(row['secret_redactions'])}")
-    sys.stdout.write(scrub_contact("\n".join(out)) + "\n")
+    # 1.6.1 (Phase 4 review W2): the summary and the command's stdout lines
+    #   pass the secret redactor too (red()), as stderr, the digest and the
+    #   row do (e.g. `backends` DEST prints an adapter's CONFIG_WARNING).
+    sys.stdout.write(red("\n".join(out)) + "\n")
     if stdout:
-        sys.stdout.write(scrub_contact("\n".join(stdout)) + "\n")
+        sys.stdout.write(red("\n".join(stdout)) + "\n")
     if not row["result_count"] and a.command not in ("retractions", "backends", "oa", "verify", "work",
                                                      "scite-tally", "elicit-usage", "elicit-report",
                                                      "elicit-resume"):

@@ -14,8 +14,12 @@
 #     filter=title_and_abstract.search + sort=relevance_score:desc.
 #   - Semantic search: max 50 results, 1 request/second; year filters are
 #     accepted (filter support re-measured 2026-10-02, see api-notes.md).
-#   - Filter values are comma-separated; commas/`?`/`*` in free text break
-#     the filter (a title ending in "?" returned HTTP 400).
+#   - Filter values are comma-separated, but a comma inside .search filter
+#     text is text unless a filter name and ":" follow it directly
+#     (re-measured 2026-10-31). filter_value() also neutralizes the spaced
+#     forms (", type:", ",type :"), which were not measured. `?`/`*` are
+#     wildcards the stemmed .search filters reject (a title ending in "?"
+#     returned HTTP 400 on 2026-09-27; harmless on 2026-10-31).
 #   - Open year ranges need comparisons (publication_year:>2014).
 #   - Datasets ("Code for: …" ICPSR deposits) and paratext crowd out papers;
 #     excluded unless --all-types. `find` also drops dissertations by default
@@ -25,12 +29,15 @@
 #     free key or prepaid usage, 50 on an annual plan; searches with more than
 #     5 OR/AND/NOT operators 1 / 5 / 25 req/s; semantic search 1 req/s. Since
 #     tool 1.6.0 (user decision 2026-10-30) every request is gated
-#     container-wide by key tier (§§ RATE_LANES). Live re-measure 2026-10-30
+#     container-wide by key tier (§§ RATE_LANES); since 1.6.1 the tier is the
+#     OPENALEX_RATE_TIER setting, by default read from key presence
+#     (§§ RATE_TIERS). Live re-measure 2026-10-30
 #     (free single-work lookups, keyed): see api-notes.md § "Measured
 #     behavior: OpenAlex per-second gate (2026-10-30)".
 # =============================================================================
 
 import difflib
+import os
 import re
 
 from ._common import (VERIFY_CONFIDENT_MIN, VERIFY_MIN_TITLE_LETTERS, BackendError, arxiv_id_from, author_match,
@@ -52,41 +59,97 @@ LICENSE_CLASS = "open"        # data is CC0 (help.openalex.org)
 # sent. Documented limits: see the header.
 # REASONING (user decision 2026-10-30): several DAAF agents may search at
 #   once, so the per-second limit is enforced container-wide by the gate
-#   rather than left to 429 retries. The tool cannot see a key's plan, so a
-#   keyed container is gated for the free-key/prepaid tier (30 req/s,
-#   5 boolean-heavy) and a keyless one for 10 / 1, each with a
-#   margin: 0.04 s = 25/s and 0.22 s = ~4.5/s keyed; 0.11 s = ~9.1/s and
-#   1.1 s = ~0.9/s keyless. An annual-plan key (50 / 25) is under-used, not
-#   over-run.
-# ASSUMES: key presence is the same for every scholar_search process in the
-#   container (one environment, fixed at container start), so every process
-#   books the shared gate files with the same spacing. The tier is read once,
-#   when this module loads.
+#   rather than left to 429 retries.
+# REASONING (user decision 2026-10-31, tool 1.6.1): the API does not tell a
+#   key's plan (2026-10-30: no response header states it), so the tier is a
+#   setting, OPENALEX_RATE_TIER, set host-side in environment_settings.txt
+#   like the key. Unset, it is "free" with a key and "keyless" without one.
+#   RATE_TIERS below is the ONE table of tiers: a vendor change to the
+#   documented limits is a one-row edit there.
+# ASSUMES: every scholar_search process in the container sees the same key
+#   presence and the same OPENALEX_RATE_TIER (one environment, fixed at
+#   container start), so every process books the shared gate files with the
+#   same spacing. The tier is read once, when this module loads.
 MAIN_LANE = NAME
 SEMANTIC_LANE = "openalex-semantic"
 BOOLEAN_LANE = "openalex-boolean"
-SEMANTIC_INTERVAL = 1.1
-TIER_INTERVALS = {True: {MAIN_LANE: 0.04, BOOLEAN_LANE: 0.22},     # keyed (free key / prepaid tier)
-                  False: {MAIN_LANE: 0.11, BOOLEAN_LANE: 1.1}}     # keyless
+SEMANTIC_INTERVAL = 1.1       # docs: semantic search is 1 request per second, on every plan
 BOOLEAN_OPERATOR_MAX = 5      # docs: "more than 5 `OR`/`AND`/`NOT` operators" -> the lower limit
+RATE_TIER_ENV = "OPENALEX_RATE_TIER"
+# §§ RATE_TIERS
+# tier: (documented req/s, documented req/s for a search with more than 5
+#        operators, gate interval s for every request, gate interval s for such a search)
+# Documented limits: help.openalex.org/api/authentication, fetched 2026-10-28
+# and again 2026-10-30. Each interval keeps a margin under its limit:
+#   keyless 0.11 s = ~9.1/s (limit 10)  and 1.1 s = ~0.9/s (limit 1);
+#   free    0.04 s = 25/s (limit 30)    and 0.22 s = ~4.5/s (limit 5);
+#   annual  0.024 s = ~41.7/s (limit 50) and 0.044 s = ~22.7/s (limit 25).
+RATE_TIERS = {"keyless": (10, 1, 0.11, 1.1),
+              "free": (30, 5, 0.04, 0.22),          # docs: "Free API key, or prepaid usage"
+              "annual": (50, 25, 0.024, 0.044)}     # docs: "Annual plan"
+RATE_TIER_ALIASES = {"prepaid": "free"}             # prepaid usage shares the free-key limits
 
 
-def rate_limit(keyed):
-    # The RATE_LIMIT map for a key tier (keyed = OPENALEX_API_KEY set).
-    tier = TIER_INTERVALS[bool(keyed)]
-    return {MAIN_LANE: tier[MAIN_LANE], SEMANTIC_LANE: SEMANTIC_INTERVAL, BOOLEAN_LANE: tier[BOOLEAN_LANE]}
+def resolve_rate_tier(keyed, requested):
+    # Returns (tier, source, warning or None). `requested` is the raw
+    # OPENALEX_RATE_TIER value (None or "" when unset; case and surrounding
+    # spaces ignored).
+    # REASONING: an unknown value falls back to the default for the key state,
+    #   the conservative tier. A keyed tier without a key falls back to
+    #   "keyless", because keyless requests get the keyless limit whatever the
+    #   setting says. "keyless" with a key set is allowed (slowest spacing; the
+    #   key is still sent).
+    default = "free" if keyed else "keyless"
+    raw = (requested or "").strip()
+    if not raw:
+        return default, f"{'key set' if keyed else 'no key'}, {RATE_TIER_ENV} not set", None
+    tier = RATE_TIER_ALIASES.get(raw.lower(), raw.lower())
+    if tier not in RATE_TIERS:
+        # REASONING (Phase 4 review W2, 2026-10-31): the value is echoed only
+        #   when it looks like a typo of a tier name: letters, "-" or "_", at
+        #   most 12, AND difflib finds a tier name or alias close to it
+        #   ("anual" -> "annual"). Anything else, such as a key pasted into the
+        #   wrong variable ("sk-ABCDEFGHI", "oa_test_key"), shows as "(value
+        #   not shown)". The core also passes this text through the secret
+        #   redactor on stdout, stderr, the digest and the row.
+        names = list(RATE_TIERS) + list(RATE_TIER_ALIASES)
+        near = difflib.get_close_matches(raw.lower(), names, n=1, cutoff=0.6)
+        shown = repr(raw) if (re.fullmatch(r"[A-Za-z_-]{1,12}", raw) and near) else "(value not shown)"
+        known = ", ".join(names)
+        return default, f"fallback: unknown {RATE_TIER_ENV}", (
+            f"{RATE_TIER_ENV}={shown} is not a known tier ({known}); using the {default} tier")
+    if not keyed and tier != "keyless":
+        # The user's own spelling is shown (`prepaid`, not its alias target
+        # `free`); it is a known tier name here, so it is safe to print.
+        return "keyless", f"fallback: {RATE_TIER_ENV}={raw} but no key", (
+            f"{RATE_TIER_ENV}={raw} needs {KEY_ENV}, which is not set; using the keyless tier")
+    return tier, f"from {RATE_TIER_ENV}", None
 
 
-def rate_limit_note(keyed):
-    tier = TIER_INTERVALS[bool(keyed)]
-    return (f"docs: 10 req/s keyless, 30 free key/prepaid, 50 annual; >5 OR/AND/NOT operators 1/5/25 req/s; "
-            f"semantic 1 req/s. Gated for this container ({'keyed' if keyed else 'keyless'}): every request "
-            f"{tier[MAIN_LANE]} s, boolean-heavy {tier[BOOLEAN_LANE]} s, semantic {SEMANTIC_INTERVAL} s; "
-            "daily $ budget")
+def rate_limit(tier):
+    # The RATE_LIMIT map for a tier name (a RATE_TIERS key).
+    _, _, main, boolean = RATE_TIERS[tier]
+    return {MAIN_LANE: main, SEMANTIC_LANE: SEMANTIC_INTERVAL, BOOLEAN_LANE: boolean}
 
 
-RATE_LIMIT = rate_limit(bool(key_value(KEY_ENV)))
-RATE_LIMIT_NOTE = rate_limit_note(bool(key_value(KEY_ENV)))
+def rate_tier_note(tier, source):
+    lanes = rate_limit(tier)
+    return (f"{tier} ({source}): every request {lanes[MAIN_LANE]} s, boolean-heavy {lanes[BOOLEAN_LANE]} s, "
+            f"semantic {SEMANTIC_INTERVAL} s")
+
+
+def rate_limit_note(tier, source):
+    docs = ", ".join(f"{limits[0]} {name}" for name, limits in RATE_TIERS.items())
+    heavy = "/".join(str(limits[1]) for limits in RATE_TIERS.values())
+    return (f"docs req/s: {docs}; >5 OR/AND/NOT operators {heavy}; semantic 1. Gated for this container, "
+            f"tier {rate_tier_note(tier, source)}; daily $ budget")
+
+
+RATE_TIER, RATE_TIER_SOURCE, CONFIG_WARNING = resolve_rate_tier(bool(key_value(KEY_ENV)),
+                                                                os.environ.get(RATE_TIER_ENV))
+RATE_LIMIT = rate_limit(RATE_TIER)
+RATE_TIER_NOTE = rate_tier_note(RATE_TIER, RATE_TIER_SOURCE)     # shown by `backends`
+RATE_LIMIT_NOTE = rate_limit_note(RATE_TIER, RATE_TIER_SOURCE)
 CAPABILITIES = frozenset({"search", "lookup", "cites", "refs", "oa_locate", "fulltext", "retraction"})
 DEFAULT_IN_FIND = True
 FIND_LEGS = ("openalex_semantic", "openalex_keyword")   # leg names find_legs() returns
@@ -225,7 +288,7 @@ def to_record(w):
 #     name contains ".search" (title_and_abstract.search, title.search,
 #     fulltext.search, …), summed over the request. When any filter clause
 #     is a .search clause, the WHOLE filter value is counted, because "A
-#     comma in a search filter's text is part of the text" (searching page,
+#     comma in a search filter’s text is part of the text" (searching page,
 #     2026-10-30), so splitting on commas could hide operators that follow a
 #     comma. `|` alternation inside a filter value is not counted.
 BOOLEAN_OPERATOR_RE = re.compile(r"\b(?:AND|OR|NOT)\b")
@@ -265,10 +328,37 @@ def lanes_for(params, sub_lane=None):
 
 # §§ REQUEST_BUILDERS
 def filter_value(text):
-    # Filter values are comma-separated in OpenAlex, so commas in free text
-    # would silently split the filter; `?` and `*` are wildcards that stemmed
-    # .search filters reject with HTTP 400 (a title ending in "?" hit this).
-    return re.sub(r"[,?*]+", " ", text).strip()
+    # INTENT: free text made safe as a .search filter value.
+    # REASONING (1.6.1, measured 2026-10-31): a comma stays part of the text.
+    #   Docs (help.openalex.org/api/filtering, fetched 2026-10-31): "a comma in
+    #   their text stays part of the text unless the next filter starts right
+    #   after it (,type:)". Live (lit_search/2026-10-31_openalex_live, keyed):
+    #   ", " mid-filter, "," with no space, ", word:" and the docs' own title
+    #   all answered HTTP 200, each with the same meta.count as its comma-free
+    #   pair where one was sent (475/475/475; 10/10). The 2026-09-27 premise
+    #   ("commas break the filter") no longer holds, so commas are kept except
+    #   where one could start a filter clause.
+    # REASONING (Phase 4 review W1, 2026-10-31): a comma becomes a space when
+    #   a field-name-shaped word and ":" follow it, with optional whitespace
+    #   before the word and before the ":", in any case (", type:",
+    #   ",TYPE:", ",type :"). Only the no-space form is documented as a
+    #   clause; whether the server reads the spaced forms as clauses was not
+    #   measured, so they are neutralized too, the conservative choice. The
+    #   cost is a lost comma before "word:" in real text ("Gaps, race:
+    #   evidence"), which the live counts show is harmless (475/475/475 with
+    #   and without commas). Wildcards are removed FIRST, so a `?` or `*`
+    #   cannot hide such a comma (",?type:", ",type?:"). Leading and trailing
+    #   commas are dropped: a trailing one would meet the joining comma as
+    #   ",,". Non-ASCII commas (U+FF0C, U+060C) pass through (inference: the
+    #   server splits on the ASCII comma only).
+    # REASONING: `?` and `*` are wildcards (inside a word; `?` also at the end
+    #   of a one-word search), and the stemmed .search filters reject wildcards
+    #   with HTTP 400 (searching docs, fetched 2026-10-30), so both become
+    #   spaces. A "?" ending a multi-word title is now harmless (2026-10-31:
+    #   HTTP 200, meta.count 4 with and without it; on 2026-09-27 it was a 400).
+    text = re.sub(r"[?*]+", " ", text)
+    text = re.sub(r",(?=\s*[A-Za-z_][A-Za-z0-9_.]*\s*:)", " ", text)
+    return re.sub(r"^[\s,]+|[\s,]+$", "", text)
 
 
 def year_filter(years):

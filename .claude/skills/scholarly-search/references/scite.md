@@ -112,12 +112,31 @@ was re-checked against it (the page shows no "last updated" date):
   wording): keep Scite tallies and notices out of any model's training or
   evaluation data, `verify` calibration sets included.
 - §4: you will not "(ii) create derivative works of any Classifier Results"
-  or "(iii) remove, obscure, or change an author's name or affiliation or any
-  Licensor's copyright notices", nor "(iv) knowingly permit anyone other than
+  or "(iii) remove, obscure, or change an author’s name or affiliation or any
+  Licensor’s copyright notices", nor "(iv) knowingly permit anyone other than
   authorized users of the Service to access or use any Classifier Results",
   nor "(v) make any use of the Classifier Results that is not for the purpose
   of analyzing whether a scientific claim made in an Article has been
-  supported or contradicted by subsequent Articles".
+  supported or contradicted by subsequent Articles", nor "(vi) use or
+  distribute the Classifier Results in any way that would compete with or
+  substitute any Licensor’s sales, subscriptions, products, services or
+  ability to provide access to Articles (or any part thereof)".
+- §4, closing paragraph: "The restrictions in clauses (i) through (vi) above
+  apply equally to the content of Articles (including full text, abstracts
+  and excerpts) and to any AI Content that you access through the Service,
+  regardless of whether you access them through the Scite website, the Scite
+  API, or an AI-assistant connector (such as a Model Context Protocol server)
+  that we make available." DAAF's reading (an inference): `scite-search`
+  snippets are Article excerpts, so they carry the same limits as tallies,
+  consistent with keeping them in `restricted/` (all Scite content is
+  restricted by the user decision above).
+- §8, automated access: you agree not to "scrape or otherwise use automated
+  means to access or gather information from the Service, other than through
+  the Scite API or an AI-assistant connector that we make available and in
+  accordance with this Agreement and the limits of your plan". The tool calls
+  only the API, gated at 1.1 s per request (`RATE_LIMIT` in
+  `scripts/scholar_backends/scite.py`); whether that stays inside a plan's
+  limits depends on the user's plan, which the tool cannot see.
 - "Classifier Results" are "the aggregated results of scientific articles
   and other commentaries" — the supporting/contradicting analyses, i.e.
   tallies.

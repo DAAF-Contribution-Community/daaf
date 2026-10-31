@@ -53,7 +53,7 @@ MANIFEST row.
 
 | Backend | Contributes | Key (optional unless noted) | License class |
 |---------|-------------|-----------------------------|---------------|
-| **OpenAlex** | The backbone: metadata, citation graph, semantic + keyword search, cached full text, OA locations, `is_retracted` | `OPENALEX_API_KEY` — **strongly recommended** ($1/day free vs $0.10/day keyless) | open (CC0) |
+| **OpenAlex** | The backbone: metadata, citation graph, semantic + keyword search, cached full text, OA locations, `is_retracted` | `OPENALEX_API_KEY` — **strongly recommended** ($1/day free vs $0.10/day keyless); optional setting `OPENALEX_RATE_TIER=annual` on an annual plan | open (CC0) |
 | **Semantic Scholar** | Passage search inside OA papers; extra recall in `find`; boolean bulk search | `SEMANTIC_SCHOLAR_API_KEY` (keyless = a pool shared by all unauthenticated users, which S2 may throttle further under heavy use) | cc-by-nc (attribution required) |
 | **ERIC** | Education journals OpenAlex ranks poorly, EdWorkingPapers, REL/IES reports, peer-review and full-text flags | none | open |
 | **Crossref** | Verification fallback; retraction / correction / expression-of-concern notices (Retraction Watch data) | none; `SCHOLARLY_CONTACT_EMAIL` unlocks the polite pool | open |
@@ -63,7 +63,7 @@ MANIFEST row.
 
 Run `bash /daaf/scripts/scholar_search.sh backends` to see what is configured
 in this container: it reports key presence by **name only**, never values,
-plus each adapter's attribution line. Without a DEST_DIR it only prints;
+plus attribution lines and OpenAlex's effective rate tier. Without a DEST_DIR it only prints;
 with one it also writes the usual digest and MANIFEST row. Keys live
 host-side in `environment_settings.txt` section [5] and travel only in
 request headers. `SCHOLARLY_CONTACT_EMAIL` is sent only as Crossref's
@@ -404,8 +404,8 @@ still means "read the matched title in the digest once against the citation").
 ## Rate limits (built in — do not work around)
 
 Semantic Scholar (1 request/second per key, all endpoints), OpenAlex (every
-request gated 0.04 s with a key, 0.11 s keyless; searches with more than 5
-upper-case `AND`/`OR`/`NOT` also 0.22 s / 1.1 s; semantic search 1/s; see
+request gated 0.04 s with a key, 0.11 s keyless, 0.024 s with `OPENALEX_RATE_TIER=annual`; searches with more
+than 5 upper-case `AND`/`OR`/`NOT` also 0.22 s / 1.1 s / 0.044 s; semantic search 1/s; `backends` prints the tier; see
 `references/openalex.md`), Crossref's public pool (5/s, 1 concurrent), Scite's keyless
 bucket (60/minute, gated 1.1 s) and Elicit (100/minute per IP including
 polls, gated 0.75 s; a 429 blocks the IP 5 min, so the lane pauses 300 s, never

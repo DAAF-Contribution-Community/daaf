@@ -61,6 +61,15 @@ elicit) are themselves adapters.
    and notice DOIs/dates, because the `retractions` digest stays in the open
    folder while its raw response goes to `restricted/`); `oa_locate` needs a leg added to `cmd_oa` in
    the core (the only capability whose fallback order is a core decision).
+   If its `RATE_LIMIT` depends on a setting (OpenAlex: `OPENALEX_RATE_TIER`,
+   tool 1.6.1), declare `RATE_TIER_NOTE` (the effective tier and intervals,
+   printed by `backends`) and `CONFIG_WARNING` (None, or a one-line warning
+   when a bad setting was replaced by a safe default: printed to stderr by
+   every command that uses the adapter, recorded in the row's
+   `config_warnings`, shown by `backends`). Both must be a str or None (the
+   registry check rejects anything else). Echo a setting's value in them only
+   when it cannot be a secret; the core's secret redactor on stdout, stderr,
+   the digest and the row is the second layer, not the first.
    If the adapter's records key their native ID under something other than
    `NAME` in the `ids` map, declare `ID_KEY` so rendered ID lines get its
    label.
@@ -105,7 +114,8 @@ empty body), so an adapter can tell `202 Accepted` from `200`. `lane`
 overrides the rate lane (default: the backend name); since tool 1.6.0 it may
 be a tuple of lanes, all booked in one step before the request leaves
 (OpenAlex passes zero, one or two sub-lanes, then its main lane; a lane
-without an interval is skipped; get() takes the same `lane`); `max_attempts` applies
+without an interval is skipped; since 1.6.1 an empty tuple books the backend
+name, as `lane=None` does; get() takes the same `lane`); `max_attempts` applies
 only to an idempotent POST; `max_wait` caps the rate-gate queue wait. It
 applies get()'s guards, with the secret guard covering the body too, logs the
 method and scrubbed body, and refuses a cross-origin POST redirect. **A

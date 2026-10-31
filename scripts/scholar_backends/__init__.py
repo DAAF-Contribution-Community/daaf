@@ -44,6 +44,13 @@
 #                          retried; the lane is paused that long for every
 #                          process and the call fails "busy" (exit 12). For
 #                          backends whose 429 is a timed block (Elicit).
+#   RATE_TIER_NOTE (optional) str: the effective rate tier and intervals when
+#                          RATE_LIMIT depends on a setting (OpenAlex:
+#                          OPENALEX_RATE_TIER); printed by `backends`.
+#   CONFIG_WARNING (optional) str | None: a setting the adapter could not honor
+#                          and fell back from; printed to stderr by every
+#                          command that uses the adapter, recorded in the
+#                          row's `config_warnings`, and shown by `backends`.
 #
 # S2: Scite registered 2026-10-11 (keyless tallies + retraction notices,
 # license_class "restricted"); Elicit registered 2026-10-11 (keyed search,
@@ -95,6 +102,12 @@ def validate_adapter(mod, others=()):
             problems.append(f"RETRY_POLICY must be a dict with keys from {sorted(RETRY_POLICY_KEYS)}")
         elif not all(isinstance(v, (int, float)) and v > 0 for v in policy.values()):
             problems.append("RETRY_POLICY values must be positive seconds")
+    # 1.6.1 (Phase 4 review N4): the core interpolates these optional texts
+    #   into stdout, stderr and the MANIFEST row, so each must be a str or None.
+    for attr in ("RATE_TIER_NOTE", "CONFIG_WARNING"):
+        value = getattr(mod, attr, None)
+        if value is not None and not isinstance(value, str):
+            problems.append(f"{attr} must be a str or None")
     legs = getattr(mod, "FIND_LEGS", None)
     if "search" in mod.CAPABILITIES:
         if not (isinstance(legs, tuple) and legs and all(isinstance(x, str) and x for x in legs)):

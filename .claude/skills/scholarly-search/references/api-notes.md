@@ -117,6 +117,17 @@ Evidence locations:
   under `probes/2026-10-30_phase4_openalex_quality_review/`,
   `probes/2026-10-30_phase4_openalex_consistency_review/` and
   `probes/2026-10-30_openalex_gate_cycle2/`.
+- 2026-10-31 (OpenAlex rate tier setting, live boolean lane and commas, tool 1.6.1): the same
+  workspace; 12 user-approved paid calls in `lit_search/2026-10-31_openalex_live/`
+  (MANIFEST.jsonl, `DAAF_FETCH_CONTEXT="FrameworkDev 2026-10-31 OpenAlex 1.6.1 …"`), driven by
+  `scripts/2026-10-31_openalex_tier_live_paid_calls.py` and
+  `scripts/2026-10-31_openalex_tier_live_comma_colon_probe.py`; suite run
+  `scripts/2026-10-31_openalex_tier_run_scholar_suites_b.py` (the final run of the build), and
+  after the Phase 4 fix cycle `scripts/2026-10-31_oa161_cycle2_run_suites_a.py` (suites plus
+  a mutation check; execution logs appended); the filtering page fetched 2026-10-31 under
+  `web_fetches/2026-10-31_openalex_docs/`; the review probes under
+  `probes/2026-10-31_phase4_openalex161_quality_review/` and
+  `probes/2026-10-31_phase4_openalex_161_consistency_review/`.
 
 ## How far to trust the `verify` gate (standing summary, rules `2026-10-06f`)
 
@@ -156,6 +167,92 @@ depends on `verify`. What the calibration implies for use:
 - On `title:"…"`, a WEAK is "not verified", not "real but garbled": a
   fabricated title often lands on the real paper it imitated.
 
+## Measured behavior: OpenAlex rate tier, live boolean lane, commas (2026-10-31)
+
+**Tool 1.6.1 (user decision 2026-10-31).** The OpenAlex rate tier is a
+setting, `OPENALEX_RATE_TIER` (`free`, alias `prepaid`; `annual`; `keyless`),
+set host-side in `environment_settings.txt`; unset, it is `free` with a key
+and `keyless` without one. The API does not tell a key's plan (2026-10-30
+entry), so it cannot be read from responses. `RATE_TIERS` in `openalex.py`
+is the one table of documented limits and gate intervals (`annual`: 0.024 s
+for every request, ~41.7/s under 50; 0.044 s for a search with more than 5
+operators, ~22.7/s under 25). An unknown value falls back to the default
+tier, and a keyed tier with no key falls back to `keyless`; either prints a
+warning on stderr for every command that uses OpenAlex, records
+`config_warnings` in the row, and shows in `backends`, which now prints the
+effective tier for every run. The warning shows an unknown value only when
+it is close to a tier name (difflib; `anual` is shown, a pasted key is
+"(value not shown)"), and the core's stdout now passes the secret redactor
+too, as stderr, the digest and the row already did (Phase 4 review W2). Also
+in 1.6.1: an empty lane tuple books the backend's own lane (it booked no
+gate); `filter_value()` keeps commas (below). Unit suites after the Phase 4
+fix cycle: `test_scholar_search.py` 250 tests, OK (6 expected failures);
+`test_scholar_openalex_gate.py` 56 tests, OK (51 before the fix cycle); the
+`test_scholar*.py` glob 306 tests, OK (6 expected failures).
+
+**Live run (keyed container, `OPENALEX_RATE_TIER` not set, so tier `free`;
+12 user-approved paid calls, $0.001 each, $0.012 in total, all HTTP 200).**
+- Boolean-heavy lane: four `openalex --mode keyword --limit 1` processes
+  started together, three with 6–7 upper-case `OR`s and one with exactly 5.
+  Gate markers polled while they ran (seconds after start): boolean lane
+  +0.325, +0.545, +0.765, then +1.657; main lane +0.145, +0.185, +0.365,
+  +0.585, then +1.477. So the three boolean-heavy requests left 0.22 s apart
+  (slots +0.105, +0.325, +0.545), and the 5-operator search took a main-lane
+  slot only (`rate_gate_wait_s` 0.04). Rows: `rate_gate_wait_s` 0.0, 0.43
+  and 1.21 for the boolean-heavy searches.
+- The third boolean-heavy request (`teacher OR …`, sent at +0.545 s) has
+  `attempts` 2. The tool logs only the final attempt (HTTP 200), so the first
+  attempt's status (429 or 5xx) is not on record. Its retry slot (+1.437 s,
+  booked on both lanes in one step) came about 0.9 s after its first send.
+  The tool's own backoff for a first retry is 1.6–2.4 s, so the delay came
+  from a server `Retry-After` under 0.9 s, as OpenAlex's per-second 429
+  ("wait a moment and retry") would send (inference; one occurrence, three
+  boolean-heavy requests within 0.44 s, under the documented 5/s).
+- Budget headers on every row: `-limit-usd 1`, `-prepaid-remaining-usd 0`
+  (as on 2026-10-30, the documented free-key budget).
+
+**Commas and `?` in `.search` filter text (the premise of `filter_value()`).**
+The 2026-09-27 finding was that a comma in free text broke the filter and
+that a title ending in "?" returned HTTP 400. The searching page (fetched
+2026-10-30) says "A comma in a search filter’s text is part of the text", and
+the filtering page (fetched 2026-10-31) gives the rule: "a comma in their text
+stays part of the text unless the next filter starts right after it
+(,type:)". Measured through `openalex --filter` (raw text, sent unstripped),
+`meta.count` from the raw artifact:
+
+| Filter text sent (with the keyword clause before it) | HTTP | meta.count |
+|---|---|---|
+| `title_and_abstract.search:reading, mathematics` + type exclusions | 200 | 475 |
+| `title_and_abstract.search:reading mathematics` + type exclusions | 200 | 475 |
+| `title_and_abstract.search:reading,mathematics` + type exclusions | 200 | 475 |
+| `title_and_abstract.search:reading, mathematics: achievement` + type exclusions | 200 | 141 |
+| `title.search:Music and British Culture, 1785` (last clause) | 200 | 10 |
+| `title.search:Music and British Culture 1785` (last clause) | 200 | 10 |
+| `title.search:Does Head Start Make a Difference?` + type exclusions | 200 | 4 |
+| `title.search:Does Head Start Make a Difference` + type exclusions | 200 | 4 |
+
+The docs are right and nothing broke: a comma, with or without a space, and
+a comma followed by `word:` stay text; the clauses after the text still act
+as filters (inference: were the type exclusions read as text, "type",
+"dataset" and "paratext" would have narrowed the count, but the comma and
+comma-free forms match exactly). A `?` ending a multi-word title is no longer
+a 400. Since 1.6.1 `filter_value()` keeps commas, but turns into a space
+every comma followed by a field-name-shaped word and `:`, with optional
+whitespace before the word and before the `:`, in any case (`,type:` is the
+documented clause start; `, type:`, `,TYPE:` and `,type :` are neutralized
+too). `?` and `*` still become spaces, because the stemmed `.search` filters
+reject wildcards, and they are removed before the comma check, so `,?type:`
+cannot slip through; leading and trailing commas are dropped (a trailing one
+would meet the joining comma as `,,`). Not measured: a comma directly
+followed by a real field name, such as `,type:` (a filter clause by the
+docs, which is exactly what the tool's own type exclusions rely on), and
+whether a space after the comma (`, type:`) or before the colon (`,type :`)
+still starts a clause. The `mathematics:` row cannot tell, because
+`mathematics` is not a filter name, so the spaced forms are neutralized as
+the conservative choice (Phase 4 review W1). The cost is a lost comma before
+`word:` in real text (`Gaps, race:` → `Gaps  race:`), harmless per the
+475/475/475 counts above.
+
 ## Measured behavior: OpenAlex per-second gate (2026-10-30)
 
 **Why.** The authentication page (fetched 2026-10-28, `…_0aebfa81.bin:86-94`)
@@ -178,7 +275,7 @@ upper-case requirement is the searching page's (fetched 2026-10-30): "Use
 AND, OR, NOT (uppercase) for complex queries". The page does not address
 whether a quoted operator counts or which parameters count, so counting
 quoted words and the `search`/`search.*` plus `.search`-filter text is DAAF's
-inference; because "A comma in a search filter's text is part of the text",
+inference; because "A comma in a search filter’s text is part of the text",
 the whole `filter` value is counted when any clause is a `.search` clause.
 **Booking (Phase 4 review fix, same day):** the first build booked each lane
 in turn and slept on it before booking the next, so under a main-lane
@@ -1781,7 +1878,9 @@ keyless behavior (a key is configured here).
   stayed on topic. Quotes and `AND`/`OR`/parentheses work inside it; terms are
   effectively ANDed (a long sentence returned 6 odd hits).
 - **Commas** inside filter values split the filter; `?`/`*` break stemmed
-  `.search` filters (HTTP 400).
+  `.search` filters (HTTP 400). (Commas: superseded 2026-10-31, see §
+  Measured behavior: OpenAlex rate tier, live boolean lane, commas. `?`/`*`
+  inside a word are still wildcards the stemmed filters reject.)
 - **Semantic search:** ≤ 50 results, 1 req/s (429 "Semantic search is limited
   to 1 request per second"). Supported filters per the 400 text: author.id,
   authorships.author.id, authorships.institutions.id/lineage, funders.id,

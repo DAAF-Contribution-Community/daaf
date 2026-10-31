@@ -891,6 +891,19 @@
 # --- To activate, remove the leading '#': ---
 #OPENALEX_API_KEY=your_openalex_key_here
 #
+# OpenAlex rate tier -- optional; needed only for an annual plan. DAAF spaces
+# its OpenAlex requests to stay under your plan's per-second limit, but the
+# API does not tell DAAF which plan a key is on. Unset, DAAF assumes the
+# free-key tier (30 requests/second; also right for prepaid usage) when a key
+# is set, and the keyless tier (10/second) when none is. Set it to annual only
+# if your key is on an OpenAlex annual plan (50/second). Accepted values:
+# free, prepaid, annual, keyless (slowest; the key is still sent). An unknown
+# value, or free, prepaid or annual with no key set, falls back to the safe
+# default and prints a warning. To see the tier in use, run inside DAAF:
+#     bash /daaf/scripts/scholar_search.sh backends
+# --- To activate, remove the leading '#': ---
+#OPENALEX_RATE_TIER=annual
+#
 # Semantic Scholar -- optional, free. Request a key:
 # https://www.semanticscholar.org/product/api#api-key-form
 # Without a key, requests share a pool with all unauthenticated users, which

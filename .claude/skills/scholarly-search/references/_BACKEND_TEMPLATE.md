@@ -45,6 +45,8 @@ FIND_LEGS = ("<name>",)              # REQUIRED with "search": every leg name fi
                                      # unique across adapters; becomes a `find --skip` choice
 # ID_KEY = "<key>"                   # optional: only if to_record() keys its native id under a
                                      # name other than NAME in `ids` (semantic_scholar uses "s2")
+# RATE_TIER_NOTE = "<tier: intervals>"  # optional: only if RATE_LIMIT depends on a setting
+# CONFIG_WARNING = None              # (openalex.py: OPENALEX_RATE_TIER); a str when a bad setting fell back
 COST_NOTE = "<free | $ per call>"
 ATTRIBUTION = "<citation or credit the terms require>"
 GET_KEY_URL = "<https://… or None>"

@@ -57,28 +57,52 @@ and max 50 results; `per_page` max 100; 100 OR values per filter.
 **Gating (tool 1.6.0, user decision 2026-10-30).** Several agents may search
 at once, so the tool enforces the per-second limits container-wide through
 the shared rate gate instead of leaving them to 429 retries. Every OpenAlex
-request books the main `openalex` lane: 0.04 s apart with a key (25/s, under
-the free-key/prepaid 30; the tool cannot see an annual plan, so it assumes
-the free-key/prepaid tier), 0.11 s keyless (about 9/s, under 10). The docs
+request books the main `openalex` lane, and a search with more than 5
+upper-case operators also books `openalex-boolean`, at the intervals of the
+container's **rate tier**:
+
+| Tier (`OPENALEX_RATE_TIER`) | Documented limit (all / >5 operators) | Gate interval (all / >5 operators) |
+|---|---|---|
+| `keyless` | 10 / 1 req/s | 0.11 s (~9.1/s) / 1.1 s (~0.9/s) |
+| `free` (alias `prepaid`) | 30 / 5 req/s | 0.04 s (25/s) / 0.22 s (~4.5/s) |
+| `annual` | 50 / 25 req/s | 0.024 s (~41.7/s) / 0.044 s (~22.7/s) |
+
+**The tier is a setting (tool 1.6.1, user decision 2026-10-31),** because
+the API does not tell a key's plan (no response header states it,
+2026-10-30). Set `OPENALEX_RATE_TIER=annual` host-side in
+`environment_settings.txt` (next to the key; then recreate the container:
+Control Panel → **Restart Container**) when the key is on an annual plan. Unset, the tier is `free` with a key and `keyless`
+without one. An unknown value falls back to that default (the warning shows
+the value only when it is close to a tier name, such as `anual`; otherwise
+"(value not shown)", so a key pasted there is not printed), and a keyed tier
+with no key set falls back to `keyless`; both print a warning on stderr for
+every command that uses OpenAlex, add `config_warnings` to the MANIFEST row,
+and show in `scholar_search.sh backends`, which also prints the effective
+tier and intervals (`openalex rate tier: …`). `keyless` with a key set is
+allowed (slowest spacing; the key is still sent). Every process reads the
+same environment when the adapter loads, so every process books the shared
+gate with the same spacing. The one table of tiers is `RATE_TIERS` in
+`openalex.py`: a vendor change to the limits is a one-row edit there.
+
+The docs
 say the heavy request types "have lower limits of their own", which the tool
 reads as limits that add to the main one: a semantic search also books
-`openalex-semantic` (1.1 s), and a search whose text carries more than 5
-upper-case `AND`/`OR`/`NOT` words also books `openalex-boolean` (0.22 s with a
-key, about 4.5/s under 5; 1.1 s keyless, under 1). Such a request books all
+`openalex-semantic` (1.1 s on every tier), and a search whose text carries
+more than 5 upper-case `AND`/`OR`/`NOT` words also books `openalex-boolean`.
+Such a request books all
 its lanes in one step and leaves at a slot free on every one of them, so each
 lane's spacing holds for send times (a review probe on 2026-10-30 showed
 that booking them one after another let a main-lane backlog bunch sub-lane
 requests). The price is some idle main-lane capacity while a sub-lane
-request waits. The tier is read from `OPENALEX_API_KEY` when the adapter
-loads. Counting rule: whole upper-case words only, per the searching page
+request waits. Counting rule: whole upper-case words only, per the searching page
 (fetched 2026-10-30): "Use AND, OR, NOT (uppercase) for complex queries", so
 lower-case `and`/`or`/`not` are plain words. Two parts are DAAF's inference,
 because the docs do not address them: words inside quoted phrases are
 counted (conservative), and the text counted is the `search`/`search.*`
 parameters plus the whole `filter` value when any clause is on a `.search`
-field (the docs say "A comma in a search filter's text is part of the text",
-so a comma cannot hide operators). Code: `openalex.py` § CONTRACT and §
-RATE_LANES.
+field (the docs say "A comma in a search filter’s text is part of the text",
+so a comma cannot hide operators). Code: `openalex.py` § CONTRACT, §
+RATE_TIERS and § RATE_LANES.
 
 Response headers (measured 2026-10-02 — **both** families are sent):
 `x-ratelimit-cost-usd`, `x-ratelimit-remaining-usd`, `x-ratelimit-limit-usd`,
@@ -96,8 +120,9 @@ MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
   `work <DOI>` lookups): every response carried the same nine
   `x-ratelimit-*` headers as on 2026-10-02 (`-limit-usd 1`,
   `-prepaid-remaining-usd 0`, `-cost-usd 0`, …) and **none states a
-  per-second limit or the plan tier**, so the gate's tier comes from key
-  presence, not from the API. Three processes started together queued on the
+  per-second limit or the plan tier**, so the gate cannot read the tier from
+  the API (since 1.6.1 it is the `OPENALEX_RATE_TIER` setting, by default
+  chosen from key presence). Three processes started together queued on the
   main lane (`rate_gate_wait_s` 0.0, 0.03, 0.07). Details: `api-notes.md` §
   "Measured behavior: OpenAlex per-second gate (2026-10-30)".
 - **`search=` drifts** (2026-09-27): it matches full text and blends in
@@ -105,8 +130,43 @@ MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
   reform student outcomes". Hence keyword mode = `title_and_abstract.search` +
   `sort=relevance_score:desc`. Its terms are effectively ANDed, so pass
   `--keywords`, not a sentence.
-- **Filter values are comma-separated**; commas, `?` and `*` in free text are
-  stripped (a title ending in "?" returned HTTP 400).
+- **Commas in `.search` filter text are text** (re-measured 2026-10-31,
+  keyed, tool 1.6.1; this replaces the 2026-09-27 finding that a comma broke
+  the filter). The filtering page (fetched 2026-10-31): "a comma in their
+  text stays part of the text unless the next filter starts right after it
+  (,type:)". Live, every shape answered HTTP 200: `reading, mathematics`,
+  `reading,mathematics` and `reading mathematics` mid-filter, each followed by
+  the type exclusions, all matched 475 works; the docs' `Music and British
+  Culture, 1785` as the last clause matched 10, as did the comma-free form;
+  `reading, mathematics: achievement` matched 141 (`mathematics` is not a
+  filter name, so this does not show whether a space after the comma stops a
+  clause). Since 1.6.1 `filter_value()` keeps commas, but turns into a space
+  every comma followed by a field-name-shaped word and `:`, with optional
+  whitespace before the word and before the `:`, in any case (`,type:`,
+  `, type:`, `,TYPE:`, `,type :`). Only the no-space form is documented as a
+  clause; the spaced forms were not measured and are neutralized as the
+  conservative choice, at the cost of a comma before `word:` in real text
+  (`Gaps, race:` → `Gaps  race:`), harmless per the counts above. Wildcards
+  are removed first, so `,?type:` cannot slip through, and leading and
+  trailing commas are dropped (a trailing one would meet the joining comma
+  as `,,`).
+- **`?` and `*` are wildcards** in search text (inside a word; `?` also at the
+  end of a one-word search), and the stemmed `.search` filters reject
+  wildcards with HTTP 400 (searching page), so `filter_value()` turns both
+  into spaces. A `?` ending a multi-word title, a 400 on 2026-09-27, was
+  harmless on 2026-10-31 (`Does Head Start Make a Difference?`: HTTP 200, 4
+  works, the same as without the `?`).
+- **Boolean-heavy lane, live** (2026-10-31, keyed, `free` tier): three
+  keyword searches with 6–7 upper-case `OR`s and one with exactly 5, started
+  together as four processes. The gate booked the boolean lane 0.22 s apart
+  (markers +0.325, +0.545, +0.765 s) and the 5-operator search on the main
+  lane only. The third boolean-heavy request was retried once (`attempts`
+  2) and then answered HTTP 200. The tool does not log a retried attempt's
+  status. The retry slot came about 0.9 s after its first send, sooner
+  than the tool's own backoff (1.6–2.4 s), so the server most likely sent a
+  sub-second `Retry-After`, as with a per-second 429 (inference; n = 1).
+  Details: `api-notes.md` § "Measured behavior: OpenAlex rate tier, live
+  boolean lane, commas (2026-10-31)".
 - **Semantic-search filters** (re-measured 2026-10-02): `has_content.grobid_xml`
   is rejected with HTTP 400 ("not supported with semantic search", listing the
   supported set: author.id, authorships.*, funders.id, has_abstract,
@@ -147,10 +207,11 @@ scholarly works, authors, venues, institutions, and concepts. arXiv:2205.01833.
 400 → 11 (bad filter — the message names the supported filters); 429 after
 retries → 11 (daily budget, or the per-second limit: 10/30/50 req/s by key
 tier, lower for searches with more than 5 boolean operators; the gate spaces
-this container's requests under the keyless and free-key limits, so a
+this container's requests under the limits of its rate tier, so a
 per-second 429 most likely means other traffic on the same key or IP, an
-operator count the gate missed, or a server-side window stricter than even
-spacing, which the docs do not describe);
+`OPENALEX_RATE_TIER` above the key's real plan, an operator count the gate
+missed, or a server-side window stricter than even spacing, which the docs
+do not describe);
 gate queue too long → 12; network
 → 4; timeout → 6.
 
