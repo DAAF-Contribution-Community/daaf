@@ -757,7 +757,7 @@ class CliGateTests(GateScratch):
         self.assertEqual(self.gate_files(), ["openalex", "openalex-semantic"])
 
     def test_tool_version_bumped(self):
-        self.assertEqual(scholar_search.TOOL_VERSION, "1.6.1-daaf")
+        self.assertEqual(scholar_search.TOOL_VERSION, "1.6.2-daaf")
 
 
 # --- Registry validation -----------------------------------------------------

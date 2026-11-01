@@ -417,7 +417,9 @@ slots through a shared schedule in `~/.cache/scholar_search/` (override with
 losing it only resets the schedule; every wait is recorded in the MANIFEST
 row). Concurrent
 agents queue; a 429 pushes the shared schedule back with jittered exponential
-backoff (≤ 30 s, or the server's Retry-After). `find` waits at most 20 s for
+backoff (≤ 30 s, or the server's Retry-After); each retried attempt's status,
+Retry-After and delay are kept in that request's `retried_attempts` (raw log
+and row `requests`; tool 1.6.2). `find` waits at most 20 s for
 Semantic Scholar and otherwise reports it as failed; dedicated S2 commands
 wait up to 120 s, then exit 12.
 

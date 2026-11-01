@@ -137,7 +137,15 @@ adapter whose 429 means "blocked for N seconds" declares `RETRY_POLICY =
 {"penalize_429_s": N}` (validated at import), or a caller passes
 `penalize_429=N`: the 429 is not retried, the lane is paused N s for every
 process, and the call fails `busy` (exit 12). Without it, GETs keep the
-default backoff.
+default backoff. **Retried attempts are on record (tool 1.6.2):** the
+request's log entry (raw log and the row's `requests`) gains
+`retried_attempts`, one object per retried attempt: `attempt`,
+`http_status`, `retry_after` (the header as sent, secrets redacted, cut to
+100 characters; only when sent), `delay_s`, `delay_source` (`retry-after` or `backoff`) and
+`applied_as` (`lane`: the shared schedule was pushed out; `sleep`: an
+ungated request slept). The key is absent when nothing was retried; a busy
+gate on a retry puts the list on its `rate_gate_skips` entry. A timeout or
+network error is never retried, so a retried attempt always has a status.
 
 **Paid or asynchronous work (tool 1.3.x, Elicit).** A source that starts
 paid work and is polled (a report, a review job) needs **core** support, not

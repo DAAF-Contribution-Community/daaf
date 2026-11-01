@@ -161,8 +161,8 @@ MANIFEST row (`openalex_cost_usd`, `openalex_budget`).
   together as four processes. The gate booked the boolean lane 0.22 s apart
   (markers +0.325, +0.545, +0.765 s) and the 5-operator search on the main
   lane only. The third boolean-heavy request was retried once (`attempts`
-  2) and then answered HTTP 200. The tool does not log a retried attempt's
-  status. The retry slot came about 0.9 s after its first send, sooner
+  2) and then answered HTTP 200. The tool did not yet log a retried attempt's
+  status (it does since 1.6.2: `retried_attempts`). The retry slot came about 0.9 s after its first send, sooner
   than the tool's own backoff (1.6–2.4 s), so the server most likely sent a
   sub-second `Retry-After`, as with a per-second 429 (inference; n = 1).
   Details: `api-notes.md` § "Measured behavior: OpenAlex rate tier, live

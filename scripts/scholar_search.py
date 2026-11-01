@@ -274,7 +274,19 @@ from scholar_backends._common import (  # noqa: E402
 # spaces, and leading and trailing commas are dropped. Stdout now passes the
 # secret redactor too, and an unknown OPENALEX_RATE_TIER is echoed only when
 # it is close to a tier name.
-TOOL_VERSION = "1.6.1-daaf"
+# 1.6.2 (2026-11-01, user decision): a retried attempt is on record. A
+# request-log entry (raw log and the row's `requests`) whose request was
+# retried gains `retried_attempts`: one object per retried attempt, with
+# `attempt`, `http_status` (the 429/5xx that caused the retry), `retry_after`
+# (the server's Retry-After header as sent, secrets and the contact email
+# redacted, then cut to 100 characters; only when sent), `delay_s`,
+# `delay_source` (`retry-after` or `backoff`) and
+# `applied_as` (`lane`: the shared schedule was pushed delay_s out; `sleep`:
+# an ungated request slept delay_s). Absent when nothing was retried. A
+# busy gate on a retry has no request entry, so its `rate_gate_skips` entry
+# carries the list instead. A timeout or network error is never retried, so
+# every retried attempt has an HTTP status. Retry behavior is unchanged.
+TOOL_VERSION = "1.6.2-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -711,6 +723,12 @@ class Http:
         gates = [(name, RateGate(name, GATE_INTERVALS[name])) for name in lanes if name in GATE_INTERVALS]
         extra = {"method": method, "body": scrub_body(body)} if method != "GET" else {}
         attempt, waited = 0, 0.0
+        # INTENT (1.6.2): `retried` holds one record per attempt that was
+        #   retried (its status, the server's Retry-After, the delay applied),
+        #   copied into the entry this call logs as `retried_attempts` (or,
+        #   on a busy gate, into the rate_gate_skips entry). Recording only:
+        #   nothing below reads it to decide whether or when to retry.
+        retried = []
         while True:
             attempt += 1
             booked = 0.0
@@ -720,6 +738,10 @@ class Http:
                 except GateBusy as busy:
                     self.gate_wait_s += waited   # earlier attempts' waits stay on the record
                     self.gate_skips.append({"lane": busy.lane or gates[0][0], "queue_s": round(busy.wait, 1)})
+                    if retried:
+                        # 1.6.2: no request entry follows a busy gate, so the
+                        # retried attempts' statuses go on the skip record.
+                        self.gate_skips[-1]["retried_attempts"] = list(retried)
                     raise BackendError(backend, "busy",
                                        f"{backend}: shared rate-limit queue is {busy.wait:.0f}s long "
                                        f"(> {max_wait:.0f}s max wait); skipped to stay within the "
@@ -744,6 +766,8 @@ class Http:
                     entry["http_status"] = self.redirect_refused_status
                     entry["redirect_chain"] = self.redirect_refused
                     entry["error"] = f"redirect refused: {one_line(exc, 200)}"
+                if retried:
+                    entry["retried_attempts"] = list(retried)   # 1.6.2
                 self.log.append(entry)
                 self.gate_wait_s += waited
                 if isinstance(exc, BackendError):
@@ -766,6 +790,8 @@ class Http:
                                  "http_status": 429, "attempts": attempt, "retries": attempt - 1,
                                  "wait_s": round(waited, 2), "cost": None, "response": _safe_json(resp.content),
                                  "penalized_s": float(penalize_429), **extra, **hops})
+                if retried:
+                    self.log[-1]["retried_attempts"] = list(retried)   # 1.6.2 (e.g. a 503 retried, then this 429)
                 raise BackendError(backend, "busy", f"{backend}: HTTP 429 (rate limited); not retried by the "
                                                     f"backend's retry policy; lane '{lane}' paused "
                                                     f"{float(penalize_429):.0f}s for every process — retry after "
@@ -777,8 +803,24 @@ class Http:
                 retry_after = resp.headers.get("retry-after")
                 if retry_after and retry_after.replace(".", "", 1).isdigit():
                     delay = min(float(retry_after), BACKOFF_CAP)   # a hostile/huge value cannot stall us
+                    delay_source = "retry-after"   # 1.6.2: recorded below
                 else:
                     delay = min(2 ** attempt, BACKOFF_CAP) * random.uniform(0.8, 1.2)
+                    delay_source = "backoff"
+                # INTENT (1.6.2): record this attempt before the delay is applied.
+                # REASONING: the header is kept as sent (a non-numeric value,
+                #   e.g. an HTTP date, is ignored above but still recorded),
+                #   capped at 100 characters so a hostile server cannot bloat the
+                #   record. It is redacted and contact-scrubbed (red()) BEFORE
+                #   the cut: the whole-text redaction of the raw log and the row
+                #   matches whole values only, so a cut through a key would
+                #   leave a fragment it cannot see.
+                record = {"attempt": attempt, "http_status": resp.status_code}
+                if retry_after is not None:
+                    record["retry_after"] = red(retry_after)[:100]
+                record.update(delay_s=round(delay, 2), delay_source=delay_source,
+                              applied_as="lane" if gates else "sleep")
+                retried.append(record)
                 if gates:
                     for _, gate in gates:
                         gate.penalize(delay)
@@ -801,6 +843,8 @@ class Http:
         entry = {"backend": backend, "endpoint": url, "params": log_params(params),
                  "http_status": resp.status_code, "attempts": attempt, "retries": attempt - 1,
                  "wait_s": round(waited, 2), "cost": cost, "rate_headers": rate_headers or None, **extra, **hops}
+        if retried:
+            entry["retried_attempts"] = list(retried)   # 1.6.2
         if len(content) > RESPONSE_CAP:
             entry["response"] = {"bytes": len(content), "note": "over cap; not stored"}
             self.log.append(entry)
@@ -854,10 +898,13 @@ def summarize_requests(log):
     # alone shows where a request was sent; a followed chain also names each
     # hop's status and the final request's method (1.5.0), so `http_status`
     # is never mistaken for the answer to the original method.
+    # A retried request also names each retried attempt (`retried_attempts`,
+    # 1.6.2), so the row alone shows which status caused a retry.
     return [{**{k: e.get(k) for k in ("backend", "endpoint", "params", "http_status", "attempts",
                                       "retries", "wait_s", "cost")},
              **({"method": e["method"]} if e.get("method") else {}),
-             **{k: e[k] for k in ("redirect_chain", "redirect_statuses", "final_method") if e.get(k)}}
+             **{k: e[k] for k in ("redirect_chain", "redirect_statuses", "final_method", "retried_attempts")
+                if e.get(k)}}
             for e in log]
 
 

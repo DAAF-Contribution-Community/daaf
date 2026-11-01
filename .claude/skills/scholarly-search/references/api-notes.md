@@ -201,8 +201,9 @@ fix cycle: `test_scholar_search.py` 250 tests, OK (6 expected failures);
   slot only (`rate_gate_wait_s` 0.04). Rows: `rate_gate_wait_s` 0.0, 0.43
   and 1.21 for the boolean-heavy searches.
 - The third boolean-heavy request (`teacher OR …`, sent at +0.545 s) has
-  `attempts` 2. The tool logs only the final attempt (HTTP 200), so the first
-  attempt's status (429 or 5xx) is not on record. Its retry slot (+1.437 s,
+  `attempts` 2. The tool then logged only the final attempt (HTTP 200), so the
+  first attempt's status (429 or 5xx) is not on record (since tool 1.6.2 a
+  retried attempt's status, Retry-After and delay are in `retried_attempts`). Its retry slot (+1.437 s,
   booked on both lanes in one step) came about 0.9 s after its first send.
   The tool's own backoff for a first retry is 1.6–2.4 s, so the delay came
   from a server `Retry-After` under 0.9 s, as OpenAlex's per-second 429
