@@ -43,7 +43,7 @@ fit_correct <- svyglm(income ~ age + factor(gender), design = des)
 | Standard errors | **WRONG** (ignores design) | Correct (design-based) |
 | p-values | **WRONG** (too small) | Correct |
 | Confidence intervals | **WRONG** (too narrow) | Correct |
-| Degrees of freedom | n - p | PSUs - strata |
+| Degrees of freedom | n - p | PSUs - strata - (p - 1) |
 
 The point estimates from WLS and survey regression are identical. But the SEs
 from WLS are typically too small because they assume independent observations
@@ -69,7 +69,7 @@ sampling unit. This makes within-stratum variance undefined.
 ### Symptoms
 
 ```
-Error in onestrat(x[index, , drop = FALSE], clusters[index], nPSU[i],  :
+Error in onestrat(...) :
   Stratum (...) has only one PSU at stage 1
 ```
 
@@ -79,11 +79,13 @@ Set a global option before creating the design:
 
 ```r
 # Option 1: "remove" -- drop lonely strata from variance computation
-# (conservative: SEs are slightly too large)
+# (NOT conservative: the stratum adds zero variance, same as "certainty";
+#  tied with "certainty" for the smallest SEs of the four options)
 options(survey.lonely.psu = "remove")
 
 # Option 2: "adjust" -- center at grand mean instead of stratum mean
-# (most common choice; equivalent to R's "certainty" for single PSU)
+# (most common choice; the stratum still adds variance, so SEs are at least
+#  as large as with "remove"/"certainty")
 options(survey.lonely.psu = "adjust")
 
 # Option 3: "certainty" -- treat as certainty stratum (zero variance)
@@ -93,6 +95,9 @@ options(survey.lonely.psu = "certainty")
 # Option 4: "average" -- use average of other strata's contributions
 options(survey.lonely.psu = "average")
 ```
+
+On a toy design with one singleton stratum (survey 4.5), the SEs ordered
+remove = certainty < adjust < average.
 
 ### Best Practice
 
@@ -107,7 +112,8 @@ options(survey.lonely.psu = "adjust")
 ### Prevention
 
 - Avoid domain estimation on very rare subgroups
-- Use replicate weights (which handle singletons implicitly)
+- Use producer-supplied replicate weights (singletons were handled when they
+  were built; `as.svrepdesign()` still applies `survey.lonely.psu`)
 - Collapse strata with few PSUs before analysis
 
 ---
@@ -130,10 +136,10 @@ des_adult <- subset(des, age >= 18)
 
 ### Why
 
-`subset()` on the design object zero-weights excluded observations but retains
-the full PSU/strata structure for variance estimation. Filtering the data
-removes PSUs from the design, potentially creating singleton strata and
-producing incorrect SEs.
+`subset()` on the design object drops excluded observations (calibrated and PPS
+designs zero-weight them instead) but retains the full PSU/strata structure for
+variance estimation. Filtering the data removes PSUs from the design,
+potentially creating singleton strata and producing incorrect SEs.
 
 ### Common Mistake: Using dplyr Verbs on Design Objects
 
@@ -167,9 +173,21 @@ Survey regression uses design-based degrees of freedom:
 df = (number of PSUs) - (number of strata)
 ```
 
+`svyglm()` also subtracts the non-intercept coefficients: residual df =
+`degf(des)` - (p - 1).
+
 This is typically much smaller than the model-based df = n - p used by `lm()`.
 Smaller df means wider confidence intervals and larger p-values, especially for
 surveys with few PSUs.
+
+This is automatic for `svyglm()` (`summary()` and `confint()` use a t on the
+residual df), and `svyciprop()` defaults to `df = degf(design)`. `confint()` on
+`svymean()`, `svytotal()` and `svyby()` results uses a Normal (`df = Inf`) by
+default; pass `df = degf(des)` for a t-based interval:
+
+```r
+confint(svymean(~y, des), df = degf(des))
+```
 
 ### Checking Degrees of Freedom
 
@@ -192,7 +210,7 @@ means but can matter for rare subgroups with even fewer effective PSUs.
 ### Small-Sample Adjustments
 
 For designs with very few df (< 30), consider:
-- Reporting t-based CIs rather than z-based CIs
+- Reporting t-based CIs rather than z-based CIs (`confint(..., df = degf(des))`)
 - Using the `Satterthwaite` approximation where available
 - Being cautious about significance claims near the 0.05 threshold
 

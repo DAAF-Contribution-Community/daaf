@@ -100,7 +100,7 @@ results = smf.glm("y ~ x1 + x2", data=df,
 
 ```python
 results.params          # Coefficients on the link scale
-results.pvalues         # P-values
+results.pvalues         # P-values (normal/z by default; fit(use_t=True) for t)
 results.conf_int()      # Confidence intervals (default alpha=0.05)
 results.fittedvalues    # Fitted values on the response scale (μ̂)
 results.resid_response  # Response residuals: y - μ̂
@@ -110,7 +110,7 @@ results.deviance        # Residual deviance
 results.null_deviance   # Null model deviance (intercept only)
 results.df_resid        # Residual degrees of freedom
 results.df_model        # Model degrees of freedom (excl. constant)
-results.aic             # AIC = deviance + 2 * (df_model + 1)
+results.aic             # AIC = -2 * llf + 2 * (df_model + 1)
 results.bic             # BIC
 results.llf             # Log-likelihood
 results.nobs            # Number of observations
@@ -122,13 +122,35 @@ Dispersion parameter (phi):
 results.scale           # Estimated dispersion (phi); for Poisson/Binomial fixed at 1
 ```
 
+### Weights: `freq_weights` vs `var_weights`
+
+```python
+# Frequency weights: row i stands for w_i identical observations
+results = smf.glm("y ~ x1", data=df, family=sm.families.Poisson(),
+                  freq_weights=df["w"]).fit()
+
+# Variance (analytic) weights: row i has variance proportional to 1/w_i (e.g., a mean of w_i obs)
+results = smf.glm("y ~ x1", data=df, family=sm.families.Gaussian(),
+                  var_weights=df["w"]).fit()
+```
+
+Both give the same coefficients. `freq_weights` reproduces the fit on the expanded
+data (same SEs; `df_resid` = sum(w) − k, while `nobs` still reports the row count).
+`var_weights` keeps `df_resid` = rows − k. With an estimated scale (Gaussian, Gamma)
+its SEs differ, and `smf.wls(..., weights=w)` gives the same results as GLM
+Gaussian with `var_weights`. With a fixed scale (Poisson, Binomial) the nonrobust
+SEs coincide, but robust (`'HC0'`) SEs do not. statsmodels warns `cov_type not
+fully supported with freq_weights` (or `var_weights`) for non-HC robust covariances.
+`get_margeff()` ignores weights (it warns) and raises `NotImplementedError` when
+the model has an offset. Neither is a survey weight: for complex samples use `svy`.
+
 ### Prediction from GLM
 
 ```python
 # Predict on new data — returns values on the response scale (μ̂)
 y_pred = results.predict(new_data)
 
-# Predict with confidence intervals (linear predictor scale by default)
+# Predict with confidence intervals (response scale, μ̂, by default)
 pred = results.get_prediction(new_data)
 frame = pred.summary_frame(alpha=0.05)
 # Columns: mean, mean_se, mean_ci_lower, mean_ci_upper
@@ -212,7 +234,7 @@ prob_new = results.predict(new_data)
 # Using get_prediction for confidence intervals
 pred = results.get_prediction(new_data)
 frame = pred.summary_frame()
-# Columns: mean (probability), mean_se, mean_ci_lower, mean_ci_upper
+# Columns: predicted (probability), se, ci_lower, ci_upper
 ```
 
 ---

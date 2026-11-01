@@ -51,7 +51,7 @@ results.params          # Series indexed by variable name
 results.pvalues
 
 # Confidence intervals (default alpha=0.05)
-results.conf_int()              # 95% CI — returns DataFrame with columns [0.025, 0.975]
+results.conf_int()              # 95% CI — returns DataFrame with columns [0, 1] (lower, upper)
 results.conf_int(alpha=0.01)    # 99% CI
 ```
 
@@ -163,7 +163,8 @@ results = sm.WLS(df["y"], X, weights=1/df["variance"]).fit()
 ### Common Weight Specifications
 
 ```python
-# Population-weighted regression (each obs represents pop_i people)
+# Precision (analytic) weights proportional to population. WLS does not treat weights as counts:
+# nobs and df_resid stay at the row count. For rows that stand for w_i identical records, use GLM freq_weights (glm-discrete.md)
 results = smf.wls("y ~ x1 + x2", data=df, weights=df["population"]).fit()
 
 # Precision weights from measurement error variance
@@ -214,11 +215,11 @@ results = sm.GLS(y, X, sigma=covariance_matrix).fit()
 When errors follow an autoregressive process, `GLSAR` is more practical than specifying the full covariance matrix:
 
 ```python
-# AR(1) errors
-results = sm.GLSAR(y, X, rho=1).fit()
+# AR(1) errors: rho=1 sets the AR order; .fit() alone keeps rho at 0 (no AR correction)
+results = sm.GLSAR(y, X, rho=1).iterative_fit(maxiter=10)
 
 # AR(2) errors
-results = sm.GLSAR(y, X, rho=2).fit()
+results = sm.GLSAR(y, X, rho=2).iterative_fit(maxiter=10)
 ```
 
 Iterative estimation (Cochrane-Orcutt / Prais-Winsten style):
@@ -363,19 +364,19 @@ The `q` parameter is the quantile to estimate (0 < q < 1). `q=0.5` is least abso
 
 ### Standard Errors
 
-By default, sparsity-based asymptotic standard errors are used. Bootstrap standard errors are often preferred in practice:
+The default is `vcov='robust'`. Both options use one kernel estimate of the sparsity (1 / density of the residuals at zero): `'iid'` scales (X'X)⁻¹ by q(1−q)·sparsity², and `'robust'` weights each observation by q² or (1−q)² times sparsity², according to the residual's sign. Neither uses observation-level density weights, and at `q=0.5` `'robust'` equals `'iid'` exactly. `QuantReg.fit()` has no bootstrap option; resample by hand if heteroskedasticity-robust inference matters. The options, set explicitly:
 
 ```python
-# Kernel-based robust standard errors (default)
+# Default standard errors (vcov="robust")
 results = smf.quantreg("y ~ x1 + x2", data=df).fit(
     q=0.5,
-    vcov="robust",    # default; kernel-based (Powell sandwich)
+    vcov="robust",    # default; equals vcov="iid" at q=0.5
     kernel="epa",     # Epanechnikov kernel for sparsity estimation
     bandwidth="hsheather"  # bandwidth selection method
 )
 ```
 
-Available kernels for bandwidth: `"epa"` (Epanechnikov), `"cos"`, `"gau"` (Gaussian), `"par"` (Parzen), `"tri"` (triangular).
+Available kernels (`kernel=`, for the density estimate): `"epa"` (Epanechnikov, default), `"biw"` (biweight), `"cos"`, `"gau"` (Gaussian), `"par"` (Parzen).
 
 ### Fitting Multiple Quantiles
 
@@ -450,10 +451,10 @@ results = sm.OLS(df["y"], X).fit()
 ```python
 from patsy import bs
 
-# Cubic B-spline with 4 degrees of freedom (1 intercept + 3 basis functions)
+# Cubic B-spline with 4 degrees of freedom (4 basis columns; the formula adds the intercept)
 results = smf.ols("y ~ bs(x1, df=4, degree=3)", data=df).fit()
 
-# Natural spline with knots at specific values
+# Cubic B-spline with knots at specific values
 results = smf.ols("y ~ bs(x1, knots=[25, 50, 75], degree=3)", data=df).fit()
 
 # Spline without intercept (no separate constant in the spline)
@@ -470,18 +471,18 @@ results = smf.ols("y ~ bs(x1, df=5, degree=3, include_intercept=False)", data=df
 Generating the spline basis for prediction or inspection:
 
 ```python
-from patsy import dmatrix
+from patsy import dmatrix, build_design_matrices
 
 # Fit on training data
 basis_train = dmatrix("bs(x1, df=4, degree=3)", data=df, return_type="dataframe")
 results = sm.OLS(df["y"], basis_train).fit()
 
-# Apply same transformation to new data
-basis_new = dmatrix("bs(x1, df=4, degree=3)", data=new_df, return_type="dataframe")
+# Apply the training transformation (same knots) to new data
+basis_new = build_design_matrices([basis_train.design_info], new_df, return_type="dataframe")[0]
 y_pred = results.predict(basis_new)
 ```
 
-Using `dmatrix` ensures knot locations from training are reused at prediction time.
+Calling `dmatrix` again on new data recomputes the knots from the new data; `build_design_matrices` with the training `design_info` (or the formula API's `results.predict(new_df)`) reuses the training knots.
 
 ---
 
@@ -605,8 +606,9 @@ Prediction:
 # Fixed effects prediction (population average)
 pred = results.predict(new_data)
 
-# Group-specific prediction (includes random effects)
-pred = results.predict(new_data, exog_re=new_Z)
+# Group-specific prediction: predict() takes no exog_re and returns the fixed-effects part only.
+# In-sample, results.fittedvalues includes the predicted random effects; for new data add
+# results.random_effects[group] times the random-effects design by hand.
 ```
 
 Common use cases in education research:

@@ -255,7 +255,7 @@ labels = kmeans.labels_
 | Silhouette score | `silhouette_score(X, labels)` |
 | Feature importance | `model.feature_importances_` |
 | Permutation importance | `permutation_importance(model, X_test, y_test, random_state=42)` |
-| Set output format | `model.set_output(transform="pandas")` |
+| Set output format | `transformer.set_output(transform="pandas")` |
 
 ## Topic Index
 
@@ -301,6 +301,7 @@ labels = kmeans.labels_
 | accuracy, precision, recall, F1 | `./references/evaluation-supervised.md` |
 | ROC-AUC, confusion matrix | `./references/evaluation-supervised.md` |
 | cross_val_score, GridSearchCV | `./references/evaluation-supervised.md` |
+| GroupKFold, TimeSeriesSplit (clustered/temporal CV) | `./references/evaluation-supervised.md` |
 | learning_curve | `./references/evaluation-supervised.md` |
 | SelectKBest, RFE | `./references/feature-selection.md` |
 | feature_importances_ | `./references/feature-selection.md` |

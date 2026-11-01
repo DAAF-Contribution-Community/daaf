@@ -286,9 +286,9 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 - "Two or More Races" (`7`) and a separate Native Hawaiian/Pacific Islander code (`6`, split from Asian) came with the 7-category scheme: optional for states in 2008-09 and 2009-10, requested of every state from 2010-11 (NCES, CCD 2010-11 First Look, Appendix A, https://nces.ed.gov/pubs2012/snf201011/methodology.asp, fetched 2026-10-31)
 - On the pinned mirror, `6` and `7` rows exist wherever codes `1`-`5` do from file year 2008, but positive counts come only from adopting states: in 2008 AK, CA, MA, NJ and VT (plus MS for `6`), in 2009 14 states, and in 2010 every state for `7` and every state but New York for `6`. Elsewhere the 2008-2009 rows hold `0` (district files) or `0` or a negative missing code (school files), so read 2008-2009 values outside adopting states as "not reported", not as zero students (pinned-mirror probe 2026-10-31)
 
-### Historical Context (Pre-2010)
+### Historical Context (2008-09 to 2010-11 Transition)
 
-States transitioned to 7-category system at different times. Data from 2007-2010 may have reporting inconsistencies.
+States transitioned to 7-category system at different times. School and district files alike carry no `6` or `7` rows through file year 2007; file years 2008 and 2009 (2008-09 and 2009-10) mix states reporting 7 categories with states reporting 5; and 2010 files hold no positive `6` count for New York (see Key Points; pinned-mirror probe 2026-10-31).
 
 **Caution**: Time series analysis across this period requires careful handling.
 

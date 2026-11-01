@@ -90,7 +90,9 @@ NCES provides files for 2003-04 through 2005-06 that include both old and new co
 
 Between 2008-09 and 2010-11 (optional for states until 2010-11), CCD adopted new OMB standards for race/ethnicity reporting, adding a "Two or More Races" category and separating Asian and Pacific Islander.
 
-### Before 2010: 5 Categories
+### Through 2007-08: 5 Categories
+
+States not yet reporting 7 categories in 2008-09 and 2009-10 also used these 5. On the pinned mirror, school and district enrollment files alike hold only codes `1`-`5` and `99` through file year 2007.
 
 | Code | Category |
 |------|----------|
@@ -100,7 +102,9 @@ Between 2008-09 and 2010-11 (optional for states until 2010-11), CCD adopted new
 | HI | Hispanic |
 | WH | White, non-Hispanic |
 
-### After 2010: 7 Categories
+### From 2008-09 (All States From 2010-11): 7 Categories
+
+On the pinned mirror, school and district enrollment files alike carry `6` and `7` rows from file year 2008, with positive counts only from adopting states until 2010 (see Transition Period below and `variable-definitions.md` Key Points).
 
 | Code | Category |
 |------|----------|
@@ -136,7 +140,7 @@ States transitioned at different times:
 | Analysis Need | Impact | Approach |
 |---------------|--------|----------|
 | Total by race | Can combine HP with AS for historical comparison | Loses HP detail |
-| Multiracial students | TR category didn't exist pre-2010 | Cannot track historically |
+| Multiracial students | TR category didn't exist before 2008-09 and was reported only by adopting states until 2010-11 (elsewhere `0` or a missing code means not reported) | Cannot track historically |
 | Hispanic students | Relatively consistent | Generally comparable |
 | Detailed race analysis | Not comparable across periods | Separate analyses |
 
@@ -463,7 +467,7 @@ def prepare_longitudinal_data(df, variable, start_year, end_year):
     # Check for race/ethnicity issues
     if variable in ["race", "enrollment_by_race"] and start_year < 2010 and end_year >= 2010:
         print("WARNING: Race/ethnicity categories changed in 2010")
-        print("Two or More Races (TR) and HP categories not available pre-2010")
+        print("Two or More Races (TR) and HP rows start in 2008; real counts only from adopting states until 2010")
     
     # Check for FRPL issues
     if variable in ["frpl", "free_lunch", "reduced_lunch"] and end_year >= 2011:
@@ -483,7 +487,7 @@ if (variable == "locale" && start_year < 2006 && end_year >= 2006) {
 # Check for race/ethnicity issues
 if (variable %in% c("race", "enrollment_by_race") && start_year < 2010 && end_year >= 2010) {
   cat("WARNING: Race/ethnicity categories changed in 2010\n")
-  cat("Two or More Races (TR) and HP categories not available pre-2010\n")
+  cat("Two or More Races (TR) and HP rows start in 2008; real counts only from adopting states until 2010\n")
 }
 
 # Check for FRPL issues

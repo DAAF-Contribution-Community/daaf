@@ -234,7 +234,7 @@ des <- svydesign(
 # 3. Estimate
 svymean(~bmxbmi, design = des, na.rm = TRUE)
 svytotal(~bmxbmi, design = des, na.rm = TRUE)
-confint(svymean(~bmxbmi, design = des, na.rm = TRUE))
+confint(svymean(~bmxbmi, design = des, na.rm = TRUE))  # Normal; df = degf(des) for t
 
 # 4. Regression
 fit <- svyglm(bmxbmi ~ ridageyr + factor(riagendr), design = des)
@@ -259,7 +259,7 @@ summary(fit)
 | Ordinal logistic | `svyolr(ordered(y) ~ x, design = des)` |
 | Cox PH | `svycoxph(Surv(time, event) ~ x, design = des)` |
 | Subset design | `subset(des, age >= 18)` |
-| Confidence intervals | `confint(svymean(...))` |
+| Confidence intervals | `confint(svymean(...))` (Normal; `df = degf(des)` for t) |
 | Tidy output | `broom::tidy(svyglm_fit, conf.int = TRUE)` |
 | Convert to replicate | `as.svrepdesign(des, type = "JKn")` |
 | Calibrate | `calibrate(des, formula = ~age_group, population = pop_totals)` |
@@ -333,7 +333,7 @@ report's Software & Tools references:
 > Lumley, T. (2004). "Analysis of Complex Survey Samples." Journal of
 > Statistical Software, 9(8), 1-19.
 
-> Lumley, T. (2023). survey: Analysis of Complex Survey Samples. R package
+> Lumley, T. (2026). survey: Analysis of Complex Survey Samples. R package
 > version 4.5.
 
 **Cite when:** survey is used for survey-weighted estimation with complex survey

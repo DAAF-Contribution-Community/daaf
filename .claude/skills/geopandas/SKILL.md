@@ -101,7 +101,7 @@ CRS/projection issues?
 ├─ Reproject to different CRS → ./references/crs-projections.md
 ├─ Choose a projection for analysis → ./references/crs-projections.md
 ├─ Data has no CRS (set it) → ./references/crs-projections.md
-├─ CRS mismatch error → ./references/gotchas.md
+├─ CRS mismatch (warning; empty or wrong join) → ./references/gotchas.md
 └─ Area/distance calculations wrong → ./references/crs-projections.md
 ```
 
@@ -147,7 +147,7 @@ Raster operations?
 
 ```
 Having issues?
-├─ CRS mismatch errors → ./references/gotchas.md
+├─ CRS mismatch (warning; empty or wrong join) → ./references/gotchas.md
 ├─ Invalid geometry errors → ./references/gotchas.md
 ├─ Spatial join produced wrong row count → ./references/gotchas.md
 ├─ Memory issues with large files → ./references/gotchas.md
@@ -258,7 +258,7 @@ from shapely.geometry import Point, Polygon, LineString, MultiPolygon
 | Datashader massive point rendering | `./references/visualization.md` |
 | Join count statistics | `./references/pysal-spatial-stats.md` |
 | Ripley's functions (G, F, K) | `./references/pysal-spatial-stats.md` |
-| CRS mismatch errors | `./references/gotchas.md` |
+| CRS mismatch (warning; empty or wrong join) | `./references/gotchas.md` |
 | Invalid geometries | `./references/gotchas.md` |
 | Spatial join row count issues | `./references/gotchas.md` |
 | Memory with large files | `./references/gotchas.md` |

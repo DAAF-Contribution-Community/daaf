@@ -607,7 +607,7 @@ pacf_values, pacf_confint = pacf(y, nlags=20, method='ywm', alpha=0.05)
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| `nlags` | 40 | Number of lags to compute |
+| `nlags` | `None` | `None` uses min(10·log10(nobs), nobs − 1) |
 | `fft` | `True` | Use FFT for speed (recommended for large series) |
 | `alpha` | `None` | If set, returns confidence intervals as second return value |
 | `missing` | `'none'` | How to handle NaN: `'none'`, `'raise'`, `'conservative'`, `'drop'` |
@@ -616,12 +616,12 @@ pacf_values, pacf_confint = pacf(y, nlags=20, method='ywm', alpha=0.05)
 
 | Method | Notes |
 |--------|-------|
-| `'ywm'` | Yule-Walker (modified), default |
-| `'yw'` | Yule-Walker (unbiased) |
+| `'ywm'` | Yule-Walker without sample-size adjustment (alias `'ywmle'`; `plot_pacf` default) |
+| `'yw'` | Yule-Walker with sample-size adjustment (alias `'ywadjusted'`), default |
 | `'ols'` | OLS regression at each lag |
-| `'ols-inefficient'` | OLS without heteroskedasticity correction |
-| `'ld'` | Levinson-Durbin recursion |
-| `'ldb'` | Levinson-Durbin with bias correction |
+| `'ols-inefficient'` | OLS on lags using one common sample for all lags |
+| `'ld'` | Levinson-Durbin recursion with bias correction |
+| `'ldb'` | Levinson-Durbin recursion without bias correction |
 
 ### Plotting ACF and PACF
 

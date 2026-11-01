@@ -4,19 +4,20 @@ Frequent issues when working with geopandas and the spatial Python stack — sym
 
 ---
 
-## CRS Mismatch Errors
+## CRS Mismatch (a Warning, Not an Error)
 
 ### Symptom
 
 ```
-ValueError: GeoDataFrame does not have a CRS set.
-# or
-CRSMismatchError: CRS mismatch between the CRS of left geometries and the CRS of right geometries.
+UserWarning: CRS mismatch between the CRS of left geometries and the CRS of right geometries.
+# The join still runs: e.g. EPSG:4326 points vs EPSG:5070 polygons returns 0 rows (or all-NaN with how="left").
+# The same warning appears when one input has no CRS. Reprojecting data with no CRS raises:
+ValueError: Cannot transform naive geometries.  Please set a crs on the object first.
 ```
 
 ### Cause
 
-Spatial operations (join, overlay, distance) require all inputs in the same CRS. This error fires when CRS is missing or doesn't match.
+Spatial operations (join, overlay, clip, distance) require all inputs in the same CRS. When the CRS is missing or doesn't match, geopandas only warns; the operation runs on the raw coordinates and returns empty or wrong results. To make a script stop instead, add `warnings.filterwarnings("error", message="CRS mismatch", category=UserWarning)` or `assert gdf1.crs == gdf2.crs` before the operation.
 
 ### Fix
 
@@ -119,6 +120,7 @@ print(f"Null join columns: {result['right_col'].isna().sum()}")
 ```python
 # Strategy 1: Use stricter predicate
 result = gpd.sjoin(points, polygons, predicate="within")  # Instead of "intersects"
+# Caution: a point exactly on a shared boundary matches no polygon under "within" and leaves an inner join; compare row counts (or use how="left") after switching.
 
 # Strategy 2: Drop duplicates (keep first match)
 result = result[~result.index.duplicated(keep="first")]

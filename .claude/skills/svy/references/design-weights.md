@@ -123,7 +123,7 @@ svy.Design(row_index=None, stratum=None, wgt=None, prob=None, hit=None,
 | `rep_wgts` | `svy.RepWeights` | Pre-existing replicate-weight specification. See below. Optional. |
 | `hit` | `str` | Hits/measure-of-selection column (multi-phase / PPS designs). Optional. **[not smoke-tested at 0.19.0]** |
 | `mos` | `str` | Measure-of-size column (PPS designs). Optional. **[not smoke-tested at 0.19.0]** |
-| `wr` | `bool` | With-replacement flag (default `False`). **[not smoke-tested at 0.19.0]** |
+| `wr` | `bool` | With-replacement flag (default `False`). Stored on the design and referenced by svy's sample-selection code (`svy/selection/`); at 0.19.0 it does **not** change Taylor variance: `wr=True` with `pop_size=` still applies the FPC (smoke-tested 2026-11-01). For with-replacement variance, omit `pop_size=`. |
 | `row_index` | `str` | Explicit row-index column. Optional; svy adds `svy_row_index` internally. **[not smoke-tested at 0.19.0]** |
 
 > **Note:** There is **no `fpc=` parameter** — a `svy.Design(..., fpc=...)` call raises `TypeError: unexpected keyword argument 'fpc'`. FPC is specified through `pop_size=` (see next section). This is the single most common breakage when porting 0.13.0-era or docs-derived code.
@@ -352,15 +352,15 @@ A "singleton PSU" (or "lonely PSU") occurs when a stratum contains only one prim
 - Data subsetting that removes PSUs from strata
 - Design strata that genuinely have only one PSU (certainty selections)
 
-> **[not re-verified at 0.19.0]** The 0.13.0 skill documented a `sample.singleton` accessor with methods `exists()`, `summary()`, `certainty()`, `center()`, `combine()`, `collapse()`, `pool()`, `scale()`, `skip()` and a `SingletonHandling` enum. This accessor was not exercised by the 0.19.0 smoke test and was not visible in the (truncated) attribute listing captured during introspection. Before relying on it, confirm the accessor and its method names on the installed build (`[a for a in dir(sample) if "singl" in a.lower()]`). The methodological guidance below is version-independent.
+> **Verified at 0.19.0 (2026-11-01).** `sample.singleton` exists. `exists`, `count` and `last_result` are properties; `detected()`, `show()`, `keys()`, `summary()` and `raise_error()` are methods, and the handlers `certainty()`, `skip()`, `combine(mapping)`, `collapse(using=…, within=…)`, `pool()`, `scale()` and `center()` each return a `Sample` (a new one when singletons exist). `sample.singleton.handle("center")` dispatches by name, and `svy.SingletonHandling` is exported. Estimation on a design with an unhandled singleton raises `SingletonError`. On a toy design compared with R survey 4.5: `center()` reproduced R's `"adjust"` SE; `certainty()` did **not** match R's `"certainty"` (its docstring says each observation in the singleton stratum gets its own PSU, where R gives the stratum zero variance); `scale()` did not match R's `"average"`, although its docstring says it is equivalent; with a single singleton stratum, `pool()` gave R's `"remove"` SE. Use `center()` for the R `"adjust"` analogue.
 
-**Best practice:** Centering at the grand mean (R's "adjust") or pooling neighboring strata is generally safest. Zeroing the variance contribution (treating a singleton as a certainty selection) is appropriate only when the stratum truly is a certainty selection. Always report how singleton PSUs were handled.
+**Best practice:** Centering at the grand mean (R's "adjust") or pooling neighboring strata is generally safest. Zeroing the variance contribution (treating a singleton as a certainty selection) is appropriate only when the stratum truly is a certainty selection. (In svy, `certainty()` does not zero the contribution; see the note above.) Always report how singleton PSUs were handled.
 
 ### Prevention
 
 - Avoid domain estimation on very small subgroups
 - If subsetting is necessary, consider collapsing strata before analysis
-- Use replicate weights when available (the replication method handles singletons implicitly)
+- Use producer-supplied replicate weights when available (singletons were handled when they were built). svy's own creators do not stop on one: at 0.19.0 `create_jk_wgts()` and `create_bs_wgts()` ran on a design with an unhandled singleton without raising (2026-11-01), so handle singletons before creating replicates
 
 ---
 

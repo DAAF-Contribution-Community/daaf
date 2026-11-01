@@ -26,7 +26,7 @@ If you filter the raw data before creating the design object, you lose PSUs and
 strata that contribute to variance estimation. This produces:
 1. Incorrect standard errors (usually too small)
 2. Singleton PSU problems (strata with only one PSU after filtering)
-3. Wrong degrees of freedom
+3. Fewer PSUs per stratum in the variance calculation
 
 ---
 
@@ -125,7 +125,7 @@ des_correct <- subset(des, age >= 18)
 ```
 
 The difference: `subset()` on the design object retains the full set of PSUs and
-strata in the variance estimation, zero-weighting excluded observations.
+strata in the variance estimation, keeping the original PSU count per stratum.
 Filtering the raw data removes PSUs entirely, changing the design structure.
 
 ---
@@ -199,8 +199,8 @@ If you filter to males only and Stratum C PSU 2 has no males:
 - Within-stratum variance for Stratum C is undefined
 - The estimate either fails or uses a lonely PSU adjustment
 
-With `subset()` on the design, Stratum C PSU 2 is kept with zero weight for
-males, so the stratum still has 2 PSUs and variance estimation is correct.
+With `subset()` on the design, Stratum C still counts 2 PSUs for males, so
+variance estimation is correct.
 
 ### When Data Filtering Is Acceptable
 

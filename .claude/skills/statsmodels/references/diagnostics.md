@@ -38,8 +38,10 @@ lm_stat, lm_pvalue, f_stat, f_pvalue = het_breuschpagan(
 - H0: homoskedasticity (constant variance)
 - Reject if p-value < 0.05 → heteroskedasticity present
 - Returns four values: LM statistic, LM p-value, F-statistic, F p-value
-- The LM test assumes normal errors; the F-statistic is more robust to
-  non-normality. Use the F variant (3rd and 4th return values) as the default
+- By default (`robust=True`) the LM statistic is Koenker's studentized version,
+  which assumes i.i.d. errors but not normal ones; `robust=False` gives the
+  original Breusch-Pagan LM, which assumes normal errors. Prefer the F variant
+  (3rd and 4th return values) in small or moderately large samples
 
 ### White Test
 

@@ -30,7 +30,7 @@ mn <- svymean(~income, design = des, na.rm = TRUE)
 print(mn)            # point estimate + SE
 coef(mn)             # extract point estimate only
 SE(mn)               # extract SE only
-confint(mn)          # 95% CI
+confint(mn)          # 95% CI (Normal; add df = degf(des) for t)
 
 # Multiple variables simultaneously
 mn_multi <- svymean(~income + age + bmi, design = des, na.rm = TRUE)
@@ -76,11 +76,11 @@ prop <- svymean(~factor(employed), design = des, na.rm = TRUE)
 confint(prop)
 ```
 
-### Alternative: svyciprop() for Exact CI Methods
+### Alternative: svyciprop() for Better CIs Near 0 or 1
 
 ```r
-# Exact confidence interval for a single proportion
-# Methods: "logit", "likelihood", "asin", "beta", "mean", "xlogit"
+# Confidence interval for a single proportion (default method "logit")
+# Methods: "logit", "likelihood", "asin", "beta", "mean", "xlogit", "wilson"
 svyciprop(~I(employed == 1), design = des, method = "logit")
 ```
 
@@ -229,8 +229,10 @@ svyby(~income, ~gender, design = des, svymean, na.rm = TRUE)
 
 Pre-filtering the raw data and creating a new design object from the filtered
 data can: (1) produce incorrect variance estimates, (2) create singleton PSU
-problems, and (3) change degrees of freedom. The `svyby()` function and
-`subset()` on the design object handle this correctly.
+problems, and (3) drop PSUs from the variance calculation. The `svyby()`
+function and `subset()` on the design object handle this correctly. Note:
+`degf()` on a subset design counts only PSUs and strata with domain members, so
+domain df can still fall.
 
 ---
 
@@ -374,7 +376,7 @@ F-statistic with design-based degrees of freedom.
 ```r
 # statistic argument controls the test type
 svychisq(~gender + education, design = des, statistic = "F")        # default
-svychisq(~gender + education, design = des, statistic = "Chisq")    # Pearson
+svychisq(~gender + education, design = des, statistic = "Chisq")    # Pearson X^2, first-order Rao-Scott adjusted
 svychisq(~gender + education, design = des, statistic = "Wald")     # Wald test
 svychisq(~gender + education, design = des, statistic = "adjWald")  # adjusted Wald
 ```

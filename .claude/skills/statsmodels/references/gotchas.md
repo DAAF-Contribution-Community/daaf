@@ -238,7 +238,7 @@ attributes directly:
 ```python
 params    = results.params        # Coefficients (Series with variable names)
 pvalues   = results.pvalues       # p-values
-conf      = results.conf_int()    # CI as DataFrame, columns [0.025, 0.975]
+conf      = results.conf_int()    # CI as DataFrame, columns [0, 1] (lower, upper)
 bse       = results.bse           # Standard errors
 rsq       = results.rsquared
 rsq_adj   = results.rsquared_adj
@@ -260,12 +260,12 @@ This matters in small samples where asymptotic approximations can be poor.
 
 | Test | Type | Notes |
 |------|------|-------|
-| t-test on OLS coefficients | **Exact** (under normality assumption) | F and t distributions used |
+| t-test on OLS coefficients | **Exact** (under normality assumption) | t and F with the default `cov_type='nonrobust'`; any robust `cov_type` switches to normal and chi-squared unless `use_t=True` |
 | F-test for overall model | **Exact** (under normality assumption) | |
 | Wald tests on nonlinear hypotheses | Asymptotic (chi-squared) | `results.wald_test()` |
 | Likelihood Ratio test | Asymptotic (chi-squared) | Manual: `-2 * (llf_restricted - llf_full)` |
 | Lagrange Multiplier / Score test | Asymptotic (chi-squared) | |
-| GLM inference | Asymptotic | t and F used as approximations |
+| GLM inference | Asymptotic | Normal (z) and chi-squared by default (`use_t=False`); pass `fit(use_t=True)` for t and F |
 | Time series inference | Asymptotic | |
 
 ### Practical implication
@@ -475,15 +475,10 @@ results = smf.ols("y ~ code", data=df).fit()
 ### Formula API behavior
 
 The formula API drops rows with `NaN` in any variable used in the formula
-(complete case analysis). A warning is issued if rows are dropped:
-
-```
-MissingDataError: No missing values in data, check formula
-```
-or, if values are dropped:
-```
-/path/to/statsmodels/...: n observations dropped due to missing values
-```
+(complete case analysis, `missing='drop'` by default). **The drop is silent: no
+warning is issued.** Pass `missing='raise'` to make patsy raise
+`PatsyError: factor contains missing values` instead. The array API defaults to
+`missing='none'`; pass `missing='drop'` there for the same complete-case behavior.
 
 Always verify:
 
@@ -495,9 +490,10 @@ print(f"Observations used in model: {int(results.nobs)}")
 
 ### Array API behavior
 
-The array API does **not** handle `NaN` automatically. NaN values in `y` or `X`
-will propagate through linear algebra operations and produce `NaN` coefficients
-with no warning.
+The array API does **not** drop `NaN` by default (`missing='none'`). `NaN` in `X`
+raises `MissingDataError: exog contains inf or nans`; `NaN` only in `y` gives
+`NaN` OLS coefficients with no warning (GLM raises a `ValueError`). Pass
+`missing='drop'` or clean the arrays first.
 
 ```python
 # WRONG — NaN in array silently corrupts results
