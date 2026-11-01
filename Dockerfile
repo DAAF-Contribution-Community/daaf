@@ -1620,9 +1620,10 @@ RUN ARCH=$(dpkg --print-architecture) \
 # HTTPS_CA_FILE when LWP is installed (it is not in this image). It is replaced
 # by a symlink to the system bundle before any tlmgr network call, tlmgr runs
 # with TEXLIVE_DOWNLOADER=curl (system curl and store; never wget, which tlmgr
-# runs with --no-check-certificate), the layer fails if any other file in the
-# tree holds a PEM certificate, and the build's last RUN passes the path to
-# daaf-check-distrusted-roots.
+# runs with --no-check-certificate), the first TinyTeX layer fails if any other
+# file in the unpacked tarball holds a PEM certificate (that scan runs before
+# the extra packages are installed, so it does not cover them), and the build's
+# last RUN passes that one path to daaf-check-distrusted-roots.
 #
 # NO RUNTIME INSTALLS: the tree is extracted with --no-same-owner (the tar
 # entries belong to uid 1001) and stays root-owned and not writable by
@@ -1648,9 +1649,9 @@ RUN ARCH=$(dpkg --print-architecture) \
 # boundary: DAAF's build does not populate it with packages, and nothing in
 # DAAF installs into it.
 #
-# Evidence: asset digests, bundle coverage, the archive match, the CA file
-# and the font-cache settings (maintainer-only, not shipped:
-# research/2026-11-01_FrameworkDev_QuartoSkillRelease/preliminary_notes/2026-11-01_tinytex-pinning_research.md).
+# Evidence: the asset digests pinned below, bundle coverage, the archive match, the
+# CA file and the font-cache settings were checked against the downloaded
+# release assets and the dated archive before pinning (2026-11-01).
 # The four TinyTeX RUNs (the three below and the smoke render) were simulated
 # on amd64 as a non-root user against the real tarball and archive
 # (2026-11-01): path links, package install, revision and #15143 checks, font
@@ -1794,7 +1795,12 @@ RUN set -eu; \
     echo "TinyTeX: root-owned, read-only for other users, font cache built ($(kpsewhich -var-value TEXMFSYSVAR))."
 
 # appuser's TeX cache (see FONT CACHE above). Set after the root steps so they
-# write into the tree, not into a root-owned directory in /home/appuser.
+# write into the tree, not into a root-owned directory in /home/appuser. A later
+# root step (in USER ADDITIONS, for example) that runs lualatex or
+# luaotfload-tool would create that directory owned by root, leaving appuser a
+# TeX cache it cannot write; no build check catches this, because the smoke
+# render points TEXMFVAR at its own temporary directory. Run such a step as
+# appuser, or follow it with chown -R appuser:appuser /home/appuser/.cache.
 ENV TEXMFVAR=/home/appuser/.cache/texmf-var
 # Any later tlmgr download (in a user-mode tree, for example) uses the system
 # curl and the G3-free system store, never the bundled CA file or wget with

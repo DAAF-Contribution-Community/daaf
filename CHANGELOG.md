@@ -76,7 +76,11 @@ The image also installs the R package **renv**, which records a project's exact 
 
 ### Smoke Tests Write Their Files to `scripts/scratch/`
 
-Seven R library smoke tests (ggplot2, gt, fixest, plotly, tidyverse, sf/terra and Quarto) wrote the files they create to R's session folder under `/tmp`, which sits outside DAAF's backup and audit boundary. New revisions (`smoke_ggplot2_b.R`, `smoke_gt_b.R`, `smoke_fixest_b.R`, `smoke_plotly_r_c.R`, `smoke_tidyverse_b.R`, `smoke_sf_terra_c.R`, `smoke_quarto_d.R`) write them to `scripts/scratch/smoke_<family>_work/` instead, the repository's scratch area for framework tooling, and delete that folder when they finish; all seven pass. R and Quarto still create short-lived session folders under `/tmp` (Quarto keeps working files there during a render and removes the folder afterwards); the tests write nothing there themselves. `scripts/smoke_tests/README.md` describes the convention. Test logic is unchanged, and the earlier revisions keep their execution logs.
+Ten library smoke tests now write the files they create to `scripts/scratch/smoke_<family>_work/`, the repository's scratch area for framework tooling, and delete that folder when they finish:
+- Seven R tests (ggplot2, gt, fixest, plotly, tidyverse, sf/terra and Quarto) wrote them to R's session folder under `/tmp`, which sits outside DAAF's backup and audit boundary. Their new revisions are `smoke_ggplot2_b.R`, `smoke_gt_b.R`, `smoke_fixest_b.R`, `smoke_plotly_r_c.R`, `smoke_tidyverse_b.R`, `smoke_sf_terra_c.R` and `smoke_quarto_d.R`.
+- Three tests, the R arrow and rendering tests and the Python geospatial test, already kept clear of `/tmp` but wrote to a folder beside the script in `scripts/smoke_tests/`, outside the scratch area; a folder left by an interrupted rendering or geospatial run showed up as an untracked file (the arrow test's only file is a `.parquet`, which git ignores). Their new revisions are `smoke_arrow_a.R`, `smoke_rendering_a.R` and `smoke_geo_a.py`.
+
+All ten pass. R and Quarto still create short-lived session folders under `/tmp` (Quarto keeps working files there during a render and removes the folder afterwards); the tests write nothing there themselves. `scripts/smoke_tests/README.md` describes the convention. Test logic is unchanged, and the earlier versions are kept as they were.
 
 ### Security Patch: A Compromised Certificate Root Distrusted, Pillow and Ubuntu Security Updates, a Token for the Notebook Browser, a Localhost-Only Log Viewer, and a Prompt Before `git push`
 
