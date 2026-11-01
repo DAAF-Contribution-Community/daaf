@@ -543,7 +543,7 @@ The recommended workflow is:
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
-If you are **developing the framework itself** (not just running research), an opt-in `DAAF_DEV=1` build flag adds DAAF's own testing toolchain: set it in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) to install the shell/PowerShell test suites, linters, and GitHub CLI into the image (the same image also enables the contributor-only deployment smoke suite). It is a build-time flag, so when unset or `0` — the default for all normal installs — the image is identical to a standard build. For the full toolchain list, the CI commands, and the smoke-suite walkthrough, see `CONTRIBUTING.md` and `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain").
+If you are **developing the framework itself** (not just running research), an opt-in `DAAF_DEV=1` build flag adds DAAF's own testing toolchain: set it in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) to install the shell/PowerShell test suites, linters, and GitHub CLI into the image (the maintainers' deployment smoke test runs on any image; the flag adds the shell and PowerShell test batteries it can then run). It is a build-time flag, so when unset or `0` — the default for all normal installs — the image is identical to a standard build. For the full toolchain list, see `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain"); for the CI commands and the deployment smoke test, see `CONTRIBUTING.md`.
 
 ### Understanding the `uv` Package Manager
 

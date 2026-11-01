@@ -878,8 +878,11 @@ class TierRunnerWiringTests(unittest.TestCase):
     def test_tier_d_td7_default_on_shim_routes_only(self):
         ev = _scratch(self, "tierd")
         stub = rd.ProbeResult("X", "x", "D", verdict=Verdict.PASS)
+        # TD.9 (local services) is stubbed too: this test is about TD.7 routing,
+        # and the real TD.9 would start marimo/code-server three times.
         with mock.patch.object(sp, "_run_battery_cmd", return_value=stub) as bat, \
-             mock.patch.object(sp, "_run_import_smoke", return_value=stub):
+             mock.patch.object(sp, "_run_import_smoke", return_value=stub), \
+             mock.patch.object(sp, "probe_local_services", return_value=stub):
             off = sp.run_tier_d(False, 5, ev, route=rd.ROUTE_ANTHROPIC)
             on = sp.run_tier_d(False, 5, ev, route=rd.ROUTE_CHATGPT)
             forced = sp.run_tier_d(False, 5, ev, route=rd.ROUTE_ANTHROPIC, tier_d_all=True)
@@ -905,9 +908,10 @@ class ContractAndHintTests(unittest.TestCase):
     def test_every_failable_probe_has_a_hint(self):
         failable = ["T0.0", "T0.1", "T0.3", "T0.4", "T0.5", "T0.6", "T0.7", "T0.8", "T0.9", "T0.10", "T0.11",
                     "T0.12", "T0.14", "T0.15", "T0.16", "T0.17", "T0.18", "T0.19", "T0.20", "T0.21", "T0.22",
-                    "T0.23", "T0.ABORT", "T1.1", "T1.2", "T1.3", "T1.5", "T1.6", "T1.7", "T1.8", "T1.9", "T1.10",
-                    "T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6", "T2.7", "TD.0", "TD.1", "TD.2", "TD.3",
-                    "TD.4", "TD.5", "TD.6", "TD.7", "TD.8", "TN.1", "TN.2", "TN.3", "TN.4", "TA.1", "T3.1", "T3.2"]
+                    "T0.23", "T0.24", "T0.ABORT", "T1.1", "T1.2", "T1.3", "T1.5", "T1.6", "T1.7", "T1.8", "T1.9",
+                    "T1.10", "T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6", "T2.7", "T2.8", "TD.0", "TD.1",
+                    "TD.2", "TD.3", "TD.4", "TD.5", "TD.6", "TD.7", "TD.8", "TD.9", "TN.1", "TN.2", "TN.3",
+                    "TN.4", "TA.1", "T3.1", "T3.2"]
         for pid in failable:
             with self.subTest(probe=pid):
                 self.assertTrue(sp.PROBE_HINTS.get(pid, "").strip())

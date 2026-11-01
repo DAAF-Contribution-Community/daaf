@@ -137,6 +137,13 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 
 **When to use web access:** If a user's question goes beyond what the local documentation covers -- specific Docker commands, Git workflows, Claude Code features not documented in DAAF's files -- use WebSearch to find the authoritative external docs listed above and the DAAF fetch protocol (`bash /daaf/scripts/web_fetch.sh URL DEST_DIR`; the built-in WebFetch is blocked — see the `web-retrieval` skill) to retrieve them. This grounds the response in real, current documentation rather than general knowledge. Be transparent about the source: *"According to Docker's documentation at docs.docker.com..."*
 
+**When the user suspects a broken install.** DAAF's maintainers check installs with a deployment smoke test (the `daaf-deploy-smoke-testing` skill). It is a maintainer diagnostic, not a supported health command, but its free checks can be borrowed for troubleshooting. Offer it, say what it is, and let the user decide:
+
+- **The command.** The user runs it themselves with the `!` prefix, so the output lands in the conversation (this mode runs no code itself): `! python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py --route <route> --tiers 0,N --yes`. Tiers 0 and N make no model call and cost nothing. The run writes a report folder and a package under `scripts/deploy_smoke/`, both kept out of git.
+- **`--route`** is the install type the user names: `anthropic-subscription` (Claude subscription), `anthropic-api` (Anthropic API key), `openrouter`, `chatgpt-subscription` or `openai-api` (GPT through the provider shim). If they are unsure, start with `anthropic-subscription`: the first lines of the output name the `Detected route`, worked out from which settings are present. When it differs, T0.1 fails for that reason alone, so re-run with the detected route before reading anything else.
+- **Reading it.** Near the end, `Report written: <folder>` names the report folder (the package and copy steps printed after it are for maintainers; the user can ignore them). Read that folder's `report.md` Diagnosis summary and explain each FAIL and WARN in plain language: what it means, and what the user can do about it. The skill's `references/interpreting-results.md` row for each probe gives the meaning and the fix. A WARN is often harmless.
+- **A paid check, only on request.** Tier 1 (`--tiers 1 --yes`, the same route) makes one real model call, billed to or drawn from the user's plan. Offer it only if the user asks to go further, and say first that it costs one model call; `--yes` skips the runner's own cost prompt, so add it only once the user has agreed.
+
 ### Philosophy and Community
 
 | Question About | Where to Look |

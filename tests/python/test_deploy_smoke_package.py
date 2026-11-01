@@ -1203,7 +1203,16 @@ class GeneratedFileTests(_ScratchCase):
 # --- Runner: post-run shim-log scan (S3), cost (C7), identity and naming ------------------------
 
 class RunnerV2Tests(_ScratchCase):
+    @staticmethod
+    def _gate_pass(route_info, env, base_dir, probe_ids=()):
+        # Coverage design D2: a live tier now runs the preflight gate subset.
+        # These tests exercise the post-run scan, cost and identity, not the
+        # gate (test_deploy_smoke_coverage.py does), so the gate is stubbed to
+        # PASS instead of judging the container's real environment.
+        return [_pr(pid, "gate", "0", Verdict.PASS) for pid in probe_ids]
+
     def _main(self, argv, **patches):
+        patches.setdefault("run_preflight_gate", self._gate_pass)
         stack = [
             mock.patch.object(run_deploy_smoke, "PACKAGES_ROOT", self.root / "packages"),
             mock.patch.object(run_deploy_smoke, "INBOX_ROOT", self.root / "inbox"),

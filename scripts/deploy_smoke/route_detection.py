@@ -19,9 +19,10 @@ Env alone cannot tell an interactive Console login from a subscription login,
 so Tier 1 confirms the credential from the stream-json init record (T1.8).
 
 This module makes NO subprocess calls and NO LLM calls — it is pure environment
-inspection so Tier 0 preflight can run for free. Its one file access is a
+inspection so Tier 0 preflight can run for free. Its file accesses are a
 read-only text read of the installed enforce-model-ceiling.sh (T0.2 checks which
-rule set that hook carries). It is framework tooling (like
+rule set that hook carries) and a PATH lookup of the developer tools (T0.0 image
+flavor; no process is started). It is framework tooling (like
 benchmarks/), so it uses normal engineering style with functions, NOT the
 sequential no-functions research-script style that CLAUDE.md mandates for
 pipeline analysis scripts.
@@ -611,8 +612,7 @@ def _gpt_physical_window(model_id: str):
     # gpt-6-astra accepted 919,053 and rejected 922,552, and gpt-5.6-sol accepted
     # 910,827 and rejected 921,973 (previously 370,000, set 2026-07-16 and now
     # stale). gpt-6-sol, gpt-6-luna and the flagship '-pro' forms are covered by
-    # USER POLICY DECISION 2026-09-29, not validation (session workspace
-    # research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames). Under that
+    # USER POLICY DECISION 2026-09-29, not validation. Under that
     # decision gpt-6-sol reads as gpt-5.6-sol, gpt-6-luna reads as gpt-5.6-luna,
     # and every flagship '-pro' reads as its non-pro base. Their 1,050,000 window
     # matches the OpenRouter catalogue fetched 2026-09-29. Their 919000 lane cap
@@ -946,29 +946,107 @@ def probe_main_model(resolution, profile="", tier="0"):
 
 # --- Tier 0 route/env coherence probes ------------------------------------
 
-def probe_daaf_dev(env) -> ProbeResult:
-    """Tier 0 policy gate: the deployment smoke suite is intentionally restricted
-    to DAAF_DEV=1 development images as contributor tooling. Tier D additionally
-    uses development-only deterministic/test tools. Codex ships in every image;
-    shim routing and Codex authentication are separate explicit opt-ins, and
-    neither requires a development image."""
-    r = ProbeResult(probe_id="T0.0", name="DAAF_DEV assertion", tier="0")
+# Image flavor (T0.0). The suite runs on any DAAF image; the DAAF_DEV=1 build
+# (Dockerfile "Install Codex CLI + optional developer test tooling") adds these
+# four tools, which only the developer image carries. Tier D's TD.1 (bats) and
+# TD.2 (pwsh/Pester) SKIP without them; T0.15 and T0.22 read the flavor so a
+# standard image's missing tools are INFO there, not WARN.
+FLAVOR_TOOLS = ("bats", "pwsh", "shellcheck", "gh")
+# The Tier D battery each flavor tool gates: without it the battery SKIPs.
+FLAVOR_TIER_D_BATTERIES = {"bats": "TD.1 (bats)", "pwsh": "TD.2 (Pester)"}
+# The flavor tools whose absence SKIPs no battery, and what it does change.
+# TD.1's bats suite has shellcheck lint tests that `skip` when shellcheck is
+# missing, so TD.1 still runs without them (the lint and safety-hook batteries,
+# TD.3-TD.5, mention shellcheck only in comments and test strings). No Tier D
+# battery runs gh. The shellcheck note changes when bats is missing too, since
+# TD.1 then SKIPs as a whole.
+FLAVOR_TIER_D_PARTIAL = {"shellcheck": "TD.1 still runs but skips its shellcheck lint tests",
+                         "gh": "no Tier D battery uses it"}
+FLAVOR_SHELLCHECK_WITHOUT_BATS = "only TD.1's lint tests use it"
+FLAVOR_DEVELOPER = "developer image"
+FLAVOR_STANDARD = "standard image"
+FLAVOR_PARTIAL = "partial"
+
+
+def detect_image_flavor(which=None):
+    """(flavor, {tool: present}) from a PATH lookup of FLAVOR_TOOLS: all present
+    -> developer image, none -> standard image, some -> partial. `which` is the
+    lookup seam (shutil.which by default); it is a PATH lookup only, no process
+    is started."""
+    if which is None:
+        import shutil
+        which = shutil.which
+    present = {tool: which(tool) is not None for tool in FLAVOR_TOOLS}
+    if all(present.values()):
+        return FLAVOR_DEVELOPER, present
+    if not any(present.values()):
+        return FLAVOR_STANDARD, present
+    return FLAVOR_PARTIAL, present
+
+
+def probe_image_flavor(env, which=None, detected=None) -> ProbeResult:
+    """T0.0 "Image flavor" (INFO; WARN in one case). Replaces the old DAAF_DEV=1
+    assertion (smoke coverage design D1, 2026-11-01): the suite runs on any DAAF
+    image, and the developer image only adds the shell and PowerShell test
+    batteries (Tier D TD.1/TD.2, which SKIP without their tools).
+
+    The flavor comes from the tools present (detect_image_flavor); DAAF_DEV is
+    recorded as context. WARN only when DAAF_DEV=1 but a developer tool is
+    missing: the variable was set without a rebuild. The detail names only the
+    Tier D batteries that will SKIP as a result (bats -> TD.1, pwsh -> TD.2;
+    FLAVOR_TIER_D_BATTERIES) and what a missing shellcheck or gh changes
+    instead (FLAVOR_TIER_D_PARTIAL): without shellcheck TD.1 still runs but
+    skips its shellcheck lint tests; no Tier D battery uses gh. Otherwise INFO.
+    Never FAIL, and never a gate: the
+    preflight gate before paid tiers is T0.1/T0.3/T0.16/T0.17 (design D2).
+
+    detected: an already computed detect_image_flavor() result, so run_tier0 can
+    hand the same flavor to T0.15 and T0.22."""
+    r = ProbeResult(probe_id="T0.0", name="Image flavor", tier="0")
+    flavor, present = detected if detected is not None else detect_image_flavor(which)
     val = env.get("DAAF_DEV")
-    r.add_evidence("env: DAAF_DEV", output=str(val) if val is not None else "<unset>")
-    if val == "1":
-        r.verdict = Verdict.PASS
-        r.detail = "DAAF_DEV=1 (development image active)."
+    missing = [t for t in FLAVOR_TOOLS if not present.get(t)]
+    r.add_evidence("which " + " ".join(FLAVOR_TOOLS),
+                   output="; ".join(f"{t}={'present' if present.get(t) else 'absent'}" for t in FLAVOR_TOOLS),
+                   note=f"flavor={flavor}")
+    r.add_evidence("env: DAAF_DEV", output=str(val) if val is not None else "<unset>",
+                   note="context only: the flavor is read from the tools, not from this variable")
+    if val == "1" and missing:
+        # Name only the Tier D batteries a missing tool actually gates (bats ->
+        # TD.1, pwsh -> TD.2), then what a missing shellcheck or gh changes.
+        affected = [FLAVOR_TIER_D_BATTERIES[t] for t in missing if t in FLAVOR_TIER_D_BATTERIES]
+        notes = []
+        for t in missing:
+            if t in FLAVOR_TIER_D_BATTERIES:
+                continue
+            note = (FLAVOR_SHELLCHECK_WITHOUT_BATS if t == "shellcheck" and "bats" in missing
+                    else FLAVOR_TIER_D_PARTIAL.get(t, "no Tier D battery uses it"))
+            notes.append(f"{t}: {note}")
+        r.verdict = Verdict.WARN
+        lead = (f"Image flavor: {flavor}. DAAF_DEV=1 is set but developer tool(s) are missing "
+                f"({', '.join(missing)}): the variable was set without a rebuild")
+        if affected:
+            r.detail = lead + f", so Tier D will SKIP {' and '.join(affected)}." + (
+                f" ({'; '.join(notes)}.)" if notes else "")
+        else:
+            r.detail = lead + f". No Tier D battery will SKIP ({'; '.join(notes)})."
     else:
-        r.verdict = Verdict.FAIL
-        r.detail = (
-            "DAAF_DEV is not 1. The deployment smoke suite is intentionally restricted to "
-            "DAAF_DEV=1 development images as a contributor tool, including for --tiers 0. "
-            "Tier D additionally relies on development-only deterministic/test tooling; "
-            "missing Tier-D tools can otherwise SKIP. Codex itself ships in every image. "
-            "Shim routing and codex login are separate explicit opt-ins and do not require "
-            "a development image. Rebuild with DAAF_DEV=1 or run inside the dev container."
-        )
+        r.verdict = Verdict.INFO
+        if flavor == FLAVOR_DEVELOPER:
+            r.detail = (f"Image flavor: {flavor} (bats, pwsh, shellcheck and gh present); Tier D runs "
+                        "every battery.")
+        elif flavor == FLAVOR_STANDARD:
+            r.detail = (f"Image flavor: {flavor} (no developer tools). The suite runs as usual; Tier D "
+                        "SKIPs TD.1 (bats) and TD.2 (Pester).")
+        else:
+            r.detail = (f"Image flavor: {flavor} (missing: {', '.join(missing)}). Tier D SKIPs the "
+                        "batteries whose tool is missing.")
     return r
+
+
+# Backward-compatible name for the T0.0 entry point (it asserted DAAF_DEV=1
+# before design D1).
+probe_daaf_dev = probe_image_flavor
 
 
 def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
@@ -1526,7 +1604,7 @@ def probe_alias_completeness(route_info: RouteInfo, env, settings_overlay=None) 
 # change together. smoke_probes.PROBE_HINTS holds the other modules' probes and
 # merges this dict; a probe may also set ProbeResult.hint for a specific shape.
 ROUTE_PROBE_HINTS = {
-    "T0.0": "Run inside the DAAF_DEV=1 dev image (set DAAF_DEV=1 in environment_settings.txt and recreate the container).",
+    "T0.0": "DAAF_DEV=1 is set but the developer tools are missing: rebuild the image so the build argument takes effect (bash rebuild_daaf.sh from daaf-docker), or remove DAAF_DEV=1 from environment_settings.txt if you meant the standard image.",
     "T0.1": "Re-run with the --route that matches this container, or fix DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE / ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY in environment_settings.txt; detection is authoritative.",
     "T0.3": "Set the route's required variables in environment_settings.txt (see the install guide for this route), recreate the container, and start a new session.",
     "T0.4": "Declare CLAUDE_CODE_MAX_CONTEXT_TOKENS (919000 on the ChatGPT lane; the model window elsewhere) and remove CLAUDE_CODE_AUTO_COMPACT_WINDOW.",

@@ -10,10 +10,15 @@ coupling) plus every tier's probe implementations:
     settings.local.json env shadowing, claude.ai synced skills/plugins (INFO).
   * Tier 1: one live claude -p round-trip and the evidence checks around it
     (T1.1-T1.10; stream-json so the init record's apiKeySource/model are kept).
-  * Tier 2: the seven-probe capability-structural battery (T2.1-T2.7).
+  * Tier 2: the eight-probe capability-structural battery (T2.1-T2.8).
   * Tier D: the deterministic battery (bats, Pester, lint, safety-hook tests,
     single-command tests, optional R/Python skill smoke, the provider-shim unit
-    suite TD.7 on shim routes, core-library imports TD.8).
+    suite TD.7 on shim routes, core-library imports TD.8, local browser
+    services TD.9).
+  * Coverage design 2026-11-01: T0.0 reports the image flavor (any DAAF image
+    runs the suite), T0.24 checks the settings invariants, T2.8 is the R twin of
+    T2.2, TD.9 starts marimo and code-server, and run_preflight_gate supplies the
+    gate subset the runner applies before any paid tier.
   * smoke v2 (2026-10-13 design): Tier 0 adds T0.15-T0.23; Tier N (network and
     data services, no model calls), Tier A (Auto mode, 1 call) and Tier 3 (mode
     gate + golden path, 2 calls) are run_tier_n / run_tier_a / run_tier_3.
@@ -56,6 +61,7 @@ from route_detection import (
     SHIM_ROUTES,
     MODEL_SELECTOR_VARS,
     ROUTE_PROBE_HINTS,
+    FLAVOR_STANDARD,
     main_model_family,
     redact_env_value,
     scrub_secret_values,
@@ -1470,8 +1476,12 @@ _MAIN_ENV_KEYS = frozenset({
 _SETTINGS_LIMIT = 262144
 
 
-def _read_main_settings(path):
-    """Bounded no-follow regular-file read; return projection + categorical state."""
+def _read_main_settings(path, env_keys=_MAIN_ENV_KEYS, top_keys=()):
+    """Bounded no-follow regular-file read; return projection + categorical state.
+
+    env_keys / top_keys widen the projection for a caller that needs other keys
+    (T0.24 reads its two env invariants and the statusLine objects); the
+    defaults are T0.14's main-model projection, unchanged."""
     import stat
     fd = None
     try:
@@ -1486,12 +1496,16 @@ def _read_main_settings(path):
         data = json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_health_keys)
         if not isinstance(data, dict) or not isinstance(data.get("env", {}), dict):
             return {}, "malformed"
-        projected = {k: v for k, v in data.get("env", {}).items() if k in _MAIN_ENV_KEYS}
+        projected = {k: v for k, v in data.get("env", {}).items() if k in env_keys}
         if any(not isinstance(v, str) for v in projected.values()):
             return {}, "malformed"
         if "model" in data and not isinstance(data["model"], str):
             return {}, "malformed"
-        return {"env": projected, "model": data.get("model")}, "present"
+        out = {"env": projected, "model": data.get("model")}
+        for key in top_keys:
+            if key in data:
+                out[key] = data[key]
+        return out, "present"
     except FileNotFoundError:
         return {}, "absent"
     except (ValueError, UnicodeError):
@@ -1926,9 +1940,14 @@ def collect_versions(base_dir: str = BASE_DIR) -> dict:
     return v
 
 
-def _evaluate_t015(versions: dict, route: str):
-    """Pure T0.15 verdict over collect_versions() output."""
-    problems, warnings = [], []
+def _evaluate_t015(versions: dict, route: str, image_flavor=None):
+    """Pure T0.15 verdict over collect_versions() output.
+
+    image_flavor: T0.0's flavor. On a standard image (design D1) missing
+    developer binaries are expected, so they become an INFO note rather than a
+    WARN; any other finding keeps its own verdict. A partial or developer image,
+    or an unknown flavor (None), keeps the WARN."""
+    problems, warnings, notes = [], [], []
     cli = _semver(versions.get("claude_code") or "")
     pin = _semver(versions.get("claude_code_pin") or "")
     if cli is None:
@@ -1954,27 +1973,37 @@ def _evaluate_t015(versions: dict, route: str):
         warnings.append("git identity unavailable (rev-parse HEAD failed)")
     missing_dev = [b for b, ok in (versions.get("dev_binaries") or {}).items() if not ok]
     if missing_dev:
-        warnings.append("dev-build binaries missing: " + ", ".join(missing_dev))
+        if image_flavor == FLAVOR_STANDARD:
+            notes.append("dev-build binaries absent, as expected on a standard image: " + ", ".join(missing_dev))
+        else:
+            warnings.append("dev-build binaries missing: " + ", ".join(missing_dev))
     if problems:
-        return Verdict.FAIL, "; ".join(problems + warnings) + "."
+        return Verdict.FAIL, "; ".join(problems + warnings + notes) + "."
     if warnings:
-        return Verdict.WARN, "; ".join(warnings) + "."
+        return Verdict.WARN, "; ".join(warnings + notes) + "."
+    if notes:
+        return Verdict.INFO, (f"Claude Code {versions.get('claude_code')} matches the pin (Codex "
+                              f"{versions.get('codex') or 'n/a'}, pin {versions.get('codex_pin') or 'n/a'}); DAAF "
+                              f"{versions.get('daaf_branch')} {versions.get('daaf_describe')} "
+                              f"({versions.get('dirty_files')} dirty file(s)); " + "; ".join(notes) + ".")
     return Verdict.PASS, (f"Claude Code {versions.get('claude_code')} matches the pin (Codex "
                           f"{versions.get('codex') or 'n/a'}, pin {versions.get('codex_pin') or 'n/a'}); DAAF "
                           f"{versions.get('daaf_branch')} {versions.get('daaf_describe')} "
                           f"({versions.get('dirty_files')} dirty file(s)); dev binaries present.")
 
 
-def probe_versions(route_info: RouteInfo, base_dir: str = BASE_DIR) -> ProbeResult:
+def probe_versions(route_info: RouteInfo, base_dir: str = BASE_DIR, image_flavor=None) -> ProbeResult:
     """T0.15 — versions and identity (claude/codex vs Dockerfile pins, DAAF
     branch/SHA/describe/dirty count, dev binaries). Catches stale or mixed
-    installs and a CLI under the shim floor (F31)."""
+    installs and a CLI under the shim floor (F31). image_flavor is T0.0's
+    flavor (see _evaluate_t015)."""
     r = ProbeResult(probe_id="T0.15", name="Versions and identity", tier="0")
     versions = collect_versions(base_dir)
     r.add_evidence("claude --version; codex --version; git rev-parse/describe/status --porcelain; "
                    "which bats pwsh shellcheck; Dockerfile ARG pins",
-                   output=json.dumps(versions, sort_keys=True))
-    r.verdict, r.detail = _evaluate_t015(versions, route_info.detected_route)
+                   output=json.dumps(versions, sort_keys=True),
+                   note=f"image flavor (T0.0): {image_flavor or 'not given'}")
+    r.verdict, r.detail = _evaluate_t015(versions, route_info.detected_route, image_flavor)
     return r
 
 
@@ -2297,7 +2326,8 @@ def probe_runtime_identity(base_dir: str = BASE_DIR, work_dir=None) -> ProbeResu
 
 
 # (tool, version argv, required). Dev-only tools are WARN when missing (Tier D
-# self-SKIPs without them); the core toolchain FAILs.
+# self-SKIPs without them), INFO on a standard image (T0.0, design D1); the core
+# toolchain FAILs.
 TOOLCHAIN = (
     ("python3", ["python3", "--version"], True),
     ("Rscript", ["Rscript", "--version"], True),
@@ -2312,20 +2342,25 @@ TOOLCHAIN = (
 )
 
 
-def _evaluate_t022(found: dict):
-    """found: {tool: version string or None}. FAIL on a missing required tool,
-    WARN on a missing dev-only tool, else PASS."""
+def _evaluate_t022(found: dict, image_flavor=None):
+    """found: {tool: version string or None}. FAIL on a missing required tool;
+    a missing dev-only tool is INFO when image_flavor (T0.0) is the standard
+    image and WARN otherwise (partial, developer or unknown flavor); else PASS."""
     req_missing = [t for t, _, req in TOOLCHAIN if req and not found.get(t)]
     dev_missing = [t for t, _, req in TOOLCHAIN if not req and not found.get(t)]
     if req_missing:
         return Verdict.FAIL, "Required tool(s) missing: " + ", ".join(req_missing) + "."
+    if dev_missing and image_flavor == FLAVOR_STANDARD:
+        return Verdict.INFO, ("Required tools present; dev-only tool(s) absent, as expected on a standard "
+                              "image: " + ", ".join(dev_missing) + " (Tier D will SKIP them).")
     if dev_missing:
         return Verdict.WARN, "Dev-only tool(s) missing: " + ", ".join(dev_missing) + " (Tier D will SKIP them)."
     return Verdict.PASS, "All required and dev-only tools present."
 
 
-def probe_toolchain() -> ProbeResult:
-    """T0.22 — toolchain presence and versions (first version line, bounded)."""
+def probe_toolchain(image_flavor=None) -> ProbeResult:
+    """T0.22 — toolchain presence and versions (first version line, bounded).
+    image_flavor is T0.0's flavor (see _evaluate_t022)."""
     r = ProbeResult(probe_id="T0.22", name="Toolchain presence and versions", tier="0")
     found = {}
     for tool, argv, _ in TOOLCHAIN:
@@ -2336,8 +2371,9 @@ def probe_toolchain() -> ProbeResult:
         text = (out or err).strip()
         line = next((ln for ln in text.splitlines() if re.search(r"\d+\.\d+", ln)), text.splitlines()[0] if text else "")
         found[tool] = line.strip()[:120] or ("present" if rc == 0 else None)
-    r.add_evidence("which + <tool> --version (first version-bearing line)", output=json.dumps(found, sort_keys=True))
-    r.verdict, r.detail = _evaluate_t022(found)
+    r.add_evidence("which + <tool> --version (first version-bearing line)", output=json.dumps(found, sort_keys=True),
+                   note=f"image flavor (T0.0): {image_flavor or 'not given'}")
+    r.verdict, r.detail = _evaluate_t022(found, image_flavor)
     return r
 
 
@@ -2455,6 +2491,176 @@ def probe_framework_integrity(base_dir: str = BASE_DIR) -> ProbeResult:
     return r
 
 
+# --- T0.24 Settings invariants (design D3, 2026-11-01) ------------------------
+# (variable, required value, verdict when broken, why). Read through the same
+# layered reader as T0.14/T0.17: process env, then user, project and local
+# settings `env` (later wins; observed 2.1.281 precedence).
+SETTINGS_ENV_INVARIANTS = (
+    ("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "1", Verdict.FAIL,
+     "the primary nested-dispatch layer (block-nested-dispatch.sh is only a backstop)"),
+    ("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1", Verdict.WARN,
+     "inline subagent returns are the shipped assumption (the wave barrier stays binding either way)"),
+)
+STATUSLINE_KEYS = ("statusLine", "subagentStatusLine")
+# Claude Code 2.1.251 stopped honoring CLAUDE_CODE_TMPDIR from settings files
+# (docker-compose.yml comment), so only the process environment counts; a
+# settings value is reported but never judged.
+TMPDIR_VAR = "CLAUDE_CODE_TMPDIR"
+
+
+def _is_under_tmp(path_text) -> bool:
+    for candidate in (os.path.normpath(path_text), os.path.realpath(path_text)):
+        if candidate == "/tmp" or candidate.startswith("/tmp/"):
+            return True
+    return False
+
+
+def _tmpdir_facts(value) -> dict:
+    """Bounded facts about the CLAUDE_CODE_TMPDIR value (a path, not a secret):
+    set, absolute, under /tmp (literal or resolved), and writable. A folder that
+    does not exist yet counts as writable when its nearest existing parent is,
+    because Claude Code creates it on first use."""
+    facts = {"set": bool(value), "value": value or None}
+    if not value:
+        return facts
+    facts["absolute"] = os.path.isabs(value)
+    facts["under_tmp"] = _is_under_tmp(value)
+    p = Path(value)
+    if p.exists():
+        facts["exists"] = True
+        facts["writable"] = p.is_dir() and os.access(p, os.W_OK | os.X_OK)
+    else:
+        facts["exists"] = False
+        parent = p.parent
+        while not parent.exists() and parent != parent.parent:
+            parent = parent.parent
+        facts["nearest_existing_parent"] = str(parent)
+        facts["writable"] = parent.is_dir() and os.access(parent, os.W_OK | os.X_OK)
+    return facts
+
+
+def collect_settings_invariants(env, base_dir=BASE_DIR) -> dict:
+    """Facts for T0.24. Env invariants: process env, then user (CLAUDE_CONFIG_DIR
+    or ~/.claude), project and local settings `env`, the later layer winning, each
+    value with its source layer (as T0.17 reports). statusLine/subagentStatusLine:
+    the top-level settings objects, same layer order, the command resolved like a
+    hook command ($CLAUDE_PROJECT_DIR -> base_dir). CLAUDE_CODE_TMPDIR: process
+    env only (see TMPDIR_VAR). Read through _read_main_settings: bounded,
+    no-follow, only the named keys projected, never an auth store."""
+    root = Path(base_dir)
+    config = Path(env.get("CLAUDE_CONFIG_DIR") or (Path(env.get("HOME") or Path.home()) / ".claude"))
+    if not config.is_absolute():
+        config = root / config
+    names = tuple(n for n, _, _, _ in SETTINGS_ENV_INVARIANTS)
+    env_facts = {}
+    for name in names:
+        val = env.get(name)
+        env_facts[name] = {"value": val if isinstance(val, str) else None,
+                           "source": "process env" if isinstance(val, str) else "unset"}
+    statusline = {key: {"value": None, "source": "unset"} for key in STATUSLINE_KEYS}
+    states, tmpdir_in_settings = {}, []
+    for label, path in (("user settings", config / "settings.json"),
+                        ("project settings", root / ".claude" / "settings.json"),
+                        ("local settings", root / ".claude" / "settings.local.json")):
+        projection, state = _read_main_settings(path, env_keys=frozenset(names + (TMPDIR_VAR,)),
+                                                top_keys=STATUSLINE_KEYS)
+        states[label] = state
+        for name in names:
+            value = projection.get("env", {}).get(name)
+            if isinstance(value, str):
+                env_facts[name] = {"value": value, "source": label}
+        if isinstance(projection.get("env", {}).get(TMPDIR_VAR), str):
+            tmpdir_in_settings.append(label)
+        for key in STATUSLINE_KEYS:
+            if key in projection:
+                statusline[key] = {"value": projection[key], "source": label}
+    for key, entry in statusline.items():
+        value = entry.get("value")
+        command = value.get("command") if isinstance(value, dict) else None
+        entry["type"] = value.get("type") if isinstance(value, dict) else None
+        entry["command"] = command if isinstance(command, str) else None
+        script = _hook_command_path(command, str(root)) if isinstance(command, str) else ""
+        script = os.path.expanduser(script) if script else ""
+        entry["script"] = script or None
+        entry["exists"] = bool(script) and Path(script).is_file()
+        entry["executable"] = entry["exists"] and os.access(script, os.X_OK)
+        entry.pop("value", None)
+    tmp_value = env.get(TMPDIR_VAR)
+    tmpdir = _tmpdir_facts(tmp_value if isinstance(tmp_value, str) else "")
+    tmpdir["source"] = "process env" if isinstance(tmp_value, str) and tmp_value else "unset"
+    tmpdir["also_in_settings_ignored"] = tmpdir_in_settings
+    return {"env": env_facts, "statusline": statusline, "tmpdir": tmpdir, "settings_states": states}
+
+
+def _evaluate_t024(facts: dict):
+    """Pure T0.24 verdict. FAIL: spawn depth not '1'; CLAUDE_CODE_TMPDIR unset,
+    relative, under /tmp or not writable; a statusLine/subagentStatusLine missing,
+    not a command, or its script missing or not executable. WARN: background
+    tasks not disabled ('1'); a settings layer present but unreadable/malformed
+    (its values were not read). Else PASS."""
+    problems, warnings = [], []
+    for name, want, broken, why in SETTINGS_ENV_INVARIANTS:
+        entry = facts.get("env", {}).get(name) or {}
+        if entry.get("value") != want:
+            text = (f"{name}={entry.get('value') if entry.get('value') is not None else '<unset>'} "
+                    f"({entry.get('source', 'unset')}), expected {want}: {why}")
+            (problems if broken == Verdict.FAIL else warnings).append(text)
+    tmp = facts.get("tmpdir") or {}
+    if not tmp.get("set"):
+        problems.append(f"{TMPDIR_VAR} is not set in the process environment: Claude Code's scratchpad "
+                        "falls back to /tmp, outside the backup boundary (set it in docker-compose.yml)")
+    elif not tmp.get("absolute"):
+        problems.append(f"{TMPDIR_VAR}={tmp.get('value')!r} is not an absolute path")
+    elif tmp.get("under_tmp"):
+        problems.append(f"{TMPDIR_VAR}={tmp.get('value')!r} is under /tmp: scratchpad files there are lost silently")
+    elif not tmp.get("writable"):
+        problems.append(f"{TMPDIR_VAR}={tmp.get('value')!r} is not writable"
+                        + ("" if tmp.get("exists") else " (nor is its nearest existing parent)"))
+    for key in STATUSLINE_KEYS:
+        entry = (facts.get("statusline") or {}).get(key) or {}
+        if entry.get("source", "unset") == "unset":
+            problems.append(f"{key} is not registered in any settings file")
+        elif entry.get("type") != "command" or not entry.get("command"):
+            problems.append(f"{key} ({entry.get('source')}) is not a command statusline")
+        elif not entry.get("exists"):
+            problems.append(f"{key} ({entry.get('source')}) script does not exist: {entry.get('script')}")
+        elif not entry.get("executable"):
+            problems.append(f"{key} ({entry.get('source')}) script is not executable: {entry.get('script')}")
+    for label, state in (facts.get("settings_states") or {}).items():
+        if state not in ("present", "absent"):
+            warnings.append(f"{label} is {state}; its values were not read")
+    if problems:
+        return Verdict.FAIL, "; ".join(problems + warnings) + "."
+    if warnings:
+        return Verdict.WARN, "; ".join(warnings) + "."
+    return Verdict.PASS, ("Spawn depth 1 and background tasks disabled; "
+                          f"{TMPDIR_VAR}={tmp.get('value')} (not under /tmp, writable); statusLine and "
+                          "subagentStatusLine scripts exist and are executable.")
+
+
+def probe_settings_invariants(env, base_dir: str = BASE_DIR) -> ProbeResult:
+    """T0.24 — the settings invariants DAAF relies on (design D3): nested-dispatch
+    spawn depth, inline (foreground) subagent returns, the Claude Code temp root
+    outside /tmp, and both statusline registrations. Evidence names each value's
+    source layer, as T0.17 does. Values are not secrets (two flags, a path and
+    two script commands); nothing else from the settings files is read."""
+    r = ProbeResult(probe_id="T0.24", name="Settings invariants", tier="0")
+    facts = collect_settings_invariants(env, base_dir)
+    r.add_evidence("env + settings `env` (process < user < project < local): "
+                   + ", ".join(n for n, _, _, _ in SETTINGS_ENV_INVARIANTS),
+                   output="; ".join(f"{n}={e['value'] if e['value'] is not None else '<unset>'} ({e['source']})"
+                                    for n, e in facts["env"].items()))
+    r.add_evidence(f"process env: {TMPDIR_VAR}; test -w (or nearest existing parent)",
+                   output=json.dumps(facts["tmpdir"], sort_keys=True),
+                   note=("Claude Code 2.1.251+ ignores CLAUDE_CODE_TMPDIR in settings files; "
+                         "only the launch environment (docker-compose.yml) counts"))
+    r.add_evidence("settings statusLine / subagentStatusLine (user < project < local); test -x <script>",
+                   output=json.dumps(facts["statusline"], sort_keys=True))
+    r.add_evidence("bounded settings file inspection", output=json.dumps(facts["settings_states"], sort_keys=True))
+    r.verdict, r.detail = _evaluate_t024(facts)
+    return r
+
+
 def _timed(fn, *args, **kwargs):
     """Call a probe and record its wall time on the result(s) it returns."""
     start = time.time()
@@ -2470,7 +2676,8 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
               evidence_dir=None):
     """Assemble the full Tier 0 preflight (route_detection probes + system probes).
     route_detection contributes T0.0-T0.4, T0.16, T0.17; this adds T0.5-T0.15
-    and T0.18-T0.23 (shim-only probes SKIP elsewhere).
+    and T0.18-T0.24 (shim-only probes SKIP elsewhere). T0.0's image flavor is
+    detected once and handed to T0.15 and T0.22 (design D1).
 
     statusline_cache_dir: report-local directory for T0.7's synthetic statusline
     caches (run_deploy_smoke passes {report}/evidence/t07_statusline_cache);
@@ -2478,7 +2685,8 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
     evidence_dir: where T0.21 creates and deletes its probe file; defaults to the
     parent of statusline_cache_dir (the report's evidence/), else project scratch."""
     from route_detection import (
-        probe_daaf_dev,
+        detect_image_flavor,
+        probe_image_flavor,
         probe_route_detection,
         probe_model_family,
         probe_env_coherence,
@@ -2489,8 +2697,9 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
     if evidence_dir is None and statusline_cache_dir is not None:
         evidence_dir = Path(statusline_cache_dir).parent
     shim_expected = source_shim_version() if route_info.detected_route in SHIM_ROUTES else None
+    flavor = detect_image_flavor(shutil.which)
     calls = [
-        (probe_daaf_dev, (env,), {}),
+        (probe_image_flavor, (env,), {"detected": flavor}),
         (probe_route_detection, (route_info,), {}),
         (probe_model_family, (route_info, env), {"hook_path": Path(base_dir) / ".claude" / "hooks"
                                                  / "enforce-model-ceiling.sh"}),
@@ -2506,7 +2715,7 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
         (probe_local_settings_shadowing, (base_dir,), {}),
         (probe_synced_surface, (env,), {"base_dir": base_dir}),
         (probe_main_model_coherence, (env,), {"base_dir": base_dir}),
-        (probe_versions, (route_info, base_dir), {}),
+        (probe_versions, (route_info, base_dir), {"image_flavor": flavor[0]}),
         (probe_credential_overlap, (route_info, env), {}),
         (probe_alias_completeness, (route_info, env),
          {"settings_overlay": collect_alias_settings(env, base_dir)}),
@@ -2514,10 +2723,58 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR, statusline_c
         (probe_prompt_cache, (route_info,), {}),
         (probe_shim_log_scan, (route_info,), {}),
         (probe_runtime_identity, (base_dir,), {"work_dir": evidence_dir}),
-        (probe_toolchain, (), {}),
+        (probe_toolchain, (), {"image_flavor": flavor[0]}),
         (probe_framework_integrity, (base_dir,), {}),
+        (probe_settings_invariants, (env, base_dir), {}),
     ]
     results = [_timed(fn, *args, **kwargs) for fn, args, kwargs in calls]
+    return apply_hints(results)
+
+
+# --- Preflight gate (design D2, 2026-11-01) ----------------------------------
+# The Tier 0 probes whose FAIL means a paid call would test, or bill, the wrong
+# configuration: T0.1 route matches, T0.3 env coherence, T0.16 credential
+# overlap, T0.17 tier aliases (shim and non-Claude OpenRouter). The runner
+# applies them before any live tier (1, 2, A, 3), reusing Tier 0's results when
+# Tier 0 ran, and running only the missing ones otherwise. The per-profile T0.14
+# re-check stays separate (run_deploy_smoke).
+GATE_PROBE_IDS = ("T0.1", "T0.3", "T0.16", "T0.17")
+GATE_SUBSET_SUFFIX = " (gate subset)"
+# The gate probes a --profiles overlay can change, re-run on each named
+# profile's child environment (ambient env + overlay) next to its T0.14
+# re-check. All four apply: an overlay that sets ANTHROPIC_BASE_URL or the
+# shim lane controls moves route detection, so T0.1 checks that detection on
+# the child env still matches the stated --route.
+PROFILE_GATE_PROBE_IDS = ("T0.1", "T0.3", "T0.16", "T0.17")
+PROFILE_GATE_SUFFIX = " (profile gate)"
+
+
+def run_preflight_gate(route_info: RouteInfo, env, base_dir: str = BASE_DIR, probe_ids=GATE_PROBE_IDS,
+                       name_suffix: str = GATE_SUBSET_SUFFIX) -> list:
+    """Run the named gate probes (a subset of GATE_PROBE_IDS) as Tier 0 results
+    whose names end in name_suffix (GATE_SUBSET_SUFFIX for the ambient gate
+    subset, PROFILE_GATE_SUFFIX for a profile's re-check). All four are pure
+    environment and settings-file inspection: no subprocess, no network, no
+    model call."""
+    from route_detection import (
+        probe_route_detection,
+        probe_env_coherence,
+        probe_credential_overlap,
+        probe_alias_completeness,
+    )
+    builders = {
+        "T0.1": lambda: probe_route_detection(route_info),
+        "T0.3": lambda: probe_env_coherence(route_info, env),
+        "T0.16": lambda: probe_credential_overlap(route_info, env),
+        "T0.17": lambda: probe_alias_completeness(route_info, env,
+                                                  settings_overlay=collect_alias_settings(env, base_dir)),
+    }
+    results = []
+    for pid in GATE_PROBE_IDS:
+        if pid in probe_ids:
+            r = _timed(builders[pid])
+            r.name += name_suffix
+            results.append(r)
     return apply_hints(results)
 
 
@@ -3024,7 +3281,7 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
     return apply_hints(results)
 
 
-# --- Tier 2: seven-probe capability-structural battery ---------------------
+# --- Tier 2: eight-probe capability-structural battery ---------------------
 
 def _sandbox_dir() -> Path:
     return Path(BASE_DIR) / "scripts" / "deploy_smoke" / "_sandbox"
@@ -3156,6 +3413,59 @@ def _evaluate_t22(script_created: bool, body, nonce: str):
     booleans_ok = all(v for k, v in facts.items() if k != "banner_count")
     verdict = Verdict.PASS if (booleans_ok and facts["banner_count"] == 1) else Verdict.FAIL
     return verdict, facts
+
+
+def _judge_exec_probe(r: ProbeResult, probe_script: Path, nonce: str, res, meta) -> None:
+    """The shared write-and-execute judge for T2.2 (Python) and T2.8 (R).
+
+    Reads this run's probe script (source plus any appended execution log),
+    judges it with _evaluate_t22 — the language-agnostic evidence rules: the
+    wrapper writes the same "# "-prefixed frame and records for .py and .R — and
+    applies the live-run health gate, the evidence lines, the detail text and the
+    live stamp. Extracted unchanged from the T2.2 block (design D4), so T2.2's
+    verdicts, evidence and detail are byte-identical to before; the only
+    probe-specific text is r.probe_id in the FAIL detail. No anti-forgery rule is
+    relaxed for T2.8: it is judged by the same function."""
+    script_created = probe_script.exists()
+    body = None
+    if script_created:
+        try:
+            body = probe_script.read_text()
+        except OSError:
+            body = None
+    verdict, facts = _evaluate_t22(script_created, body, nonce)
+    failure, warning = _live_run_health(res, load_transcript_records(find_transcript(meta["session_id"])))
+    r.add_evidence(f"claude -p (session {meta['session_id'][:8]})", output=(res.response_text or "")[:200])
+    r.add_evidence(f"test -f {probe_script}", output=str(script_created))
+    r.add_evidence("evaluate freshness: exactly one framed execution-log banner + '# Exit code: 0' "
+                   "+ '# Capture: COMPLETE' + wrapper frame records + run nonce inside the "
+                   "captured-STDOUT region",
+                   output=(f"banner_count={facts['banner_count']} banner={facts['banner']} "
+                           f"exit_success={facts['exit_success']} "
+                           f"capture_complete={facts['capture_complete']} "
+                           f"frame_records={facts['frame_records']} "
+                           f"nonce_in_stdout={facts['nonce_in_stdout']}"))
+    r.verdict = verdict
+    if _apply_live_failure(r, failure, warning):
+        pass
+    else:
+        if verdict == Verdict.PASS:
+            r.detail = ("research-executor wrote the script and executed it via run_with_capture: "
+                        "exactly one framed '# EXECUTION LOG' banner present, '# Exit code: 0' and "
+                        "'# Capture: COMPLETE' recorded, the wrapper's '# Command:' / "
+                        "'# --- STDOUT ---' / '# --- STDERR ---' records present in order, and this "
+                        "run's nonce appears between the STDOUT and STDERR markers — i.e. in captured "
+                        "output, not source text.")
+        else:
+            r.detail = (f"{r.probe_id} freshness/success check failed — required ALL of: script created, "
+                        "exactly ONE three-line execution-log banner frame (a bare marker line, or one "
+                        "wrapped in a token '# =' rule, is not a banner; two frames means a forged or "
+                        "duplicated log), recorded '# Exit code: 0', recorded '# Capture: COMPLETE', "
+                        "the wrapper's '# Command:' / '# --- STDOUT ---' / '# --- STDERR ---' records "
+                        "in order, and this run's nonce between the STDOUT and STDERR markers. "
+                        f"Observed: {facts}.")
+        _apply_live_warning(r, warning)
+    _stamp_live(r, res, meta)
 
 
 def _evaluate_t23(transcripts_records):
@@ -3967,7 +4277,7 @@ def _evaluate_t26(subagent_records, main_records=None):
 
 
 def run_tier2(profile_name: str, extra_env: dict, timeout: int, route: str = "") -> list:
-    """The seven-probe functional battery (T2.1-T2.7). Each probe is a SEPARATE
+    """The eight-probe functional battery (T2.1-T2.8). Each probe is a SEPARATE
     cold-start claude -p run. All checks are capability-structural (did the
     machinery work), deliberately tolerant of stylistic/protocol variation —
     adherence quality is DAAFBench's job, not this suite's.
@@ -4000,7 +4310,7 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int, route: str = "")
 
 def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: Path, results: list,
                     route: str = "") -> list:
-    """The seven Tier 2 probes, operating inside the caller's per-run UUID sandbox.
+    """The eight Tier 2 probes, operating inside the caller's per-run UUID sandbox.
     `sandbox` here is the run-owned directory (not the shared _sandbox/ root)."""
     budget = _budget_for(route, "2")
     _exec = execute_smoke_run
@@ -4079,46 +4389,7 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     )
     res22, meta22 = _exec(prompt=p22, max_turns=12, timeout=timeout, extra_env=extra_env)
     r22 = ProbeResult(probe_id="T2.2", name="Coding agent write + execute", tier="2", profile=profile_name)
-    script_created = probe_script.exists()
-    body = None
-    if script_created:
-        try:
-            body = probe_script.read_text()
-        except OSError:
-            body = None
-    verdict22, facts22 = _evaluate_t22(script_created, body, exec_nonce)
-    failure22, warning22 = _live_run_health(res22, load_transcript_records(find_transcript(meta22["session_id"])))
-    r22.add_evidence(f"claude -p (session {meta22['session_id'][:8]})", output=(res22.response_text or "")[:200])
-    r22.add_evidence(f"test -f {probe_script}", output=str(script_created))
-    r22.add_evidence("evaluate freshness: exactly one framed execution-log banner + '# Exit code: 0' "
-                     "+ '# Capture: COMPLETE' + wrapper frame records + run nonce inside the "
-                     "captured-STDOUT region",
-                     output=(f"banner_count={facts22['banner_count']} banner={facts22['banner']} "
-                             f"exit_success={facts22['exit_success']} "
-                             f"capture_complete={facts22['capture_complete']} "
-                             f"frame_records={facts22['frame_records']} "
-                             f"nonce_in_stdout={facts22['nonce_in_stdout']}"))
-    r22.verdict = verdict22
-    if _apply_live_failure(r22, failure22, warning22):
-        pass
-    else:
-        if verdict22 == Verdict.PASS:
-            r22.detail = ("research-executor wrote the script and executed it via run_with_capture: "
-                          "exactly one framed '# EXECUTION LOG' banner present, '# Exit code: 0' and "
-                          "'# Capture: COMPLETE' recorded, the wrapper's '# Command:' / "
-                          "'# --- STDOUT ---' / '# --- STDERR ---' records present in order, and this "
-                          "run's nonce appears between the STDOUT and STDERR markers — i.e. in captured "
-                          "output, not source text.")
-        else:
-            r22.detail = ("T2.2 freshness/success check failed — required ALL of: script created, "
-                          "exactly ONE three-line execution-log banner frame (a bare marker line, or one "
-                          "wrapped in a token '# =' rule, is not a banner; two frames means a forged or "
-                          "duplicated log), recorded '# Exit code: 0', recorded '# Capture: COMPLETE', "
-                          "the wrapper's '# Command:' / '# --- STDOUT ---' / '# --- STDERR ---' records "
-                          "in order, and this run's nonce between the STDOUT and STDERR markers. "
-                          f"Observed: {facts22}.")
-        _apply_live_warning(r22, warning22)
-    _stamp_live(r22, res22, meta22)
+    _judge_exec_probe(r22, probe_script, exec_nonce, res22, meta22)
     results.append(r22)
 
     # T2.3 — web access: search-agent performs one minimal WebSearch.
@@ -4283,6 +4554,28 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     _stamp_live(r27, res27, meta27)
     results.append(r27)
 
+    # T2.8 — R coding agent (design D4): T2.2 exactly, for an .R script. Same
+    # per-run sandbox and nonce scheme, same evidence judge (_judge_exec_probe ->
+    # _evaluate_t22: one framed banner, exit 0, Capture: COMPLETE, the wrapper's
+    # record skeleton, nonce inside the captured-STDOUT region). It exercises the
+    # R branch of run_with_capture.sh (Rscript) and enforce-file-first.sh, which
+    # otherwise only the deterministic bats suites cover. The nonce is printed
+    # with cat(), R's plain-text output call.
+    exec_nonce_r = f"daaf-exec-r-{uuid.uuid4().hex[:12]}"
+    probe_script_r = sandbox / "t28_probe.R"
+    p28 = (
+        "You are a deployment smoke test. Dispatch a 'research-executor' subagent via the "
+        f"Agent tool. Instruct it to write a tiny R script to "
+        f"{probe_script_r} whose only action is to print exactly '{exec_nonce_r}' with cat() "
+        f"(cat(\"{exec_nonce_r}\\n\")), then execute it with bash "
+        f"{BASE_DIR}/scripts/run_with_capture.sh {probe_script_r}. "
+        "Report whether the run succeeded."
+    )
+    res28, meta28 = _exec(prompt=p28, max_turns=12, timeout=timeout, extra_env=extra_env)
+    r28 = ProbeResult(probe_id="T2.8", name="R coding agent write + execute", tier="2", profile=profile_name)
+    _judge_exec_probe(r28, probe_script_r, exec_nonce_r, res28, meta28)
+    results.append(r28)
+
     return results
 
 
@@ -4402,14 +4695,24 @@ def _run_tier_d_unit_tests(timeout: int, env: dict, evidence_dir) -> ProbeResult
         timeout, env=env, evidence_dir=evidence_dir)
 
 
+# TD.1's timeout floor in seconds. The bats battery (3287 tests on 2026-11-01)
+# ran past the 600 s Tier D default in that day's live run, so TD.1 always gets
+# at least this long; a larger --timeout still wins. Sized with headroom over
+# the observed >600 s rather than from a measured full-suite time.
+TD1_MIN_TIMEOUT_S = 1800
+# TD.7's floor: the provider-shim unit suite needs more than the Tier D default.
+TD7_MIN_TIMEOUT_S = 900
+
+
 def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir, route: str = "",
                tier_d_all: bool = False) -> list:
     """The deterministic battery: the harness self-test (TD.0), bats, Pester,
     lint, safety-hook tests, single-command tests, (opt-in) the R/Python skill
     smoke suite via the CI log-stripped staging pattern (TD.6), the provider-shim
     unit suite (TD.7: default on shim routes, elsewhere only with tier_d_all,
-    i.e. --tier-d-all) and the core-library import smoke (TD.8, always). Zero
-    API cost.
+    i.e. --tier-d-all), the core-library import smoke (TD.8, always) and the
+    local browser services check (TD.9, always: marimo and code-server answer
+    HTTP on a free loopback port). Zero API cost.
 
     All batteries run under a Tier-D-sanitized subprocess env (the two known
     live-config contaminants removed; PATH/HOME/credentials/toolchain intact),
@@ -4439,8 +4742,21 @@ def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir, route: str
         is_inference=False)
     results.append(td0)
 
-    results.append(_run_battery_cmd("TD.1", "bats tests/bash", ["bats", f"{BASE_DIR}/tests/bash/"],
-                                    timeout, env=env, evidence_dir=tier_d_evidence))
+    # TD.1 — the full bats battery. Its timeout has a floor (TD1_MIN_TIMEOUT_S),
+    # as TD.7's has: the suite outgrew the 600 s Tier D default (it timed out
+    # there in the 2026-11-01 live run with 3287 tests), so a smaller --timeout
+    # cannot cut it short either.
+    td1_timeout = max(timeout, TD1_MIN_TIMEOUT_S)
+    td1 = _run_battery_cmd("TD.1", "bats tests/bash", ["bats", f"{BASE_DIR}/tests/bash/"],
+                           td1_timeout, env=env, evidence_dir=tier_d_evidence)
+    # A timeout is not a failing test, so it gets its own hint instead of
+    # PROBE_HINTS["TD.1"] (which points at a failing bats test).
+    if td1.verdict == Verdict.FAIL and " timed out after " in td1.detail:
+        td1.hint = (f"A timeout, not a failing test: the bats battery was stopped at {td1_timeout} s. "
+                    f"Re-run with --timeout above the {TD1_MIN_TIMEOUT_S} s floor, or run `bats tests/bash/` "
+                    "directly; evidence/tier_d/TD.1.log holds the output up to the timeout, including any "
+                    "test that failed before it.")
+    results.append(td1)
 
     # TD.2 — Pester. Run WITH the working directory set to the Tier D evidence dir
     # so Invoke-Pester -CI writes its NUnit testResults.xml there rather than at
@@ -4487,7 +4803,7 @@ def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir, route: str
             "TD.7", "provider-shim unit suite",
             ["python3", "-m", "unittest", "discover", "-s", "tests/provider_shim", "-t", "tests",
              "-p", "test_*.py"],
-            max(timeout, 900), cwd=BASE_DIR, env=env, evidence_dir=tier_d_evidence))
+            max(timeout, TD7_MIN_TIMEOUT_S), cwd=BASE_DIR, env=env, evidence_dir=tier_d_evidence))
     else:
         td7 = ProbeResult(probe_id="TD.7", name="provider-shim unit suite", tier="D", verdict=Verdict.SKIP)
         td7.detail = (f"Not a shim route ({route or 'route not given'}); pass --tier-d-all to run the shim "
@@ -4495,6 +4811,10 @@ def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir, route: str
         results.append(td7)
 
     results.append(_run_import_smoke(timeout, env=env, evidence_dir=tier_d_evidence))
+
+    # TD.9 — local browser services (always, like TD.8): marimo and code-server
+    # on a free loopback port, state and output under evidence/tier_d/td9/.
+    results.append(probe_local_services(tier_d_evidence / "td9", env=env))
     return apply_hints(results)
 
 
@@ -4531,6 +4851,458 @@ def _run_import_smoke(timeout: int, env: dict = None, evidence_dir=None) -> Prob
     r = _run_battery_cmd("TD.8", "core library imports", ["python3", str(staged)],
                          timeout, cwd=BASE_DIR, env=env, evidence_dir=evidence_dir)
     r.add_evidence("", note=f"staged log-stripped copy of {latest.name}")
+    return r
+
+
+# --- TD.9 Local browser services (design D5, 2026-11-01) ---------------------
+# Starts marimo and code-server DIRECTLY (never through scripts/launch_*.sh,
+# whose fixed ports 2718/2720 could collide with, or take over, a service the
+# maintainer has running) on a free ephemeral port bound to 127.0.0.1, polls with
+# urllib until any HTTP status answers, then stops the whole process group. Built
+# to be safe on GitHub-hosted runners (amd64 + arm64):
+#   * no outbound network: marimo --skip-update-check, code-server
+#     --disable-telemetry --disable-update-check, both with auth that needs no
+#     account (a throwaway marimo token file; code-server --auth none);
+#   * every byte of service state under the report's evidence dir: HOME, the XDG
+#     dirs and TMPDIR/TMP/TEMP of the child point under evidence/tier_d/td9/ —
+#     never the user's real code-server/marimo state, never /tmp;
+#   * no credentials: every credential-named variable (the report redaction's
+#     and the packager's secret-name tests) is withheld from the child env;
+#   * guaranteed cleanup in `finally`: SIGTERM, then SIGKILL, to the process
+#     group (start_new_session=True) and to every descendant recorded before the
+#     first signal, so no orphan keeps a CI job alive;
+#   * 45 s per service (arm64 runners are slower); a missing binary is a SKIP.
+# The launchers are checked statically only: `bash -n`, and that each one invokes
+# the binary through PATH, i.e. the binary just tested. Trade-off: a
+# configuration bug inside a launcher is not caught live.
+# The log viewer is not included: scripts/log_viewer_server.py takes --port but
+# binds every interface ("" host) with no bind-address option, so it cannot be
+# held to 127.0.0.1; tests/python/test_log_viewer_server.py covers it.
+TD9_SERVICE_TIMEOUT = 45
+TD9_STOP_GRACE = 10
+TD9_EVIDENCE_LINES = 40
+TD9_LOG_KEEP_LINES = 400
+# A service that exits early with this in its output lost the port race (see
+# _td9_free_port) and is retried once on a fresh port. Matches uvicorn's
+# "[Errno 98] ... address already in use" (marimo) and Node's "listen
+# EADDRINUSE: address already in use" (code-server).
+_TD9_ADDR_IN_USE_RE = re.compile(r"EADDRINUSE|address already in use", re.IGNORECASE)
+TD9_LAUNCHERS = (
+    ("marimo", "scripts/launch_marimo.sh", r"(?m)^\s*(?:exec\s+|nohup\s+)?marimo\s+edit\b"),
+    ("code-server", "scripts/launch_code_server.sh", r"(?m)^\s*(?:exec\s+|nohup\s+)?code-server\s"),
+)
+_TD9_NOTEBOOK = (
+    "import marimo\n\n"
+    "__generated_with = \"td9\"\n"
+    "app = marimo.App()\n\n\n"
+    "@app.cell\n"
+    "def _():\n"
+    "    return\n\n\n"
+    "if __name__ == \"__main__\":\n"
+    "    app.run()\n"
+)
+
+
+def _td9_prepare_marimo(work: Path, port: int) -> list:
+    """A throwaway notebook and a random access token (0600) in the work dir.
+    Returns the secrets to scrub from the service output (the token)."""
+    (work / "td9_notebook.py").write_text(_TD9_NOTEBOOK)
+    token = uuid.uuid4().hex + uuid.uuid4().hex
+    token_file = work / "token"
+    fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(token + "\n")
+    return [token]
+
+
+def _td9_marimo_argv(binary: str, port: int, work: Path) -> list:
+    # Flags verified against `marimo edit --help` (marimo 0.25.0, 2026-11-01).
+    return [binary, "edit", str(work / "td9_notebook.py"), "--host", "127.0.0.1", "--port", str(port),
+            "--headless", "--skip-update-check", "--no-sandbox",
+            "--token-password-file", str(work / "token")]
+
+
+def _td9_prepare_code_server(work: Path, port: int) -> list:
+    """A pre-written config file (so code-server never generates one with a
+    random password) plus empty user-data, extensions and folder dirs."""
+    for d in ("ud", "ext", "open"):
+        (work / d).mkdir(parents=True, exist_ok=True)
+    (work / "config.yaml").write_text(f"bind-addr: 127.0.0.1:{port}\nauth: none\ncert: false\n")
+    return []
+
+
+def _td9_code_server_argv(binary: str, port: int, work: Path) -> list:
+    # Flags verified against `code-server --help` (code-server 4.117.0, 2026-11-01).
+    return [binary, "--bind-addr", f"127.0.0.1:{port}", "--auth", "none",
+            "--config", str(work / "config.yaml"),
+            "--user-data-dir", str(work / "ud"), "--extensions-dir", str(work / "ext"),
+            "--disable-telemetry", "--disable-update-check", "--disable-workspace-trust",
+            "--disable-getting-started-override", "--ignore-last-opened", str(work / "open")]
+
+
+def _td9_default_services() -> list:
+    """name, binary, short (work-dir name, kept short to shorten the paths under
+    it), prepare(work, port) -> secrets, argv(binary, port, work).
+    Short names do not keep Unix socket paths under the ~108-byte limit: under
+    the default report path XDG_RUNTIME_DIR is already about 100 characters, and
+    a VS Code IPC socket name there makes about 153. TD.9 only checks the HTTP
+    answer, which needs no such socket; a later check that connects a client
+    (and so makes a service create one) would need a shorter runtime dir."""
+    return [
+        {"name": "marimo", "binary": "marimo", "short": "mo",
+         "prepare": _td9_prepare_marimo, "argv": _td9_marimo_argv},
+        {"name": "code-server", "binary": "code-server", "short": "cs",
+         "prepare": _td9_prepare_code_server, "argv": _td9_code_server_argv},
+    ]
+
+
+def _td9_free_port() -> int:
+    """A free loopback port: bind port 0 and read back what the kernel chose.
+    The socket is closed before the service binds it, so another process can
+    take the port in between; _td9_run_service retries once on a fresh port
+    when the service then exits reporting the address in use."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _td9_is_credential_name(name: str) -> bool:
+    """True for an env var name the suite treats as credential-bearing: the
+    report redaction's name test (route_detection: KEY, TOKEN, SECRET or AUTH
+    anywhere in the name) or the packager's SECRET-NAME-VOCAB segment test
+    (smoke_package.is_secret_name: PASSWORD, COOKIE, SESSION, CREDENTIALS, ...).
+    Either match strips the variable from a TD.9 child."""
+    import route_detection
+    if route_detection._SECRET_NAME_RE.search(name or ""):
+        return True
+    try:
+        import smoke_package
+        return bool(smoke_package.is_secret_name(name))
+    except ImportError:  # the redaction test above still applies
+        return False
+
+
+def _td9_child_env(base_env: dict, work: Path, port: int) -> dict:
+    """The service's environment: the caller's env without any credential-named
+    variable (_td9_is_credential_name; neither service needs one, and code-server
+    runs --auth none with a terminal that could read them), with HOME, the XDG
+    dirs and the temp dirs redirected under the work dir. What the services need
+    is kept or set: PATH, LANG and LC_*, the redirected dirs, and PORT, set to the
+    chosen port (code-server reads $PORT). PASSWORD and HASHED_PASSWORD, which
+    code-server reads, are dropped by name as well, since the redaction test alone
+    (the fallback when smoke_package cannot load) does not match them."""
+    source = base_env if base_env is not None else os.environ
+    child = {k: v for k, v in source.items() if not _td9_is_credential_name(k)}
+    dirs = {"HOME": "h", "XDG_CONFIG_HOME": "x/c", "XDG_DATA_HOME": "x/d", "XDG_STATE_HOME": "x/s",
+            "XDG_CACHE_HOME": "x/k", "XDG_RUNTIME_DIR": "x/r", "TMPDIR": "t"}
+    for var, rel in dirs.items():
+        p = work / rel
+        p.mkdir(parents=True, exist_ok=True)
+        child[var] = str(p)
+    os.chmod(work / "x" / "r", 0o700)
+    child["TMP"] = child["TEMP"] = child["TMPDIR"]
+    child["PORT"] = str(port)
+    child.pop("PASSWORD", None)
+    child.pop("HASHED_PASSWORD", None)
+    return child
+
+
+def _td9_http_status(port: int, timeout: float = 2.0):
+    """Any HTTP status from http://127.0.0.1:<port>/ (redirects are not followed
+    and count as an answer; no proxy), or None when nothing answered in HTTP."""
+    import http.client
+    opener = build_opener(ProxyHandler({}), _RejectHealthRedirects())
+    try:
+        with opener.open(Request(f"http://127.0.0.1:{port}/", method="GET"), timeout=timeout) as resp:
+            return getattr(resp, "status", None) or resp.getcode()
+    except HTTPError as e:
+        return e.code
+    except (URLError, OSError, http.client.HTTPException, ValueError):
+        return None
+
+
+def _td9_proc_table() -> dict:
+    """{pid: (state, ppid, pgrp)} from /proc/<pid>/stat, or {} without /proc."""
+    table = {}
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return table
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text()
+        except OSError:
+            continue
+        rest = raw.rsplit(")", 1)[-1].split()
+        if len(rest) >= 3:
+            try:
+                table[int(entry.name)] = (rest[0], int(rest[1]), int(rest[2]))
+            except ValueError:
+                continue
+    return table
+
+
+def _td9_tracked_pids(leader: int, pgid) -> set:
+    """The leader, every descendant (ppid tree) and every process-group member."""
+    table = _td9_proc_table()
+    tracked, frontier = {leader}, [leader]
+    while frontier:
+        parent = frontier.pop()
+        for pid, (_, ppid, _) in table.items():
+            if ppid == parent and pid not in tracked:
+                tracked.add(pid)
+                frontier.append(pid)
+    if pgid is not None:
+        tracked |= {pid for pid, (_, _, pg) in table.items() if pg == pgid}
+    return tracked
+
+
+def _td9_alive(pids, pgid) -> list:
+    """Tracked pids (or group members) still running; zombies count as gone."""
+    table = _td9_proc_table()
+    if not table:
+        alive = []
+        if pgid is not None:
+            try:
+                os.killpg(pgid, 0)
+                alive.append(pgid)
+            except (ProcessLookupError, PermissionError):
+                pass
+        return alive
+    return sorted(pid for pid, (state, _, pg) in table.items()
+                  if state != "Z" and (pid in pids or (pgid is not None and pg == pgid)))
+
+
+def _td9_stop(proc) -> dict:
+    """SIGTERM then SIGKILL to the process group and to every tracked pid; wait
+    TD9_STOP_GRACE seconds after SIGTERM. Returns facts for the evidence."""
+    import signal
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, PermissionError):
+        pgid = None
+    pids = _td9_tracked_pids(proc.pid, pgid)
+    signals = []
+    for sig, wait in ((signal.SIGTERM, TD9_STOP_GRACE), (signal.SIGKILL, 5)):
+        if not _td9_alive(pids, pgid) and proc.poll() is not None:
+            break
+        signals.append(sig.name)
+        if pgid is not None:
+            try:
+                os.killpg(pgid, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+        for pid in pids:
+            try:
+                os.kill(pid, sig)
+            except (ProcessLookupError, PermissionError):
+                pass
+        try:
+            proc.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            pass
+        deadline = time.monotonic() + wait
+        while _td9_alive(pids, pgid) and time.monotonic() < deadline:
+            time.sleep(0.2)
+    remaining = _td9_alive(pids, pgid)
+    return {"signals": signals, "tracked_pids": len(pids), "still_running": len(remaining),
+            "exit_code": proc.poll()}
+
+
+def _td9_remove_tree(path: Path, root: Path) -> None:
+    """Remove a work dir created by this probe: only a real directory directly
+    inside the probe's own td9 root."""
+    try:
+        if path.parent == root and path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _td9_run_service(spec: dict, td9_root: Path, base_env: dict, timeout: int, which) -> dict:
+    """Start one service, poll it, stop it, keep only its scrubbed output log.
+    Returns an outcome dict: verdict (PASS/FAIL/SKIP), detail, evidence items."""
+    name = spec["name"]
+    binary = which(spec["binary"])
+    if binary is None:
+        return {"name": name, "verdict": Verdict.SKIP, "detail": f"{name}: SKIP (binary absent)",
+                "evidence": [(f"which {spec['binary']}", "<not found>", "")]}
+    work = td9_root / spec["short"]
+    outcome = {"name": name, "evidence": []}
+    proc, out_fh, secrets, argv = None, None, [], []
+    started = time.monotonic()
+    stop_facts = {}
+    status = None
+    try:
+        for attempt in (1, 2):
+            if work.exists():
+                _td9_remove_tree(work, td9_root)
+            work.mkdir(parents=True)
+            port = _td9_free_port()
+            secrets = spec["prepare"](work, port) or []
+            argv = spec["argv"](binary, port, work)
+            child_env = _td9_child_env(base_env, work, port)
+            withheld = sum(1 for k in (base_env if base_env is not None else os.environ) if k not in child_env)
+            out_fh = open(work / "out.log", "wb")
+            started = time.monotonic()
+            proc = subprocess.Popen(argv, cwd=str(work), env=child_env, stdin=subprocess.DEVNULL,
+                                    stdout=out_fh, stderr=subprocess.STDOUT, start_new_session=True)
+            deadline = started + timeout
+            status = None
+            while time.monotonic() < deadline:
+                if proc.poll() is not None:
+                    break
+                status = _td9_http_status(port)
+                if status is not None:
+                    break
+                time.sleep(0.5)
+            # Quality review I4: an early exit reporting the address in use is the
+            # port race, not a broken service, so the first one gets one retry on
+            # a fresh port. Any other early exit, or a second one, is judged below.
+            if attempt == 1 and status is None and proc.poll() is not None:
+                try:
+                    early = (work / "out.log").read_bytes().decode("utf-8", "replace")
+                except OSError:
+                    early = ""
+                if _TD9_ADDR_IN_USE_RE.search(early):
+                    outcome["evidence"].append((shlex.join(argv),
+                                                f"port={port} exited with code {proc.returncode}: "
+                                                "address already in use",
+                                                "lost the free-port race; retried once on a fresh port"))
+                    _td9_stop(proc)  # any child it left behind
+                    proc = None
+                    out_fh.close()
+                    out_fh = None
+                    continue
+            break
+        waited = round(time.monotonic() - started, 1)
+        outcome["evidence"].append((shlex.join(argv), f"port={port} http_status={status} after {waited}s",
+                                    "loopback only; HOME/XDG/TMPDIR under the probe's work dir; "
+                                    f"{withheld} credential-named env var(s) withheld from the service"))
+        if status is not None:
+            outcome["verdict"], outcome["detail"] = Verdict.PASS, f"{name}: HTTP {status} in {waited}s"
+        elif proc.poll() is not None:
+            outcome["verdict"] = Verdict.FAIL
+            outcome["detail"] = f"{name}: exited with code {proc.returncode} before answering HTTP"
+        else:
+            outcome["verdict"] = Verdict.FAIL
+            outcome["detail"] = f"{name}: no HTTP answer within {timeout}s"
+    except Exception as e:  # noqa: BLE001 — recorded as this service's FAIL; Tier D's other results survive
+        outcome["verdict"] = Verdict.FAIL
+        outcome["detail"] = f"{name}: could not start ({type(e).__name__}: {scrub_secret_values(str(e))[:200]})"
+        outcome["evidence"].append((shlex.join(argv) if argv else name, "", "start failed"))
+    finally:
+        if proc is not None:
+            stop_facts = _td9_stop(proc)
+        if out_fh is not None:
+            out_fh.close()
+        raw = ""
+        try:
+            raw = (work / "out.log").read_bytes().decode("utf-8", "replace")
+        except OSError:
+            pass
+        text = scrub_secret_values(strip_ansi(raw), base_env if base_env is not None else None)
+        for secret in secrets:
+            text = text.replace(secret, "<redacted:td9-token>")
+        lines = text.splitlines()
+        log_path = td9_root / f"{name}.log"
+        try:
+            log_path.write_text("# probe: TD.9 " + name + "\n# NOTE: secret env values and the throwaway "
+                                "token scrubbed\n\n" + "\n".join(lines[-TD9_LOG_KEEP_LINES:]) + "\n")
+        except OSError:
+            log_path = None
+        _td9_remove_tree(work, td9_root)
+    if stop_facts:
+        outcome["evidence"].append(("process-group stop (SIGTERM, then SIGKILL)", json.dumps(stop_facts),
+                                    "work dir removed; only the scrubbed output log is kept"))
+        if stop_facts.get("still_running"):
+            outcome["verdict"] = Verdict.FAIL
+            outcome["detail"] += f"; {stop_facts['still_running']} process(es) still running after SIGKILL"
+    tail = lines[-(TD9_EVIDENCE_LINES if outcome["verdict"] == Verdict.FAIL else 8):]
+    outcome["evidence"].append((f"{name} output (last {len(tail)} lines, scrubbed)", "\n".join(tail),
+                                f"full scrubbed log: {log_path}" if log_path else ""))
+    return outcome
+
+
+def _td9_static_launchers(base_dir: str, which, launchers=TD9_LAUNCHERS) -> list:
+    """(problems, evidence) for the launchers: `bash -n` passes, and the script
+    calls the binary by name (resolved through PATH, so it is the binary TD.9
+    just started)."""
+    problems, evidence = [], []
+    for binary, rel, pattern in launchers:
+        path = Path(base_dir) / rel
+        if not path.is_file():
+            problems.append(f"{rel} missing")
+            evidence.append((f"test -f {path}", "missing", ""))
+            continue
+        rc, out, err = _run_cmd(["bash", "-n", str(path)], timeout=30)
+        if rc != 0:
+            problems.append(f"bash -n {rel} failed (exit {rc})")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        invokes = re.search(pattern, text) is not None
+        if not invokes:
+            problems.append(f"{rel} no longer invokes `{binary}`")
+        resolved = which(binary)
+        evidence.append((f"bash -n {path}; grep the {binary} invocation",
+                         f"bash_n_exit={rc} invokes_{binary}={invokes} which_{binary}={resolved}",
+                         scrub_secret_values((err or out).strip())[:300]))
+    return problems, evidence
+
+
+def probe_local_services(evidence_dir, env: dict = None, timeout: int = TD9_SERVICE_TIMEOUT,
+                         base_dir: str = BASE_DIR, services=None, launchers=TD9_LAUNCHERS,
+                         which=None) -> ProbeResult:
+    """TD.9 — local browser services (design D5). Each service is started on a
+    free loopback port and must answer HTTP within `timeout` seconds; a missing
+    binary is a SKIP for that service. Verdict: FAIL when a present service gives
+    no HTTP answer (or cannot be stopped) or a launcher fails its static check;
+    SKIP when every service binary is absent and the launchers pass; else PASS,
+    the detail naming any skipped service. services / launchers / which are test
+    seams (a stdlib http.server stub stands in for a service there)."""
+    r = ProbeResult(probe_id="TD.9", name="Local browser services", tier="D")
+    which = which or shutil.which
+    td9_root = Path(evidence_dir)
+    try:
+        td9_root.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        r.verdict = Verdict.FAIL
+        r.detail = f"TD.9 could not create its evidence dir {td9_root}: {e}"
+        return r
+    outcomes = [_td9_run_service(spec, td9_root, env, timeout, which)
+                for spec in (services if services is not None else _td9_default_services())]
+    launcher_problems, launcher_evidence = _td9_static_launchers(base_dir, which, launchers)
+    for o in outcomes:
+        for cmd, out, note in o["evidence"]:
+            r.add_evidence(cmd, output=out, note=note)
+    for cmd, out, note in launcher_evidence:
+        r.add_evidence(cmd, output=out, note=note)
+    verdicts = [o["verdict"] for o in outcomes]
+    parts = [o["detail"] for o in outcomes] + [f"launcher: {p}" for p in launcher_problems]
+    if Verdict.FAIL in verdicts or launcher_problems:
+        r.verdict = Verdict.FAIL
+    elif verdicts and all(v == Verdict.SKIP for v in verdicts):
+        r.verdict = Verdict.SKIP
+    else:
+        r.verdict = Verdict.PASS
+    if launchers and not launcher_problems:
+        # Say "the tested binaries" only when every service actually ran; an
+        # absent binary was not tested, so the launcher check alone vouches only
+        # that the launcher still calls it by name.
+        tested = [o["name"] for o in outcomes if o["verdict"] != Verdict.SKIP]
+        absent = [o["name"] for o in outcomes if o["verdict"] == Verdict.SKIP]
+        if outcomes and not absent:
+            parts.append("launchers pass bash -n and invoke the tested binaries")
+        elif tested:
+            parts.append(f"launchers pass bash -n and still call their binaries (tested here: "
+                         f"{', '.join(tested)}; absent, not tested: {', '.join(absent)})")
+        else:
+            parts.append("launchers pass bash -n and still call their binaries "
+                         "(no binary was present to test)")
+    r.detail = "; ".join(parts) + "."
     return r
 
 
@@ -4956,7 +5728,7 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
 # named one erased its own report row (review fix cycle 2). Describe the
 # header in words instead.
 PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
-    "T0.ABORT": "Fix T0.0 (DAAF_DEV=1) and re-run; no paid tier runs on a non-dev image.",
+    "T0.ABORT": "A preflight gate probe FAILed (named in the detail: T0.1 route, T0.3 env coherence, T0.16 credential overlap or T0.17 tier aliases): fix it and re-run, or pass --allow-preflight-fail to run the paid tiers against this configuration on purpose.",
     "T0.5": "Reinstall the pinned Claude Code (rebuild the image: bash rebuild_daaf.sh from daaf-docker).",
     "T0.6": "Register the hook in .claude/settings.json (user-applied: hooks/settings are user-only edits).",
     "T0.7": "Run the statusline by hand with a synthetic payload; check .claude/scripts/context-bar.sh / subagent-bar.sh and their cache-dir seams.",
@@ -4972,6 +5744,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "T0.21": "Run as the non-root appuser with /daaf writable; free disk space; for git errors add /daaf to safe.directory.",
     "T0.22": "Rebuild the image (missing tools come from the Dockerfile); dev-only tools need DAAF_DEV=1 at build time.",
     "T0.23": "Fix the named file: restore a hook's executable bit (git update-index --chmod=+x is not enough on disk: chmod +x), repair frontmatter, or remove Agent/Task from an agent's tools.",
+    "T0.24": "Restore the shipped values: CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 and CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 in .claude/settings.json env (user-applied; look for an override in settings.local.json or ~/.claude/settings.json, named in the evidence), CLAUDE_CODE_TMPDIR=/daaf/claude-code-tmp in docker-compose.yml (recreate the container), and statusLine / subagentStatusLine commands pointing at the executable .claude/scripts/context-bar.sh / subagent-bar.sh.",
     "T1.1": "Run the T1 prompt by hand with claude -p and read the error; check the route's credentials and model mapping (T0.3/T0.14/T0.17).",
     "T1.2": "Check that ~/.claude/projects/<slug>/ is writable and the SessionEnd archive hook is registered.",
     "T1.3": "Check that audit-log.sh is registered for PostToolUse and .claude/logs/ is writable.",
@@ -4988,6 +5761,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "T2.5": "Check block-remote-isolation.sh registration in both Task and Agent matcher chains.",
     "T2.6": "Check CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 in settings.json env and block-nested-dispatch.sh first in the Task/Agent chains.",
     "T2.7": "A guard let an action through: check bash-safety.sh §8 registration for Bash and the Read(.env) / Bash(pip install*) deny rules in settings.json. WARN means the model did not attempt both calls (or an attempt has no recorded result), or a deny came back in a shape the probe does not recognize yet (quoted in the detail).",
+    "T2.8": "Read the R probe script's appended execution log; check run_with_capture.sh's R branch (Rscript), enforce-file-first.sh and the research-executor agent. T0.11 (R locale) and T0.22 (Rscript) cover the R install itself.",
     "TD.0": "Run the deploy-smoke unit tests file-first and fix the failing test (evidence/tier_d/TD.0.log).",
     "TD.1": "Read evidence/tier_d/TD.1.log for the failing bats test.",
     "TD.2": "Read evidence/tier_d/TD.2.log; Pester must write testResults.xml into the report evidence dir.",
@@ -4997,6 +5771,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "TD.6": "Read evidence/tier_d/TD.6.log for the failing R/Python skill smoke.",
     "TD.7": "Read evidence/tier_d/TD.7.log for the failing shim test module; the CI job runs the same command.",
     "TD.8": "A pinned library failed to import: read evidence/tier_d/TD.8.log and rebuild the image.",
+    "TD.9": "Read evidence/tier_d/td9/<service>.log (the service's own output, scrubbed): a service that starts but never answers HTTP is broken in the image (rebuild); a launcher that fails bash -n or no longer calls the binary needs fixing in scripts/launch_marimo.sh or launch_code_server.sh.",
     "TN.1": "The route endpoint is unreachable from this container: check network/proxy settings, and on shim routes start the shim.",
     "TN.2": "Run bash /daaf/scripts/web_fetch.sh https://example.com/ <dir> by hand and read its exit code (web-retrieval skill table).",
     "TN.3": "Run scholar_search.sh verify by hand; exit 4/6 is network, 10 a missing key (scholarly-search skill).",

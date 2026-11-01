@@ -1776,7 +1776,9 @@ def write_matrix(inbox_dir=None):
 
     lines += ["## Verdicts", "",
               "Pattern: `common FAIL` = FAIL in every package that ran the probe (at least two); "
-              "`FAIL on: x` = route-specific, or the probe ran in one package only.",
+              "`FAIL on: x` = route-specific, or the probe ran in one package only. "
+              "`common WARN` and `WARN on: x` read the same way for WARN, shown only when no package "
+              "FAILed the probe.",
               "", "| Probe | " + " | ".join(_cell(c["label"]) for c in cols) + " | Pattern |",
               "|---|" + "---|" * (len(cols) + 1)]
     for key in sorted(verdicts, key=_probe_sort_key):

@@ -83,7 +83,8 @@ def _V2_TIER0_STUBS(stub):
     """smoke v2 Tier 0 system probes (T0.15, T0.18-T0.23) stubbed, so the
     run_tier0 wiring tests stay provider-, git- and filesystem-free."""
     names = ("probe_versions", "probe_codex_config", "probe_prompt_cache", "probe_shim_log_scan",
-             "probe_runtime_identity", "probe_toolchain", "probe_framework_integrity")
+             "probe_runtime_identity", "probe_toolchain", "probe_framework_integrity",
+             "probe_settings_invariants")
     return {n: mock.MagicMock(return_value=stub) for n in names}
 
 
@@ -153,9 +154,17 @@ class MainModelProjectionTests(unittest.TestCase):
         (root/'user').mkdir()
         for tiers in ('1,2','0,1,2'):
             for flag_source in ('ambient','profile'):
+                # Coverage design D2: the preflight gate (T0.1/T0.3/T0.16/T0.17)
+                # now runs before any live tier, so the env is a coherent ChatGPT
+                # install (fast mode off, CODEX_HOME, all four GPT tier aliases)
+                # whose ONLY defect is the stale Claude ANTHROPIC_MODEL pin: the
+                # per-profile T0.14 gate must still be what blocks the launch.
                 env = {'DAAF_DEV':'1','CLAUDE_CONFIG_DIR':str(root/'user'),
                        'ANTHROPIC_MODEL':'claude-opus-4-8','DAAF_PROVIDER_SHIM':'openai',
-                       'SHIM_BACKEND_MODE':'chatgpt','ANTHROPIC_BASE_URL':'http://127.0.0.1:4141'}
+                       'SHIM_BACKEND_MODE':'chatgpt','ANTHROPIC_BASE_URL':'http://127.0.0.1:4141',
+                       'CLAUDE_CODE_DISABLE_FAST_MODE':'1','CODEX_HOME':str(root/'codex'),
+                       'ANTHROPIC_DEFAULT_FABLE_MODEL':'gpt-6-sol','ANTHROPIC_DEFAULT_OPUS_MODEL':'gpt-6-sol',
+                       'ANTHROPIC_DEFAULT_SONNET_MODEL':'gpt-6-luna','ANTHROPIC_DEFAULT_HAIKU_MODEL':'gpt-6-luna'}
                 overlay = {'DAAF_BENCHMARK_RUN':'1'} if flag_source == 'profile' else {}
                 if flag_source == 'ambient':
                     env['DAAF_BENCHMARK_RUN'] = '1'
@@ -174,7 +183,12 @@ class MainModelProjectionTests(unittest.TestCase):
                     self.assertEqual(run_deploy_smoke.main(),1)
                     t1.assert_not_called()
                     t2.assert_not_called()
-                    self.assertEqual(writer.call_args.args[3][0].verdict,Verdict.FAIL)
+                    reported = writer.call_args.args[3]
+                    t014 = [r for r in reported if r.probe_id == 'T0.14']
+                    self.assertEqual(len(t014), 1)
+                    self.assertEqual(t014[0].verdict,Verdict.FAIL)
+                    # The gate passed: T0.14, not T0.ABORT, stopped the paid tiers.
+                    self.assertNotIn('T0.ABORT', [r.probe_id for r in reported])
                 resolution = route_detection.resolve_main_model(dict(env, **overlay))
                 self.assertEqual(resolution.compatibility,'incompatible')
                 self.assertFalse(resolution.normal_execution_context)
@@ -1964,8 +1978,9 @@ class Tier2SandboxCleanupTests(unittest.TestCase):
              mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
             results = smoke_probes.run_tier2("", {}, timeout=5)
 
-        # Seven probes still produced (structure intact; T2.7 added in smoke v2), no exception.
-        self.assertEqual(len(results), 7)
+        # Eight probes produced (structure intact; T2.7 added in smoke v2, T2.8 by
+        # the 2026-11-01 coverage design), no exception.
+        self.assertEqual(len(results), 8)
         # The sibling survived; no stray run_ directory remains.
         self.assertTrue(self.sibling.exists())
         leftover = [p for p in self.sandbox.glob("run_*") if p.is_dir()]
@@ -1976,7 +1991,7 @@ class Tier2SandboxCleanupTests(unittest.TestCase):
 # Minimal excerpts copied from two observed 2026-09-24 Tier 1 transcripts
 # (.claude/logs/sessions/..._0bfd41e1_orchestrator.jsonl = model_not_found run;
 # ..._86e4b2c4_orchestrator.jsonl = passing run) plus the CLI result-object
-# shape observed in scripts/scratch/postrebuild_2.1.281/r22_rm_r_probe.json.
+# shape observed in a post-rebuild 2.1.281 probe.
 # Inlined so the tests never depend on log paths at run time.
 
 _SYNTHETIC_ERROR_RECORD = {
@@ -2588,7 +2603,8 @@ class Tier2VerdictTests(unittest.TestCase):
                                return_value=[_SYNTHETIC_ERROR_RECORD]), \
              mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
             results = smoke_probes.run_tier2("", {}, timeout=5)
-        self.assertEqual([r.probe_id for r in results], ["T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6", "T2.7"])
+        self.assertEqual([r.probe_id for r in results],
+                         ["T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6", "T2.7", "T2.8"])
         for r in results:
             with self.subTest(probe=r.probe_id):
                 self.assertEqual(r.verdict, Verdict.FAIL, r.detail)

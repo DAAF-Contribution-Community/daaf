@@ -11,16 +11,26 @@ install route with --route (a required choice of the five route IDs); Tier 0
 proves the container's identity by FAILing T0.1 when detection disagrees.
 Route-appropriate probes then run across tiers:
 
-  Tier 0  preflight, no LLM      route detection + env coherence + hooks/statusline/shim/invariants + R locale
-                                 + local-settings shadowing + claude.ai synced surface (INFO) + versions/identity
+  Tier 0  preflight, no LLM      image flavor (INFO) + route detection + env coherence + hooks/statusline/
+                                 shim/invariants + R locale + local-settings shadowing + claude.ai synced
+                                 surface (INFO) + versions/identity + settings invariants
   Tier N  network, no LLM        route endpoint reachability, web_fetch, scholar_search, education-data mirror
-  Tier D  deterministic battery  bats / Pester / lint / hook tests (zero API cost; --tier-d-all adds
-                                 route-scoped suites on other routes)
+  Tier D  deterministic battery  bats / Pester / lint / hook tests + local browser services (zero API cost;
+                                 --tier-d-all adds route-scoped suites on other routes)
   Tier 1  one live round-trip    one claude -p call + the plumbing evidence around it
-  Tier 2  functional battery     capability-structural probes (dispatch, coding, web, skill, isolation,
-                                 nested-dispatch prevention, guardrails)
+  Tier 2  functional battery     capability-structural probes (dispatch, coding in Python and R, web,
+                                 skill, isolation, nested-dispatch prevention, guardrails)
   Tier A  Auto mode (opt-in)     one claude -p --permission-mode auto call
   Tier 3  golden path (opt-in)   mode-confirmation gate + skill retrieval through the orchestrator
+
+The suite runs on any DAAF image (T0.0 reports whether it is the developer
+image, which adds the bats and Pester batteries). Before any paid tier (1, 2,
+A, 3) a preflight gate applies: T0.1, T0.3, T0.16 and T0.17 must not FAIL,
+reusing Tier 0's results or running them as a "gate subset" when Tier 0 is not
+selected; a FAIL records T0.ABORT and skips the paid tiers unless
+--allow-preflight-fail is given. Then each profile's T0.14 is re-checked on
+its own environment; a named --profiles overlay also re-runs T0.1, T0.3,
+T0.16 and T0.17 there (the profile gate), and a FAIL skips that profile only.
 
 Tiers N, A and 3 are provided by smoke_probes' run_tier_n / run_tier_a /
 run_tier_3 (smoke v2 contract); a checkout without them records a SKIP saying
@@ -36,6 +46,12 @@ where to fix, then a passed count by tier) followed by full per-probe detail
 per-probe duration_s / session_ids / cost_usd / hint); and an evidence/ dir
 (shim_health.json, env_fingerprint.json, tier_d/ full failure logs and Pester
 testResults.xml, t07_statusline_cache/ and t16_statusline_cache/).
+
+SIGTERM and SIGHUP unwind like Ctrl+C: every cleanup runs (TD.9 stops its
+services), the run is recorded as RUN.CRASH, and the exit code is 128 + the
+signal number (143, 129; 130 after Ctrl+C). When the terminal itself was
+closed, the rest of the console output goes to os.devnull, so the report and
+package are still written.
 
 Every run, including one whose tier block crashed, then builds a portable
 diagnostic package (smoke_package.py) under scripts/deploy_smoke/packages/ and
@@ -62,6 +78,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import traceback
@@ -121,8 +138,185 @@ ROUTE_CHOICES = (
 VALID_TIERS = ("0", "1", "2", "D", "N", "A", "3")
 LIVE_TIERS = ("1", "2", "A", "3")
 # Approximate claude -p calls per profile (design §12.4): Tier 2 is six probes
-# plus T2.7 guardrails.
-LIVE_CALLS_PER_PROFILE = {"1": 1, "2": 7, "A": 1, "3": 2}
+# plus T2.7 guardrails plus T2.8, the R twin of T2.2 (coverage design D4,
+# 2026-11-01).
+LIVE_CALLS_PER_PROFILE = {"1": 1, "2": 8, "A": 1, "3": 2}
+# The preflight gate applied before any live tier (coverage design D2): kept in
+# step with smoke_probes.GATE_PROBE_IDS, which is preferred when present.
+GATE_PROBE_IDS = tuple(getattr(smoke_probes, "GATE_PROBE_IDS", ("T0.1", "T0.3", "T0.16", "T0.17")))
+# The gate probes re-run per named --profiles overlay, on that profile's child
+# environment, next to its T0.14 re-check (review fix H2).
+PROFILE_GATE_PROBE_IDS = tuple(getattr(smoke_probes, "PROFILE_GATE_PROBE_IDS", ("T0.1", "T0.3", "T0.16", "T0.17")))
+PROFILE_GATE_SUFFIX = getattr(smoke_probes, "PROFILE_GATE_SUFFIX", " (profile gate)")
+# Timeout floors applied inside Tier D whatever --timeout says (a larger value wins).
+TD1_MIN_TIMEOUT_S = getattr(smoke_probes, "TD1_MIN_TIMEOUT_S", 1800)
+TD7_MIN_TIMEOUT_S = getattr(smoke_probes, "TD7_MIN_TIMEOUT_S", 900)
+
+# SIGTERM (`timeout`, `kill`, a CI cancellation) and SIGHUP (a closed terminal)
+# would otherwise end the process without running any `finally`: TD.9's
+# start_new_session services would outlive the run, and no report or package
+# would be written. main() turns them into TerminationSignal, a SystemExit, so
+# they unwind exactly like Ctrl+C (KeyboardInterrupt), which is left as it is.
+TERMINATION_SIGNALS = tuple(getattr(signal, n) for n in ("SIGTERM", "SIGHUP") if hasattr(signal, n))
+# After a terminal hang-up, every write to that terminal raises OSError (EIO).
+# A console print in the unwind would then stop it before the package step and
+# turn exit 129 into a crash. So a real SIGHUP points the descriptors that were
+# terminals at os.devnull (_detach_console), and during the unwind sys.stdout
+# and sys.stderr are wrapped (_UnwindConsole) so that any console write raising
+# OSError detaches that descriptor and drops the text instead of raising.
+_SIGHUP = getattr(signal, "SIGHUP", None)
+
+
+def _terminal_fds() -> tuple:
+    """The descriptors among stdout (1) and stderr (2) that are terminals."""
+    fds = []
+    for fd in (1, 2):
+        try:
+            if os.isatty(fd):
+                fds.append(fd)
+        except OSError:
+            pass
+    return tuple(fds)
+
+
+def _detach_console(fds) -> None:
+    """Point each descriptor in fds at os.devnull with dup2, so later output on
+    it is discarded instead of failing. sys.stdout and sys.stderr keep their
+    objects and now write to os.devnull. Never raises."""
+    fds = tuple(fds)
+    if not fds:
+        return
+    try:
+        null = os.open(os.devnull, os.O_WRONLY)
+    except OSError:
+        return
+    try:
+        for fd in fds:
+            try:
+                os.dup2(null, fd)
+            except OSError:
+                pass
+    finally:
+        if null not in fds:
+            os.close(null)
+
+
+class _UnwindConsole:
+    """sys.stdout or sys.stderr while the report and package are written. A
+    write or flush that raises OSError (EIO after a terminal hang-up, EPIPE from
+    a closed pipe) detaches the stream's descriptor (_detach_console) and drops
+    that text, so the unwind goes on to the package step and the exit code. Any
+    other exception propagates; every other attribute is the wrapped stream's."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def _detach(self):
+        try:
+            fd = self._inner.fileno()
+        except (OSError, ValueError, AttributeError):  # e.g. io.StringIO has no descriptor
+            return
+        _detach_console((fd,))
+
+    def write(self, text):
+        try:
+            return self._inner.write(text)
+        except OSError:
+            self._detach()
+            return len(text)
+
+    def flush(self):
+        try:
+            self._inner.flush()
+        except OSError:
+            self._detach()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+def _protect_console():
+    """Wrap sys.stdout and sys.stderr in _UnwindConsole; returns the originals
+    for _restore_console. A None stream (no console at all) stays None."""
+    saved = (sys.stdout, sys.stderr)
+    if sys.stdout is not None and not isinstance(sys.stdout, _UnwindConsole):
+        sys.stdout = _UnwindConsole(sys.stdout)
+    if sys.stderr is not None and not isinstance(sys.stderr, _UnwindConsole):
+        sys.stderr = _UnwindConsole(sys.stderr)
+    return saved
+
+
+def _restore_console(saved) -> None:
+    if saved is not None:
+        sys.stdout, sys.stderr = saved
+
+
+class TerminationSignal(SystemExit):
+    """SIGTERM or SIGHUP as an exception. A SystemExit, so `except Exception`
+    in a probe never swallows it; its exit code is 128 + the signal number (143
+    for SIGTERM, 129 for SIGHUP), the shell's convention for a signal death."""
+
+    def __init__(self, signum):
+        self.signum = signum
+        try:
+            self.signame = signal.Signals(signum).name
+        except ValueError:
+            self.signame = f"signal {signum}"
+        super().__init__(128 + signum)
+
+    def __str__(self):
+        return f"received {self.signame}"
+
+
+class _TerminationGuard:
+    """Installs the SIGTERM/SIGHUP handlers for one run and restores the
+    previous ones afterwards (main() may run in-process, e.g. under the
+    self-tests). Only the first signal raises: a later one, or any signal once
+    the report is being written (finishing()), is recorded and acted on after
+    the report and package exist, so a second SIGTERM cannot cut TD.9's stop
+    ladder or the report short. The handler never prints: a print from inside a
+    signal handler can collide with a print it interrupted. A SIGHUP, which
+    normally means the terminal is gone, first points the descriptors that were
+    terminals at install() at os.devnull, so the unwind's console output cannot
+    fail; output to a pipe or file is left as it is."""
+
+    def __init__(self):
+        self.previous = {}
+        self.raised = False
+        self.finishing_now = False
+        self.deferred = None
+        self.console_ttys = ()
+
+    def install(self):
+        self.console_ttys = _terminal_fds()
+        for sig in TERMINATION_SIGNALS:
+            try:
+                self.previous[sig] = signal.signal(sig, self._handle)
+            except (ValueError, OSError):  # not the main thread, or not supported here
+                pass
+        return self
+
+    def _handle(self, signum, frame):  # noqa: ARG002 — signal handler signature
+        if signum == _SIGHUP and self.console_ttys:
+            _detach_console(self.console_ttys)
+            self.console_ttys = ()
+        if self.raised or self.finishing_now:
+            if self.deferred is None:
+                self.deferred = signum
+            return
+        self.raised = True
+        raise TerminationSignal(signum)
+
+    def finishing(self):
+        self.finishing_now = True
+
+    def restore(self):
+        for sig, prev in self.previous.items():
+            try:
+                signal.signal(sig, prev if prev is not None else signal.SIG_DFL)
+            except (ValueError, OSError):
+                pass
+        self.previous = {}
 
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -318,6 +512,10 @@ def _crash_result(tier: str, label: str, exc: BaseException) -> ProbeResult:
                    output="\n".join(scrub_secret_values(tb).splitlines()[-40:]))
     r.hint = ("A harness exception, not a deployment verdict: the traceback names the failing "
               "line in scripts/deploy_smoke/. Fix the harness, then re-run the tier.")
+    if isinstance(exc, TerminationSignal):
+        r.hint = (f"Not a deployment verdict: the run received {exc.signame} (a closed terminal, `timeout`, "
+                  "`kill` or a CI cancellation) and stopped; probes that had started were cleaned up. "
+                  "Re-run the tiers that did not finish.")
     return r
 
 
@@ -387,6 +585,92 @@ def _post_run_shim_scan(route: str, started_utc) -> list:
     return hints(out) if callable(hints) else out
 
 
+def _apply_preflight_gate(route_info, env, tier0_results):
+    """Coverage design D2. Returns (gate, ran, blocking, reused, missing):
+    gate     — every gate result judged (reused Tier 0 results + newly run ones);
+    ran      — the gate-subset results run now (to add to the report);
+    blocking — the FAILing gate results (a crashed gate run is a T0.CRASH FAIL
+               and blocks too: fail closed);
+    reused / missing — the gate probe IDs taken from Tier 0 / run as the subset.
+    The subset runs through _guarded_tier, so an exception (including a checkout
+    without smoke_probes.run_preflight_gate) becomes a FAIL, never a pass."""
+    reused_results = [r for r in (tier0_results or []) if r.probe_id in GATE_PROBE_IDS]
+    seen = {r.probe_id for r in reused_results}
+    reused = [pid for pid in GATE_PROBE_IDS if pid in seen]
+    missing = [pid for pid in GATE_PROBE_IDS if pid not in seen]
+    ran = []
+    if missing:
+        ran = _guarded_tier("0", "smoke_probes.run_preflight_gate",
+                            lambda: smoke_probes.run_preflight_gate(route_info, env, BASE_DIR,
+                                                                    probe_ids=tuple(missing)))
+    gate = reused_results + ran
+    blocking = [r for r in gate if r.verdict in Verdict.FAILING]
+    return gate, ran, blocking, reused, missing
+
+
+def _preflight_abort_result(gate, blocking, reused, missing) -> ProbeResult:
+    """T0.ABORT (FAIL): the paid tiers were skipped; names each blocking probe."""
+    ids = ", ".join(r.probe_id for r in blocking)
+    abort = ProbeResult(probe_id="T0.ABORT", name="Paid tiers skipped (preflight gate)", tier="0")
+    abort.verdict = Verdict.FAIL
+    abort.detail = (f"Live API tiers (1/2/A/3) were SKIPPED because preflight gate probe(s) FAILed: {ids}. "
+                    "Each such FAIL means the paid calls would test, or bill, the wrong configuration. "
+                    "Fix the named probe(s) and re-run, or pass --allow-preflight-fail to run the paid "
+                    "tiers against this configuration on purpose.")
+    abort.add_evidence("preflight gate: " + ", ".join(GATE_PROBE_IDS),
+                       output="; ".join(f"{r.probe_id}={r.verdict}" for r in gate),
+                       note=(f"reused from Tier 0: {', '.join(reused) or 'none'}; "
+                             f"run as the gate subset: {', '.join(missing) or 'none'}"))
+    for r in blocking:
+        abort.add_evidence(f"blocking: {r.probe_id} {r.name}", output=_cell(r.detail, 400))
+    abort.hint = getattr(smoke_probes, "PROBE_HINTS", {}).get("T0.ABORT", "")
+    return abort
+
+
+def _apply_profile_gate(stated_route, child_env, prof_name, tier):
+    """Review fix H2: re-run PROFILE_GATE_PROBE_IDS (T0.1, T0.3, T0.16, T0.17) on
+    one named profile's child environment (ambient env + overlay), because an
+    overlay can set exactly what they judge (profiles.yaml sets the four tier
+    aliases). The route info is rebuilt from child_env, so T0.1 FAILs when the
+    overlay moves detection away from the stated --route (which stays the
+    assertion) and T0.17 sees the profile's model family. Results are filed like the
+    T0.14 re-check: under `tier`, carrying `profile`. Returns (ran, blocking);
+    a crash is a T0.CRASH FAIL and blocks (fail closed)."""
+    info = build_route_info(child_env, asserted_route=stated_route)
+    ran = _guarded_tier("0", "smoke_probes.run_preflight_gate (profile gate)",
+                        lambda: smoke_probes.run_preflight_gate(info, child_env, BASE_DIR,
+                                                                probe_ids=PROFILE_GATE_PROBE_IDS,
+                                                                name_suffix=PROFILE_GATE_SUFFIX))
+    for r in ran:
+        r.tier = tier
+        r.profile = prof_name
+        if r.hint and not r.probe_id.endswith(".CRASH"):
+            r.hint += (f" With --profiles, also check profile {prof_name}'s env block in "
+                       "scripts/deploy_smoke/profiles.yaml.")
+    return ran, [r for r in ran if r.verdict in Verdict.FAILING]
+
+
+def _profile_abort_result(prof_name, tier, gate, blocking) -> ProbeResult:
+    """T0.ABORT (FAIL) for one profile: its profile gate blocked its paid tiers
+    only; other profiles are judged on their own."""
+    ids = ", ".join(r.probe_id for r in blocking)
+    abort = ProbeResult(probe_id="T0.ABORT", name="Paid tiers skipped (profile gate)", tier=tier,
+                        profile=prof_name)
+    abort.verdict = Verdict.FAIL
+    abort.detail = (f"Live API tiers (1/2/A/3) were SKIPPED for profile {prof_name} because its profile gate "
+                    f"probe(s) FAILed on the ambient environment plus this profile's overlay: {ids}. Other "
+                    "profiles run if their own gate and T0.14 re-check pass. Fix the profile's overlay in "
+                    "profiles.yaml (or the ambient setting it builds on) and re-run, or pass "
+                    "--allow-preflight-fail to run it against this configuration on purpose.")
+    abort.add_evidence("profile gate: " + ", ".join(PROFILE_GATE_PROBE_IDS),
+                       output="; ".join(f"{r.probe_id}={r.verdict}" for r in gate),
+                       note=f"child environment: ambient env + profile {prof_name} overlay")
+    for r in blocking:
+        abort.add_evidence(f"blocking: {r.probe_id} {r.name}", output=_cell(r.detail, 400))
+    abort.hint = getattr(smoke_probes, "PROBE_HINTS", {}).get("T0.ABORT", "")
+    return abort
+
+
 def _run_tier_d(args, td_timeout, evidence_dir, stated_route):
     """Tier D: route for the route-scoped TD.7 shim suite, tier_d_all for
     --tier-d-all."""
@@ -401,7 +685,8 @@ def _run_tier_d(args, td_timeout, evidence_dir, stated_route):
 # the probe's own `hint` carries the cause-specific remediation and is listed
 # first. The skill's interpreting-results.md row for the probe is the fallback.
 _FIX_LOCATIONS = (
-    ("T0.0", "daaf-docker/environment_settings.txt (DAAF_DEV=1), then rebuild"),
+    ("T0.0", "rebuild the image (bash rebuild_daaf.sh) or drop DAAF_DEV=1 from daaf-docker/environment_settings.txt"),
+    ("T0.ABORT", "the blocking gate probe(s) named in the detail; --allow-preflight-fail to run anyway"),
     ("T0.1", "the --route value or the route variables in environment_settings.txt"),
     ("T0.2", ".claude/hooks/enforce-model-ceiling.sh (user-applied) or the model selectors"),
     ("T0.3", "route variables in environment_settings.txt"),
@@ -415,8 +700,12 @@ _FIX_LOCATIONS = (
     ("T0.11", "Dockerfile locale settings"),
     ("T0.12", ".claude/settings.local.json"),
     ("T0.14", "model selectors: environment_settings.txt, settings model key, profiles.yaml"),
+    ("T0.16", "credentials in environment_settings.txt (one per install)"),
+    ("T0.17", "ANTHROPIC_DEFAULT_{FABLE,OPUS,SONNET,HAIKU}_MODEL in environment_settings.txt or settings env"),
+    ("T0.24", ".claude/settings.json env and statusLine (user-applied), docker-compose.yml CLAUDE_CODE_TMPDIR"),
     ("T0.", "environment_settings.txt or the install (see the probe detail)"),
     ("TN.", "network access or the named service; re-run Tier N"),
+    ("TD.9", "the service log under evidence/tier_d/td9/; scripts/launch_marimo.sh, launch_code_server.sh"),
     ("TD.", "the failing suite; full log under evidence/tier_d/"),
     ("T1.", "provider credentials and route; .claude/hooks/ for the plumbing probes"),
     ("T2.", ".claude/agents/, .claude/skills/, .claude/hooks/ (see the transcript)"),
@@ -531,8 +820,55 @@ def _model_mapping(fingerprint: dict, route_info) -> str:
 
 # --- Report writers -------------------------------------------------------
 
+def _preflight_text(preflight) -> str:
+    """The identity-block cell for the preflight gate (coverage design D2)."""
+    pf = preflight or {}
+    flag = " `--allow-preflight-fail` given." if pf.get("allow_preflight_fail") else ""
+    if not pf.get("applied"):
+        return "not applied (no paid tier selected)." + flag
+    probes = ", ".join(pf.get("probes") or [])
+    source = []
+    if pf.get("reused_from_tier0"):
+        source.append("reused from Tier 0: " + ", ".join(pf["reused_from_tier0"]))
+    if pf.get("gate_subset_run"):
+        source.append("run as the gate subset: " + ", ".join(pf["gate_subset_run"]))
+    src = f" ({'; '.join(source)})" if source else ""
+    blocking = ", ".join(pf.get("blocking") or [])
+    if not blocking:
+        text = f"passed: {probes}{src}." + (" `--allow-preflight-fail` given, not needed." if flag else "")
+    elif pf.get("overridden"):
+        text = (f"**FAILED** ({blocking}); paid tiers ran anyway because `--allow-preflight-fail` "
+                f"was given{src}.")
+    else:
+        text = f"**BLOCKED** by {blocking}: paid tiers skipped (T0.ABORT){src}."
+    # Review fix H2: the per-profile gate (named --profiles only; absent when
+    # the ambient gate blocked, since no profile then runs).
+    per_profile = pf.get("per_profile") or {}
+    if per_profile:
+        parts = []
+        for name, entry in per_profile.items():
+            pblock = ", ".join(entry.get("blocking") or [])
+            if not pblock:
+                parts.append(f"{name} passed")
+            elif entry.get("overridden"):
+                parts.append(f"{name} **FAILED** ({pblock}), ran anyway")
+            else:
+                parts.append(f"{name} **BLOCKED** by {pblock}")
+        text += (f" Per profile ({', '.join(PROFILE_GATE_PROBE_IDS)} re-checked on each overlay): "
+                 + "; ".join(parts) + ".")
+    return text
+
+
+def _section_order(tiers, tier_seen) -> list:
+    """Report section order: a Tier 0 that holds only the gate subset (0 not in
+    --tiers) leads, then --tiers order, then any other tier seen (post-run scan,
+    crash records)."""
+    lead = ["0"] if ("0" in tier_seen and "0" not in tiers) else []
+    return lead + [t for t in tiers if t not in lead] + [t for t in tier_seen if t not in tiers and t not in lead]
+
+
 def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, profiles, shim_health,
-                  started_utc=None, ended_utc=None, versions=None, stated_route=""):
+                  started_utc=None, ended_utc=None, versions=None, stated_route="", preflight=None):
     report_dir = Path(report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     evidence_dir = report_dir / "evidence"
@@ -561,6 +897,8 @@ def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, pro
         "versions": versions,
         "env_fingerprint": fingerprint,
         "tiers_run": tiers,
+        "allow_preflight_fail": bool((preflight or {}).get("allow_preflight_fail")),
+        "preflight_gate": dict(preflight or {"applied": False, "allow_preflight_fail": False}),
         "profiles": [p[0] or "<ambient>" for p in profiles],
         "paid_calls": paid_calls,
         "total_cost_usd": total_cost,
@@ -594,6 +932,7 @@ def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, pro
         lines.append(f"| Codex CLI | `{versions.get('codex')}` |")
     lines.append(f"| Model mapping | {_cell(_model_mapping(fingerprint, route_info), 600)} |")
     lines.append(f"| Tiers run | {', '.join(tiers)} (profiles: {', '.join(p[0] or '<ambient>' for p in profiles)}) |")
+    lines.append(f"| Preflight gate | {_cell(_preflight_text(preflight), 600)} |")
     lines.append(f"| Started / ended (UTC) | {report_json['started_utc']} / {report_json['ended_utc']} |")
     cost_txt = f"${total_cost:.4f}" if isinstance(total_cost, float) else "not reported"
     if isinstance(total_cost, float) and cost_upper_bound:
@@ -625,11 +964,13 @@ def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, pro
         if r.tier not in tier_seen:
             tier_seen.append(r.tier)
     passed = []
-    for t in [t for t in tiers if t in tier_seen] + [t for t in tier_seen if t not in tiers]:
+    gate_only = "0" in tier_seen and "0" not in tiers
+    for t in [t for t in _section_order(tiers, tier_seen) if t in tier_seen]:
         tr = [r for r in results if r.tier == t]
         c = verdict_counts(tr)
         extra = ", ".join(f"{c[v]} {v}" for v in (Verdict.SKIP, Verdict.INFO) if c[v])
-        passed.append(f"{_tier_label(t)}: {c[Verdict.PASS]} of {len(tr)}" + (f" ({extra})" if extra else ""))
+        label = _tier_label(t) + (" (gate subset)" if t == "0" and gate_only else "")
+        passed.append(f"{label}: {c[Verdict.PASS]} of {len(tr)}" + (f" ({extra})" if extra else ""))
     lines += [f"**Passed:** {' · '.join(passed) if passed else 'no probes ran'}", ""]
 
     lines.append("## Environment Fingerprint (secrets redacted)")
@@ -642,12 +983,16 @@ def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, pro
 
     # Full per-probe detail, grouped by tier (any tier not in --tiers, such as
     # the post-run shim-log scan or a synthetic crash record, follows at the end).
-    for tier in [t for t in tiers] + [t for t in tier_seen if t not in tiers]:
+    for tier in _section_order(tiers, tier_seen):
         tier_results = [r for r in results if r.tier == tier]
         if not tier_results:
             continue
-        lines.append(f"## {_tier_label(tier)}")
+        lines.append(f"## {_tier_label(tier)}" + (" (gate subset)" if tier == "0" and gate_only else ""))
         lines.append("")
+        if tier == "0" and gate_only:
+            lines.append("Tier 0 was not selected; these are the preflight gate probes the runner applies "
+                         "before any paid tier (T0.ABORT, when present, names the probe that blocked them).")
+            lines.append("")
         if tier == POST_RUN_TIER:
             lines.append("Checks run after the live tiers over this run's window only (the Tier 0 shim-log "
                          "scan covers the history before the run and is informational).")
@@ -696,7 +1041,8 @@ def write_reports(report_dir: Path, route_info, fingerprint, results, tiers, pro
 
 # --- Confirmation ---------------------------------------------------------
 
-def confirm_launch(route_info, tiers, profiles, assume_yes: bool, stated_route: str = "") -> bool:
+def confirm_launch(route_info, tiers, profiles, assume_yes: bool, stated_route: str = "",
+                   allow_preflight_fail: bool = False) -> bool:
     live_tiers = [t for t in tiers if t in LIVE_TIERS]
     print("=" * 68)
     print("DAAF Deployment Smoke Test — pre-launch summary")
@@ -711,6 +1057,12 @@ def confirm_launch(route_info, tiers, profiles, assume_yes: bool, stated_route: 
         n_runs = len(profiles) * sum(LIVE_CALLS_PER_PROFILE[t] for t in live_tiers)
         print(f"  COST NOTE      : Tiers {live_tiers} make ~{n_runs} live claude -p API calls "
               f"(billed to your configured provider).")
+        print(f"  PREFLIGHT GATE : {', '.join(GATE_PROBE_IDS)} must not FAIL before any paid tier"
+              + (" (--allow-preflight-fail: a FAIL is recorded but does not stop them)."
+                 if allow_preflight_fail else " (override: --allow-preflight-fail)."))
+        if any(p[0] for p in profiles):
+            print(f"                   Per profile: {', '.join(PROFILE_GATE_PROBE_IDS)} and T0.14 re-checked "
+                  "on its overlay; a FAIL skips that profile only.")
     else:
         print("  COST NOTE      : No live API tiers selected (Tiers 0/D/N are free).")
     print("=" * 68)
@@ -795,8 +1147,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Run every Tier D suite, including route-scoped ones (e.g. the shim unit "
                              "suite) on routes where they are skipped by default.")
     parser.add_argument("--include-r-smoke", action="store_true", help="Include the (slow) R/Python skill smoke suite in Tier D.")
-    parser.add_argument("--timeout", type=int, default=0, help="Per-probe timeout seconds (0 = per-tier defaults).")
+    parser.add_argument("--timeout", type=int, default=0,
+                        help="Per-probe timeout seconds (0 = per-tier defaults: N 60, 1 180, 2/A/3 300, D 600). "
+                             f"TD.1 always gets at least {TD1_MIN_TIMEOUT_S} and TD.7 at least "
+                             f"{TD7_MIN_TIMEOUT_S}; a larger value wins.")
     parser.add_argument("--yes", action="store_true", help="Skip the pre-launch cost/summary confirmation.")
+    parser.add_argument("--allow-preflight-fail", action="store_true",
+                        help="Run the paid tiers (1, 2, A, 3) even when a preflight gate probe "
+                             f"({', '.join(GATE_PROBE_IDS)}) FAILs, e.g. to test a deliberately broken "
+                             "config. Recorded in report.json and the report identity block.")
     parser.add_argument("--report-dir", default="", help="Override the report output directory.")
     parser.add_argument("--no-package", action="store_true",
                         help="Skip building the diagnostic package (it is built by default).")
@@ -843,7 +1202,8 @@ def main(argv=None) -> int:
     ta_timeout = args.timeout or 300
     t3_timeout = args.timeout or 300
 
-    if not confirm_launch(route_info, tiers, profiles, args.yes, stated_route=args.route):
+    if not confirm_launch(route_info, tiers, profiles, args.yes, stated_route=args.route,
+                          allow_preflight_fail=args.allow_preflight_fail):
         print("Aborted by user (no confirmation).", file=sys.stderr)
         return 1
 
@@ -867,9 +1227,16 @@ def main(argv=None) -> int:
     shim_health_snapshot = None
     crash = None
     overall_fail = True
+    preflight = {"applied": False, "allow_preflight_fail": bool(args.allow_preflight_fail)}
+    # Review fix H1: SIGTERM/SIGHUP unwind like Ctrl+C from here on (every
+    # `finally` runs, TD.9's services are stopped, report and package written).
+    guard = _TerminationGuard()
+    console = None  # the original sys.stdout/sys.stderr once the unwind wraps them
     try:
+        guard.install()
         run_live_tiers = True
         live_tier_ran = False  # set when a live tier (1/2/A/3) entry point is actually called
+        t0 = []
 
         # Tier 0 — run once (route-scoped, not profile-scoped).
         if "0" in tiers:
@@ -889,30 +1256,35 @@ def main(argv=None) -> int:
                             except json.JSONDecodeError:
                                 pass
 
-            # Fail-fast gate: if T0.0 (DAAF_DEV) FAILed, do NOT proceed to any paid
-            # live tier. The suite assumes the DAAF_DEV=1 dev image; running live
-            # tiers against a non-dev image would burn API cost on a config the
-            # suite cannot validate. The report is still written and the run still
-            # exits nonzero (T0.0's FAIL already flips the overall verdict). Tiers
-            # D and N (free) still run and self-SKIP any missing dev tooling.
-            daaf_dev_failed = any(r.probe_id == "T0.0" and r.verdict == Verdict.FAIL for r in t0)
-            live_selected = any(t in LIVE_TIERS for t in tiers)
-            if daaf_dev_failed and live_selected:
-                run_live_tiers = False
-                print("ABORT: T0.0 (DAAF_DEV) FAILed — the deployment smoke suite assumes the "
-                      "DAAF_DEV=1 dev image. Skipping all live API tiers (1/2/A/3) so no cost is "
-                      "billed against an unvalidatable config. Fix DAAF_DEV=1 and re-run.",
+        # Preflight gate (coverage design D2): whenever a live tier (1/2/A/3) is
+        # selected, the gate probes (T0.1 route, T0.3 env coherence, T0.16
+        # credential overlap, T0.17 tier aliases) must not FAIL, because each such
+        # FAIL means the paid calls would test, or bill, the wrong configuration.
+        # Tier 0's own results are reused when Tier 0 ran; any gate probe missing
+        # from them (Tier 0 not selected, or it crashed) runs as the "gate subset"
+        # and is reported under Tier 0. A FAIL skips every paid tier and records
+        # T0.ABORT naming the blocking probe(s), unless --allow-preflight-fail is
+        # given. Free tiers (N, D) still run. The per-profile T0.14 re-check below
+        # stays as it was. The cost confirmation (skipped by --yes) is unchanged.
+        if any(t in LIVE_TIERS for t in tiers):
+            gate, ran, blocking, reused, missing = _apply_preflight_gate(route_info, env, t0)
+            results.extend(ran)
+            preflight.update(applied=True, probes=list(GATE_PROBE_IDS), reused_from_tier0=reused,
+                             gate_subset_run=missing, blocking=[r.probe_id for r in blocking],
+                             overridden=bool(blocking) and bool(args.allow_preflight_fail),
+                             paid_tiers_skipped=bool(blocking) and not args.allow_preflight_fail,
+                             per_profile={})
+            if blocking and args.allow_preflight_fail:
+                print("WARNING: preflight gate FAILed (" + ", ".join(r.probe_id for r in blocking)
+                      + "); running the paid tiers anyway because --allow-preflight-fail was given.",
                       file=sys.stderr)
-                abort = ProbeResult(probe_id="T0.ABORT", name="Live tiers aborted (DAAF_DEV FAIL)", tier="0")
-                abort.verdict = Verdict.FAIL
-                abort.detail = (
-                    "Live API tiers (1/2/A/3) were SKIPPED because T0.0 (DAAF_DEV) FAILed. The suite "
-                    "assumes the DAAF_DEV=1 dev image; running paid tiers against a non-dev image "
-                    "would burn cost on a config it cannot validate. Fix DAAF_DEV=1 and re-run."
-                )
-                abort.add_evidence("", note="fail-fast gate: DAAF_DEV must be 1 before any live tier",
-                                   is_inference=False)
-                results.append(abort)
+            elif blocking:
+                run_live_tiers = False
+                print("ABORT: preflight gate FAILed (" + ", ".join(r.probe_id for r in blocking)
+                      + "). Skipping all live API tiers (1/2/A/3) so no cost is billed against the "
+                      "wrong configuration. Fix the named probe(s), or pass --allow-preflight-fail.",
+                      file=sys.stderr)
+                results.append(_preflight_abort_result(gate, blocking, reused, missing))
 
         # Tier N — free network checks, once (route-scoped).
         if "N" in tiers:
@@ -920,7 +1292,7 @@ def main(argv=None) -> int:
                                             evidence_dir=evidence_root / "tier_n"))
 
         # Live tiers 1 / 2 / A / 3 — run once PER PROFILE (skipped if the
-        # DAAF_DEV gate tripped).
+        # preflight gate tripped).
         if run_live_tiers:
             for prof_name, overlay in profiles:
                 if any(t in LIVE_TIERS for t in tiers):
@@ -930,13 +1302,45 @@ def main(argv=None) -> int:
                     child_env = dict(env)
                     child_env.update(overlay)
                     first_live = next(t for t in tiers if t in LIVE_TIERS)
+                    recheck_tier = "1" if "1" in tiers else first_live
+                    # Review fix H2: a named profile also re-runs the gate probes
+                    # its overlay can change (T0.1, T0.3, T0.16, T0.17) on its child
+                    # env, filed with its T0.14 re-check. A FAIL blocks this
+                    # profile only (T0.ABORT carrying the profile), unless
+                    # --allow-preflight-fail is given, which overrides it as it
+                    # overrides the ambient gate. The ambient profile ("") was
+                    # judged by the ambient gate above.
+                    profile_blocked = False
+                    if prof_name:
+                        p_gate, p_blocking = _apply_profile_gate(args.route, child_env, prof_name, recheck_tier)
+                        results.extend(p_gate)
+                        p_ids = [r.probe_id for r in p_blocking]
+                        if p_blocking and args.allow_preflight_fail:
+                            print(f"WARNING: profile gate FAILed for {prof_name} ({', '.join(p_ids)}); running "
+                                  "its paid tiers anyway because --allow-preflight-fail was given.",
+                                  file=sys.stderr)
+                        elif p_blocking:
+                            profile_blocked = True
+                            print(f"ABORT: profile gate FAILed for {prof_name} ({', '.join(p_ids)}); this "
+                                  "profile's paid tiers skipped.", file=sys.stderr)
+                            results.append(_profile_abort_result(prof_name, recheck_tier, p_gate, p_blocking))
+                        preflight.setdefault("per_profile", {})[prof_name] = {
+                            "probes": list(PROFILE_GATE_PROBE_IDS),
+                            "blocking": p_ids,
+                            "overridden": bool(p_blocking) and bool(args.allow_preflight_fail),
+                        }
                     coherence = smoke_probes.probe_main_model_coherence(
-                        child_env, BASE_DIR, profile=prof_name,
-                        tier="1" if "1" in tiers else first_live)
+                        child_env, BASE_DIR, profile=prof_name, tier=recheck_tier)
                     results.append(coherence)
+                    if prof_name:
+                        entry = preflight["per_profile"][prof_name]
+                        entry["t014_verdict"] = coherence.verdict
+                        entry["paid_tiers_skipped"] = profile_blocked or coherence.verdict == Verdict.FAIL
                     if coherence.verdict == Verdict.FAIL:
                         print("ABORT: incompatible main model for this profile; paid tiers skipped.",
                               file=sys.stderr)
+                        continue
+                    if profile_blocked:
                         continue
                 if "1" in tiers:
                     # T1.6 renders the statusline into a report-local cache dir so it
@@ -968,12 +1372,23 @@ def main(argv=None) -> int:
         # Tier D — run once (not profile-scoped; deterministic, provider-agnostic).
         if "D" in tiers:
             results.extend(_run_tier_d(args, td_timeout, tier_d_evidence_dir, args.route))
-    except BaseException as exc:  # KeyboardInterrupt / SystemExit too: report and package anyway
+        guard.finishing()
+    except BaseException as exc:  # KeyboardInterrupt / SystemExit / TerminationSignal: report and package anyway
+        guard.finishing()
+        # A dead terminal (SIGHUP) must not stop the unwind at the next print.
+        console = _protect_console()
         crash = exc
         results.append(_crash_result("run", "the tier block", exc))
-        print(f"ERROR: the tier block was interrupted by {type(exc).__name__}; writing the report "
+        what = exc.signame if isinstance(exc, TerminationSignal) else type(exc).__name__
+        print(f"ERROR: the tier block was interrupted by {what}; writing the report "
               "and package for the probes that ran.", file=sys.stderr)
     finally:
+        # From here a SIGTERM/SIGHUP is recorded, not raised, so the report and
+        # package are always completed; the exit code reports it afterwards.
+        # Console writes that fail (OSError) are dropped, not raised.
+        guard.finishing()
+        if console is None:
+            console = _protect_console()
         ended_utc = datetime.now(timezone.utc)
         if isinstance(shim_health_snapshot, dict) and isinstance(shim_health_snapshot.get("version"), str):
             if re.fullmatch(r"[A-Za-z0-9._+-]{1,64}", shim_health_snapshot["version"]):
@@ -983,7 +1398,7 @@ def main(argv=None) -> int:
         try:
             overall_fail = write_reports(report_dir, route_info, fingerprint, results, tiers, profiles,
                                          shim_health_snapshot, started_utc=started_utc, ended_utc=ended_utc,
-                                         versions=versions, stated_route=args.route)
+                                         versions=versions, stated_route=args.route, preflight=preflight)
         except Exception as exc:  # noqa: BLE001 — still try to package what exists
             overall_fail = True
             print(f"ERROR: writing the report failed ({type(exc).__name__}: {exc}).", file=sys.stderr)
@@ -1013,10 +1428,22 @@ def main(argv=None) -> int:
             except Exception as exc:  # noqa: BLE001 — a packaging failure must not hide the report
                 print(f"WARN: package not built ({type(exc).__name__}: {exc}). The report is still at "
                       f"{report_dir}.", file=sys.stderr)
+        guard.restore()
 
-    if isinstance(crash, KeyboardInterrupt):
-        return 130
-    return 1 if overall_fail else 0
+    try:
+        if isinstance(crash, KeyboardInterrupt):
+            return 130
+        if isinstance(crash, TerminationSignal):
+            return crash.code
+        if guard.deferred is not None:
+            # A signal that arrived while the report was being written: honoured now.
+            name = TerminationSignal(guard.deferred).signame
+            print(f"WARNING: {name} received while the report and package were being written; they are "
+                  "complete, and the run stops here.", file=sys.stderr)
+            return 128 + guard.deferred
+        return 1 if overall_fail else 0
+    finally:
+        _restore_console(console)
 
 
 if __name__ == "__main__":
