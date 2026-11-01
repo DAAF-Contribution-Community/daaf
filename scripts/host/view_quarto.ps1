@@ -373,8 +373,9 @@ if ($TargetArg -eq "") {
 # `-M embed-resources:true` forces a SINGLE self-contained HTML regardless of
 # whether the source .qmd's YAML sets it, so the copied-out file is fully
 # portable (all CSS/JS/images inlined -- no sidecar _files/ directory to copy).
-# Verified against Quarto 1.7.29: `-M embed-resources:true` produces one .html
-# with no _files/ dir even when the .qmd YAML omits the setting.
+# Verified against Quarto 1.7.29 and re-verified on 1.10.18 (2026-11-01):
+# `-M embed-resources:true` produces one .html with no _files/ dir even when
+# the .qmd YAML omits the setting.
 $HtmlRel = $QmdRel -replace "\.qmd$", ".html"
 $HtmlBasename = Split-Path -Leaf $HtmlRel
 

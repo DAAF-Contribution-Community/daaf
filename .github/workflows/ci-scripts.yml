@@ -315,7 +315,7 @@ jobs:
       - name: Set up Quarto
         run: |
           curl -fsSL -o /tmp/quarto.deb \
-            https://github.com/quarto-dev/quarto-cli/releases/download/v1.7.29/quarto-1.7.29-linux-amd64.deb
+            https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-amd64.deb
           sudo dpkg -i /tmp/quarto.deb
 
       - name: Install BATS, R, and helpers

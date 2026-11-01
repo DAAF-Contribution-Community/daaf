@@ -4,6 +4,7 @@ These scripts check that the libraries DAAF's skills rely on are installed and b
 
 - **What the runner does.** For each `smoke_*.R` and `smoke_*.py` family it runs only the latest revision (`_a`, `_b`, ...). R smokes run through `scripts/run_with_capture.sh`; Python smokes run with `python3` directly. As of 2026-10-27 every R smoke here already carries an appended execution log, so an in-place run reports the R smokes as SKIP (already logged) and runs the Python ones.
 - **Running the R smokes live.** Stage log-stripped copies of the smokes and set `SMOKE_DIR` to their folder, as CI does (`.github/workflows/ci-integration.yml`, step "Stage log-stripped smoke copies"). Keep invoking the runner from this folder: it locates `run_with_capture.sh` from its own location, not from `SMOKE_DIR`.
+- **Temporary files.** A smoke test writes its temporary files to `/daaf/scripts/scratch/smoke_<family>_work/`, never to `/tmp`. The test creates the folder when it starts and deletes it when it finishes. A failed run can leave the folder behind, and the next run clears it first. The path is fixed because smoke tests run only inside the DAAF container, staged CI copies included. Older smokes not yet revised still use a folder beside the script (`smoke_arrow.R`, `smoke_rendering.R`, `smoke_geo.py`) or `scripts/scratch/smoke_svy_io/` (`smoke_svy_a.py`).
 
 **Historical comments in logged files.** Files with an appended execution log are immutable (CLAUDE.md § Versioning & Naming), so some header comments are out of date:
 

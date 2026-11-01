@@ -31,13 +31,20 @@
 # the R toolchain and P3M blocks below govern when it can move.
 #
 # NOT covered by the environment date: binary downloads pinned by the version
-# in their URL (R runtime .deb, Quarto, code-server, Codex CLI, gh,
+# in their URL (R runtime .deb, Quarto, TinyTeX, code-server, Codex CLI, gh,
 # PowerShell, VS Code extensions) and Claude Code (CLAUDE_CODE_VERSION) --
-# version-pinned, but not date-frozen. All except the Codex CLI are also
-# unchecksummed; the Codex tarball is verified against a per-architecture
-# SHA-256 pinned beside CODEX_VERSION. Claude Code's installer script
-# (https://claude.ai/install.sh) is additionally fetched live on every build;
-# only the version it installs is pinned.
+# version-pinned, but not date-frozen. All except the Codex CLI and TinyTeX
+# are also unchecksummed; the Codex and TinyTeX tarballs are verified against
+# per-architecture SHA-256 values pinned beside CODEX_VERSION and
+# TINYTEX_VERSION. The eight TeX Live packages added to TinyTeX come from the
+# texlive.info tlnet archive of 2026-10-19 (TINYTEX_TLNET_ARCHIVE, a date of
+# its own). A pinned SHA-512 (TINYTEX_TLPDB_SHA512) binds that archive's
+# package database at its date: the build checks its own download of the
+# database against it; tlmgr checks each package against the copy IT
+# downloads; and a check after the install confirms that the installed
+# revisions equal the pinned database's. Claude Code's
+# installer script (https://claude.ai/install.sh) is additionally fetched
+# live on every build; only the version it installs is pinned.
 #
 # SECURITY EXCEPTIONS (dated). The environment date itself was deliberately
 # NOT moved for these fixes, because moving it moves every Python package
@@ -51,7 +58,8 @@
 #       instant 2026-10-20T03:00:00Z) in the last Python package layer; and
 #       daaf-check-distrusted-roots fails the build if G3 is still trusted by
 #       the system store or certifi (it runs after the distrust layer, at the
-#       end of the Python stack and as the last RUN of the build).
+#       end of the Python stack and as the last RUN of the build, which also
+#       scans TinyTeX's tlmgr CA file; see NEUTRALISED below).
 #   (2) Pillow (2026-10-28): pillow 13.0.0 by a one-package override (instant
 #       2026-10-17T00:00:00Z) in the PDF reading stack block. 12.3.0 has 41
 #       published advisories (5 critical), all fixed in 13.0.0. No other
@@ -106,6 +114,13 @@
 # (/opt/R/4.5.3/lib/R/library/openssl/cacert.pem, read by openssl::ca_bundle();
 # R's curl package uses the system store); libnode.so.109 (Node 18, only with
 # --use-bundled-ca); and dart-sass (makes no network calls, inference).
+# NEUTRALISED: TinyTeX ships its own CA list for tlmgr,
+# tlpkg/installer/curl/curl-ca-bundle.crt (Mozilla data of 2026-09-25, holds
+# G3). The TinyTeX layer replaces it with a symlink to the system bundle
+# before any tlmgr network call, runs tlmgr with TEXLIVE_DOWNLOADER=curl (the
+# system curl and store; also set by ENV for any later tlmgr call), and the
+# last RUN passes that path to
+# daaf-check-distrusted-roots.
 #
 # BUMPING: move UV_EXCLUDE_NEWER and UBUNTU_SNAPSHOT TOGETHER to one new
 # instant. Same instant is the rule; the only allowed divergence is a dated
@@ -535,7 +550,8 @@ RUN set -eu; \
 # other network download in this build (apt indexes and packages, PowerShell
 # and its Pester/PSScriptAnalyzer modules from the PowerShell Gallery (both
 # DAAF_DEV only), Codex, gh (DAAF_DEV only), R, PyPI via uv, P3M, Quarto,
-# code-server, VS Code extensions, Claude Code), so every later HTTPS fetch is
+# TinyTeX and its TeX Live archive, code-server, VS Code extensions, Claude
+# Code), so every later HTTPS fetch is
 # verified against the fixed store.
 #
 # CHECK: daaf-check-distrusted-roots (installed just below; inline heredoc for
@@ -1310,7 +1326,7 @@ RUN uv pip install --system \
 # the check from the "Distrust compromised CA roots" layer after every apt and
 # Python layer above it, so a trigger, reconfigure or resolution change there
 # that brought G3 back stops the build here. The layers further down (R
-# packages, Quarto, code-server, nodejs, Claude Code, USER ADDITIONS) are
+# packages, Quarto, TinyTeX, code-server, nodejs, Claude Code, USER ADDITIONS) are
 # covered by the same check repeated as the last RUN of the build. Keep both
 # across environment-date bumps: they are cheap, and they guard the same
 # failure for any future root added to the check's DISTRUSTED list. An empty
@@ -1337,7 +1353,8 @@ RUN daaf-check-distrusted-roots "$(python3 -c 'import certifi; print(certifi.whe
 #
 # QUARTO SCOPING: Quarto is a standalone system binary that does not depend on
 # R or Python package managers; within DAAF it renders R-mode Stage 9 notebooks
-# (.qmd), so it is installed alongside the R packages here.
+# (.qmd), so it is installed alongside the R packages here. TinyTeX, the LaTeX
+# distribution Quarto uses for `format: pdf`, follows directly after it.
 
 # Configure R package repository (P3M date-pinned snapshot for reproducibility).
 # Pin to a specific date snapshot so rebuilds produce identical package versions.
@@ -1519,6 +1536,270 @@ RUN ARCH=$(dpkg --print-architecture) \
         -o /tmp/quarto.deb \
     && dpkg -i /tmp/quarto.deb \
     && rm /tmp/quarto.deb
+
+# TinyTeX (LaTeX for Quarto's `format: pdf`, engine lualatex), pinned and
+# checksummed like the Codex CLI.
+#
+# WHY: Quarto renders PDF through LaTeX, and the image had none, so
+# `format: pdf` failed and agents fell back to Typst. TinyTeX is the TeX Live
+# subset Quarto's own `quarto install tinytex` uses. It is installed HERE, at
+# build time, root-owned in /opt/TinyTeX, and not per user at runtime: CLAUDE.md
+# § Runtime Package Installation forbids runtime installs, and a frozen tree is
+# what keeps a later KOMA-Script release (see the #15143 GUARD below) out.
+# Unpacked about 420 MB.
+#
+# VERSION v2026.11 (TinyTeX monthly release, published 2026-11-01; the TAG
+# carries the leading `v`), bundle `TinyTeX` (not -0/-1, which lack
+# koma-script, tcolorbox and fontawesome5; not -2, which exists only on the
+# mutable `daily` tag). Its assets are byte-identical to the daily build of
+# 2026-10-21, and its package database matches the texlive.info tlnet archive
+# of 2026-10-19 revision for revision (320 of 320 records), so that archive is
+# the repository for the extra packages: selnolig (loaded whenever `lang:` is
+# set), lua-ul + luacolor (strikeout and `.mark` highlight), marginfix (natbib
+# margin citations), xurl + footnotehyper (optional, template-guarded), and
+# luatexbase with its one dependency ctablestack (the bundle lacks both, and
+# babel's luababel.def and selnolig.sty load luatexbase, so any `lang:` render
+# stops at "File `luatexbase.sty' not found"). Apart from luatexbase ->
+# ctablestack, none of the eight declares a dependency in that archive; both
+# are listed so the revision check covers them. tlmgr's repository
+# stays on the archive afterwards, so a later tlmgr call never reaches the
+# live CTAN. texlive.info states no retention period for its archive (gap):
+# if it disappears, the extra packages cannot be reinstalled from it.
+#
+# LICENSE: TinyTeX's build scripts and bundle are distributed under GPL-2
+# (rstudio/tinytex-releases README: "All code in this repository and TinyTeX
+# are licensed under GPL-2"; its authors describe TinyTeX as an unchanged
+# subset of TeX Live and claim no copyright on it). The bundled TeX Live
+# packages carry their own free-software licenses (TeX Live's LICENSE.TL; per
+# package, the catalogue-license field in tlpkg/texlive.tlpdb).
+#
+# #15143 GUARD: v2026.11 carries KOMA-Script 3.49.2. KOMA-Script 3.49.3
+# (on CTAN 2026-10-19, in the archive from 2026-10-20) makes every KOMA class
+# stop with a fatal error under `\DocumentMetadata`, which Quarto emits for
+# `pdf-standard`; Quarto fixed it in 1.10.20 (quarto-dev/quarto-cli#15143),
+# and 1.10.18 does not have the fix. Do NOT bump TinyTeX (or the archive date)
+# to a release with KOMA-Script 3.49.3 or later unless QUARTO_VERSION is
+# 1.10.20 or later. The package layer below fails the build on that
+# combination, and the smoke render near the end of the build (pdf-standard
+# ua-2) would fail on it too.
+#
+# CHECKSUM: the tarball is verified against the per-architecture SHA-256
+# pinned beside TINYTEX_VERSION (GitHub release asset digests for v2026.11,
+# matched by the downloaded bytes on 2026-11-01) with `sha256sum -c`, after the
+# download and before extraction. The build downloads the archive's package
+# database (tlpkg/texlive.tlpdb, uncompressed) and checks it against
+# TINYTEX_TLPDB_SHA512 before tlmgr installs anything: the pin binds the
+# package set to the archive at its date. tlmgr does not use that file: it
+# downloads its own copy of the database (tlmgr.pl loads it with verify => 1)
+# and checks each package container against the SHA-512 recorded in THAT
+# copy. After the install, the layer confirms that every installed revision
+# equals the pinned database's; a container changed without a new revision
+# between the two fetches, seconds apart, would not be caught. texlive.info
+# answers some User-Agents with HTTP 200 and an "Access Denied" page, so the
+# check compares CONTENT, never the HTTP status. Bumping TINYTEX_VERSION
+# requires BOTH SHA-256 values and a matching archive date plus its SHA-512.
+#
+# ARCH: `dpkg --print-architecture` selects the asset and bin directory:
+# amd64 -> TinyTeX-linux-x86_64-*, bin/x86_64-linux; arm64 ->
+# TinyTeX-linux-arm64-*, bin/aarch64-linux (the arm64 prebuilt arrived after
+# v2026.03.02; prebuilt arm64 tarballs are verified for v2026.08-v2026.11; no
+# source build). `tlmgr path add` symlinks every binary into /usr/local/bin,
+# so later steps and Quarto find `lualatex` and `tlmgr` on PATH without naming
+# the arch directory. Quarto 1.10.18 then reports "Installation From Path";
+# it treats only ~/.TinyTeX as "TinyTeX". Many entries in the bin directory are
+# themselves relative links into texmf-dist (tlmgr ->
+# ../../texmf-dist/scripts/texlive/tlmgr.pl, likewise mktexlsr and
+# luaotfload-tool), so the layer checks each tool in three parts: PATH finds the
+# /usr/local/bin link, that link points at the bin directory entry, and its
+# final target stays inside /opt/TinyTeX (a resolved path under bin/ would
+# wrongly fail tlmgr).
+#
+# TRUST STORE: the tarball ships tlpkg/installer/curl/curl-ca-bundle.crt
+# (Mozilla data of 2026-09-25), which contains the distrusted "emSign ECC Root
+# CA - G3" (banner, exception (1)). tlmgr hands it to Perl's LWP through
+# HTTPS_CA_FILE when LWP is installed (it is not in this image). It is replaced
+# by a symlink to the system bundle before any tlmgr network call, tlmgr runs
+# with TEXLIVE_DOWNLOADER=curl (system curl and store; never wget, which tlmgr
+# runs with --no-check-certificate), the layer fails if any other file in the
+# tree holds a PEM certificate, and the build's last RUN passes the path to
+# daaf-check-distrusted-roots.
+#
+# NO RUNTIME INSTALLS: the tree is extracted with --no-same-owner (the tar
+# entries belong to uid 1001) and stays root-owned and not writable by
+# appuser, so `tlmgr install`/`update` and Quarto's `latex-auto-install`
+# cannot change it at runtime. `tlmgr --usermode`, `quarto install tinytex`
+# and R's `tinytex::install_tinytex()` remain possible, but would install an
+# unpinned TeX Live under ~/.TinyTeX (which Quarto prefers over this tree) or
+# in a user tree; DAAF policy forbids them (CLAUDE.md § Runtime Package
+# Installation), and no hook guards them yet (a hook change is the user's to
+# make). Quarto 1.10.18 has no global switch for `latex-auto-install` (no
+# environment variable or user config; it defaults to true): after a failed
+# LaTeX run it tries `tlmgr update --self`, `update --all` and `install`, and
+# on this tree that fails with an error that gives no context (open issue
+# quarto-dev/quarto-cli#14413). Documents and templates should set
+# `latex-auto-install: false`, which reports the missing package instead.
+#
+# FONT CACHE: TinyTeX keeps TEXMFVAR inside the tree, and luaotfload needs a
+# writable cache, so the font-name database is built here as root
+# (luaotfload-tool --update) and ENV TEXMFVAR below points appuser's cache at
+# /home/appuser/.cache/texmf-var, a per-user cache (font-name and font data
+# that luaotfload rebuilds on demand). TeX does search TEXMFVAR (texmf.cnf
+# lists it in TEXMF, ahead of the system tree), so it is not an enforcement
+# boundary: DAAF's build does not populate it with packages, and nothing in
+# DAAF installs into it.
+#
+# Evidence: asset digests, bundle coverage, the archive match, the CA file
+# and the font-cache settings (maintainer-only, not shipped:
+# research/2026-11-01_FrameworkDev_QuartoSkillRelease/preliminary_notes/2026-11-01_tinytex-pinning_research.md).
+# The four TinyTeX RUNs (the three below and the smoke render) were simulated
+# on amd64 as a non-root user against the real tarball and archive
+# (2026-11-01): path links, package install, revision and #15143 checks, font
+# cache and the PDF compile pass. Checked in the rebuilt amd64 image
+# (2026-11-01): appuser cannot write the tree, and the first render builds the
+# font-name database in TEXMFVAR. Untested: the arm64 tarball; the build's own
+# checks and smoke render cover it.
+ARG TINYTEX_VERSION=v2026.11
+ARG TINYTEX_SHA256_AMD64=50e68059058db770a28bcca44d5a323cb57fc10d470017c858404aafeaac9dd7
+ARG TINYTEX_SHA256_ARM64=a493b548ba82aafd715f297397de959bc8131c16a9be9e4b90fa6454e5d57fb1
+ARG TINYTEX_TLNET_ARCHIVE=https://texlive.info/tlnet-archive/2026/10/19/tlnet
+ARG TINYTEX_TLPDB_SHA512=60000e6bc449e5a553dac53e0fd94c5fc713e25e2c3796721d61ff45b83e1b1491eac570c9f4481aa2e949908206da6abac4fec9fad471125c9a3e5309e15606
+
+# Download, verify, extract and put on PATH. xz-utils (snapshot-frozen) is
+# needed only to unpack the .tar.xz; tlmgr brings its own xz for packages.
+# It gets its own small apt call here instead of joining an early apt layer:
+# adding it there would invalidate the cache of almost every layer, and a late
+# apt call frozen to the snapshot still follows the environment date.
+RUN set -eu; \
+    DEB_ARCH="$(dpkg --print-architecture)"; \
+    case "${DEB_ARCH}" in \
+        amd64) TT_ASSET=x86_64; TT_BINDIR=x86_64-linux; TT_SHA256="${TINYTEX_SHA256_AMD64}" ;; \
+        arm64) TT_ASSET=arm64; TT_BINDIR=aarch64-linux; TT_SHA256="${TINYTEX_SHA256_ARM64}" ;; \
+        *) echo "FATAL: unsupported architecture '${DEB_ARCH}' for TinyTeX (prebuilt for amd64 and arm64 only)." >&2; exit 1 ;; \
+    esac; \
+    case "${TINYTEX_VERSION}" in \
+        v[0-9]*) ;; \
+        *) echo "FATAL: TINYTEX_VERSION='${TINYTEX_VERSION}' must be the release TAG with its leading v (e.g. v2026.11)." >&2; exit 1 ;; \
+    esac; \
+    daaf-apt-update; \
+    apt-get install -y --no-install-recommends xz-utils; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    TT_TXZ="TinyTeX-linux-${TT_ASSET}-${TINYTEX_VERSION}.tar.xz"; \
+    TT_URL="https://github.com/rstudio/tinytex-releases/releases/download/${TINYTEX_VERSION}/${TT_TXZ}"; \
+    if ! curl -fsSL -o "/tmp/${TT_TXZ}" "${TT_URL}"; then \
+        echo "FATAL: TinyTeX download failed: ${TT_URL} (does release ${TINYTEX_VERSION} still carry ${TT_TXZ}?)." >&2; \
+        exit 1; \
+    fi; \
+    if ! echo "${TT_SHA256}  /tmp/${TT_TXZ}" | sha256sum -c -; then \
+        echo "FATAL: ${TT_TXZ} does not match the SHA-256 pinned for ${DEB_ARCH}. A bumped TINYTEX_VERSION needs both TINYTEX_SHA256_* values from that release's asset digests; otherwise the download was altered." >&2; \
+        exit 1; \
+    fi; \
+    mkdir -p /opt/TinyTeX; \
+    tar -xJf "/tmp/${TT_TXZ}" -C /opt/TinyTeX --strip-components=1 --no-same-owner; \
+    rm -f "/tmp/${TT_TXZ}"; \
+    TT_BIN="/opt/TinyTeX/bin/${TT_BINDIR}"; \
+    for tool in tlmgr lualatex kpsewhich luaotfload-tool mktexlsr; do \
+        if [ ! -x "${TT_BIN}/${tool}" ]; then \
+            echo "FATAL: ${TT_BIN}/${tool} is missing after extraction: the tarball layout changed (expected a single .TinyTeX/ top directory with bin/${TT_BINDIR}/)." >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    TT_CA=/opt/TinyTeX/tlpkg/installer/curl/curl-ca-bundle.crt; \
+    mkdir -p "$(dirname "${TT_CA}")"; \
+    ln -sf /etc/ssl/certs/ca-certificates.crt "${TT_CA}"; \
+    if [ "$(readlink -f "${TT_CA}")" != "$(readlink -f /etc/ssl/certs/ca-certificates.crt)" ]; then \
+        echo "FATAL: ${TT_CA} does not resolve to the system CA bundle." >&2; \
+        exit 1; \
+    fi; \
+    TT_PEM="$(grep -rlI -e '-----BEGIN CERTIFICATE-----' /opt/TinyTeX || true)"; \
+    if [ -n "${TT_PEM}" ]; then \
+        echo "FATAL: files in /opt/TinyTeX hold PEM certificates outside the system store (neutralise them like ${TT_CA}): ${TT_PEM}" >&2; \
+        exit 1; \
+    fi; \
+    "${TT_BIN}/tlmgr" option sys_bin /usr/local/bin; \
+    "${TT_BIN}/tlmgr" postaction install script xetex; \
+    "${TT_BIN}/tlmgr" path add; \
+    for tool in tlmgr lualatex kpsewhich luaotfload-tool mktexlsr; do \
+        TT_LINK="$(command -v "${tool}" || true)"; \
+        if [ "${TT_LINK}" != "/usr/local/bin/${tool}" ] || [ "$(readlink "${TT_LINK}" || true)" != "${TT_BIN}/${tool}" ] || [ ! -x "${TT_LINK}" ]; then \
+            echo "FATAL: '${tool}' on PATH is '${TT_LINK}' -> '$(readlink "${TT_LINK}" || true)', not the 'tlmgr path add' link /usr/local/bin/${tool} -> ${TT_BIN}/${tool}." >&2; \
+            exit 1; \
+        fi; \
+        case "$(readlink -f "${TT_LINK}")" in \
+            /opt/TinyTeX/*) ;; \
+            *) echo "FATAL: /usr/local/bin/${tool} resolves outside /opt/TinyTeX: '$(readlink -f "${TT_LINK}")'." >&2; exit 1 ;; \
+        esac; \
+    done; \
+    if [ -e /home/runner ]; then \
+        echo "FATAL: /home/runner exists: tlmgr used the tarball's recorded sys_bin (/home/runner/bin)." >&2; \
+        exit 1; \
+    fi; \
+    echo "TinyTeX ${TINYTEX_VERSION} (${DEB_ARCH}) unpacked to /opt/TinyTeX; binaries linked into /usr/local/bin."
+
+# Extra packages from the dated archive, after verifying its package database.
+RUN set -eu; \
+    TT_PKGS="selnolig lua-ul luacolor marginfix xurl footnotehyper luatexbase ctablestack"; \
+    TT_TLPDB=/opt/TinyTeX/tlpkg/texlive.tlpdb; \
+    TT_TMP="$(mktemp -d /tmp/daaf-tinytex.XXXXXX)"; \
+    if ! curl -fsSL -o "${TT_TMP}/texlive.tlpdb" "${TINYTEX_TLNET_ARCHIVE}/tlpkg/texlive.tlpdb"; then \
+        echo "FATAL: could not download ${TINYTEX_TLNET_ARCHIVE}/tlpkg/texlive.tlpdb." >&2; \
+        exit 1; \
+    fi; \
+    if ! echo "${TINYTEX_TLPDB_SHA512}  ${TT_TMP}/texlive.tlpdb" | sha512sum -c -; then \
+        echo "FATAL: the package database of ${TINYTEX_TLNET_ARCHIVE} does not match TINYTEX_TLPDB_SHA512. texlive.info can answer HTTP 200 with an 'Access Denied' page, so the first bytes received are shown below; if the archive itself changed, re-verify it before re-pinning." >&2; \
+        head -c 300 "${TT_TMP}/texlive.tlpdb" >&2 || true; \
+        echo >&2; \
+        exit 1; \
+    fi; \
+    TEXLIVE_DOWNLOADER=curl tlmgr option repository "${TINYTEX_TLNET_ARCHIVE}"; \
+    TEXLIVE_DOWNLOADER=curl tlmgr install ${TT_PKGS}; \
+    for pkg in ${TT_PKGS}; do \
+        want="$(awk -v p="${pkg}" '$1 == "name" { n = $2 } n == p && $1 == "revision" { print $2; exit }' "${TT_TMP}/texlive.tlpdb")"; \
+        got="$(awk -v p="${pkg}" '$1 == "name" { n = $2 } n == p && $1 == "revision" { print $2; exit }' "${TT_TLPDB}")"; \
+        if [ -z "${want}" ] || [ "${got}" != "${want}" ]; then \
+            echo "FATAL: ${pkg} is at revision '${got}', but the verified archive database lists '${want}'." >&2; \
+            exit 1; \
+        fi; \
+        echo "TinyTeX: ${pkg} revision ${got} (matches the verified archive)"; \
+    done; \
+    if ! grep -qF "opt_location:${TINYTEX_TLNET_ARCHIVE}" "${TT_TLPDB}"; then \
+        echo "FATAL: tlmgr's repository is not ${TINYTEX_TLNET_ARCHIVE}; a later tlmgr call could reach the live CTAN." >&2; \
+        exit 1; \
+    fi; \
+    KOMA="$(awk '$1 == "name" { n = $2 } n == "koma-script" && $1 == "catalogue-version" { print $2; exit }' "${TT_TLPDB}")"; \
+    if [ -z "${KOMA}" ] || [ -z "${QUARTO_VERSION}" ]; then \
+        echo "FATAL: cannot read the KOMA-Script version ('${KOMA}') or QUARTO_VERSION ('${QUARTO_VERSION}') for the #15143 guard." >&2; \
+        exit 1; \
+    fi; \
+    if dpkg --compare-versions "${KOMA}" ge 3.49.3 && dpkg --compare-versions "${QUARTO_VERSION}" lt 1.10.20; then \
+        echo "FATAL: KOMA-Script ${KOMA} with Quarto ${QUARTO_VERSION}: pdf-standard renders fail (quarto-dev/quarto-cli#15143, fixed in Quarto 1.10.20). Keep TinyTeX on KOMA-Script 3.49.2 or raise QUARTO_VERSION." >&2; \
+        exit 1; \
+    fi; \
+    echo "TinyTeX: KOMA-Script ${KOMA}, Quarto ${QUARTO_VERSION}, repository ${TINYTEX_TLNET_ARCHIVE}"; \
+    rm -rf "${TT_TMP}"
+
+# Font-name cache, file database, and the tree's final state.
+RUN set -eu; \
+    luaotfload-tool --update; \
+    if [ -z "$(find /opt/TinyTeX/texmf-var -name 'luaotfload-names.lu*' -print)" ]; then \
+        echo "FATAL: luaotfload-tool --update wrote no font-name database under /opt/TinyTeX/texmf-var." >&2; \
+        exit 1; \
+    fi; \
+    mktexlsr; \
+    TT_LOOSE="$(find /opt/TinyTeX \( ! -user root -o ! -group root -o \( ! -type l -perm /022 \) \) -print | head -n 20)"; \
+    if [ -n "${TT_LOOSE}" ]; then \
+        echo "FATAL: these TinyTeX paths are not root-owned or are group/world-writable, so a runtime install could change the tree: ${TT_LOOSE}" >&2; \
+        exit 1; \
+    fi; \
+    echo "TinyTeX: root-owned, read-only for other users, font cache built ($(kpsewhich -var-value TEXMFSYSVAR))."
+
+# appuser's TeX cache (see FONT CACHE above). Set after the root steps so they
+# write into the tree, not into a root-owned directory in /home/appuser.
+ENV TEXMFVAR=/home/appuser/.cache/texmf-var
+# Any later tlmgr download (in a user-mode tree, for example) uses the system
+# curl and the G3-free system store, never the bundled CA file or wget with
+# --no-check-certificate.
+ENV TEXLIVE_DOWNLOADER=curl
 
 # ============================================
 # Install code-server (browser-based VS Code)
@@ -1830,6 +2111,70 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # RUN curl -fsSL https://example.com/install.sh | bash
 # ============================================
 
+# TinyTeX smoke render (see the TinyTeX block after Quarto): as appuser,
+# render a small PDF that exercises the packages added to the bundle and the
+# #15143 path: `lang: en-US` (babel + selnolig, which load luatexbase), a
+# callout (tcolorbox, fontawesome5), strikeout and `.mark` (lua-ul, luacolor),
+# a footnote and a URL (footnotehyper, xurl), and `pdf-standard: ua-2`
+# (\DocumentMetadata with KOMA-Script 3.49.2 under Quarto 1.10.18; it passed in
+# the non-root amd64 simulation). `latex-auto-install: false` makes a missing
+# package fail at once instead of starting tlmgr. Before rendering it checks
+# that appuser runs it, that kpathsea honors ENV TEXMFVAR, and that appuser
+# cannot write the tree. The render's caches (TEXMFVAR, XDG dirs) point into the
+# temporary directory, which starts in the same state as appuser's real cache
+# on first use (absent, in a writable directory); the directory is deleted, so
+# nothing stays in the image. It sits after USER ADDITIONS so an addition that
+# breaks PDF rendering fails here, and before the Pillow check and the final
+# trust check, which stays the last RUN.
+RUN set -eu; \
+    if [ "$(id -un)" != appuser ]; then \
+        echo "FATAL: the TinyTeX smoke render runs as '$(id -un)', not appuser. A USER ADDITIONS edit probably left 'USER root' active: restore 'USER appuser' after root installs." >&2; \
+        exit 1; \
+    fi; \
+    if [ "$(kpsewhich -var-value TEXMFVAR)" != "${TEXMFVAR}" ]; then \
+        echo "FATAL: kpathsea reports TEXMFVAR='$(kpsewhich -var-value TEXMFVAR)', not ENV TEXMFVAR='${TEXMFVAR}'." >&2; \
+        exit 1; \
+    fi; \
+    if [ -w /opt/TinyTeX ] || [ -w /opt/TinyTeX/tlpkg/texlive.tlpdb ] || [ -w /opt/TinyTeX/texmf-dist ]; then \
+        echo "FATAL: appuser can write /opt/TinyTeX, so tlmgr or Quarto's latex-auto-install could change it at runtime." >&2; \
+        exit 1; \
+    fi; \
+    SMOKE="$(mktemp -d)"; \
+    printf '%s\n' \
+        '---' \
+        'title: "DAAF TinyTeX smoke test"' \
+        'lang: en-US' \
+        'pdf-standard: ua-2' \
+        'format:' \
+        '  pdf:' \
+        '    latex-auto-install: false' \
+        '---' \
+        '' \
+        '::: {.callout-note}' \
+        'A callout box.' \
+        ':::' \
+        '' \
+        'Struck ~~text~~, [highlighted text]{.mark}, a footnote[^1] and <https://quarto.org>.' \
+        '' \
+        '[^1]: Footnote text.' \
+        > "${SMOKE}/smoke.qmd"; \
+    if ! ( cd "${SMOKE}" \
+           && TEXMFVAR="${SMOKE}/cache/texmf-var" XDG_CACHE_HOME="${SMOKE}/cache" \
+              XDG_DATA_HOME="${SMOKE}/data" XDG_CONFIG_HOME="${SMOKE}/config" \
+              quarto render smoke.qmd --to pdf ); then \
+        echo "FATAL: the TinyTeX smoke render failed (Quarto ${QUARTO_VERSION}, TinyTeX ${TINYTEX_VERSION}). Read the LaTeX error above: a missing .sty names a package to add to the TinyTeX package layer; an error at \\DocumentMetadata or from a KOMA class points at quarto-dev/quarto-cli#15143; a luaotfload cache error points at TEXMFVAR." >&2; \
+        if [ -f "${SMOKE}/smoke.log" ]; then tail -n 60 "${SMOKE}/smoke.log" >&2; fi; \
+        rm -rf "${SMOKE}"; \
+        exit 1; \
+    fi; \
+    if [ "$(head -c 5 "${SMOKE}/smoke.pdf" 2>/dev/null || true)" != "%PDF-" ]; then \
+        echo "FATAL: quarto render exited 0 but ${SMOKE}/smoke.pdf is missing or not a PDF." >&2; \
+        rm -rf "${SMOKE}"; \
+        exit 1; \
+    fi; \
+    echo "TinyTeX smoke render OK: $(wc -c < "${SMOKE}/smoke.pdf") bytes of PDF as $(id -un)."; \
+    rm -rf "${SMOKE}"
+
 # Pillow version guard (security exception (2) in the banner): pillow 13.0.0
 # comes from a one-package override in the PDF reading stack block. A later
 # `uv pip install` without that override (a USER ADDITIONS line, for example)
@@ -1838,15 +2183,19 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # (inference; uv's issue #17999 shows a per-package exemption undone the same
 # way in project mode). This build-time assertion FAILS the build loudly
 # instead, like the Node floor assertion above. Read-only, so it runs as
-# appuser; it sits before the final trust check so that check stays the last
-# RUN. Remove it when exception (2) is retired (banner, RETIRING THEM).
+# appuser; it sits after the TinyTeX smoke render and before the final trust
+# check, so that check stays the last RUN. Remove it when exception (2) is
+# retired (banner, RETIRING THEM).
 RUN python3 -c 'import sys, PIL; v = PIL.__version__; sys.exit("ERROR: pillow is " + v + ", expected 13.0.0 (Dockerfile security exception (2)): a later uv pip install resolved it again; repeat --exclude-newer-package pillow=2026-10-17T00:00:00Z on that line, or pick a version of the added package that accepts Pillow 13") if v != "13.0.0" else print("pillow " + v + " is installed (security exception (2))")'
 
 # Final eMudhra trust check: the same call as at the end of the Python stack,
-# repeated as the build's last RUN so no later layer (R, Quarto, code-server,
-# nodejs, Claude Code, USER ADDITIONS) can bring G3 back unnoticed. Read-only,
-# so it runs as appuser.
-RUN daaf-check-distrusted-roots "$(python3 -c 'import certifi; print(certifi.where())')"
+# repeated as the build's last RUN so no later layer (R, Quarto, TinyTeX,
+# code-server, nodejs, Claude Code, USER ADDITIONS) can bring G3 back
+# unnoticed. It also scans TinyTeX's tlmgr CA file, which the TinyTeX layer
+# replaced with a symlink to the system bundle: if a later change put the
+# shipped Mozilla list (with G3) back, this check fails. Read-only, so it runs
+# as appuser.
+RUN daaf-check-distrusted-roots "$(python3 -c 'import certifi; print(certifi.where())')" /opt/TinyTeX/tlpkg/installer/curl/curl-ca-bundle.crt
 
 # Install the DAAF entrypoint wrapper. It best-effort auto-starts the provider
 # shim (opt-in via DAAF_PROVIDER_SHIM) then execs CMD. Boot-safe: never fatal,

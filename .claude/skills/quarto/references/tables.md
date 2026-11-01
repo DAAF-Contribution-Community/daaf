@@ -131,6 +131,55 @@ df |>
   )
 ```
 
+### kableExtra in LaTeX PDF
+
+kableExtra renders in a LaTeX PDF (`format: pdf`), including `booktabs` and
+`latex_options`. For a numbered, cross-referenceable table, put the label and
+caption on the chunk and leave `caption =` out of `kbl()`:
+
+````markdown
+```{r}
+#| label: tbl-cars
+#| tbl-cap: "Fuel economy by car"
+#| echo: false
+
+library(kableExtra)
+kbl(head(mtcars[, 1:4]), booktabs = TRUE) |>
+  kable_styling(latex_options = c("striped", "hold_position"))
+```
+
+See @tbl-cars.
+````
+
+Leave `format =` out of `kbl()` in a Quarto chunk, so knitr picks the format of
+the output being rendered. A hard-coded `kbl(format = "html")` stops a LaTeX
+PDF render (exit 1, no PDF written) with:
+
+```
+Error: Functions that produce HTML output found in document targeting pdf output.
+```
+
+The `prefer-html: true` option that Quarto suggests next is no fix: the same
+message says "the HTML output will not be visible in non-HTML formats".
+
+Rendered with Quarto 1.10.18, this prints no warning, captions the table
+"Table 1: Fuel economy by car" and resolves `@tbl-cars` to "Table 1". The two
+other forms both print Quarto's warning:
+
+```
+WARNING (.../main.lua:18332) Raw LaTeX table found with non-tbl label: tab:tbl-cars
+Won't be able to cross-reference this table using Quarto's native crossref system.
+```
+
+- `caption =` in `kbl()` with a `tbl-` label: the table renders, but the numbers
+  disagree: in a one-table document its caption reads "Table 2" while
+  `@tbl-cars` reads "Table 1".
+- `caption =` in `kbl()` with no label: the table renders with its caption
+  (the warning names `tab:unnamed-chunk-1`), and it cannot be cross-referenced.
+
+kableExtra does not work in a Typst PDF: its HTML output stops the render, and
+a LaTeX-format table is silently left out (see "Choosing a Table Method").
+
 ## gt Tables
 
 The gt package produces publication-quality tables with a grammar-of-tables
@@ -294,7 +343,8 @@ df |>
 | Quick data display | `knitr::kable()` |
 | Styled HTML tables | `kableExtra` |
 | Publication-quality | `gt` |
-| PDF output | `knitr::kable()` or `gt` (kableExtra has PDF limitations) |
+| LaTeX PDF (`format: pdf`) | Any method (`gt` renders in both PDF paths). kableExtra renders without a label; for a clean caption and cross-reference give it a `tbl-` label and `tbl-cap` with no `caption =` and no `format =` in `kbl()` (see "kableExtra in LaTeX PDF") |
+| Typst PDF (`format: typst`) | `gt`, or `knitr::kable()` with no `format =`. Not kableExtra: `kbl()` and its styling functions produce HTML there, which stops a Typst render with "Functions that produce HTML output found in document targeting typst output". A table hard-coded to `format = "latex"` (from `kbl()` or `knitr::kable()`) is worse: the render exits 0 with the caption in the PDF but the table silently dropped, with no warning (Quarto 1.10.18) |
 | Cross-referenced | Any method + `tbl-` label + `tbl-cap` |
 
 For DAAF Stage 9 notebooks, do not add a `knitr::kable()` table. The canonical
@@ -309,5 +359,5 @@ created in the notebook.
 2. **Use `tbl-` prefix on labels** -- cross-references require it
 3. **Use the canonical Stage 9 preview unchanged** -- `arrow::read_parquet()` + `dplyr::glimpse()` + `head()`; do not add `kable()`, `gt()`, or formatting code there
 4. **Use gt for reports or executed Stage 8 outputs** -- its formatting capabilities justify the verbosity
-5. **Test PDF output** if targeting PDF -- some kableExtra features are HTML-only
+5. **Test PDF output** if targeting PDF -- kableExtra renders in a LaTeX PDF (`format: pdf`) but not in a Typst PDF (see "Choosing a Table Method")
 6. **Format numbers consistently** -- use `digits` in kable or `fmt_number` in gt outside Stage 9 preview chunks

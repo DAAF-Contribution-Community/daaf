@@ -92,7 +92,9 @@ df |>
 ```
 ````
 
-The gt table renders as HTML in HTML output and as LaTeX in PDF output.
+The gt table renders as HTML in HTML output and as a table in both PDF paths,
+LaTeX (`format: pdf`) and Typst (`format: typst`), with its title, formatted
+values, "Table 1:" caption and resolved `@tbl-` cross-reference in each.
 
 ### Cross-Referencing gt Tables
 
@@ -107,6 +109,19 @@ option sets the caption visible in the rendered document.
 
 kableExtra is often preferred for simple tables in Quarto because of its lighter
 weight and tight integration with knitr's rendering pipeline.
+
+**Output format.** The `format = "html"` examples below are for HTML output
+only, and `bootstrap_options`, `scroll_box()` and pixel widths are HTML
+features. In a Quarto chunk, leave `format =` out of `kbl()` so knitr picks the
+format of the output being rendered: a hard-coded `format = "html"` stops a
+LaTeX PDF render (no PDF is written) with "Error: Functions that produce HTML
+output found in document targeting pdf output." kableExtra does not work in a
+Typst PDF (`format: typst`); use gt or `knitr::kable()` with no `format =`
+there (the quarto skill's `references/tables.md` § Choosing a Table Method has
+the details). For
+the chunk label and caption form that numbers a
+kableExtra table correctly in a LaTeX PDF, see the quarto skill's
+`references/tables.md` § kableExtra in LaTeX PDF.
 
 ### Basic kableExtra Table
 
@@ -172,6 +187,9 @@ df |>
 
 ### kableExtra in Quarto Chunks
 
+No `format =` and no `caption =` in `kbl()`: the chunk options carry the label
+and caption, and knitr picks HTML or LaTeX to match the output.
+
 ````
 ```{r}
 #| label: tbl-summary
@@ -180,16 +198,20 @@ df |>
 library(kableExtra)
 
 summary_df |>
-  kbl(format = "html", digits = 2) |>
-  kable_styling(bootstrap_options = c("striped", "condensed"))
+  kbl(digits = 2, booktabs = TRUE) |>
+  kable_styling()
 ```
 ````
+
+Format-specific options can still go in `kable_styling()`:
+`bootstrap_options` apply to HTML output, `latex_options` (for example
+`c("striped", "hold_position")`) to a LaTeX PDF.
 
 ## kableExtra vs gt: When to Choose
 
 | Scenario | Recommended | Rationale |
 |----------|-------------|-----------|
-| Simple summary table in Quarto | kableExtra | Lighter, faster rendering |
+| Simple summary table in Quarto | kableExtra (HTML or LaTeX PDF; for Typst PDF use gt or `knitr::kable()`) | Lighter, faster rendering |
 | Complex formatting (color scales, conditional styling) | gt | More formatting power |
 | Regression table | modelsummary (either backend) | Purpose-built |
 | Journal-ready table | gt | Better LaTeX control |

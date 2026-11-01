@@ -221,46 +221,161 @@ cache as a substitute for validating their current file references.
 
 ## PDF Rendering Issues
 
-### No LaTeX Installed
+### LaTeX in the DAAF Image
+
+The image includes LaTeX: a pinned TinyTeX bundle (TeX Live 2026) at
+`/opt/TinyTeX`, with `lualatex`, `xelatex`, `pdflatex` and `tlmgr` on the PATH
+through links in `/usr/local/bin`. `quarto check` (Quarto 1.10.18) reports:
 
 ```
-Error: LaTeX failed to compile document.pdf
+[✓] Checking LaTeX....................OK
+      Using: Installation From Path
+      Path: /usr/local/bin
+      Version: 2026
 ```
 
-Fix:
+Its tools section lists "TinyTeX: (external install)", which only means Quarto
+did not install it; that is expected.
 
-```bash
-quarto install tinytex
+The tree is owned by root and read-only for the user DAAF runs as, so nothing
+can be added to it at runtime. `tlmgr install` fails:
+
+```
+You don't have permission to change the installation in any way,
+specifically, the directory /opt/TinyTeX/tlpkg/ is not writable.
 ```
 
-Or use Typst instead (bundled with Quarto, no installation needed):
-
-```yaml
-format: typst
-```
+Do not try the other routes either: `quarto install tinytex`,
+`tinytex::install_tinytex()` and `tlmgr --usermode` are runtime installs,
+which DAAF policy forbids (CLAUDE.md § Runtime Package Installation) because
+the next rebuild silently reverts them. `quarto install tinytex` also puts an
+unpinned TeX Live in `~/.TinyTeX`, which Quarto then prefers over the image's
+tree.
 
 ### Missing LaTeX Packages
 
-TinyTeX auto-installs missing packages on first render. If this fails:
+The image carries the TinyTeX bundle plus the packages Quarto's LaTeX template
+loads for common features (`lang:`, strikeout, `.mark` highlight, natbib margin
+citations). Check for a package with `kpsewhich <package>.sty`: it prints the
+file's path, or nothing when the package is absent.
 
-```bash
-# Manual install
-quarto install tinytex --update-path
+Set `latex-auto-install: false` in every LaTeX document, or once in a Quarto
+project's `_quarto.yml`, which applies it to every document in the project
+(`quarto inspect` on a project document shows it resolved to `false`). There
+is no install-wide switch: Quarto 1.10.18 reads no environment variable or
+user-level setting for it and defaults to `true`. With `true`, Quarto tries
+`tlmgr update` and `tlmgr install` after a failed LaTeX run; on the read-only
+tree those cannot succeed, and an open upstream issue
+(quarto-dev/quarto-cli#14413) reports the resulting error as giving no
+context. With the setting, a missing package stops the render with the cause
+(here a document loading `tikz-cd`, which the image lacks; "automatic
+installed disabled" is Quarto's wording):
+
+```
+ERROR:
+compilation failed- missing packages (automatic installed disabled)
+LaTeX Error: File `tikz-cd.sty' not found.
 ```
 
-### Unicode Characters in PDF
+Fix: a Dockerfile change. The error names a `.sty` file, and the TeX Live
+package that holds it can have a different name (`tikz.sty` is in the package
+`pgf`), so look the file up on CTAN (ctan.org) to find the TeX Live package
+name before proposing the change. Never edit the Dockerfile on your own
+initiative: tell the user the document needs that package. Adding it means
+putting the name in the TinyTeX package list (`TT_PKGS`) in the Dockerfile's
+TinyTeX block and rebuilding (`bash rebuild_daaf.sh`, or `.\rebuild_daaf.ps1`
+on Windows, from the `daaf-docker` folder). The user decides, may ask you to
+make the edit, and runs the rebuild; `user_reference/04_extending_daaf.md`
+§ LaTeX Packages gives the user these steps. If the document needs nothing
+LaTeX-specific, `format: typst` renders it without the package.
 
-LaTeX may fail on Unicode characters. Fix with XeLaTeX:
+### First LaTeX Render Builds the Font Database
+
+The first LaTeX render in a newly created container (after a rebuild or an
+update) prints:
+
+```
+luaotfload | db : Font names database not found, generating new one.
+luaotfload | db : This can take several minutes; please be patient.
+```
+
+`lualatex` is building its font-name cache in `$TEXMFVAR`
+(`/home/appuser/.cache/texmf-var/`). That folder is in the container, not on
+one of DAAF's volumes, so each new container builds the cache again. It is not
+a hang: in the DAAF image it adds about a second to that first render, and
+later renders in the same container reuse the cache. Typst renders have no
+such step.
+
+### PDF Standard Not Validated
+
+`pdf-standard` is applied: a `lualatex` render with `pdf-standard: ua-2` is a
+tagged PDF 2.0. Quarto then prints:
+
+```
+WARN: PDF standard validation requested but verapdf is not installed.
+Install with: quarto install verapdf
+```
+
+The PDF is produced; only Quarto's post-render check against the standard is
+skipped. Do not follow the hint: `quarto install verapdf` is a runtime install,
+and adding veraPDF, with whatever it needs to run, is a Dockerfile change for
+the user to decide on. When a
+deliverable claims PDF/A or PDF/UA conformance, say that the standard was
+requested but not validated in the container.
+
+### kableExtra Tables in LaTeX PDF
+
+kableExtra renders in a LaTeX PDF. With `caption =` in `kbl()` and no `tbl-`
+label it prints "Raw LaTeX table found with non-tbl label" and cannot be
+cross-referenced; with a label and `caption =` the numbering goes wrong; with
+neither, it renders with no warning, no caption and no cross-reference. Put the
+label and `tbl-cap` on the chunk instead. A hard-coded `kbl(format = "html")` stops the
+render ("Functions that produce HTML output found in document targeting pdf
+output"), so leave `format =` out. See `./tables.md` § kableExtra in LaTeX PDF.
+
+### Unicode Characters in LaTeX PDF
+
+Accented Latin text (café, naïve) renders with the default engine (`lualatex`)
+and font (Latin Modern). Characters Latin Modern lacks do not: Greek,
+Cyrillic and CJK come out blank in the PDF and are missing from its text
+layer (`pdftotext` shows `�`), while the render exits 0 and Quarto prints no
+warning. The only trace is in the LaTeX log, which Quarto deletes unless the
+format sets `latex-clean: false`:
+
+```
+Missing character: There is no α (U+03B1) in font [lmroman10-regular]:+tlig;!
+```
+
+The cause is the font, so the fix is a font that covers the script.
+`fc-list :lang=<code> family` lists the system fonts (under
+`/usr/share/fonts`) that cover a language; it does not list the fonts inside
+the TinyTeX tree (`/opt/TinyTeX/texmf-dist/fonts/`), which `lualatex` can also
+use. Of the system fonts, DejaVu Serif and DejaVu Sans cover Greek and
+Cyrillic:
 
 ```yaml
 format:
   pdf:
-    pdf-engine: xelatex
+    mainfont: DejaVu Serif
 ```
+
+The image has no CJK font (`fc-list :lang=zh` prints nothing), so CJK text
+stays missing in either PDF path until a font is added in the Dockerfile and
+the image rebuilt. Check the rendered PDF whenever the text goes beyond Latin
+script.
+
+### Missing Glyphs in Typst PDF
+
+Typst reads Unicode text without extra configuration, and its default font
+(Libertinus Serif) covers Greek and Cyrillic. A character no available font
+covers renders as a missing-glyph box and may be lost from the PDF's text
+layer, with no warning (CJK text, for example: the DAAF image ships no CJK
+fonts). Check the rendered PDF when the text goes beyond Latin script.
 
 ### Long Tables Overflowing
 
-Tables wider than the page in PDF:
+Applies only when rendering through LaTeX (`latex_options` is a LaTeX
+setting). Tables wider than the page in PDF:
 
 ```r
 knitr::kable(df) |>
@@ -354,6 +469,27 @@ If you have R Markdown experience, watch for these:
 | `fig.width` | `fig-width` | Dots to hyphens |
 | `results = 'asis'` | `output: asis` | Different option name |
 
+## Markdown Syntax Changes (Quarto 1.9+)
+
+Quarto 1.9 updated Pandoc to 3.8.3 (1.10.18, the installed version, bundles
+Pandoc 3.10), and its changelog lists two changes that can surprise documents
+written for older versions, one in prose and one in YAML:
+
+- **Superscripts that open with a span may parse as inline footnotes** (Quarto
+  1.9 changelog, #13925): Pandoc 3.8.3 introduces `^[text]^` as inline-footnote
+  syntax, which can conflict with a superscript whose content starts with a
+  span, such as `^[text]{.class}^`. DAAF's probe on 1.10.18 did **not** reproduce this for the
+  one form it tried: `SUPA^[text]{.cls}^SUPB` rendered as
+  `SUPA<sup><span class="cls">text</span></sup>SUPB`, with no footnote (HTML
+  output only, observed 2026-10-05). Other forms and other output
+  formats were not probed, so check the rendered output when prose uses a
+  superscript that starts with `[`. The changelog's workaround is a zero-width
+  space between `^` and `[`. Stage 9 archive chunks are fenced code and are not
+  affected; this matters only in prose.
+- **`highlight-style` is deprecated in favor of `syntax-highlighting`.** The old
+  key still works (a 1.10.18 render that used it printed no deprecation
+  warning, observed 2026-10-05); prefer the new one in new documents.
+
 ## Rendering Fails Silently
 
 If `quarto render` exits without error but output looks wrong:
@@ -400,7 +536,8 @@ quarto render doc.qmd
 | Chunk options not working | Use `#|` syntax with hyphens, not dots |
 | YAML parse error | Check indentation (spaces, not tabs) |
 | Cross-ref not linking | Add `fig-`/`tbl-` prefix AND caption |
-| PDF won't render | `quarto install tinytex` or use `format: typst` |
+| LaTeX PDF won't render | Read the LaTeX error; a missing `.sty` is a Dockerfile change + rebuild that the user decides on (never on your own initiative), never `tlmgr install` or `quarto install tinytex`; keep `latex-auto-install: false`; `format: typst` if nothing LaTeX-specific is needed |
+| Non-Latin text blank in LaTeX PDF | Set `mainfont` to a font covering the script (DejaVu Serif for Greek, Cyrillic) |
 | Cache stale | Delete `_cache/` or `--cache-refresh` |
 | Wrong R version | Check `quarto check knitr` |
 | Figures missing | Check paths relative to .qmd location |

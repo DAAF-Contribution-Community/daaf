@@ -3,7 +3,7 @@
 ## What You Need
 
 Quarto requires:
-- **Quarto CLI** (1.7.29 in DAAF container) -- the rendering engine
+- **Quarto CLI** (1.10.18, installed in the DAAF image) -- the rendering engine
 - **R** (4.5.3) -- the computation language
 - **knitr** (1.51) -- the R execution engine Quarto invokes
 - **rmarkdown** (2.31) -- provides knitr infrastructure
@@ -14,7 +14,7 @@ The `quarto` R package is NOT required. The CLI calls knitr directly.
 
 ```bash
 quarto --version
-# 1.7.29
+# 1.10.18
 
 quarto check knitr
 # Checks R, knitr, rmarkdown, and renders a test document
@@ -83,7 +83,7 @@ Common frontmatter fields:
 | `title` | Document title | `"School Poverty Analysis"` |
 | `author` | Author name(s) | `"Research Team"` |
 | `date` | Document date | `today`, `"2026-05-08"`, `last-modified` |
-| `format` | Output format | `html`, `pdf`, `docx` |
+| `format` | Output format | `html`, `pdf` (LaTeX), `typst` (PDF), `docx` |
 | `execute` | Global chunk options | `echo: false` |
 
 ### 2. Markdown Content
@@ -178,19 +178,31 @@ format: html
 ---
 ```
 
-### PDF (requires LaTeX)
+### PDF
+
+Two PDF paths work in the DAAF image. Through LaTeX (`lualatex`, from the
+image's TinyTeX):
 
 ```yaml
 ---
 format: pdf
+latex-auto-install: false
 ---
 ```
 
-Requires TinyTeX or a full LaTeX distribution. Install TinyTeX:
+Through Typst, which is bundled with Quarto:
 
-```bash
-quarto install tinytex
+```yaml
+---
+format: typst
+---
 ```
+
+LaTeX (`format: pdf`) is the default PDF path in DAAF, and the only one for
+journal or LaTeX templates, kableExtra tables and LaTeX-only options; use Typst
+when the user asks for it or for a quick, simple draft PDF. Keep `latex-auto-install: false` in
+LaTeX documents: packages cannot be installed at runtime, so a missing one is a
+Dockerfile change and a rebuild. See `./format.md` § PDF Format.
 
 ### Word
 
@@ -206,7 +218,7 @@ format: docx
 ---
 format:
   html: default
-  pdf: default
+  typst: default
   docx: default
 ---
 ```
@@ -214,7 +226,7 @@ format:
 Render a specific format:
 
 ```bash
-quarto render doc.qmd --to pdf
+quarto render doc.qmd --to typst
 ```
 
 ## Rendering from the Command Line
@@ -227,7 +239,8 @@ quarto render analysis.qmd
 
 # Override format
 quarto render analysis.qmd --to html
-quarto render analysis.qmd --to pdf
+quarto render analysis.qmd --to pdf     # PDF via LaTeX (lualatex)
+quarto render analysis.qmd --to typst   # PDF via Typst
 quarto render analysis.qmd --to docx
 ```
 

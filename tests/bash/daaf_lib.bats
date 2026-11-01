@@ -1200,15 +1200,16 @@ EOF
     assert_success
     [ -z "${output}" ]
 
-    # Every apt layer calls the helper: snapshot layer x2 branches + 7 install
+    # Every apt layer calls the helper: snapshot layer x2 branches + 8 install
     # layers (system deps, universe self-heal, geospatial + tesseract-ocr [PDF
     # OCR shares this layer since 2026-10-14], DAAF_DEV shellcheck/bats, R
-    # runtime .deb, R system libs, nodejs) = 9. The helper's own COPY line is
+    # runtime .deb, R system libs, TinyTeX xz-utils [since 2026-11-01],
+    # nodejs) = 10. The helper's own COPY line is
     # excluded, and the commented USER ADDITIONS example is excluded by matching
     # active lines only. An exact count makes a dropped call site fail this test.
     run bash -c "grep -E '^[^#]*daaf-apt-update( |;|\$)' '${REPO_ROOT}/Dockerfile' | grep -vc '^COPY '"
     assert_success
-    [ "${output}" -eq 9 ]
+    [ "${output}" -eq 10 ]
 }
 
 @test "Dockerfile banner states both frozen dates and names an apt snapshot that runs ahead" {
