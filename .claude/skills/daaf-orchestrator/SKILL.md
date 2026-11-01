@@ -582,8 +582,9 @@ Disambiguation rules:
   previous bullet). Mention the built-in alternative only when it genuinely
   serves the user better
 - Bundled-skill visibility can be tuned via the `disableBundledSkills` and
-  `skillOverrides` settings; DAAF currently leaves bundled skills enabled
-  (evaluation deferred — see the 2026-07-02 upgrade review addendum)
+  `skillOverrides` settings; DAAF turns off the bundled `claude-api` skill
+  (`skillOverrides` in `.claude/settings.json`) and leaves the other bundled
+  skills enabled; it has not evaluated disabling them
 
 ### Universal Prompt Requirements
 
@@ -738,6 +739,16 @@ When a subagent returns findings:
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
 
 **Claim adjudication (applies across extraction and relay, steps 3-5):** For load-bearing claims in a return — especially negative capability claims ("X is unavailable/impossible/unsupported") and completion counts — verify the stated evidence is present (a quoted probe or command output). If it is absent, treat the claim as unverified inference: verify it directly, re-dispatch with an explicit evidence requirement, or carry it forward explicitly labeled as unverified. When relaying an unverified subagent claim to the user, mark its provenance (e.g., "the specialist reports, though I have not verified...") rather than passing it on with orchestrator authority attached.
+
+### Parallel Dispatch Guideline
+
+By default, keep at most **5 subagents in flight at once**, in every mode. Parallel dispatch is several Agent calls in one response message, so in practice this caps the Agent calls per message (and, when dispatches run in the background, the number dispatched but not yet returned). When more than 5 independent tasks are ready — source deep-dives, code reviews, Data Onboarding column batches, Framework Development review waves — split them into sub-batches of 5 or fewer and dispatch them one after another. The wave barrier below covers the whole set, not each sub-batch: between sub-batches, only check and persist the returns, tell the user how many are back, and correct any dispatch-prompt error they reveal (a departure from the task as approved, such as a bad path or a missing instruction; never a change that widens the task) before sending the next sub-batch; gate decisions and synthesis wait until every sub-batch has returned.
+
+**Why a limit.** Every return lands in this context and has to be checked and persisted as it arrives, so a smaller batch keeps each turn's intake manageable, and a mistake shared by every dispatch (a bad path, a missing instruction) surfaces after 5 returns instead of after all of them. A larger batch also spends the user's plan usage faster and makes a rate-limit failure partway through more likely.
+
+**The user can override it.** It is a default, not a hard rule. When a larger batch would clearly help (six independent source deep-dives, say, where a 5 + 1 split costs a whole extra round), say what it gains and costs and let the user decide. Go above 5 only with the user's explicit approval, at the size and for the span they approved (one wave, one stage, or the rest of the session; an approval does not carry over a session restart). Record it where the mode keeps its decisions (STATE.md or SESSION_NOTES.md); in a mode that keeps neither, the user's reply in the conversation is the record. The override does not touch plan structure: plans keep waves to at most 5 tasks, and a 6+-task wave stays a plan-checker blocker (`agent_reference/SCOPE_POLICY.md`).
+
+**Nothing in DAAF enforces the number.** No hook counts dispatches; the limit holds because the orchestrator follows it and plans are checked against it. Claude Code has its own, higher ceiling: the Agent tool refuses to start another subagent once 20 are running in a session (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, which DAAF leaves at its default of 20; Claude Code 2.1.217 or later, per the Claude Code environment-variables docs, checked 2026-11-01), so in an approved batch above 20 the extra dispatches cannot start.
 
 ### Wave Barrier Discipline (Async Dispatch)
 

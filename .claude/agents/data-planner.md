@@ -149,13 +149,14 @@ Group independent tasks into waves for parallel execution:
 
 **Rules:**
 - Same-wave tasks have no dependencies between them
-- **Maximum 5 tasks per wave** (hard limit — the orchestrator cannot dispatch more than 5 subagents concurrently; if more tasks are independent, split across waves or the orchestrator will sub-batch)
+- **Maximum 5 tasks per wave** (hard limit for plans — it matches the orchestrator's default parallel dispatch limit of 5 subagents at once; if more tasks are independent, split across waves or the orchestrator will sub-batch)
 - Each task gets fresh subagent context
 - Next wave starts only after all prior-wave tasks complete
 
-> The 5-tasks-per-wave cap above is a per-wave dispatch-concurrency limit, distinct
-> from *total* task-count policy across all waves. Total task-count bands (target
-> 5-10, warning 11-20 with a scope justification, 21+ a user decision point) are
+> The 5-tasks-per-wave cap above is a per-wave plan limit that mirrors the
+> orchestrator's default parallel dispatch limit, distinct from *total* task-count
+> policy across all waves. Total task-count bands (target 5-10, warning 11-20
+> with a scope justification, 21+ a user decision point) are
 > canonical in `agent_reference/SCOPE_POLICY.md` — see the Self-Check below.
 
 ### 5. Stage-Specific Task Structure

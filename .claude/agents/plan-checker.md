@@ -366,7 +366,7 @@ Evaluate plan scope against context budget thresholds:
 > Plan.md), do not raise the count objection at all.
 
 **Red flags:**
-- Wave with 6+ parallel tasks (violates hard max of 5 concurrent subagents — BLOCKER)
+- Wave with 6+ parallel tasks (exceeds the 5-task wave limit, which matches the orchestrator's default parallel dispatch limit — BLOCKER)
 - Single task with 5+ transformation steps (should split)
 - Analysis crammed into one task (fetch + clean + join + aggregate)
 - Overly granular (20+ tiny tasks for simple analysis)

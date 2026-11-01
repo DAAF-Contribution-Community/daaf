@@ -108,7 +108,10 @@ Restated here for one-stop reading. These are existing rules, not new policy.
 | Transformations/task | 2-3 | 4 | 5+ |
 | Total context est. | ~50% | ~70% | 80%+ |
 
-**Max 5 tasks/wave is a hard dispatch-concurrency limit** — the orchestrator cannot
-dispatch more than 5 subagents concurrently. A wave with 6+ parallel tasks is a
-blocker (independent tasks beyond 5 split across waves, or the orchestrator
-sub-batches). This limit is independent of the total-task-count bands above.
+**Max 5 tasks/wave matches the orchestrator's default parallel dispatch limit**
+(`.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination >
+"Parallel Dispatch Guideline"), so plans are written to it. A wave with 6+
+parallel tasks is a blocker (independent tasks beyond 5 split across waves, or
+the orchestrator sub-batches). A user's run-time approval of a larger dispatch
+batch does not change plan waves. This limit is independent of the
+total-task-count bands above.

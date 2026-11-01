@@ -37,7 +37,7 @@ Findings Synthesis
     └─ Present to user with escalation option
 ```
 
-**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source using `search-agent` subagent type (read-only is sufficient for exploration).
+**Stage 2-3 can run in parallel** when exploring multiple sources — dispatch one subagent per source using `search-agent` subagent type (read-only is sufficient for exploration). Parallel dispatches follow the default of at most 5 subagents in flight (`SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline"), more only with the user's explicit approval.
 
 > **Wave barrier discipline (async dispatch).** These subagents run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as status-only: do not begin the Multi-Source Synthesis Protocol below, present findings, or propose escalation until EVERY dispatched source subagent has returned. Synthesize once, over the complete set of returns — a source that returns early or fails still counts as a completion to fold into that single synthesis, not as a trigger to start summarizing before the rest arrive. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
