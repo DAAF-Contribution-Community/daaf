@@ -1,0 +1,5 @@
+Synthetic Contract Fixture Two
+The invented policy reached some imaginary districts in 2015 and others in 2018, and the study compares them in an event study.
+The policy raised reading scores by 0.15 standard deviations (standard error 0.06) across 1,830 invented pupils.
+The two pre-period coefficients are small, and adoption was voluntary for every imaginary district.
+

@@ -151,6 +151,7 @@ The AAAS communication framework captures this as **Goal → Audience → Messag
 3. **Translate, don't simplify.** Plain language is not dumbing down. It is precise communication calibrated to the reader's vocabulary. A well-translated finding preserves its meaning while making it accessible.
 
 4. **Show uncertainty honestly.** Hedging is not weakness — it is intellectual honesty. But hedge appropriately: too much hedging obscures the finding; too little overstates the evidence. Match your language to your inferential capacity.
+   For wording how sure a body of research evidence is (high / moderate / low / very low certainty), use the phrase table in the `literature-review` skill (`references/certainty-language.yaml`); its words differ from the hedging scale in `plain-language.md`.
 
 5. **Every deliverable gets reviewed.** Use the 10-point communication checklist before sharing anything. Communication errors — jargon leakage, causal overclaiming, missing the "so what" — are as consequential as analytical errors.
 

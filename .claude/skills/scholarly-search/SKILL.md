@@ -85,6 +85,13 @@ destination whose real path is outside `/daaf` or under `/tmp`, `/var/tmp`,
 `DAAF_FETCH_CONTEXT="<project or task>"` on the call to label the MANIFEST
 row's `requesting_context`.
 
+**Records file (tool 1.7.0).** The open list commands (`find`, `openalex`,
+`eric`, `s2-bulk`, `cites`, `refs`, `similar`, `work`) also write
+`<base>.records.json` (schema `scholar-records-v1`): every fused group, also
+those beyond `--limit`, as data for `lit_corpus`, hashed in the row
+(`records_artifact`, `records_sha256`). A restricted call never gets one.
+Read the digest yourself; tools read the records file.
+
 ## Which command?
 
 ```
@@ -99,6 +106,7 @@ What do you need?
 ├─ A legal open-access copy + its license ........ oa <DOI> [<DOI> …] DEST
 ├─ Who built on this paper? (forward) ............ cites <ID> DEST [--years 2020-]
 ├─ What does this paper rest on? (backward) ...... refs <ID> DEST
+├─ How was it cited? (S2 sentences) .............. cites|refs <ID> DEST --s2-context
 ├─ More papers like this one ..................... similar <ID> DEST
 ├─ A specific claim stated inside papers ......... snippets "<claim in plain words>" DEST
 ├─ Exhaustive boolean pull (not ranked) .......... s2-bulk '"phrase" + term -term' DEST
@@ -394,6 +402,7 @@ still means "read the matched title in the digest once against the citation").
 | `elicit-usage` · `elicit-search "<q>"` · `elicit-report "<q>" --confirm-spend --max-search-papers N --max-extract-papers M` · `elicit-resume <sessionId>` | Needs `ELICIT_API_KEY` (exit 10). No personal data, names included, in any query (Terms §2). Reports are **paid** and created exactly once; the sessionId is recorded before polling; exit 13 = not finished yet, so re-attach with `elicit-resume` and **never re-run `elicit-report`** (a second create for a question with unfinished work or an uncertain create in DEST is refused unless `--new-session`; any create answer short of a direct 429/4xx without a valid sessionId, any redirect included, counts as uncertain; close an uncertain create with `elicit-resume <id> DEST --for-question "<q>"`, `elicit.md`). Reports are AI-generated: disclose it. Bracket paid calls with `elicit-usage` (per-call cost undocumented; the counter lags by hours, so re-read later). `elicit-search` is sent once (it may draw quota); `find --backends` names are de-duplicated, so `--backends elicit,elicit` (or `elicit` listed twice in any form) sends one Elicit search. Everything in `restricted/`. Read `references/elicit.md` before the first report. |
 | `cites <ID> [--sort] [--years] [--limit 25]` | OpenAlex `cites:` filter ($0.0001). |
 | `refs <ID> [--limit 25]` | OpenAlex's *matched* references; incomplete and sometimes wrong — check odd entries against the paper. Sorted by citations, method classics lead; `--sort publication_year:desc` reaches topical foundations. |
+| `cites` / `refs` `--s2-context` | Opt-in (tool 1.7.0; 1.8.0 adds the `elided` status and the `cites` sort warning): one extra Semantic Scholar call (`/citations` or `/references`, by the seed's DOI; one retry on 429) adds, per paper, up to 3 sentences in which the citation occurs and S2's own "influential" label (not a quality signal), in the digest and the records file; on `refs` also S2's intents (`background`, `methodology`, `result`). On `cites` S2 sent no intents on any of 300 rows (observed 2026-11-01). S2 has all of these only where it holds the citing paper's full text, so a paper without them is unknown, not "not influential". No intent means disagreement: write "disputes" or "contradicts" only from a quoted passage of the citing paper. **Use `cites … --sort publication_date:desc --s2-context`:** S2 lists the newest citing papers first, so under the default sort 0 of 100 matched in a 2026-11-01 test, and the tool records a warning (`context_warning`). `context_status: elided` = the publisher withheld the list from S2: no sentences exist and absence means nothing. A 429 after the retry, a busy lane or an error keeps the OpenAlex list (exit unchanged, stderr NOTE, row `context_status`). It gives a sample of sentences, not coverage. Adds Semantic Scholar's license class (`cc-by-nc`, attribution required). Details: `references/semantic-scholar.md`. |
 | `similar <ID> [--years] [--limit 20]` | OpenAlex semantic search seeded with title + abstract; the seed and its versions excluded. Weaker without an abstract (it says so). |
 | `snippets "<text>" [--limit 15]` | Semantic Scholar ~500-word passages with section names, OA papers and abstracts only. Phrase it as the statement you want, without guessing numbers. **Run `verify` on a passage's source before citing**: year and venue are not returned, and S2 sometimes attributes quoted text to the citing paper. |
 | `s2-bulk "<query>" [--limit 50]` | Semantic Scholar `/paper/search/bulk`: boolean syntax (`"phrase"`, `+`, `\|`, `-`), up to 1,000 per call, **not relevance-ranked**. For exhaustive pulls, not triage. |
@@ -496,7 +505,7 @@ matrix is in `references/licensing.md`; `backends` prints attribution lines.
 | File | Read when |
 |------|-----------|
 | `references/openalex.md` | Filters, semantic-search limits, costs, headers, full text |
-| `references/semantic-scholar.md` | Throttling, snippets, bulk search, DOI gaps |
+| `references/semantic-scholar.md` | Throttling, snippets, bulk search, DOI gaps, citation contexts (`--s2-context`) |
 | `references/eric.md` | Solr query syntax, filters, full-text PDFs |
 | `references/crossref.md` | Verification fallback, retraction notices, pools |
 | `references/unpaywall.md` | OA fallback, the contact-email requirement |

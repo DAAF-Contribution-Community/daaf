@@ -1,0 +1,8 @@
+{
+ "command": "cites",
+ "query": "10.9999/fixture.0001",
+ "parameters": {},
+ "requests": [],
+ "timestamp": "2026-10-31T00:00:00Z",
+ "tool_version": "synthetic (lit_corpus demo)"
+}

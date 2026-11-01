@@ -11,6 +11,11 @@
 #   <ISO-ts>_scholar_<command>_<slug>_<hash>.json   every API request + response
 #                                                   (URL + params, never headers)
 #   <same basename>.md                              fenced, scrubbed digest
+#   <same basename>.records.json                    (1.7.0; open list commands
+#                                                   only) the fused result as
+#                                                   data, schema
+#                                                   scholar-records-v1 (see
+#                                                   § RECORDS_SIDECAR)
 #   <same basename>.xml                             (fulltext only) GROBID TEI
 #   MANIFEST.jsonl                                  one row for every attempt
 #                                                   with a valid DEST_DIR,
@@ -59,6 +64,13 @@
 #                                 resolved, no title checked: not citable)
 #   cites     <ID> DEST           papers citing this one (forward snowball)
 #   refs      <ID> DEST           papers this one cites (backward snowball)
+#             [--s2-context]      (cites, refs; 1.7.0) one extra Semantic
+#                                 Scholar call adding citation sentences,
+#                                 intents (seen on refs only) and S2's
+#                                 influential label where S2 has them; a 429
+#                                 after one retry keeps the OpenAlex result
+#                                 (context_status in the row; `elided` when
+#                                 the publisher withheld the list, 1.8.0)
 #   similar   <ID> DEST           more-like-this (OpenAlex semantic, seeded with
 #                                 the paper's title + abstract)
 #   fulltext  <ID> DEST           OpenAlex cached full text (GROBID TEI -> text)
@@ -286,7 +298,55 @@ from scholar_backends._common import (  # noqa: E402
 # busy gate on a retry has no request entry, so its `rate_gate_skips` entry
 # carries the list instead. A timeout or network error is never retried, so
 # every retried attempt has an HTTP status. Retry behavior is unchanged.
-TOOL_VERSION = "1.6.2-daaf"
+# 1.7.0 (2026-10-31, Lit Review S4 D2; user decisions 2026-10-30, 2026-10-31):
+# (a) the records file. Every open list command (find, openalex, eric,
+# s2-bulk, cites, refs, similar, work) also writes <base>.records.json,
+# schema scholar-records-v1: every fused group (also those beyond --limit,
+# with `limit`, `groups_total`, `groups_shown` and a per-group `shown`
+# recorded), its fusion rank, score, found_by, primary record and members,
+# as data for lit_corpus (which must not parse the Markdown digest). It is
+# written after the raw log (it names the raw log's sha256) and before the
+# digest, never for a restricted call and never on failure; its strings are
+# injection-scrubbed, secret-redacted and contact-scrubbed. New row fields:
+# records_artifact, records_bytes, records_sha256, records_schema,
+# records_redaction_count (null/absent for other commands); stdout's digest
+# line names the file. (b) `cites|refs --s2-context`: opt-in, one extra
+# Semantic Scholar /citations or /references call (one retry on 429/5xx),
+# matched to the OpenAlex list by DOI, then title, then title stem plus
+# first-author surname; per paper the digest and records file carry up to 3
+# citation sentences, the intents and the influential flag, omitted (not
+# null-filled) when S2 has none. On 429 / a busy lane / an error the OpenAlex
+# result stands (exit unchanged) with a stderr NOTE and the row's
+# context_status. cites/refs rows gain context_status (`not_requested`
+# without the flag) and, with it, context_backend, context_rows,
+# context_matched, context_unmatched, context_groups, context_more,
+# context_limit (context_note when not ok); backends_selected adds
+# semantic_scholar and license_class becomes cc-by-nc. cites/refs records
+# files carry the seed's ids (`seed`). Exit codes are unchanged.
+# 1.8.0 (2026-11-01, Lit Review S4 fix round F3; the coverage probe in
+# api-notes.md): --s2-context reports what the probe found it hid. (a) A 200 with
+# no rows and S2's publisher-elision notice is context_status `elided` (new
+# value), with a plain digest sentence (no sentences exist; absence means
+# nothing; retrying will not help) and its own stderr NOTE, never `ok` with
+# zero rows. (b) `cites --s2-context` under any sort other than
+# publication_date:desc keeps the sort and still asks S2, but records
+# context_warning (row and records file, when set), a digest "Warning:" line
+# and a stderr NOTE: S2 lists the newest citing papers first, so few of them
+# are in a list sorted otherwise. (c) New row and records-file field
+# context_unmatched_with_text: S2 rows with a sentence that matched no paper
+# (left out). (d) The digest header opens with "contexts found for N of M
+# listed paper(s)", and every influential flag is labelled as Semantic
+# Scholar's own (not a quality signal). Help and docs no longer say `cites`
+# adds intents (none were seen on /citations). Exit codes are unchanged.
+# Review fixes in 1.8.0 (2026-11-01): an elision notice counts only when it
+# names the list asked for (references or citations); an elided `cites` list
+# gets no sort warning; the digest says the OpenAlex list is unaffected,
+# gives a plain reason when contexts are not available, and the sort warning
+# says how to get more sentences. `--sort publication_year:desc` counts as
+# newest-first like publication_date:desc (no context_warning). The stderr
+# NOTE for contexts that are not available gives the same plain reason as the
+# digest ("Semantic Scholar was busy (rate-limited)"), not the raw status.
+TOOL_VERSION = "1.8.0-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -362,6 +422,14 @@ BACKOFF_CAP = 30.0
 RETRY_STATUSES = (429, 500, 502, 503, 504)
 MAX_ATTEMPTS = 6
 RRF_K = 60                     # standard reciprocal-rank-fusion constant
+# 1.7.0 records file (§ RECORDS_SIDECAR). The command list matches lit_corpus's
+# LIST_COMMANDS; FUSION_DEDUP names fuse()'s join rules in its order.
+RECORDS_SCHEMA = "scholar-records-v1"
+RECORDS_SUFFIX = ".records.json"
+RECORDS_COMMANDS = ("find", "openalex", "eric", "s2-bulk", "cites", "refs", "similar", "work")
+FUSION_VERSION = "fuse-v1"
+FUSION_DEDUP = ("doi", "norm_title>12", "stem+first_surname")
+CONTEXT_SHOWN_MAX = 3          # citation sentences kept per paper (--s2-context)
 # Version-sibling title match (fulltext's other-version lookup, the ERIC `oa`
 # leg). NOT the citation gate: `verify` grades with VERIFY_CONFIDENT_MIN /
 # VERIFY_MISMATCH_BELOW (scholar_backends/_common.py § VERIFY_CUTOFFS,
@@ -1230,23 +1298,345 @@ def render_entry(n, rec, extra_tag="", abstract_limit=None):
     return lines, short
 
 
-def list_command(records, total, title, backend_note="", notes=None):
+def list_command(records, total, title, backend_note="", notes=None, leg="list", all_records=None, limit=None,
+                 context=None):
     # Versions of one paper (same DOI or normalized title) collapse into one
     # entry, keeping the backend's order of first appearance.
+    # 1.7.0: `leg` names the backend for the records file; `all_records`
+    #   (refs) is the uncut list the records file holds when the digest shows
+    #   only `records`, its first --limit records (the groups of `records` are
+    #   then exactly the first groups of `all_records`: a record can only join
+    #   a group opened by an earlier record); `context` is an --s2-context
+    #   state from s2_context_fetch(), matched to every group.
     groups = fuse({"list": records})
     groups.sort(key=lambda g: g["best_rank"]["list"])
+    full = records if all_records is None else all_records
+    fused = groups if all_records is None else sorted(fuse({"list": full}), key=lambda g: g["best_rank"]["list"])
     header = [f"# {title}", "",
               f"{len(groups)} papers shown ({len(records)} records before merging versions) of "
               f"{total if total is not None else '?'} matching. {backend_note}".strip(), ""]
+    if context is not None:
+        header += context_header(context, fused, len(groups))
     entries, stdout = [], []
     for i, g in enumerate(groups, start=1):
         d, s = render_entry(i, g["primary"])
+        ctx = context_for(g, context) if context is not None else None
+        if ctx:
+            d, s = d[:-1] + context_lines(ctx) + [""], s + context_short(ctx)
         entries += d
         stdout.append(s)
     if notes is not None:
         notes["result_count"] = len(groups)
         notes["records_before_merge"] = len(records)
+        notes["_records"] = {"ranked": {"list": full}, "leg_alias": {"list": leg}, "groups": fused,
+                             "shown": len(groups), "limit": limit,
+                             "legs": [{"leg": leg, "backend": leg, "count": len(full), "total": total,
+                                       "failed": None}]}
+        if context is not None:
+            notes["context"] = context_row_fields(context, fused)
     return header + entries, stdout
+
+
+# §§ CITATION_CONTEXTS (1.7.0, `cites|refs --s2-context`)
+def s2_context_fetch(http, seed_doi, direction, limit):
+    # INTENT: the one Semantic Scholar call behind --s2-context, made AFTER
+    #   the OpenAlex list succeeded. Returns a state dict: status (ok | elided
+    #   | rate_limited | not_found | error), the mapped rows, `more` (S2 named
+    #   a next page), the limit sent, a note when not ok, a plain `warning`
+    #   (set by cmd_cites, 1.8.0), and a matching index.
+    # REASONING (1.8.0, the 2026-11-01 coverage probe, api-notes.md): S2 answers
+    #   HTTP 200 with no rows and a notice naming the list when the publisher
+    #   withheld it (the adapter checks the name). That is `elided`,
+    #   never `ok` with zero rows: a reader must not take "no sentences" for
+    #   "nobody cited it this way".
+    # REASONING: the OpenAlex result is the command's answer; contexts are an
+    #   extra. So a 429 after the adapter's one retry, a busy shared lane, a
+    #   404 or any other failure becomes a recorded status, never the
+    #   command's exit code. A "refused" (the secret guard) still stops the
+    #   command, as everywhere else.
+    # ASSUMES: the seed DOI comes from OpenAlex (untrusted); it is checked
+    #   with doi_ok() before it is put into a URL path, like every DOI.
+    limit = max(1, min(int(limit), semantic_scholar.CONTEXT_PAGE_MAX))
+    state = {"direction": direction, "status": "ok", "rows": [], "more": False, "limit": limit, "note": None,
+             "seed_doi": seed_doi, "warning": None}
+    if not seed_doi or not doi_ok(seed_doi):
+        state.update(status="not_found", note="the seed paper has no DOI on OpenAlex, so Semantic Scholar was "
+                                              "not asked (it is looked up by DOI)")
+    else:
+        try:
+            state["rows"], state["more"], elided = semantic_scholar.citation_contexts(http, seed_doi, direction,
+                                                                                     limit)
+            if elided:
+                state.update(status="elided", note=red(one_line(elided, 240)))
+        except BackendError as exc:
+            if exc.kind == "refused":
+                raise
+            if exc.kind == "busy" or exc.http_status == 429:
+                status = "rate_limited"
+            elif exc.kind == "not-found":
+                status = "not_found"
+            else:
+                status = "error"
+            state.update(status=status, note=red(one_line(str(exc), 240)))
+    by_doi, by_title, by_stem = {}, {}, {}
+    for i, r in enumerate(state["rows"]):
+        if r["doi"]:
+            by_doi.setdefault(r["doi"], []).append(i)
+        key_t = norm_title(r["title"])
+        if key_t and len(key_t) > 12:
+            by_title.setdefault(key_t, []).append(i)
+        key_s = stem_key(r)
+        if key_s:
+            by_stem.setdefault(key_s, []).append(i)
+    state["index"] = (by_doi, by_title, by_stem)
+    return state
+
+
+def context_hits(g, state):
+    # The S2 rows that are this group's paper: per record, fuse()'s join
+    # rules in fuse()'s order (same DOI; else the same normalized title longer
+    # than 12 characters; else the same pre-colon stem of 4+ words plus the
+    # first-author surname), unioned over the group's records.
+    by_doi, by_title, by_stem = state["index"]
+    hits = []
+    for rec in g["records"]:
+        key_t = norm_title(rec.get("title"))
+        key_s = stem_key(rec)
+        found = (by_doi.get(rec.get("doi")) if rec.get("doi") else None) \
+            or (by_title.get(key_t) if key_t and len(key_t) > 12 else None) \
+            or (by_stem.get(key_s) if key_s else None) or []
+        hits += [i for i in found if i not in hits]
+    return hits
+
+
+def context_for(g, state):
+    # INTENT: the group's citation_context, or None when S2 has nothing on it.
+    # REASONING (user decision 2026-10-31; live probe 2026-10-31, api-notes.md): S2 holds contexts and intents
+    #   only where it has the citing paper's full text, so a matched row with
+    #   no context, no intent and no `true` influential flag is UNKNOWN: the
+    #   whole object is omitted (never null-filled), so absence never reads as
+    #   "not influential". When it is present, each empty part is omitted too.
+    # REASONING: intents are S2's three labels (background, methodology,
+    #   result); none means disagreement, and nothing here derives one.
+    if state is None or state["status"] != "ok":
+        return None
+    contexts, intents, influential = [], [], None
+    for i in context_hits(g, state):
+        r = state["rows"][i]
+        contexts += [c for c in r["contexts"] if c not in contexts]
+        intents += [t for t in r["intents"] if t not in intents]
+        if r["is_influential"] is True:
+            influential = True
+        elif r["is_influential"] is False and influential is None:
+            influential = False
+    if not contexts and not intents and influential is not True:
+        return None
+    ctx = {"source": semantic_scholar.NAME, "direction": state["direction"]}
+    if intents:
+        ctx["intents"] = intents
+    if influential is not None:
+        ctx["is_influential"] = influential
+    if contexts:
+        ctx["contexts"] = contexts[:CONTEXT_SHOWN_MAX]
+        ctx["contexts_total"] = len(contexts)
+    ctx["full_text_gated"] = True
+    return ctx
+
+
+def context_counts(state, groups):
+    # rows returned, rows matched to a group, groups carrying a context, and
+    # (1.8.0) unmatched rows that carried at least one sentence (left out).
+    matched = set()
+    with_ctx = 0
+    for g in groups:
+        matched.update(context_hits(g, state))
+        with_ctx += 1 if context_for(g, state) else 0
+    lost = sum(1 for i, r in enumerate(state["rows"]) if i not in matched and r["contexts"])
+    return len(state["rows"]), len(matched), with_ctx, lost
+
+
+def context_row_fields(state, groups):
+    # The MANIFEST row's context_* fields (1.7.0; 1.8.0 adds
+    # context_unmatched_with_text always and context_warning when set).
+    rows, matched, with_ctx, lost = context_counts(state, groups)
+    out = {"context_backend": semantic_scholar.NAME, "context_status": state["status"], "context_rows": rows,
+           "context_matched": matched, "context_unmatched": rows - matched, "context_unmatched_with_text": lost,
+           "context_groups": with_ctx, "context_more": state["more"], "context_limit": state["limit"]}
+    if state["note"]:
+        out["context_note"] = state["note"]
+    if state.get("warning"):
+        out["context_warning"] = state["warning"]
+    return out
+
+
+# 1.8.0: a newest-first sort is the only one whose list lines up with
+#   Semantic Scholar's /citations order (newest citing papers first; it
+#   cannot sort by citation count). The 2026-11-01 coverage probe
+#   (api-notes.md): 0 of 100 matched under the default sort on three papers,
+#   52-70 of 100 newest-first. publication_year:desc is newest-first too
+#   (review fix, 2026-11-01), so it gets no warning either; the warning
+#   recommends publication_date:desc, the finer of the two.
+CONTEXT_ALIGNED_SORT = "publication_date:desc"
+CONTEXT_ALIGNED_SORTS = (CONTEXT_ALIGNED_SORT, "publication_year:desc")
+# Plain reason per not-ok status, for the digest (the row keeps the status).
+CONTEXT_STATUS_PLAIN = {"rate_limited": "Semantic Scholar was busy (rate-limited)",
+                        "not_found": "the paper could not be looked up on Semantic Scholar",
+                        "error": "the Semantic Scholar request failed"}
+
+
+def cites_context_warning(sort, limit):
+    # The plain warning `cites --s2-context` records under any other sort.
+    return (f"Semantic Scholar lists the newest citing papers first and cannot sort them by citation count, so "
+            f"its sentences come only from the {limit} newest citing papers, and few of them will match this "
+            f"list (sorted by {sort}). To get more sentences, run again with --sort {CONTEXT_ALIGNED_SORT}; the "
+            "list will then hold the newest citing papers, the ones Semantic Scholar sends.")
+
+
+def context_header(state, groups, shown=None):
+    # The digest's paragraph on --s2-context: what was asked, what came back,
+    # and how to read a missing context (unknown), the intents (never
+    # disagreement) and the influential flag (S2's own label). `groups` is
+    # the full list (the records file's); `shown` the digest's first --limit.
+    endpoint = semantic_scholar.CONTEXT_DIRECTIONS[state["direction"]][0]
+    warn = [f"Warning: {state['warning']}", ""] if state.get("warning") else []
+    if state["status"] == "elided":
+        listed = "reference list" if state["direction"] == "cited" else "list of citing papers"
+        return [f"Citation contexts (--s2-context, Semantic Scholar /{endpoint}): none available. The publisher "
+                f"withheld this paper's {listed} from Semantic Scholar, so no citing sentences are available; "
+                "their absence says nothing about how these papers cite or are cited. Running the command again "
+                f"will not change this. (Semantic Scholar's notice: {one_line(state['note'], 240)}) The OpenAlex "
+                "list below is unaffected.", ""] + warn
+    if state["status"] != "ok":
+        reason = CONTEXT_STATUS_PLAIN.get(state["status"], "the Semantic Scholar request failed")
+        return [f"Citation contexts (--s2-context, Semantic Scholar /{endpoint}): not available this call: "
+                f"{reason} ({one_line(state['note'], 240)}). The OpenAlex list below is unaffected"
+                + ("." if state["status"] == "not_found" else "; run the command again later for the contexts."),
+                ""] + warn
+    rows, matched, with_ctx, lost = context_counts(state, groups)
+    beyond = len(groups) - shown if shown is not None and shown < len(groups) else 0
+    return [f"Citation contexts (--s2-context, Semantic Scholar /{endpoint}, limit {state['limit']}): contexts "
+            f"found for {with_ctx} of {len(groups)} listed paper(s)"
+            + (f" ({beyond} of them are beyond --limit: in the records file, not shown below)" if beyond else "")
+            + f". {rows} row(s) returned"
+            f"{' (more exist beyond the limit)' if state['more'] else ''}, {matched} matched a paper of this "
+            f"command; {lost} unmatched row(s) carried a sentence and are left out. Semantic Scholar has "
+            "sentences, intents and the influential flag only where it holds the citing paper's full text, so a "
+            "paper without a context line is unknown, not 'not influential'. Intents (seen on refs only) are "
+            "background, methodology or result; none of them means disagreement: read 'disputes' or 'contradicts' only from a quoted "
+            "passage of the citing paper. 'Influential' is Semantic Scholar's own label for a citation, not a "
+            "judgment of the paper's quality.", ""] + warn
+
+
+def context_lines(ctx):
+    bits = []
+    if ctx.get("intents"):
+        bits.append("intents: " + ", ".join(ctx["intents"]))
+    if "is_influential" in ctx:
+        # 1.8.0 (cycle-2 I11): say whose label it is, every time it is shown.
+        bits.append("influential per Semantic Scholar's own label (not a quality signal): "
+                    + ("yes" if ctx["is_influential"] else "no"))
+    head = "   citation context (Semantic Scholar" + ("; " + "; ".join(bits) if bits else "") + ")"
+    if ctx.get("contexts_total"):
+        head += f": {len(ctx['contexts'])} of {ctx['contexts_total']} sentence(s)"
+    return [head] + [f"   > \"{one_line(c, 500)}\"" for c in ctx.get("contexts", [])]
+
+
+def context_short(ctx):
+    bits = [", ".join(ctx.get("intents") or [])] if ctx.get("intents") else []
+    if ctx.get("is_influential"):
+        bits.append("S2-labelled influential")
+    if ctx.get("contexts_total"):
+        bits.append(f"{ctx['contexts_total']} sentence(s)")
+    return "\n      S2 context: " + "; ".join(bits)
+
+
+# §§ RECORDS_SIDECAR (1.7.0)
+# INTENT: <base>.records.json, schema scholar-records-v1: the fused result of
+#   an open list command as data, so lit_corpus never parses the untrusted
+#   Markdown digest and fusion stays in one place (fuse()). Design: S4 design
+#   2026-10-30 § 7 and v2 § 8.1 (maintainer-only workspace
+#   research/2026-10-02_FrameworkDev_ScholarlySearch/; user decisions
+#   2026-10-30 and 2026-10-31): every fused group, also those beyond --limit,
+#   with `limit` recorded and a per-group `shown`.
+# REASONING: strings are the adapters' record() values. Every string passes
+#   scrub_injection (counted in the row's records_redaction_count), then the
+#   whole file passes the secret redactor and the contact scrub, as the raw
+#   log does. Not fenced: it is data, and its reader treats every string as
+#   untrusted.
+def record_view(rec):
+    # A group's primary (merged_view) record in the records file.
+    return {"title": rec.get("title") or "", "year": rec.get("year"), "authors": list(rec.get("authors") or []),
+            "venue": rec.get("venue") or "", "type": rec.get("type") or "", "doi": rec.get("doi"),
+            "ids": {k: v for k, v in (rec.get("ids") or {}).items() if v}, "cites": rec.get("cites"),
+            "oa_url": rec.get("oa_url"), "url": rec.get("url"), "fulltext": bool(rec.get("fulltext")),
+            "retracted": rec.get("retracted"), "retracted_by": rec.get("retracted_by"),
+            "versions": list(rec.get("versions") or []), "abstract": rec.get("abstract") or ""}
+
+
+def member_view(rec, leg, rank):
+    # One backend record of a group: its leg, its rank in that leg's list, its ids.
+    return {"leg": leg, "backend": rec.get("backend"), "rank": rank, "doi": rec.get("doi"),
+            "ids": {k: v for k, v in (rec.get("ids") or {}).items() if v}, "title": rec.get("title") or "",
+            "year": rec.get("year"), "venue": rec.get("venue") or "", "type": rec.get("type") or ""}
+
+
+def scrub_tree(value):
+    # Returns (value with every string through scrub_injection, redactions).
+    if isinstance(value, str):
+        return scrub_injection(value)
+    if isinstance(value, list):
+        out, n = [], 0
+        for v in value:
+            v2, k = scrub_tree(v)
+            out.append(v2)
+            n += k
+        return out, n
+    if isinstance(value, dict):
+        out, n = {}, 0
+        for key, v in value.items():
+            v2, k = scrub_tree(v)
+            out[key] = v2
+            n += k
+        return out, n
+    return value, 0
+
+
+def records_payload(command, subject, timestamp, raw_artifact, raw_sha256, stash, seed=None, context=None):
+    # The scholar-records-v1 object (before scrubbing). Group order, ranks and
+    # found_by are the digest's: rank i is entry i of the digest while
+    # `shown` is true.
+    alias = stash.get("leg_alias") or {}
+    where = {}
+    for leg, recs in stash["ranked"].items():
+        for rank, rec in enumerate(recs, start=1):
+            where[id(rec)] = (alias.get(leg, leg), rank)
+    groups = []
+    for i, g in enumerate(stash["groups"], start=1):
+        entry = {"rank": i, "score": round(g["score"], 6), "shown": i <= stash["shown"],
+                 "found_by": {alias.get(k, k): r for k, r in sorted(g["best_rank"].items(), key=lambda x: x[1])},
+                 "primary": record_view(g["primary"]),
+                 "members": [member_view(r, *where.get(id(r), (None, None))) for r in g["records"]]}
+        ctx = context_for(g, context) if context is not None else None
+        if ctx:
+            entry["citation_context"] = ctx
+        groups.append(entry)
+    payload = {"schema_version": RECORDS_SCHEMA, "tool_version": TOOL_VERSION, "command": command,
+               "query": subject, "timestamp": timestamp, "raw_artifact": raw_artifact, "raw_sha256": raw_sha256,
+               "fusion": {"version": FUSION_VERSION, "rrf_k": RRF_K, "dedup": list(FUSION_DEDUP),
+                          "order": "rrf_score" if command == "find" else "backend_order"},
+               "limit": stash.get("limit"), "groups_total": len(groups),
+               "groups_shown": min(stash["shown"], len(groups)), "legs": stash["legs"], "groups": groups}
+    if seed is not None:
+        payload["seed"] = seed
+    if command in ("cites", "refs"):
+        payload["context_status"] = context["status"] if context is not None else "not_requested"
+        if context is not None:
+            # 1.8.0: the context-bearing S2 rows no group matched (left out),
+            #   and the cites sort warning when it applies.
+            payload["context_unmatched_with_text"] = context_counts(context, stash["groups"])[3]
+            if context.get("warning"):
+                payload["context_warning"] = context["warning"]
+    return payload
 
 
 # §§ COMMANDS
@@ -1291,7 +1681,17 @@ def cmd_find(http, a, notes):
         if failures:
             raise next(iter(failures.values()))
         raise BackendError("find", "api", "find: every backend was skipped (check --skip/--backends)")
-    groups = fuse(ranked)[: a.limit]
+    fused = fuse(ranked)
+    groups = fused[: a.limit]
+    # 1.7.0: the records file keeps every fused group (user decision, 2026-10-31) and each leg's
+    #   count, total and failure; the digest shows the first --limit.
+    leg_backend = {leg: m.NAME for m in registry.BACKENDS.values() for leg in (getattr(m, "FIND_LEGS", None) or ())}
+    notes["_records"] = {
+        "ranked": ranked, "groups": fused, "shown": len(groups), "limit": a.limit,
+        "legs": [{"leg": k, "backend": leg_backend.get(k, k), "count": len(v), "total": totals.get(k), "failed": None}
+                 for k, v in ranked.items()]
+        + [{"leg": k, "backend": leg_backend.get(k, k), "count": 0, "total": None, "failed": red(one_line(str(e), 300))}
+           for k, e in failures.items()]}
     header = [f"# Scholarly search: {one_line(a.query, 300)}", "",
               f"Backends: {', '.join(selected_find_backends(a))}. Semantic legs got the question; keyword "
               f"legs got: {one_line(kw, 300)}; Semantic Scholar got: "
@@ -1331,7 +1731,7 @@ def cmd_openalex(http, a, notes):
         notes["relevance_score_present"] = sum(1 for r in recs if r.get("relevance_score") is not None)
     return list_command(recs, total, f"OpenAlex {a.mode} search: {one_line(a.query, 300)}",
                         f"filter: {a.filter or '(none)'}; sort: {a.sort or 'default'}; "
-                        f"corpus: {a.corpus or 'default'}.", notes)
+                        f"corpus: {a.corpus or 'default'}.", notes, leg=openalex.NAME, limit=a.limit)
 
 
 def openalex_search_ext(http, a, select=None, extra_params=None):
@@ -1363,14 +1763,14 @@ def cmd_eric(http, a, notes):
     recs, total = eric.search(http, a.query, a.limit, a.peer_reviewed, a.fulltext, a.years)
     notes["eric_query"] = eric.build_query(a.query, a.peer_reviewed, a.fulltext, a.years)
     return list_command(recs, total, f"ERIC search: {one_line(a.query, 300)}",
-                        f"Solr query sent: {one_line(notes['eric_query'], 400)}", notes)
+                        f"Solr query sent: {one_line(notes['eric_query'], 400)}", notes, leg=eric.NAME, limit=a.limit)
 
 
 def cmd_s2_bulk(http, a, notes):
     recs, total = semantic_scholar.bulk_search(http, a.query, a.limit, a.years)
     return list_command(recs, total, f"Semantic Scholar bulk search: {one_line(a.query, 300)}",
                         "Bulk search supports boolean syntax but is NOT relevance-ranked; order is "
-                        "the index's, not a ranking.", notes)
+                        "the index's, not a ranking.", notes, leg=semantic_scholar.NAME, limit=a.limit)
 
 
 def cmd_snippets(http, a, notes):
@@ -1421,6 +1821,10 @@ def cmd_work(http, a, notes):
               f"cited by: {rec['cites']}", f"Full author list: {one_line('; '.join(rec['authors']), 2000)}", ""]
     notes["result_count"] = 1
     notes["match"] = match_note
+    # 1.7.0: the records file holds the one record (no --limit).
+    notes["_records"] = {"ranked": {openalex.NAME: [rec]}, "groups": fuse({openalex.NAME: [rec]}), "shown": 1,
+                         "limit": None, "legs": [{"leg": openalex.NAME, "backend": openalex.NAME, "count": 1,
+                                                  "total": 1, "failed": None}]}
     return lines, [s, f"      lookup: {match_note}"]
 
 
@@ -1749,11 +2153,45 @@ def cmd_verify(http, a, notes):
     return lines, [f"  VERDICT: {verdict} (via {best['via']}; {best['note']})", s]
 
 
+def seed_ids(wid, doi):
+    # The records file's `seed` for cites/refs (1.7.0): the paper the command
+    # snowballed from, as an ids map like a record's (lists of values).
+    ids = {"openalex": [wid]} if wid else {}
+    if doi:
+        ids["doi"] = [doi]
+    return {"ids": ids}
+
+
 def cmd_cites(http, a, notes):
-    wid, match = openalex.resolve_id(http, a.ident)
+    # 1.7.0: a W-id is resolved without a request, as before; with
+    #   --s2-context its DOI is looked up (a free single-work lookup), because
+    #   Semantic Scholar is asked by DOI. Any other identifier makes the same
+    #   get_work request resolve_id() made, and its DOI becomes the seed's.
+    w = None
+    if re.match(r"^(https?://openalex\.org/)?W\d+$", a.ident.strip(), re.I):
+        wid, match = openalex.resolve_id(http, a.ident)
+        if a.s2_context:
+            w, _, _ = openalex.get_work(http, wid, extra_select="")
+    else:
+        w, match, _ = openalex.get_work(http, a.ident)
+        wid = openalex_short(w.get("id"))
+    seed_doi = norm_doi((w or {}).get("doi")) if w else None
     recs, total = openalex.search(http, "", "filter", a.limit, a.years, f"cites:{wid}", a.sort)
+    notes["_seed"] = seed_ids(wid, seed_doi)
+    context = s2_context_fetch(http, seed_doi, "citing", a.limit) if a.s2_context else None
+    if context is not None and a.sort not in CONTEXT_ALIGNED_SORTS and context["status"] not in ("not_found",
+                                                                                                 "elided"):
+        # 1.8.0 (the 2026-11-01 coverage probe, api-notes.md): the user's sort
+        #   is kept and S2 is still asked, but the mismatch is stated in the
+        #   digest, row and stderr (not when S2 does not know the paper or the
+        #   publisher withheld the list: then no sort would help).
+        context["warning"] = cites_context_warning(a.sort, context["limit"])
+    if context is None:
+        notes["context"] = {"context_status": "not_requested"}
+    notes["_context_state"] = context
     return list_command(recs, total, f"Works citing {wid}",
-                        f"sort: {a.sort}." + (f" Resolved from {match}." if match else ""), notes)
+                        f"sort: {a.sort}." + (f" Resolved from {match}." if match else ""), notes,
+                        leg=openalex.NAME, limit=a.limit, context=context)
 
 
 def cmd_refs(http, a, notes):
@@ -1769,10 +2207,21 @@ def cmd_refs(http, a, notes):
     # Each 100-id chunk comes back sorted; re-sort the union, then apply --limit.
     if a.sort.startswith("cited_by_count"):
         recs.sort(key=lambda r: r["cites"] or 0, reverse=a.sort.endswith(":desc"))
+    # 1.7.0: the records file keeps every matched reference (user decision, 2026-10-31); the digest
+    #   shows the first --limit. --s2-context asks for as many S2 references
+    #   as the records file holds (at least --limit, at most 1000 per call).
+    all_recs = recs
+    seed_doi = norm_doi(w.get("doi"))
+    notes["_seed"] = seed_ids(wid, seed_doi)
+    context = s2_context_fetch(http, seed_doi, "cited", max(a.limit, len(all_recs))) if a.s2_context else None
+    if context is None:
+        notes["context"] = {"context_status": "not_requested"}
+    notes["_context_state"] = context
     recs = recs[: a.limit]
     return list_command(recs, len(refs), f"References of {wid}: {one_line(w.get('display_name'), 200)}",
                         f"OpenAlex matched {len(refs)} of the paper's references (matching is incomplete; "
-                        f"the PDF's list can be longer). sort: {a.sort}. Lookup: {match}.", notes)
+                        f"the PDF's list can be longer). sort: {a.sort}. Lookup: {match}.", notes,
+                        leg=openalex.NAME, all_records=all_recs, limit=a.limit, context=context)
 
 
 def openalex_short(value):
@@ -1794,7 +2243,7 @@ def cmd_similar(http, a, notes):
     basis = "title + abstract" if seed["abstract"] else "title only (no abstract on record — weaker)"
     return list_command(recs, len(recs), f"Papers similar to {wid}: {one_line(seed['title'], 200)}",
                         f"OpenAlex semantic search seeded with the {basis}; the seed and its versions are "
-                        f"excluded. Lookup: {match}.", notes)
+                        f"excluded. Lookup: {match}.", notes, leg=openalex.NAME, limit=a.limit)
 
 
 def cmd_fulltext(http, a, notes, dest_dir, base):
@@ -2894,8 +3343,25 @@ def build_parser():
                                              f"{VERIFY_YEAR_TOLERANCE} away turns CONFIDENT into WEAK (never "
                                              "MISMATCH); on title:\"…\" it also breaks ties between "
                                              "same-titled candidates (after --author)")
-    ident("cites", "papers citing this one (OpenAlex)", sort="cited_by_count:desc")
-    ident("refs", "papers this one cites (OpenAlex)", sort="cited_by_count:desc")
+    for name, help_, s2_help in (
+            ("cites", "papers citing this one (OpenAlex)",
+             "also ask Semantic Scholar /citations (one extra call, one retry on 429) for up to 3 sentences in "
+             "which each citing paper cites this one and S2's own 'influential' label (not a quality signal); "
+             "only where S2 holds the citing paper's full text. S2 sent no citation intents on /citations in a "
+             "2026-11-01 sample of 300 rows (intents were seen only on refs). S2 lists the newest citing papers "
+             "first, so use --sort publication_date:desc (or publication_year:desc): under any other sort few "
+             "papers match and a warning "
+             "is recorded. A 429 or error keeps the OpenAlex result (row context_status). Adds Semantic "
+             "Scholar's license class (cc-by-nc, attribution required)"),
+            ("refs", "papers this one cites (OpenAlex)",
+             "also ask Semantic Scholar /references (one extra call, one retry on 429) for up to 3 sentences in "
+             "which this paper cites each reference, the intents (background, methodology, result; none of them "
+             "means disagreement) and S2's own 'influential' label (not a quality signal); only where S2 holds "
+             "this paper's full text. When the publisher withheld the reference list from S2, context_status is "
+             "elided (no sentences exist; retrying will not help). A 429 or error keeps the OpenAlex result "
+             "(row context_status). Adds Semantic Scholar's license class (cc-by-nc, attribution required)")):
+        sp = ident(name, help_, sort="cited_by_count:desc")
+        sp.add_argument("--s2-context", action="store_true", help=s2_help)
     sp = ident("similar", "more-like-this via OpenAlex semantic search on the paper's abstract", limit=20)
     years_arg(sp)
     ident("fulltext", "OpenAlex cached full text as Markdown ($0.01 per call)", limit=None)
@@ -3015,6 +3481,9 @@ def doi_ok(doi):
 def command_backends(a):
     if a.command in ("find",):
         return [registry.BACKENDS[n] for n in selected_find_backends(a)]
+    if a.command in ("cites", "refs") and getattr(a, "s2_context", False):
+        # 1.7.0: --s2-context adds Semantic Scholar (its license class and degraded banner apply).
+        return [openalex, semantic_scholar]
     return {"openalex": [openalex], "work": [openalex], "cites": [openalex], "refs": [openalex],
             "similar": [openalex], "fulltext": [openalex], "eric": [eric],
             "snippets": [semantic_scholar], "s2-bulk": [semantic_scholar],
@@ -3158,6 +3627,7 @@ def main(argv=None):
            "rate_gate_wait_s": 0.0, "retries": 0, "failed_backends": None, "degraded": [],
            "result_count": 0, "raw_artifact": None, "raw_bytes": None, "raw_sha256": None,
            "extract_artifact": None, "extract_bytes": None, "extract_sha256": None,
+           "records_artifact": None, "records_bytes": None, "records_sha256": None, "records_schema": None,
            "redaction_count": 0, "secret_redactions": [], "exit_code": 1, "note": None}
     if a.command == "verify":
         # I1: every verify row, failures and refusals included, records the
@@ -3282,7 +3752,7 @@ def main(argv=None):
     qhash = hashlib.sha256(f"{a.command}:{subject}".encode()).hexdigest()[:8]
     core = f"{timestamp.replace(':', '')}_scholar_{a.command}_{slugify(subject, fallback='query')[:50]}_{qhash}"
     base = unique_basename(art_dir, core, (".json", ".md", ".xml", "_creating.json", "_created.json",
-                                           "_resumed.json", "_report.md"))
+                                           "_resumed.json", "_report.md", RECORDS_SUFFIX))
     notes = {}
     code, note = 0, "ok"
     lines, stdout = None, None
@@ -3379,6 +3849,9 @@ def main(argv=None):
         # 1.5.1 (INFO-1): stated for the auditor; elicit_open_creates()
         # applies the same rule to the row's elicit_create_outcome.
         row["elicit_supersession_effective"] = notes.get("elicit_create_outcome") in ELICIT_SUPERSEDING_OUTCOMES
+    # 1.7.0: cites/refs record the --s2-context outcome (context_status
+    #   "not_requested" without the flag).
+    row.update(notes.get("context") or {})
 
     # REASONING (split): a restricted backend's response (Scite /papers, whose
     #   schema can embed a tally) must never land outside restricted/, so on a split command
@@ -3403,6 +3876,25 @@ def main(argv=None):
         row["xml_sha256"] = notes.get("xml_sha256")
     if lines is None:
         return finish(code, note)
+
+    # §§ RECORDS_SIDECAR write (1.7.0): after the raw log, whose sha256 it
+    #   names, and before the digest; open list commands only. A restricted
+    #   call (Elicit or Scite selected) never gets one: no derived dataset
+    #   from restricted content. A failed call returned above (no records).
+    records_name = None
+    stash = notes.get("_records")
+    if stash is not None and a.command in RECORDS_COMMANDS and license_class != "restricted" and not split:
+        payload, records_redactions = scrub_tree(records_payload(
+            a.command, subject, timestamp, row["raw_artifact"], row["raw_sha256"], stash, notes.get("_seed"),
+            notes.get("_context_state")))
+        text, r_hits = redact_secrets(json.dumps(payload, ensure_ascii=False, indent=1))
+        records_data = (scrub_contact(text) + "\n").encode("utf-8")
+        records_name = f"{base}{RECORDS_SUFFIX}"
+        write_new(os.path.join(art_dir, records_name), records_data)
+        row.update(records_artifact=prefix + records_name, records_bytes=len(records_data),
+                   records_sha256=sha256_bytes(records_data), records_schema=RECORDS_SCHEMA,
+                   records_redaction_count=records_redactions)
+        secret_hits = sorted(set(secret_hits) | set(r_hits))
 
     head = [f"> {b}" for b in banners] + ([""] if banners else [])
     # Scrub BEFORE wrapping (as web_fetch.py does): wrapping first could split a
@@ -3446,7 +3938,17 @@ def main(argv=None):
     out += [f"  query: {one_line(subject, 300)}",
             f"  results: {row['result_count']}{cost}",
             f"  digest: {prefix}{md_name} | raw: {prefix}{raw_name}"
-            + (f" | restricted raw: {row['restricted_raw_artifact']}" if split else "")]
+            + (f" | restricted raw: {row['restricted_raw_artifact']}" if split else "")
+            + (f" | records: {prefix}{records_name}" if records_name else "")]
+    if row.get("context_backend"):
+        # 1.7.0 (--s2-context): the outcome in one line; a status other than ok
+        #   also goes to stderr below (the OpenAlex result stands).
+        out.append(f"  citation contexts (Semantic Scholar): {row['context_status']}"
+                   + (f"; {row['context_rows']} row(s), {row['context_matched']} matched, {row['context_groups']} "
+                      f"paper(s) with a context; {row['context_unmatched_with_text']} unmatched row(s) with a "
+                      "sentence left out" if row["context_status"] == "ok" else "")
+                   + ("; the publisher withheld the list, so no sentences exist to show"
+                      if row["context_status"] == "elided" else ""))
     if row.get("snippet_hidden"):
         sh = row["snippet_hidden"]
         out.append(f"  citation snippets: {sh['citations']} returned, {sh['hidden']} hidden (snippetHidden)")
@@ -3504,6 +4006,20 @@ def main(argv=None):
         sys.stdout.write("  (no results — broaden the query, drop filters, or try --mode semantic)\n")
     if notes.get("stderr_hint"):
         sys.stderr.write(red(f"scholar_search: HINT: {notes['stderr_hint']}") + "\n")
+    if row.get("context_backend") and row.get("context_status") == "elided":
+        # 1.8.0: a publisher's elision is an answer, not a failure to retry.
+        sys.stderr.write(red("scholar_search: NOTE --s2-context: no citation contexts (elided): the publisher "
+                             "withheld this list from Semantic Scholar, so no citing sentences are available and "
+                             "their absence means nothing; running again will not help; the OpenAlex result "
+                             "stands and the exit code is unchanged") + "\n")
+    elif row.get("context_backend") and row.get("context_status") != "ok":
+        sys.stderr.write(red(f"scholar_search: NOTE --s2-context: no citation contexts this call "
+                             f"({CONTEXT_STATUS_PLAIN.get(row['context_status'], 'the Semantic Scholar request failed')}"
+                             f": {one_line(row.get('context_note'), 240)}); the OpenAlex "
+                             "result stands and the exit code is unchanged; run the command again later for "
+                             "contexts") + "\n")
+    if row.get("context_warning"):
+        sys.stderr.write(red(f"scholar_search: NOTE --s2-context: {row['context_warning']}") + "\n")
     if notes.get("exit_code"):
         return finish(notes["exit_code"], notes.get("exit_note", "see digest"))
     return finish(0, note if not notes.get("failures") else "partial: some backends failed")

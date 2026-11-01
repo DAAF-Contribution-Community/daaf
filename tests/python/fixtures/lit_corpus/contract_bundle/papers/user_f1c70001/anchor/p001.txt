@@ -1,0 +1,5 @@
+Synthetic Contract Fixture One
+The invented tutoring trial randomly assigned 412 pupils in nine imaginary schools to small reading groups.
+Reading scores rose by 0.21 standard deviations (standard error 0.05) after one invented school year.
+Attrition was 6 percent in each arm, and the authors call the single district a limitation of the study.
+

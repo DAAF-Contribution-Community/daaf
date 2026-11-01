@@ -1,0 +1,23 @@
+{
+ "schema_version": "scholar-records-v1",
+ "tool_version": "synthetic (lit_corpus demo)",
+ "command": "find",
+ "query": "tutoring rural boarding schools",
+ "raw_artifact": "demo_find_5750211e.json",
+ "raw_sha256": "4d77a426f11bbc7c5ace2524afa85a8bc097cb3d750509cb0f65660445cda382",
+ "fusion": {
+  "version": "fuse-v1"
+ },
+ "limit": 10,
+ "groups_total": 0,
+ "legs": [
+  {
+   "leg": "openalex_semantic",
+   "backend": "openalex",
+   "count": 0,
+   "total": 0,
+   "failed": null
+  }
+ ],
+ "groups": []
+}

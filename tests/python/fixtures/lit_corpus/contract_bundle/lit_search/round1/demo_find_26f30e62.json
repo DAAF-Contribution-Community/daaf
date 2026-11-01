@@ -1,0 +1,8 @@
+{
+ "command": "find",
+ "query": "tutoring",
+ "parameters": {},
+ "requests": [],
+ "timestamp": "2026-10-31T00:00:00Z",
+ "tool_version": "synthetic (lit_corpus demo)"
+}

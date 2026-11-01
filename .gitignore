@@ -1,5 +1,6 @@
 # Data files - too large for git
 *.parquet
+!tests/python/fixtures/lit_corpus/**/*.parquet
 *.csv
 *.xls
 *.xlsx

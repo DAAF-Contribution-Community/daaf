@@ -1,0 +1,664 @@
+{
+  "kind": "lit_verify_card_check",
+  "schema_version": "lit-verify-card-check-v3",
+  "tool_version": "1.13.0-daaf",
+  "checked_at": "2026-11-01T16:38:23Z",
+  "paper_key": "user_f1c70001",
+  "anchor_kind": "pdf",
+  "card": {
+    "path": "evidence_card_a.md",
+    "bytes": 2267,
+    "sha256": "d926ef73f9ed9b1901438b7046f9a6f5bb5d49e56a008b8ac7d8d32bcdb0840d",
+    "schema_version": "lit-verify-card-v3",
+    "anchor_kind": "pdf",
+    "source_version": null,
+    "reader_model": "fixture-synthetic",
+    "vision_mode": "off",
+    "vision_validated": false,
+    "vision_list_version": null
+  },
+  "ingest": {
+    "suffix": "",
+    "manifest": "ingest_manifest.json",
+    "manifest_sha256": "c09eeee2d5087e7579880dd31dcd7fc40c9b45b74e8fa9586497088455eed691",
+    "page_count": 2,
+    "anchor_kind": "pdf",
+    "unit_count": null,
+    "source_pdf_sha256": "08bc13463551f3a99a13ae262e5b1584106b9c5181f8644e5769e983ddb7e6dc",
+    "source_sha256": "08bc13463551f3a99a13ae262e5b1584106b9c5181f8644e5769e983ddb7e6dc",
+    "source_version": null,
+    "arxiv_id_version": null,
+    "html_extract_version": null,
+    "pdf_ingest_tool_version": "synthetic (lit_verify selftest)",
+    "normalize_version": "normalize-v1"
+  },
+  "rederive": {
+    "version": "rederive-v2",
+    "method": "synthetic registry (an in-process selftest or unit-test ingest; the CLI never fills it)",
+    "source_path": null,
+    "source_sha256": "08bc13463551f3a99a13ae262e5b1584106b9c5181f8644e5769e983ddb7e6dc",
+    "source_kind": "synthetic",
+    "source_kind_ingest": "synthetic",
+    "web_fetch_row": null,
+    "read": "in-process registry",
+    "extractor": null,
+    "extractor_version": null,
+    "extractor_version_ingest": null,
+    "anchors_checked": 2,
+    "anchor_mismatches": [],
+    "row_sources_checked": 0,
+    "row_source_mismatches": [],
+    "header_footer": {
+      "records": 0,
+      "outcome": "match"
+    },
+    "flags": {
+      "pages_checked": 2,
+      "mismatches": [],
+      "table_probed": [],
+      "table_not_rederived_uncited": 0,
+      "not_rederived": []
+    },
+    "ocr_on_text_pages": [],
+    "ocr": null,
+    "outcome": "match",
+    "seconds": 0.0
+  },
+  "rule_versions": {
+    "normalize": "normalize-v1",
+    "match_ladder": "ladder-v4",
+    "numbers": "numbers-v6",
+    "column_check": "column-check-v1",
+    "rederive": "rederive-v2",
+    "vision_scope": "vision-scope-v1",
+    "quant": "quant-v1",
+    "page_label": "page-label-v1"
+  },
+  "constants": {
+    "MIN_QUOTE_CHARS": 40,
+    "MIN_QUOTE_WORDS": 6,
+    "FUZZ_SCORE_CUTOFF": 95.0,
+    "FUZZ_WINDOW_CHARS": 64,
+    "FUZZ_WINDOW_STEP": 32,
+    "NUMBER_NEAR_CHARS": 0,
+    "ROW_LABEL_MIN_CHARS": 3,
+    "ROW_TAIL_LETTER_SHARE_MAX": 0.25,
+    "ROW_PAGE_FLAGS": [
+      "table",
+      "numeric"
+    ],
+    "OCR_LAYER_PAPER_CAP_PAGES": 2,
+    "SOURCE_MAX_BYTES": 104857600,
+    "REDERIVE_TIMEOUT_S": 120.0,
+    "REDERIVE_WORKERS": 4,
+    "GRADE_FLAGS": [
+      "table",
+      "numeric",
+      "scanned",
+      "ocr_layer_suspected"
+    ],
+    "VISION_LIST_VERSION": "vision-list-2026-10-30",
+    "VISION_VALIDATED_LISTS": {
+      "vision-list-2026-10-19": [],
+      "vision-list-2026-10-28": [
+        [
+          "claude-opus-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-opus-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-api"
+        ]
+      ],
+      "vision-list-2026-10-30": [
+        [
+          "claude-opus-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-opus-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-api"
+        ],
+        [
+          "gpt-6-sol",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6-sol",
+          "openai-api"
+        ],
+        [
+          "gpt-6.1-sol",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6.1-sol",
+          "openai-api"
+        ],
+        [
+          "gpt-6-astra",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6-astra",
+          "openai-api"
+        ]
+      ]
+    },
+    "TRULY_SCANNED_IMAGE_AREA_MIN": 0.5,
+    "HTML_EXTRACT_VERSIONS_KNOWN": [
+      "arxiv-html-v1"
+    ],
+    "COLUMN_UNCHECKED_SEVERITY": "label",
+    "COLUMN_YEAR_MIN": 1900,
+    "COLUMN_YEAR_MAX": 2099,
+    "COLUMN_REFERENCE_WORDS": [
+      "appendix",
+      "ch",
+      "chapter",
+      "col",
+      "column",
+      "columns",
+      "eq",
+      "eqs",
+      "equation",
+      "fig",
+      "figs",
+      "figure",
+      "figures",
+      "footnote",
+      "hypothesis",
+      "model",
+      "models",
+      "note",
+      "notes",
+      "p",
+      "page",
+      "pages",
+      "panel",
+      "pp",
+      "sec",
+      "section",
+      "sections",
+      "step",
+      "tab",
+      "table",
+      "tables",
+      "wave"
+    ],
+    "PROVISIONAL": [
+      "MIN_QUOTE_CHARS",
+      "MIN_QUOTE_WORDS",
+      "TRULY_SCANNED_IMAGE_AREA_MIN"
+    ]
+  },
+  "verdict": "PASS",
+  "evidence_grade_suggested": "FULL_TEXT_VERIFIED",
+  "evidence_grade_if_review_confirmed": null,
+  "vision_available": false,
+  "fuzzy_tier_run": true,
+  "counts": {
+    "pass": 14,
+    "partial": 0,
+    "review": 0,
+    "fail": 0,
+    "warning": 0,
+    "pages": 2,
+    "pages_covered": 2,
+    "claims": 3,
+    "numbers": 4,
+    "pages_scanned": 0,
+    "pages_sparse": 0,
+    "pages_ocr_layer": 0,
+    "numbers_column_not_checked": 2,
+    "claims_by_type": {
+      "finding": 1,
+      "method": 1,
+      "limitation": 1
+    },
+    "quant_fields": 3
+  },
+  "failures": [],
+  "review_items": [],
+  "partial_items": [],
+  "warnings": [],
+  "column_not_checked_items": [
+    "NUMBER_OK p1 claim C1 '0.21': found as '0.21' [column-not-checked: 2 comparable values]",
+    "NUMBER_OK p1 claim C1 '0.05': found as '0.05' [column-not-checked: 2 comparable values]"
+  ],
+  "pages": [
+    {
+      "page": 1,
+      "class": "normal",
+      "image_area": null,
+      "basis": "not flagged scanned",
+      "ocr_layer": false,
+      "lane_b": false,
+      "anchors": 1,
+      "coverage_status": "PASS"
+    },
+    {
+      "page": 2,
+      "class": "normal",
+      "image_area": null,
+      "basis": "not flagged scanned",
+      "ocr_layer": false,
+      "lane_b": false,
+      "anchors": 1,
+      "coverage_status": "PASS"
+    }
+  ],
+  "sections": [],
+  "items": [
+    {
+      "kind": "coverage_anchor",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": "The invented tutoring trial randomly assigned 412 pupils in nine imaginary schools",
+      "quote_sha256": "a759a6e822920dcca77be5450a5f3dacd97355c1e2024f4b012a0adda6e4e3cc",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 82,
+      "words": 12,
+      "occurrences": 1
+    },
+    {
+      "kind": "coverage",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": null,
+      "quote_sha256": null,
+      "number": null,
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "best anchor PASS"
+    },
+    {
+      "kind": "coverage_anchor",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 2,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": "Teachers in the comparison schools kept their usual reading lessons for the whole year",
+      "quote_sha256": "3b87090ec3d4ffae1fa515cbf9c4b8616e778376b0e490f9020373c70b9b9095",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        2
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 86,
+      "words": 14,
+      "occurrences": 1
+    },
+    {
+      "kind": "coverage",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 2,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": null,
+      "quote_sha256": null,
+      "number": null,
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "best anchor PASS"
+    },
+    {
+      "kind": "claim_quote",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C1",
+      "quote": "Reading scores rose by 0.21 standard deviations (standard error 0.05) after one invented school year",
+      "quote_sha256": "c0296bd73822d8eefd980913aaafb83c8c30e14b86b5bf3068cf8743a21d97b1",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 100,
+      "words": 15,
+      "occurrences": 1,
+      "claim_type": "finding",
+      "quote_numbers": [
+        "0.21",
+        "0.05"
+      ],
+      "page_numbers": [
+        "0.21",
+        "0.05"
+      ],
+      "quote_numbers_agree": true,
+      "status_if_confirmed": null
+    },
+    {
+      "kind": "claim_number",
+      "status": "NUMBER_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C1",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "0.21",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "found as '0.21'",
+      "label": "ok",
+      "number_digits": "0.21",
+      "locality": "in-quote",
+      "row_match": null,
+      "column_checked": false,
+      "column_label": "column-not-checked",
+      "column_values": 2,
+      "column_severity": "label"
+    },
+    {
+      "kind": "claim_number",
+      "status": "NUMBER_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C1",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "0.05",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "found as '0.05'",
+      "label": "ok",
+      "number_digits": "0.05",
+      "locality": "in-quote",
+      "row_match": null,
+      "column_checked": false,
+      "column_label": "column-not-checked",
+      "column_values": 2,
+      "column_severity": "label"
+    },
+    {
+      "kind": "claim_quant",
+      "status": "QUANT_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C1",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "0.21",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "The estimate 0.21 is one of this claim's numbers, and DAAF found that number inside the quote on PDF page 1.",
+      "quant_field": "estimate",
+      "matched_number": "0.21"
+    },
+    {
+      "kind": "claim_quant",
+      "status": "QUANT_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C1",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "0.05",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "The standard error 0.05 is one of this claim's numbers, and DAAF found that number inside the quote on PDF page 1.",
+      "quant_field": "se",
+      "matched_number": "0.05"
+    },
+    {
+      "kind": "claim_quote",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C2",
+      "quote": "The invented tutoring trial randomly assigned 412 pupils in nine imaginary schools to small reading groups",
+      "quote_sha256": "e8a0efcad3ccb59b064f9a64845d5df7e629ff4c30cbf5a97723fe305c557f27",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 106,
+      "words": 16,
+      "occurrences": 1,
+      "claim_type": "method",
+      "quote_numbers": [
+        "412"
+      ],
+      "page_numbers": [
+        "412"
+      ],
+      "quote_numbers_agree": true,
+      "status_if_confirmed": null
+    },
+    {
+      "kind": "claim_number",
+      "status": "NUMBER_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C2",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "412",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "found as '412'",
+      "label": "ok",
+      "number_digits": "412",
+      "locality": "in-quote",
+      "row_match": null,
+      "column_checked": true,
+      "column_label": null,
+      "column_values": 1,
+      "column_severity": null
+    },
+    {
+      "kind": "claim_quant",
+      "status": "QUANT_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C2",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "412",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "The sample size n 412 is one of this claim's numbers, and DAAF found that number inside the quote on PDF page 1.",
+      "quant_field": "n",
+      "matched_number": "412"
+    },
+    {
+      "kind": "claim_quote",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C3",
+      "quote": "Attrition was 6 percent in each arm, and the authors call the single district a limitation of the study",
+      "quote_sha256": "eaed5213149659ecae73414ed5d54457e33361ac6a890dbb6bd8f9308cdf6f84",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 103,
+      "words": 19,
+      "occurrences": 1,
+      "claim_type": "limitation",
+      "quote_numbers": [
+        "6"
+      ],
+      "page_numbers": [
+        "6"
+      ],
+      "quote_numbers_agree": true,
+      "status_if_confirmed": null
+    },
+    {
+      "kind": "claim_number",
+      "status": "NUMBER_OK",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "C3",
+      "quote": null,
+      "quote_sha256": null,
+      "number": "6",
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "found as '6'",
+      "label": "ok",
+      "number_digits": "6",
+      "locality": "in-quote",
+      "row_match": null,
+      "column_checked": true,
+      "column_label": null,
+      "column_values": 1,
+      "column_severity": null
+    }
+  ],
+  "redaction_count": 0,
+  "secret_redactions": []
+}

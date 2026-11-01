@@ -1,0 +1,41 @@
+{
+ "command": "verify",
+ "query": "10.9999/fixture.0004",
+ "parameters": {
+  "title": "Teachers on Tutoring Schedules"
+ },
+ "requests": [
+  {
+   "backend": "openalex",
+   "endpoint": "https://api.openalex.org/works/doi:10.9999/fixture.0004",
+   "response": {
+    "id": "https://openalex.org/W900000004",
+    "doi": "https://doi.org/10.9999/fixture.0004",
+    "display_name": "Teachers on Tutoring Schedules",
+    "publication_year": 2022,
+    "type": "article",
+    "authorships": [
+     {
+      "author": {
+       "display_name": "Dee Diaz"
+      }
+     }
+    ],
+    "primary_location": {
+     "source": {
+      "display_name": "Journal of Invented Studies",
+      "type": "journal"
+     }
+    },
+    "biblio": {
+     "volume": "7",
+     "issue": "2",
+     "first_page": "11",
+     "last_page": "29"
+    }
+   }
+  }
+ ],
+ "timestamp": "2026-10-31T00:00:00Z",
+ "tool_version": "synthetic (lit_corpus demo)"
+}

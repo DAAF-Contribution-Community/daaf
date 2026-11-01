@@ -1,0 +1,93 @@
+{
+ "command": "retractions",
+ "query": "10.9999/fixture.0001 10.9999/fixture.0002 10.9999/fixture.0003 10.9999/fixture.0004",
+ "parameters": {},
+ "requests": [
+  {
+   "backend": "openalex",
+   "endpoint": "https://api.openalex.org/works/doi:10.9999/fixture.0001",
+   "response": {
+    "id": "https://openalex.org/W0",
+    "doi": "https://doi.org/10.9999/fixture.0001",
+    "is_retracted": false
+   }
+  },
+  {
+   "backend": "crossref",
+   "endpoint": "https://api.crossref.org/works",
+   "params": {
+    "filter": "updates:10.9999/fixture.0001"
+   },
+   "response": {
+    "message": {
+     "items": []
+    }
+   }
+  },
+  {
+   "backend": "openalex",
+   "endpoint": "https://api.openalex.org/works/doi:10.9999/fixture.0002",
+   "response": {
+    "id": "https://openalex.org/W0",
+    "doi": "https://doi.org/10.9999/fixture.0002",
+    "is_retracted": false
+   }
+  },
+  {
+   "backend": "crossref",
+   "endpoint": "https://api.crossref.org/works",
+   "params": {
+    "filter": "updates:10.9999/fixture.0002"
+   },
+   "response": {
+    "message": {
+     "items": []
+    }
+   }
+  },
+  {
+   "backend": "openalex",
+   "endpoint": "https://api.openalex.org/works/doi:10.9999/fixture.0003",
+   "response": {
+    "id": "https://openalex.org/W0",
+    "doi": "https://doi.org/10.9999/fixture.0003",
+    "is_retracted": false
+   }
+  },
+  {
+   "backend": "crossref",
+   "endpoint": "https://api.crossref.org/works",
+   "params": {
+    "filter": "updates:10.9999/fixture.0003"
+   },
+   "response": {
+    "message": {
+     "items": []
+    }
+   }
+  },
+  {
+   "backend": "openalex",
+   "endpoint": "https://api.openalex.org/works/doi:10.9999/fixture.0004",
+   "response": {
+    "id": "https://openalex.org/W0",
+    "doi": "https://doi.org/10.9999/fixture.0004",
+    "is_retracted": false
+   }
+  },
+  {
+   "backend": "crossref",
+   "endpoint": "https://api.crossref.org/works",
+   "params": {
+    "filter": "updates:10.9999/fixture.0004"
+   },
+   "response": {
+    "message": {
+     "items": []
+    }
+   }
+  }
+ ],
+ "timestamp": "2026-10-31T00:00:00Z",
+ "tool_version": "synthetic (lit_corpus demo)"
+}

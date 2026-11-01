@@ -182,13 +182,13 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.8.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.14.0-daaf")
         self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v2", dict))
         self.assertEqual(lv.VISION_SCOPE_VERSION, "vision-scope-v1")                 # 1.8.0 part 5
         self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
                          ("column-check-v1", "label", "column-not-checked"))
         self.assertEqual((lv.CARD_SCHEMA_VERSIONS, lv.CHECK_SCHEMA_VERSION),
-                         (("lit-verify-card-v1", "lit-verify-card-v2"), "lit-verify-card-check-v2"))
+                         (("lit-verify-card-v1", "lit-verify-card-v2", "lit-verify-card-v3"), "lit-verify-card-check-v3"))
         self.assertEqual(lv.HTML_EXTRACT_VERSIONS_KNOWN, (pdf_ingest.HTML_EXTRACT_VERSION,))
         self.assertEqual((ptc.NORMALIZE_VERSION, ptc.MATCH_LADDER_VERSION, ptc.NUMBER_RULES_VERSION),
                          ("normalize-v1", "ladder-v4", "numbers-v6"))
@@ -1686,7 +1686,7 @@ class VisionOnScanPageTests(unittest.TestCase):
 
     def test_severity_table_count(self):
         # every SEVERITY key is a status (one, COLUMN_NOT_CHECKED, a label); evidence-card.md § Status index counts them
-        self.assertEqual(len(lv.SEVERITY), 71)
+        self.assertEqual(len(lv.SEVERITY), 81)
         self.assertEqual(lv.VISION_SOURCES, ("vision", "both"))
         index = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "references" / "evidence-card.md").read_text()
         self.assertIn(f"the {len(lv.SEVERITY)} keys of `SEVERITY`", index)
@@ -2215,7 +2215,8 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 45/45", out)
+        self.assertIn("SELFTEST PASS: 71/71", out)                                  # 1.10.0: + 18 report
+        self.assertIn("report: claims table forged to verified", out)               # 1.10.0 (user decision, October 2026)
         self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
         self.assertIn("listed reader's vision reading on a scan page", out)         # 1.8.0 part 5
         for case in ("forged header/footer line, span skips it", "forged page flags lift the OCR-layer cap",
@@ -2537,7 +2538,7 @@ class HtmlOnDiskTests(ScratchCase):
                          (0, "PARTIAL", "FULL_TEXT_PARTIAL"), log)
         self.assertEqual(check["failures"] + check["review_items"], [])
         self.assertEqual((check["schema_version"], check["tool_version"], check["anchor_kind"]),
-                         ("lit-verify-card-check-v2", lv.TOOL_VERSION, "arxiv_html"))
+                         ("lit-verify-card-check-v3", lv.TOOL_VERSION, "arxiv_html"))
         ing = check["ingest"]
         self.assertEqual((ing["anchor_kind"], ing["unit_count"], ing["source_version"], ing["arxiv_id_version"],
                           ing["html_extract_version"], ing["source_pdf_sha256"], ing["page_count"]),
@@ -2766,6 +2767,1613 @@ class EndToEndTests(ScratchCase):
         self.assertEqual(nums[("M2", "58")], "NUMBER_OCR_ONLY")
         self.assertEqual(check["failures"], [])
         self.assertEqual([s.split(" ")[0] for s in check["partial_items"]].count("SCANNED_PAGE"), 1)
+
+
+# --- Card schema v3 (1.9.0, S4 D3): typed claims, quant fields, page labels; every word invented ---
+def mk_v3(coverage, claims=(), **over):
+    card = {"schema_version": "lit-verify-card-v3", "paper_key": "user_00000001", "anchor_kind": "pdf",
+            "source_sha256": "a" * 64, "reader_model": "test", "vision_mode": "auto", "vision_validated": False,
+            "vision_list_version": None, "coverage": list(coverage), "claims": list(claims)}
+    card.update(over)
+    return card
+
+
+class CardV3Tests(unittest.TestCase):
+    CI_PAGE = "The invented tutoring estimate was 0.30 (95% CI 0.10 to 0.50) across 412 invented pupils in the trial.\n\f"
+    QUOTE = "The invented tutoring estimate was 0.30 (95% CI 0.10 to 0.50) across 412 invented pupils"
+    NUMS = ["0.30", "0.10", "0.50", "412"]
+
+    def run_quant(self, quant, numbers=None, quote=None):
+        ing = mk_ingest([{"anchor": self.CI_PAGE}])
+        claim = {"claim_id": "C1", "page": 1, "quote": quote or self.QUOTE, "numbers": numbers or self.NUMS,
+                 "source": "text", "claim_type": "finding", "quant": quant}
+        return lv.check_card(mk_v3([cov(1, self.QUOTE)], [claim]), ing, None)
+
+    def quant(self, result):
+        return {it["quant_field"]: it["status"] for it in result["items"] if it["kind"] == "claim_quant"}
+
+    def test_quant_fields_on_checked_numbers(self):
+        r = self.run_quant({"estimate": "0.30", "ci_low": "0.10", "ci_high": "0.50", "n": "412", "ci_level": "95",
+                            "metric": "SD units"})
+        self.assertEqual(self.quant(r), {"estimate": "QUANT_OK", "ci_low": "QUANT_OK", "ci_high": "QUANT_OK",
+                                         "n": "QUANT_OK"})
+        self.assertEqual((r["verdict"], r["counts"]["quant_fields"], r["counts"]["claims_by_type"]),
+                         ("PASS", 4, {"finding": 1}))
+        ok = next(it for it in r["items"] if it["kind"] == "claim_quant")
+        self.assertEqual(ok["matched_number"], "0.30")
+        self.assertIn("inside the quote on PDF page 1", ok["reason"])
+        self.assertNotIn("QUANT_", ok["reason"])                                    # plain language, no status codes
+
+    def test_quant_value_not_in_numbers_fails(self):
+        r = self.run_quant({"estimate": "0.3"})                                     # other digits: not the same number
+        self.assertEqual((self.quant(r), r["verdict"]), ({"estimate": "QUANT_NOT_IN_NUMBERS"}, "FAIL"))
+        r = self.run_quant({"estimate": "about 0.30"})
+        self.assertEqual(self.quant(r), {"estimate": "QUANT_NOT_IN_NUMBERS"})
+
+    def test_quant_inherits_the_number_outcome(self):
+        r = self.run_quant({"estimate": "0.31"}, numbers=["0.31"])                  # a number not on the page
+        self.assertEqual((self.quant(r), r["verdict"]), ({"estimate": "QUANT_NUMBER_FAILED"}, "FAIL"))
+        r = self.run_quant({"n": "412"}, numbers=["412"], quote="The invented tutoring estimate was 0.30 (95% CI "
+                                                                "0.10 to 0.50) across")
+        self.assertEqual((self.quant(r), r["verdict"]), ({"n": "QUANT_NUMBER_REVIEW"}, "NEEDS_REVIEW"))
+
+    def test_parentheses_must_agree_except_for_se(self):
+        ing = mk_ingest([{"anchor": PROSE[3] + "\n\f"}])
+        q = "Table 2 reports −0.087* (0.044) and 1,204 boats with .05 as the threshold"
+        base = {"claim_id": "C1", "page": 1, "quote": q, "numbers": ["-0.087", "(0.044)", "1,204"], "source": "text",
+                "claim_type": "finding"}
+        r = lv.check_card(mk_v3([cov(1, q)], [dict(base, quant={"se": "0.044", "estimate": "(0.044)"})]), ing, None)
+        self.assertEqual(self.quant(r), {"se": "QUANT_OK", "estimate": "QUANT_OK"})
+        r = lv.check_card(mk_v3([cov(1, q)], [dict(base, quant={"estimate": "0.044"})]), ing, None)
+        self.assertEqual(self.quant(r), {"estimate": "QUANT_NOT_IN_NUMBERS"})
+
+    def test_n_must_be_a_whole_count(self):
+        self.assertEqual(self.quant(self.run_quant({"n": "0.30"})), {"n": "QUANT_N_NOT_INTEGER"})
+
+    def test_interval_order_and_estimate_outside(self):
+        r = self.run_quant({"estimate": "0.30", "ci_low": "0.50", "ci_high": "0.10"})
+        self.assertEqual((self.quant(r)["ci"], r["verdict"]), ("QUANT_CI_ORDER", "NEEDS_REVIEW"))
+        r = self.run_quant({"estimate": "412", "ci_low": "0.10", "ci_high": "0.50"})
+        self.assertEqual(self.quant(r)["ci"], "QUANT_ESTIMATE_OUTSIDE_CI")
+
+    def test_page_label_in_header_or_footer(self):
+        body = ("Synthetic folio page. The invented lamplighter counted every copper lamp on the long street.\n"
+                "He wrote the totals in a green notebook kept in a drawer at the invented lamp office.\n"
+                "Nobody else read the notebook, and Table 7 lists its totals by street and by year.\n"
+                "Each evening he walked the same route and checked that every lamp was burning.\n"
+                "The route passed the harbour, the market and the long row of painted houses.\n"
+                "On windy nights he walked it twice, because the copper lamps went out more often.\n")
+        q = "Each evening he walked the same route and checked that every lamp was burning"
+        for page, label, want in ((body + "12\n\f", "12", "PAGE_LABEL_OK"), ("12\n" + body + "\f", "12", "PAGE_LABEL_OK"),
+                                  (body + "12\n\f", "13", "PAGE_LABEL_UNCONFIRMED"),
+                                  (body + "\f", "7", "PAGE_LABEL_UNCONFIRMED"),            # "Table 7" is body text
+                                  (body + "– xii –\n\f", "XII", "PAGE_LABEL_OK")):
+            claim = {"claim_id": "L1", "page": 1, "quote": q, "numbers": [], "source": "text", "claim_type": "method",
+                     "page_label": label}
+            r = lv.check_card(mk_v3([cov(1, q)], [claim]), mk_ingest([{"anchor": page}]), None)
+            self.assertEqual(statuses(r, "page_label"), [want], (label, page[-12:]))
+            self.assertEqual(r["verdict"], "PASS")                              # a warning never fails a card
+
+    def test_v1_and_v2_cards_carry_no_typed_fields(self):
+        r = lv.check_card(mk_card([cov(1, PROSE[1])], src="a" * 64), mk_ingest([{"anchor": PROSE[1] + "\n\f"}]), None)
+        self.assertEqual((r["counts"]["claims_by_type"], r["counts"]["quant_fields"]), ({}, 0))
+
+
+class CardV3StructureTests(unittest.TestCase):
+    CLAIM = {"claim_id": "C1", "page": 1, "quote": "q", "numbers": [], "source": "text", "claim_type": "finding"}
+
+    def assert_exit8(self, card, fragment):
+        with self.assertRaises(lv.LitVerifyError) as cm:
+            lv.validate_card(card)
+        self.assertEqual(cm.exception.code, 8)
+        self.assertIn(fragment, cm.exception.note)
+
+    def test_valid_v3_card(self):
+        lim = dict(self.CLAIM, claim_id="C2", claim_type="limitation", limitation_kind="author_stated")
+        apr = dict(self.CLAIM, claim_id="C3", claim_type="appraisal",
+                   appraisal={"guide": "rob2", "item": "1.2", "answer": "PY"})
+        use = dict(self.CLAIM, claim_id="C4", claim_type="citation_use",
+                   citation_use={"cites_key": "W2741809807", "relation": "uses_method"})
+        ext = dict(use, claim_id="C5", citation_use={"cites_key": "external:10.1257/aer.104.9.2593",
+                                                     "relation": "background"})
+        note = {"design": "did", "study_weight": "moderate", "weight_reason": "Self-selection [C2].",
+                "limitation_claim_ids": ["C2"], "directness": {"population": "direct", "time": "partly"}}
+        lv.validate_card(mk_v3([], [dict(self.CLAIM, quant={"estimate": "0.1", "metric": "SD"}, page_label="iv"),
+                                    lim, apr, use, ext], paper_note=note))
+
+    def test_structure_errors_exit_8(self):
+        c = self.CLAIM
+        self.assert_exit8(mk_v3([], [dict(c, claim_type="opinion")]), "claim_type must be one of")
+        self.assert_exit8(mk_v3([], [{k: v for k, v in c.items() if k != "claim_type"}]), "missing field")
+        self.assert_exit8(mk_v3([], [dict(c, appraisal={"guide": "rob2", "item": "1", "answer": "Y"})]),
+                          "appraisal is required with claim_type 'appraisal' and allowed only there")
+        self.assert_exit8(mk_v3([], [dict(c, claim_type="limitation")]), "limitation_kind is required")
+        self.assert_exit8(mk_v3([], [dict(c, claim_type="appraisal", appraisal={"guide": "rob3", "item": "1",
+                                                                                 "answer": "Y"})]), "guide must be")
+        self.assert_exit8(mk_v3([], [dict(c, claim_type="appraisal", appraisal={"guide": "rob2", "item": "x" * 41,
+                                                                                 "answer": "Y"})]), "at most 40")
+        self.assert_exit8(mk_v3([], [dict(c, claim_type="citation_use",
+                                          citation_use={"cites_key": "smith2020", "relation": "uses_method"})]),
+                          "cites_key must be")
+        self.assert_exit8(mk_v3([], [dict(c, quant={"pooled": "0.1"})]), "unknown field")
+        self.assert_exit8(mk_v3([], [dict(c, quant={"estimate": 0.1})]), "quant.estimate must be")
+        self.assert_exit8(mk_v3([], [dict(c, page_label="p 7")]), "page_label must be")
+        html = mk_v3([], [{"claim_id": "C1", "section": "1", "quote": "q", "numbers": [], "source": "text",
+                           "claim_type": "finding", "page_label": "7"}], anchor_kind="arxiv_html", source_version="v1",
+                     vision_mode="off")
+        self.assert_exit8(html, "page_label applies to PDF cards only")
+        self.assert_exit8(mk_v3([], [c], paper_note={"design": "rct", "study_weight": "moderate",
+                                                     "weight_reason": "r", "limitation_claim_ids": ["C1"]}),
+                          "is a 'finding' claim")
+        self.assert_exit8(mk_v3([], [c], paper_note={"design": "rct", "study_weight": "moderate",
+                                                     "limitation_claim_ids": []}), "weight_reason")
+        self.assert_exit8(mk_v3([], [c], paper_note={"design": "rct", "study_weight": "high", "weight_reason": "r",
+                                                     "limitation_claim_ids": []}), "study_weight must be")
+        v2 = dict(mk_v3([], [c]), schema_version="lit-verify-card-v2")
+        self.assert_exit8(v2, "unknown field")                                    # v2 cards keep the v2 claim fields
+
+    def test_vocabularies_match_the_literature_review_skill(self):
+        refs = _REPO_ROOT / ".claude" / "skills" / "literature-review" / "references"
+        formal = (refs / "formal-review.md").read_text()
+        guides = formal.split("`guide` is one of", 1)[1].split(";", 1)[0]
+        self.assertEqual(tuple(re.findall(r"`([a-z0-9-]+)`", guides)), lv.APPRAISAL_GUIDES)
+        notes = (refs / "paper-notes.md").read_text()
+        labels = notes.split("## Design labels", 1)[1].split("Label the design", 1)[0]
+        self.assertEqual(tuple(re.findall(r"`([a-z_]+)`", labels)), lv.DESIGN_LABELS)
+
+
+# --- report (1.10.0, S4 D4): the pure rules on an in-memory view; every word invented ---------------
+import lit_report_rules as lrr  # noqa: E402  (stdlib)
+
+HAVE_YAML = importlib.util.find_spec("yaml") is not None
+BUNDLE = Path(__file__).resolve().parent / "fixtures" / "lit_corpus" / "contract_bundle"
+
+
+def mk_view():
+    def paper(key, grade="FULL_TEXT_VERIFIED", verdict="CONFIDENT", rs="none", **kw):
+        return dict({"paper_key": key, "grade": grade, "verify_verdict": verdict, "verify_note": None,
+                     "accept_weak": False, "retraction_status": rs, "include_retracted": False, "in_bib": True}, **kw)
+
+    def claim(key, verification="verified", numbers=(), quote="q", status="current"):
+        return {"paper_key": key, "citekey": None, "status": status, "superseded_by": None,
+                "verification": verification, "quote": quote, "numbers": list(numbers)}
+
+    def finding(cert, claims, scheme="stated", **kw):
+        return dict({"status": "current", "certainty_scheme": scheme, "certainty": cert,
+                     "certainty_reason": "rests on pa-c01", "decided_by": {"role": "synthesizer"},
+                     "not_rated_reason": None, "moderator_status": "none", "claim_ids": claims, "dsum": None,
+                     "dirs": None}, **kw)
+    three = ["pa-c01", "pb-c01", "pc-c01"]
+    return {
+        "papers": {"a": paper("pa"), "b": paper("pb"), "c": paper("pc"), "f": paper("pf", "ABSTRACT_ONLY"),
+                   "f2": paper("pf2", "ABSTRACT_ONLY"),
+                   "m": paper("pm", "METADATA_ONLY"), "r": paper("pr", rs="retracted"),
+                   "rd": paper("prd", rs="retracted", include_retracted=True), "co": paper("pco", rs="corrected"),
+                   "nr": paper("pnr", rs=None), "w": paper("pw", verdict="WEAK"),
+                   "wa": paper("pwa", verdict="WEAK", accept_weak=True), "u": paper("pu", verdict=None),
+                   "x": paper("px", in_bib=False), "rn": paper("prn", retraction_not_latest=True),
+                   # polish pass H: a second paper printing 0.15 (as b does); the final title rule's fix on an
+                   #   unverified paper; a draft whose recorded title differs from the confirmed record's
+                   "d": paper("pd"), "tu": paper("ptu", verdict=None, verify_fix="Restore the data folder (test fix)."),
+                   "td": paper("ptd", verify_fix="Restore the data folder (test fix).",
+                               title_differs={"recorded": "A Mentoring Pilot", "record": "A Study of Dental Hygiene"})},
+        "claims": {"pa-c01": claim("pa", numbers=["0.21", "0.05"], quote="Reading scores rose by 0.21 standard "
+                                                                            "deviations after one invented year"),
+                   "pb-c01": claim("pb", numbers=["0.15"]), "pc-c01": claim("pc", numbers=["0.09"]),
+                   "pd-c01": claim("pd", numbers=["0.15"]),
+                   "pa-c02": claim("pa", status="superseded"), "pa-c03": claim("pa", verification="wrong_page"),
+                   "pa-c04": dict(claim("pa"), numbers_failed=True),
+                   # report-rules-v3 fixtures: a labelled number needing review (C2-QW5), an abstract claim of a fully
+                   #   read paper (q-I4), quotes of an unverified and a verified claim (C2-CW1)
+                   "pa-c05": dict(claim("pa"), numbers_review=True),
+                   "pa-a01": claim("pa", verification="abstract_verified", quote="Reading buddies help young readers"),
+                   "pa-c06": claim("pa", verification="unverified", quote="this program proves that tutoring works "
+                                                                           "for every pupil in every school"),
+                   "pb-c02": claim("pb", quote="this program proves that tutoring works for every pupil")},
+        "findings": {"F01": finding("moderate", three, dsum={"k": 3, "median": "0.15", "q1": "0.12", "q3": "0.18",
+                                                              "min": "0.09", "max": "0.21"},
+                                    dirs={"u": 3, "n": 3, "p_two_sided": 0.25, "ci95": [0.438503, 1.0]}),
+                     "F02": finding(None, ["pa-c01"], scheme="not_rated", not_rated_reason="qualitative_evidence",
+                                    certainty_reason=None),
+                     "F03": finding("low", ["pa-c01", "pb-c01"]), "F04": finding("very_low", ["pa-c01"]),
+                     "F05": finding("moderate", ["pa-c01"], moderator_status="post_hoc"),
+                     "F06": finding("moderate", ["pa-c01"], certainty_reason=""),
+                     "F07": finding("high", ["pa-c01", "pb-c01"]),
+                     "F08": finding("moderate", ["pa-c01"], status="superseded"),
+                     "F09": finding("low", three)},
+        "edges": {"E001": {"citing_key": "pb", "cited_key": "pa", "reader_relation": "builds_on"},
+                  "E002": {"citing_key": "pb", "cited_key": "pa", "reader_relation": "disputes"}},
+    }
+
+
+def fspan(fid, claims="pa-c01"):
+    return '{.lr-finding fid=%s claims="%s"}' % (fid, claims)
+
+
+class ReportRulesTests(unittest.TestCase):
+    # (name, text, kind, verdict, statuses that must appear, statuses that must not)
+    CASES = [
+        ("clean finding", "[Tutoring probably raises scores]" + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].",
+         "synthesis", "PASS", ("CITATION_OK",), ()),
+        ("email is not a citation", "Write to me@example.org about the trial [@a].", "synthesis", "PASS", (),
+         ("CITEKEY_UNKNOWN",)),
+        ("unknown key", "Tutoring helps [@zz2020nope].", "synthesis", "FAIL", ("CITEKEY_UNKNOWN",), ()),
+        ("bare in-text key resolves", "As @a reports, scores rose by 0.21.", "synthesis", "PASS", ("CITATION_OK",), ()),
+        ("not in the reference list", "Tutoring helps [@x].", "synthesis", "FAIL", ("CITEKEY_NOT_IN_BIB",), ()),
+        ("unverified", "Tutoring helps [@u].", "synthesis", "FAIL", ("CITATION_UNVERIFIED",), ()),
+        ("weak, undecided", "Tutoring helps [@w].", "synthesis", "FAIL", ("CITATION_WEAK_UNDECIDED",), ()),
+        ("weak, accepted by the researcher", "Tutoring helps [@wa].", "synthesis", "NEEDS_REVIEW",
+         ("CITATION_HUMAN_DECISION_UNBOUND",), ()),
+        ("retracted", "Tutoring helps [@r].", "synthesis", "FAIL", ("RETRACTED_CITED",), ()),
+        ("retracted, kept, unlabelled", "Tutoring helps [@rd].", "synthesis", "FAIL", ("RETRACTED_UNLABELED",), ()),
+        ("retracted, kept, labelled", "A later retracted trial reported gains [@rd].", "synthesis", "PASS",
+         ("RETRACTED_CITED_DECIDED",), ()),
+        ("corrected", "Tutoring helps [@co].", "synthesis", "PASS", ("CORRECTED_CITED",), ()),
+        ("retraction not checked", "Tutoring helps [@nr].", "synthesis", "NEEDS_REVIEW", ("RETRACTION_NOT_CHECKED",),
+         ()),
+        ("metadata only", "Tutoring helps [@m].", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("metadata only in a bibliography", "Further reading [@m].", "bibliography", "PASS", (),
+         ("METADATA_ONLY_CITED",)),
+        ("abstract only, unlabelled", "Buddies help readers [@f].", "synthesis", "FAIL", ("ABSTRACT_ONLY_UNLABELED",),
+         ()),
+        ("abstract only, labelled", "Buddies may help readers [@f, per abstract].", "synthesis", "PASS", (), ()),
+        ("abstract only, labelled, two keys (quick scan)", "Buddies may help readers [@f, per abstract; "
+         "@f2, per abstract].", "synthesis", "PASS", (), ("FINDING_UNMARKED",)),
+        ("label on a full-text paper", "Scores rose [@a, per abstract].", "synthesis", "PASS",
+         ("PER_ABSTRACT_ON_FULL_TEXT",), ()),
+        ("abstract only with a number", "Buddies raised scores by 0.4 SD [@f, per abstract].", "synthesis", "FAIL",
+         ("ABSTRACT_ONLY_NUMBER",), ()),
+        ("finding unknown", "[It works]" + fspan("F99") + " [@a].", "synthesis", "FAIL", ("FINDING_UNKNOWN",), ()),
+        ("finding superseded", "[It probably works]" + fspan("F08") + " [@a].", "synthesis", "FAIL",
+         ("FINDING_UNKNOWN",), ()),
+        ("finding without a reason", "[It probably works]" + fspan("F06") + " [@a].", "synthesis", "FAIL",
+         ("FINDING_UNREASONED",), ()),
+        ("claim unknown", '[It works]{.lr-claim claims="pa-c99"} [@a].', "synthesis", "FAIL", ("CLAIM_UNKNOWN",), ()),
+        ("claim superseded", '[It works]{.lr-claim claims="pa-c02"} [@a].', "synthesis", "FAIL",
+         ("CLAIM_SUPERSEDED",), ()),
+        ("claim not on its page", '[It works]{.lr-claim claims="pa-c03"} [@a].', "synthesis", "FAIL",
+         ("CLAIM_NOT_VERIFIED",), ()),
+        ("claim of another paper", "[Tutoring probably raises scores]" + fspan("F01", "pc-c01") + " [@a].",
+         "synthesis", "FAIL", ("CLAIM_PAPER_NOT_CITED",), ()),
+        ("span claims not the finding's", "[Tutoring probably raises scores]" + fspan("F05", "pb-c01")
+         + " [@b], which was exploratory.", "synthesis", "NEEDS_REVIEW", ("FINDING_CLAIMS_DIFFER",), ()),
+        ("malformed marker", "[It works]{.lr-finding claims=\"pa-c01\"} [@a].", "synthesis", "FAIL",
+         ("SPAN_MALFORMED",), ()),
+        ("significance vote count", "Seven of ten studies found significant effects [@a; @b].", "synthesis", "FAIL",
+         ("VOTE_COUNT_SIGNIFICANCE",), ()),
+        ("informal vote count", "Most studies found improvements [@a; @b].", "synthesis", "NEEDS_REVIEW",
+         ("VOTE_COUNT_INFORMAL",), ()),
+        ("count of designs is fine", "12 of 40 studies used randomized designs [@a; @b].", "synthesis", "PASS", (),
+         ("VOTE_COUNT_INFORMAL", "FINDING_UNMARKED")),
+        ("count of effects by risk of bias is fine", "Only five of the 15 effects were judged at low risk of bias "
+         "[@a; @b].", "synthesis", "PASS", (), ("VOTE_COUNT_INFORMAL",)),
+        ("'the most rigorous studies' is not a count", "The most rigorous studies used state tests [@a].",
+         "synthesis", "PASS", (), ("VOTE_COUNT_INFORMAL",)),
+        ("sign test equal to the computed one", "[Three of three effects favoured tutoring (sign test, p = 0.25)]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS", ("DIRECTION_SIGN_TEST",), ()),
+        ("sign test numbers differ", "[Two of three effects favoured tutoring (sign test)]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "FAIL", ("SIGN_TEST_MISMATCH",), ()),
+        ("pooled estimate", "The pooled effect was 0.15 [@a; @b].", "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("a study's own average is fine", "The trial's average effect was 0.21 [@a].", "synthesis", "PASS", (),
+         ("POOLED_ESTIMATE",)),
+        ("weighted summary", "The weighted average of the studies was 0.15 [@a; @b].", "synthesis", "FAIL",
+         ("WEIGHTED_SUMMARY",), ()),
+        ("descriptive summary as computed", "[Across 3 studies the estimates ranged from 0.09 to 0.21 (median 0.15; "
+         "IQR 0.12 to 0.18; descriptive summary, not a pooled estimate)]" + fspan("F01", "pa-c01 pb-c01 pc-c01")
+         + " [@a; @b; @c].", "synthesis", "PASS", ("DESCRIPTIVE_SUMMARY_OK",), ("POOLED_ESTIMATE",)),
+        ("descriptive summary unlabelled", "[Across 3 studies the estimates ranged from 0.09 to 0.21 (median 0.15)]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "FAIL",
+         ("DESCRIPTIVE_SUMMARY_UNLABELED",), ()),
+        ("descriptive summary with other numbers", "[Across 3 studies the median was 0.16 (range 0.09 to 0.21; "
+         "descriptive summary, not a pooled estimate)]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].",
+         "synthesis", "FAIL", ("DESCRIPTIVE_SUMMARY_NUMBER_MISMATCH",), ()),
+        ("median without a computed summary", "Across the studies the median effect size was 0.15 (range 0.09 to "
+         "0.21) [@a; @b; @c].", "synthesis", "FAIL", ("DESCRIPTIVE_SUMMARY_UNSUPPORTED",), ()),
+        ("number in no cited claim, one paper", "The trial raised scores by 0.33 [@a].", "synthesis", "NEEDS_REVIEW",
+         ("NUMBER_NOT_IN_CITED_CLAIM",), ()),
+        ("number in no cited claim, two papers", "[Tutoring probably raises scores by 0.18]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "FAIL", ("NUMBER_ACROSS_PAPERS",), ()),
+        ("number of a cited claim", "The trial raised scores by 0.21 [@a].", "synthesis", "PASS", (),
+         ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        ("certainty stronger", "[Tutoring raises scores]" + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].",
+         "synthesis", "FAIL", ("CERTAINTY_STRONGER",), ()),
+        ("certainty weaker", "[Tutoring may raise scores]" + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].",
+         "synthesis", "NEEDS_REVIEW", ("CERTAINTY_WEAKER",), ()),
+        ("stacked hedges", "[Tutoring may probably raise scores]" + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].",
+         "synthesis", "NEEDS_REVIEW", ("CERTAINTY_STACKED_HEDGE",), ()),
+        ("'likely' on a moderate finding", "[Tutoring likely raises scores]" + fspan("F01", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "NEEDS_REVIEW", ("FORBIDDEN_HEDGE",), ()),
+        ("'likely' on a low finding is stronger", "[Tutoring likely raises scores]" + fspan("F03", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "FAIL", ("CERTAINTY_STRONGER",), ()),
+        ("'more likely to' is not a hedge", "[Tutored pupils are probably more likely to read]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("FORBIDDEN_HEDGE",)),
+        ("'May 2020' is a month", "[Since May 2020 tutoring raises scores]" + fspan("F07", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "PASS", (), ("CERTAINTY_WEAKER",)),
+        ("booster", "[Tutoring probably raises scores and the trial proves it]" + fspan("F01", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "FAIL", ("BOOSTER",), ()),
+        ("no effect", "[Tutoring probably has no effect on attendance]" + fspan("F01", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "FAIL", ("NO_EFFECT_CLAIM",), ()),
+        ("very low without 'uncertain'", "[Tutoring may raise scores]" + fspan("F04") + " [@a].", "synthesis",
+         "FAIL", ("VERY_LOW_WITHOUT_UNCERTAIN",), ()),
+        ("very low direction template", "[Tutoring may raise scores, but the evidence is very uncertain]"
+         + fspan("F04") + " [@a].", "synthesis", "PASS", (), ("CERTAINTY_STACKED_HEDGE",)),
+        ("not rated, unstated", "[Teachers describe scheduling as a barrier]" + fspan("F02") + " [@a].",
+         "synthesis", "NEEDS_REVIEW", ("NOT_RATED_UNSTATED",), ()),
+        ("not rated with a hedge", "[Teachers probably see scheduling as a barrier (certainty not rated: qualitative "
+         "evidence)]" + fspan("F02") + " [@a].", "synthesis", "FAIL", ("NOT_RATED_WITH_HEDGE",), ()),
+        ("post hoc, unlabelled", "[Tutoring probably helps boys more]" + fspan("F05") + " [@a].", "synthesis",
+         "FAIL", ("POST_HOC_UNLABELED",), ()),
+        ("nonstandard hedge", "[Tutoring appears to probably raise scores]" + fspan("F01", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "NEEDS_REVIEW", ("NONSTANDARD_HEDGE",), ()),
+        ("significance label", "[Tutoring probably raises scores, a statistically significant gain]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "NEEDS_REVIEW", ("SIGNIFICANCE_LABEL",), ()),
+        ("moderator cue, unbound", "Effects were stronger for boys [@a].", "synthesis", "NEEDS_REVIEW",
+         ("MODERATOR_CUE_UNLABELED",), ()),
+        ("unmarked conclusion", "Tutoring probably raises scores [@a; @b].", "synthesis", "NEEDS_REVIEW",
+         ("FINDING_UNMARKED",), ()),
+        ("quote of a cited claim is exempt", '[The trial reports that "Reading scores rose by 0.21 standard '
+         'deviations"]' + fspan("F07", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (),
+         ("QUOTE_NOT_FROM_CLAIM",)),
+        ("quote not from a claim", 'The authors wrote "seven of ten studies were clearly positive" [@a].',
+         "synthesis", "NEEDS_REVIEW", ("QUOTE_NOT_FROM_CLAIM",), ()),
+        ("exempt methods section", "## Methods\n\nWe did not pool; 7 of 10 studies were significant [@a].",
+         "synthesis", "PASS", ("SECTION_EXEMPT", "CITATION_OK"), ("VOTE_COUNT_SIGNIFICANCE",)),
+        ("citations still checked in an exempt section", "## References\n\nSee [@zz2020nope].", "synthesis", "FAIL",
+         ("CITEKEY_UNKNOWN",), ()),
+        ("edge unknown", '[B builds on A]{.lr-edge edges="E099"} [@b; @a].', "synthesis", "FAIL", ("EDGE_UNKNOWN",),
+         ()),
+        ("dispute without a quoted relation", '[B disputes A]{.lr-edge edges="E001"} [@b; @a].', "synthesis",
+         "NEEDS_REVIEW", ("EDGE_RELATION_UNSUPPORTED",), ()),
+        ("dispute with a quoted relation", '[B disputes A]{.lr-edge edges="E002"} [@b; @a].', "synthesis", "PASS",
+         ("EDGE_OK",), ()),
+        ("dispute wording with no link", "Baker disputes the earlier trial [@b; @a].", "synthesis", "NEEDS_REVIEW",
+         ("EDGE_RELATION_UNSUPPORTED",), ()),
+        ("code is not read", "Run `lit_verify report` with `@notakey` [@a].", "synthesis", "PASS", (),
+         ("CITEKEY_UNKNOWN",)),
+        # --- 1.11.0 (review cycle 1): lint false negatives (Q-W5) ---
+        ("FN1 on average", "On average, the programmes raised reading scores by 0.15 SD [@a; @b; @c].", "synthesis",
+         "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("FN2 combined gain", "Tutoring produced a combined gain of 0.15 SD [@a; @b].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("FN3 averaging", "Averaging the three estimates gives 0.15 SD [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("FN4 mean of the estimates", "The mean of the study estimates was 0.15 SD [@a; @b].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        # report-lint-v3 (user decision 2026-11-01, item 2): a pooling phrase with no number is not a pooled estimate; the
+        #   unmarked multi-paper conclusion goes to a person
+        ("FN5 on average across trials (no number: user decision 2026-11-01)", "On average, tutoring programmes raised reading scores "
+         "across the included trials [@a; @b].", "synthesis", "NEEDS_REVIEW", ("FINDING_UNMARKED",),
+         ("POOLED_ESTIMATE",)),
+        ("FN6 bare count", "Seven studies reported statistically significant gains, while three did not [@a; @b].",
+         "synthesis", "FAIL", ("VOTE_COUNT_SIGNIFICANCE",), ()),
+        ("FN7 most of the included", "Most of the included studies found positive effects [@a; @b].", "synthesis",
+         "NEEDS_REVIEW", ("VOTE_COUNT_INFORMAL",), ()),
+        ("FN8 fraction", "In 3/5 studies the effect was positive and significant [@a; @b].", "synthesis", "FAIL",
+         ("VOTE_COUNT_SIGNIFICANCE",), ()),
+        ("FN9 all three", "All three trials found significant improvements [@a; @b; @c].", "synthesis", "FAIL",
+         ("VOTE_COUNT_SIGNIFICANCE",), ()),
+        ("FN10 unbound booster (review since report-lint-v3)", "Small-group tutoring conclusively raises reading "
+         "scores [@a].", "synthesis", "NEEDS_REVIEW", ("BOOSTER_UNMARKED",), ("BOOSTER",)),
+        ("FN11 clearly improves", "[Tutoring probably raises scores and clearly improves attendance]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "FAIL", ("BOOSTER",), ()),
+        ("FN12 typed sign-test p", "[Three of three effects favoured tutoring (sign test, p = 0.01)]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "FAIL", ("SIGN_TEST_MISMATCH",), ()),
+        ("sign test with the computed interval", "[Three of three effects favoured tutoring (sign test, p = 0.25; 95% "
+         "CI 44% to 100%)]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS",
+         ("DIRECTION_SIGN_TEST",), ()),
+        ("FN13 percent summary", "[Across 3 studies the estimates ranged from 12% to 45% (descriptive summary, not a "
+         "pooled estimate)]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "FAIL",
+         ("DESCRIPTIVE_SUMMARY_NUMBER_MISMATCH",), ()),
+        ("FN14 abstract percent words", "Reading buddies raised scores by 12 percent [@f, per abstract].", "synthesis",
+         "FAIL", ("ABSTRACT_ONLY_NUMBER",), ()),
+        ("FN16 unhedged unmarked conclusion", "Small-group tutoring raises reading scores [@a; @b].", "synthesis",
+         "NEEDS_REVIEW", ("FINDING_UNMARKED",), ()),
+        # --- false positives (Q-W6, M-I1/I2) ---
+        ("FP5 CI level is not a result", "Allen found 0.21 (95% CI) and Baker found 0.15 [@a; @b].", "synthesis",
+         "NEEDS_REVIEW", (), ("NUMBER_ACROSS_PAPERS",)),
+        ("FP6 p threshold is not a result", "The trial found gains (p < .05) [@a].", "synthesis", "PASS", (),
+         ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        ("FP7 a cited meta-analysis's own estimate", "A prior meta-analysis [@b] reported a pooled effect of 0.15, "
+         "larger than the single trial [@a].", "synthesis", "PASS", (), ("POOLED_ESTIMATE",)),
+        ("FP9 escaped at signs", "Write to lab\\@x or see \\@notakey [@a].", "synthesis", "PASS", (),
+         ("CITEKEY_UNKNOWN", "CITEKEY_NOT_IN_BIB")),
+        ("FP2 'Since May' is a month", "[Since May, tutoring raises scores]" + fspan("F07", "pa-c01 pb-c01")
+         + " [@a; @b].", "synthesis", "PASS", (), ("CERTAINTY_WEAKER", "CERTAINTY_STACKED_HEDGE")),
+        ("I1 study features are not results", "Few studies report effects for rural pupils [@a; @b].", "synthesis",
+         "PASS", (), ("VOTE_COUNT_INFORMAL",)),
+        # --- Pandoc @{key} (Q-W7) ---
+        ("@{key} is a citation", "Tutoring helps [@{u}].", "synthesis", "FAIL", ("CITATION_UNVERIFIED",), ()),
+        ("@{key} unknown", "Tutoring helps [@{zz nope}].", "synthesis", "FAIL", ("CITEKEY_UNKNOWN",), ()),
+        ("unclosed @{ fails closed", "Tutoring helps @{u and more.", "synthesis", "FAIL", ("CITEKEY_UNKNOWN",), ()),
+        # --- wrapped markers (C-W1) ---
+        ("wrapped marker is read", "[Tutoring probably raises scores]{.lr-finding\nfid=F01 claims=\"pa-c01 pb-c01\"} "
+         "[@a; @b].", "synthesis", "PASS", (), ("SPAN_MALFORMED", "FINDING_UNMARKED")),
+        ("detached marker is malformed", "[Tutoring probably raises scores]\n{.lr-finding fid=F01 claims=\"pa-c01\"} "
+         "[@a; @b].", "synthesis", "FAIL", ("SPAN_MALFORMED",), ()),
+        # --- the table's own wording (M-B1, M-W11..M-W14) ---
+        ("little to no difference, high", "[Tutoring results in little to no difference in attendance]"
+         + fspan("F07", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("NO_EFFECT_CLAIM",)),
+        ("little to no difference, moderate", "[Tutoring probably results in little to no difference in attendance]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("NO_EFFECT_CLAIM",)),
+        ("little to no difference, low", "[Tutoring may result in little to no difference in attendance]"
+         + fspan("F03", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("NO_EFFECT_CLAIM",)),
+        ("little to no effect, very low", "[Tutoring may have little to no effect on attendance, but the evidence is "
+         "very uncertain]" + fspan("F04") + " [@a].", "synthesis", "PASS", (), ("NO_EFFECT_CLAIM",)),
+        ("paired absence statement", "[There is no evidence of an effect on attendance, which is not evidence of no "
+         "effect]" + fspan("F03", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (),
+         ("NO_EFFECT_CLAIM", "CERTAINTY_STRONGER")),
+        ("unbound no effect (review since report-lint-v3)", "Tutoring has no effect on attendance [@a].", "synthesis",
+         "NEEDS_REVIEW", ("NO_EFFECT_CLAIM_UNMARKED",), ("NO_EFFECT_CLAIM",)),
+        ("newly established is not a booster", "[Tutoring probably improves reading scores in newly established "
+         "charter schools]" + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("BOOSTER",)),
+        ("established that is a booster", "[Tutoring probably raises scores; the trial established that it works]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "FAIL", ("BOOSTER",), ()),
+        ("evidence suggests, low", "[Evidence suggests that tutoring improves reading scores]"
+         + fspan("F03", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("CERTAINTY_STRONGER",)),
+        ("the available evidence suggests, low", "[The available evidence suggests that tutoring improves reading "
+         "scores]" + fspan("F03", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ("CERTAINTY_STRONGER",)),
+        ("unclear whether, very low", "[It is unclear whether tutoring improves reading scores]" + fspan("F04")
+         + " [@a].", "synthesis", "PASS", (), ("CERTAINTY_STRONGER", "VERY_LOW_WITHOUT_UNCERTAIN")),
+        ("we don't know if, very low", "[We don't know if tutoring improves reading scores]" + fspan("F04")
+         + " [@a].", "synthesis", "PASS", (), ("CERTAINTY_STRONGER", "VERY_LOW_WITHOUT_UNCERTAIN")),
+        ("unclear whether on a low finding is weaker", "[It is unclear whether tutoring improves reading scores]"
+         + fspan("F03", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "NEEDS_REVIEW", ("CERTAINTY_WEAKER",),
+         ("CERTAINTY_STRONGER",)),
+        ("another level's word", "[Tutoring probably improves reading scores; whether it lasts is uncertain]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "NEEDS_REVIEW", ("NONSTANDARD_HEDGE",), ()),
+        ("'may' on an unrated finding", "[Teachers may see scheduling as a barrier (certainty not rated: qualitative "
+         "evidence)]" + fspan("F02") + " [@a].", "synthesis", "FAIL", ("NOT_RATED_WITH_HEDGE",), ()),
+        # --- a claim whose number failed (Q-W1) ---
+        ("claim with a failed number", '[It works]{.lr-claim claims="pa-c04"} [@a].', "synthesis", "FAIL",
+         ("CLAIM_NOT_VERIFIED",), ()),
+        # --- report-lint-v3 / report-rules-v3 (review cycle 2, user decision 2026-11-01) ---
+        # pooling (user decision 2026-11-01, item 2): one number for several cited studies fails; the phrases alone do not
+        ("D35 overall + one number", "Overall, tutoring raised reading scores by 0.15 SD [@a; @b; @c].", "synthesis",
+         "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("D35 pooling the estimates", "Pooling the three estimates gives 0.15 SD [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("D35 taken together + a number", "Taken together, the studies show a gain of about 0.15 SD [@a; @b; @c].",
+         "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("D35 the typical study + a number", "The typical study found a gain of 0.15 SD [@a; @b; @c].", "synthesis",
+         "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("D35 overall + one number with its interval", "Overall, the effect was 0.15 SD (95% CI 0.05 to 0.25) [@a; @b; "
+         "@c].", "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("D35 taken together, bound, low, no number", "[Taken together, the studies suggest tutoring may improve "
+         "reading]" + fspan("F09", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS", (), ()),
+        ("D35 overall, bound, moderate, no number", "[Overall, tutoring probably raises reading scores]"
+         + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].", "synthesis", "PASS", (), ()),
+        ("D35 the typical study, no number", "The typical study was a small trial in one district [@a; @b].",
+         "synthesis", "PASS", (), ("POOLED_ESTIMATE",)),
+        ("D35 remedy: each study's estimate with its own citation", "Tutoring raised scores by 0.21 SD in one trial "
+         "[@a] and by 0.15 SD in an event study [@b].", "synthesis", "NEEDS_REVIEW", (), ("POOLED_ESTIMATE",)),
+        ("D35 remedy: overall + per-study numbers", "Overall, the trial found 0.21 SD and the event study 0.15 SD "
+         "[@a; @b].", "synthesis", "NEEDS_REVIEW", (), ("POOLED_ESTIMATE",)),
+        ("D35 remedy: the labelled descriptive summary", "[Across 3 studies reporting SD units of reading score, the "
+         "estimates ranged from 0.09 to 0.21 (median 0.15; IQR 0.12 to 0.18; descriptive summary, not a pooled "
+         "estimate)]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS",
+         ("DESCRIPTIVE_SUMMARY_OK",), ("POOLED_ESTIMATE",)),
+        ("D35 remedy: overall + the descriptive summary", "[Overall, across 3 studies the estimates ranged from 0.09 "
+         "to 0.21 (median 0.15; IQR 0.12 to 0.18; descriptive summary, not a pooled estimate)]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS", ("DESCRIPTIVE_SUMMARY_OK",),
+         ("POOLED_ESTIMATE",)),
+        ("D35 combined intervention is not pooling", "Allen reported the combined effect of tutoring and coaching, "
+         "while Baker studied tutoring alone [@a; @b].", "synthesis", "PASS", (), ("POOLED_ESTIMATE",)),
+        ("D35 on average, a characteristic in words", "Pupils in the two evaluations were, on average, in the middle "
+         "primary grades [@a; @b].", "synthesis", "PASS", (), ("POOLED_ESTIMATE",)),
+        # realistic prose (C2-QW1): no false FAIL
+        ("QW1 at baseline no difference", "At baseline, the trial found no difference in reading scores between the "
+         "two arms [@a].", "synthesis", "PASS", (), ("NO_EFFECT_CLAIM", "NO_EFFECT_CLAIM_UNMARKED")),
+        ("QW1 no difference at baseline", "The arms showed no difference in reading scores at baseline [@a].",
+         "synthesis", "PASS", (), ("NO_EFFECT_CLAIM", "NO_EFFECT_CLAIM_UNMARKED")),
+        ("QW1 have established programmes", "Several states have established tutoring programmes [@a].", "synthesis",
+         "PASS", (), ("BOOSTER", "BOOSTER_UNMARKED")),
+        ("QW1 study characteristics range", "Sample sizes ranged from 412 to 2,560 pupils across the three studies "
+         "[@a; @b; @c].", "synthesis", "NEEDS_REVIEW", (), ("DESCRIPTIVE_SUMMARY_UNSUPPORTED",)),
+        ("QW1 abstract-only citation in its own clause", "Allen found gains of 0.21 SD [@a], and a pilot reported "
+         "similar gains [@f, per abstract].", "synthesis", "NEEDS_REVIEW", (), ("ABSTRACT_ONLY_NUMBER",)),
+        ("QW1 abstract number before its citation", "Gains were 12 percent, the pilot reported [@f, per abstract].",
+         "synthesis", "FAIL", ("ABSTRACT_ONLY_NUMBER",), ()),
+        ("QW1 clearly show, unmarked", "The authors clearly show the attrition in each arm [@a].", "synthesis",
+         "NEEDS_REVIEW", ("BOOSTER_UNMARKED",), ("BOOSTER",)),
+        ("QW1 programme name, unmarked", "The district adopted the Proven Readers programme in 2016 [@a].",
+         "synthesis", "NEEDS_REVIEW", ("BOOSTER_UNMARKED",), ("BOOSTER",)),
+        ("QW1 has established that, unmarked", "The trial has established that tutoring works [@a].", "synthesis",
+         "NEEDS_REVIEW", ("BOOSTER_UNMARKED",), ()),
+        # C2-CW1: only a quote found on its page exempts a sentence
+        ("CW1 quote of an unverified claim is linted", 'The authors wrote that "this program proves that tutoring '
+         'works for every pupil in every school" [@a].', "synthesis", "NEEDS_REVIEW",
+         ("QUOTE_NOT_FROM_CLAIM", "BOOSTER_UNMARKED"), ()),
+        ("CW1 quote of a verified claim is exempt", 'The authors wrote that "this program proves that tutoring works '
+         'for every pupil"' + " [@b].", "synthesis", "PASS", (), ("QUOTE_NOT_FROM_CLAIM", "BOOSTER_UNMARKED")),
+        # C2-CW2 / user decision 2026-11-01, item 3: a title-only paper under "Further reading"
+        ("CW2 metadata only under Further reading", "## Further reading\n\n- A study of rural tutoring [@m].",
+         "synthesis", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("CW2 metadata only under Further reading, final", "## Further reading\n\n- A study of rural tutoring [@m].",
+         "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("CW2 Further reading subsection", "## Further reading\n\n### Rural schools\n\n- Rural tutoring [@m].",
+         "synthesis", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("CW2 Further reading with a number", "## Further reading\n\n- Scores rose by 0.40 SD [@m].", "synthesis",
+         "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("CW2 Further reading with a marker", "## Further reading\n\n- [Tutoring probably helps]"
+         + fspan("F01", "pa-c01") + " [@m; @a].", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("CW2 another heading", "## Where to start reading\n\n- A study of rural tutoring [@m].", "synthesis", "FAIL",
+         ("METADATA_ONLY_CITED",), ()),
+        ("CW2 level-1 heading is not the reading list", "# Further reading\n\n- A study of rural tutoring [@m].",
+         "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        # q-I4: claims marked from an abstract need the label even on a fully read paper
+        ("I4 abstract claim of a read paper, unlabelled", '[Buddies help readers]{.lr-claim claims="pa-a01"} [@a].',
+         "synthesis", "FAIL", ("ABSTRACT_ONLY_UNLABELED",), ()),
+        ("I4 abstract claim of a read paper, labelled", '[Buddies help readers]{.lr-claim claims="pa-a01"} '
+         "[@a, per abstract].", "synthesis", "PASS", (), ("ABSTRACT_ONLY_UNLABELED", "PER_ABSTRACT_ON_FULL_TEXT")),
+        # C2-QW5: a labelled number needing review is a review item, not a failed number
+        ("QW5 labelled number needs review", '[It works]{.lr-claim claims="pa-c05"} [@a].', "synthesis",
+         "NEEDS_REVIEW", ("CLAIM_NUMBER_NEEDS_REVIEW",), ("CLAIM_NOT_VERIFIED",)),
+        # C2-B2: the newest retraction check is not the attached one
+        ("B2 retraction record not the newest, draft", "Tutoring helps [@rn].", "synthesis", "NEEDS_REVIEW",
+         ("RETRACTION_CHECK_NOT_LATEST_DRAFT",), ("RETRACTION_CHECK_NOT_LATEST",)),
+        ("B2 retraction record not the newest, final", "Tutoring helps [@rn].", "final", "FAIL",
+         ("RETRACTION_CHECK_NOT_LATEST",), ()),
+        # --- report-lint-v4 (review cycle 3, round G1) ---
+        # W2: one effect number credited to several studies, in the wordings a writer uses
+        ("G1 W2 pooled across the trials", "Pooled across the trials, the effect was 0.15 SD [@a; @b; @c].",
+         "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 finding across the three trials", "[Across the three trials, tutoring probably raised reading scores by "
+         "0.15 SD]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 number before the phrase", "The gain was 0.15 SD, taken together [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 citation at the end of the next clause", "Pooled across the trials, the effect was 0.15 SD, as three "
+         "trials report [@a; @b; @c].", "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 an average gain", "The studies found an average gain of 0.15 SD [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 combined,", "Combined, the trials show a gain of 0.15 SD [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 in aggregate", "In aggregate, tutoring raised scores by 0.15 SD [@a; @b; @c].", "synthesis", "FAIL",
+         ("POOLED_ESTIMATE",), ()),
+        ("G1 W2 collectively", "Collectively, the three trials point to a gain of 0.15 SD [@a; @b; @c].", "synthesis",
+         "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("G1 across, bound, no number (user decision 2026-11-01)", "[Across the three trials, tutoring probably raised reading scores]"
+         + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "PASS", (), ("POOLED_ESTIMATE",)),
+        # W3: study descriptions are not pooled effects; a range with one citation per number lists studies
+        ("G1 W3 typical study enrolled", "The typical study enrolled about 600 pupils [@a; @b].", "synthesis",
+         "NEEDS_REVIEW", (), ("POOLED_ESTIMATE", "NUMBER_ACROSS_PAPERS")),
+        ("G1 W3 average age", "On average, pupils in the two evaluations were 8.5 years old [@a; @b].", "synthesis",
+         "NEEDS_REVIEW", (), ("POOLED_ESTIMATE", "NUMBER_ACROSS_PAPERS")),
+        ("G1 W3 range with own citations", "The two trials' estimates ranged from 0.09 SD [@c] to 0.21 SD [@a].",
+         "synthesis", "PASS", (), ("DESCRIPTIVE_SUMMARY_UNSUPPORTED",)),
+        ("G1 W3 range, own citations after words", "Estimates ranged from 0.09 SD in the survey [@c] to 0.21 SD in the "
+         "trial [@a].", "synthesis", "PASS", (), ("DESCRIPTIVE_SUMMARY_UNSUPPORTED",)),
+        # consistency I7: a number with its own citation must be that paper's
+        ("G1 I7 number credited to the wrong study", "Tutoring raised scores by 0.15 SD in one trial [@a] and by 0.21 SD "
+         "in another [@b].", "synthesis", "NEEDS_REVIEW", ("NUMBER_NOT_IN_CITED_CLAIM",), ()),
+        ("G1 I7 each number with its own paper", "Tutoring raised scores by 0.21 SD in one trial [@a] and by 0.15 SD in "
+         "another [@b].", "synthesis", "NEEDS_REVIEW", (), ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        # W4: an effect number in a sentence that cites nothing goes to a person
+        ("G1 W4 uncited effect number", "Allen ran a cluster trial in nine schools [@a]. Reading scores rose by 0.45 SD.",
+         "synthesis", "NEEDS_REVIEW", ("NUMBER_NOT_IN_CITED_CLAIM",), ()),
+        ("G1 W4 an uncited count is not an effect", "The search found 1,204 records.", "synthesis", "PASS", (),
+         ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        # W5: a Further reading item names a paper and why to read it, never what it found
+        ("G1 W5 taken together these papers show", "## Further reading\n\nTaken together, these papers show that "
+         "tutoring works [@m].", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("G1 W5 item stating a finding", "## Further reading\n\n- Smith shows that tutoring doubles reading gains for "
+         "every pupil [@m].", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("G1 W5 item with a result verb", "## Further reading\n\n- Rural tutoring raised reading scores [@m].",
+         "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("G1 W5 a good list", "## Further reading\n\n- A district case study of how tutoring was rolled out [@m]\n"
+         "- Background on programme costs [@m]\n", "synthesis", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("G1 W5 'the effect of' names a topic", "## Further reading\n\n- A study of the effect of tutoring on reading "
+         "[@m].", "synthesis", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("G1 W5 'may be useful' is fine", "## Further reading\n\n- A rural case study that may be useful for small "
+         "schools [@m].", "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("G1 I2 numbered heading '6.'", "## 6. Further reading\n\n- A study of rural tutoring [@m].", "synthesis",
+         "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("G1 I2 numbered heading '6'", "## 6 Further reading\n\n- A study of rural tutoring [@m].", "synthesis", "PASS",
+         (), ("METADATA_ONLY_CITED",)),
+        ("G1 I2 trailing colon", "## Further reading:\n\n- A study of rural tutoring [@m].", "synthesis", "PASS", (),
+         ("METADATA_ONLY_CITED",)),
+        # --- report-lint-v5 / report-rules-v5 (polish pass H, round-G re-review) ---
+        # W2: a Further reading item that names a question, a design or what the title suggests names a topic
+        ("H W2 examines whether", "## Further reading\n\n- [@m]: examines whether tutoring improves attendance in rural "
+         "schools.", "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 asks whether", "## Further reading\n\n- [@m]: asks whether peer tutoring raises reading scores for older "
+         "pupils.", "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 tests whether", "## Further reading\n\n- [@m]: tests whether tutoring reduces chronic absence.", "final",
+         "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 whether ... had any effect", "## Further reading\n\n- [@m]: an evaluation of whether summer tutoring had "
+         "any effect on reading.", "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 shows how", "## Further reading\n\n- [@m]: shows how one district scheduled tutoring time.", "final",
+         "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 its title suggests", "## Further reading\n\n- [@m]: its title suggests a study of tutor training.",
+         "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 meta-analytic review", "## Further reading\n\n- [@m]: a meta-analytic review of tutoring programmes.",
+         "final", "PASS", (), ("METADATA_ONLY_CITED",)),
+        ("H W2 across 40 studies", "## Further reading\n\n- [@m]: a review of tutoring across 40 studies.", "final",
+         "PASS", (), ("METADATA_ONLY_CITED",)),
+        # W2: a finding in other words still fails
+        ("H W2 argues that", "## Further reading\n\n- [@m]: argues that tutoring works best in small groups.",
+         "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("H W2 reports that", "## Further reading\n\n- [@m]: reports that tutored pupils read better than their "
+         "peers.", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("H W2 outperformed", "## Further reading\n\n- [@m]: tutored pupils outperformed their peers.", "synthesis",
+         "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("H W2 according to the authors", "## Further reading\n\n- [@m]: according to the authors, tutoring is "
+         "cost-effective.", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("H W2 shows that", "## Further reading\n\n- [@m]: shows that mentoring raises attendance in rural schools.",
+         "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        ("H W2 unclear whether stays certainty wording", "## Further reading\n\n- [@m]: it is unclear whether "
+         "tutoring helps.", "synthesis", "FAIL", ("METADATA_ONLY_CITED",), ()),
+        # W3: one effect number credited to several studies of which only one prints it goes to a person
+        ("H W3 one number, one study prints it", "Effects in the three trials were about 0.15 SD [@a; @b; @c].",
+         "synthesis", "NEEDS_REVIEW", ("NUMBER_NOT_IN_CITED_CLAIM",), ("NUMBER_ACROSS_PAPERS",)),
+        ("H W3 one number in a finding marker", "[Tutoring probably raises reading scores, by about 0.15 SD in these "
+         "trials]" + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].", "synthesis", "NEEDS_REVIEW",
+         ("NUMBER_NOT_IN_CITED_CLAIM",), ()),
+        ("H W3 one number no study prints still fails", "Effects in the three trials were about 0.16 SD [@a; @b; @c].",
+         "synthesis", "FAIL", ("NUMBER_ACROSS_PAPERS",), ()),
+        ("H W3 every cited study prints it", "Effects in both trials were about 0.15 SD [@b; @d].", "synthesis",
+         "PASS", (), ("NUMBER_NOT_IN_CITED_CLAIM", "NUMBER_ACROSS_PAPERS")),
+        ("H W3 a cited meta-analysis's number is its own", "A prior meta-analysis [@b] reported an effect of 0.15, "
+         "larger than the single trial [@a].", "synthesis", "PASS", (), ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        # W5: a number between commas credited to the citation after it is not a pooled estimate
+        ("H W5 appositive with its own citation", "Overall, the largest estimate, 0.21 SD, came from the trial [@a]; "
+         "the event study found 0.15 SD [@b].", "synthesis", "NEEDS_REVIEW", (), ("POOLED_ESTIMATE",)),
+        ("H W5 appositive, taken together", "Taken together, the clearest result, a gain of 0.21 SD, comes from the "
+         "trial [@a], and the event study [@b] points the same way.", "synthesis", "NEEDS_REVIEW", (),
+         ("POOLED_ESTIMATE",)),
+        ("H W5 appositive credited to three studies still fails", "Overall, the gain, 0.15 SD, came from the three "
+         "trials [@a; @b; @c].", "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        # round-G lines the re-review found untested: months of learning are an effect; table cells are not read
+        ("H R6 months of learning is an effect", "Overall, tutored pupils gained 2.5 months of learning [@a; @b; @c].",
+         "synthesis", "FAIL", ("POOLED_ESTIMATE",), ()),
+        ("H R7 an uncited table cell is not read", "| Study | Effect |\n|---|---|\n| Allen trial | 0.21 SD |\n",
+         "synthesis", "PASS", (), ("NUMBER_NOT_IN_CITED_CLAIM",)),
+        # W1 / I8: the final title rule's own fix, and its review item in a draft
+        ("H W1 title differs in a draft", "Tutoring helps [@td].", "synthesis", "NEEDS_REVIEW",
+         ("CITATION_TITLE_DIFFERS_DRAFT",), ("CITATION_UNVERIFIED",)),
+    ]
+
+    def test_reviewer_memo_has_no_false_fail(self):
+        # C2-QW1: the cycle-2 reviewer's should-not-FAIL sentences (probe 02 Part B) give no FAIL item
+        sentences = [
+            "Allen found gains of 0.21 SD [@a], and a pilot reported similar gains [@f, per abstract].",
+            "At baseline the trial found no difference between arms [@a].",
+            "Several states have established tutoring programmes [@a].",
+            "Sample sizes ranged from 412 to 2,560 pupils [@a; @b; @c].",
+            "Allen reported the combined effect of tutoring and coaching, while Baker studied tutoring alone [@a; @b].",
+            "Allen's pupils were, on average, eight years old, and Baker's were ten [@a; @b].",
+            "The authors clearly show the attrition in each arm [@a].",
+            "The authors report no effect on attendance (0.01 SD) [@a].",
+            "The district adopted the Proven Readers programme in 2016 [@a]."]
+        view = mk_view()
+        for s in sentences:
+            with self.subTest(s):
+                items, _ = lrr.check_report(s, view, "synthesis")
+                self.assertEqual([i["status"] for i in items if i["severity"] == "fail"], [])
+
+    def test_fix_texts_name_remedies_that_pass(self):
+        # Lesson of review cycles 1 and 2: the remedy a fix text names must pass the gate.
+        view = mk_view()
+        items, _ = lrr.check_report("Overall, tutoring raised reading scores by 0.15 SD [@a; @b; @c].", view)
+        fix = next(i["fix"] for i in items if i["status"] == "POOLED_ESTIMATE")
+        self.assertIn("each study's estimate with its own citation", fix)
+        self.assertIn("descriptive summary (median and range)", fix)
+        items, _ = lrr.check_report("Tutoring helps [@m].", view)
+        fix = next(i["fix"] for i in items if i["status"] == "METADATA_ONLY_CITED")
+        self.assertIn("'Further reading'", fix)
+        # round G1: the Further-reading result-wording fix and the uncited-number fix name remedies that pass
+        items, _ = lrr.check_report("## Further reading\n\n- Smith shows that tutoring works [@m].", view)
+        fix = next(i["fix"] for i in items if i["status"] == "METADATA_ONLY_CITED")
+        self.assertIn("A district case study of how tutoring was rolled out", fix)
+        items, _ = lrr.check_report("Reading scores rose by 0.45 SD.", view)
+        self.assertIn("Cite the paper that prints the number", next(i["fix"] for i in items))
+        # polish pass H (W3): one study's number credited to three; its fix names the per-study remedy, which passes
+        items, _ = lrr.check_report("Effects in the three trials were about 0.15 SD [@a; @b; @c].", view)
+        it = next(i for i in items if i["status"] == "NUMBER_NOT_IN_CITED_CLAIM")
+        self.assertIn("only b prints it", it["reason"])
+        self.assertIn("credits it to all of them", it["reason"])
+        self.assertIn("each study's estimate with its own citation", it["fix"])
+        self.assertIn("labelled descriptive summary", it["fix"])
+        # polish pass H (W1): the fix lit_verify gives for a paper reaches the researcher on CITATION_UNVERIFIED
+        items, _ = lrr.check_report("Tutoring helps [@tu].", view)
+        self.assertEqual(next(i["fix"] for i in items if i["status"] == "CITATION_UNVERIFIED"),
+                         "Restore the data folder (test fix).")
+        items, _ = lrr.check_report("Tutoring helps [@u].", view)
+        self.assertIn("checked again and confirmed", next(i["fix"] for i in items if i["status"] == "CITATION_UNVERIFIED"))
+        for remedy in ("## Further reading\n\n- A district case study of how tutoring was rolled out [@m].",
+                       "## Further reading\n\n- [@m]: examines whether tutoring improves attendance in rural schools.",
+                       "Effect sizes were 0.21 SD in one trial [@a], 0.15 SD in another [@b] and 0.09 SD in the "
+                       "survey [@c].",
+                       "Reading scores rose by 0.21 standard deviations [@a].",
+                       "Tutoring raised scores by 0.21 SD in one trial [@a] and by 0.15 SD in an event study [@b]."):
+            with self.subTest(remedy):
+                items, _ = lrr.check_report(remedy, view)
+                self.assertNotIn("fail", {i["severity"] for i in items}, sorted({i["status"] for i in items}))
+        for remedy in ("Tutoring raised scores by 0.21 SD in one trial [@a] and by 0.15 SD in an event study [@b].",
+                       "[Across 3 studies reporting SD units of reading score, the estimates ranged from 0.09 to 0.21 "
+                       "(median 0.15; IQR 0.12 to 0.18; descriptive summary, not a pooled estimate)]"
+                       + fspan("F01", "pa-c01 pb-c01 pc-c01") + " [@a; @b; @c].",
+                       "## Further reading\n\n- A study of rural tutoring [@m].",
+                       "Buddies may help readers [@f, per abstract]."):
+            with self.subTest(remedy):
+                items, _ = lrr.check_report(remedy, view)
+                self.assertNotIn("fail", {i["severity"] for i in items}, sorted({i["status"] for i in items}))
+
+    def test_every_template_passes_at_its_own_level(self):
+        # M-B1: each certainty-language template, filled in, passes bound to a finding of its own level
+        fill = {"{X}": "Tutoring", "{Y}": "reading scores", "{verb}": "raise", "{reduction|increase}": "increase"}
+        fid = {"high": ("F07", "pa-c01 pb-c01", "[@a; @b]"), "moderate": ("F01", "pa-c01 pb-c01", "[@a; @b]"),
+               "low": ("F03", "pa-c01 pb-c01", "[@a; @b]"), "very_low": ("F04", "pa-c01", "[@a]")}
+        view = mk_view()
+        n = 0
+        for level, spec in lrr.CERTAINTY_LANGUAGE["levels"].items():
+            for name, tpl in spec["templates"].items():
+                s = tpl
+                for k, v in fill.items():
+                    s = s.replace(k, v)
+                s = s.replace("{verb}s", "raises").replace("raises", "raises")
+                s = s.replace("raise s", "raises").rstrip(".")
+                f, cl, cite = fid[level]
+                text = f"[{s}]" + fspan(f, cl) + f" {cite}."
+                with self.subTest(level=level, template=name, text=text):
+                    items, _ = lrr.check_report(text, view, "synthesis")
+                    self.assertEqual(lrr.verdict_of(items), "PASS", sorted({i["status"] for i in items}))
+                    n += 1
+        self.assertGreaterEqual(n, 14)
+
+    def test_nonstandard_reason_names_the_other_level(self):
+        text = ("[Tutoring probably improves reading scores; whether it lasts is uncertain]"
+                + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].")
+        items, _ = lrr.check_report(text, mk_view(), "synthesis")
+        it = next(i for i in items if i["status"] == "NONSTANDARD_HEDGE")
+        self.assertIn("a word for very low certainty", it["reason"])
+        self.assertNotIn("not one of the certainty words", it["reason"])
+
+    def test_cases(self):
+        view = mk_view()
+        for name, text, kind, verdict, must, must_not in self.CASES:
+            with self.subTest(name):
+                items, _ = lrr.check_report(text, view, kind)
+                got = {it["status"] for it in items}
+                self.assertEqual(lrr.verdict_of(items), verdict, (name, sorted(got)))
+                self.assertEqual([s for s in must if s not in got], [], name)
+                self.assertEqual([s for s in must_not if s in got], [], name)
+                for it in items:                                   # plain reasons: no status or internal codes
+                    self.assertNotRegex(it["reason"] + " " + it["fix"], r"\b[A-Z]+_[A-Z_]{3,}\b|state: |the check said|"
+                                        r"ocr-layer|ocr\+vision|not-near-quote|precision-differs|\{\.lr-|fid=", name)
+
+    def test_citation_parse(self):
+        cites, groups = lrr.parse_citations("A [see @k1, pp. 3-5; -@k2, per abstract] and @k3. said; me@x.org; "
+                                            "[@Key.With:Punct.]")
+        self.assertEqual([c["key"] for c in cites], ["k1", "k2", "k3", "Key.With:Punct"])
+        self.assertEqual([c["per_abstract"] for c in cites], [False, True, False, False])
+        self.assertEqual([c["in_text"] for c in cites], [False, False, True, False])
+        self.assertEqual(len(groups), 2)
+
+    def test_sentence_split(self):
+        text = "Smith et al. found gains. Then p. 7 gives 0.5 and e.g. more. Next one!\n\n| a | b |\n|---|---|\n- item"
+        units = lrr.split_units(text)
+        self.assertEqual([text[s:e].strip() for s, e in units],
+                         ["Smith et al. found gains.", "Then p. 7 gives 0.5 and e.g. more.", "Next one!", "a", "b",
+                          "- item"])
+
+    def test_statuses_and_versions(self):
+        self.assertEqual(set(lrr.REPORT_SEVERITY.values()), {"pass", "fail", "review", "warning"})
+        self.assertEqual((lv.REPORT_CHECK_SCHEMA_VERSION, lv.REPORT_REDERIVE_VERSION, lrr.REPORT_RULES_VERSION,
+                          lrr.CITATION_PARSE_VERSION, lrr.SENTENCE_SPLIT_VERSION, lrr.REPORT_LINT_VERSION),
+                         ("lit-verify-report-check-v1", "report-rederive-v5", "report-rules-v5", "citations-v2",
+                          "sentences-v1", "report-lint-v5"))
+        self.assertEqual(lv.TOOL_VERSION, "1.14.0-daaf")
+        self.assertEqual(lrr.CERTAINTY_LANGUAGE["table_version"], "2026-11-01b")
+        # M-W16: a number's state is named in words in the quant reasons, never by its label code
+        self.assertEqual(set(lv.NUMBER_LABEL_WORDS) - set(lv.NUMBER_LABELS.values()), set())
+        self.assertEqual(len(lv.SEVERITY), 81)                       # the card table is untouched
+        self.assertFalse(set(lrr.REPORT_SEVERITY) & {"CRITICAL_RISK_CONTRIBUTOR", "ESCALATION_UNRESOLVED",
+                                                     "APPRAISAL_REDERIVE_MISMATCH", "CERTAINTY_ARITHMETIC_MISMATCH"})
+
+    def test_status_index_count(self):
+        # every REPORT_SEVERITY key is documented in lit-verify-report.md § Status index, with its severity
+        doc = (_REPO_ROOT / ".claude" / "skills" / "literature-review" / "references" /
+               "lit-verify-report.md").read_text()
+        self.assertIn(f"the {len(lrr.REPORT_SEVERITY)} keys of `REPORT_SEVERITY`", doc)
+        table = doc.split("## Status index", 1)[1].split("\n## ", 1)[0]
+        rows = dict(re.findall(r"(?m)^\| `([A-Z_]+)` \| (pass|fail|review|warning) \|", table))
+        self.assertEqual(rows, lrr.REPORT_SEVERITY)
+
+    def test_phrase_table_hash_is_canonical(self):
+        canon = json.dumps(lrr.CERTAINTY_LANGUAGE, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        import hashlib
+        self.assertEqual(hashlib.sha256(canon.encode("utf-8")).hexdigest(), lrr.CERTAINTY_LANGUAGE_SHA256)
+
+    @unittest.skipUnless(HAVE_YAML, "needs PyYAML (in the DAAF image, not on the CI runner)")
+    def test_phrase_table_lockstep_with_yaml(self):
+        import yaml
+        published = yaml.safe_load((_REPO_ROOT / lv.REPORT_YAML_PATH).read_text())
+        self.assertEqual(published, lrr.CERTAINTY_LANGUAGE)
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class ReportOnDiskTests(ScratchCase):
+    # `report` end to end on a copy of the P3 contract bundle (tests/python/fixtures/lit_corpus/contract_bundle).
+    CLEAN = ("# Synthesis (fixture)\n\n## Findings\n\n[Small-group tutoring probably raises reading scores]"
+             '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01"} '
+             "[@fixture-allen2019tutoring; @fixture-baker2020reading].\n\n"
+             "[Across 3 studies reporting SD units of reading score, the estimates ranged from 0.09 to 0.21 (median "
+             "0.15; IQR 0.12 to 0.18; descriptive summary, not a pooled estimate)]"
+             '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01 user_f1c70003-c01"} '
+             "[@fixture-allen2019tutoring; @fixture-baker2020reading; @fixture-chen2021library].\n\n"
+             "[Teachers described scheduling as the main barrier (certainty not rated: qualitative evidence)]"
+             '{.lr-finding fid=F02 claims="user_f1c70004-c01"} [@fixture-diaz2022teachers].\n')
+    PLANTED = ("Small-group tutoring had an average effect of 0.15 SD across the studies [@fixture-allen2019tutoring; "
+               "@fixture-baker2020reading].\n\nSeven of ten studies found significant effects [@nosuch2020x].\n")
+
+    def setUp(self):
+        super().setUp()
+        self.pd = self.root / "project"
+        shutil.copytree(BUNDLE, self.pd)
+
+    def report(self, name, text, *args):
+        path = self.pd / "output" / name
+        path.write_text(text)
+        code, out, err = run_main(["report", self.pd, path, *args])
+        rows = rows_of(self.pd / "output")
+        check = json.loads((self.pd / "output" / rows[-1]["artifacts"]["report_check"]["name"]).read_text()) \
+            if rows and rows[-1].get("artifacts") else None
+        return code, check, out + err
+
+    def test_clean_and_planted(self):
+        code, check, out = self.report("clean.md", self.CLEAN)
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), out)
+        self.assertEqual(check["schema_version"], "lit-verify-report-check-v1")
+        self.assertEqual(check["inputs"]["phrase_table"]["sha256"], lrr.CERTAINTY_LANGUAGE_SHA256)
+        self.assertGreaterEqual(check["rederive"]["cards_checked"], 4)
+        code, check, out = self.report("planted.md", self.PLANTED)
+        got = {it["status"] for it in check["items"]}
+        self.assertEqual((code, check["verdict"]), (11, "FAIL"))
+        for s in ("POOLED_ESTIMATE", "VOTE_COUNT_SIGNIFICANCE", "CITEKEY_UNKNOWN"):
+            self.assertIn(s, got)
+        self.assertNotIn(SENTINEL_KEY, (self.pd / "output" / "MANIFEST.jsonl").read_text())
+
+    def test_final_rechecks_cards_and_the_bundle_has_no_sources(self):
+        # The bundle's ingests name no stored source, so a re-check cannot re-derive them: fail closed.
+        with mock.patch.dict(lv.SYNTHETIC_SOURCES, clear=True):
+            code, check, _ = self.report("final.md", self.CLEAN, "--kind", "final")
+        self.assertEqual((code, check["verdict"], check["rederive"]["cards_rechecked"] >= 4), (11, "FAIL", True))
+        self.assertIn("CARD_RECHECK_DIFFERS", {it["status"] for it in check["items"]})
+
+    def test_guards(self):
+        outside = self.pd / "notes.md"
+        outside.write_text("x")
+        self.assertEqual(run_main(["report", self.pd, outside])[0], 2)
+        bad = self.pd / "output" / "latin1.md"
+        bad.write_bytes("caf\xe9".encode("latin-1"))
+        self.assertEqual(run_main(["report", self.pd, bad])[0], 8)
+        (self.pd / "output" / "references_v1.bib").unlink()
+        good = self.pd / "output" / "x.md"
+        good.write_text("Text.\n")
+        self.assertEqual(run_main(["report", self.pd, good])[0], 10)
+        self.assertEqual(run_main(["report", self.pd, good, "--data-version", "claims=x"])[0], 1)
+
+    def test_tampered_table_fails_closed(self):
+        claims = sorted((self.pd / "data").glob("claims_v*.parquet"))[-1]
+        claims.write_bytes(claims.read_bytes() + b"\0")
+        code, check, _ = self.report("t.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        self.assertEqual(code, 11)
+        self.assertIn("TABLE_HASH_MISMATCH", {it["status"] for it in check["items"]})
+
+    # --- 1.11.0 (review cycle 1): one appended row or table version must never clear anything (user decision, October 2026) ---
+    @staticmethod
+    def append_row(manifest, row):
+        line = json.dumps(row, ensure_ascii=False)
+        with open(manifest, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        return lv.sha256_bytes(line.encode("utf-8"))
+
+    def forge_table(self, table, change):
+        # A new version of `table` with `change` applied to every row, plus a consistent data MANIFEST row.
+        lc = lv.report_lc()
+        data = self.pd / "data"
+        latest = max(data.glob(f"{table}_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        read, write = lc.parquet_io()
+        cols = {"findings": lc.findings_columns(), "corpus": lc.corpus_columns(),
+                "citation_edges": lc.edges_columns(), "claims": lc.claims_columns()}[table]
+        blob = write([change(dict(r)) for r in read(latest.read_bytes())], cols)
+        name = f"{table}_v{int(latest.stem.rsplit('_v', 1)[1]) + 1}.parquet"
+        (data / name).write_bytes(blob)
+        self.append_row(data / "MANIFEST.jsonl", {"kind": "lit_corpus", "command": "forged", "exit_code": 0, "artifacts": [
+            {"table": table, "name": name, "path": f"data/{name}", "sha256": lv.sha256_bytes(blob)}]})
+
+    def test_forged_verify_rows_fail_closed(self):
+        lc = lv.report_lc()
+        p = lc.DEMO_PAPERS[0]
+        work = dict(lc.demo_work_json(p), display_name="A Completely Different Paper on Dentistry")
+        lc.demo_verify_row(str(self.pd), p, verdict="MISMATCH", work=work)
+        man = self.pd / "lit_search" / "verify" / "MANIFEST.jsonl"
+        genuine = json.loads(man.read_text().splitlines()[-1])
+        forged = self.append_row(man, dict(genuine, verdict="CONFIDENT"))          # the raw is untouched
+        baker_raw = [json.loads(x) for x in man.read_text().splitlines()][1]       # another paper's verify row
+        no_record = self.append_row(man, dict(baker_raw, verdict="CONFIDENT"))
+        for sha in (forged, no_record):
+            with self.subTest(sha=sha[:8]):
+                self.forge_table("corpus", lambda r: dict(r, verify_row_sha256=sha, verify_verdict="CONFIDENT",
+                                                          citation_status="verified_rule")
+                                 if r["paper_key"] == p["key"] else r)
+                code, check, _ = self.report(f"v{sha[:6]}.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+                self.assertEqual((code, check["verdict"]), (11, "FAIL"))
+                self.assertIn("CITATION_UNVERIFIED", {it["status"] for it in check["items"]})
+        # the attach path re-grades too: the forged CONFIDENT row records MISMATCH, not citable
+        mp = self.pd / "inputs" / "forged_verify.jsonl"
+        mp.write_text(json.dumps({"row_sha256": forged, "paper_key": p["key"]}) + "\n")
+        with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["attach", "verify", str(self.pd), str(mp)]), 0)
+        self.assertIn("re-grades to MISMATCH", out.getvalue())
+
+    def test_forged_retraction_row_fails_closed(self):
+        lc = lv.report_lc()
+        p = lc.DEMO_PAPERS[0]
+        sha = lc.demo_retractions_row(str(self.pd), [(p["doi"], "retracted")], row_statuses=[(p["doi"], "none")])
+        self.forge_table("corpus", lambda r: dict(r, retraction_json=json.dumps({"status": "none", "row_sha256": sha}))
+                         if r["paper_key"] == p["key"] else r)
+        code, check, _ = self.report("r.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        self.assertEqual((code, check["verdict"]), (11, "FAIL"))
+        self.assertIn("RETRACTED_CITED", {it["status"] for it in check["items"]})
+        # 1.12.0 (C2-B2): pointing the record at a check whose response names ANOTHER DOI hides nothing: the newest
+        #   check that answers this DOI still decides, and the record is flagged as not naming it
+        empty = lc.demo_retractions_row(str(self.pd), [("10.9999/other", "none")], row_statuses=[(p["doi"], "none")])
+        self.forge_table("corpus", lambda r: dict(r, retraction_json=json.dumps({"status": "none", "row_sha256": empty}))
+                         if r["paper_key"] == p["key"] else r)
+        code, check, _ = self.report("r2.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        got = {it["status"] for it in check["items"]}
+        self.assertTrue({"RETRACTED_CITED", "RETRACTION_CHECK_NOT_LATEST_DRAFT"} <= got, got)
+
+    def forge_rows(self, table, fn):
+        # A new version of `table` holding fn(rows), plus a consistent data MANIFEST row.
+        lc = lv.report_lc()
+        data = self.pd / "data"
+        latest = max(data.glob(f"{table}_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        read, write = lc.parquet_io()
+        cols = {"claims": lc.claims_columns(), "corpus": lc.corpus_columns()}[table]
+        blob = write(fn([dict(r) for r in read(latest.read_bytes())]), cols)
+        name = f"{table}_v{int(latest.stem.rsplit('_v', 1)[1]) + 1}.parquet"
+        (data / name).write_bytes(blob)
+        self.append_row(data / "MANIFEST.jsonl", {"kind": "lit_corpus", "command": "forged", "exit_code": 0, "artifacts": [
+            {"table": table, "name": name, "path": f"data/{name}", "sha256": lv.sha256_bytes(blob)}]})
+
+    def statuses_by_claim(self, check):
+        return {(it["status"], cid) for it in check["items"] for cid in it.get("claim_ids") or [None]}
+
+    def test_abstract_rows_are_rebuilt_from_the_abstract(self):
+        # C2-B1: an abstract claim row is rebuilt with abstract_claim_row; stored extra fields clear nothing.
+        lc = lv.report_lc()
+        allen = lc.DEMO_PAPERS[0]["key"]
+        mp = self.pd / "inputs" / "abstract_claims.jsonl"
+        mp.write_text(json.dumps({"paper_key": allen, "quote": "An invented abstract.", "claim_type": "finding"}) + "\n")
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["claims", "abstract", str(self.pd), str(mp)]), 0)
+        quant = json.dumps({"estimate": {"raw": "0.50", "value": "0.50", "status": "QUANT_OK"},
+                            "metric": lc.DEMO_METRIC})
+
+        def forge(rows):
+            g = next(r for r in rows if r["claim_id"] == f"{allen}-a01")
+            return rows + [
+                dict(g, claim_id=f"{allen}-a90", quant_json=quant, metric=lc.DEMO_METRIC.lower(), estimate="0.50"),
+                dict(g, claim_id=f"{allen}-a91", claim_type="citation_use", cites_key="user_f1c70002",
+                     citation_relation="disputes"),
+                dict(g, claim_id=f"{allen}-a92", claim_type="appraisal", quote="invented",
+                     quote_sha256=lv.sha256_bytes(b"invented")),
+                # the source names a different identifier: the quote is allen's, the row names baker
+                dict(g, claim_id="user_f1c70002-a93", paper_key="user_f1c70002", citekey="fixture-baker2020reading")]
+        self.forge_rows("claims", forge)
+        code, check, _ = self.report("ab.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        got = self.statuses_by_claim(check)
+        for cid in (f"{allen}-a90", f"{allen}-a91", f"{allen}-a92", "user_f1c70002-a93"):
+            self.assertIn(("CLAIM_ROW_MISMATCH", cid), got)
+        self.assertNotIn(("CLAIM_ROW_MISMATCH", f"{allen}-a01"), got)          # the genuine row is rebuilt equal
+        self.assertEqual(code, 11)
+
+    def test_abstract_row_differing_only_from_the_rebuild_fails(self):
+        # C2-B1 (F1b mutation a1): a row that passes every explicit guard (type, length, quote, empty fields) but
+        #   claims a full-text grade differs only from the rebuilt row; using the stored row would let it count as
+        #   full-text evidence. The comparison with the rebuilt row must catch it.
+        lc = lv.report_lc()
+        allen = lc.DEMO_PAPERS[0]["key"]
+        mp = self.pd / "inputs" / "abstract_claims.jsonl"
+        mp.write_text(json.dumps({"paper_key": allen, "quote": "An invented abstract.", "claim_type": "finding"}) + "\n")
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["claims", "abstract", str(self.pd), str(mp)]), 0)
+
+        def forge(rows):
+            g = next(r for r in rows if r["claim_id"] == f"{allen}-a01")
+            return rows + [dict(g, claim_id=f"{allen}-a94", evidence_grade="FULL_TEXT_VERIFIED")]
+        self.forge_rows("claims", forge)
+        code, check, _ = self.report("ab2.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        got = self.statuses_by_claim(check)
+        self.assertIn(("CLAIM_ROW_MISMATCH", f"{allen}-a94"), got)
+        self.assertNotIn(("CLAIM_ROW_MISMATCH", f"{allen}-a01"), got)
+        self.assertEqual(code, 11)
+
+    def test_paper_identity_is_rederived(self):
+        # C2-B2: a corpus DOI pointed at another paper (the source names a different identifier) fails closed.
+        lc = lv.report_lc()
+        a, b = lc.DEMO_PAPERS[0], lc.DEMO_PAPERS[1]
+        self.forge_table("corpus", lambda r: dict(r, doi=b["doi"]) if r["paper_key"] == a["key"] else r)
+        code, check, _ = self.report("id.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        got = {(it["status"], tuple(it["citekeys"])) for it in check["items"]}
+        self.assertIn(("PAPER_IDENTITY_MISMATCH", ("fixture-allen2019tutoring",)), got)
+        self.assertIn(("CITATION_UNVERIFIED", ("fixture-allen2019tutoring",)), got)
+        self.assertEqual(code, 11)
+
+    def test_newest_retraction_check_decides_and_attach_never_goes_back(self):
+        # C2-B2: a newer check that is not attached: review in a draft, fail at final; attach refuses an older one.
+        lc = lv.report_lc()
+        p = lc.DEMO_PAPERS[0]
+        old = json.loads(self.pd.joinpath("inputs", "retractions_map.jsonl").read_text().splitlines()[0])["row_sha256"]
+        new = lc.demo_retractions_row(str(self.pd), [(p["doi"], "retracted")])
+        code, check, _ = self.report("n1.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        self.assertTrue({"RETRACTED_CITED", "RETRACTION_CHECK_NOT_LATEST_DRAFT"} <= {i["status"] for i in check["items"]})
+        code, check, _ = self.report("n2.md", "Tutoring helps [@fixture-allen2019tutoring].\n", "--kind", "final",
+                                     "--no-recheck-cards")
+        self.assertIn("RETRACTION_CHECK_NOT_LATEST", {i["status"] for i in check["items"]})
+        for sha, want in ((new, 0), (old, 11)):
+            mp = self.pd / "inputs" / f"retr_{sha[:6]}.jsonl"
+            mp.write_text(json.dumps({"row_sha256": sha, "paper_key": p["key"]}) + "\n")
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(lc.run(["attach", "retractions", str(self.pd), str(mp)]), want)
+        code, check, _ = self.report("n3.md", "Tutoring helps [@fixture-allen2019tutoring].\n")
+        got = {i["status"] for i in check["items"]}
+        self.assertIn("RETRACTED_CITED", got)
+        self.assertNotIn("RETRACTION_CHECK_NOT_LATEST_DRAFT", got)
+
+    def test_reference_list_must_be_the_export(self):
+        # C2-QW4: a second field, a second entry, an edited entry, an entry naming another verify row (the source
+        #   names a different identifier) or an entry for no paper all fail.
+        out = self.pd / "output"
+        genuine = (out / "references_v1.bib").read_text()
+        ck = "fixture-chen2021library"
+        entry = re.search(r"(?ms)^@\w+\{" + re.escape(ck) + r",\n.*?^\}\n", genuine).group(0)
+        other_sha = re.search(r"(?m)^  daaf_verify_row_sha256 = \{(\w+)\}", genuine.replace(entry, "")).group(1)
+        variants = {
+            "second title": genuine.replace(entry, entry.replace("  year =", "  title = {A Forged Title},\n  year =")),
+            "second entry": genuine.replace(entry, entry.replace("Library Hours", "Forged Hours") + "\n" + entry),
+            # F1b (mutation e2): the genuine entry FIRST, a forged one after it (the one Pandoc renders)
+            "second entry after": genuine.replace(entry, entry + "\n" + entry.replace("Library Hours", "Forged Hours")),
+            "text outside the entries": genuine + "\n@string{forged = {Forged Hours}}\n",
+            "edited title": genuine.replace(entry, entry.replace("Library Hours", "Forged Hours")),
+            "other verify row": genuine.replace(entry, re.sub(r"daaf_verify_row_sha256 = \{\w+\}",
+                                                              "daaf_verify_row_sha256 = {" + other_sha + "}", entry)),
+            "entry for no paper": genuine + "\n" + entry.replace(ck, "nosuch2020paper"),
+            # polish pass H (round-G re-review W4, mutant R2): the header line must be export-bib's exactly
+            "text on the header line": genuine.replace("verified records only\n", "verified records only; "
+                                                       "title = {Forged Hours}\n", 1),
+        }
+        for n, (name, text) in enumerate(variants.items(), 2):
+            with self.subTest(name):
+                self.assertNotEqual(text, genuine)
+                bib = out / f"references_v{n}.bib"
+                bib.write_text(text)
+                self.append_row(self.pd / "data" / "MANIFEST.jsonl", {
+                    "kind": "lit_corpus", "command": "forged", "exit_code": 0, "artifacts": [
+                        {"table": None, "name": bib.name, "path": f"output/{bib.name}",
+                         "sha256": lv.sha256_bytes(text.encode("utf-8"))}]})
+                code, check, _ = self.report(f"b{n}.md", f"Tutoring helps [@{ck}].\n")
+                got = {i["status"] for i in check["items"]}
+                self.assertEqual(code, 11, got)
+                self.assertIn("BIB_ENTRY_MISMATCH", got)
+
+    def test_forged_findings_and_edges_fail_closed(self):
+        def finding(r):
+            if r["finding_id"] == "F01":
+                ds = json.loads(r["descriptive_summary_json"])
+                return dict(r, descriptive_summary_json=json.dumps(dict(ds, median="0.16")))
+            if r["finding_id"] == "F02":
+                return dict(r, certainty_scheme="researcher_grade", certainty="high", certainty_reason="trust me",
+                            not_rated_reason=None)
+            return r
+        self.forge_table("findings", finding)
+        self.forge_table("citation_edges", lambda r: dict(r, reader_relation="disputes"))
+        code, check, _ = self.report("f.md", "[The interview study disputes the tutoring trial]{.lr-edge edges=\"E001\"} "
+                                     "[@fixture-diaz2022teachers; @fixture-allen2019tutoring].\n")
+        got = {it["status"] for it in check["items"]}
+        self.assertEqual(code, 11)
+        for s in ("SUMMARY_REDERIVE_MISMATCH", "FINDING_RULE_FAILED", "EDGE_ROW_MISMATCH", "EDGE_RELATION_UNSUPPORTED"):
+            self.assertIn(s, got)
+        self.assertNotIn("EDGE_OK", got)
+
+    def test_final_with_an_older_pinned_table_fails(self):
+        with mock.patch.dict(lv.SYNTHETIC_SOURCES, clear=True):
+            code, check, _ = self.report("p.md", "Tutoring helps [@fixture-allen2019tutoring].\n", "--kind", "final",
+                                         "--data-version", "corpus=1")
+        self.assertIn("PINNED_OLDER_VERSION", {it["status"] for it in check["items"]})
+        code, check, _ = self.report("p2.md", "Tutoring helps [@fixture-allen2019tutoring].\n", "--data-version",
+                                     "corpus=1")
+        self.assertNotIn("PINNED_OLDER_VERSION", {it["status"] for it in check["items"]})
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class ReportRecheckForgeryTests(ScratchCase):
+    # Q-B1: a card_check edited in ONE quant item (verdict kept) must not clear a summary under --kind final.
+    def test_quant_only_card_check_edit_fails_final(self):
+        lc = lv.report_lc()
+        pd = self.root / "review"
+        pd.mkdir()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            demo = lc.build_demo(str(pd))
+        self.assertEqual([n for n, c, _ in demo["steps"] if c], [])
+        p = lc.DEMO_PAPERS[2]
+        claims = [dict(p["claims"][0], quant=dict(p["claims"][0]["quant"], estimate="0.031"))] + p["claims"][1:]
+        kdir = pd / "papers" / p["key"]
+        card = kdir / "evidence_card_a.md"
+        card.write_text(lc.demo_card(p, claims))
+        self.assertEqual(run_main(["card", kdir, card])[0], 11)                  # genuine: not one of its numbers
+        man = pd / "papers" / "MANIFEST.jsonl"
+        last = [r for r in rows_of(pd / "papers") if r.get("command") == "card"][-1]
+        cc = json.loads((kdir / last["artifacts"]["card_check"]["name"]).read_text())
+        flipped = 0
+        for it in cc["items"]:
+            if it["kind"] == "claim_quant" and it["status"] == "QUANT_NOT_IN_NUMBERS":
+                it.update(status="QUANT_OK", severity="pass")
+                flipped += 1
+        self.assertEqual(flipped, 1)
+        data = json.dumps(cc).encode("utf-8")
+        (kdir / "card_check_forged.json").write_bytes(data)
+        ReportOnDiskTests.append_row(man, dict(last, artifacts={"card_check": {
+            "name": "card_check_forged.json", "bytes": len(data), "sha256": lv.sha256_bytes(data)}}))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["claims", "build", str(pd)]), 0)
+        ctx = {"pd": os.path.realpath(pd), "data": str(pd / "data"), "read": lc.parquet_io()[0], "cache": {},
+               "row": {"inputs": []}}
+        rows, _ = lc.load_table(ctx, "claims")
+        chen = next(r["claim_id"] for r in rows if r["paper_key"] == p["key"] and r["card_claim_id"] == "S1"
+                    and r["status"] == "current")
+        f09 = {"finding_id": "F09", "statement": "s", "claim_ids": ["user_f1c70001-c01", "user_f1c70002-c01", chen],
+               "synthesis_method": "swim", "certainty_scheme": "stated", "certainty": "low",
+               "certainty_reason": f"rests on {chen}", "decided_by": {"role": "synthesizer"}, "moderator_status": "none",
+               "descriptive_summary": {"claim_ids": ["user_f1c70001-c01", "user_f1c70002-c01", chen],
+                                       "metric": lc.DEMO_METRIC}}
+        fp = pd / "inputs" / "f09.jsonl"
+        fp.write_text(json.dumps(f09) + "\n")
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["findings", "record", str(pd), str(fp)]), 0)   # the forgery reached the table
+        memo = pd / "output" / "m.md"
+        memo.write_text("Tutoring helps [@allen2019tutoring].\n")
+        code, _, _ = run_main(["report", pd, memo, "--kind", "final"])
+        check = json.loads((pd / "output" / rows_of(pd / "output")[-1]["artifacts"]["report_check"]["name"]).read_text())
+        got = {(it["status"], it.get("finding_id")) for it in check["items"]}
+        self.assertEqual(code, 11)
+        self.assertIn(("SUMMARY_REDERIVE_MISMATCH", "F09"), got)
+        self.assertIn("CARD_RECHECK_DIFFERS", {s for s, _ in got})
+
+    def demo(self):
+        lc = lv.report_lc()
+        pd = self.root / "review"
+        pd.mkdir()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            demo = lc.build_demo(str(pd))
+        self.assertEqual([n for n, c, _ in demo["steps"] if c], [])
+        return lc, pd
+
+    def forge_claims(self, pd, fn):
+        lc = lv.report_lc()
+        data = pd / "data"
+        latest = max(data.glob("claims_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        read, write = lc.parquet_io()
+        blob = write(fn([dict(r) for r in read(latest.read_bytes())]), lc.claims_columns())
+        name = f"claims_v{int(latest.stem.rsplit('_v', 1)[1]) + 1}.parquet"
+        (data / name).write_bytes(blob)
+        ReportOnDiskTests.append_row(data / "MANIFEST.jsonl", {"kind": "lit_corpus", "command": "forged", "exit_code": 0,
+                                                               "artifacts": [{"table": "claims", "name": name,
+                                                                              "sha256": lv.sha256_bytes(blob)}]})
+
+    def report_items(self, pd, text, *args):
+        memo = pd / "output" / f"m{uuid.uuid4().hex[:6]}.md"
+        memo.write_text(text)
+        code, _, _ = run_main(["report", pd, memo, *args])
+        check = json.loads((pd / "output" / rows_of(pd / "output")[-1]["artifacts"]["report_check"]["name"]).read_text())
+        return code, {(it["status"], cid) for it in check["items"] for cid in it.get("claim_ids") or [None]}
+
+    def test_unused_forged_claim_row_is_caught(self):
+        # q-I1 (mutant M1): the withdrawn wrong-page claim set to current and verified, NOT used by the memo, is
+        #   still reported (CLAIM_VERIFICATION_FORGED) and, naming an older card run, CLAIM_ROW_MISMATCH.
+        lc, pd = self.demo()
+        target = []
+
+        def forge(rows):
+            for r in rows:
+                if r["paper_key"] == "user_f1c70001" and r["card_claim_id"] == "C9":
+                    r.update(status="current", verification="verified", superseded_by=None)
+                    target.append(r["claim_id"])
+            return rows
+        self.forge_claims(pd, forge)
+        self.assertEqual(len(target), 1)
+        code, got = self.report_items(pd, "Tutoring helps [@allen2019tutoring].\n")
+        self.assertEqual(code, 11)
+        self.assertIn(("CLAIM_VERIFICATION_FORGED", target[0]), got)
+        self.assertIn(("CLAIM_ROW_MISMATCH", target[0]), got)
+
+    def test_withdrawn_claim_revived_by_status_edit_fails(self):
+        # C2-QW3: chen's newer card drops S1, claims build withdraws it; a one-field status edit cannot revive it
+        #   (the row names an older card run than the paper's latest: the source names a different check).
+        lc, pd = self.demo()
+        p = lc.DEMO_PAPERS[2]
+        p["papers"] = str(pd / "papers")
+        steps = []
+        lc.demo_card_run(steps, p, p["claims"][1:], "_a")
+        self.assertEqual([c for _, c, _ in steps], [0])
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(lc.run(["claims", "build", str(pd)]), 0)
+        revived = []
+
+        def forge(rows):
+            for r in rows:
+                if r["paper_key"] == p["key"] and r["card_claim_id"] == "S1" and r["status"] == "superseded":
+                    r.update(status="current", superseded_by=None)
+                    revived.append(r["claim_id"])
+            return rows
+        self.forge_claims(pd, forge)
+        self.assertEqual(len(revived), 1)
+        code, got = self.report_items(pd, "Library hours may matter [@chen2021library].\n", "--kind", "final")
+        self.assertEqual(code, 11)
+        self.assertIn(("CLAIM_ROW_MISMATCH", revived[0]), got)
+
+    def test_genuine_final_report_passes(self):
+        lc, pd = self.demo()
+        text = ("[Small-group tutoring probably raises reading scores]"
+                '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01"} '
+                "[@allen2019tutoring; @baker2020reading].\n\n"
+                "[Across 3 studies reporting SD units of reading score, the estimates ranged from 0.09 to 0.21 (median "
+                "0.15; IQR 0.12 to 0.18; descriptive summary, not a pooled estimate)]"
+                '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01 user_f1c70003-c01"} '
+                "[@allen2019tutoring; @baker2020reading; @chen2021library].\n")
+        code, got = self.report_items(pd, text, "--kind", "final")
+        self.assertEqual(code, 0, sorted(got))
+        self.assertFalse({s for s, _ in got} & {"PAPER_IDENTITY_MISMATCH", "BIB_ENTRY_MISMATCH", "CLAIM_ROW_MISMATCH",
+                                                "RETRACTION_CHECK_NOT_LATEST"})
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class IdentityHistoryTests(ScratchCase):
+    # Round G1 (review cycle 3 B1, W1, W6, consistency W2): identity comes from the table history, never from a
+    #   corpus field; each forgery below would PASS if the one defence it targets were removed.
+    GENUINE = ("[Small-group tutoring probably raises reading scores]"
+               '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01"} '
+               "[@allen2019tutoring; @baker2020reading].\n")
+
+    def setUp(self):
+        super().setUp()
+        self.lc = lv.report_lc()
+        self.pd = self.root / "review"
+        self.pd.mkdir()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            demo = self.lc.build_demo(str(self.pd))
+        self.assertEqual([n for n, c, _ in demo["steps"] if c], [])
+        self.a = self.lc.DEMO_PAPERS[0]
+        self.evans = {"doi": "10.9999/fixture.0005", "title": "An Invented Survey of Adult Reading Clubs",
+                      "authors": ["Eve Evans"], "year": 2018, "w": "W900000005"}
+
+    def run_lc(self, *argv, **kw):
+        with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            code = self.lc.run([str(x) for x in argv], **kw)
+        return code, out.getvalue()
+
+    def versions(self):
+        return sorted((self.pd / "data").glob("corpus_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+
+    def rows(self, path=None):
+        return [dict(r) for r in self.lc.parquet_io()[0]((path or self.versions()[-1]).read_bytes())]
+
+    def write_version(self, rows, row_extra, name=None):
+        # A corpus version (new, or an existing file rewritten) plus one appended data MANIFEST row naming it.
+        name = name or f"corpus_v{len(self.versions()) + 1}.parquet"
+        blob = self.lc.parquet_io()[1](rows, self.lc.corpus_columns())
+        path = self.pd / "data" / name
+        if path.exists():
+            os.chmod(path, 0o644)
+        path.write_bytes(blob)
+        ReportOnDiskTests.append_row(self.pd / "data" / "MANIFEST.jsonl", dict(
+            {"kind": "lit_corpus", "command": "forged", "exit_code": 0, "artifacts": [
+                {"table": "corpus", "name": name, "path": f"data/{name}", "sha256": lv.sha256_bytes(blob)}]},
+            **row_extra))
+
+    def evans_identity(self, r):
+        ev = next(x for x in self.rows() if x["paper_key"] == self.evans["w"])
+        return dict(r, **{k: ev[k] for k in ("found_by_json", "doi", "title", "abstract", "authors_json", "year",
+                                             "venue", "type")})
+
+    def legit_cite(self, key, p):
+        # Only real commands: verify and retraction checks of p's DOI attached to `key`, then export-bib.
+        v, r = self.lc.demo_verify_row(str(self.pd), p), self.lc.demo_retractions_row(str(self.pd), [(p["doi"], "none")])
+        for kind, sha in (("verify", v), ("retractions", r)):
+            mp = self.pd / "inputs" / f"g1_{kind}_{sha[:6]}.jsonl"
+            mp.write_text(json.dumps({"row_sha256": sha, "paper_key": key}) + "\n")
+            self.assertEqual(self.run_lc("attach", kind, self.pd, mp)[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+
+    def report(self, text, *args):
+        memo = self.pd / "output" / f"m{uuid.uuid4().hex[:6]}.md"
+        memo.write_text(text)
+        code, _, _ = run_main(["report", self.pd, memo, *args])
+        check = json.loads((self.pd / "output" / rows_of(self.pd / "output")[-1]["artifacts"]["report_check"]["name"])
+                           .read_text())
+        for it in check["items"]:                       # consistency I5: plain reasons, no field names or states
+            self.assertNotRegex(it["reason"] + " " + it["fix"], r"\b[A-Z]+_[A-Z_]{3,}\b|state: |\bdoi, |found_by|"
+                                r"add-record run|\{\.lr-|fid=")
+        return code, {(it["status"], ck) for it in check["items"] for ck in it.get("citekeys") or [None]}, check
+
+    def test_found_by_swap_to_another_search_record_fails(self):
+        # B1 (reviewer probe 01 I1; mutant m1's target): allen keeps its key, cards and claims but takes evans's search
+        #   record and identity fields; legit verify, retraction check and export follow. The history says allen was
+        #   added by its own add-record run, so the swap fails closed at every kind.
+        self.write_version([self.evans_identity(r) if r["paper_key"] == self.a["key"] else r for r in self.rows()], {})
+        self.legit_cite(self.a["key"], self.evans)
+        for kind in ("synthesis", "final"):
+            code, got, _ = self.report(self.GENUINE, "--kind", kind)
+            self.assertEqual(code, 11, kind)
+            self.assertIn(("PAPER_IDENTITY_MISMATCH", "allen2019tutoring"), got)
+        # the search record names a different identifier: evans's corpus DOI pointed at allen's
+        self.write_version([dict(r, doi=self.a["doi"]) if r["paper_key"] == self.evans["w"] else r
+                            for r in self.rows()], {})
+        _, got, _ = self.report("Text.\n")
+        self.assertIn(("PAPER_IDENTITY_MISMATCH", "evans2018invented"), got)
+
+    def test_appended_add_record_row_does_not_move_identity(self):
+        # B1 (mutant m2's target): a genuine second add-record of allen (same DOI, another title) merges and changes
+        #   nothing; a forged appended add-record row naming allen with evans's details cannot re-point it.
+        pdf = self.pd / "papers" / self.a["key"] / "ingest_manifest.json"
+        self.assertEqual(self.run_lc("add-record", self.pd, "--user-pdf", pdf, "--title", "Tutoring small groups, a "
+                                     "second copy", "--doi", self.a["doi"], "--round", "2")[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, _ = self.report(self.GENUINE)
+        self.assertNotIn("PAPER_IDENTITY_MISMATCH", {s for s, _ in got})
+        self.write_version([self.evans_identity(r) if r["paper_key"] == self.a["key"] else r for r in self.rows()],
+                           {"command": "add-record", "paper_key": self.a["key"],
+                            "parameters": {"doi": self.evans["doi"], "title": self.evans["title"]}})
+        self.legit_cite(self.a["key"], self.evans)
+        code, got, _ = self.report(self.GENUINE)
+        self.assertEqual(code, 11)
+        self.assertIn(("PAPER_IDENTITY_MISMATCH", "allen2019tutoring"), got)
+
+    def test_rewritten_history_fails(self):
+        # B1: every earlier corpus version rewritten without allen and re-recorded by an appended row, then a forged
+        #   add-record row adds allen back with evans's details. The FIRST record of each file counts, so the
+        #   rewritten history fails (with "last record wins" this forgery would pass).
+        latest = self.rows()
+        for p in self.versions():
+            self.write_version([r for r in self.rows(p) if r["paper_key"] != self.a["key"]], {}, name=p.name)
+        self.write_version([self.evans_identity(r) if r["paper_key"] == self.a["key"] else r for r in latest],
+                           {"command": "add-record", "paper_key": self.a["key"],
+                            "parameters": {"doi": self.evans["doi"], "title": self.evans["title"]}})
+        self.legit_cite(self.a["key"], self.evans)
+        code, got, _ = self.report(self.GENUINE)
+        self.assertEqual(code, 11)
+        self.assertIn("TABLE_HASH_MISMATCH", {s for s, _ in got})
+
+    def test_one_creating_record_one_paper_key(self):
+        # B1: a second paper key claiming allen's creating record (a copy of its row under a DOI-chain key, written
+        #   by a forged add-record row that names allen) fails: a step adds only the paper it names.
+        # (no abstract: the abstract-history check would otherwise catch the copy before this rule; mutation run 1)
+        dup = dict(next(r for r in self.rows() if r["paper_key"] == self.a["key"]), paper_key="doi_0badf00d",
+                   citekey="dup2019tutoring", abstract=None)
+        self.write_version(self.rows() + [dup], {"command": "add-record", "paper_key": self.a["key"], "parameters": {
+            "doi": self.a["doi"], "title": self.a["title"]}})
+        self.legit_cite("doi_0badf00d", self.a)
+        code, got, _ = self.report("## Further reading\n\n- A study of small-group tutoring [@dup2019tutoring].\n")
+        self.assertEqual(code, 11)
+        self.assertIn(("PAPER_IDENTITY_MISMATCH", "dup2019tutoring"), got)
+        # the same copy added by a step that never adds papers (any other command) fails too
+        dup2 = dict(dup, paper_key="doi_0badf00e", citekey="dup2019tutoringb")
+        self.write_version(self.rows() + [dup2], {})
+        self.legit_cite("doi_0badf00e", self.a)
+        code, got, _ = self.report("## Further reading\n\n- A study of small-group tutoring [@dup2019tutoringb].\n")
+        self.assertEqual(code, 11)
+        self.assertIn(("PAPER_IDENTITY_MISMATCH", "dup2019tutoringb"), got)
+
+    def test_newer_partial_retraction_check_never_lowers_the_status(self):
+        # W1: an older full check finds a retraction; a newer check where OpenAlex failed says none. attach records
+        #   the most severe status and says so; the report agrees (RETRACTED_CITED at final).
+        doi = self.a["doi"]
+        old = self.lc.demo_retractions_row(str(self.pd), [(doi, "retracted")])
+        reqs = [{"backend": "openalex", "endpoint": "x", "response": None, "error": "HTTP 503 (synthetic)"},
+                {"backend": "crossref", "endpoint": "https://api.crossref.org/works",
+                 "params": {"filter": "updates:" + doi}, "response": {"message": {"items": []}}}]
+        new = self.lc.demo_search_row(str(self.pd), "verify", "retractions", doi, [], sidecar=False, raw_requests=reqs,
+                                      row_extra={"retractions": [{"doi": doi, "status": "none"}],
+                                                 "failed_backends": ["openalex"], "timestamp": "2026-11-01T09:00:00Z"})
+        self.assertNotEqual(old, new)
+        mp = self.pd / "inputs" / "g1_newer.jsonl"
+        mp.write_text(json.dumps({"row_sha256": new, "paper_key": self.a["key"]}) + "\n")
+        code, out = self.run_lc("attach", "retractions", self.pd, mp)
+        self.assertEqual(code, 0)
+        self.assertIn("most severe", out)
+        row = next(r for r in self.rows() if r["paper_key"] == self.a["key"])
+        self.assertEqual(json.loads(row["retraction_json"])["status"], "retracted")
+        code, got, _ = self.report(self.GENUINE, "--kind", "final")
+        self.assertEqual(code, 11)
+        self.assertIn(("RETRACTED_CITED", "allen2019tutoring"), got)
+        self.assertNotIn("RETRACTION_CHECK_NOT_LATEST", {s for s, _ in got})
+
+    def add_and_screen(self, pdf, title, authors, year, doi, name):
+        # A user PDF added with legit commands (add-record, then included at screening); returns (key, citekey).
+        code, out = self.run_lc("add-record", self.pd, "--user-pdf", pdf, "--title", title, "--authors", authors,
+                                "--year", year, "--doi", doi, "--round", "2")
+        self.assertEqual(code, 0, out)
+        key = out.split("add-record: ")[1].split(" ")[0]
+        sp = self.pd / "inputs" / f"{name}_screen.jsonl"
+        sp.write_text(json.dumps({"paper_key": key, "stage": "ta", "pass": "primary", "decision": "include",
+                                  "screener": {"agent": "t", "model_id": "t"}}) + "\n")
+        self.assertEqual(self.run_lc("screen", "record", self.pd, sp)[0], 0)
+        return key, next(r["citekey"] for r in self.rows() if r["paper_key"] == key)
+
+    def test_corpus_title_must_match_the_verified_record(self):
+        # W6 (reviewer probe 01 Q1, legit commands only): a user PDF titled X is added with a DOI whose record is Y,
+        #   and the reference check is run with Y's title. Polish pass H (round-G re-review W1, I8): a draft shows a
+        #   review item naming both titles; a final report fails the citation with the title rule's own reason and
+        #   fix, never as a hand-edited reference list; running the check again cannot fix it; the fix's route
+        #   (restore data/ from a backup made before the paper was added, add it again with its own DOI) passes.
+        backup = self.root / "data_before_the_paper"
+        shutil.copytree(self.pd / "data", backup)
+        pdf = self.pd / "inputs" / "pilot.pdf"
+        pdf.write_bytes(b"%PDF-1.4 synthetic placeholder (test only)\n")
+        mine = "A Mentoring Pilot in Rural Schools"
+        y = {"doi": "10.9999/fixture.0099", "title": "An Unrelated Study of Dental Hygiene in Adults",
+             "authors": ["Zed Zane"], "year": 2015, "w": "W900000099"}
+        key, ck = self.add_and_screen(pdf, mine, "Mo Moss", "2021", y["doi"], "g1")
+        self.legit_cite(key, y)
+        memo = f"## Further reading\n\n- A mentoring pilot in rural schools [@{ck}].\n"
+        code, got, check = self.report(memo, "--kind", "synthesis")
+        self.assertNotIn("CITATION_UNVERIFIED", {s for s, _ in got})
+        it = next(i for i in check["items"] if i["status"] == "CITATION_TITLE_DIFFERS_DRAFT")
+        self.assertIn(mine, it["reason"])
+        self.assertIn(y["title"], it["reason"])
+        self.assertEqual(it["fix"], lv.TITLE_REMEDY)
+        code, got, check = self.report(memo, "--kind", "final")
+        self.assertEqual(code, 11)
+        self.assertIn(("CITATION_UNVERIFIED", ck), got)
+        self.assertNotIn("BIB_ENTRY_MISMATCH", {s for s, _ in got})            # not a hand-edited reference list
+        self.assertEqual(check["rederive"]["mismatches"], 0)
+        it = next(i for i in check["items"] if i["status"] == "CITATION_UNVERIFIED")
+        self.assertIn("the title recorded when this paper was added is not the title of the record its DOI leads to",
+                      it["reason"])
+        self.assertEqual(it["fix"], lv.TITLE_REMEDY)
+        # the fix says running the reference check again will not help: run it with the paper's own title
+        v = self.lc.demo_verify_row(str(self.pd), y, cited_title=mine)
+        mp = self.pd / "inputs" / "h_verify_again.jsonl"
+        mp.write_text(json.dumps({"row_sha256": v, "paper_key": key}) + "\n")
+        self.assertEqual(self.run_lc("attach", "verify", self.pd, mp)[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, _ = self.report(memo, "--kind", "final")
+        self.assertEqual(code, 11)
+        self.assertIn(("CITATION_UNVERIFIED", ck), got)
+        # the fix's route: restore data/ from the backup made before the paper was added, add it again with its own
+        #   DOI and title, screen it, check its reference and retractions, export the reference list again
+        for p in (self.pd / "data").rglob("*"):
+            os.chmod(p, 0o755 if p.is_dir() else 0o644)
+        shutil.rmtree(self.pd / "data")
+        shutil.copytree(backup, self.pd / "data")
+        z = {"doi": "10.9999/fixture.0098", "title": mine, "authors": ["Mo Moss"], "year": 2021, "w": "W900000098"}
+        key2, ck2 = self.add_and_screen(pdf, mine, "Mo Moss", "2021", z["doi"], "h_again")
+        self.legit_cite(key2, z)
+        code, got, _ = self.report(f"## Further reading\n\n- A mentoring pilot in rural schools [@{ck2}].\n",
+                                   "--kind", "final")
+        self.assertEqual(code, 0, sorted(got))
+
+    def test_partial_title_match_lowers_the_final_verdict(self):
+        # Polish pass H (round-G re-review W4, mutant R3; reviewer probe 02 T-b): a title recorded without its
+        #   subtitle matches the confirmed record only in part. A draft cites it; the final check asks for the
+        #   researcher's decision (a partial match nobody accepted).
+        pdf = self.pd / "inputs" / "tb.pdf"
+        pdf.write_bytes(b"%PDF-1.4 synthetic tb (test only)\n")
+        y = {"doi": "10.9999/fixture.0097", "title": "Small-Group Tutoring and Reading: Evidence from a Cluster "
+             "Randomized Trial in Nine Schools", "authors": ["Pat Park"], "year": 2021, "w": "W900000097"}
+        key, ck = self.add_and_screen(pdf, "Small-Group Tutoring and Reading", "Pat Park", "2021", y["doi"], "tb")
+        self.legit_cite(key, y)
+        memo = f"## Further reading\n\n- A tutoring study in nine schools [@{ck}].\n"
+        code, got, _ = self.report(memo, "--kind", "synthesis")
+        self.assertFalse({s for s, _ in got} & {"CITATION_WEAK_UNDECIDED", "CITATION_TITLE_DIFFERS_DRAFT"}, sorted(got))
+        code, got, _ = self.report(memo, "--kind", "final")
+        self.assertEqual(code, 11)
+        self.assertIn(("CITATION_WEAK_UNDECIDED", ck), got)
+
+    def test_new_key_on_an_already_ingested_search_row_fails(self):
+        # Polish pass H (round-G re-review W4, mutant R1; reviewer probe 02 A2b): a forged ingest version re-lists a
+        #   search row the previous search-log version already holds, with a new key in place of evans, and the new
+        #   key copies evans's record. Only the rows an ingest ADDED count, so the new key first appears in a step
+        #   whose saved results do not list it.
+        data = self.pd / "data"
+        read, write = self.lc.parquet_io()
+        sv = max(data.glob("search_log_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        srow = [dict(r) for r in read(sv.read_bytes())]
+        old = next(r for r in srow if self.evans["w"] in (self.lc.jload(r["keys_json"], []) or []))
+        target = "doi_0badbee1"
+        relisted = dict(old, keys_json=self.lc.canon([target if k == self.evans["w"] else k
+                                                       for k in self.lc.jload(old["keys_json"], [])]))
+        srow = [r for r in srow if r["row_sha256"] != old["row_sha256"]] + [relisted]
+        ev = next(r for r in self.rows() if r["paper_key"] == self.evans["w"])
+        crow = sorted(self.rows() + [dict(ev, paper_key=target, citekey="evans2018inventedz", found_by_json="[]")],
+                      key=lambda r: r["paper_key"])
+        cname = f"corpus_v{len(self.versions()) + 1}.parquet"
+        sname = f"search_log_v{int(sv.stem.rsplit('_v', 1)[1]) + 1}.parquet"
+        cb, sb = write(crow, self.lc.corpus_columns()), write(srow, list(srow[0].keys()))
+        (data / cname).write_bytes(cb)
+        (data / sname).write_bytes(sb)
+        ReportOnDiskTests.append_row(data / "MANIFEST.jsonl", {"kind": "lit_corpus", "command": "ingest", "exit_code": 0,
+                                                               "artifacts": [
+            {"table": "corpus", "name": cname, "path": f"data/{cname}", "sha256": lv.sha256_bytes(cb)},
+            {"table": "search_log", "name": sname, "path": f"data/{sname}", "sha256": lv.sha256_bytes(sb)}]})
+        sp = self.pd / "inputs" / "h_a2b_screen.jsonl"
+        sp.write_text(json.dumps({"paper_key": target, "stage": "ta", "pass": "primary", "decision": "include",
+                                  "screener": {"agent": "t", "model_id": "t"}}) + "\n")
+        self.assertEqual(self.run_lc("screen", "record", self.pd, sp)[0], 0)
+        self.legit_cite(target, self.evans)
+        code, got, check = self.report("## Further reading\n\n- A survey of reading clubs [@evans2018inventedz, per "
+                                       "abstract].\n", "--kind", "final")
+        self.assertEqual(code, 11)
+        it = next(i for i in check["items"] if i["status"] == "PAPER_IDENTITY_MISMATCH"
+                  and "evans2018inventedz" in i["citekeys"])
+        self.assertIn("a search step whose saved results do not list it", it["reason"])
+
+    def test_table_remedies_pass(self):
+        # Consistency W2: the fix text of a changed table names two remedies; both are run here and pass.
+        backup = self.root / "data_backup"
+        shutil.copytree(self.pd / "data", backup)
+        self.write_version([dict(r, doi=self.lc.DEMO_PAPERS[1]["doi"]) if r["paper_key"] == self.a["key"] else r
+                            for r in self.rows()], {})
+        claims = max((self.pd / "data").glob("claims_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        os.chmod(claims, 0o644)
+        claims.write_bytes(claims.read_bytes() + b"\0")
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual(code, 11)
+        fixes = {it["fix"] for it in check["items"] if it["status"] in ("TABLE_HASH_MISMATCH", "PAPER_IDENTITY_MISMATCH")}
+        self.assertEqual(fixes, {lv.TABLE_REMEDY})
+        # remedy 1: restore the data folder from the backup
+        for p in (self.pd / "data").rglob("*"):
+            os.chmod(p, 0o755 if p.is_dir() else 0o644)
+        shutil.rmtree(self.pd / "data")
+        shutil.copytree(backup, self.pd / "data")
+        self.assertEqual(self.report(self.GENUINE)[0], 0)
+        # remedy 2, followed as the text gives it (polish pass H, round-G re-review INFO): a new project folder with
+        #   the saved searches, the papers and the input files; the lit_corpus commands that wrote a table re-run in
+        #   the order data/MANIFEST.jsonl lists them (the copy made before the change), with the same input files;
+        #   then export-bib. Every paper keeps its key. (build_demo set the demo's add-record keys with the test-only
+        #   key override; a user's add-record key comes from the DOI or the file, so the recorded key stands in.)
+        new = self.root / "rebuilt"
+        new.mkdir()
+        for d in ("lit_search", "papers", "inputs"):
+            shutil.copytree(self.pd / d, new / d)
+        old_pd, replayed = str(self.pd), []
+        for line in (backup / "MANIFEST.jsonl").read_text().splitlines():
+            row = json.loads(line) if line.strip() else {}
+            if row.get("kind") != "lit_corpus" or row.get("exit_code") != 0 or \
+                    not any(art.get("table") for art in row.get("artifacts") or []):
+                continue
+            prm = row.get("parameters") or {}
+            argv = row["command"].split() + [str(new)] + ([prm["file"].replace(old_pd, str(new))] if prm.get("file")
+                                                          else [])
+            for k, v in prm.items():
+                if k not in ("project_dir", "kind", "action", "file") and v is not None:
+                    argv += ["--" + k.replace("_", "-"), str(v).replace(old_pd, str(new))]
+            kw = {"key_override": row["paper_key"]} if row["command"] == "add-record" else {}
+            self.assertEqual(self.run_lc(*argv, **kw)[0], 0, argv)
+            replayed.append(row["command"])
+        self.assertEqual(self.run_lc("export-bib", new)[0], 0)
+        self.assertEqual(replayed[:5], ["add-record"] * 4 + ["ingest"])          # the recorded order, not another
+        before = {r["paper_key"] for r in self.rows(max(backup.glob("corpus_v*.parquet"),
+                                                         key=lambda p: int(p.stem.rsplit("_v", 1)[1])))}
+        self.pd = new
+        self.assertEqual({r["paper_key"] for r in self.rows()}, before)            # every paper keeps its key
+        self.assertEqual(self.report(self.GENUINE)[0], 0)
+
+
+class VerifyAliasTests(unittest.TestCase):
+    # q-I3: a paper with no DOI and no W-id key is found in a verify response by its OpenAlex alias.
+    def test_alias_match_and_a_different_work(self):
+        lc = lv.report_lc()
+        raw = json.dumps({"requests": [{"response": {"id": "https://openalex.org/W123", "display_name": "A Paper",
+                                                     "publication_year": 2020}}]}).encode("utf-8")
+        row = {"paper_key": "user_abcd1234", "doi": None}
+        self.assertEqual(lc.verified_record(raw, row, ["W123"])["openalex"], "W123")
+        self.assertIsNone(lc.verified_record(raw, row, ["W999"]))           # the alias names a different work
+        self.assertIsNone(lc.verified_record(raw, row))
+        self.assertIsNone(lc.verified_record(raw, dict(row, doi="10.1/x"), ["W123"]))   # a DOI decides when present
 
 
 if __name__ == "__main__":

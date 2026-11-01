@@ -1,0 +1,403 @@
+{
+  "kind": "lit_verify_card_check",
+  "schema_version": "lit-verify-card-check-v3",
+  "tool_version": "1.13.0-daaf",
+  "checked_at": "2026-11-01T16:38:23Z",
+  "paper_key": "user_f1c70004",
+  "anchor_kind": "pdf",
+  "card": {
+    "path": "evidence_card.md",
+    "bytes": 1516,
+    "sha256": "58e61bd7d10b8cced4d94d8c1de4283925db73bc9695aeb98505e4f1a057bf79",
+    "schema_version": "lit-verify-card-v3",
+    "anchor_kind": "pdf",
+    "source_version": null,
+    "reader_model": "fixture-synthetic",
+    "vision_mode": "off",
+    "vision_validated": false,
+    "vision_list_version": null
+  },
+  "ingest": {
+    "suffix": "",
+    "manifest": "ingest_manifest.json",
+    "manifest_sha256": "f571f1225272b50c7d617fd8de19d56f429dbaa40498f3167d944d47da2b9cf8",
+    "page_count": 1,
+    "anchor_kind": "pdf",
+    "unit_count": null,
+    "source_pdf_sha256": "afd0891e02c37eb26d66b1c803fb815e827a822b224eeffa5d0a7f61335fde0f",
+    "source_sha256": "afd0891e02c37eb26d66b1c803fb815e827a822b224eeffa5d0a7f61335fde0f",
+    "source_version": null,
+    "arxiv_id_version": null,
+    "html_extract_version": null,
+    "pdf_ingest_tool_version": "synthetic (lit_verify selftest)",
+    "normalize_version": "normalize-v1"
+  },
+  "rederive": {
+    "version": "rederive-v2",
+    "method": "synthetic registry (an in-process selftest or unit-test ingest; the CLI never fills it)",
+    "source_path": null,
+    "source_sha256": "afd0891e02c37eb26d66b1c803fb815e827a822b224eeffa5d0a7f61335fde0f",
+    "source_kind": "synthetic",
+    "source_kind_ingest": "synthetic",
+    "web_fetch_row": null,
+    "read": "in-process registry",
+    "extractor": null,
+    "extractor_version": null,
+    "extractor_version_ingest": null,
+    "anchors_checked": 1,
+    "anchor_mismatches": [],
+    "row_sources_checked": 0,
+    "row_source_mismatches": [],
+    "header_footer": {
+      "records": 0,
+      "outcome": "match"
+    },
+    "flags": {
+      "pages_checked": 1,
+      "mismatches": [],
+      "table_probed": [],
+      "table_not_rederived_uncited": 0,
+      "not_rederived": []
+    },
+    "ocr_on_text_pages": [],
+    "ocr": null,
+    "outcome": "match",
+    "seconds": 0.0
+  },
+  "rule_versions": {
+    "normalize": "normalize-v1",
+    "match_ladder": "ladder-v4",
+    "numbers": "numbers-v6",
+    "column_check": "column-check-v1",
+    "rederive": "rederive-v2",
+    "vision_scope": "vision-scope-v1",
+    "quant": "quant-v1",
+    "page_label": "page-label-v1"
+  },
+  "constants": {
+    "MIN_QUOTE_CHARS": 40,
+    "MIN_QUOTE_WORDS": 6,
+    "FUZZ_SCORE_CUTOFF": 95.0,
+    "FUZZ_WINDOW_CHARS": 64,
+    "FUZZ_WINDOW_STEP": 32,
+    "NUMBER_NEAR_CHARS": 0,
+    "ROW_LABEL_MIN_CHARS": 3,
+    "ROW_TAIL_LETTER_SHARE_MAX": 0.25,
+    "ROW_PAGE_FLAGS": [
+      "table",
+      "numeric"
+    ],
+    "OCR_LAYER_PAPER_CAP_PAGES": 2,
+    "SOURCE_MAX_BYTES": 104857600,
+    "REDERIVE_TIMEOUT_S": 120.0,
+    "REDERIVE_WORKERS": 4,
+    "GRADE_FLAGS": [
+      "table",
+      "numeric",
+      "scanned",
+      "ocr_layer_suspected"
+    ],
+    "VISION_LIST_VERSION": "vision-list-2026-10-30",
+    "VISION_VALIDATED_LISTS": {
+      "vision-list-2026-10-19": [],
+      "vision-list-2026-10-28": [
+        [
+          "claude-opus-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-opus-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-api"
+        ]
+      ],
+      "vision-list-2026-10-30": [
+        [
+          "claude-opus-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-opus-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-sonnet-5-5",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5-1",
+          "anthropic-api"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-subscription"
+        ],
+        [
+          "claude-fable-5",
+          "anthropic-api"
+        ],
+        [
+          "gpt-6-sol",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6-sol",
+          "openai-api"
+        ],
+        [
+          "gpt-6.1-sol",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6.1-sol",
+          "openai-api"
+        ],
+        [
+          "gpt-6-astra",
+          "chatgpt-subscription"
+        ],
+        [
+          "gpt-6-astra",
+          "openai-api"
+        ]
+      ]
+    },
+    "TRULY_SCANNED_IMAGE_AREA_MIN": 0.5,
+    "HTML_EXTRACT_VERSIONS_KNOWN": [
+      "arxiv-html-v1"
+    ],
+    "COLUMN_UNCHECKED_SEVERITY": "label",
+    "COLUMN_YEAR_MIN": 1900,
+    "COLUMN_YEAR_MAX": 2099,
+    "COLUMN_REFERENCE_WORDS": [
+      "appendix",
+      "ch",
+      "chapter",
+      "col",
+      "column",
+      "columns",
+      "eq",
+      "eqs",
+      "equation",
+      "fig",
+      "figs",
+      "figure",
+      "figures",
+      "footnote",
+      "hypothesis",
+      "model",
+      "models",
+      "note",
+      "notes",
+      "p",
+      "page",
+      "pages",
+      "panel",
+      "pp",
+      "sec",
+      "section",
+      "sections",
+      "step",
+      "tab",
+      "table",
+      "tables",
+      "wave"
+    ],
+    "PROVISIONAL": [
+      "MIN_QUOTE_CHARS",
+      "MIN_QUOTE_WORDS",
+      "TRULY_SCANNED_IMAGE_AREA_MIN"
+    ]
+  },
+  "verdict": "PASS",
+  "evidence_grade_suggested": "FULL_TEXT_VERIFIED",
+  "evidence_grade_if_review_confirmed": null,
+  "vision_available": false,
+  "fuzzy_tier_run": true,
+  "counts": {
+    "pass": 4,
+    "partial": 0,
+    "review": 0,
+    "fail": 0,
+    "warning": 0,
+    "pages": 1,
+    "pages_covered": 1,
+    "claims": 2,
+    "numbers": 0,
+    "pages_scanned": 0,
+    "pages_sparse": 0,
+    "pages_ocr_layer": 0,
+    "numbers_column_not_checked": 0,
+    "claims_by_type": {
+      "finding": 1,
+      "citation_use": 1
+    },
+    "quant_fields": 0
+  },
+  "failures": [],
+  "review_items": [],
+  "partial_items": [],
+  "warnings": [],
+  "column_not_checked_items": [],
+  "pages": [
+    {
+      "page": 1,
+      "class": "normal",
+      "image_area": null,
+      "basis": "not flagged scanned",
+      "ocr_layer": false,
+      "lane_b": false,
+      "anchors": 1,
+      "coverage_status": "PASS"
+    }
+  ],
+  "sections": [],
+  "items": [
+    {
+      "kind": "coverage_anchor",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": "Several imaginary teachers said that tutoring time replaced their planning periods in the spring",
+      "quote_sha256": "99ca1b80a9d33be935d33779fa018d24632d351c03aa6bc27835ea6d4aa34706",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 96,
+      "words": 14,
+      "occurrences": 1
+    },
+    {
+      "kind": "coverage",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": null,
+      "quote": null,
+      "quote_sha256": null,
+      "number": null,
+      "tier": null,
+      "score": null,
+      "lane": null,
+      "found_on": null,
+      "reason": "best anchor PASS"
+    },
+    {
+      "kind": "claim_quote",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "T1",
+      "quote": "Teachers in the invented interviews described scheduling as the main barrier to small reading groups",
+      "quote_sha256": "d4e9172242898f61d80f81a607f482f880426e84c03c5dc8d99bcb957cf2aa26",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 100,
+      "words": 15,
+      "occurrences": 1,
+      "claim_type": "finding",
+      "quote_numbers": [],
+      "page_numbers": [],
+      "quote_numbers_agree": true,
+      "status_if_confirmed": null
+    },
+    {
+      "kind": "claim_quote",
+      "status": "PASS",
+      "severity": "pass",
+      "page": 1,
+      "page_end": null,
+      "section": null,
+      "section_end": null,
+      "claim_id": "T2",
+      "quote": "The interview guide builds on the invented tutoring trial by Allen and colleagues",
+      "quote_sha256": "c1a17b05dab5eab2cbc6df7a3ae21ed075468b6e86c263a8e8306c15b88e9ed7",
+      "number": null,
+      "tier": "PASS",
+      "score": 100.0,
+      "lane": "anchor",
+      "found_on": [
+        1
+      ],
+      "reason": "PASS via normalize (anchor text)",
+      "chars": 81,
+      "words": 13,
+      "occurrences": 1,
+      "claim_type": "citation_use",
+      "quote_numbers": [],
+      "page_numbers": [],
+      "quote_numbers_agree": true,
+      "status_if_confirmed": null
+    }
+  ],
+  "redaction_count": 0,
+  "secret_redactions": []
+}

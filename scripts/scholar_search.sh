@@ -8,7 +8,9 @@
 #
 # Framework-level tool behind the `scholarly-search` skill. Every call writes
 # the verbatim API requests/responses (.json) + a fenced digest (.md) + a
-# MANIFEST.jsonl row into DEST_DIR (canonically {PROJECT_DIR}/lit_search/).
+# MANIFEST.jsonl row into DEST_DIR (canonically {PROJECT_DIR}/lit_search/);
+# since 1.7.0 the open list commands (find, openalex, eric, s2-bulk, work,
+# cites, refs, similar) also write <base>.records.json (scholar-records-v1).
 # This wrapper is a thin passthrough to scholar_search.py so agents invoke one
 # stable command with one Bash call (DAAF's one-command-per-call rule).
 #
@@ -20,6 +22,7 @@
 #   bash /daaf/scripts/scholar_search.sh find "<question>" <DEST_DIR> [--keywords '…'] [--years 2010-2025]
 #   bash /daaf/scripts/scholar_search.sh {openalex|eric|snippets|s2-bulk} "<query>" <DEST_DIR> [...]
 #   bash /daaf/scripts/scholar_search.sh {work|verify|cites|refs|similar|fulltext} <ID> <DEST_DIR> [...]
+#   bash /daaf/scripts/scholar_search.sh {cites|refs} <ID> <DEST_DIR> --s2-context   (1.7.0; S2 citation sentences; intents on refs only; cites: add --sort publication_date:desc)
 #   bash /daaf/scripts/scholar_search.sh {oa|retractions|scite-tally} <DOI> [<DOI> ...] <DEST_DIR>
 #   bash /daaf/scripts/scholar_search.sh scite-search "<query>" <DEST_DIR> --ack-scite-license [--limit 5]
 #   bash /daaf/scripts/scholar_search.sh elicit-usage <DEST_DIR>

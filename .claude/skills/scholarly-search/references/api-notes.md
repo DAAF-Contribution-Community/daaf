@@ -167,6 +167,92 @@ depends on `verify`. What the calibration implies for use:
 - On `title:"…"`, a WEAK is "not verified", not "real but garbled": a
   fabricated title often lands on the real paper it imitated.
 
+## Measured behavior: records file and Semantic Scholar citation contexts (2026-10-31)
+
+**What changed (tool 1.7.0, S4 dispatch D2).** Open list commands write
+`<base>.records.json` (`scholar-records-v1`) for `lit_corpus`; `cites` and
+`refs` take an opt-in `--s2-context` (one Semantic Scholar `/citations` or
+`/references` call, one retry, then the OpenAlex list stands).
+
+**How.** Live calls through the CLI into `…/smoke_s4_d2/lit_search/`
+(`DAAF_FETCH_CONTEXT=FrameworkDev_S4_D2_smoke`), run by
+`…/scripts/154_s4_d2_verification.py` (execution log appended): `refs
+10.1257/aer.104.9.2593 --s2-context` and a default `find --limit 5`. Free
+calls only (OpenAlex $0.0021). Earlier that day, a probe
+(`…/preliminary_notes/16_s2_citation_contexts_probe.md`) got three 429s in a
+row on `/citations` and contexts on 2 of 10 `/references` rows.
+
+**Measured.**
+- `/paper/DOI:10.1257/aer.104.9.2593/references` with `limit=33` answered
+  200 on the first attempt: 33 rows and a `next` page (S2 lists more
+  references than were asked for). 20 rows matched one of OpenAlex's 31
+  reference groups, 13 did not; 4 groups carry a context (intents background
+  3, methodology 2, result 1; influential `true` on 2; all 4 with sentences).
+  Most matched rows had no sentence and no intent, which fits the full-text
+  gate and is why the tool records absence as unknown.
+- Records files: `refs` 61,626 bytes (31 groups, 23 shown), `find` 110,510
+  bytes (54 groups, 5 shown); each sha256 and `raw_sha256` matched its row.
+- `lit_corpus` 1.0.0 read both: `ingest` 83 new works, 2 merged; `edges
+  ingest` 31 edges, 4 with sentences (licence `cc-by-nc`, attribution
+  flagged).
+- Not measured that day: `/citations` through the CLI (the probe's three
+  tries were all 429) and a limit above 33. Both were measured on 2026-11-01
+  (next paragraph).
+
+**Coverage versus OpenAlex (2026-11-01, observed).** Probe
+`…/probes/17_s2_context_coverage_probe.py` (execution log appended), record
+`…/preliminary_notes/17_s2_context_coverage_probe.md`, runs in
+`…/lit_search/s4_coverage/` (`DAAF_FETCH_CONTEXT=FrameworkDev_S4_C2CW3_coverage`;
+10 CLI runs on tool 1.7.0, free calls only, OpenAlex $0.0012). Papers: Freeman
+et al. 2014 *PNAS*, Kraft 2020 *Educational Researcher*, Chetty, Friedman &
+Rockoff 2014 *AER*.
+- `refs --limit 300`: S2 returned the reference list for 1 of 3 papers. For
+  PNAS and *Educational Researcher* it answered 200 with `data: null` and
+  "Notice: The following paper fields have been elided by the publisher:
+  {'references'}", which tool 1.7.0 recorded as `ok`, 0 rows, with nothing
+  in the digest. Both papers have free copies. For AER: 43 S2 rows against
+  OpenAlex's 34 references (31 groups); 22 matched, 10 rows had a context
+  (5 of them on matched rows), 7 had intents. `refs` sizes its S2 request to
+  OpenAlex's count (at least `--limit`), so with the default limit 10 of the
+  43 rows were never asked for.
+- `cites --limit 100`: 0 of 100 matched for all three papers under the
+  default `cited_by_count:desc`, because S2 `/citations` lists the newest
+  citing papers first and cannot sort by citation count. Under
+  `--sort publication_date:desc`: 52–70 matched, and 11–22 groups had a
+  context, out of 1,234–9,693 OpenAlex citing works (one call covers 1–8%).
+- S2 sent no intents on any of the 300 `/citations` rows, including the rows
+  with contexts. Intents were seen only on `/references`.
+- Context-bearing S2 rows that matched no OpenAlex group (5 of 10 on `refs`;
+  20–34 per newest-first `cites` run) are dropped.
+- 1 of 10 runs was `rate_limited`; 4 needed the retry.
+- Read `--s2-context` as a sample of sentences, not coverage.
+
+**What changed in response (tool 1.8.0, S4 fix round F3, 2026-11-01).** A
+200 with no rows and the elision notice is `context_status: elided`, with a
+plain digest sentence (no sentences exist; their absence means nothing;
+retrying will not help) and its own stderr NOTE. `cites --s2-context` under
+any sort other than `publication_date:desc` keeps the sort, still asks S2,
+and records `context_warning` (row, records file, digest `Warning:` line,
+stderr). New field `context_unmatched_with_text` (row and records file)
+counts the dropped rows. The digest header opens with "contexts found for N
+of M listed paper(s)", and each influential flag is labelled as S2's own
+(not a quality signal). Docs and `--help` no longer say `cites` adds
+intents. Unit tests use synthetic fixtures. Live smoke on 1.8.0 (before a
+final digest-wording change), `…/lit_search/s4_f3_smoke/`
+(`DAAF_FETCH_CONTEXT=FrameworkDev_S4_F3_smoke`, OpenAlex $0.0002): `refs
+10.1257/aer.104.9.2593 --s2-context` gave `ok`, 33 rows, 20 matched, 4
+papers with a context, `context_unmatched_with_text` 4; `cites` on the same
+DOI with `--limit 10` and the default sort gave `ok`, 10 rows, 0 matched,
+2 unmatched rows with a sentence, and the `context_warning` in the row, the
+digest and stderr. The elided path was not re-measured live (unit test
+only). Review fixes the same day, still 1.8.0: an elision notice counts only
+when it names the list asked for (`references` or `citations`), so a notice
+about another field (e.g. `{'abstract'}`) leaves an empty answer `ok`; an
+elided `cites` list gets no sort warning; the digest says the OpenAlex list
+is "unaffected" (not "complete": the digest shows only `--limit` papers, and
+OpenAlex reference lists are themselves incomplete) and names a plain reason
+when contexts are not available.
+
 ## Measured behavior: OpenAlex rate tier, live boolean lane, commas (2026-10-31)
 
 **Tool 1.6.1 (user decision 2026-10-31).** The OpenAlex rate tier is a

@@ -202,16 +202,16 @@ string `lit-verify` holding strict JSON, schema `lit-verify-card-v1`:
 `page`, `anchors`, `summary`, optional `sparse`, `vision_only`) and `claims`
 (`claim_id`, `page`, optional `page_end`, `quote`, `numbers` as printed,
 `source` = `text|vision|both|ocr`, optional `table_ref`, `claim`). Unknown
-fields are a parse error (exit 8), so fields the block does not define go in
-the front matter. **Schema `lit-verify-card-v2`** (1.4.0) adds `anchor_kind`
-(`pdf` | `arxiv_html`, must match the ingest), renames the hash
-`source_sha256` and, on arXiv HTML, requires `source_version` (`"v4"`, the
-ingested arXiv version); an HTML card cites **sections**: coverage entries
-`{section, anchors, summary, sparse?}` and claims with `section` and an
+fields are exit 8 (put them in the front matter). **Schema `lit-verify-card-v2`**
+(1.4.0) adds `anchor_kind` (`pdf` | `arxiv_html`, must match the ingest),
+renames the hash `source_sha256` and, on arXiv HTML, requires `source_version`
+(`"v4"`, the ingested arXiv version); an HTML card cites **sections**: coverage
+entries `{section, anchors, summary, sparse?}` and claims with `section` and an
 optional `section_end` (the next unit only), labels copied exactly from the
 manifest's `units[].label` or the fulltext marker, `source: "text"` and
-`vision_mode: "off"`. Put `source_sha256` and `source_version` in the front
-matter too. Full schemas and worked examples: `references/evidence-card.md`.
+`vision_mode: "off"`; put `source_sha256` and `source_version` in the front
+matter too. **Schema `lit-verify-card-v3`** (1.9.0) is v2 plus typed claims,
+`quant`, `paper_note`. Full schemas, examples: `references/evidence-card.md`.
 
 What the gate requires:
 - **Quotes are copied from the page, verbatim.** Ladder, first hit wins:
@@ -492,9 +492,9 @@ cannot run. Never install at runtime; the fix is a rebuild
 
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
 `scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
-Versions (2026-10-30): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.8.0-daaf
+Versions (2026-11-01): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.14.0-daaf
 (`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`; vision list
 `vision-list-2026-10-30`). Tests:
 `tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(139) and `lit_verify.sh selftest` (45 expectations), run file-first through
+(188) and `lit_verify.sh selftest` (71 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

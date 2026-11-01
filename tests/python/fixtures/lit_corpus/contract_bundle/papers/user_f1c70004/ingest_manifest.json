@@ -1,0 +1,35 @@
+{
+  "kind": "pdf_ingest_manifest",
+  "tool": "pdf_ingest",
+  "tool_version": "synthetic (lit_verify selftest)",
+  "normalize_version": "normalize-v1",
+  "paper_key": "user_f1c70004",
+  "version_suffix": "",
+  "source": {
+    "sha256": "afd0891e02c37eb26d66b1c803fb815e827a822b224eeffa5d0a7f61335fde0f",
+    "source_kind": "synthetic"
+  },
+  "page_count": 1,
+  "lanes_unavailable": [],
+  "header_footer": [],
+  "artifacts": {
+    "page_index": {
+      "path": "page_index.parquet",
+      "bytes": 2236,
+      "sha256": "e14edc96f919037ac802f91e043a1a9e77dec0c9b45f0e756cbcabe702d254ac"
+    }
+  },
+  "pages": [
+    {
+      "page_no": 1,
+      "anchor": {
+        "path": "anchor/p001.txt",
+        "bytes": 316,
+        "sha256": "5f96e254c26d8864743562bd7443d0c10722eb22a386cd67e4efa3300ea6954b"
+      },
+      "lane_b": null,
+      "flags": [],
+      "ocr": null
+    }
+  ]
+}

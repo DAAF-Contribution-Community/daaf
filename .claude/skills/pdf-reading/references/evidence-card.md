@@ -3,17 +3,21 @@
 How to write an evidence card that `scripts/lit_verify.sh card` can verify,
 what every check and status means, and how to fix a failing card. Source of
 truth: the header, `validate_card()`, `check_card()` and the selftest in
-`scripts/lit_verify.py` (`TOOL_VERSION = "1.8.0-daaf"`, 2026-10-27; card
-schemas `lit-verify-card-v1` and `lit-verify-card-v2`, result schema
-`lit-verify-card-check-v2`, re-derivation `rederive-v2`) and the ladder,
+`scripts/lit_verify.py` (`TOOL_VERSION = "1.14.0-daaf"`, 2026-11-01; card
+schemas `lit-verify-card-v1`, `lit-verify-card-v2` and `lit-verify-card-v3`,
+result schema `lit-verify-card-check-v3`, re-derivation `rederive-v2`, quant
+fields `quant-v1`, page labels `page-label-v1`) and the ladder,
 number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v4`,
-`numbers-v6`, `column-check-v1`, `normalize-v1`). A later session
-adds `lit_verify report` (S4); the full card schema is formalized later in
+`numbers-v6`, `column-check-v1`, `normalize-v1`). `lit_verify report`
+(1.10.0, S4; current 1.14.0), which checks a review deliverable against the claims built
+from these cards, is documented in the literature-review skill
+(`references/lit-verify-report.md`); the full card schema is formalized later in
 `LIT_REVIEW_OUTPUT_CONTRACT.md`. If this page and the code
 disagree, the code wins.
 
 **Contents:** Syntax · Card anatomy · Front matter · The lit-verify block ·
-Card schema v2 and section locators · Checks in order · Re-derivation ·
+Card schema v2 and section locators · Card schema v3: typed claims, quant
+fields, page labels · Checks in order · Re-derivation ·
 The match ladder · The quote-number rule · Identifying quotes · Page
 classes · Coverage statuses · Numbers · Vision consistency · arXiv HTML
 statuses · Integrity and warning statuses · Status index · Verdicts and
@@ -80,7 +84,7 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 
 | Field | Required | Rule |
 |-------|----------|------|
-| `schema_version` | yes | `"lit-verify-card-v1"` (or `"lit-verify-card-v2"`, next section); anything else → exit 8 |
+| `schema_version` | yes | `"lit-verify-card-v1"` (or `"lit-verify-card-v2"` or `"lit-verify-card-v3"`, next sections); anything else → exit 8 |
 | `paper_key` | yes | Non-empty; must equal the PAPER_DIR basename (else `PAPER_KEY_MISMATCH`, a fail) |
 | `source_pdf_sha256` | yes | 64 lowercase hex; must equal the ingest manifest's `source.sha256` (else `SOURCE_HASH_MISMATCH`) |
 | `ingest_suffix` | no | `""` or `_a`…`_z`; a mismatch is only a warning (hashes decide integrity) |
@@ -118,6 +122,68 @@ ingest does not have is `SECTION_NOT_FOUND` (fail). Every unit 1..N needs a
 coverage entry (`MISSING_SECTION`, fail). Uniqueness of a quote is judged
 across all units and their boundaries. How units and labels are built:
 `arxiv-and-html.md` § Units and labels.
+
+## Card schema v3: typed claims, quant fields, page labels (1.9.0)
+
+`lit-verify-card-v3` is accepted beside v1 and v2 (both check exactly as
+before). It is v2 (`anchor_kind`, `source_sha256`, `source_version`; PDF or
+arXiv HTML) plus typed claims and an optional per-paper note, so the
+Literature Review corpus (`lit_corpus claims build`) can read a paper's
+claims, limitations, checklist answers and estimates as data. Use it for
+Literature Review reading (`literature-review` skill, `references/paper-notes.md`
+and `references/formal-review.md`).
+
+| Where | Field | Req | Rule (structure errors → exit 8) |
+|-------|-------|-----|------|
+| claim | `claim_type` | yes | `finding`, `method`, `limitation`, `author_open_question`, `definition`, `measure`, `appraisal`, `citation_use` |
+| claim | `limitation_kind` | iff `limitation` | `author_stated` or `reader_assessed`. Replaces the interim claim-text prefix "Limitation (author-stated): …" |
+| claim | `appraisal` | iff `appraisal` | `{guide, item, answer}`: `guide` one of `rob2`, `robins-i-v2`, `robins-e`, `wwc5`, `amstar2`, `jbi-qual`, `casp-qual`, `jbi-xs`, `axis`, `theory`, `other`; `item` and `answer` non-empty, at most 40 characters, in the tool's own numbering and scale (`"1.2"`, `"PY"`). Replaces the interim prefix "rob2 1.2 PY: …". No question tables, answer scales or ratings: the researcher makes the calls |
+| claim | `citation_use` | iff `citation_use` | `{cites_key, relation}`: `cites_key` a paper key or `"external:<doi or W-id>"`; `relation` one of `builds_on`, `uses_method`, `extends_result`, `contrasts`, `disputes`, `background`. The quote is the citing sentence |
+| claim | `quant` | no | `{estimate?, se?, ci_low?, ci_high?, n?, ci_level?, metric?}`, every value a non-empty string (numbers as printed, at most 40 characters; `metric` at most 80); another key → exit 8 |
+| claim | `page_label` | no, PDF only | The page number as **printed** on the cited page (`"7"`, `"iv"`, `"S3"`; pattern `^[A-Za-z0-9][A-Za-z0-9.\-]{0,11}$`). On an arXiv HTML card → exit 8 |
+| block | `paper_note` | no | `{design, study_weight, weight_reason?, limitation_claim_ids, directness?}`: `design` one of the paper-notes design labels (`rct` … `other`); `study_weight` `substantial`, `moderate`, `limited` or `null` (a `weight_reason` is required with a weight); every id in `limitation_claim_ids` must be a claim of this card with `claim_type: limitation`; `directness` parts `population`, `intervention`, `comparator`, `outcome`, `setting`, `time`, each `direct`, `partly` or `indirect` |
+
+Typed claims are claims: every quote, whatever its type, goes through the
+ladder, the identifying rule, the quote-number rule and the number checks.
+A checklist answer or a citing sentence is therefore page-checked like a
+finding. A v1 or v2 card with any of these fields is exit 8 (unknown field).
+
+**Quant fields (check 7, `quant-v1`).** Each numeric field (`estimate`, `se`,
+`ci_low`, `ci_high`, `n`) must be one of the claim's own `numbers` (same value
+and digits; parentheses must agree, except for `se`), so no estimate reaches
+the corpus without the number check having run on it. The item (kind
+`claim_quant`, with `quant_field` and `matched_number`) takes the outcome of
+that number:
+
+| Status | Severity | When |
+|--------|----------|------|
+| `QUANT_OK` | pass | the matched number is `NUMBER_OK` |
+| `QUANT_NUMBER_PARTIAL` | partial | the matched number is partial (OCR, OCR layer, vision only, conversion error) |
+| `QUANT_NUMBER_REVIEW` | review | the matched number needs a person (not near the quote, other precision, sign-ambiguous) |
+| `QUANT_NUMBER_FAILED` | fail | the matched number failed |
+| `QUANT_NOT_IN_NUMBERS` | fail | the value is none of the claim's numbers, or not one number |
+| `QUANT_N_NOT_INTEGER` | fail | `n` is not a whole, non-negative count |
+| `QUANT_CI_ORDER` | review | `ci_low` is larger than `ci_high` |
+| `QUANT_ESTIMATE_OUTSIDE_CI` | review | the estimate lies outside its own interval |
+
+**Printed page label (check 8, `page-label-v1`, PDF only).** `PAGE_LABEL_OK`
+(pass) when the label prints as a whole word in the first or last two
+non-empty lines of the cited page's re-derived text (its header or footer);
+otherwise `PAGE_LABEL_UNCONFIRMED` (warning: the label is kept but marked
+unconfirmed, because some PDFs print no folio). A label found only in body
+text ("Table 7") does not confirm it. Cite "p. 7" from a confirmed label;
+otherwise check the page first.
+
+The reasons on these items are plain language for the researcher, for
+example: "The AI reader recorded 0.09 as this claim's estimate, but 0.09 is not
+one of the numbers the claim lists, so DAAF has not checked it against the
+page. Add it to the claim's numbers exactly as printed, or correct the
+estimate."
+
+The card_check (`lit-verify-card-check-v3`, additive) gives `claim_quote`
+items a `claim_type` (null on v1 and v2 cards), adds the `claim_quant` and
+`page_label` item kinds, `counts.claims_by_type` and `counts.quant_fields`,
+and `rule_versions.quant` and `rule_versions.page_label`.
 
 ## Checks in order
 
@@ -689,8 +755,8 @@ can route labeled numbers to a human. Set it to `"review"` and every labeled
 item's `severity` is raised to review (never lowered), its reason says
 "column not checked", and the card becomes NEEDS_REVIEW with no other code
 change. Until then, a reviewer or the synthesis stage can read the label and
-check those cells by hand. The card needs no change: v1 and v2 cards get the
-label alike, and a labeled number is not an error to fix.
+check those cells by hand. The card needs no change: v1, v2 and v3 cards get
+the label alike, and a labeled number is not an error to fix.
 
 ### What to quote for a table number
 
@@ -854,8 +920,9 @@ another anchor covers is downgraded to `warning`.
 
 ## Status index
 
-What `lit_verify` 1.8.0 can write, with the severity and the section that
-explains each: the 71 keys of `SEVERITY` in `lit_verify.py` (one of them,
+What `lit_verify card` can write (`lit_verify` 1.9.0 or later), with the
+severity and the section that explains each: the 81 keys of `SEVERITY` in
+`lit_verify.py` (one of them,
 `COLUMN_NOT_CHECKED`, is a label, never a status: last row), plus
 `COVERED_SPARSE`†. `COVERED_SPARSE` and `COVERED_DUPLICATE` take their
 severity from the page (§ Coverage statuses).
@@ -864,11 +931,11 @@ severity from the page (§ Coverage statuses).
 
 | Severity | Statuses |
 |----------|----------|
-| pass | `PASS`, `PASS_SKELETON`, `PASS_SPAN` (§ The match ladder); `COVERED_EMPTY`, `COVERED_DUPLICATE`, `COVERED_SPARSE`† (§ Coverage statuses); `NUMBER_OK` (§ Numbers) |
-| partial | `PASS_OCR`, `VISION_ONLY`, `SCANNED_PAGE`, `PASS_OCR_LAYER`, `OCR_LAYER_PAPER` (§ Page classes, § Coverage statuses); `NUMBER_OCR_ONLY`, `NUMBER_OCR_VISION`, `NUMBER_VISION_ONLY`, `NUMBER_OCR_LAYER`, `NUMBER_OCR_LAYER_VISION` (§ Numbers); `PASS_CONVERSION_ERROR`, `NUMBER_CONVERSION_ERROR` (§ arXiv HTML statuses) |
-| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers); `VISION_ON_SCAN_PAGE` (§ Vision consistency) |
-| fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR`, `HEADER_FOOTER_REDERIVE_MISMATCH`, `FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE` (§ Re-derivation) |
-| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation) |
+| pass | `PASS`, `PASS_SKELETON`, `PASS_SPAN` (§ The match ladder); `COVERED_EMPTY`, `COVERED_DUPLICATE`, `COVERED_SPARSE`† (§ Coverage statuses); `NUMBER_OK` (§ Numbers); `QUANT_OK`, `PAGE_LABEL_OK` (§ Card schema v3) |
+| partial | `PASS_OCR`, `VISION_ONLY`, `SCANNED_PAGE`, `PASS_OCR_LAYER`, `OCR_LAYER_PAPER` (§ Page classes, § Coverage statuses); `NUMBER_OCR_ONLY`, `NUMBER_OCR_VISION`, `NUMBER_VISION_ONLY`, `NUMBER_OCR_LAYER`, `NUMBER_OCR_LAYER_VISION` (§ Numbers); `PASS_CONVERSION_ERROR`, `NUMBER_CONVERSION_ERROR` (§ arXiv HTML statuses); `QUANT_NUMBER_PARTIAL` (§ Card schema v3) |
+| review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers); `VISION_ON_SCAN_PAGE` (§ Vision consistency); `QUANT_NUMBER_REVIEW`, `QUANT_CI_ORDER`, `QUANT_ESTIMATE_OUTSIDE_CI` (§ Card schema v3) |
+| fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR`, `HEADER_FOOTER_REDERIVE_MISMATCH`, `FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE` (§ Re-derivation); `QUANT_NUMBER_FAILED`, `QUANT_NOT_IN_NUMBERS`, `QUANT_N_NOT_INTEGER` (§ Card schema v3) |
+| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation); `PAGE_LABEL_UNCONFIRMED` (§ Card schema v3) |
 | label | `COLUMN_NOT_CHECKED` (a number item's `column_severity` only, never its `severity`; § Numbers, the column label) |
 
 ## Verdicts and grades
@@ -1084,11 +1151,14 @@ that adds a spaced dash before the positive `1.20b` (NEEDS_REVIEW via
 QUOTE_NUMBERS_DIFFER); (1.8.0 part 5) a listed reader's vision reading on a
 page with an existing OCR text layer (NEEDS_REVIEW via VISION_ON_SCAN_PAGE);
 plus one check that each card run wrote one MANIFEST
-row with a matching `card_check` hash: **45 expectations**. It needs
+row with a matching `card_check` hash: **53 card expectations**. From
+1.10.0 the same selftest adds 18 `report` expectations (a synthetic review
+built by `lit_corpus`, memos with planted violations; literature-review
+`references/lit-verify-report.md`), **71 in all**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 45/45 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 71/71 expectations held; work dir removed`.
 
 ## Worked examples
 

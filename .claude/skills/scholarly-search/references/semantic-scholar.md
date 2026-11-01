@@ -22,6 +22,7 @@ Docs: https://api.semanticscholar.org/api-docs/ (OpenAPI spec fetched
 | Passage search | `GET /graph/v1/snippet/search?query&limit` | `snippets` |
 | Bulk boolean search | `GET /graph/v1/paper/search/bulk?query` (≤1,000 per call, continuation `token`) | `s2-bulk` |
 | DOI / title match | `GET /paper/DOI:<doi>`, `/paper/search/match` | adapter `resolve()` |
+| Citation contexts | `GET /graph/v1/paper/DOI:<doi>/citations` or `/references?fields=contexts,intents,isInfluential,externalIds,title,year,authors&limit≤1000&offset=0` (one call, 2 attempts, waits ≤ 60 s for the lane) | `cites` / `refs --s2-context` (tool 1.7.0; adapter `citation_contexts()`) |
 
 ## Cost and limits
 
@@ -60,6 +61,40 @@ key terms, 2026-09-27). The tool gates the lane at 1.2 s container-wide;
 - **Recommendations** (`/recommendations/v1/papers/forpaper/{id}`) draw from
   a recent-papers pool and returned unrelated 2026 items, so `similar` uses
   OpenAlex instead.
+- **Citation contexts** (2026-10-31): a probe got three 429s in a row on
+  `/citations` and contexts on 2 of 10 `/references` rows; the tool 1.7.0
+  smoke got `/references` on the first attempt at limit 33: 33 rows with a
+  `next` page, 20 matched to OpenAlex's 31 reference groups, 4 with a context.
+  Intents arrive lower case (`background`, `methodology`, `result`). A missing
+  context means S2 lacks the full text, not that the citation is incidental
+  (`api-notes.md`, 2026-10-31).
+- **Citation-context coverage** (2026-11-01, observed; 3 well-cited papers,
+  10 CLI runs, `api-notes.md`):
+  - `/citations` lists the **newest citing papers first** and has no sort by
+    citation count. Under `cites`' default `cited_by_count:desc`, 0 of 100
+    matched on all three papers; with `--sort publication_date:desc`, 52–70
+    of 100 matched and 11–22 had a sentence. `--sort publication_year:desc`
+    is newest-first too and is treated the same. Since tool 1.8.0 any other
+    sort records `context_warning` (row, records file, digest, stderr); the
+    sort is kept and S2 is still asked. No warning when the list is elided or
+    S2 does not know the paper, since no sort would help.
+  - **No intents on `/citations`**: 0 of 300 rows carried one, including rows
+    with sentences. Intents were seen only on `/references` (7 of 43 rows on
+    one paper). Expect sentences and the influential flag on `cites`.
+  - **Publisher elision**: for two of three papers `/references` answered
+    HTTP 200 with `"data": null` and "Notice: The following paper fields
+    have been elided by the publisher: {'references'}", although both had
+    free copies. Since 1.8.0 that is `context_status: elided` with a plain
+    digest sentence, never an empty `ok`. A notice counts only when it names
+    the list asked for (`references` or `citations`); one naming another
+    field, such as the abstract, leaves an empty answer `ok`.
+  - S2 rows with a sentence that matched no OpenAlex paper are left out (5 of
+    10 on one `refs` call; 20–34 per newest-first `cites` call); since 1.8.0
+    the row and records file count them (`context_unmatched_with_text`).
+  - "Influential" is S2's own label for a citation, not a measure of the
+    paper's quality; the digest says so beside every flag (1.8.0).
+  - Read `--s2-context` as a sample of sentences, not coverage of a paper's
+    citations.
 
 ## Storage and ToS
 
@@ -74,6 +109,11 @@ for research; do not redistribute commercially.
 
 403 → 11 (bad key); 429 after retries → 11; gate queue too long → 12; 404 on
 DOI → handled by the title fallback; network → 4; timeout → 6.
+`--s2-context` never changes the exit code: a 429 after its one retry or a
+busy lane → row `context_status: rate_limited`; a 404 or a seed without a
+DOI → `not_found`; a 200 with no rows and a publisher-elision notice naming
+that list → `elided` (1.8.0; retrying will not help); anything else → `error`; each with
+`context_note` and a stderr NOTE, while the OpenAlex list stands.
 
 ## Minimal smoke test
 

@@ -1,0 +1,30 @@
+{
+  "schema_version": "lit-counts-v1",
+  "rule": "counts-v1",
+  "round": 1,
+  "records_found_per_source": {
+    "openalex": 4
+  },
+  "unique_works": 3,
+  "from_citation_searching": 1,
+  "corpus_size": 5,
+  "screened": {
+    "ta": {
+      "include": 4,
+      "exclude": 1
+    },
+    "ft": {
+      "include": 4
+    }
+  },
+  "excluded_by_reason": {
+    "population": 2
+  },
+  "included": 4,
+  "read_in_full_by_grade": {
+    "FULL_TEXT_VERIFIED": 4
+  },
+  "abstract_only": 0,
+  "cited_in_deliverable": 2,
+  "second_screener_disagreements": 1
+}

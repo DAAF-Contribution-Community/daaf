@@ -1,0 +1,153 @@
+# certainty-language.yaml: the calibrated wording for statements about what a BODY OF
+# EVIDENCE shows (Literature Review findings). It sets the hedge only; the verb comes
+# from the study designs (causal verbs only where the designs earn them:
+# data-scientist references/research-questions.md § Causal vs. Correlational Language).
+# Never use it for the researcher's own analysis results, and never for lay audiences
+# (science-communication has its own scale, with different words).
+#
+# One table, many readers. Agents writing a synthesis read it; other DAAF writing
+# workflows that state Literature Review findings (a manuscript workflow, when one exists) reuse
+# it as is, storing the one canonical phrase per finding and never re-authoring it.
+# Machine copy: `lit_verify report` embeds a lockstep copy of this table
+# (scripts/lit_report_rules.py CERTAINTY_LANGUAGE) and a test keeps the two equal;
+# change this file and that copy together, and bump table_version on any change to
+# the data (comments are not data).
+#
+# Regex strings use Python `re` syntax and are matched case-insensitively on one
+# sentence. Single-quoted YAML strings keep backslashes literally.
+#
+# Sources (read for DAAF's appraisal survey, 2026-10-30; see basis below):
+#   Cochrane Handbook ch.15 Table 15.6.b gives the wording per level (high: bare verb or
+#   "results in"; moderate: "probably" or "likely"; low: "may" or "the evidence
+#   suggests"; very low: "the evidence is very uncertain"). EPOC 2018 is an earlier
+#   variant of the same table. DAAF changes are listed under daaf_adaptations.
+schema_version: certainty-language-v1
+table_version: "2026-11-01b"           # date of the last change (+ a letter for a second change that day); bump on ANY change; recorded in every report check
+contract_version: "0.3.0"               # Literature Review output contract semver (pre-1.0)
+axis: body_of_evidence_certainty
+keys_are: [high, moderate, low, very_low]   # the machine values of a finding's certainty
+stated_by: >-
+  At the standard level the synthesizer states the level with a written reason; at
+  the formal level the researcher decides it. This table does not compute a level; it
+  only fixes the words for the level stated.
+basis:
+  - "Cochrane Handbook ch.15 Table 15.6.b, Suggested narrative statements for phrasing conclusions (chapter last updated 2023-08)"
+  - "Santesso et al. 2020, GRADE guidelines 26, J Clin Epidemiol 119:126-135, doi:10.1016/j.jclinepi.2019.10.014 (abstract read; full text not obtained)"
+  - "Cochrane EPOC, Reporting the effects of an intervention in EPOC reviews (version 2018-06-21)"
+  - "Murad et al. 2017, Evid Based Med 22:85-87, doi:10.1136/ebmed-2017-110668 (rating certainty without a pooled estimate)"
+daaf_adaptations:
+  - "'likely' is not allowed (GRADE allows it at moderate; DAAF keeps one moderate word, 'probably', because 'likely' also reads as an IPCC probability term of 66-100 percent)"
+  - "associational bodies of evidence use 'is associated with' in place of a causal verb (verb choice: data-scientist references/research-questions.md)"
+  - "the descriptive-summary rule (an unweighted median, IQR and range of at least 3 estimates on one metric, labelled) replaces 'no aggregation of any kind'; nothing weighted, averaged or pooled"
+
+levels:
+  high:
+    label: "high"
+    plain_meaning: "We are confident this is true; further research is very unlikely to change it."   # DAAF's plain-language paraphrase; GRADE's own definitions were not fetched
+    canonical: ""                       # no hedge: the bare verb ("results in" also fits)
+    templates:
+      effect: "{X} {verb}s {Y}."
+      large: "{X} results in a large {reduction|increase} in {Y}."
+      small: "{X} {verb}s {Y} slightly."
+      little_or_no_difference: "{X} results in little to no difference in {Y}."
+    markers: []                         # expressed level = high when no other level's marker is present
+    allowed_variants: ["results in", "slightly", "does not {verb}"]
+    forbidden: ['\bmay\b', '\bmight\b', '\bprobably\b', '\blikely\b', '\bsuggests?\b', '\buncertain\b']
+  moderate:
+    label: "moderate"
+    plain_meaning: "This is probably true; better studies might change it."   # DAAF's plain-language paraphrase; GRADE's own definitions were not fetched
+    canonical: "probably"
+    templates:
+      effect: "{X} probably {verb}s {Y}."
+      large: "{X} probably results in a large {reduction|increase} in {Y}."
+      small: "{X} probably {verb}s {Y} slightly."
+      little_or_no_difference: "{X} probably results in little to no difference in {Y}."
+    markers: ['\bprobably\b']
+    allowed_variants: ["probably results in", "probably does not {verb}"]
+    forbidden: ['\bmay\b', '\bmight\b', '\bsuggests?\b', '\bpossibly\b', '\buncertain\b', '\blikely\b']
+  low:
+    label: "low"
+    plain_meaning: "This may be true, but better studies could well change it."   # DAAF's plain-language paraphrase; GRADE's own definitions were not fetched
+    canonical: "may"
+    templates:
+      effect: "{X} may {verb} {Y}."
+      large: "{X} may result in a large {reduction|increase} in {Y}."
+      small: "{X} may {verb} {Y} slightly."
+      little_or_no_difference: "{X} may result in little to no difference in {Y}."
+    markers: ['\bmay\b', '\bmight\b', '\b(the\s+)?(\w+\s+)?evidence suggests\b']   # "evidence suggests", "the available evidence suggests"
+    allowed_variants: ["the evidence suggests", "evidence suggests", "may not {verb}"]
+    forbidden: ['\bprobably\b', '\blikely\b', '\bvery uncertain\b']
+  very_low:
+    label: "very low"
+    plain_meaning: "We do not know whether this is true; the evidence is very weak."   # DAAF's plain-language paraphrase; GRADE's own definitions were not fetched
+    canonical: "the evidence is very uncertain"
+    templates:
+      effect: "The evidence is very uncertain about the effect of {X} on {Y}."
+      direction: "{X} may {verb} {Y}, but the evidence is very uncertain."
+    markers: ['\bvery uncertain\b', '\b(we\s+)?do(n''t|\s+not)\s+know\s+(whether|if)\b', '\bit is uncertain whether\b', '\bunclear whether\b']
+    allowed_variants: ["it is uncertain whether", "it is unclear whether", "we do not know whether", "{X} may {verb} {Y}, but the evidence is very uncertain"]
+    forbidden: ['\bprobably\b', '\blikely\b', '\bsuggests?\b']
+    required_any: ['\buncertain\b', '\bunclear whether\b', '\bdo(n''t|\s+not)\s+know\s+(whether|if)\b']   # a very_low sentence must say it is uncertain (EPOC: "We don't know if")
+
+# Precedence for the EXPRESSED level of a finding sentence: the first level whose
+# marker matches wins; no marker = high. For this purpose "likely" counts as a
+# moderate marker, so "likely" on a low finding reads as stronger than the finding.
+expressed_level_precedence: [very_low, low, moderate, high]
+
+not_rated:                              # findings with certainty_scheme: not_rated
+  abstracts_only: "certainty not rated: abstracts only"               # quick scan, or a finding resting on abstracts
+  qualitative_evidence: "certainty not rated: qualitative evidence"   # GRADE-CERQual deferred
+  required_phrase: '\bcertainty not rated\b'
+  forbidden: ['\bprobably\b', '\blikely\b', '\bmay\b', '\bmight\b']   # no GRADE hedge on an unrated finding ("May 2020", "in May" are months)
+
+magnitude:                              # Table 15.6.b; magnitude comes from a pre-declared importance threshold, never from significance
+  large: "a large {reduction|increase}"
+  small_important: "slightly"
+  trivial: "little to no difference"
+  never: ['\bno effect\b', '\bno difference\b']   # say "little to no difference"
+  not_when:                             # not a "no effect" claim: the table's own wording and Cochrane's paired absence statement
+    - '\b(little|small)\s+(to|or)\s+no\s+(difference|effect)\b'
+    - '\bno\s+evidence\s+of\s+(an?\s+)?(effect|difference)\b'
+    - '\b(is\s+)?not\s+evidence\s+of\s+no\s+(effect|difference)\b'
+    - '\bat\s+baseline\b[^.;:]{0,120}?\bno\s+(effect|difference)\b'   # balance between groups at the start, not a result
+    - '\bno\s+(effect|difference)\b[^.;:]{0,120}?\bat\s+baseline\b'
+  paired_absence: '\bno\s+evidence\s+of\s+(an?\s+)?(effect|difference)\b'   # goes with any level: its sentence is not compared with the finding's level
+
+global_forbidden:                       # BOOSTER and NO_EFFECT_CLAIM: any sentence citing a paper (fail in a finding sentence, review elsewhere); the others: a sentence bound to a finding (ids are report statuses)
+  - {id: BOOSTER, pattern: '\b(proves?|proven|conclusively|definitively|establish(es|ed) that|clearly (shows?|demonstrates?|improves?|raises?|reduces?|increases?|works?|helps?))\b'}
+  # POOLED_ESTIMATE: the pooling phrases. A phrase alone is never flagged ("Overall", "Taken together" and "the typical study" are fine): it fails only when it introduces ONE effect number in its clause (or, when its clause holds none, the next clause or the one before) and two or more papers are cited for it; a number of people, places, ages or durations is not an effect (user decision, 2026-11-01)
+  - {id: POOLED_ESTIMATE, pattern: '\b(pooled|pooling|pools?|meta-analytic|overall|taken together|on average|average (effect|impact|estimate|gain)|mean effect|summary (effect|estimate)|combined (effect|estimate|gain|impact)|the typical (study|trial|evaluation|effect)|typical effect|averag(ed|ing) (the|across|over|these|those|their)|mean of the( \w+)? (estimates|effects|studies|trials)|across (the |these |those |all |both )?(\w+ )?(studies|trials|evaluations|papers)|combined(?=,)|in aggregate|collectively)\b'}
+  - {id: WEIGHTED_SUMMARY, pattern: '\bweighted (mean|average|median)\b'}
+  - {id: SIGNIFICANCE_LABEL, pattern: '\b(statistically significant|non-?significant)\b'}
+  - {id: NO_EFFECT_CLAIM, pattern: '\bno (effect|difference)\b'}
+  - {id: FORBIDDEN_HEDGE, pattern: '\blikely\b'}      # write "probably" (moderate) instead
+  - {id: NONSTANDARD_HEDGE, pattern: '\b(could|possibly|appears? to|seems? to|perhaps)\b'}
+
+descriptive_summary:                    # allowed only when the finding carries a computed descriptive summary
+  min_estimates: 3                      # one estimate per paper, so at least 3 papers
+  required_label: "descriptive summary, not a pooled estimate"
+  allowed_statistics: ['\bmedian\b', '\binterquartile range\b', '\bIQR\b', '\brange\b']
+  template: "Across {k} studies reporting {metric}, the estimates ranged from {min} to {max} (median {median}; IQR {q1} to {q3}; descriptive summary, not a pooled estimate)."
+
+vote_counting:                          # Cochrane ch.12; ids are report statuses
+  count_pattern: '\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+(of|out of)\s+(the\s+)?(\d+|[a-z]+)\s+(\w+\s+)?(studies|trials|evaluations|papers|estimates|effects)\b'
+  quantifier_pattern: '(?<!the )\b(most|the majority|many|few|several|half|nearly all|almost all|a minority|all|none)(\s+of)?\s+(the\s+|these\s+|those\s+)?(\w+\s+)?(included\s+|reviewed\s+|eligible\s+)?(studies|trials|evaluations|papers)\b'
+  count_bare_pattern: '\b(\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\s+(\w+\s+)?(studies|trials|evaluations|papers)\s+(found|reported|showed|observed|detected|estimated|yielded)\b'
+  fraction_pattern: '\b(\d+)\s*/\s*(\d+)\s+(\w+\s+)?(studies|trials|evaluations|papers|estimates|effects)\b'
+  significance_pattern: '(significan|statistically|p\s*[<=≤]|null (result|finding)|failed to find)'
+  result_verb_pattern: '\b(found|show(ed|s)?|favou?r|improv|reduc|increas|rais|lower|boost|gain|positive|negative|benefit|harm|effective|ineffective|worked|helped)'   # a result, not a study feature ("reported attendance outcomes" is not one)
+  sign_test_pattern: '\b(sign test|binomial)\b'
+
+polysemy_exceptions:
+  may: {not_when: '\bMay\s+(\d{1,2}|\d{4})\b|\b(?i:in|since|until|by|from|of|during|through|before|after)\s+May\b|\bMay\s+(and|or|to|through)\s+[A-Z]'}   # the month (matched case-sensitively)
+  likely: {not_after: [more, less, as, equally, most, least]}     # "more likely to", an outcome description
+  could: {not_when: '\bcould not be\s+\w+ed\b'}                   # methods passive
+
+stacking:                               # one hedge per claim
+  max_level_markers_per_sentence: 1     # "may probably" -> review
+
+labels:
+  abstract_only: "per abstract"         # written inside the citation: [@key, per abstract]
+  exploratory: "exploratory"
+  prespecified: "pre-specified"
+  retracted: "retracted"

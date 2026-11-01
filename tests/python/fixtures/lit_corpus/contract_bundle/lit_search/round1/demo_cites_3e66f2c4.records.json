@@ -1,0 +1,75 @@
+{
+ "schema_version": "scholar-records-v1",
+ "tool_version": "synthetic (lit_corpus demo)",
+ "command": "cites",
+ "query": "10.9999/fixture.0001",
+ "raw_artifact": "demo_cites_3e66f2c4.json",
+ "raw_sha256": "f06ae9b8081cad29eef60593d7a1c9937bf8d626b12880f9cd64bb9009c2c450",
+ "fusion": {
+  "version": "fuse-v1"
+ },
+ "limit": 10,
+ "groups_total": 1,
+ "legs": [
+  {
+   "leg": "openalex_semantic",
+   "backend": "openalex",
+   "count": 1,
+   "total": 1,
+   "failed": null
+  }
+ ],
+ "groups": [
+  {
+   "rank": 1,
+   "score": 0.03,
+   "found_by": {
+    "openalex_semantic": 1,
+    "elicit": 1
+   },
+   "primary": {
+    "title": "Teachers on Tutoring Schedules",
+    "year": 2022,
+    "authors": [
+     "Dee Diaz"
+    ],
+    "venue": "Journal of Invented Studies",
+    "type": "article",
+    "doi": "10.9999/fixture.0004",
+    "ids": {
+     "openalex": [
+      "W900000004"
+     ],
+     "doi": [
+      "10.9999/fixture.0004"
+     ],
+     "eric": [],
+     "s2": []
+    },
+    "cites": 3,
+    "abstract": "An invented abstract."
+   },
+   "members": [],
+   "citation_context": {
+    "source": "semantic_scholar",
+    "direction": "citing",
+    "intents": [
+     "methodology"
+    ],
+    "is_influential": true,
+    "contexts": [
+     "The interview guide builds on the invented tutoring trial by Allen and colleagues."
+    ],
+    "contexts_total": 1,
+    "full_text_gated": true
+   }
+  }
+ ],
+ "seed": {
+  "ids": {
+   "doi": [
+    "10.9999/fixture.0001"
+   ]
+  }
+ }
+}

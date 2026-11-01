@@ -24,6 +24,15 @@
 #     "without search relevance" (re-measured 2026-10-02, api-notes.md).
 #   - DOI coverage gaps for economics/education journal versions
 #     (10.1093/qje/qjv036 -> 404); resolve() falls back to a title match.
+#   - Citation contexts (2026-10-31 probe, tool 1.7.0 `--s2-context`): a
+#     `/references` call returned contexts on 2 of 10 rows; every `/citations`
+#     attempt answered 429; see § CITATION_CONTEXTS.
+#   - Citation contexts coverage (2026-11-01 coverage probe, tool 1.8.0;
+#     scholarly-search api-notes.md, "Coverage versus OpenAlex"):
+#     `/citations` lists the newest citing papers first; it sent no intents on
+#     any of 300 rows (intents were seen only on `/references`); publishers
+#     can elide `/references` (HTTP 200, "data": null, a notice), which
+#     elision_notice() detects when the notice names the list asked for.
 # =============================================================================
 
 import re
@@ -151,6 +160,98 @@ def bulk_search(http, query, limit, years=None):
                       max_attempts=DEDICATED_ATTEMPTS)
     data = [p for p in (parsed.get("data") or []) if isinstance(p, dict)][:limit]
     return [to_record(p) for p in data], parsed.get("total")
+
+
+# §§ CITATION_CONTEXTS (scholar_search 1.7.0: `cites|refs --s2-context`)
+# INTENT: one request for the citation sentences ("contexts"), citation
+#   intents and the influential flag S2 holds for a seed paper's citations
+#   (`cites`: GET /paper/DOI:{doi}/citations, each row's citingPaper) or
+#   references (`refs`: /references, each row's citedPaper). The core matches
+#   the rows to its OpenAlex list; this adapter only builds the request and
+#   maps the rows.
+# REASONING (live probe 2026-10-31, api-notes.md; OpenAPI spec fetched
+#   2026-10-31): both endpoints document fields contexts, intents,
+#   isInfluential; `limit` "Must be <= 1000" per call; the envelope is
+#   {offset, next, data} with no total. Intent values seen live are lower
+#   case: background, methodology, result. The FAQ: "citation intent data is
+#   limited to papers for which we have access to the full text", and the
+#   influential flag "relies on our access to the full-text of the citing
+#   paper". An empty context list therefore means "unknown", never "no
+#   substantive use". None of the three intents means disagreement.
+# REASONING: `/citations` answered 429 three times in a row in the probe (a
+#   key shared across the container), so this call makes CONTEXT_ATTEMPTS = 2
+#   attempts (one retry with backoff) and waits at most CONTEXT_MAX_WAIT for
+#   the shared 1.2 s lane; the core then keeps the OpenAlex result and
+#   records the status instead of failing the command.
+CONTEXT_FIELDS = "contexts,intents,isInfluential,externalIds,title,year,authors"
+CONTEXT_PAGE_MAX = 1000
+CONTEXT_ATTEMPTS = 2
+CONTEXT_MAX_WAIT = 60.0
+CONTEXT_DIRECTIONS = {"citing": ("citations", "citingPaper"), "cited": ("references", "citedPaper")}
+
+
+ELISION_MARK = "elided by the publisher"
+ELISION_FIELDS_RE = re.compile(r"elided by the publisher:\s*\{([^}]*)\}")
+
+
+def citation_contexts(http, doi, direction, limit):
+    # Returns (rows, more, elided): rows as context_row() maps them, in S2's
+    # order; more = True when the envelope names a `next` offset (rows were
+    # left); elided = S2's elision notice (a string) when it sent no rows
+    # because the publisher withheld the list asked for, else None (1.8.0).
+    endpoint, paper_key = CONTEXT_DIRECTIONS[direction]
+    params = {"fields": CONTEXT_FIELDS, "limit": max(1, min(int(limit), CONTEXT_PAGE_MAX)), "offset": 0}
+    parsed = http.get(NAME, f"{GRAPH}/paper/DOI:{doi}/{endpoint}", params, auth_headers(),
+                      max_attempts=CONTEXT_ATTEMPTS, max_wait=CONTEXT_MAX_WAIT)
+    rows = [context_row(item, item.get(paper_key)) for item in (parsed.get("data") or []) if isinstance(item, dict)]
+    elided = None if rows else elision_notice({k: v for k, v in parsed.items() if k != "data"}, endpoint)
+    return rows, parsed.get("next") is not None, elided
+
+
+def elision_notice(value, field):
+    # INTENT (1.8.0): find S2's publisher-elision notice for `field` (the
+    #   list the call asked for: "references" or "citations") in a response
+    #   that sent no rows, so "the publisher withheld the list" is never
+    #   recorded as an ordinary empty answer.
+    # REASONING (live, 2026-11-01 coverage probe, api-notes.md): for two
+    #   papers `/references` answered HTTP 200 with "data": null and, under
+    #   citingPaperInfo.openAccessPdf.disclaimer, "Notice: The following
+    #   paper fields have been elided by the publisher: {'references'}. …".
+    #   Where the notice sits is not documented, so every string outside
+    #   `data` is searched; the first one carrying the mark is returned.
+    # REASONING (1.8.0, review fix of 2026-11-01): a notice naming another
+    #   field (e.g. {'abstract'}) says nothing about the list asked for, so it
+    #   counts only when `field` is among the fields it names in braces (or,
+    #   with no braces, appears in it as a word).
+    if isinstance(value, str):
+        low = value.lower()
+        if ELISION_MARK not in low:
+            return None
+        listed = ELISION_FIELDS_RE.search(low)
+        return value if field in re.findall(r"[a-z_]+", listed.group(1) if listed else low) else None
+    items = value.values() if isinstance(value, dict) else value if isinstance(value, list) else ()
+    for v in items:
+        found = elision_notice(v, field)
+        if found:
+            return found
+    return None
+
+
+def context_row(item, paper):
+    # One citation: the other paper's identity (for matching) plus what S2
+    # says about the citation. Empty strings and non-string values are
+    # dropped; intents are lower-cased and de-duplicated in order.
+    paper = paper if isinstance(paper, dict) else {}
+    ext = paper.get("externalIds") or {}
+    influential = item.get("isInfluential")
+    return {"paper_id": paper.get("paperId"), "title": paper.get("title") or "", "year": paper.get("year"),
+            "authors": [a.get("name") for a in (paper.get("authors") or [])
+                        if isinstance(a, dict) and isinstance(a.get("name"), str) and a.get("name")],
+            "doi": norm_doi(ext.get("DOI")) if isinstance(ext, dict) else None,
+            "contexts": [c for c in (item.get("contexts") or []) if isinstance(c, str) and c.strip()],
+            "intents": list(dict.fromkeys(i.strip().lower() for i in (item.get("intents") or [])
+                                          if isinstance(i, str) and i.strip())),
+            "is_influential": influential if isinstance(influential, bool) else None}
 
 
 def resolve(http, ident, openalex_get_work):
