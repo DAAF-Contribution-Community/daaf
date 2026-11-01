@@ -92,12 +92,8 @@
 # and the Pillow version check before the last RUN (and its note in USER
 # ADDITIONS); drop exceptions (1)-(3) from this list, and the "runs ahead"
 # text from the top of this banner and from the comment above
-# ARG UBUNTU_SNAPSHOT; and update the copies outside this file: the
-# academic-manuscript replication assembler
-# (.claude/skills/academic-manuscript/assets/assemble_package_template.py:
-# UV_EXCLUDE_NEWER, EXCLUDE_NEWER_PACKAGE -> [], UBUNTU_SNAPSHOT; a stale
-# override there makes its `uv pip compile` lock fail) and its
-# references/replication-package.md, the dated "exception (3)" note in the
+# ARG UBUNTU_SNAPSHOT; and update the copies outside this file: the dated
+# "exception (3)" note in the
 # comment of the snapshot check in tests/bash/daaf_lib.bats, and the docs
 # that describe the exceptions. The distrust layer and the check stay as
 # harmless guards. Full list: user_reference/04_extending_daaf.md §
@@ -1463,12 +1459,10 @@ RUN Rscript -e 'pkgs <- c( \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
-# Replication-package environments (Manuscript Preparation mode, MP-4)
-# renv: writes the renv.lock / .Rprofile / renv/activate.R set (plus
-# renv/.gitignore; DAAF's snapshot sequence writes no renv/settings.json) that
-# the AEA Data Editor requests for R code in replication packages (exact
-# package versions; replicators restore with renv::restore()). DAAF uses it only
-# to SNAPSHOT the packages a package's R scripts import into a lockfile — never
+# R package lockfiles
+# renv: a lockfile/snapshot tool that records exact R package versions in a
+# renv.lock file. No shipped DAAF workflow uses it yet. Inside the container,
+# use it only to SNAPSHOT the packages a project's R scripts import into a lockfile — never
 # to install or restore packages inside the container (runtime installs are
 # blocked; see CLAUDE.md § Runtime Package Installation). Rationale (maintainer-only, not shipped):
 # research/2026-10-02_FrameworkDev_ManuscriptPrepMode/preliminary_notes/17_research_t8_aea_data_editor.md §4.
@@ -1512,8 +1506,8 @@ RUN Rscript -e 'pkgs <- c( \
         if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \
         cat("All", length(pkgs), "R packages present.\n")'
 
-# Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9 and
-# for Manuscript Preparation's no-code-at-render Typst/DOCX manuscript builds).
+# Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9
+# notebooks, and it can also render Typst PDF and DOCX).
 # Pin the version; update when intentionally upgrading.
 # 1.7.29 -> 1.10.18 (2026-10-03): Typst linestretch/abstract-title, list tables,
 # multi-bib Typst fix, manuscript-project fixes, apaquarto (>=1.9), PDF/UA alt text.

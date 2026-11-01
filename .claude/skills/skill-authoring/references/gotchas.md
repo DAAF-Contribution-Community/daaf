@@ -340,7 +340,7 @@ Skills are for AI execution, not human documentation.
 
 **Problem:** Skills are often written by a subagent (framework-engineer, or a `general-purpose` agent in Data Onboarding), and on Claude Code 2.1.281 (observed 2026-10-19) the Write tool rejects any subagent Write to a `.md` basename starting with `report`, `summary`, `findings` or `analysis`, in any case, before any hook runs. The prefix match also catches ordinary words: `reporting.md`, `analysis-patterns.md`, `summary-statistics.md`. Such a file cannot be created with Write, or rewritten in full with Write, by a subagent. Edit of an existing file still works; creating the file with Edit or a shell write instead is routing around the check, not a fix. See CLAUDE.md § Project Conventions > Subagent File Output.
 
-**Fix:** Name new reference files so the basename starts with another word: `model-reporting.md`, `patterns-for-analysis.md`, `descriptive-statistics.md`. Five existing files already match and are **Edit-only** for subagents: `agent_reference/REPORT_TEMPLATE.md`, `.claude/agents/report-writer.md`, `.claude/skills/fixest/references/reporting.md`, `.claude/skills/r-stats/references/reporting.md`, `.claude/skills/academic-manuscript/references/reporting-guidelines.md`.
+**Fix:** Name new reference files so the basename starts with another word: `model-reporting.md`, `patterns-for-analysis.md`, `descriptive-statistics.md`. Four existing files already match and are **Edit-only** for subagents: `agent_reference/REPORT_TEMPLATE.md`, `.claude/agents/report-writer.md`, `.claude/skills/fixest/references/reporting.md`, `.claude/skills/r-stats/references/reporting.md`.
 
 ### Library Skill Version Drift
 

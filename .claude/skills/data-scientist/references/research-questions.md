@@ -202,7 +202,7 @@ Swapping verbs is not enough. In a review of 1,170 articles from high-profile me
 
 A plausible mechanism from domain knowledge, or a stakeholder's request for a causal answer, does not by itself earn causal language (DAAF convention). If a stakeholder needs a causal answer the design cannot support, document the gap and name the design that would be needed.
 
-> **Note:** this section gives a general default, not DAAF's design-earned claim tiers: it does not scope claims to the estimand's population (e.g., ATT, LATE, local to the cutoff) or separate conditional-causal, causal, mechanism, and action-recommendation language. For manuscripts, the tiers in the `academic-manuscript` skill govern (`references/claims-ledger-and-coherence.md` § Language tiers; framing by question type in `references/question-types-and-claims.md`). For lay and policy audiences, use the causal-language table in the `science-communication` skill (`references/plain-language.md` § Causal vs. Correlational Language). Elsewhere, the default above still applies.
+> **Note:** this section gives a general default. It does not scope a causal claim to the population its estimate covers (for example, the treated units for an ATT, the compliers for a LATE, or units near an RD cutoff); state that scope alongside the claim. For lay and policy audiences, use the causal-language table in the `science-communication` skill (`references/plain-language.md` § Causal vs. Correlational Language).
 
 ### Presenting Uncertainty
 

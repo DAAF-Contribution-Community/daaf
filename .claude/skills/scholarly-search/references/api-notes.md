@@ -724,7 +724,7 @@ code; not run). This is a WEAK, not a pass, so it was left alone.
 
 ### Add-on 8b: transliteration (2026-10-06)
 
-**Reported by the Manuscript Preparation session**, then confirmed by the
+**Reported by a DAAF development session**, then confirmed by the
 orchestrator's probe (`scratch/probe_nonfolding_letters.py`, log).
 
 **Question.** The ASCII fold deleted Latin letters that have no Unicode

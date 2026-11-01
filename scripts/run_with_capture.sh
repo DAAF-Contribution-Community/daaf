@@ -165,8 +165,7 @@ fi
 if [ "$EXT" = "py" ]; then
     # The Python SCAN_TOKENS is the four PY_*_TOKENS alternations joined with
     # `|`; PY_LIST_FLAGS (zero or more quoted `-...` list elements) is spliced
-    # into the pip and uv list terms (reproducibility-verification-mode.md
-    # RV-P1 step 7 greps with SCAN_TOKENS).
+    # into the pip and uv list terms.
     PY_LIST_FLAGS="(['\"], *['\"]-[^'\"]*)*"
     PY_PIP_TOKENS="pip3? (install|uninstall)|pip3?${PY_LIST_FLAGS}['\"], *['\"](install|uninstall)"
     PY_PIPX_TOKENS="pipx (install|uninstall|run)|pipx['\"], *['\"](install|uninstall|run)"

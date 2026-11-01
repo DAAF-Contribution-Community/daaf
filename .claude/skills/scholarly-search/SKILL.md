@@ -33,8 +33,8 @@ user's own tool (2026-09-27) and adapted to DAAF on 2026-10-02.
 
 **Who may run this:** the orchestrator, search-agent, and the
 literature-searcher agent (forthcoming, Literature Review mode). Audited
-scripts executed via `run_with_capture.sh` (e.g., Manuscript Preparation's
-citation-verification step) may also call `verify` and `retractions`
+scripts executed via `run_with_capture.sh` (e.g., a script that checks a
+reference list) may also call `verify` and `retractions`
 through `subprocess`, one call at a time, so each call still leaves its own
 MANIFEST row and the script's execution log records the batch. They may call
 **only** those two, never a restricted command (`scite-tally`,

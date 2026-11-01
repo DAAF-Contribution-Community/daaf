@@ -638,8 +638,6 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | `data-verifier` | `plan` (read-only) | Final verification (Stage 12, RV-3) |
 | `data-ingest` | `default` (read/write) | Dataset profiling (Data Onboarding Mode) |
 | `framework-engineer` | `default` (read/write) | Framework artifact authoring and integration (Framework Development Mode) |
-| `manuscript-writer` | `default` (read/write) | Drafting or integrating one academic manuscript unit per dispatch (Manuscript Preparation) |
-| `manuscript-reviewer` | `plan` (read-only) | Simulated pre-submission peer review, round R0 and per-round stress tests (Manuscript Preparation; advisory) |
 | `search-agent` | `plan` (read-only) | Broad-purpose read-only exploration — codebase, documentation, web, data (any mode/stage) |
 
 See `.claude/agents/README.md` for the complete agent index with key inputs and outputs.
@@ -663,7 +661,7 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 
 | Tier | Agents | Why |
 |------|--------|-----|
-| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest, manuscript-writer, manuscript-reviewer | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis, academic drafting under ledger-tier constraints, simulated expert peer review |
+| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
 | `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
 
 **Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.

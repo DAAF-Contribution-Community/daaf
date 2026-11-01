@@ -183,7 +183,7 @@ While the IPCC framework was designed for climate science, its two-dimensional a
 
 Choosing the right linking language is one of the most consequential decisions in research communication. The wrong word can either overstate your evidence (implying causation from correlation) or understate it (hedging a well-identified causal effect into meaninglessness).
 
-This section is the lay- and policy-audience guide. It translates the same evidence ladder that the `academic-manuscript` skill applies to journal articles (claim tiers T0–T3, M, and A in `academic-manuscript/references/claims-ledger-and-coherence.md` § Language tiers; the reasoning is in `academic-manuscript/references/honest-interpretation.md` § Causal-language calibration). When you write a manuscript, use those tiers. When you write a plain-language summary or policy brief from a manuscript, keep every claim at or below the tier the manuscript assigned it.
+This section is the lay- and policy-audience guide. The tier labels in its tables mark how strong a claim each design supports: T0 description, T1 association, T2 a causal effect under a named assumption, T3 a causal effect from a randomized trial, and M a mechanism claim backed by a formal mediation analysis. The analyst-facing default is in the `data-scientist` skill (`references/research-questions.md` § Causal vs. Correlational Language). When you write a plain-language summary or policy brief, keep every claim at or below the strength the design supports.
 
 ### The Core Distinction
 
@@ -191,7 +191,7 @@ A causal claim answers two questions: *did X change Y*, and *for whom*. Every de
 
 | Study Design | What You Can Claim | Whose Effect (Scope to State) | Appropriate Language |
 |--------------|-------------------|-------------------------------|---------------------|
-| Randomized controlled trial (RCT), low attrition | Causal effect (manuscript tier T3) | The trial population. Separate the effect of *offering* the program from the effect of *receiving* it | "X increased Y" / "X reduced Y" / "The program raised attendance by 3 points among participating schools" |
+| Randomized controlled trial (RCT), low attrition | Causal effect (T3) | The trial population. Separate the effect of *offering* the program from the effect of *receiving* it | "X increased Y" / "X reduced Y" / "The program raised attendance by 3 points among participating schools" |
 | Difference-in-differences / event study | Causal effect under the parallel-trends assumption (T2) | The units or cohorts that were actually treated (ATT), not all units | "Comparing changes in adopting and non-adopting districts, we estimate the policy reduced chronic absence by 2 points *in the districts that adopted it*" |
 | Regression discontinuity | Causal effect under the assumption that units could not precisely sort themselves around the cutoff (T2) | Units near the cutoff only (a local effect) | "For students who scored just above versus just below the cutoff, the program raised…" |
 | Instrumental variables / fuzzy RD | Causal effect under instrument validity (T2) | Only "compliers": units whose participation was changed by the instrument (LATE) | "For families whose enrollment depended on the lottery, attending the school raised…" |
@@ -230,7 +230,7 @@ Haber et al. (2022) found that what they call "Schrödinger's causal inference" 
 
 A recommendation also inherits the estimand's scope. A DiD estimate for early-adopting districts, or an RD estimate for students near a cutoff, does not by itself justify a recommendation for every district or every student.
 
-**Mechanism words need a mechanism design.** "Because," "through," "driven by," and "operates via" claim to know *how* an effect happens. That requires a formal mediation analysis with stated assumptions (manuscript tier M). Without one, present the mechanism as an explicitly labeled hypothesis: "One possible explanation, which this analysis cannot test, is reduced instructional time." The same applies to "If this association is causal, it would suggest…": the frame must read as speculation.
+**Mechanism words need a mechanism design.** "Because," "through," "driven by," and "operates via" claim to know *how* an effect happens. That requires a formal mediation analysis with stated assumptions (tier M). Without one, present the mechanism as an explicitly labeled hypothesis: "One possible explanation, which this analysis cannot test, is reduced instructional time." The same applies to "If this association is causal, it would suggest…": the frame must read as speculation.
 
 ### Practical Causal Language Rules
 

@@ -1,8 +1,6 @@
 # Data files - too large for git
 *.parquet
 *.csv
-# Skill-shipped CSV template (not data): column reference for the replication package crosswalk
-!/.claude/skills/academic-manuscript/assets/PROVENANCE_CROSSWALK_template.csv
 *.xls
 *.xlsx
 
