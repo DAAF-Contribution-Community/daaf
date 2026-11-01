@@ -1240,15 +1240,15 @@ Describe "daaf.ps1 behavioral tests" {
         It "Invoke-DaafServiceStop 'Stop all' sends a payload on the container ports that names each service, matching daaf.sh" {
             Mock Test-DaafPort { $Port -eq "2718" }
             Mock Read-DaafLine { "1" }
-            $global:DaafTestStopArgs = $null
-            Mock docker { $global:LASTEXITCODE = 0; $global:DaafTestStopArgs = @($args) }
+            $script:DaafTestStopArgs = $null
+            Mock docker { $global:LASTEXITCODE = 0; $script:DaafTestStopArgs = @($args) }
             try {
                 Invoke-DaafServiceStop 6>$null
-                $global:DaafTestStopArgs | Should -Not -BeNullOrEmpty
-                ($global:DaafTestStopArgs[0..5] -join ' ') | Should -Be 'compose exec -T daaf-docker bash -c'
-                $payload = [System.Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($global:DaafTestStopArgs[-1]))
+                $script:DaafTestStopArgs | Should -Not -BeNullOrEmpty
+                ($script:DaafTestStopArgs[0..5] -join ' ') | Should -Be 'compose exec -T daaf-docker bash -c'
+                $payload = [System.Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($script:DaafTestStopArgs[-1]))
             } finally {
-                Remove-Variable -Name DaafTestStopArgs -Scope Global -ErrorAction SilentlyContinue
+                Remove-Variable -Name DaafTestStopArgs -Scope Script -ErrorAction SilentlyContinue
             }
             $payload | Should -BeLike '*for svc in "2718:Notebooks" "2719:Log Viewer" "2720:VS Code"; do*'
             $payload | Should -BeLike '*echo "    Stopped $name (PID $pid)"*'
