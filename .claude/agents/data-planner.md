@@ -188,7 +188,7 @@ The orchestrator's prompt includes an execution language directive (**"Execution
 | Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
 | Network / graph analysis | `igraph` | `igraph-r` |
-| Table formatting | — | `gt` |
+| Table formatting | `great-tables` | `gt` |
 
 ### 6. Dependency Mapping
 

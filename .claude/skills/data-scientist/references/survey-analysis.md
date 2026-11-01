@@ -574,6 +574,9 @@ real research conclusions.
    differ materially from the normal. *Fix:* Use degrees of freedom based on the number
    of PSUs minus the number of strata (the standard design degrees of freedom; West,
    Berglund, and Heeringa 2008, p. 526). Some survey software computes this automatically.
+   R's survey package does this for `svyglm()` and `svyciprop()`, but `confint()` on
+   `svymean()`/`svytotal()`/`svyby()` uses the normal (`df = Inf`) unless you pass
+   `df = degf(design)`.
 
 10. **Combining survey cycles incorrectly.** Pooling multiple waves or cycles of a
     survey (e.g., combining 3 cycles of NHANES) without adjusting the weights.

@@ -36,7 +36,7 @@ from linearmodels.panel import PanelOLS
 # WRONG -- flat DataFrame with entity and time as regular columns
 df = pd.read_csv("panel_data.csv")
 mod = PanelOLS.from_formula("y ~ x + EntityEffects", data=df)
-# ValueError: The index on the data must be a MultiIndex with 2 levels
+# Fails with a confusing error (e.g. formulaic FactorEvaluationError: "Unable to evaluate factor `y`"); a flat DataFrame is read as a wide time-by-entity frame
 ```
 
 ```python
@@ -69,8 +69,8 @@ SystemGMM) also do not require a MultiIndex.
 
 ## 2. Maximum Two-Way Fixed Effects in PanelOLS
 
-PanelOLS supports at most two sets of absorbed effects: entity effects, time
-effects, or one of each plus an `other_effects` term. Attempting three or more
+PanelOLS supports at most two sets of absorbed effects: any two of entity
+effects, time effects, `other_effects` columns. Attempting three or more
 dimensions raises an error.
 
 ```python
@@ -86,12 +86,12 @@ mod = PanelOLS(y, x, entity_effects=True, time_effects=True, other_effects=z)
 ### Workarounds
 
 **AbsorbingLS** from `linearmodels.iv` supports unlimited absorbed dimensions
-via the pyhdfe backend:
+(through pyhdfe when unweighted and absorbing only categoricals, otherwise LSMR):
 
 ```python
 from linearmodels.iv import AbsorbingLS
 
-mod = AbsorbingLS(y, x, absorb=df[["entity", "year", "industry"]])
+mod = AbsorbingLS(y, x, absorb=df[["entity", "year", "industry"]].astype("category"))
 res = mod.fit()
 ```
 
@@ -157,9 +157,10 @@ fit = pf.did2s(data=df, yname="y", first_stage="~ 0 | entity + year",
 Unlike pyfixest (which drops singleton fixed-effect groups by default since
 v0.40 via `fixef_rm="singleton"`), linearmodels historically did not detect or
 remove singletons. As of recent versions, `PanelOLS` now has a `singletons`
-parameter (default `True`) that controls whether singleton groups are kept or
-dropped. Singleton groups -- entity-time combinations with exactly one
-observation -- can inflate degrees of freedom and produce misleading inference.
+parameter: the default `True` keeps singletons; `singletons=False` drops them
+with a SingletonWarning. Singletons are fixed-effect groups (e.g. entities)
+with one observation -- they can inflate degrees of freedom and produce
+misleading inference.
 
 ### Check for Singletons Manually
 
@@ -228,8 +229,9 @@ mod = IV2SLS(y, sm.add_constant(X), endog, instruments)
 
 ### Formula API
 
-The formula API adds a constant automatically (consistent with statsmodels
-formula behavior). To suppress the intercept: `"y ~ x - 1"`.
+linearmodels formulas do NOT add a constant (unlike statsmodels): write `1 +`
+explicitly (`"y ~ 1 + x"`) for PooledOLS, RandomEffects, BetweenOLS, IV and
+system formulas.
 
 ### Panel Models Exception
 
@@ -260,7 +262,7 @@ produces confusing errors.
 ```python
 # WRONG -- pyfixest pipe syntax in linearmodels
 mod = PanelOLS.from_formula("y ~ x | entity", data=df)
-# This does NOT absorb entity FE; it's parsed as a bitwise OR
+# Raises an error (ValueError); use EntityEffects
 
 # CORRECT -- use EntityEffects keyword
 mod = PanelOLS.from_formula("y ~ x + EntityEffects", data=df)
@@ -269,7 +271,7 @@ mod = PanelOLS.from_formula("y ~ x + EntityEffects", data=df)
 ```python
 # WRONG -- linearmodels IV bracket syntax in pyfixest
 fit = pf.feols("y ~ 1 + exog + [endog ~ inst]", data=df)
-# ParseError
+# FormulaSyntaxError
 
 # CORRECT -- pyfixest three-part formula
 fit = pf.feols("y ~ exog | 0 | endog ~ inst", data=df)
@@ -347,13 +349,13 @@ results.
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| `ValueError` about MultiIndex with 2 levels | Missing MultiIndex on panel data | `df.set_index(["entity", "time"])` |
+| Confusing error on a flat DataFrame (e.g. formulaic `FactorEvaluationError: Unable to evaluate factor`) | Missing MultiIndex on panel data (a flat DataFrame is read as a wide time-by-entity frame) | `df.set_index(["entity", "time"])` |
 | Too many absorbed effects error | PanelOLS supports max 2-way FE | Use `AbsorbingLS` or pyfixest |
 | Need IV with absorbed FE | No Panel IV in linearmodels | Use pyfixest three-part formula |
 | All coefficients wrong (model through origin) | Missing constant in array API | `sm.add_constant(X)` |
 | `EntityEffects` not recognized or ignored | Using pyfixest pipe syntax in linearmodels | Use `EntityEffects` keyword in formula string |
 | SUR estimation very slow or OOM | Dataset too large for dense system GLS | Consider equation-by-equation OLS |
-| SEs differ from pyfixest for same model | Different degrees-of-freedom corrections | Check `debiased` parameter in `.fit()` |
+| SEs differ from pyfixest for same model | Different degrees-of-freedom corrections | Check `debiased` and `group_debias=True`; p-values use t(n-k-effects), pyfixest CRV1 uses t(G-1) |
 | `TypeError` with Polars DataFrame | linearmodels expects pandas | `df = df_polars.to_pandas()` then `set_index()` |
 
 ---

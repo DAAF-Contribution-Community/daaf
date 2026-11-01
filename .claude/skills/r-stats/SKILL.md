@@ -395,7 +395,7 @@ For extension packages, cite when they contribute substantially to the analysis:
 > Edition. Sage, Thousand Oaks CA.
 > (car package)
 
-> Robinson, D., Hayes, A., & Couch, S. (2023). broom: Convert Statistical
+> Robinson, D., Hayes, A., Couch, S., & Hvitfeldt, E. (2026). broom: Convert Statistical
 > Objects into Tidy Tibbles. R package.
 > (broom package)
 

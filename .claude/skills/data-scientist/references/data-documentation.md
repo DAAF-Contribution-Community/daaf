@@ -139,8 +139,8 @@ def generate_basic_profile(df: pl.DataFrame):
         info = {
             "column": col,
             "dtype": str(df[col].dtype),
-            "null_count": df[col].null_count().item(),
-            "null_pct": round(df[col].null_count().item() / len(df) * 100, 1),
+            "null_count": df[col].null_count(),
+            "null_pct": round(df[col].null_count() / len(df) * 100, 1),
             "unique_count": df[col].n_unique(),
             "sample_values": df[col].drop_nulls().unique().head(5).to_list(),
         }
@@ -187,10 +187,6 @@ def find_granularity(df: pl.DataFrame):
     for col in df.columns:
         if df[col].n_unique() == len(df):
             candidates.append([col])
-    
-    # Test common combinations
-    if "id" in df.columns:
-        candidates.append(["id"])
     
     # Test date + entity patterns
     date_cols = [c for c in df.columns if "date" in c.lower() or "time" in c.lower()]
@@ -267,10 +263,10 @@ def infer_column_purpose(df: pl.DataFrame, col: str):
     pct_unique = n_unique / len(df) * 100
     if pct_unique > 95:
         inferences.append("High cardinality (ID? Free text?)")
-    elif pct_unique < 1:
-        inferences.append("Low cardinality (categorical)")
     elif n_unique == 2:
         inferences.append("Binary (boolean?)")
+    elif pct_unique < 1:
+        inferences.append("Low cardinality (categorical)")
     
     return {
         "column": col,
@@ -300,8 +296,8 @@ for (col in names(df)) {
 
   # Cardinality-based inference
   if (pct_unique > 95) inferences <- c(inferences, "High cardinality (ID? Free text?)")
-  else if (pct_unique < 1) inferences <- c(inferences, "Low cardinality (categorical)")
   else if (n_unique == 2) inferences <- c(inferences, "Binary (boolean?)")
+  else if (pct_unique < 1) inferences <- c(inferences, "Low cardinality (categorical)")
 
   cat(sprintf("\n%s (%s): %.1f%% unique\n", col, class(df[[col]]), pct_unique))
   cat("  Sample:", paste(sample_vals, collapse = ", "), "\n")
@@ -400,7 +396,7 @@ def create_documentation_template(df: pl.DataFrame, dataset_name: str):
     
     for col in df.columns:
         dtype = df[col].dtype
-        nullable = "Yes" if df[col].null_count().item() > 0 else "No"
+        nullable = "Yes" if df[col].null_count() > 0 else "No"
         unique_pct = round(df[col].n_unique() / len(df) * 100, 1)
         
         template += f"| {col} | {dtype} | {nullable} | {unique_pct}% | [TODO] |\n"

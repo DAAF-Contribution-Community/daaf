@@ -227,7 +227,7 @@ print(s2.tables[1])   # Coefficients, SEs, t-stats, p-values as DataFrame
 # Access coefficient table directly
 coef_table = s2.tables[1]
 print(coef_table['Coef.'])
-print(coef_table['P>|t|'])
+print(coef_table['P>|t|' if results.use_t else 'P>|z|'])  # 'P>|z|' under robust cov_type (unless use_t=True), GLM and discrete models
 ```
 
 ### Recommended: Direct Attribute Access
@@ -262,8 +262,8 @@ This matters in small samples where asymptotic approximations can be poor.
 |------|------|-------|
 | t-test on OLS coefficients | **Exact** (under normality assumption) | t and F with the default `cov_type='nonrobust'`; any robust `cov_type` switches to normal and chi-squared unless `use_t=True` |
 | F-test for overall model | **Exact** (under normality assumption) | |
-| Wald tests on nonlinear hypotheses | Asymptotic (chi-squared) | `results.wald_test()` |
-| Likelihood Ratio test | Asymptotic (chi-squared) | Manual: `-2 * (llf_restricted - llf_full)` |
+| Wald tests on nonlinear hypotheses | Asymptotic (chi-squared) | Delta method by hand: `results.wald_test()` accepts linear restrictions only (a string such as `"x1 * x2 = 0"` raises `PatsyError`) |
+| Likelihood Ratio test | Asymptotic (chi-squared) | `results_full.compare_lr_test(results_restricted)` (OLS), or manual: `-2 * (llf_restricted - llf_full)` |
 | Lagrange Multiplier / Score test | Asymptotic (chi-squared) | |
 | GLM inference | Asymptotic | Normal (z) and chi-squared by default (`use_t=False`); pass `fit(use_t=True)` for t and F |
 | Time series inference | Asymptotic | |

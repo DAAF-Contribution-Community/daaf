@@ -21,7 +21,7 @@ Spatial joins connect records from two datasets based on geographic relationship
 | **crosses** | Geometries share some but not all interior space | Roads crossing rivers, pipelines crossing boundaries |
 | **nearest** | Closest geometry by distance | Nearest school to each student, nearest hospital to each census tract |
 
-**Default recommendation:** Start with `intersects` unless the research question specifically requires a stricter predicate. It is the most permissive and captures the broadest set of matches. **Exception for point-in-polygon:** when assigning points to polygons (e.g., schools to districts), `within` is the conventional choice — it requires the point to be strictly inside the polygon, avoiding ambiguous boundary matches that `intersects` would produce.
+**Default recommendation:** Start with `intersects` unless the research question specifically requires a stricter predicate. It is the most permissive and captures the broadest set of matches. **Exception for point-in-polygon:** when assigning points to polygons (e.g., schools to districts), `within` is the conventional choice — it requires the point to be strictly inside the polygon, avoiding ambiguous boundary matches that `intersects` would produce. Trade-off: a point exactly on a shared boundary matches no polygon under `within` and silently leaves an inner join; compare row counts, or use `covered_by` to keep it (it then matches both polygons).
 
 ### Cardinality Pitfalls
 
@@ -42,7 +42,7 @@ Spatial joins can produce unexpected row counts. Unlike tabular joins where key 
 
 ### CRS Prerequisite
 
-Both datasets **must** be in the same CRS before joining. A CRS mismatch silently produces wrong results (points assigned to wrong polygons or no matches found). Always verify CRS agreement before any spatial operation.
+Both datasets **must** be in the same CRS before joining. In geopandas a CRS mismatch only warns (a `UserWarning`) and the join still runs on the raw coordinates, producing wrong results (points assigned to wrong polygons or no matches found); sf stops with an error instead. Always verify CRS agreement before any spatial operation.
 
 ---
 
@@ -87,6 +87,8 @@ Invalid geometries are the most common cause of silent failures in spatial opera
 | **Collapsed geometry** | Polygon with zero area or line with zero length | Over-aggressive filtering or clipping |
 | **Nested holes** | Hole inside a hole | Topology construction errors |
 
+Note: GEOS (shapely/geopandas, and sf on projected data) does not flag ring orientation or consecutive duplicate vertices as invalid, and shapely closes an unclosed ring on construction (sf refuses to build one). Treat those three rows as data-quality defects that can matter to tools expecting a winding order, not as validity failures that `is_valid` will report.
+
 ### Detection and Repair
 
 **Detection workflow:**
@@ -96,9 +98,9 @@ Invalid geometries are the most common cause of silent failures in spatial opera
 
 **Repair strategies (ordered by preference):**
 
-1. **Buffer by zero** — The classic "fix everything" approach. Applies a zero-width buffer, which forces the geometry engine to reconstruct a valid polygon. Works for most self-intersections and ring ordering issues. May alter geometry shape slightly.
+1. **make_valid** — A more sophisticated repair that attempts to preserve the original geometry's intent. Handles self-intersections by splitting into valid components. Preferred when available because it is more predictable than buffer-by-zero.
 
-2. **make_valid** — A more sophisticated repair that attempts to preserve the original geometry's intent. Handles self-intersections by splitting into valid components. Preferred when available because it is more predictable than buffer-by-zero.
+2. **Buffer by zero** — The classic "fix everything" approach. Applies a zero-width buffer, which forces the geometry engine to reconstruct a valid polygon. Works for most self-intersections and ring ordering issues. May alter geometry shape slightly. On a self-intersecting "bowtie" it keeps only one lobe (half the area), with no warning; compare areas before and after.
 
 3. **Simplification** — Removes excess vertices, which may resolve duplicate-vertex and near-self-intersection issues. Use with caution — aggressive simplification creates new invalidity.
 
@@ -136,7 +138,7 @@ Most applications use **row-standardized** weights, where each row sums to 1. Th
 
 - Observations with more neighbors get smaller individual weights per neighbor
 - Observations with fewer neighbors (e.g., at edges or borders) give each neighbor more influence
-- For KNN weights, row standardization has no effect (all rows already have the same number of neighbors)
+- For KNN weights, row standardization only rescales each row by 1/k: Moran's I is unchanged, the spatial lag becomes an average instead of a sum
 
 ### CRS Prerequisite for Distance-Based Weights
 
@@ -151,7 +153,7 @@ What kind of features are you working with?
 │       Consider Rook if diagonal adjacency is not meaningful
 ├─ Irregular polygons (counties, districts)
 │   └─ Queen contiguity is default
-│       KNN if polygon sizes vary dramatically (ensures connectivity)
+│       KNN if polygon sizes vary dramatically (ensures no islands)
 ├─ Point data
 │   └─ KNN is default (k=5 or k=8 is common starting point)
 │       Distance band if there is a domain-meaningful threshold
@@ -176,13 +178,13 @@ Because the weights matrix affects all downstream spatial statistics, responsibl
 ### Global Moran's I: Step-by-Step Interpretation
 
 1. **Report the statistic:** "Moran's I = 0.43"
-2. **Report the inference:** "pseudo p-value < 0.001 (999 permutations)" — statistically significant
+2. **Report the inference:** "pseudo p-value = 0.001 (999 permutations; the smallest attainable value, 1/(999+1))" — statistically significant
 3. **Interpret direction:** Positive → clustering of similar values; Negative → dispersion
 4. **Interpret magnitude:** Closer to +1 → stronger clustering. Context matters — for most socioeconomic variables, I = 0.2-0.5 is moderate, I > 0.5 is strong
 5. **Note the weights:** "Based on Queen contiguity weights" — this is essential metadata
 
 **Example write-up:**
-> Poverty rates exhibit significant positive spatial autocorrelation (Moran's I = 0.47, p < 0.001, 999 permutations, Queen contiguity), indicating that high-poverty counties tend to neighbor other high-poverty counties and vice versa.
+> Poverty rates exhibit significant positive spatial autocorrelation (Moran's I = 0.47, pseudo p = 0.001, 999 permutations, Queen contiguity), indicating that high-poverty counties tend to neighbor other high-poverty counties and vice versa.
 
 ### LISA Cluster Maps: Step-by-Step Interpretation
 
@@ -339,7 +341,7 @@ Simple area-weighting assumes population (or whatever variable) is uniformly dis
 
 - Residential areas receive more weight than industrial or water areas
 - Building density can further refine within-residential allocation
-- Available via the PySAL `tobler` package (area-weighted, regression-based, and hybrid methods)
+- Available via the PySAL `tobler` package (area-weighted, regression-based, and hybrid methods; not installed in DAAF, and runtime installs are blocked, so it needs a Dockerfile addition and rebuild)
 
 ### Validation
 
@@ -361,7 +363,7 @@ Observations with no neighbors (islands in a contiguity matrix, or isolated poin
 - Many spatial regression estimators will fail or produce unreliable results
 
 **Solutions:**
-- KNN weights guarantee connectivity (every observation has k neighbors)
+- KNN weights guarantee no islands (every observation has k neighbors), though the graph can still split into disconnected components (libpysal warns)
 - Increase distance threshold to connect islands
 - Remove islands from the analysis (document and justify)
 

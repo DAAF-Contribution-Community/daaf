@@ -168,7 +168,7 @@ The orchestrator's prompt includes an execution language directive. Load skills 
 | Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
 | Network / graph analysis | `igraph` | `igraph-r` |
-| Table formatting | — | `gt` |
+| Table formatting | `great-tables` | `gt` |
 
 #### Stage-Specific Skill Loading
 

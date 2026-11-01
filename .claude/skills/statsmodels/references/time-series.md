@@ -559,7 +559,7 @@ print(f"Critical values: {crit_values}")
 |------------|-------------|----------------|
 | Reject H0 (p < 0.05) | Fail to reject H0 (p > 0.05) | Stationary |
 | Fail to reject H0 (p > 0.05) | Reject H0 (p < 0.05) | Non-stationary (unit root) |
-| Reject H0 | Reject H0 | Trend-stationary (deterministic trend; consider detrending) |
+| Reject H0 | Reject H0 | Conflicting (statsmodels' ADF/KPSS example calls this "difference stationary"); check for a structural break, and re-run both tests with `regression='ct'` |
 | Fail to reject H0 | Fail to reject H0 | Inconclusive |
 
 ```python

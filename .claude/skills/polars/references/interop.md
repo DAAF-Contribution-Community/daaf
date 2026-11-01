@@ -342,7 +342,7 @@ import pandas as pd
 # Start with Polars for efficient data loading and transformation
 df = (
     pl.scan_parquet("data.parquet")
-    .filter(pl.col("date") > "2024-01-01")
+    .filter(pl.col("date") > pl.date(2024, 1, 1))
     .group_by("category")
     .agg(pl.col("value").sum())
     .collect()

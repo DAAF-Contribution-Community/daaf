@@ -71,9 +71,15 @@ be anti-conservative.
 summary(fit, vcov = "hetero")
 
 # "hetero" is HC1 in fixest terminology
-# For HC0, HC2, HC3 — fixest does not provide these natively
-# Use sandwich::vcovHC() with lmtest::coeftest() for base lm() models
-# For fixest models, "hetero" (HC1) is the standard choice
+# HC2 / HC3 (fixest >= 0.13): pass the type as a string
+summary(fit, vcov = "hc2")
+summary(fit, vcov = "hc3")
+# vcov_hetero() also works, but only with a lowercase type in fixest 0.14.0:
+# vcov = vcov_hetero("hc2") runs; vcov_hetero("HC2") stops with "Unexpected
+# problem in the selection of the VCOV", although its help page says the case
+# is ignored (observed 2026-11-01)
+# HC0: drop the small-sample adjustment
+summary(fit, vcov = "hetero", ssc = ssc(K.adj = FALSE))
 ```
 
 fixest's `"hetero"` applies the HC1 correction (N/(N-k) scaling). This matches
@@ -140,8 +146,9 @@ fit <- feols(y ~ x1, data = df, vcov = conley(cutoff = 100))
 
 # conley() has NO lat/lon arguments — its only arguments are
 # cutoff, pixel, and distance. To name the coordinate columns explicitly,
-# use vcov_conley() post-estimation:
+# put them on the right of a vcov formula, or use vcov_conley():
 fit <- feols(y ~ x1, data = df)
+summary(fit, vcov = conley(100) ~ latitude + longitude)
 vcov_conley(fit, lat = "latitude", lon = "longitude", cutoff = 100)
 
 # Cutoff is in km; use an "mi" suffix string for miles
@@ -161,12 +168,12 @@ cutoff is preferable in research scripts.
 | `cutoff` | Rule-of-thumb if missing | Distance cutoff in km (`"100mi"` string for miles) |
 | `pixel` | `NULL` | Aggregate points into pixel-km squares (speed vs precision) |
 | `distance` | `"triangular"` | Distance computation: `"triangular"` or `"spherical"` (great circle) |
-| `lat`, `lon` | Auto-detected | Coordinate column names — `vcov_conley()` only |
+| `lat`, `lon` | Auto-detected | Coordinate column names — `vcov_conley()` arguments, or the formula form `conley(100) ~ lat + lon` |
 
 fixest auto-detects latitude and longitude columns from common column names
 (e.g., "lat", "latitude", "lon", "longitude"). If detection fails, specify them
-explicitly via `vcov_conley()` — the in-formula `conley()` helper cannot take
-column names.
+explicitly with the formula form `vcov = conley(100) ~ lat + lon` or via
+`vcov_conley(lat = , lon = )`.
 
 ## Two-Way Clustering
 
@@ -220,22 +227,26 @@ adjustment); the pre-0.13 names (`adj`, `fixef.K`, `cluster.adj`,
 | `K.fixef` | `"nonnested"` | Count FE in K: `"none"`, `"full"`, or `"nonnested"` (FEs nested in clusters excluded) |
 | `K.exact` | `FALSE` | Compute the exact number of FE parameters (collinearity-aware) |
 | `G.adj` | `TRUE` | Apply G/(G-1) cluster adjustment |
-| `G.df` | `"min"` | Two-way cluster DOF: `"min"` (conservative) or `"conv"` (conventional) |
+| `G.df` | `"min"` | Multiway cluster adjustment: one G_min/(G_min-1) factor (`"min"`) or per-dimension G_i/(G_i-1) (`"conventional"`) |
 | `t.df` | `"min"` | DOF for the t distribution of test statistics |
 
 ### Matching Stata Results
 
 ```r
-# Match Stata's one-way clustering (vce(cluster state)).
-# NOTE: fixest's default K.fixef is "nonnested", so set "none" explicitly.
+# Stata xtreg, fe vce(cluster state): the default ssc() already matches
+# (fixest vignette "On standard errors"); no ssc argument is needed
 fit <- feols(y ~ x1 | fe, data = df,
-             vcov = ~state,
-             ssc = ssc(K.adj = TRUE, K.fixef = "none", G.adj = TRUE))
+             vcov = ~state)
 
-# Match Stata's two-way clustering
+# reghdfe two-way clustering: the default ssc() (G.df = "min",
+# t.df = "min") follows reghdfe's convention; no ssc argument is needed
 fit <- feols(y ~ x1 | fe, data = df,
-             vcov = ~state + year,
-             ssc = ssc(G.df = "conv"))
+             vcov = ~state + year)
+
+# ssc(G.df = "conventional") reproduces lfe's two-way SEs instead
+fit_lfe <- feols(y ~ x1 | fe, data = df,
+                 vcov = ~state + year,
+                 ssc = ssc(G.df = "conventional"))
 ```
 
 ### Setting Defaults Globally
@@ -269,13 +280,16 @@ summary(fit, vcov = ~entity)
 # setFixest_vcov() takes NAMED arguments keyed by FE structure, not a
 # `vcov = ` argument. The recognized keys are: no_FE, one_FE, two_FE,
 # panel, all, and reset.
-# CAVEAT: the `all` key only accepts "iid" or "hetero" (clustering is
-# structure-dependent, so "cluster" must go through the per-structure keys).
+# CAVEAT: `all` accepts "iid" or "hetero", or "cluster" only together with
+# no_FE (e.g. setFixest_vcov(all = "cluster", no_FE = "iid")).
 setFixest_vcov(all = "hetero")          # Default to robust everywhere
 setFixest_vcov(one_FE = "cluster",      # Default to clustering whenever
                two_FE = "cluster",      # the model has FE / panel structure
                panel = "cluster")
-setFixest_vcov(reset = TRUE)            # Reset to package defaults (IID)
+setFixest_vcov(no_FE = "iid", one_FE = "iid",   # Back to IID everywhere
+               two_FE = "iid", panel = "iid")
+# NOTE: in fixest 0.14.0, setFixest_vcov(reset = TRUE) sets one_FE, two_FE
+# and panel to "cluster" (no_FE stays "iid"), not IID (observed 2026-11-01)
 
 # Structure-conditional defaults: apply different SEs by FE count
 setFixest_vcov(no_FE = "iid", one_FE = "cluster")

@@ -328,7 +328,7 @@ For dichotomous variables (e.g., urban/rural, above/below threshold):
 
 ### Inference: Permutation Testing
 
-In PySAL/esda, global measures are typically tested by **computational (permutation) inference** (analytical normal-approximation tests also exist). The observed values are randomly shuffled across locations (esda's default is 999 permutations; Rey et al. 2023, Ch. 6) to generate a reference distribution. The pseudo p-value is the proportion of random permutations producing a more extreme statistic than observed.
+In PySAL/esda, global measures are typically tested by **computational (permutation) inference** (analytical normal-approximation tests also exist). The observed values are randomly shuffled across locations (esda's default is 999 permutations; Rey et al. 2023, Ch. 6) to generate a reference distribution. esda's pseudo p-value is (permutations at least as extreme in the observed direction + 1) / (permutations + 1), so 999 permutations cannot give less than 0.001. Set a seed (`seed=` on local statistics, `np.random.seed()` before global ones) so p-values reproduce.
 
 ### Sensitivity to Weights Matrix
 

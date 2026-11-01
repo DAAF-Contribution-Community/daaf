@@ -113,7 +113,7 @@ System of equations?
 │   └─ → ./references/system-models.md
 ├─ System GMM → IVSystemGMM
 │   └─ → ./references/system-models.md
-├─ Cross-equation parameter restrictions → LinearConstraint
+├─ Cross-equation parameter restrictions → mod.add_constraints()
 │   └─ → ./references/system-models.md
 └─ Not sure which → Start with SUR
     └─ → ./references/system-models.md
@@ -202,8 +202,8 @@ print(f"Index levels: {df.index.nlevels}")
 # IV bracket notation
 "y ~ 1 + exog + [endog ~ instrument1 + instrument2]"
 
-# Suppress intercept
-"y ~ x1 + x2 - 1"
+# No intercept unless you add "1 +" (formulas never add one)
+"y ~ x1 + x2"
 ```
 
 ## Topic Index

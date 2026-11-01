@@ -134,7 +134,7 @@ w.transform = "r"  # Row-standardize
 g_std = g.transform("R")
 ```
 
-**esda changes `w.transform` in place.** Passing a `W` to `Moran`, `Geary` or `Moran_Local` sets it to `"R"`; `G` and `Join_Counts` set it to `"B"`, and so does `G_Local(..., transform="B")`. spreg then uses whatever transform the object has (with a binary W, `GM_Lag` returns a rho on a different scale and `ML_Lag` may fail). Set `w.transform = "r"` immediately before each spreg call, or pass a `libpysal.graph.Graph`, which esda does not modify.
+**esda changes `w.transform` in place.** Passing a `W` to `Moran`, `Geary` or `Moran_Local` sets it to `"R"`; `G` and `Join_Counts` set it to `"B"`, and so does `G_Local(..., transform="B")` with the default `star=False` (with `star=True` it transforms a copy and leaves your `w` unchanged). spreg then uses whatever transform the object has (with a binary W, `GM_Lag` returns a rho on a different scale and `ML_Lag` may fail). Set `w.transform = "r"` immediately before each spreg call, or pass a `libpysal.graph.Graph`, which esda does not modify.
 
 ### Saving and Loading Weights
 

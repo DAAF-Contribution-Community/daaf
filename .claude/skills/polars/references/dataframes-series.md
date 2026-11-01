@@ -293,7 +293,7 @@ df.with_columns(
 
 # Replace with default for unmatched
 df.with_columns(
-    pl.col("status").replace(
+    pl.col("status").replace_strict(
         {"A": 1, "B": 2},
         default=0
     )

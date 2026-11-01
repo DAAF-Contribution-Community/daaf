@@ -330,7 +330,8 @@ For research scripts, validate data inline rather than building validator classe
 # Validate directly where you use the data
 assert df["id"].null_count() == 0, "IDs must not be null"
 assert df.select("id", "year").n_unique() == len(df), "id+year must be unique"
-valid_states = set(range(1, 57))  # FIPS codes
+# State FIPS: 1-56 skips 3, 7, 14, 43, 52 (Census state list); add 60, 66, 69, 72, 74, 78 if territories belong
+valid_states = set(range(1, 57)) - {3, 7, 14, 43, 52}  # 50 states + DC
 invalid = set(df["fips"].unique().to_list()) - valid_states
 assert not invalid, f"Invalid FIPS codes: {invalid}"
 ```
@@ -340,7 +341,8 @@ assert not invalid, f"Invalid FIPS codes: {invalid}"
 # Validate directly where you use the data
 stopifnot("IDs must not be null" = !any(is.na(df$id)))
 stopifnot("id+year must be unique" = nrow(distinct(df, id, year)) == nrow(df))
-valid_states <- 1:56  # FIPS codes
+# State FIPS: 1-56 skips 3, 7, 14, 43, 52 (Census state list); add 60, 66, 69, 72, 74, 78 if territories belong
+valid_states <- setdiff(1:56, c(3, 7, 14, 43, 52))  # 50 states + DC
 invalid <- setdiff(unique(df$fips), valid_states)
 stopifnot("Invalid FIPS codes found" = length(invalid) == 0)
 ```
@@ -429,7 +431,7 @@ mo.md(f"""
 ### Column: `{column_selector.value}`
 
 - **Type**: {df[column_selector.value].dtype}
-- **Null count**: {df[column_selector.value].null_count().item()}
+- **Null count**: {df[column_selector.value].null_count()}
 - **Unique values**: {df[column_selector.value].n_unique()}
 
 **Sample values**: {df[column_selector.value].unique().head(10).to_list()}
@@ -457,7 +459,9 @@ customer_summary = (
 # Validate immediately
 post_total = customer_summary["total_spend"].sum()
 print(f"Total spend preserved: {pre_total:,.2f} → {post_total:,.2f}")
-assert abs(pre_total - post_total) < 1e-10, "STOP: Total spend changed during aggregation"
+# Relative tolerance: float sums differ in the last bits after regrouping
+tol = 1e-12 * max(1.0, transactions["amount"].abs().sum())
+assert abs(pre_total - post_total) <= tol, "STOP: Total spend changed during aggregation"
 ```
 
 **R:**
@@ -475,7 +479,9 @@ post_total <- sum(customer_summary$total_spend, na.rm = TRUE)
 cat(sprintf("Total spend preserved: %s -> %s\n",
             format(pre_total, big.mark = ",", nsmall = 2),
             format(post_total, big.mark = ",", nsmall = 2)))
-stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_total) < 1e-10)
+# Relative tolerance: float sums differ in the last bits after regrouping
+tol <- 1e-12 * max(1, sum(abs(transactions$amount), na.rm = TRUE))
+stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_total) <= tol)
 ```
 
 ## Documentation Examples
@@ -487,7 +493,7 @@ stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_
 **Python:**
 ```python
 # Loop through customers
-for customer in customers:
+for customer in customers.iter_rows(named=True):
     # Get customer id
     customer_id = customer["id"]
     # Filter transactions for this customer
@@ -513,7 +519,7 @@ for (i in seq_len(nrow(customers))) {
 # 1. Memory constraints: full aggregation exceeds available RAM
 # 2. Partial results: we want to checkpoint progress every 1000 customers
 # 3. Custom logic: per-customer CLV model requires sequential processing
-for customer in customers:
+for customer in customers.iter_rows(named=True):
     customer_id = customer["id"]
     customer_transactions = transactions.filter(pl.col("customer_id") == customer_id)
 ```
@@ -602,7 +608,7 @@ customer_frequency = (
     .group_by("customer_id")
     .agg([
         pl.len().alias("order_count"),
-        (pl.col("order_date").max() - pl.col("order_date").min()).dt.days().alias("active_days")
+        (pl.col("order_date").max() - pl.col("order_date").min()).dt.total_days().alias("active_days")
     ])
     .with_columns(
         # Orders per 30-day month
@@ -612,7 +618,7 @@ customer_frequency = (
 )
 
 # Assign quartile-based segments
-# Using qcut logic manually since Polars doesn't have qcut
+# Manual quantile cut-points (Series.qcut also exists)
 q25 = customer_frequency["monthly_frequency"].quantile(0.25)
 q50 = customer_frequency["monthly_frequency"].quantile(0.50)
 q75 = customer_frequency["monthly_frequency"].quantile(0.75)

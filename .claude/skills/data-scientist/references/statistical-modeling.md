@@ -213,13 +213,15 @@ This table is the primary quick-reference for SE selection. When uncertain, defa
 | SE Type | When to Use | pyfixest | statsmodels |
 |---|---|---|---|
 | IID (classical) | Only if certain errors are homoscedastic and independent | `vcov="iid"` | Default |
-| HC1 (White with df correction) | Default for cross-sectional data with N > 250 (DAAF convention) | `vcov="hetero"` | `cov_type='HC1'` |
+| HC1 (White with df correction) | Default for cross-sectional data with N > 250 (DAAF convention) | `vcov="hetero"` | `cov_type='HC1', use_t=True` |
 | HC2 | Small-sample alternative; less biased than HC1 | `vcov="HC2"` | `cov_type='HC2'` |
 | HC3 | Small or moderate samples (N ≤ 250; Long and Ervin 2000); jackknife-like correction | `vcov="HC3"` | `cov_type='HC3'` |
-| CRV1 (cluster-robust) | Observations correlated within groups | `vcov={"CRV1": "group"}` | Via linearmodels |
+| CRV1 (cluster-robust) | Observations correlated within groups | `vcov={"CRV1": "group"}` | `cov_type='cluster', cov_kwds={'groups': g}, use_t=True` |
 | CRV3 | Few clusters (< 50; DAAF heuristic) | `vcov={"CRV3": "group"}` | N/A (use bootstrap) |
-| HAC (Newey-West) | Time series with serial correlation | `vcov="HAC"` | `cov_type='HAC'` |
+| HAC (Newey-West) | Time series with serial correlation | `vcov="HAC"` | `cov_type='HAC', cov_kwds={'maxlags': L}` |
 | Wild cluster bootstrap | Very few clusters (< 20; DAAF heuristic) | `.wildboottest()` | Via wildboottest |
+
+statsmodels uses normal p-values for any robust `cov_type` unless `use_t=True`; with it, HC1 and cluster match pyfixest `"hetero"`/CRV1 exactly.
 
 > **R route:** the same SE menu is available in R. `fixest` covers iid, heteroskedasticity-robust, cluster-robust, two-way, and Newey-West via its `vcov` argument; the `sandwich` + `lmtest` packages (both installed) cover the HC1/HC2/HC3 family for `lm()`/`glm()` models. Load the `fixest` or `r-stats` skill for exact syntax and coverage before writing R code.
 

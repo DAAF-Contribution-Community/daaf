@@ -47,8 +47,9 @@ fit <- feols(y ~ x1 | entity + year, data = df, vcov = ~entity)
 # Restore old behavior for the session.
 # setFixest_vcov() takes named arguments keyed by FE structure
 # (no_FE, one_FE, two_FE, panel, all, reset) — there is no `vcov = ` argument.
-# The `all` key only accepts "iid" or "hetero"; clustering must be set via
-# the per-structure keys:
+# The `all` key accepts "iid" or "hetero", or "cluster" only together with
+# no_FE (e.g. setFixest_vcov(all = "cluster", no_FE = "iid")); otherwise set
+# clustering via the per-structure keys:
 setFixest_vcov(one_FE = "cluster", two_FE = "cluster", panel = "cluster")
 # Or
 setFixest_vcov(all = "hetero")    # Always use robust
@@ -320,19 +321,24 @@ etable(fit_ols, fit_pois, fit_logit,
 ### Clustered Standard Errors
 
 ```r
-# Match Stata's vce(cluster state)
+# Stata xtreg, fe vce(cluster state): the default ssc() already matches
+# (fixest vignette "On standard errors"); no ssc argument is needed
 fit <- feols(y ~ x1 | fe, data = df,
-             vcov = ~state,
-             ssc = ssc(K.adj = TRUE, K.fixef = "none", G.adj = TRUE))
+             vcov = ~state)
 ```
 
 ### Two-Way Clustering
 
 ```r
-# Match Stata's conventional two-way clustering
+# reghdfe two-way clustering: the default ssc() (G.df = "min",
+# t.df = "min") follows reghdfe's convention; no ssc argument is needed
 fit <- feols(y ~ x1 | fe, data = df,
-             vcov = ~state + year,
-             ssc = ssc(G.df = "conv"))
+             vcov = ~state + year)
+
+# ssc(G.df = "conventional") reproduces lfe's two-way SEs instead
+fit_lfe <- feols(y ~ x1 | fe, data = df,
+                 vcov = ~state + year,
+                 ssc = ssc(G.df = "conventional"))
 ```
 
 ### Fixed Effects OLS
@@ -342,9 +348,9 @@ Differences are typically due to small-sample correction choices:
 
 ```r
 # Check ssc settings with print(ssc()) / getFixest_ssc()
-# Stata (vce(cluster)): FE not counted in K -- equivalent to K.fixef = "none"
-# fixest default: K.fixef = "nonnested" -- NOT the same; set
-# ssc(K.fixef = "none") explicitly when matching Stata clustered SEs
+# Stata xtreg, fe vce(cluster): the default ssc() (K.fixef = "nonnested")
+# already matches (vignette Grunfeld example: 0.06328129 in both);
+# ssc(K.fixef = "none", G.adj = FALSE) reproduces plm's clustered SEs instead
 ```
 
 ## Quick Diagnostic Table

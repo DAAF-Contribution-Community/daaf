@@ -57,7 +57,7 @@ Within estimator that absorbs entity and/or time fixed effects by demeaning. Thi
 | `entity_effects=True` | `EntityEffects` | Time-invariant entity heterogeneity |
 | `time_effects=True` | `TimeEffects` | Entity-invariant time shocks |
 | Both simultaneously | Both keywords | Two-way fixed effects |
-| `other_effects=df["group"]` | n/a (array API only) | Arbitrary grouping variable |
+| `other_effects=df["group"]` | n/a (pass other_effects= to from_formula or the constructor) | Arbitrary grouping variable |
 
 PanelOLS supports a maximum of 2 sets of effects. For 3+ way FE, use pyfixest.
 
@@ -95,11 +95,12 @@ res = mod.fit()
 ### Other Effects (Arbitrary Groupings)
 
 ```python
-# Absorb a third grouping variable (array API only)
+# Absorb a third grouping variable (from_formula also accepts other_effects=)
 mod = PanelOLS(
     dependent=df["invest"],
     exog=df[["value", "capital"]],
     entity_effects=True,
+    # must vary within entity; a firm-invariant industry is nested in EntityEffects and raises ValueError
     other_effects=df["industry_code"],
 )
 res = mod.fit()
@@ -155,7 +156,7 @@ print(effects.head(10))
 # Merge effects back for inspection
 # Effects are indexed by the same MultiIndex as the original data
 print(f"Shape: {effects.shape}")
-print(f"Mean effect (should be ~0 for entity FE): {effects.mean().values}")
+print(f"Mean effect (~0 only when the formula includes \"1 +\"): {effects.mean().values}")
 ```
 
 ## RandomEffects
@@ -196,7 +197,7 @@ print(f"Sigma^2_idiosyncratic: {res.variance_decomposition.Residual:.4f}")
 
 # Theta: quasi-demeaning parameter (0 = pooled OLS, 1 = full within)
 # Closer to 1 means more within-entity variation, RE approaches FE
-print(f"Theta: {res.theta.iloc[0]:.4f}")
+print(f"Theta: {res.theta.iloc[0, 0]:.4f}")
 ```
 
 ### FE vs RE Comparison
@@ -297,7 +298,7 @@ res_hac = mod.fit(cov_type="kernel", kernel="bartlett", bandwidth=5)
 print(res_hac.summary)
 
 # Access time-period-by-period coefficient estimates
-# Not directly available in results — re-estimate manually if needed
+print(res.all_params.head())  # per-period estimates
 ```
 
 ## Weighted Estimation

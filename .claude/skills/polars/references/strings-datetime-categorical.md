@@ -314,7 +314,7 @@ df.with_columns(
 )
 
 # Or on read
-df = pl.read_csv("data.csv", dtypes={"category": pl.Categorical})
+df = pl.read_csv("data.csv", schema_overrides={"category": pl.Categorical})
 ```
 
 ### Enum Type (Fixed Categories)
@@ -332,22 +332,20 @@ df.with_columns(
 # Enum is stricter - errors on unknown values
 ```
 
-### StringCache (Consistent Categories)
+### StringCache (No Longer Needed)
 
-When working with multiple DataFrames with same categorical column:
+In current Polars 1.x (verified on 1.39.3), every `pl.Categorical` without explicit categories uses one global category mapping, so the same string gets the same code in every DataFrame ("Categoricals no longer have a local scope"). Categoricals built separately can be concatenated or joined directly; `pl.StringCache()` still runs but is not required.
 
 ```python
-# Without StringCache, categories may not match between DataFrames
-with pl.StringCache():
-    df1 = pl.DataFrame({"cat": ["a", "b"]}).with_columns(
-        pl.col("cat").cast(pl.Categorical)
-    )
-    df2 = pl.DataFrame({"cat": ["b", "c"]}).with_columns(
-        pl.col("cat").cast(pl.Categorical)
-    )
-    
-    # Now can safely concatenate or join
-    combined = pl.concat([df1, df2])
+# No StringCache needed: both frames share the global categories
+df1 = pl.DataFrame({"cat": ["a", "b"]}).with_columns(
+    pl.col("cat").cast(pl.Categorical)
+)
+df2 = pl.DataFrame({"cat": ["b", "c"]}).with_columns(
+    pl.col("cat").cast(pl.Categorical)
+)
+
+combined = pl.concat([df1, df2])
 ```
 
 ### Categorical Operations
@@ -408,4 +406,4 @@ df.with_columns(
 | Cast to categorical | `pl.col("c").cast(pl.Categorical)` |
 | Use enum | `pl.col("c").cast(pl.Enum(["a", "b"]))` |
 | Get codes | `pl.col("c").to_physical()` |
-| Use StringCache | `with pl.StringCache(): ...` |
+| Combine across frames | `pl.concat([df1, df2])` (no StringCache needed) |

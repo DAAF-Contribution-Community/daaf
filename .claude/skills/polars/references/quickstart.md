@@ -57,8 +57,8 @@ result = (
 # This reads ONLY the needed columns and rows
 result = (
     pl.scan_parquet("huge_file.parquet")
-    .filter(pl.col("date") > "2024-01-01")  # Pushed down to file read
-    .select("id", "value")                   # Only these columns loaded
+    .filter(pl.col("date") > pl.date(2024, 1, 1))  # Pushed down to file read
+    .select("id", "value")                          # Only these columns loaded
     .collect()
 )
 ```
@@ -212,7 +212,7 @@ query = (
 df = query.collect()
 
 # Execute with streaming (for large data)
-df = query.collect(streaming=True)
+df = query.collect(engine="streaming")
 
 # Write directly to file (streaming)
 query.sink_parquet("output.parquet")

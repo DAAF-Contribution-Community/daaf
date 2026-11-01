@@ -619,9 +619,10 @@ Is a network frame appropriate for this question?
 ├─ Before computing closeness/betweenness or trusting distances
 │   ├─ Check connectivity/components first (these measures are ill-defined across
 │   │   disconnected components) → network-analysis.md "Disconnected-Graph Guardrail"
-│   └─ Confirm whether edge weights mean distance or strength — igraph treats a
-│       `weight` attribute as DISTANCE and uses it automatically; pass weights=NA
-│       to suppress → network-analysis.md "Weights-as-Distances Trap"
+│   └─ Confirm whether edge weights mean distance or strength — R igraph treats a
+│       `weight` attribute as DISTANCE and uses it automatically (pass weights = NA;
+│       cluster_leiden() needs rep(1, ecount(g))); python-igraph ignores it unless
+│       weights="weight" is passed → network-analysis.md "Weights-as-Distances Trap"
 │
 └─ I need statistical inference / generative network models (ERGM, SAOM, TERGM)
     └─ NOT currently covered by DAAF skills → escalate to orchestrator

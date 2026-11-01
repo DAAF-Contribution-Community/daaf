@@ -11,7 +11,7 @@ Common mistakes, error patterns, and troubleshooting for Polars.
 - [Migration from Pandas](#migration-from-pandas)
 - [Memory Issues](#memory-issues)
 
-> See also: `qcut()` label format surprise under [Type Errors](#type-errors).
+> See also: `qcut()` returns a Categorical (cast before `str.*`) under [Type Errors](#type-errors).
 
 ## Type Errors
 
@@ -48,6 +48,20 @@ df.with_columns(
 )
 ```
 
+### `qcut()` Returns a Categorical
+
+**Problem:** `qcut(..., labels=[...])` returns a Categorical with exactly those labels. Exact matches work, but `str.*` methods raise on it (`InvalidOperationError: expected String type, got: cat`).
+
+**Fix:** Cast with `.cast(pl.String)` before `str.*` methods:
+
+```python
+df = df.with_columns(
+    pl.col("score").qcut(5, labels=["Q1", "Q2", "Q3", "Q4", "Q5"]).alias("quintile")
+)
+df.filter(pl.col("quintile") == "Q1")                                  # Exact label match works
+df.filter(pl.col("quintile").cast(pl.String).str.starts_with("Q1"))   # Cast before str.*
+```
+
 ## Null Handling
 
 ### Nulls in Comparisons
@@ -79,10 +93,23 @@ df.select(pl.col("x").sum())
 
 ```python
 df.select(
-    pl.col("x").fill_null(0).sum(),        # Replace nulls
-    pl.col("x").drop_nulls().count(),       # Count non-nulls
-    pl.col("x").null_count()                # Count nulls
+    pl.col("x").fill_null(0).sum().alias("x_sum"),          # Replace nulls
+    pl.col("x").drop_nulls().count().alias("x_non_null"),   # Count non-nulls
+    pl.col("x").null_count().alias("x_nulls")               # Count nulls
 )
+```
+
+### NaN Is Not Null (Float Columns)
+
+`NaN` is a float value, not a missing marker: `is_null`/`fill_null`/`drop_nulls` ignore it, it poisons `sum`/`mean`, `n_unique` counts it, and it compares and sorts as larger than every number (so `pl.col("x") > 0` keeps it).
+
+```python
+s = pl.Series("x", [1.0, float("nan"), None, 3.0])
+print(s.null_count(), s.is_nan().sum())    # 1 1 -> NaN is a value, not missing
+print(s.mean(), s.sum())                   # nan nan -> NaN poisons aggregates; null is skipped
+print(s.fill_null(0).to_list())            # [1.0, nan, 0.0, 3.0] -> NaN survives fill_null
+print(s.fill_nan(None).mean())             # 2.0 -> convert NaN to null, then aggregate
+print(s.sort().to_list())                  # [None, 1.0, 3.0, nan] -> NaN sorts as largest
 ```
 
 ### Nulls in String Operations
@@ -109,7 +136,7 @@ df.with_columns(
 **Problem:** Expressions need a context (select, filter, with_columns).
 
 ```python
-# Error: expressions must be used in a context
+# No error, but nothing is computed: result is an unevaluated Expr
 result = pl.col("a") + pl.col("b")  # Wrong
 ```
 
@@ -154,41 +181,6 @@ df.group_by("cat").agg(
     pl.col("val").sum().alias("total"),
     pl.col("val").mean().alias("average")
 )
-```
-
-### `qcut()` Labels Get Unexpected Suffixes
-
-**Problem:** `pl.Series.qcut()` and `pl.Expr.qcut()` with custom labels append
-descriptive suffixes to the first and last labels when `include_breaks=False`
-(the default).
-
-```python
-# Requesting labels ["Q1", "Q2", "Q3", "Q4", "Q5"] with 5 quantiles
-# produces: "Q1 (Lowest)", "Q2", "Q3", "Q4", "Q5 (Highest)"
-s = pl.Series("val", range(100))
-result = s.qcut(5, labels=["Q1", "Q2", "Q3", "Q4", "Q5"])
-print(result.unique())  # Shows "Q1 (Lowest)" and "Q5 (Highest)"
-```
-
-This causes failures when downstream code uses exact string matching:
-
-```python
-# WRONG: no rows match because actual label is "Q1 (Lowest)"
-df.filter(pl.col("quintile") == "Q1")
-
-# CORRECT: use starts_with or contains
-df.filter(pl.col("quintile").str.starts_with("Q1"))
-df.filter(pl.col("quintile").str.contains("Q1"))
-```
-
-**Best practice:** Always inspect `value_counts()` on `qcut` output before
-building downstream logic on label values:
-
-```python
-df = df.with_columns(
-    pl.col("score").qcut(5, labels=["Q1", "Q2", "Q3", "Q4", "Q5"]).alias("quintile")
-)
-print(df["quintile"].value_counts())  # Inspect actual label values
 ```
 
 ## Performance Anti-Patterns
@@ -351,7 +343,7 @@ result = (
     lf.filter(...)
       .group_by(...)
       .agg(...)
-      .collect(streaming=True)  # Enable streaming engine
+      .collect(engine="streaming")  # Enable streaming engine
 )
 ```
 
@@ -391,4 +383,4 @@ df = df.with_columns(
 | Memory error | Use `scan_*` + lazy mode |
 | Pandas conversion | `df.to_pandas()` / `pl.from_pandas(pdf)` |
 | groupby error | Use `group_by` (underscore) |
-| melt error | Use `unpivot` (Polars 1.0+) |
+| melt DeprecationWarning | Use `unpivot` (Polars 1.0+; `melt` still runs but warns) |

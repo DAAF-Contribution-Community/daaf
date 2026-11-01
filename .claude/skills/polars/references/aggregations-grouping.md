@@ -197,11 +197,11 @@ df.with_columns(
 
 ```python
 df.with_columns(
-    # Row number within group
+    # Running count of non-null "id" values (equals row number only if "id" has no nulls)
     pl.col("id").cum_count().over("category").alias("row_num"),
     
-    # Using arange
-    pl.int_range(1, pl.len() + 1).over("category").alias("row_num2")  # pl.arange deprecated; use pl.int_range
+    # Using int_range (pl.arange is an alias)
+    pl.int_range(1, pl.len() + 1).over("category").alias("row_num2")
 )
 ```
 
@@ -253,7 +253,7 @@ df.with_columns(
 
 # With minimum periods
 df.with_columns(
-    pl.col("value").rolling_mean(window_size=7, min_periods=3).alias("rolling_avg")
+    pl.col("value").rolling_mean(window_size=7, min_samples=3).alias("rolling_avg")
 )
 
 # Center window
@@ -380,7 +380,7 @@ df.with_columns(
 ```python
 df.with_columns(
     pl.col("value")
-      .rolling_mean(window_size=7, min_periods=1)
+      .rolling_mean(window_size=7, min_samples=1)
       .alias("rolling_avg")
 )
 ```

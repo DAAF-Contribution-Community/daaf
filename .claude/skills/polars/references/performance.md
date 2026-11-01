@@ -32,7 +32,7 @@ df = (
 ```python
 lf = (
     pl.scan_parquet("data.parquet")
-    .filter(pl.col("date") > "2024-01-01")
+    .filter(pl.col("date") > pl.date(2024, 1, 1))
     .select("id", "name", "value")
     .group_by("name")
     .agg(pl.col("value").sum())
@@ -218,13 +218,13 @@ result = (
     .filter(pl.col("status") == "active")
     .group_by("category")
     .agg(pl.col("value").sum())
-    .collect(streaming=True)  # Processes in chunks
+    .collect(engine="streaming")  # Processes in chunks
 )
 
 # Write directly without collecting
 (
     pl.scan_parquet("input.parquet")
-    .filter(pl.col("date") > "2024-01-01")
+    .filter(pl.col("date") > pl.date(2024, 1, 1))
     .sink_parquet("output.parquet")  # Streams to file
 )
 ```
@@ -252,7 +252,7 @@ Polars automatically parallelizes operations across CPU cores.
 
 ```python
 import polars as pl
-print(pl.threadpool_size())
+print(pl.thread_pool_size())
 ```
 
 ### Control Parallelism
@@ -366,6 +366,6 @@ df.write_parquet("data.parquet", compression="zstd", compression_level=19) # Hig
 5. Avoid `map_elements`/Python UDFs
 6. Use appropriate data types (Int32 vs Int64, Categorical)
 7. Use single `collect()` or `collect_all()`
-8. Enable streaming for large data: `collect(streaming=True)`
+8. Enable streaming for large data: `collect(engine="streaming")`
 9. Use native expressions instead of iteration
 10. Profile and benchmark your code

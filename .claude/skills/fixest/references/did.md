@@ -73,12 +73,13 @@ y ~ i(year, ref = 2000) | entity
 y ~ i(group, x1, ref = "control")
 
 # Binning distant periods (to reduce noise at extremes)
-y ~ i(rel_year, ref = -1, bin = c(-Inf, -5, 5, Inf))
-# This bins: all periods < -5 together, all periods > 5 together
+y ~ i(rel_year, ref = -1, bin = list("-5" = ~x <= -5, "5" = ~x >= 5))
+# Bins all periods <= -5 into "-5" and all >= 5 into "5"
+# (a plain vector such as bin = c(-5, 5) merges the listed values into ONE level)
 
 # Keeping specific range
 y ~ i(rel_year, ref = -1, keep = -5:10)
-# Drops coefficients outside [-5, 10] window
+# Levels outside [-5, 10] get no dummy: they pool into the reference (estimates change)
 ```
 
 ### The `keep` and `bin` Arguments
@@ -86,8 +87,8 @@ y ~ i(rel_year, ref = -1, keep = -5:10)
 | Argument | Purpose | Example |
 |----------|---------|---------|
 | `ref` | Omitted reference level | `ref = -1` |
-| `keep` | Show only these levels | `keep = -5:10` |
-| `bin` | Combine extreme levels | `bin = c(-Inf, -5, 5, Inf)` |
+| `keep` | Estimate dummies only for these levels (others join the reference) | `keep = -5:10` |
+| `bin` | Combine extreme levels | `bin = list("-5" = ~x <= -5, "5" = ~x >= 5)` |
 
 These are particularly useful for event studies where very early or very late
 periods have few observations and noisy estimates.
@@ -127,7 +128,7 @@ works within fixest estimation formulas.
 | 2nd positional | Time variable (calendar period) | `year` |
 | `ref.p` | Reference period(s) | `ref.p = -1` (default) |
 | `ref.c` | Reference cohort | `ref.c = min(cohort)` |
-| `bin` | Bin extreme periods | `bin = c(-20, 10)` |
+| `bin.rel` | Bin relative periods (`bin` bins cohorts and calendar periods alike) | `bin.rel = "bin::2"` |
 | `att` | Report ATT only | `att = TRUE` |
 
 ### Aggregation
@@ -152,7 +153,8 @@ The `agg` argument in `summary()` provides different levels of aggregation:
 
 | `agg` Value | What It Reports |
 |-------------|-----------------|
-| (none) | All cohort-by-period estimates |
+| (none) | ATT by relative period (the default aggregation) |
+| `FALSE` | All cohort-by-period estimates (`summary(fit, agg = FALSE)`) |
 | `"ATT"` | Single overall treatment effect |
 | `"cohort"` | Treatment effect by cohort (treatment-year group) |
 | `"period"` | Treatment effect by relative time period |
@@ -164,9 +166,11 @@ The `agg` argument in `summary()` provides different levels of aggregation:
    observed as a treatment time (e.g., 0 or Inf or 10000).
 2. **Time variable**: Calendar time period.
 3. **Unit identifier**: In the FE specification (e.g., `| id + year`).
-4. **Never-treated units**: Strongly recommended. Without a never-treated
-   control group, the estimator uses the last-treated cohort as the reference,
-   which may be problematic.
+4. **Never-treated units**: Strongly recommended. Without them, `sunab()` does
+   not fall back to the last-treated cohort as the reference: it creates
+   dummies for every cohort and fixest drops the collinear cohort x period
+   terms. To use the last-treated cohort as the control, name it in `ref.c`
+   (no dummies are created for it, but its observations stay in the sample).
 
 ### Complete sunab Example
 
@@ -176,7 +180,7 @@ data(base_stagg, package = "fixest")
 
 # Examine the data structure
 cat("Cohort values:", sort(unique(base_stagg$year_treated)), "\n")
-# year_treated: 0 (never-treated), 5, 6, 7 (treatment cohorts)
+# year_treated: 10000 (never-treated), 2-10 (treatment cohorts); year: 1-10
 
 # Estimate Sun-Abraham
 fit_sa <- feols(y ~ x1 + sunab(year_treated, year) | id + year,

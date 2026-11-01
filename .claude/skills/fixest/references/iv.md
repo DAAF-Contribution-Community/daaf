@@ -109,7 +109,7 @@ Kleibergen-Paap and Cragg-Donald statistics have their own type names:
 |------|-------------|-------------|
 | `"ivf"` | First-stage F-statistic | Always check (rule of thumb: F > 10) |
 | `"ivwald"` | Wald statistic on excluded instruments, computed with the model's vcov | Preferred with robust/clustered errors |
-| `"kpr"` | Kleibergen-Paap rank test | Underidentification test. Only computed for IID vcov or exactly identified models (returns NA otherwise, with a warning) |
+| `"kpr"` | Kleibergen-Paap rank statistic | Weak-instrument test (fitstat docs). Only computed for IID vcov or exactly identified models (returns NA otherwise, with a warning) |
 | `"cd"` | Cragg-Donald F | Weak-instrument statistic under IID errors; compare to Stock-Yogo critical values |
 | `"sargan"` | Sargan test of overidentification | When # instruments > # endogenous |
 | `"wh"` | Wu-Hausman endogeneity test | Whether IV is needed (H0: exogenous) |
@@ -233,4 +233,4 @@ fit <- feols(y ~ controls | region + year | employment_change ~ bartik,
 - Kleibergen, F. and Paap, R. (2006). "Generalized reduced rank tests using
   the singular value decomposition." *Journal of Econometrics*, 133(1), 97-126.
 - fixest documentation — IV:
-  https://lrberge.github.io/fixest/articles/fixest_walkthrough.html#iv
+  https://lrberge.github.io/fixest/articles/fixest_walkthrough.html#instrumental-variables

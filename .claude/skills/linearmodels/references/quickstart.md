@@ -99,11 +99,11 @@ df = df_polars.to_pandas().set_index(["firm_id", "year"])
 
 ### What Happens If You Forget
 
-Passing a DataFrame without a MultiIndex raises an error:
+Passing a DataFrame without a MultiIndex fails with a confusing error, because a
+flat DataFrame is read as a wide time-by-entity frame. Through the formula API:
 
 ```
-ValueError: Panel models require a MultiIndex with 2 levels that corresponds
-to entities and time periods
+FactorEvaluationError: Unable to evaluate factor `y`. [NameError: `y` is not present in the dataset or evaluation context.]
 ```
 
 If you see this error, set the index before passing data to any panel model.
@@ -442,10 +442,10 @@ mod = IV2SLS.from_formula(
     "np.log(wage) ~ 1 + exper + [educ ~ motheduc + fatheduc]", data=df
 )
 
-# Unadjusted — default
+# Unadjusted (homoskedastic)
 res = mod.fit(cov_type="unadjusted")
 
-# Heteroskedasticity-robust
+# Heteroskedasticity-robust — default (HC0; HC1 with debiased=True)
 res = mod.fit(cov_type="robust")
 
 # Kernel (HAC)
@@ -460,7 +460,7 @@ res = mod.fit(cov_type="clustered", clusters=df["state"])
 | SE Type | Panel Syntax | IV Syntax |
 |---------|-------------|-----------|
 | Homoskedastic | `cov_type="unadjusted"` | `cov_type="unadjusted"` |
-| Robust (HC1) | `cov_type="robust"` | `cov_type="robust"` |
+| Robust (HC1) | `cov_type="robust"` | `cov_type="robust"` (HC0 unless `debiased=True`) |
 | Entity-clustered | `cov_type="clustered", cluster_entity=True` | `cov_type="clustered", clusters=var` |
 | Time-clustered | `cov_type="clustered", cluster_time=True` | N/A |
 | Two-way clustered | `cluster_entity=True, cluster_time=True` | N/A |

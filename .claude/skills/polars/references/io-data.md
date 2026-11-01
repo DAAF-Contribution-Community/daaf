@@ -100,8 +100,8 @@ lf = pl.scan_parquet("data.parquet")
 # Benefits: predicate/projection pushdown
 result = (
     pl.scan_parquet("huge.parquet")
-    .filter(pl.col("date") > "2024-01-01")  # Only reads matching rows
-    .select("id", "value")                   # Only reads these columns
+    .filter(pl.col("date") > pl.date(2024, 1, 1))  # Only reads matching rows
+    .select("id", "value")                          # Only reads these columns
     .collect()
 )
 ```
@@ -381,7 +381,7 @@ result = (
     .filter(pl.col("category") == "A")
     .group_by("region")
     .agg(pl.col("sales").sum())
-    .collect(streaming=True)
+    .collect(engine="streaming")
 )
 
 # Or sink directly to file

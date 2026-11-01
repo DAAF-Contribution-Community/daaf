@@ -78,8 +78,8 @@ Brackets enclose the `endogenous ~ instruments` mapping:
 "y ~ 1 + exog1 + [endog1 ~ inst1]"        # Correct
 "y ~ exog1 + [endog1 ~ 1 + inst1]"        # Wrong — constant goes outside brackets
 
-# Suppress constant
-"y ~ exog1 + [endog1 ~ inst1] - 1"
+# No constant unless you add "1 +" (formulas never add one)
+"y ~ exog1 + [endog1 ~ inst1]"
 ```
 
 Compare with pyfixest pipe-separated syntax:
@@ -132,8 +132,9 @@ res = mod.fit(cov_type="robust")
 
 ### Fuller's Modified LIML
 
-Subtracts `alpha / (n - L)` from k for finite-sample bias correction, where L is
-the number of instruments. The `fuller` parameter controls alpha.
+Subtracts `alpha / (n - L)` from k for finite-sample bias correction, where L
+counts all instrument columns, including the exogenous regressors. The `fuller`
+parameter controls alpha.
 
 ```python
 # Fuller's modified LIML (alpha=1 is the standard choice)
@@ -168,12 +169,16 @@ from linearmodels.iv import IVGMM
 # 2-step efficient GMM with robust weight matrix
 mod = IVGMM.from_formula(
     "np.log(wage) ~ 1 + exper + [educ ~ motheduc + fatheduc]",
-    data=df
+    data=df,
+    weight_type="robust"
 )
-res = mod.fit(cov_type="robust", weight_type="robust")
+res = mod.fit(cov_type="robust")
 ```
 
 ### Weight Matrix Options
+
+`weight_type` and its options (`kernel`, `bandwidth`, `clusters`) go to
+`IVGMM(...)`/`IVGMM.from_formula(...)`, not to `fit()`.
 
 | Weight Type | Use When | Code |
 |-------------|----------|------|
@@ -182,17 +187,18 @@ res = mod.fit(cov_type="robust", weight_type="robust")
 | `"kernel"` | HAC (time-series dependence) | `weight_type="kernel", kernel="bartlett"` |
 | `"clustered"` | Clustered dependence | `weight_type="clustered", clusters=df["group"]` |
 
-### Steps Parameter
+### iter_limit Parameter
 
 ```python
+# weight_type is set on the model (above); iter_limit sets the number of steps
 # 1-step GMM (uses initial weight matrix only)
-res = mod.fit(steps=1, weight_type="robust")
+res = mod.fit(iter_limit=1)
 
-# 2-step GMM (default — efficient under correct specification)
-res = mod.fit(steps=2, weight_type="robust")
+# 2-step GMM (default iter_limit=2 — efficient under correct specification)
+res = mod.fit()
 
 # Iterative GMM (repeats until weight matrix converges)
-res = mod.fit(iter_limit=100, weight_type="robust")
+res = mod.fit(iter_limit=100)
 ```
 
 ### When to Use GMM vs 2SLS
@@ -227,6 +233,7 @@ Use CUE when:
 ## AbsorbingLS
 
 OLS/WLS with high-dimensional absorbed fixed effects. Uses pyhdfe for FE absorption
+when the model is unweighted and absorbs only categoricals, and LSMR otherwise
 (similar to Stata's `reghdfe` or pyfixest). Lives in the IV module but is
 fundamentally an OLS estimator — does not support endogenous variables.
 
@@ -234,10 +241,11 @@ fundamentally an OLS estimator — does not support endogenous variables.
 from linearmodels.iv import AbsorbingLS
 
 # Absorb entity and year fixed effects
+# Non-categorical columns are absorbed as continuous variables, not as effects
 mod = AbsorbingLS(
     dependent=df["y"],
     exog=df[["x1", "x2"]],
-    absorb=df[["entity_id", "year"]]
+    absorb=df[["entity_id", "year"]].astype("category")
 )
 res = mod.fit()
 ```
@@ -245,17 +253,22 @@ res = mod.fit()
 ### Interacted Fixed Effects
 
 ```python
-from linearmodels.iv.absorbing import Interaction
+import pandas as pd
 
-# Entity-by-industry interacted FE
-interact = Interaction(df["entity_id"], df["industry"])
+# Entity-by-industry interacted FE: one categorical with a level per cell
+cell = (df["entity_id"].astype(str) + "_" + df["industry"].astype(str)).astype("category")
 mod = AbsorbingLS(
     dependent=df["y"],
     exog=df[["x1"]],
-    absorb=interact
+    absorb=pd.DataFrame({"cell": cell})
 )
 res = mod.fit()
 ```
+
+Passed as `interactions=`, `Interaction(cat, cont)` (from `linearmodels.iv.absorbing`)
+adds category-specific slopes on `cont`. Passed as `absorb=`, `cat` is absorbed as
+additive effects and `cont` with one common slope, so
+`absorb=Interaction(cat=df[["a", "b"]])` absorbs a + b, not a×b.
 
 ### AbsorbingLS vs PanelOLS vs pyfixest
 
@@ -265,12 +278,11 @@ res = mod.fit()
 | Requires MultiIndex | No | Yes | No |
 | Speed (large data) | Moderate (pyhdfe) | Moderate | Fast (numba/JAX) |
 | IV support | No | No | Yes (with FE) |
-| Interacted FE | Yes (`Interaction`) | No | Yes (native `^`) |
+| Interacted FE | Yes (combined categorical column) | No | Yes (native `^`) |
 
 **Recommendation:** For most absorbed-FE work, prefer pyfixest for speed and
 formula convenience. Use AbsorbingLS when you need to stay within the linearmodels
-ecosystem or need the `Interaction` class for complex FE structures that are not
-easily expressed in pyfixest's `^` syntax.
+ecosystem or need `Interaction` (via `interactions=`) for category-specific slopes.
 
 ## Diagnostics and Tests
 

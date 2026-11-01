@@ -274,7 +274,8 @@ clustered inference, use `coeftest()` from lmtest with plm's vcov functions:
 ```r
 library(lmtest)
 
-# Heteroskedasticity-robust (White)
+# HC1, entity-clustered: vcovHC() defaults to method = "arellano",
+# cluster = "group" (pass method = "white1" for heteroskedasticity-only White SEs)
 coeftest(fit, vcov = vcovHC(fit, type = "HC1"))
 
 # Entity-clustered SEs

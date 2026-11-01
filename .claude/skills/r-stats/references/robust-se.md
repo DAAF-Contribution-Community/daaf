@@ -1,7 +1,7 @@
 # R Stats Robust Standard Errors Reference
 
 Robust, clustered, and HAC standard errors using `sandwich` and `lmtest`.
-Covers `vcovHC()` (HC0-HC4), `vcovCL()` (clustered), `vcovHAC()` (Newey-West),
+Covers `vcovHC()` (HC0-HC4), `vcovCL()` (clustered), `vcovHAC()` and `NeweyWest()` (HAC),
 `vcovBS()` (bootstrap), and `coeftest()` for inference with custom covariance
 matrices. sandwich 3.1-1, lmtest 0.9-40.
 
@@ -126,6 +126,10 @@ coeftest(fit, vcov = V_cl)
 # Using a formula interface
 V_cl <- vcovCL(fit, cluster = ~ state)
 coeftest(fit, vcov = V_cl)
+
+# coeftest() uses t(n - k) df for lm fits; Stata and fixest use t(G - 1).
+# With few clusters, pass the cluster df explicitly:
+coeftest(fit, vcov = V_cl, df = length(unique(df$state)) - 1)
 ```
 
 ### Two-Way Clustering
@@ -144,6 +148,7 @@ coeftest(fit, vcov = V_2way)
 
 ```r
 # type: "HC0" through "HC3" for the within-cluster adjustment
+# (default: "HC1" for lm objects, "HC0" otherwise, e.g. for glm)
 V_cl <- vcovCL(fit, cluster = ~ state, type = "HC1")
 
 # cadjust: apply small-cluster correction (G/(G-1) where G = number of clusters)
@@ -179,7 +184,13 @@ library(lmtest)
 
 fit <- lm(y ~ x1 + x2, data = df)
 
-# Newey-West with automatic bandwidth selection
+# Newey-West with automatic lag selection (Bartlett kernel, lag from
+# bwNeweyWest(), prewhitening on by default)
+V_nw_auto <- NeweyWest(fit)
+coeftest(fit, vcov = V_nw_auto)
+
+# vcovHAC() is NOT Newey-West by default: it is the Andrews (1991)
+# quadratic-spectral HAC with automatic bandwidth, no prewhitening
 V_hac <- vcovHAC(fit)
 coeftest(fit, vcov = V_hac)
 
@@ -337,12 +348,17 @@ modelsummary(
 
 | Task | R (sandwich + lmtest) | Python (statsmodels) |
 |------|----------------------|---------------------|
-| HC1 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC1"))` | `smf.ols(...).fit(cov_type="HC1")` |
-| HC3 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC3"))` | `smf.ols(...).fit(cov_type="HC3")` |
-| One-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state))` | `.fit(cov_type="cluster", cov_kwds={"groups": df["state"]})` |
-| Two-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state + year))` | `.fit(cov_type="cluster", cov_kwds={"groups": df[["state","year"]]})` (CGM two-way) |
-| Newey-West | `coeftest(fit, vcov = NeweyWest(fit))` | `.fit(cov_type="HAC", cov_kwds={"maxlags": 4})` |
+| HC1 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC1"))` | `smf.ols(...).fit(cov_type="HC1", use_t=True)` |
+| HC3 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC3"))` | `smf.ols(...).fit(cov_type="HC3", use_t=True)` |
+| One-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state))` | `.fit(cov_type="cluster", cov_kwds={"groups": df["state"]}, use_t=True)` |
+| Two-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state + year))` | `.fit(cov_type="cluster", cov_kwds={"groups": df[["state","year"]]}, use_t=True)` (CGM two-way; both group columns must be numeric codes, e.g. from `pd.factorize`) |
+| Newey-West | `coeftest(fit, vcov = NeweyWest(fit))` | `.fit(cov_type="HAC", cov_kwds={"maxlags": 4}, use_t=True)` |
 | Bootstrap | `vcovBS(fit, R = 999)` | Not built-in |
+
+statsmodels robust p-values use the normal distribution unless `use_t=True`;
+with it, the HC and HAC rows use t(n - k) and the cluster rows t(G - 1), with G
+the smaller cluster count for two-way. R `coeftest()` uses t(n - k) for `lm`
+fits unless `df` is passed (see Clustered Standard Errors).
 
 Key difference: R separates estimation (`lm/glm`) from inference (`coeftest` +
 custom vcov). Python bakes inference into the `.fit()` call. The R approach is

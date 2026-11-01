@@ -247,7 +247,7 @@ is.pbalanced(pdf)    # Check balance
 | Pooled OLS | `plm(y ~ x1 + x2, data = pdf, model = "pooling")` |
 | Panel IV | `plm(y ~ x1 + x2 \| z1 + z2, data = pdf, model = "within")` |
 | Hausman test | `phtest(fe_fit, re_fit)` |
-| Robust SEs | `coeftest(fit, vcov = vcovHC(fit, type = "HC1"))` |
+| Entity-clustered SEs, HC1 (default `method = "arellano"`, `cluster = "group"`; White: `method = "white1"`) | `coeftest(fit, vcov = vcovHC(fit, type = "HC1"))` |
 | Clustered SEs | `coeftest(fit, vcov = vcovHC(fit, cluster = "group"))` |
 | Driscoll-Kraay | `coeftest(fit, vcov = vcovSCC(fit))` |
 | Summary | `summary(fit)` |
@@ -342,7 +342,7 @@ Software & Tools references:
 
 For estimatr:
 
-> Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2022).
+> Blair, G., Cooper, J., Coppock, A., Humphreys, M., & Sonnet, L. (2025).
 > estimatr: Fast Estimators for Design-Based Inference. R package.
 > https://CRAN.R-project.org/package=estimatr
 
