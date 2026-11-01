@@ -12,7 +12,8 @@
 #   2. migrate-era1         - Migration of clone-based installations (origin remote present)
 #   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
 #   4. failure-resilience   - Graceful failure handling and edge cases
-#   5. smoke-suite          - R + Python skill smokes, then the deploy-smoke free tiers (0, N, D), inside the built image
+#   5. smoke-suite          - R + Python skill smokes, the deploy-smoke free tiers (0, N, D), then the
+#                             full tests/python unit suite, inside the built image
 #   6. restore-failure-paths - restore failure paths field-tested on Windows
 #                             (leftover holders, swap container), plus the backup
 #                             and restore startup checks (helper-image download,
@@ -934,7 +935,8 @@ jobs:
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     timeout-minutes: 45   # build dominates; library smokes ~2-4 min, then the
-                          # deploy-smoke free tiers (0, N, D; step cap 20 min).
+                          # deploy-smoke free tiers (0, N, D; step cap 20 min)
+                          # and the tests/python unit suite (step cap 15 min).
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -1007,6 +1009,20 @@ jobs:
           docker compose exec -T daaf-docker \
             python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py \
               --route anthropic-subscription --tiers 0,N,D --yes --no-package
+
+      # --- Full Python unit suite inside the built image ---
+      # CI - Scripts runs tests/python on a bare runner, where R (jsonlite, arrow),
+      # the PDF stack (poppler, tesseract, pypdfium2, pdfplumber), Quarto and numpy
+      # are absent, so those tests skip there. The image carries all of them at
+      # the Dockerfile's pinned versions, so here none of them skip. Deploy-smoke's
+      # TD.0 above runs only test_deploy_smoke*.py. Placed after the smoke steps
+      # so a failure here cannot hide their results.
+      - name: Python unit suite inside container
+        working-directory: daaf-docker
+        timeout-minutes: 15
+        run: |
+          docker compose exec -T -w /daaf daaf-docker \
+            python3 -m unittest discover -s tests/python -p 'test_*.py'
 
       - name: Collect deploy-smoke report
         if: always()
