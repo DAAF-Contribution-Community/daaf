@@ -181,7 +181,7 @@ assuming the skill text is current.
 
 ---
 
-## 8. tidygraph Wrappers Inherit igraph Behavior
+## 8. tidygraph Wrappers: Seeds Inherited, Weight Default Differs
 
 **Symptom:** using `centrality_betweenness()` or `group_louvain()` from tidygraph
 doesn't escape the seed trap above, and `group_leiden()` doesn't escape the

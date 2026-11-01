@@ -761,8 +761,8 @@ results, different p-values, and potentially different conclusions.
 |-------|----------|-------------|-------|
 | (default, no option) | `vcov="iid"` | default | IID (classical) |
 | `, robust` | `vcov="hetero"` | `cov_type="HC1", use_t=True` | HC1 (Stata's robust default) |
-| `, vce(hc2)` | `vcov="HC2"` | `cov_type="HC2"` | HC2 (no FE/IV in pyfixest) |
-| `, vce(hc3)` | `vcov="HC3"` | `cov_type="HC3"` | HC3 (no FE/IV in pyfixest) |
+| `, vce(hc2)` | `vcov="HC2"` | `cov_type="HC2"` | HC2 (no FE/IV in pyfixest); pyfixest's variance is statsmodels' times N/(N-K) unless `ssc=pf.ssc(k_adj=False)` (observed 2026-11-01, pyfixest 0.60.0) |
+| `, vce(hc3)` | `vcov="HC3"` | `cov_type="HC3"` | HC3 (no FE/IV in pyfixest); pyfixest's variance is statsmodels' times N/(N-K) unless `ssc=pf.ssc(k_adj=False)` (observed 2026-11-01, pyfixest 0.60.0) |
 | `, vce(cluster cl)` | `vcov={"CRV1": "cl"}` | `cov_type="cluster", use_t=True` | One-way cluster |
 | `, vce(cluster cl1 cl2)` | `vcov={"CRV1": "cl1+cl2"}` | `cov_type="cluster"`, 2-column integer `groups` | Two-way cluster |
 | `, vce(bootstrap)` | Wild bootstrap (pyfixest) | No bootstrap `cov_type` (resample by hand) | Bootstrap |

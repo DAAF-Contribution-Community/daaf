@@ -248,7 +248,7 @@ is.pbalanced(pdf)    # Check balance
 | Panel IV | `plm(y ~ x1 + x2 \| z1 + z2, data = pdf, model = "within")` |
 | Hausman test | `phtest(fe_fit, re_fit)` |
 | Entity-clustered SEs, HC1 (default `method = "arellano"`, `cluster = "group"`; White: `method = "white1"`) | `coeftest(fit, vcov = vcovHC(fit, type = "HC1"))` |
-| Clustered SEs | `coeftest(fit, vcov = vcovHC(fit, cluster = "group"))` |
+| Entity-clustered SEs, HC0 (default `type`) | `coeftest(fit, vcov = vcovHC(fit, cluster = "group"))` |
 | Driscoll-Kraay | `coeftest(fit, vcov = vcovSCC(fit))` |
 | Summary | `summary(fit)` |
 | Dynamic GMM | `pgmm(y ~ lag(y, 1) + x1 \| lag(y, 2:99), data = pdf)` |

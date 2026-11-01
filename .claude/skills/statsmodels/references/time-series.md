@@ -560,7 +560,7 @@ print(f"Critical values: {crit_values}")
 | Reject H0 (p < 0.05) | Fail to reject H0 (p > 0.05) | Stationary |
 | Fail to reject H0 (p > 0.05) | Reject H0 (p < 0.05) | Non-stationary (unit root) |
 | Reject H0 | Reject H0 | Conflicting (statsmodels' ADF/KPSS example calls this "difference stationary"); check for a structural break, and re-run both tests with `regression='ct'` |
-| Fail to reject H0 | Fail to reject H0 | Inconclusive |
+| Fail to reject H0 | Fail to reject H0 | Inconclusive (statsmodels' ADF/KPSS example calls this "trend stationary"); re-run both tests with `regression='ct'` |
 
 ```python
 # Standard workflow: apply both tests
@@ -571,6 +571,14 @@ kp = kpss(y, regression='c', nlags='auto')
 
 print(f"ADF p-value:  {adf[1]:.4f}  (H0: unit root)")
 print(f"KPSS p-value: {kp[1]:.4f}  (H0: stationary)")
+
+# If the series may trend, re-run both tests around a trend: with 'c' only,
+# a trend-stationary series can read as a unit root
+adf_ct = adfuller(y, regression='ct', autolag='AIC')
+kp_ct = kpss(y, regression='ct', nlags='auto')
+
+print(f"ADF ('ct') p-value:  {adf_ct[1]:.4f}  (H0: unit root)")
+print(f"KPSS ('ct') p-value: {kp_ct[1]:.4f}  (H0: trend stationary)")
 ```
 
 ### Zivot-Andrews Breakpoint Unit Root Test

@@ -276,7 +276,7 @@ additive effects and `cont` with one common slope, so
 |---------|-------------|----------|----------|
 | Max FE dimensions | Unlimited | 2 | Unlimited |
 | Requires MultiIndex | No | Yes | No |
-| Speed (large data) | Moderate (pyhdfe) | Moderate | Fast (numba/JAX) |
+| Speed (large data) | Moderate (pyhdfe or LSMR) | Moderate | Fast (numba/JAX) |
 | IV support | No | No | Yes (with FE) |
 | Interacted FE | Yes (combined categorical column) | No | Yes (native `^`) |
 

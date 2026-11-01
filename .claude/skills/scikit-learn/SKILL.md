@@ -166,10 +166,12 @@ What kind of evaluation?
 │   │   (./references/evaluation-supervised.md)
 │   └─ Model selection → cross_val_score or GridSearchCV
 │       (./references/evaluation-supervised.md)
-└─ Supervised regression
-    ├─ R-squared, RMSE, MAE (./references/evaluation-supervised.md)
-    └─ Model selection → cross_val_score or GridSearchCV
-        (./references/evaluation-supervised.md)
+├─ Supervised regression
+│   ├─ R-squared, RMSE, MAE (./references/evaluation-supervised.md)
+│   └─ Model selection → cross_val_score or GridSearchCV
+│       (./references/evaluation-supervised.md)
+└─ Clustered or time-ordered rows → GroupKFold / StratifiedGroupKFold / TimeSeriesSplit
+    (./references/evaluation-supervised.md, Grouped and Temporal Splits)
 ```
 
 ### "I need to interpret or explain a model"

@@ -278,7 +278,7 @@ library(lmtest)
 # cluster = "group" (pass method = "white1" for heteroskedasticity-only White SEs)
 coeftest(fit, vcov = vcovHC(fit, type = "HC1"))
 
-# Entity-clustered SEs
+# Entity-clustered SEs, HC0 (the default type; no df correction)
 coeftest(fit, vcov = vcovHC(fit, cluster = "group"))
 
 # Newey-West (HAC for panel)

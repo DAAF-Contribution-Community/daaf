@@ -170,7 +170,8 @@ The `agg` argument in `summary()` provides different levels of aggregation:
    not fall back to the last-treated cohort as the reference: it creates
    dummies for every cohort and fixest drops the collinear cohort x period
    terms. To use the last-treated cohort as the control, name it in `ref.c`
-   (no dummies are created for it, but its observations stay in the sample).
+   (no dummies are created for it, but its observations stay in the sample,
+   including its own treated periods).
 
 ### Complete sunab Example
 

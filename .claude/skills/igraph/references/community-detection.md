@@ -158,7 +158,7 @@ g_u.vs["community"] = louvain.membership
 
 - [ ] `random.seed(N)` called immediately before the detection call, with `N` recorded.
 - [ ] Directed graphs converted to undirected via `as_undirected()` (collapse semantics documented).
-- [ ] Weights passed explicitly (`weights=...`); python-igraph ignores the attribute otherwise.
+- [ ] Weights passed explicitly (`weights=...`); python-igraph ignores the attribute otherwise. Louvain, Leiden and `community_edge_betweenness()` read weights as strengths (edge betweenness divides unweighted betweenness by weight); R `cluster_edge_betweenness()` reads them as distances (observed 2026-11-01, python-igraph 1.0.0, R igraph 2.2.3).
 - [ ] Objective function / walk length recorded (Leiden objective, Walktrap steps).
 - [ ] Modularity and community count reported for auditability.
 

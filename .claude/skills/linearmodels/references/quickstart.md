@@ -464,7 +464,7 @@ res = mod.fit(cov_type="clustered", clusters=df["state"])
 | Entity-clustered | `cov_type="clustered", cluster_entity=True` | `cov_type="clustered", clusters=var` |
 | Time-clustered | `cov_type="clustered", cluster_time=True` | N/A |
 | Two-way clustered | `cluster_entity=True, cluster_time=True` | N/A |
-| Driscoll-Kraay | `cov_type="kernel", kernel="bartlett"` | `cov_type="kernel", kernel="bartlett"` |
+| Driscoll-Kraay | `cov_type="kernel", kernel="bartlett"` | N/A (IV `cov_type="kernel"` is a time-series HAC over row order, not Driscoll-Kraay) |
 
 ---
 

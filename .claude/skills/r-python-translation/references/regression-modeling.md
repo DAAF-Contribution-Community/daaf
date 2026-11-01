@@ -575,8 +575,8 @@ fit = smf.ols("y ~ x1 + x2", data=df).fit(
 | IID | Default | `"iid"` | `"iid"` | Default |
 | HC0 (White) | `vcovHC(type="HC0")` | `"hetero"` + `ssc = ssc(K.adj = FALSE)` | N/A | `cov_type="HC0"` |
 | HC1 | `vcovHC(type="HC1")` | `"hetero"` or `"HC1"` | `"hetero"` or `"HC1"` | `cov_type="HC1", use_t=True` |
-| HC2 | `vcovHC(type="HC2")` | `"hc2"` | `"HC2"` (no FE/IV) | `cov_type="HC2"` |
-| HC3 | `vcovHC(type="HC3")` | `"hc3"` | `"HC3"` (no FE/IV) | `cov_type="HC3"` |
+| HC2 | `vcovHC(type="HC2")` | `"hc2"` | `"HC2"` (no FE/IV; variance is sandwich/statsmodels HC2 times N/(N-K) unless `ssc=pf.ssc(k_adj=False)`, observed 2026-11-01, pyfixest 0.60.0) | `cov_type="HC2"` |
+| HC3 | `vcovHC(type="HC3")` | `"hc3"` | `"HC3"` (no FE/IV; variance is sandwich/statsmodels HC3 times N/(N-K) unless `ssc=pf.ssc(k_adj=False)`, observed 2026-11-01, pyfixest 0.60.0) | `cov_type="HC3"` |
 | 1-way cluster | `vcovCL(cluster=...)` | `vcov = ~g` | `{"CRV1": "g"}` | `cov_type="cluster", use_t=True` |
 | 2-way cluster | `vcovCL(cluster=cbind(...))` | `vcov = ~g1 + g2` | `{"CRV1": "g1+g2"}` | `cov_type="cluster"` (2-column integer `groups`) |
 | Cluster jackknife | `vcovJK(fit, cluster = ~g, center = "estimate")` | N/A | `{"CRV3": "g"}` | N/A |
