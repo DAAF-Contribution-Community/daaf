@@ -835,8 +835,11 @@ class HtmlIngestTests(ScratchCase):
         bad = self.root / "bad.html"
         bad.write_bytes(b"\xff\xfe<article class=\"ltx_document\">")
         self.assertEqual(self.ingest(bad, "user_000000c2")[0], 12)
-        code, _, err = run_main([HTML_FIX, self.papers, "--paper-key", "user_000000c3"])   # PDF path on HTML
-        self.assertEqual(code, 8)
+        # PDF path on HTML. The poppler check (exit 10) runs before the %PDF- header check (exit 8),
+        # so poppler reads as present here; the refusal comes before any poppler binary runs.
+        with mock.patch.object(pdf_ingest.shutil, "which", return_value="/usr/bin/true"):
+            code, _, err = run_main([HTML_FIX, self.papers, "--paper-key", "user_000000c3"])
+        self.assertEqual(code, 8, err)
         self.assertIn("--source arxiv-html", err)
         self.assertEqual(pdf_ingest.EXIT_CODES[12][:22], "--source arxiv-html: n")
 
