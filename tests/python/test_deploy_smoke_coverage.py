@@ -29,8 +29,8 @@ D1-D5, then the review fixes H1-H5):
   * H5  --timeout help names the TD.1 and TD.7 floors.
   Also T0.24 with CLAUDE_CODE_TMPDIR a symlink into /tmp.
 
-Standard-library unittest + unittest.mock only (the CI deploy-smoke-unit job
-installs only httpx): no network beyond 127.0.0.1, no model call, no binary
+Standard-library unittest + unittest.mock only, so it runs in the bare CI unit
+job as well: no network beyond 127.0.0.1, no model call, no binary
 other than this interpreter and bash (guarded with skipUnless). Fixtures live
 under scripts/scratch/ (never /tmp) and are removed by addCleanup.
 

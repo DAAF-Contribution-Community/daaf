@@ -5,8 +5,8 @@ client at import time, so it cannot be imported here. Instead the module's
 source is parsed with ast and only three top-level nodes are executed in a
 fresh namespace: INJECTION_PATTERNS, REDACTION_TOKEN and scrub_injection.
 Nothing touches the network or the filesystem beyond reading the two source
-files, and nothing third-party is imported (the CI unit venv holds only
-httpx).
+files, and nothing third-party is imported, so it runs in the bare CI unit
+job as well.
 
 web_fetch.py keeps its own five-pattern list and does not import
 web_retrieval_common.py (decision D-9). Its two system-reminder tag patterns

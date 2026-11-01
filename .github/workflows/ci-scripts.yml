@@ -11,7 +11,7 @@
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
-#   7b. deploy-smoke-unit   - Harness self-tests (provider-free, stdlib only)
+#   7b. deploy-smoke-unit   - tests/python unit suite, deploy-smoke harness self-tests included (provider-free; small pinned venv)
 #   7c. provider-shim-tests - Provider-shim unit suite (offline loopback harness) + context-ceiling probe self-test
 #   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
 #   9. bats-bash32         - Host-script BATS suite under real Bash 3.2 (ubuntu container)
@@ -381,7 +381,8 @@ jobs:
         run: bash tests/lint/check-daaf-conventions.sh
 
   # ---------------------------------------------------------------------------
-  # Job 7b: Deployment-smoke harness self-tests (provider-free, stdlib only)
+  # Job 7b: tests/python unit suite, deploy-smoke harness self-tests included
+  # (provider-free; the venv holds only the pinned packages installed below)
   # ---------------------------------------------------------------------------
   deploy-smoke-unit:
     name: Deploy-Smoke Harness Unit Tests

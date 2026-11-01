@@ -6,8 +6,8 @@ rasters of synthetic pages; see fixtures/pdf_ingest/generate_fixtures.py), so
 no third-party document text is committed (FRAMEWORK_INTEGRATION_CHECKLIST.md
 FC11).
 
-Dependency guards (FC10): the CI unit job runs on a runner whose venv holds
-only httpx, so nothing third-party is imported at module level. Tests of the
+Dependency guards (FC10): the bare CI unit job pins only a few libraries and
+has no PDF tools, so nothing third-party is imported at module level. Tests of the
 pure logic (exit tables, NORMALIZE/SKELETON, flag helpers, guards that refuse
 before any extractor runs) run everywhere; tests that ingest a PDF are
 skipped unless pypdfium2, pdfplumber, rapidfuzz, polars and pyarrow are

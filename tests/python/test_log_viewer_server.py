@@ -12,7 +12,7 @@ but the tests connect to 127.0.0.1 only. The served root lives under
 scripts/scratch/ (NEVER /tmp) and is removed in tearDownClass; the refresh
 endpoint finds no recovery or generator script there, so a request that gets
 through it changes nothing on disk.
-Standard library only (the CI unit venv holds only httpx).
+Standard library only, so it runs in the bare CI unit job as well.
 
 Run (file-first: from a captured script, through subprocess):
   python3 -m unittest discover -s tests/python -p 'test_log_viewer_server.py'
