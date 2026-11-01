@@ -1,0 +1,89 @@
+# Allowlist for tests/lint/docs-triage.sh: hits that are correct as written.
+# Four tab-separated columns: path_glob, family, fragment, reason.
+#   path_glob  repo-relative path; * matches any characters including /, ? one character
+#   family     A, B, C, D or E; a comma list (A,E); or * for every family
+#   fragment   fixed text the hit's line must contain, or * for every hit in the file
+#   reason     why the hit stays
+# Keep entries narrow: a fragment rather than * wherever one will do. Entries that
+# match nothing are reported as stale; remove or fix them. A real violation is fixed
+# in its file, not listed here: the lint's output is the review backlog.
+#
+# --- The lint's own files: they spell out the patterns they search for ---
+tests/lint/docs-triage.sh	*	*	the lint's pattern definitions and comments
+tests/lint/docs-triage-allowlist.tsv	*	*	allowlist fragments quote the text they exempt
+tests/bash/docs_triage.bats	*	*	test fixtures plant hits on purpose
+#
+# --- The standard names the patterns it rules out ---
+agent_reference/DOCUMENTATION_STANDARDS.md	A	for the maintainer only	family A's definition names the label it finds
+agent_reference/DOCUMENTATION_STANDARDS.md	B	formerly	quotes history wording as the example to avoid
+agent_reference/DOCUMENTATION_STANDARDS.md	C	(verified 2026-10-05)	quotes an internal stamp as the example to avoid
+#
+# --- Release metadata (CHANGELOG-adjacent) ---
+CITATION.cff	C	date-released:	the release date is a required citation field
+#
+# --- Runtime folders listed in the maintainer exclude file ---
+*	E	.claude/worktrees/	Claude Code creates this folder on every install; it is runtime state, not maintainer material
+#
+# --- Logged scripts: an appended execution log (the "# EXECUTION LOG" marker that
+# run_with_capture.sh writes) makes a script immutable, so its text cannot be edited.
+# Listed one by one: an unlogged script in the same folder can still be fixed.
+benchmarks/datasets/test_fixtures/code_reviewer/enrollment_trends.py	*	*	logged script (immutable)
+benchmarks/datasets/test_fixtures/code_reviewer/frpl_poverty_rates.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/01_audit-education-portal-mirror.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/02_stage-education-portal-mirror_b.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/03_validate-education-portal-mirror.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/04_delta-classify-mirror-v2.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/04_delta-classify-mirror-v2_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/05_carry-forward-mirror-v2.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/06_fetch-convert-mirror-v2.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/06_fetch-convert-mirror-v2_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/06_fetch-convert-mirror-v2_b.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/06_fetch-convert-mirror-v2_c.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/07_validate-mirror-v2-tree.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/07_validate-mirror-v2-tree_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/08_remote-inventory-vs-manifest.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/08_remote-inventory-vs-manifest_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/09_pinned-url-fetch-probes.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/12_python-code-samples.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/13_r-fetch-patterns-samples.R	*	*	logged script (immutable)
+scripts/mirror_maintenance/16_datasets-reference-year-audit.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/17_ipeds-saipe-claim-probes.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/18_id-dtype-coded-value-probes.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/19_crdc-ccd-sentinel-deepdive.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/24_k12-inventory-and-env.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/37_live-probe-inventory.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/38_boundary-years_b.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/39_doc-route-sweep.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/40_route-reconciliation.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/40_route-reconciliation_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/41_variable-inventory.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/42_varlist-audit.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/42_varlist-audit_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/43_code-table-audit.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/44_filter-claims.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/44_filter-claims_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/48_fidelity-expansion-aggregate-report.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/48_fidelity-expansion-aggregate-report_b.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/49_laneB-pair-selection.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/49_laneB-pair-selection_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/50_laneB-count-sweep.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/50_laneB-count-sweep_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/50_laneB-count-sweep_a_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/50_laneB-count-sweep_a_a_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/51_laneB-value-slices_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/52_laneB-aggregate-report.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/53_endpoint-file-bridge.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/54_generate-variable-dictionaries.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/54_generate-variable-dictionaries_b.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/54_generate-variable-dictionaries_c.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/54_generate-variable-dictionaries_d.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/54_generate-variable-dictionaries_e.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/55_race-edfacts-closure-probe.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/55_race-edfacts-closure-probe_a.py	*	*	logged script (immutable)
+scripts/mirror_maintenance/56_race-edfacts-reprobe.py	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_imports_d.py	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_pyfixest.py	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_pyfixest_a.py	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_r_stats_b.R	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_skimr.R	*	*	logged script (immutable)
+scripts/smoke_tests/smoke_tidymodels_b.R	*	*	logged script (immutable)
