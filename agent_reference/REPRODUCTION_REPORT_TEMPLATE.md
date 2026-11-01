@@ -10,7 +10,7 @@ This template defines the central artifact for Reproducibility Verification mode
 
 Copy this template to `Reproduction_Report.md` in the reproduction project folder at RV-1 setup.
 
-```markdown
+````markdown
 # Reproduction Report: [Original Project Title]
 
 **Reproduction Date:** YYYY-MM-DD
@@ -437,7 +437,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 > Copy this prompt after `/clear` to resume with fresh context.
 
 Resume the reproduction of [Original Project Title]. Reproduction Report: `[exact path]`. Currently at [stage] — last completed [description], next step is [description].
-```
+````
 
 ---
 

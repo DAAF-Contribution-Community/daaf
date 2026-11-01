@@ -8,9 +8,9 @@
 # batch-capable bare-`R` invocations bypass that audit trail and are BLOCKED
 # with exit 2 plus a stderr remediation message.
 #
-# Scope: registered in AGENT FRONTMATTER (research-executor, code-reviewer,
-# debugger, data-ingest), NOT project-wide in settings.json. It therefore does
-# not fire for the orchestrator or read-only agents.
+# Scope: registered in AGENT FRONTMATTER of every agent whose `tools` list
+# includes Bash (read-only agents included), NOT project-wide in settings.json.
+# It therefore does not fire for the orchestrator.
 #
 # Failure posture: documented as fail-CLOSED (ERR trap blocks, missing jq
 # blocks, empty stdin blocks, and -- since the 2026-09-24 hook-maintenance
