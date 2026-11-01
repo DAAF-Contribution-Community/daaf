@@ -9,15 +9,16 @@
 # verification harnesses) have repeatedly left invariant-violating filesystem
 # objects behind — most damagingly symlinks with tab/newline names under
 # scripts/scratch/, which broke real user backups three separate times on
-# 2026-07-14.
+# 2026-07-14. Symlinks under a prefix in the ALLOWLIST block below are exempt;
+# one of them is Claude Code's own temp root (claude-code-tmp/ at the repo root),
+# where Claude Code links each subagent dispatch's output file.
 #
 # Invariant 2 (no leak artifacts at repo root): A host tool run with the wrong
 # CWD scatters stub files at the repo root. On 2026-07-14 a `migrate_daaf.sh`
 # dry-run executed with CWD=/daaf left 13 zero-byte stub files plus a
 # `docker-compose.yml.pre-migrate` at the repo root; an `install.sh` dry-run in
 # the same position leaves a stray `daaf-docker/` directory. These pollute the
-# tracked tree and are easy to miss by eye. See
-# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/.
+# tracked tree and are easy to miss by eye.
 #
 # Invariant 3 (no Windows-incompatible names): Windows cannot create a file or
 # folder whose name contains a control character (0x01-0x1F) or any of
@@ -33,8 +34,7 @@
 # The classes follow Microsoft's "Naming Files, Paths, and Namespaces" and Git
 # for Windows' core.protectNTFS, and are kept identical in scope to the
 # backup scripts' own name check (scripts/host/backup_daaf.{sh,ps1}). Not
-# flagged: DEL (0x7F), COM0/LPT0, CONSOLE, "CON foo". See
-# research/2026-09-29_FrameworkDev_BackupLongPathCount/.
+# flagged: DEL (0x7F), COM0/LPT0, CONSOLE, "CON foo".
 #
 # Together these are the checkable invariants that bind every future runner
 # regardless of dispatch-prompt wording.
@@ -113,11 +113,25 @@ set -euo pipefail
 # from the symlink invariant. Keep each entry as specific as possible.
 # DAAF_INVARIANT_ALLOWLIST, when set, replaces this list (see the header).
 #
-# syslibs_glpk: extracted .deb shared libraries for the R Support GLPK work.
-# These .so.N symlinks are legitimate scratch provenance artifacts, not probe
-# leftovers, and are intentionally retained (see 2026-07-06_FrameworkDev_R_Support).
+# syslibs_glpk: extracted .deb shared libraries (.so.N symlinks), kept for the
+# R Support GLPK work (maintainer-only workspace, not shipped:
+# research/2026-07-06_FrameworkDev_R_Support/); graduation out of scratch
+# deferred — the image now ships libglpk40.
+#
+# claude-code-tmp: Claude Code's own temp root at the repo root, set by
+# CLAUDE_CODE_TMPDIR in the docker-compose.yml environment block (Claude Code
+# appends claude-<uid>/). Claude Code writes one tasks/<agent-id>.output symlink
+# per subagent dispatch, pointing into the claude-config volume
+# (~/.claude/projects/.../subagents/agent-<id>.jsonl), so every session that
+# dispatches a subagent leaves symlinks here. They belong to Claude Code, not to
+# a probe; the backup scripts strip and record symlinks before copying. The
+# exemption also covers the per-session scratchpad inside this folder, which
+# Claude Code tells agents to use; Invariant 3 still checks names there. Only
+# this folder is exempt: a symlink under scripts/scratch/ (the temp root's
+# location before 2026-10-26 included) or anywhere else is still flagged.
 readonly ALLOWLIST=(
     "/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/"
+    "/daaf/claude-code-tmp/"
 )
 
 # --- Root-leak allowlist (edit this block to add exceptions) ---
@@ -415,7 +429,6 @@ if [ "${#root_violations[@]}" -gt 0 ]; then
     echo "  Fix: delete these objects. They are the signature of a host tool" >&2
     echo "       (migrate/install) run with the wrong CWD — zero-byte stubs," >&2
     echo "       *.pre-migrate backups, or a stray daaf-docker/ directory." >&2
-    echo "       See research/2026-07-15_FrameworkDev_CwdLeakRootStubs/." >&2
     echo "  Offending paths (control characters shown escaped):" >&2
     # Same control-char-rendering rationale as Invariant 1's report block.
     for bad in "${root_violations[@]}"; do

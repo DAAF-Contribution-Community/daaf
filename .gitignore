@@ -85,6 +85,9 @@ scripts/provider_shim/logs/
 # quota-state seam and the reasoning-cache seam)
 scripts/scratch/
 
+# Claude Code's own temp root (CLAUDE_CODE_TMPDIR in docker-compose.yml): scratchpads, task output, sockets
+/claude-code-tmp/
+
 # Ephemeral scratch for the checkpoint-template regression suite: per-run UUID
 # directories holding extracted R blocks and fixture skill trees. Created in
 # setUp and removed in tearDown; ignored so an interrupted run cannot leak into

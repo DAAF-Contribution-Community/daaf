@@ -390,12 +390,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      # scholar_search's only third-party import is httpx; same pin as the
-      # provider-shim job and the DAAF image.
+      # scholar_search needs httpx; the lit_verify / lit_corpus tests need polars,
+      # pyarrow, rapidfuzz and PyYAML. Same pins as the DAAF image's Dockerfile.
       - name: Install Python test dependencies (venv)
         run: |
           python3 -m venv .py-venv
-          .py-venv/bin/python -m pip install httpx==0.28.1
+          .py-venv/bin/python -m pip install httpx==0.28.1 polars==1.39.3 pyarrow==23.0.0 rapidfuzz==3.14.6 pyyaml==6.0.3
 
       - name: Run deploy-smoke unit tests
         run: .py-venv/bin/python -m unittest discover -s tests/python -p 'test_*.py' -v

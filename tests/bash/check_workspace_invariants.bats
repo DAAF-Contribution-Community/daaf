@@ -17,16 +17,14 @@
 #   Invariant 2 (no repo-root leak artifacts): on 2026-07-14 a `migrate_daaf.sh`
 #   dry-run run with CWD=/daaf scattered 13 zero-byte stub files plus a
 #   `docker-compose.yml.pre-migrate` at the repo root; an `install.sh` dry-run in
-#   the same position leaves a stray `daaf-docker/` directory. See session notes
-#   at research/2026-07-15_FrameworkDev_CwdLeakRootStubs/.
+#   the same position leaves a stray `daaf-docker/` directory.
 #
 #   Invariant 3 (no Windows-incompatible names): on 2026-09-30 a leftover
 #   review-agent fixture whose name contained a newline aborted a real Windows
 #   backup — `docker cp` stops extracting at the first name Windows cannot
 #   create. The checker flags control characters, < > : " | ? * \, trailing
 #   dot/space, reserved device names (with or without an extension), and
-#   case-only name clashes within one directory. See
-#   research/2026-09-29_FrameworkDev_BackupLongPathCount/.
+#   case-only name clashes within one directory.
 #
 #   --names-only runs Invariant 3 alone. The backup scripts' "could not read the
 #   list of names" WARNING points users at it, including for the Claude Code
@@ -123,7 +121,9 @@ teardown() {
 #   - a static read of the real ALLOWLIST block, to pin its content;
 #   - a copy of the checker whose built-in block names a fixture prefix (see
 #     _checker_with_builtin), only to show that an UNSET variable uses the
-#     built-in block and a SET one ignores it.
+#     built-in block and a SET one ignores it;
+#   - a copy whose real entries are re-rooted from /daaf/ to a fixture root (see
+#     _checker_with_rerooted_builtin), to show what each real entry exempts.
 # A live-/daaf check of the real entries is not needed here: the Checkpoint 2
 # gate (`bash scripts/check_workspace_invariants.sh` on /daaf) reports any
 # symlink under a mistyped entry.
@@ -152,17 +152,90 @@ _checker_with_builtin() {
     printf '%s\n' "$copy"
 }
 
-@test "built-in allowlist: the real ALLOWLIST block holds exactly the R Support GLPK prefix (static; the folder need not exist)" {
+@test "built-in allowlist: the real ALLOWLIST block holds exactly the R Support GLPK and Claude Code temp-root prefixes (static; the folders need not exist)" {
     # Pinned on purpose: widening an exemption to a safety gate should have to
     # touch this test too. Every entry must be absolute and end in /, the form
     # the override's header recommends (the / keeps it from matching a sibling).
+    # The first entry is a maintainer-only folder, not shipped (see the
+    # checker's ALLOWLIST comment). The second entry is the CLAUDE_CODE_TMPDIR
+    # value in docker-compose.yml.
     run _allowlist_entries "$CHECKER"
     assert_success
-    assert_output "/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/"
+    assert_output "$(printf '%s\n' \
+        "/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/" \
+        "/daaf/claude-code-tmp/")"
     local entry
     while IFS= read -r entry; do
         [[ "$entry" == /*/ ]] || { echo "ALLOWLIST entry is not absolute and /-terminated: ${entry}"; return 1; }
     done < <(printf '%s\n' "$output")
+}
+
+@test "built-in allowlist: the claude-code-tmp entry matches CLAUDE_CODE_TMPDIR in docker-compose.yml" {
+    # The exemption is only right while it names the folder compose points
+    # Claude Code at; a rename on one side must fail here, not on /daaf.
+    local compose="${REPO_ROOT}/docker-compose.yml" value
+    [ -f "$compose" ] || skip "docker-compose.yml not present in this checkout"
+    value="$(sed -nE 's/^[[:space:]]*-[[:space:]]*CLAUDE_CODE_TMPDIR=([^[:space:]#]+).*$/\1/p' "$compose")"
+    [ -n "$value" ] || { echo "no CLAUDE_CODE_TMPDIR entry in ${compose}"; return 1; }
+    run _allowlist_entries "$CHECKER"
+    assert_success
+    # Exact whole-line match against the entries (not a substring).
+    printf '%s\n' "$output" | grep -qxF "${value%/}/" \
+        || { echo "CLAUDE_CODE_TMPDIR ${value} has no ALLOWLIST entry; entries: ${output}"; return 1; }
+}
+
+# _checker_with_rerooted_builtin <root>: write a copy of the checker to TEST_DIR
+# whose built-in ALLOWLIST entries are the REAL ones with their leading /daaf/
+# replaced by <root>/, check that every entry was re-rooted, and print the copy's
+# path. This tests the real entries' content on a fixture tree, which the plain
+# built-in block cannot do (its /daaf paths never match a TEST_DIR fixture).
+_checker_with_rerooted_builtin() {
+    local root="$1" copy="${TEST_DIR}/checker_rerooted.sh" expected
+    awk -v r="$root" '
+        /^readonly ALLOWLIST=\(/ { print; inblock = 1; next }
+        inblock && /^\)/ { inblock = 0 }
+        inblock { sub(/"\/daaf\//, "\"" r "/") }
+        { print }
+    ' "$CHECKER" > "$copy"
+    expected="$(_allowlist_entries "$CHECKER" | sed "s|^/daaf/|${root}/|")"
+    if [ -z "$expected" ] || [ "$(_allowlist_entries "$copy")" != "$expected" ]; then
+        echo "ALLOWLIST re-root did not land in ${copy}" >&2
+        return 1
+    fi
+    printf '%s\n' "$copy"
+}
+
+@test "built-in allowlist: a Claude Code tasks/*.output symlink under claude-code-tmp/ at the repo root is exempt; a symlink under scripts/scratch/ (old temp-root location included) is flagged" {
+    local root="${TEST_DIR}/root" copy tasks
+    copy="$(_checker_with_rerooted_builtin "$root")"
+    # The shape Claude Code leaves: claude-<uid>/<project>/<session>/tasks/<agent-id>.output
+    # pointing at the subagent transcript in the claude-config volume (dangling here).
+    tasks="${root}/claude-code-tmp/claude-1000/-daaf/0b1d2c3e-session/tasks"
+    mkdir -p "$tasks" "${root}/scripts/scratch/probe_dir" "${root}/scripts/scratch/claude-code-tmp/tasks" "${root}/claude-code-tmp_not"
+    ln -s /home/appuser/.claude/projects/-daaf/0b1d2c3e-session/subagents/agent-a1.jsonl "${tasks}/a1.output"
+    ln -s /home/appuser/.claude/projects/-daaf/0b1d2c3e-session/subagents/agent-a2.jsonl "${tasks}/a2.output"
+    run env DAAF_INVARIANT_ROOT="$root" bash "$copy"
+    assert_success
+    assert_output --partial "OK: workspace invariants satisfied (2 symlink(s) checked"
+    # A probe symlink under scripts/scratch/, one in the temp root's location
+    # before 2026-10-26 (scripts/scratch/claude-code-tmp/), and one in a sibling
+    # whose name only starts with the prefix text are all still violations.
+    ln -s /some/target "${root}/scripts/scratch/probe_dir/rogue_link"
+    ln -s /some/target "${root}/scripts/scratch/claude-code-tmp/tasks/old.output"
+    ln -s /some/target "${root}/claude-code-tmp_not/rogue_link"
+    run env DAAF_INVARIANT_ROOT="$root" bash "$copy"
+    assert_failure
+    assert_output --partial "(3 of 5 symlink(s) are not on the allowlist)"
+    assert_output --partial "${root}/scripts/scratch/probe_dir/rogue_link"
+    assert_output --partial "${root}/scripts/scratch/claude-code-tmp/tasks/old.output"
+    assert_output --partial "${root}/claude-code-tmp_not/rogue_link"
+    refute_output --partial "a1.output"
+    refute_output --partial "a2.output"
+    # Non-vacuous: the real checker (its /daaf entries never match TEST_DIR)
+    # flags all five links on the same tree.
+    run env DAAF_INVARIANT_ROOT="$root" bash "$CHECKER"
+    assert_failure
+    assert_output --partial "(5 of 5 symlink(s) are not on the allowlist)"
 }
 
 @test "built-in allowlist: with DAAF_INVARIANT_ALLOWLIST unset, the built-in block exempts its prefix and nothing else (no NOTE)" {

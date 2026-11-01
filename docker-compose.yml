@@ -83,6 +83,24 @@ services:
       # optional ChatGPT provider lane. Set in compose (not the Dockerfile) so it
       # is adjustable without a rebuild, matching CLAUDE_CONFIG_DIR.
       - CODEX_HOME=/home/appuser/.claude/codex-daaf
+      # Move Claude Code's own temp root out of /tmp/claude-<uid>/, which is
+      # outside the daaf-data volume, the backup and the audit trail, and wiped
+      # when the container is recreated. Claude Code's built-in instructions
+      # send every session and subagent to a per-session scratchpad there.
+      # Claude Code appends /claude-<uid>/, so the tree lands at
+      # /daaf/claude-code-tmp/claude-1000/: the scratchpad, Bash task output
+      # files plus one tasks/*.output symlink per subagent dispatch (into the
+      # claude-config volume), bash-edit-diff/ stores and bundled-skills/. Unix
+      # sockets go to /daaf/claude-code-tmp/cc-socks/ (backups skip sockets).
+      # TMPDIR is NOT changed: Python's tempfile, mktemp and other programs
+      # still default to /tmp. Set here, in the launch environment, because
+      # Claude Code 2.1.251 stopped honoring CLAUDE_CODE_TMPDIR from project
+      # .claude/settings.json; compose keeps it adjustable without a rebuild.
+      # Gitignored by the /claude-code-tmp/ rule; its symlinks are allowlisted
+      # in scripts/check_workspace_invariants.sh. Limitation: two installs
+      # sharing one data volume (DAAF_DATA_VOLUME_NAME) share this folder, and
+      # Claude Code's sweep may remove the other install's session images/.
+      - CLAUDE_CODE_TMPDIR=/daaf/claude-code-tmp
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true

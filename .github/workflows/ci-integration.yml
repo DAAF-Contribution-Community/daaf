@@ -7,16 +7,19 @@
 # Companion workflow: ci-scripts.yml handles lint, unit tests, and cross-platform
 # dry-run smoke tests (no Docker required).
 #
-# Six jobs:
+# Seven jobs:
 #   1. lifecycle-test       - Full lifecycle: install -> run -> backup -> update -> rebuild
 #   2. migrate-era1         - Migration of clone-based installations (origin remote present)
 #   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
 #   4. failure-resilience   - Graceful failure handling and edge cases
-#   5. smoke-suite          - run R + Python skill smokes inside the built image
+#   5. smoke-suite          - R + Python skill smokes, then the deploy-smoke free tiers (0, N, D), inside the built image
 #   6. restore-failure-paths - restore failure paths field-tested on Windows
 #                             (leftover holders, swap container), plus the backup
 #                             and restore startup checks (helper-image download,
 #                             Docker version) and busybox pin consistency
+#   7. update-from-previous-release - manual dispatch only: installs the previous
+#                             vX.Y.Z release, updates it to main, then runs the
+#                             deploy-smoke free tiers
 #
 # Not tested here:
 #   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
@@ -29,8 +32,11 @@
 #
 # Triggers: weekly (Sunday 6 AM UTC), manual dispatch, release tags,
 #   push/PR when Dockerfile, docker-compose.yml, or host scripts change.
-# All jobs run on both ubuntu-latest (amd64) and ubuntu-24.04-arm (arm64)
-# with a 30-minute timeout.
+#   PR runs install from the PR's own branch (github.head_ref); PRs from
+#   forks skip the install jobs, since a fork's branch does not exist upstream.
+# All jobs run on both ubuntu-latest (amd64) and ubuntu-24.04-arm (arm64);
+# timeouts are 30 minutes, except smoke-suite (45) and
+# update-from-previous-release (75).
 
 name: CI - Integration
 
@@ -66,7 +72,7 @@ permissions:
 #
 # DAAF_NESTED suppresses the interactive pause-before-exit in all scripts.
 env:
-  DAAF_BRANCH: ${{ github.ref_name }}
+  DAAF_BRANCH: ${{ github.head_ref || github.ref_name }}
   DAAF_NESTED: "1"
 
 # ---------------------------------------------------------------------------
@@ -80,6 +86,7 @@ jobs:
   lifecycle-test:
     name: Lifecycle Test (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -373,6 +380,7 @@ jobs:
   migrate-era1:
     name: Migrate (Era 1 - Clone) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -400,7 +408,7 @@ jobs:
 
       - name: Populate /daaf via git clone (Era 1 method)
         env:
-          DAAF_BRANCH: ${{ github.ref_type == 'tag' && 'main' || github.ref_name }}
+          DAAF_BRANCH: ${{ github.ref_type == 'tag' && 'main' || github.head_ref || github.ref_name }}
         run: |
           docker compose exec -T daaf-docker \
             git clone -b "$DAAF_BRANCH" \
@@ -509,6 +517,7 @@ jobs:
   migrate-era2:
     name: Migrate (Era 2 - ZIP) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -711,6 +720,7 @@ jobs:
   failure-resilience:
     name: Failure Resilience (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -918,12 +928,13 @@ jobs:
   smoke-suite:
     name: Smoke Suite (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
-    timeout-minutes: 30   # build dominates; smoke run is ~2-4 min. Bump to 45
-                          # only if the Noble build is measured slower. See note 3.
+    timeout-minutes: 45   # build dominates; library smokes ~2-4 min, then the
+                          # deploy-smoke free tiers (0, N, D; step cap 20 min).
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -988,6 +999,31 @@ jobs:
           docker compose exec -T -e SMOKE_DIR=/daaf/scripts/scratch/smoke_live daaf-docker \
             bash /daaf/scripts/smoke_tests/run_all_smoke_tests.sh
 
+      # --- Deployment smoke test, free tiers, on the standard image ---
+      - name: Deploy smoke (free tiers) inside container
+        working-directory: daaf-docker
+        timeout-minutes: 20
+        run: |
+          docker compose exec -T daaf-docker \
+            python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py \
+              --route anthropic-subscription --tiers 0,N,D --yes --no-package
+
+      - name: Collect deploy-smoke report
+        if: always()
+        working-directory: daaf-docker
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy-smoke"
+          docker compose cp daaf-docker:/daaf/scripts/deploy_smoke/reports/. "$RUNNER_TEMP/deploy-smoke/" || true
+
+      - name: Upload deploy-smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-smoke-${{ matrix.runner }}
+          path: ${{ runner.temp }}/deploy-smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
       # --- Cleanup ---
       - name: Docker cleanup
         if: always()
@@ -1001,7 +1037,7 @@ jobs:
   # Job 6: Restore failure paths on real Docker
   # ---------------------------------------------------------------------------
   # The restore FAILURE paths that were field-tested by hand on Windows
-  # (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
+  # (maintainer-only, not shipped: research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
   # 2026-10-06_restore_windows_recheck.md, Checks B-D), plus the backup and
   # restore startup checks (helper-image download, Docker version), run against
   # the runner's REAL Docker so
@@ -1027,6 +1063,7 @@ jobs:
   restore-failure-paths:
     name: Restore Failure Paths (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
       matrix:
@@ -1439,5 +1476,110 @@ jobs:
                 docker volume rm "$v" > /dev/null 2>&1 || true
               fi
             done
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  update-from-previous-release:
+    name: Update From Previous Release (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    timeout-minutes: 75   # two image builds (previous release, then the update)
+    steps:
+      - name: Checkout repository (with tags and main)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Plain release tags only (vX.Y.Z); a pre-release such as v3.1.0-rc1
+      # would otherwise sort above its final release.
+      - name: Pick the previous release and main's commit
+        id: refs
+        run: |
+          git fetch --no-tags origin main
+          MAIN_SHA=$(git rev-parse origin/main)
+          PREV=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | while read -r t; do
+            if [ "$(git rev-parse "$t^{commit}")" != "$MAIN_SHA" ]; then echo "$t"; break; fi
+          done)
+          if [ -z "$PREV" ]; then
+            echo "ERROR: no previous vX.Y.Z release tag found below main"
+            exit 1
+          fi
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "Previous release: $PREV  ->  update target: main ($MAIN_SHA)"
+
+      # Use the previous release's OWN install.sh, as a user who installed it did.
+      - name: Install the previous release
+        env:
+          DAAF_BRANCH: ${{ steps.refs.outputs.prev }}
+        run: |
+          git show "${{ steps.refs.outputs.prev }}:scripts/host/install.sh" > "$RUNNER_TEMP/install_prev.sh"
+          bash "$RUNNER_TEMP/install_prev.sh"
+
+      - name: Verify the previous release is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "Up" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: previous-release container did not reach running state"
+          docker compose ps
+          exit 1
+
+      # The update_daaf.sh in daaf-docker/ is the one the previous install.sh
+      # placed there, i.e. what the user would run.
+      - name: Update to main
+        working-directory: daaf-docker
+        env:
+          DAAF_BRANCH: main
+        run: bash update_daaf.sh
+
+      # Fails the job when the update exited 0 without reaching main's commit.
+      - name: Assert the container is on main's commit
+        working-directory: daaf-docker
+        run: |
+          docker compose ps | grep -q "Up" || { echo "ERROR: container not running after update"; docker compose ps; exit 1; }
+          HEAD_SHA=$(docker compose exec -T daaf-docker git -C /daaf rev-parse HEAD | tr -d '\r')
+          echo "Container HEAD: $HEAD_SHA (branch: $(docker compose exec -T daaf-docker git -C /daaf rev-parse --abbrev-ref HEAD | tr -d '\r'))"
+          docker compose exec -T daaf-docker git -C /daaf merge-base --is-ancestor "${{ steps.refs.outputs.main_sha }}" HEAD || {
+            echo "ERROR: the update did not bring main (${{ steps.refs.outputs.main_sha }}) into the container checkout"
+            exit 1
+          }
+
+      - name: Deploy smoke (free tiers) after the update
+        working-directory: daaf-docker
+        timeout-minutes: 20
+        run: |
+          docker compose exec -T daaf-docker \
+            python3 /daaf/scripts/deploy_smoke/run_deploy_smoke.py \
+              --route anthropic-subscription --tiers 0,N,D --yes --no-package
+
+      - name: Collect deploy-smoke report
+        if: always()
+        working-directory: daaf-docker
+        run: |
+          mkdir -p "$RUNNER_TEMP/deploy-smoke"
+          docker compose cp daaf-docker:/daaf/scripts/deploy_smoke/reports/. "$RUNNER_TEMP/deploy-smoke/" || true
+
+      - name: Upload deploy-smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-smoke-update-${{ matrix.runner }}
+          path: ${{ runner.temp }}/deploy-smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
             docker compose down -v --rmi local --remove-orphans
           fi
