@@ -719,7 +719,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import NearestNeighbors
 
 # Estimate propensity scores
-ps_model = LogisticRegression().fit(X, treatment)
+ps_model = LogisticRegression(C=1e10, max_iter=1000).fit(X, treatment)  # default C=1.0 is L2-penalized
 ps = ps_model.predict_proba(X)[:, 1]
 
 # Nearest-neighbor matching on propensity score

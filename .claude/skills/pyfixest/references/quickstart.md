@@ -173,7 +173,7 @@ depvar ~ exogenous_vars | fixed_effects | endogenous ~ instruments
 |------|----------|-------------|----------|
 | OLS | `pf.feols("Y ~ X", data)` | `smf.ols("Y ~ X", data).fit()` | `feols(Y ~ X, data)` |
 | OLS + FE | `pf.feols("Y ~ X \| fe", data)` | Manual dummies | `feols(Y ~ X \| fe, data)` |
-| Clustered SE | `fit.vcov({"CRV1": "g"})` | `fit.get_robustcov_results(cov_type="cluster")` | `vcov = ~g` |
+| Clustered SE | `fit.vcov({"CRV1": "g"})` | `smf.ols("Y ~ X", data).fit(cov_type="cluster", cov_kwds={"groups": data["g"]}, use_t=True)` | `vcov = ~g` |
 | Poisson + FE | `pf.fepois("Y ~ X \| fe", data)` | Not available with FE | `fepois(Y ~ X \| fe, data)` |
 | IV + FE | `pf.feols("Y ~ 1 \| fe \| X ~ Z", data)` | `IV2SLS` (no FE) | `feols(Y ~ 1 \| fe \| X ~ Z, data)` |
 | Regression table | `pf.etable([fit1, fit2])` | Manual construction | `etable(fit1, fit2)` |

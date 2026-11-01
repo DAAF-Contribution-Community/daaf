@@ -564,7 +564,7 @@ import numpy as np
 # Estimate propensity scores
 X = df[["x1", "x2", "x3"]].to_numpy()
 treatment = df["treat"].to_numpy()
-ps_model = LogisticRegression().fit(X, treatment)
+ps_model = LogisticRegression(C=1e10, max_iter=1000).fit(X, treatment)  # default C=1.0 is L2-penalized
 ps = ps_model.predict_proba(X)[:, 1]
 
 # Nearest-neighbor matching on propensity score

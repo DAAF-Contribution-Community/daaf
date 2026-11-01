@@ -61,9 +61,9 @@ g.es["distance"] = [1.0 / w for w in g.es["strength"]]
 ```
 
 **Practice adopted throughout this skill:** always pass `weights=` explicitly.
-The auto-use of a `weight` attribute is verified for the R binding; the
-equivalent auto-use behavior in python-igraph was **not verified**, so relying on
-it is a portability and clarity hazard. Passing `weights=` (or `weights=None` for
+The R binding uses a `weight` attribute by default; python-igraph ignores it
+unless you pass `weights="weight"` (observed 2026-11-01, python-igraph 1.0.0), so
+leaving `weights=` out is a portability and clarity hazard. Passing `weights=` (or `weights=None` for
 an explicitly unweighted call) makes every example unambiguous.
 
 ## Directed Mode

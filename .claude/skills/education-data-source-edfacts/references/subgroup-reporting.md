@@ -329,7 +329,7 @@ def analyze_subgroup_suppression(df, subgroup_col, value_col):
     analysis = (df
         .group_by(subgroup_col)
         .agg([
-            pl.count().alias("total_records"),
+            pl.len().alias("total_records"),
             (pl.col(value_col) == -3).sum().alias("suppressed"),
             (pl.col(value_col) >= 0).sum().alias("valid")
         ])
@@ -601,7 +601,7 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
             pl.col(value_col).mean().alias("avg_outcome"),
             
             # Quality metrics
-            pl.count().alias("n_schools"),
+            pl.len().alias("n_schools"),
             (pl.col(value_col) == -3).sum().alias("n_suppressed"),
             (pl.col(value_col) >= 0).sum().alias("n_valid"),
         ])

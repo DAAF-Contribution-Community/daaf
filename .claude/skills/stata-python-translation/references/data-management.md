@@ -449,7 +449,7 @@ bysort state: egen sd_score = sd(test_score)
 # polars -- window functions via .over()
 df = df.with_columns(
     pl.len().over("state").alias("state_count"),                    # _N
-    pl.col("test_score").cum_count().over("state").alias("state_obs"),  # _n (0-based)
+    pl.int_range(1, pl.len() + 1).over("state").alias("state_obs"),     # _n (1-based)
     pl.col("test_score").mean().over("state").alias("mean_score"),
     pl.col("enrollment").sum().over("state").alias("total_enroll"),
     pl.col("test_score").std().over("state").alias("sd_score"),
@@ -487,7 +487,7 @@ variables available inside `by:` blocks. Polars equivalents:
 | Stata | polars | Notes |
 |-------|--------|-------|
 | `_N` (group size) | `pl.len().over("group")` | |
-| `_n` (row number in group) | `pl.col("x").cum_count().over("group")` | 0-based in polars vs 1-based in Stata |
+| `_n` (row number in group) | `pl.int_range(1, pl.len() + 1).over("group")` | 1-based, as in Stata; `pl.col("x").cum_count()` is also 1-based but skips nulls in `x` |
 | `_n == 1` (first in group) | `pl.int_range(pl.len()).over("group") == 0` | Or use `group_by().first()` |
 | `_n == _N` (last in group) | Manual: compare row index to group size | Or use `group_by().last()` |
 

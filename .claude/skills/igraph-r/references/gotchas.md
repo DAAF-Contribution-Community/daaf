@@ -31,6 +31,7 @@ meaning of every path-based result.
 # Unweighted: pass weights = NA (NOT NULL — NULL triggers the auto-use fallback)
 betweenness(g, weights = NA)
 cluster_louvain(g, weights = NA)
+cluster_leiden(g, objective_function = "modularity", weights = rep(1, ecount(g)))   # Leiden ignores weights = NA
 
 # Weighted with strength semantics feeding a distance-based measure: convert first
 E(g)$dist <- 1 / E(g)$weight          # strength -> distance
@@ -38,12 +39,14 @@ betweenness(g, weights = E(g)$dist)   # now correct
 
 # Defensive check to run early:
 if ("weight" %in% edge_attr_names(g))
-  cat("Graph has 'weight' — it will be auto-used as a DISTANCE. Confirm intent.\n")
+  cat("Graph has 'weight' — auto-used as a DISTANCE by path measures and edge betweenness, a STRENGTH by Louvain/Leiden/walktrap. Confirm intent.\n")
 ```
 
 **`NA` vs `NULL`:** `weights = NULL` means "use the `weight` attribute if present"
 (auto-use). `weights = NA` means "ignore weights entirely." For unweighted intent
-always use `NA`.
+always use `NA`. Exception: `cluster_leiden()` and `cluster_optimal()` still use the
+attribute with `weights = NA` (observed 2026-11-01, igraph 2.2.3); there pass
+`weights = rep(1, ecount(g))` or delete the attribute.
 
 ---
 
@@ -181,19 +184,28 @@ assuming the skill text is current.
 ## 8. tidygraph Wrappers Inherit igraph Behavior
 
 **Symptom:** using `centrality_betweenness()` or `group_louvain()` from tidygraph
-doesn't escape the weight/seed traps above.
+doesn't escape the seed trap above, and `group_leiden()` doesn't escape the
+weight trap.
 
 **Cause:** tidygraph's centrality/community verbs are thin wrappers over the same
-igraph routines. They inherit weight auto-use and seed sensitivity exactly.
+igraph routines, so they inherit seed sensitivity exactly. Their weight default
+differs from raw igraph: with `weights` left out, the wrapper passes `NA` (`centrality_degree()` calls `degree()` instead), so
+`centrality_degree()`, `centrality_betweenness()`, `centrality_closeness()`,
+`centrality_eigen()`, `centrality_pagerank()`, `group_louvain()` and
+`group_walktrap()` ignore a `weight` attribute (observed 2026-11-01, tidygraph
+1.3.1). `group_leiden()` and `group_optimal()` are the exceptions: like
+`cluster_leiden()` and `cluster_optimal()`, they use the attribute whether
+`weights` is left out or set to `NA`.
 
-**Fix:** apply the same discipline through the wrappers — pass `weights = NA`,
-`set.seed()` before stochastic verbs:
+**Fix:** `set.seed()` before stochastic verbs; pass `weights = NA` anyway, so the
+unweighted intent is explicit in the script; for an unweighted `group_leiden()` or
+`group_optimal()`, drop the edge column first (`activate(edges) |> select(-weight)`):
 
 ```r
 set.seed(20260715)
 g <- g |>
   activate(nodes) |>
-  mutate(btw = centrality_betweenness(weights = NA),   # weights = NA still required
+  mutate(btw = centrality_betweenness(weights = NA),   # NA is the wrapper default; explicit for audit
          community = as.factor(group_louvain()))        # still stochastic -> seed above
 ```
 
@@ -203,7 +215,7 @@ g <- g |>
 
 Before trusting any result, confirm:
 
-- [ ] Checked `edge_attr_names(g)` for `"weight"`; passed `weights = NA` if unweighted
+- [ ] Checked `edge_attr_names(g)` for `"weight"`; passed `weights = NA` if unweighted (`cluster_leiden()`: `weights = rep(1, ecount(g))`)
 - [ ] If weighted, confirmed strength-vs-distance semantics match the measure
 - [ ] `set.seed()` before every community-detection and force-layout call
 - [ ] Directed/undirected set explicitly and matches the phenomenon

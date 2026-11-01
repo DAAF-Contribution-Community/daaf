@@ -334,7 +334,7 @@ def suppression_analysis(df, value_col, group_col=None):
         analysis = (df
             .group_by(group_col)
             .agg([
-                pl.count().alias("total"),
+                pl.len().alias("total"),
                 (pl.col(value_col) == -3).sum().alias("suppressed"),
                 (pl.col(value_col) >= 0).sum().alias("valid")
             ])

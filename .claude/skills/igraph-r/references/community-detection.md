@@ -72,14 +72,19 @@ nodes end up grouped. State the choice and its rationale in an IAT comment.
 ## The Weight Auto-Use Trap (again)
 
 As with centrality, `cluster_leiden()`, `cluster_louvain()`, and
-`cluster_edge_betweenness()` **auto-consume a `weight` edge attribute** and treat
-it as a distance. From `cluster_leiden()`:
+`cluster_edge_betweenness()` **auto-consume a `weight` edge attribute**. Louvain
+and Leiden read it as tie strength (heavier edges pull their endpoints into the
+same community), unlike the path measures, which read it as distance. From
+`cluster_leiden()`:
 
 > "If it is NULL and the input graph has a 'weight' edge attribute, then that
 > attribute will be used."
 
-Pass `weights = NA` for unweighted community detection; pass an explicit weight
-vector (documenting distance semantics) for weighted.
+Pass `weights = NA` for unweighted community detection, except in
+`cluster_leiden()` and `cluster_optimal()`, which still use the attribute with `NA` (observed
+2026-11-01, igraph 2.2.3): there pass `weights = rep(1, ecount(g))` or drop the
+attribute with `delete_edge_attr(g, "weight")`. Pass an explicit weight vector
+(documenting strength semantics) for weighted.
 
 ---
 
@@ -115,7 +120,7 @@ set.seed(SEED)
 comm_leiden <- cluster_leiden(
   g_undir,
   objective_function = "modularity",   # match Louvain's objective for comparability
-  weights = NA                         # unweighted; suppress auto-use
+  weights = rep(1, ecount(g_undir))    # unweighted (cluster_leiden() ignores weights = NA)
 )
 cat("Leiden communities:", length(comm_leiden),
     " Modularity:", round(modularity(g_undir, membership(comm_leiden), weights = NA), 3), "\n")

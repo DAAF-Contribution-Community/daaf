@@ -656,7 +656,8 @@ summarize income [aw=weight]
 
 Python:
 ```python
-# Weighted regression: use WLS in statsmodels
+# Weighted regression: WLS treats weights as precision (analytic) weights, like [aw=];
+# for [pw=] also request robust SEs: .fit(cov_type="HC1", use_t=True)
 import statsmodels.api as sm
 model = sm.WLS(y, X, weights=pdf["weight"]).fit()
 

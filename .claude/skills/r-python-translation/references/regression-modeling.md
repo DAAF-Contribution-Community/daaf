@@ -556,7 +556,7 @@ fit.vcov({"CRV1": "state+year"})
 
 ```python
 # At estimation time
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1")
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1", use_t=True)
 
 # Or post-estimation
 fit = smf.ols("y ~ x1 + x2", data=df).fit()
@@ -564,7 +564,7 @@ robust = fit.get_robustcov_results(cov_type="HC1")
 
 # Clustered SEs
 fit = smf.ols("y ~ x1 + x2", data=df).fit(
-    cov_type="cluster", cov_kwds={"groups": df["state"]}
+    cov_type="cluster", cov_kwds={"groups": df["state"]}, use_t=True
 )
 ```
 
@@ -573,15 +573,15 @@ fit = smf.ols("y ~ x1 + x2", data=df).fit(
 | SE Type | R (sandwich) | R (fixest) | pyfixest | statsmodels |
 |---------|-------------|-----------|----------|-------------|
 | IID | Default | `"iid"` | `"iid"` | Default |
-| HC0 (White) | `vcovHC(type="HC0")` | N/A | N/A | `cov_type="HC0"` |
-| HC1 | `vcovHC(type="HC1")` | `"hetero"` or `"HC1"` | `"hetero"` or `"HC1"` | `cov_type="HC1"` |
-| HC2 | `vcovHC(type="HC2")` | N/A | `"HC2"` (no FE/IV) | `cov_type="HC2"` |
-| HC3 | `vcovHC(type="HC3")` | N/A | `"HC3"` (no FE/IV) | `cov_type="HC3"` |
-| 1-way cluster | `vcovCL(cluster=...)` | `vcov = ~g` | `{"CRV1": "g"}` | `cov_type="cluster"` |
-| 2-way cluster | `vcovCL(cluster=cbind(...))` | `vcov = ~g1 + g2` | `{"CRV1": "g1+g2"}` | Not built-in |
-| Cluster jackknife | N/A | N/A | `{"CRV3": "g"}` | N/A |
-| Newey-West (HAC) | `vcovHAC(fit)` | `"NW"` | `"NW"` | `cov_type="HAC"` |
-| Driscoll-Kraay | N/A | `"DK"` | `"DK"` | N/A (use linearmodels) |
+| HC0 (White) | `vcovHC(type="HC0")` | `"hetero"` + `ssc = ssc(K.adj = FALSE)` | N/A | `cov_type="HC0"` |
+| HC1 | `vcovHC(type="HC1")` | `"hetero"` or `"HC1"` | `"hetero"` or `"HC1"` | `cov_type="HC1", use_t=True` |
+| HC2 | `vcovHC(type="HC2")` | `"hc2"` | `"HC2"` (no FE/IV) | `cov_type="HC2"` |
+| HC3 | `vcovHC(type="HC3")` | `"hc3"` | `"HC3"` (no FE/IV) | `cov_type="HC3"` |
+| 1-way cluster | `vcovCL(cluster=...)` | `vcov = ~g` | `{"CRV1": "g"}` | `cov_type="cluster", use_t=True` |
+| 2-way cluster | `vcovCL(cluster=cbind(...))` | `vcov = ~g1 + g2` | `{"CRV1": "g1+g2"}` | `cov_type="cluster"` (2-column integer `groups`) |
+| Cluster jackknife | `vcovJK(fit, cluster = ~g, center = "estimate")` | N/A | `{"CRV3": "g"}` | N/A |
+| Newey-West (HAC) | `NeweyWest(fit)` | `"NW"` | `"NW"` | `cov_type="HAC", cov_kwds={"maxlags": L}` |
+| Driscoll-Kraay | `vcovPL(fit, cluster = ~id + time)` | `"DK"` | `"DK"` | `cov_type="hac-groupsum"` (`time`, `maxlags`) |
 
 **Driscoll-Kraay in linearmodels:**
 ```python
@@ -594,8 +594,12 @@ fit = PanelOLS.from_formula("y ~ x + EntityEffects", data=df_panel).fit(
 
 - **HC2 and HC3 in pyfixest** are only available for models without fixed effects
   or IV. With FE, use HC1 or clustered SEs.
-- **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
-  linearmodels instead.
+- **Two-way clustering in statsmodels** takes a 2-column integer `groups` array
+  (`cov_kwds={"groups": df[["g1", "g2"]]}`); its SEs can differ from pyfixest's
+  two-way CRV1.
+- **statsmodels p-values** use the normal distribution for every robust
+  `cov_type` passed to `.fit()` unless `use_t=True` is added;
+  `get_robustcov_results()` on a default fit already uses t.
 - **Default SE changed in pyfixest 0.40** (unchanged through 0.60): Both R fixest
   0.13 and pyfixest (0.40 onward, including the current 0.60.0) default to `"iid"`.
   Older code that relied on automatic clustering by the first FE will silently

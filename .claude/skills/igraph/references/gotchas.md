@@ -94,14 +94,15 @@ Note the asymmetry: **eigenvector centrality, PageRank, and weighted degree
 closeness, and shortest paths** treat it as *distance* (invert first). Keep two
 attributes (`weight`/`strength` and `distance`) to stay unambiguous.
 
-## 5. Relying on Unverified Weight Auto-Use
+## 5. Expecting the `weight` Attribute to Be Used Automatically
 
-**Symptom:** a weighted call gives different results across environments, or an
-"unweighted" call unexpectedly uses weights.
+**Symptom:** a "weighted" analysis returns unweighted numbers, or R and Python
+results disagree on the same graph.
 
-**Cause:** the R binding auto-uses a `weight` edge attribute when `weights` is
-`NULL`. The equivalent auto-use in **python-igraph was not verified**. Relying on
-it is a portability and clarity hazard.
+**Cause:** the R binding uses a `weight` edge attribute when `weights` is
+`NULL`. python-igraph does not: with the default `weights=None` it ignores the
+attribute (centrality, paths, Louvain, Leiden, walktrap; observed 2026-11-01,
+python-igraph 1.0.0), so code ported from R silently drops its weights.
 
 **Fix:** always pass `weights=` explicitly — `weights=g.es["weight"]` (or
 `weights=g.es["distance"]`) for weighted, `weights=None` for explicitly

@@ -92,7 +92,7 @@ Each topic in `./references/` contains focused documentation:
 | `models.md` | parsnip model specs: linear_reg, logistic_reg, rand_forest, boost_tree, nearest_neighbor | Choosing and configuring models |
 | `workflows.md` | workflow() + add_recipe + add_model, fit(), predict(), augment() | Building ML pipelines |
 | `tuning.md` | tune(), tune_grid(), collect_metrics(), select_best(), finalize_workflow | Hyperparameter optimization |
-| `resampling.md` | vfold_cv, bootstraps, loo_cv, group_vfold_cv, strata, assessment/analysis | Creating resamples |
+| `resampling.md` | vfold_cv, bootstraps, loo_cv, group_vfold_cv, sliding_period, rolling_origin, strata, assessment/analysis | Creating resamples |
 | `engines.md` | ranger, glmnet, xgboost, kknn: engine-specific args, installation, tuning params | Engine configuration |
 | `unsupervised.md` | PCA via recipes::step_pca, UMAP via uwot::umap(), k-means via stats::kmeans | Dimension reduction, clustering |
 | `evaluation.md` | yardstick metrics: rmse, accuracy, roc_auc, conf_mat, metric_set() | Evaluating model performance |
@@ -368,6 +368,7 @@ preds <- fit |> predict(new_data = test_data)
 | bootstraps | `./references/resampling.md` |
 | loo_cv | `./references/resampling.md` |
 | group_vfold_cv | `./references/resampling.md` |
+| sliding_period / rolling_origin (time-ordered splits) | `./references/resampling.md` |
 | strata argument | `./references/resampling.md` |
 | analysis() / assessment() | `./references/resampling.md` |
 | initial_split / training / testing | `./references/resampling.md` |

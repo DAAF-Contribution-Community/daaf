@@ -5,10 +5,8 @@ graphics applied to networks. The dominant discipline here is **seeding the layo
 force-directed layouts randomize initialization, so an unseeded figure is
 irreproducible.
 
-> **Container-rebuild reminder:** `ggraph` (and `tidygraph`) are added to the
-> Dockerfile but not loadable until the container is rebuilt. Code in this file will
-> error with "there is no package called 'ggraph'" until then. See the skill's
-> Version Notes.
+> **Packages:** `ggraph` and `tidygraph` load in the container (see the skill's
+> Version Notes).
 
 ---
 

@@ -1,7 +1,7 @@
 # Resampling
 
 Resampling strategies via rsample: v-fold cross-validation, bootstrap, leave-one-out,
-grouped CV, stratification, and the analysis/assessment split API.
+grouped CV, time-ordered splits, stratification, and the analysis/assessment split API.
 
 ## Train/Test Split
 
@@ -93,6 +93,45 @@ group_folds <- group_vfold_cv(train_data, group = school_id, v = 10)
 
 This prevents data leakage when observations within a group are correlated.
 
+## Time-Ordered Splits (Panel or Time-Series Data)
+
+`initial_split()`, `vfold_cv()` and `group_vfold_cv()` ignore time: later years land in the
+training data, and CV overstates how well the model predicts future years. Hold out the last
+period whole and resample forward only. Choose the scheme by what the model will predict
+(`supervised-ml.md` in the `data-scientist` skill, § Cross-Validation Strategies for Social
+Science Data).
+
+```r
+# --- Final holdout: the last year, whole (initial_split would mix years) ---
+train_data <- filter(panel, year < 2019)
+test_data  <- filter(panel, year == 2019)
+
+# --- Forward-only CV holding out whole years: train on all earlier years ---
+# sliding_period() needs a Date (or POSIXct) index sorted ascending
+train_data <- train_data |>
+  mutate(year_date = as.Date(paste0(year, "-01-01"))) |>
+  arrange(year_date)
+year_folds <- sliding_period(
+  train_data, index = year_date, period = "year",
+  lookback = Inf,    # expanding window: every earlier year
+  assess_stop = 1,   # assess on the next year only
+  skip = 2           # first fold trains on 3 years (2012-2014)
+)
+# 4 folds: assess 2015, 2016, 2017, 2018
+
+# --- Row-based rolling origin (one row per period, e.g. a single series) ---
+# rolling_origin() counts rows, not dates: with several rows per year a fold
+# boundary can fall inside a year, so use sliding_period() for panel data
+series <- train_data |> group_by(year) |> summarise(outcome = mean(outcome))
+ro_folds <- rolling_origin(series, initial = 3, assess = 1, cumulative = TRUE)
+
+results <- fit_resamples(wf, resamples = year_folds)
+collect_metrics(results)
+```
+
+`year_folds` works anywhere `vfold_cv()` folds do (`fit_resamples()`, `tune_grid()`).
+`sliding_period()` errors if the index is not sorted ("`.i` must be in ascending order").
+
 ## Accessing Splits
 
 Each resample contains an analysis set (training fold) and an assessment set
@@ -171,6 +210,8 @@ val_set <- validation_set(iv)
 | Bootstrap | `bootstraps(data, times, strata)` | Confidence intervals |
 | LOO CV | `loo_cv(data)` | Small datasets only |
 | Group V-fold | `group_vfold_cv(data, group, v)` | Clustered/nested data |
+| Time-ordered CV (whole periods) | `sliding_period(data, index, period = "year", lookback = Inf, assess_stop = 1)` | Panel / time-series data; forward only |
+| Rolling origin (rows) | `rolling_origin(data, initial, assess, cumulative = TRUE)` | One row per period |
 | Validation set | `initial_validation_split(data, prop = c(.6, .2))` + `validation_set()` | Large datasets |
 | Get training fold | `analysis(split)` | Manual access |
 | Get validation fold | `assessment(split)` | Manual access |

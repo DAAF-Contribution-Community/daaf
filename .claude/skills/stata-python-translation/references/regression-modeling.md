@@ -73,13 +73,15 @@ fit = pf.feols("y ~ x1 + x2", data=df, vcov="HC3")     # HC3
 
 **Python (statsmodels):**
 ```python
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1")  # Must specify HC1 explicitly
-fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC3")
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC1", use_t=True)  # Must specify HC1 explicitly; use_t=True for t p-values
+fit = smf.ols("y ~ x1 + x2", data=df).fit(cov_type="HC3", use_t=True)
 ```
 
 Stata's `robust` option produces HC1 standard errors (small-sample adjusted
 White SEs). pyfixest's `vcov="hetero"` defaults to HC1, matching Stata.
-statsmodels defaults to IID, so you must specify `cov_type="HC1"` to match.
+statsmodels defaults to IID, so you must specify `cov_type="HC1"` to match the
+SEs, and `use_t=True` to match the p-values (without it, every robust
+`cov_type` uses the normal distribution).
 
 ### OLS with Clustered Standard Errors
 
@@ -98,9 +100,10 @@ fit = pf.feols("y ~ x1 + x2", data=df, vcov={"CRV1": "state+year"})  # Two-way
 **Python (statsmodels):**
 ```python
 fit = smf.ols("y ~ x1 + x2", data=df).fit(
-    cov_type="cluster", cov_kwds={"groups": df["state"]}
+    cov_type="cluster", cov_kwds={"groups": df["state"]}, use_t=True
 )
-# Note: statsmodels does not support two-way clustering natively
+# Two-way: integer-coded groups, cov_kwds={"groups": df[["state_id", "year"]]};
+# its SEs can differ from pyfixest's two-way CRV1
 ```
 
 ### Accessing Results
@@ -128,7 +131,7 @@ fit = smf.ols("y ~ x1 + x2", data=df).fit(
 | Requires `.fit()` | No | No | **Yes** |
 | Formula quoting | Unquoted | String | String |
 | Default SE | IID | IID (since v0.40) | IID |
-| `robust` shortcut | `, robust` | `vcov="hetero"` | `cov_type="HC1"` |
+| `robust` shortcut | `, robust` | `vcov="hetero"` | `cov_type="HC1", use_t=True` |
 | Auto-prints results | Yes | No | No |
 
 ---
@@ -420,7 +423,7 @@ np.exp(fit.params)
 fit = smf.probit("y ~ x1 + x2", data=df).fit()
 
 # Robust SEs
-fit = smf.logit("y ~ x1 + x2", data=df).fit(cov_type="HC1")
+fit = smf.logit("y ~ x1 + x2", data=df).fit(cov_type="HC0")  # Logit returns HC0 for "HC1"-"HC3" too
 ```
 
 ### Ordered and Multinomial Models
@@ -461,7 +464,7 @@ nbreg y x1 x2
 ```python
 # Poisson (statsmodels)
 fit = smf.poisson("y ~ x1 + x2", data=df).fit()
-fit = smf.poisson("y ~ x1 + x2", data=df).fit(cov_type="HC1")  # Robust
+fit = smf.poisson("y ~ x1 + x2", data=df).fit(cov_type="HC0")  # Robust (HC1-HC3 also return HC0 here)
 
 # Poisson pseudo-ML with FE (pyfixest — matches ppmlhdfe)
 fit = pf.fepois("y ~ x1 + x2 | state + year", data=df)
@@ -757,14 +760,18 @@ results, different p-values, and potentially different conclusions.
 | Stata | pyfixest | statsmodels | Notes |
 |-------|----------|-------------|-------|
 | (default, no option) | `vcov="iid"` | default | IID (classical) |
-| `, robust` | `vcov="hetero"` | `cov_type="HC1"` | HC1 (Stata's robust default) |
+| `, robust` | `vcov="hetero"` | `cov_type="HC1", use_t=True` | HC1 (Stata's robust default) |
 | `, vce(hc2)` | `vcov="HC2"` | `cov_type="HC2"` | HC2 (no FE/IV in pyfixest) |
 | `, vce(hc3)` | `vcov="HC3"` | `cov_type="HC3"` | HC3 (no FE/IV in pyfixest) |
-| `, vce(cluster cl)` | `vcov={"CRV1": "cl"}` | `cov_type="cluster"` | One-way cluster |
-| `, vce(cluster cl1 cl2)` | `vcov={"CRV1": "cl1+cl2"}` | Not supported | Two-way cluster |
-| `, vce(bootstrap)` | Wild bootstrap (pyfixest) | `cov_type="hac-panel"` | Bootstrap |
-| (Newey-West HAC) | `vcov="NW"` | `cov_type="HAC"` | Time series |
-| (Driscoll-Kraay) | `vcov="DK"` | Not supported | Panel; use linearmodels |
+| `, vce(cluster cl)` | `vcov={"CRV1": "cl"}` | `cov_type="cluster", use_t=True` | One-way cluster |
+| `, vce(cluster cl1 cl2)` | `vcov={"CRV1": "cl1+cl2"}` | `cov_type="cluster"`, 2-column integer `groups` | Two-way cluster |
+| `, vce(bootstrap)` | Wild bootstrap (pyfixest) | No bootstrap `cov_type` (resample by hand) | Bootstrap |
+| (Newey-West HAC) | `vcov="NW"` | `cov_type="HAC", cov_kwds={"maxlags": L}` | Time series |
+| (Driscoll-Kraay) | `vcov="DK"` | `cov_type="hac-groupsum"` (`time`, `maxlags`) | Panel; or linearmodels |
+
+statsmodels p-values use the normal distribution for every robust `cov_type`
+unless `.fit(..., use_t=True)` is passed; with it, HC1 and one-way cluster match
+pyfixest (cluster df = G - 1).
 
 ### Switching SEs Post-Estimation
 
@@ -790,16 +797,17 @@ fit.summary()                          # Now shows new SEs
 
 - **HC2 and HC3 in pyfixest** are only available for models without fixed effects
   or IV. With FE, use HC1 or clustered SEs.
-- **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
-  linearmodels instead.
+- **Two-way clustering in statsmodels** takes a 2-column integer `groups` array
+  (`cov_kwds={"groups": df[["g1", "g2"]]}`); its SEs can differ from pyfixest's
+  two-way CRV1.
 - **Default SE changed in pyfixest v0.40** (still the default through 0.60): Both
   R fixest 0.13 and pyfixest (v0.40 onward, including the 0.60.0 DAAF ships) now
   default to `"iid"`. Older pyfixest code that relied on automatic clustering by
   the first FE variable will silently produce different results.
 - **Stata's `robust` = HC1**: When a Stata do-file uses `, robust`, the Python
-  equivalent is `vcov="hetero"` (pyfixest) or `cov_type="HC1"` (statsmodels). Do
-  not use HC0 or HC3 when replicating Stata results unless the Stata code
-  explicitly specifies those.
+  equivalent is `vcov="hetero"` (pyfixest) or `cov_type="HC1", use_t=True`
+  (statsmodels). Do not use HC0 or HC3 when replicating Stata results unless the
+  Stata code explicitly specifies those.
 
 ### Driscoll-Kraay in linearmodels
 

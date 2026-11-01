@@ -138,14 +138,14 @@ When debugging Stage 8 analysis failures: if the error traceback involves a spec
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
 - **geopandas:** CRS mismatch warnings (sjoin, sjoin_nearest, overlay and clip emit a UserWarning and still run, returning wrong or empty matches; errors come from to_crs() on a CRS-less frame, pd.concat of frames with different CRS, or set_crs() over a different existing CRS), invalid geometry, spatial join row explosion, Shapely 2.x migration issues
 - **scikit-learn:** Data leakage from fitting on test data, forgetting to scale features, misinterpreting t-SNE distances as meaningful, class imbalance handling, pipeline ordering errors
-- **igraph:** Non-deterministic community detection without a seed (`random.seed()`), closeness/betweenness on disconnected graphs, weights treated as distances by path measures (betweenness, closeness, shortest paths) but as strengths by community detection, and used only when passed (python-igraph uses a `weight` attribute only if `weights="weight"` is given), directed-vs-undirected mode mismatches, unseeded force-directed layouts breaking figure reproducibility
+- **igraph:** Non-deterministic community detection without a seed (`random.seed()`), closeness/betweenness on disconnected graphs, weights treated as distances by path measures (betweenness, closeness, shortest paths) but as strengths by Louvain and Leiden, and used only when passed (python-igraph uses a `weight` attribute only if `weights="weight"` is given), directed-vs-undirected mode mismatches, unseeded force-directed layouts breaking figure reproducibility
 
 **R libraries:**
 - **fixest:** Formula parsing differences from lm(), absorbed variable warnings, sunab() syntax
 - **r-stats (lm/glm):** Convergence failures in glm(), singular.ok defaults, sandwich SE version mismatches
 - **tidyverse:** Non-standard evaluation pitfalls, arrow parquet type coercions, join suffix collisions
 - **ggplot2:** Aesthetic inheritance confusion, scale_*_continuous on discrete data, coord_flip deprecation patterns
-- **igraph-r (+ tidygraph/ggraph):** `cluster_leiden`/`cluster_louvain` erroring on directed input (require `as.undirected()`), `weight` attribute silently auto-used (as distance by path measures, as strength by community detection; pass `weights = NA` to suppress; `cluster_leiden()` still uses it with `NA` in igraph 2.2.3, so pass `weights = rep(1, ecount(g))`), non-deterministic community detection without `set.seed()`, unseeded ggraph layouts breaking figure reproducibility
+- **igraph-r (+ tidygraph/ggraph):** `cluster_leiden`/`cluster_louvain` erroring on directed input (require `as.undirected()`), `weight` attribute silently auto-used (as distance by path measures and `cluster_edge_betweenness()`, as strength by Louvain, Leiden and walktrap; pass `weights = NA` to suppress; `cluster_leiden()` and `cluster_optimal()` still use it with `NA` in igraph 2.2.3, so pass `weights = rep(1, ecount(g))`), non-deterministic community detection without `set.seed()`, unseeded ggraph layouts breaking figure reproducibility
 
 ### 6. Common Error Patterns
 

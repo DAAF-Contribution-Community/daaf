@@ -9,8 +9,8 @@ depend on.
 
 As in centrality, path functions read edge `weight` as **distance** — higher
 weight = longer path. If weights encode strength, invert them first (see
-`centrality.md`). Pass `weights=` explicitly; do not rely on unverified
-auto-use.
+`centrality.md`). Pass `weights=` explicitly: python-igraph ignores a `weight`
+attribute unless you do.
 
 ## Shortest Paths
 

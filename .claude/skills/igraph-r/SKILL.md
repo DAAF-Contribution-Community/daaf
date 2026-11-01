@@ -62,10 +62,11 @@ tidygraph and ggraph give igraph a tidyverse face, matching DAAF's R house style
   `ggraph(g, layout = ...) + geom_edge_link() + geom_node_point()`. Layouts are
   a scale-like concept; force-directed layouts are stochastic and need a seed.
 - **igraph underneath**: tidygraph re-exports centrality and community-detection
-  wrappers (`centrality_degree()`, `group_louvain()`, etc.), but they call the
-  same igraph routines and inherit the same gotchas (weight auto-use, seed
-  sensitivity). This skill shows both the raw igraph call and the tidygraph verb
-  where useful.
+  wrappers (`centrality_degree()`, `group_louvain()`, etc.) that call the same
+  igraph routines and inherit seed sensitivity. Their weight default is `NA`
+  (unweighted), except `group_leiden()` and `group_optimal()`, which use a
+  `weight` attribute even with `NA` (see `gotchas.md` § 8). This skill shows both
+  the raw igraph call and the tidygraph verb where useful.
 
 ## Version Notes
 
@@ -74,18 +75,16 @@ Versions targeted in the DAAF container (R 4.5.3):
 | Package | Version | Role | Status |
 |---------|---------|------|--------|
 | igraph | 2.2.3 | C-core graph engine | **Installed** (P3M snapshot 2026-04-15; CRAN latest is newer) |
-| tidygraph | 1.3.1 | Tidy `tbl_graph` API over igraph | **Added to Dockerfile; NOT loadable until container rebuild** |
-| ggraph | 2.2.2 | Grammar-of-graphics network figures | **Added to Dockerfile; NOT loadable until container rebuild** |
-| graphlayouts | (P3M snapshot) | Layout algorithms; arrives as a ggraph dependency | **Added transitively with ggraph; exact snapshot version unresolved** |
+| tidygraph | 1.3.1 | Tidy `tbl_graph` API over igraph | **Installed** (loads; observed 2026-11-01, tidygraph 1.3.1) |
+| ggraph | 2.2.2 | Grammar-of-graphics network figures | **Installed** (loads; observed 2026-11-01, ggraph 2.2.2) |
+| graphlayouts | (P3M snapshot) | Layout algorithms; arrives as a ggraph dependency | **Installed** with ggraph (observed 2026-11-01, graphlayouts 1.2.3) |
 
-**Installation state (read before running any tidygraph/ggraph code):**
+**Installation state:**
 - **igraph 2.2.3** is already installed — it was previously a transitive dependency
   and is now promoted to a first-class framework package. Raw-igraph code runs today.
-- **tidygraph 1.3.1** and **ggraph 2.2.2** were added to the Dockerfile's framework
-  R block but are **not loadable until the container is rebuilt**. Any script that
-  `library(tidygraph)` / `library(ggraph)` will error until then. To rebuild: exit
-  the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows)
-  from the `daaf-docker` folder.
+- **tidygraph 1.3.1** and **ggraph 2.2.2** are in the Dockerfile's framework R
+  block and load in the container: `library(tidygraph)` and `library(ggraph)`
+  attach, and a seeded `ggraph()` figure renders (observed 2026-11-01, R 4.5.3).
 - **graphlayouts** arrives as a ggraph dependency. At the P3M 2026-04-15 snapshot
   it resolves to the release current on that date; the exact version is
   **deliberately not pinned here** (the current CRAN 1.2.4 postdates the snapshot,
@@ -170,7 +169,7 @@ Centrality?
 +-- Degree (in/out/all) -> ./references/centrality.md
 +-- Betweenness / closeness -> ./references/centrality.md (check components first!)
 +-- Eigenvector / PageRank -> ./references/centrality.md
-+-- Unweighted result but graph has a 'weight' attribute -> ./references/gotchas.md (pass weights = NA)
++-- Unweighted result but graph has a 'weight' attribute -> ./references/gotchas.md (pass weights = NA; Leiden: rep(1, ecount(g)))
 +-- Weighted centrality (weights = distances) -> ./references/centrality.md
 ```
 
@@ -285,7 +284,7 @@ cat("Saved: nodes_with_community.parquet\n")
 ```r
 library(igraph)      # graph engine (centrality, community, paths)
 library(tidygraph)   # tbl_graph, activate(), dplyr verbs on graphs
-library(ggraph)      # grammar-of-graphics network figures (needs container rebuild)
+library(ggraph)      # grammar-of-graphics network figures
 library(dplyr)       # data manipulation for node/edge tables
 library(ggplot2)     # themes/scales for ggraph
 ```
@@ -305,7 +304,7 @@ library(ggplot2)     # themes/scales for ggraph
 | Eigenvector centrality | `eigen_centrality(g, weights = NA)$vector` | igraph |
 | PageRank | `page_rank(g)$vector` | igraph |
 | Community (Louvain) | `set.seed(s); cluster_louvain(g, weights = NA)` | igraph |
-| Community (Leiden) | `set.seed(s); cluster_leiden(g, objective_function = "modularity")` | igraph |
+| Community (Leiden) | `set.seed(s); cluster_leiden(g, objective_function = "modularity", weights = rep(1, ecount(g)))` | igraph |
 | Membership vector | `membership(comm)` | igraph |
 | Modularity of a partition | `modularity(comm)` | igraph |
 | Connected components | `components(g)` | igraph |
@@ -319,7 +318,7 @@ library(ggplot2)     # themes/scales for ggraph
 
 | Rule | Why | Reference |
 |------|-----|-----------|
-| **Pass `weights = NA` for unweighted centrality/community** | igraph silently auto-uses a `weight` edge attribute and treats it as **distance** (higher = longer path), not strength | `gotchas.md`, `centrality.md` |
+| **Pass `weights = NA` for unweighted centrality/community** (`cluster_leiden()`: `weights = rep(1, ecount(g))`) | igraph silently auto-uses a `weight` edge attribute: path-based centrality and `cluster_edge_betweenness()` read it as **distance** (higher = longer path), Louvain, Leiden and walktrap as strength | `gotchas.md`, `centrality.md` |
 | **`set.seed()` before any stochastic step** | Force-directed layouts and community detection are non-deterministic; unseeded results are irreproducible. igraph's old `srand()` is deprecated/ignored — use `set.seed()` | `gotchas.md`, `community-detection.md`, `visualization.md` |
 
 ## Topic Index

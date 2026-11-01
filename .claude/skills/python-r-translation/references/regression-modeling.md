@@ -190,10 +190,10 @@ feature; base R uses the sandwich + lmtest ecosystem.
 | SE Type | R (fixest) | R (sandwich) | Python (pyfixest) | Python (statsmodels) |
 |---------|-----------|-------------|-------------------|---------------------|
 | IID | Default | Default | `"iid"` | Default |
-| HC1 | `vcov = "hetero"` | `vcovHC(type="HC1")` | `"hetero"` | `cov_type="HC1"` |
-| 1-way cluster | `vcov = ~g` | `vcovCL(cluster=...)` | `{"CRV1": "g"}` | `cov_type="cluster"` |
-| 2-way cluster | `vcov = ~g1 + g2` | `vcovCL(cluster=cbind(...))` | `{"CRV1": "g1+g2"}` | Not built-in |
-| Newey-West | `vcov = "NW"` | `vcovHAC(fit)` | `"NW"` | `cov_type="HAC"` |
+| HC1 | `vcov = "hetero"` | `vcovHC(type="HC1")` | `"hetero"` | `cov_type="HC1", use_t=True` |
+| 1-way cluster | `vcov = ~g` | `vcovCL(cluster=...)` | `{"CRV1": "g"}` | `cov_type="cluster", use_t=True` |
+| 2-way cluster | `vcov = ~g1 + g2` | `vcovCL(cluster=cbind(...))` | `{"CRV1": "g1+g2"}` | `cov_type="cluster"` (2-column integer `groups`) |
+| Newey-West | `vcov = "NW"` | `NeweyWest(fit)` | `"NW"` | `cov_type="HAC", cov_kwds={"maxlags": L}` |
 
 ---
 
