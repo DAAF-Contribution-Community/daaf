@@ -520,26 +520,11 @@ Both changes go in the same Dockerfile, so a single rebuild covers them both. Af
 
 If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can ask DAAF to add the missing library then (and run `rebuild_daaf` again after the second edit).
 
-### Runtime Installation for Quick Testing
+### Trying a Package Quickly
 
-Sometimes you just want to try a package quickly during a session without going through the rebuild process.
+Sometimes you just want to try a package without committing to it. The quick way is still the Dockerfile: add the package to the **user additions block** and rebuild, which typically takes seconds to a couple of minutes because of layer caching (see Step 1 above). If the package doesn't work out, ask DAAF to remove the line and rebuild again.
 
-> **This is a *you*-only action — DAAF cannot do it for you.** DAAF's agents are blocked from runtime package installs by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install networkx real quick" will be refused. Runtime installs are yours to run: type the command as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks. And whichever way you install it, it's a throwaway: the durable path is always the `Dockerfile`. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
-
-To install one yourself for a quick test, run (via `!`-prefix or host terminal):
-
-```bash
-uv pip install --user networkx
-```
-
-This installs the package into your user directory inside the container, which works because it doesn't require root privileges. You can start using the package immediately in your current session. Note that `uv` inside the container honors the image's frozen environment date (`UV_EXCLUDE_NEWER`), so it installs the newest version *as of that date* — the same one a Dockerfile addition would get. Plain `pip install --user` does not apply the cutoff.
-
-**Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
-
-The recommended workflow is:
-1. Install at runtime to test — **you** run `uv pip install --user <package>` via `!`-prefix or a host terminal (DAAF is blocked from running it)
-2. Verify it works for your use case
-3. Ask DAAF to add it to the Dockerfile, then rebuild to make it permanent
+DAAF does not install packages into a running container. Its agents are blocked from runtime installs by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install some-package real quick" will be refused, and the image does not include `pip`. LaTeX packages and Quarto's add-on tools (`tlmgr`, `quarto install`) are off-limits at runtime too, though no hook blocks every form; see [LaTeX Packages](#latex-packages) for how to add a LaTeX package. Anything installed into a running container would also live outside the Docker volume that holds your research, so it would be lost whenever the container is rebuilt or recreated. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
@@ -547,17 +532,15 @@ If you are **developing the framework itself** (not just running research), an o
 
 ### Understanding the `uv` Package Manager
 
-You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). For a one-off runtime install — which only *you* can run, via `!`-prefix or a host terminal, since DAAF's agents are blocked from runtime installs (see the callout above) — use `uv pip install --user` instead, because you're running as a non-root user.
-
-Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs. One difference to keep in mind: inside the container `uv` resolves at the image's frozen environment date, while `pip` resolves against today's PyPI, so the two can install different versions of the same package.
+You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). The image has no separate `pip`: inside the container, `uv pip` is also how you inspect what's installed (next section), and a `uv pip compile` dry-run there resolves at the image's frozen environment date, just as the build does.
 
 ### Checking What's Already Installed
 
 Before adding a package, you might want to check if it's already available. You have a few options:
 
 - **Ask DAAF directly:** "What Python packages are installed?" -- DAAF can check for you
-- **Run `pip list`** inside the container to see all installed packages
-- **Run `pip show <package>`** to check if a specific package is installed and see its version
+- **Run `uv pip list`** inside the container to see all installed packages
+- **Run `uv pip show <package>`** to check if a specific package is installed and see its version
 - **Read the Dockerfile** to see exactly what's pinned and organized by category
 
 ### Common Scenarios
