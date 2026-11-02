@@ -18,7 +18,7 @@ This guide covers all forms of contribution to DAAF, from filing an issue to mod
 - [**Filing Effective Issues**](#filing-effective-issues)
 - [**Testing Your Changes**](#testing-your-changes)
 - [**Change Surfaces and Pull Request Evidence**](#change-surfaces-and-pull-request-evidence)
-- [**Upgrading Custom Components to v3.0.0**](#upgrading-custom-components-to-v300)
+- [**Guardrails Your Custom Components Must Follow**](#guardrails-your-custom-components-must-follow)
 - [**What DAAFBench Scores Mean**](#what-daafbench-scores-mean)
 - [**Using Session Logs for Debugging and Issue Reports**](#using-session-logs-for-debugging-and-issue-reports)
 - [**Repository Hygiene and Generated Artifacts**](#repository-hygiene-and-generated-artifacts)
@@ -29,7 +29,7 @@ This guide covers all forms of contribution to DAAF, from filing an issue to mod
 
 ## Introduction
 
-Thank you for your interest in contributing to DAAF. Whether you're reporting a bug, suggesting an improvement, authoring a new data source skill, or proposing changes to core framework logic -- your contribution is valued and appreciated. Before participating, please review the project's [Contributor Covenant Code of Conduct v2.0](CODE_OF_CONDUCT.md). By participating, you agree to uphold its standards. Instances of unacceptable behavior may be reported to the project maintainer, Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). All reports will be reviewed and investigated promptly and confidentially.
+Thank you for your interest in contributing to DAAF. Whether you're reporting a bug, suggesting an improvement, authoring a new data source skill, or proposing changes to core framework logic -- your contribution is valued and appreciated. Before participating, please review the project's [Contributor Covenant Code of Conduct v2.0](CODE_OF_CONDUCT.md). By participating, you agree to uphold its standards. Instances of unacceptable behavior may be reported to the project maintainer, Brian Heseung Kim ([@brhkim](https://github.com/brhkim)), or by email to support@openaugments.org. All reports will be reviewed and investigated promptly and confidentially.
 
 **A note from the maintainer:**
 As an important heads-up: I am a researcher by training, not a software developer, and this is my first significant open-source project. I am still learning the norms, tooling, and rhythms of open-source collaboration. If something about the contribution process feels rough around the edges, please bear with me -- and please do not hesitate to suggest improvements. I welcome patience, candor, and constructive feedback as this project and its community grow together. Thank you!
@@ -92,10 +92,11 @@ The standard contribution workflow has ten steps:
    ```bash
    git checkout -b my-feature main
    ```
-5. **Install pre-commit hooks** (already included in the main DAAF Dockerfile setup, but here just in case):
+5. **Install the pre-commit hooks** in your clone. The DAAF container already has the `pre-commit` tool, so one command does it:
    ```bash
-   pip install pre-commit && pre-commit install
+   pre-commit install
    ```
+   On a clone outside the container, install `pre-commit` first (for example with `pipx install pre-commit`).
 6. **Make your changes**, then commit with a DCO sign-off (see [Developer Certificate of Origin](#developer-certificate-of-origin) below):
    ```bash
    git commit -s -m "feat: add new data source skill for NHGIS"
@@ -231,7 +232,7 @@ These contributions require more engagement but are well within reach for anyone
 
 - **Improving existing documentation.** This goes beyond "point out what's confusing" to actually rewriting sections, adding examples, restructuring for clarity, or filling gaps. Good documentation contributions require understanding the material well enough to explain it better -- which often means running DAAF yourself and noting where the docs don't match reality. The user-facing documentation (`user_reference/` files and this CONTRIBUTING guide) is a great starting point. If you're comfortable with the internal architecture, the `agent_reference/` files could also use fresh eyes from people who aren't me.
 
-- **Adding new data source skills.** This is probably the single most impactful medium-effort contribution. DAAF ships with skills for 40+ education data sources, but there are entire data domains waiting to be integrated. Use **Data Onboarding mode** to profile a public dataset (the `data-ingest` agent handles the profiling work), review its output carefully, and submit the resulting skill. The full process is documented in [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- the profiling agent does the heavy lifting, but your domain expertise in reviewing and correcting its output is what makes the skill actually reliable. Per the distinction above, creating the skill is an *extension*. Submitting it to the shared repository via PR is the *contribution*.
+- **Adding new data source skills.** This is probably the single most impactful medium-effort contribution. DAAF ships with skills for 14 education data sources (covering the 40+ datasets of the Urban Institute Education Data Portal) and one election data source, but there are entire data domains waiting to be integrated. Use **Data Onboarding mode** to profile a public dataset (the `data-ingest` agent handles the profiling work), review its output carefully, and submit the resulting skill. The full process is documented in [**04. Extending DAAF**](user_reference/04_extending_daaf.md) -- the profiling agent does the heavy lifting, but your domain expertise in reviewing and correcting its output is what makes the skill actually reliable. Per the distinction above, creating the skill is an *extension*. Submitting it to the shared repository via PR is the *contribution*.
 
 - **Adding methodology or domain expertise skills.** Similarly, if you have deep knowledge of a statistical method (pyfixest, fixest, Bayesian analysis, cluster analysis, tidymodels), a Python library (geopandas, networkx), an R package (plm, survey, sf), or a domain area (school finance policy, graduation rate interpretation), you can use the `skill-authoring` skill to draft a new skill and submit it. These skills directly expand what DAAF can do competently -- without them, DAAF falls back to the model's general training, which is often not specific enough for rigorous work.
 
@@ -257,7 +258,7 @@ These contributions involve modifying the core framework -- the agents, protocol
 
 ### Extension vs. Contribution: Where's the Line?
 
-This comes up often enough that it's worth being explicit. The rule of thumb from [**04. Extending DAAF**](user_reference/04_extending_daaf.md):
+This comes up often enough that it's worth being explicit. The rule of thumb:
 
 > **If you're adding a new `.md` file to `.claude/skills/` or `.claude/agents/`, you're extending. If you're editing existing files in `agent_reference/`, `.claude/agents/`, or the root `CLAUDE.md`, you're contributing.**
 
@@ -273,15 +274,17 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ### Documentation Contributions
 
+The full standard is [`agent_reference/DOCUMENTATION_STANDARDS.md`](agent_reference/DOCUMENTATION_STANDARDS.md): who each kind of file is written for, the seven standards, when a date belongs in a doc, and short author and reviewer checklists. Its triage lint, `bash tests/lint/docs-triage.sh --untracked`, lists passages worth a second look before you open a PR. The points below are the ones I check most often.
+
 - **Accuracy first.** If you're describing how something works, make sure it actually works that way. Run it yourself. The worst documentation is confidently wrong documentation.
-- **Match the voice.** DAAF's documentation is written in a conversational, first-person style -- warm but direct, honest about limitations, educational in framing. Read the README and existing user docs to calibrate. Overly formal or corporate-sounding prose will stick out. We may want to revisit this paradigm in the future, but it's extremely important to me for now that these materials are all highly approachable and pedagogically-forward.
+- **Match the voice.** DAAF's documentation is written in a conversational, first-person style -- warm but direct, honest about limitations, educational in framing. The documentation standard is the bar; [`user_reference/06_faq_philosophy.md`](user_reference/06_faq_philosophy.md) shows the voice. Overly formal or corporate-sounding prose will stick out: it matters to me that these materials are approachable and pedagogically forward.
 - **Explain the "why," not just the "what."** DAAF has a lot of opinionated design decisions. When documenting them, explain the reasoning. "DAAF requires per-script QA (not batched at stage end)" is fine, but "DAAF requires per-script QA because batching means errors in script 1 propagate silently through scripts 2, 3, and 4 -- compounding data corruption that's far harder to diagnose" is much better.
-- **Link generously.** The documentation suite is interconnected. When you mention a concept that's explained elsewhere, link to it. Don't make readers hunt.
+- **Link generously, to things that ship.** The documentation suite is interconnected. When you mention a concept that's explained elsewhere, link to it. Don't make readers hunt. Every link has to work for someone who cloned the public repository: point to files in the repo or to public URLs, never to a `research/` workspace, scratch files, or anything that exists only on your machine. If a finding from your own working notes matters, state it in a sentence where the reader needs it.
 
 ### Skill Contributions
 
 - **No `[PRELIMINARY]` markers.** If the Data Onboarding process flagged interpretations as preliminary, you need to resolve them before submitting. That's the whole point of the human review step.
-- **Follow the canonical structure.** Data source skills have a 12-section template (see [**04. Extending DAAF**](user_reference/04_extending_daaf.md) for the full walkthrough). Methodology and domain skills are more free-form, but should still follow the patterns in the `skill-authoring` skill.
+- **Follow the canonical structure.** Data source skills have a 12-section template ([`agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md`](agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md)), which Data Onboarding mode follows for you (see [**04. Extending DAAF**](user_reference/04_extending_daaf.md)). Methodology and domain skills are more free-form, but should still follow the patterns in the `skill-authoring` skill.
 - **Substantive pitfalls section.** The Common Pitfalls section is arguably the most valuable part of any data source skill. "Data may have missing values" is not a useful pitfall. "Free/reduced lunch counts are unreliable after ~2014 due to Community Eligibility Provision (CEP) -- use direct certification data instead" is a useful pitfall. The difference is specificity and actionability.
 - **Tested end-to-end.** At minimum, run a Data Discovery Test and a Fetch Test (see [Testing Your Changes](#testing-your-changes) below).
 
@@ -309,25 +312,28 @@ Use these terms consistently. Each describes *how much validation a route or cap
 | Term | What it means |
 |------|---------------|
 | **Supported (maintainer-validated)** | The maintainer runs and validates this route end-to-end. It is the recommended, best-trodden path. Example: the Anthropic subscription/API route. |
-| **Supported -- community-testing** | A real, functional, carefully engineered route that the maintainer keeps working, but which benefits from wider real-world validation than one person can provide. We've done what we can to make it a smooth, productive experience; broader testing is genuinely welcome. Examples: the OpenRouter route and the ChatGPT-subscription (Codex) shim lane. |
+| **Supported -- community-testing** | A real, functional, carefully engineered route that the maintainer keeps working, but which benefits from wider real-world validation than one person can provide. We've done what we can to make it a smooth, productive experience; broader testing is genuinely welcome. Examples: the OpenRouter route and the two provider-shim lanes (OpenAI API and ChatGPT subscription). |
 | **Template-documented** | Configuration is provided and documented, but the maintainer has not validated an end-to-end research run on it. You are following a recipe, not a tested path. Examples: AWS Bedrock and Google Vertex AI access. |
 | **Not a documented route** | No configuration or support is provided. It may be technically possible, but you are on your own. |
 
-A few current placements are worth calling out, because they are the ones people ask about:
+A few placements are worth calling out, because they are the ones people ask about:
 
-- The **ChatGPT-subscription (Codex) lane** is *Supported -- community-testing*. It is a real, exercised route (DAAFBench runs against it with fail-closed route provenance), but its backend enforces a measured context ceiling of 919,000 tokens (measured 2026-09-05) -- below the ~1,050,000 of the API lane -- so it is not a drop-in equal of the Anthropic route. Describe it with that ceiling, never as an unqualified "supported."
+- The **OpenAI API lane** of the provider shim is *Supported -- community-testing*: it runs GPT models through DAAF's provider shim on an OpenAI API key.
+- The **ChatGPT-subscription (Codex) lane** is *Supported -- community-testing*. It is a real, exercised route (DAAFBench runs against it with fail-closed route provenance), but its backend enforces a context ceiling of 919,000 tokens (observed 2026-09-05, `gpt-6-astra` and `gpt-5.6-sol`) -- below the ~1,050,000 of the API lane -- so it is not a drop-in equal of the Anthropic route. Describe it with that ceiling, never as an unqualified "supported."
 - The **OpenRouter route** is *Supported -- community-testing*. Its credential contract is settled (the key goes in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` present-but-empty), and it works; live validation at each release is an ongoing, shared effort.
-- **R** is a core execution language *engineered for parity* with Python -- parity contracts and an automated parity test suite back that goal -- with a few honestly documented method-level gaps remaining (for example DBSCAN/HDBSCAN clustering, and several causal-inference references are Python-oriented today). Treat parity gaps as bugs worth reporting. Here, "supported" for a capability should mean "there is a documented skill route for it," not "it is theoretically possible."
+- **R** is a core execution language *engineered for parity* with Python -- parity contracts and an automated parity test suite back that goal -- with a few honestly documented method-level gaps remaining (for example DBSCAN/HDBSCAN clustering, and several causal-inference references are Python-oriented). Treat parity gaps as bugs worth reporting. Here, "supported" for a capability should mean "there is a documented skill route for it," not "it is theoretically possible."
 
 If you are unsure where something sits, say so plainly and ask in your issue or PR -- an honest "I tested this only on OpenRouter with GPT-5.6" is far more useful than a confident "works everywhere."
 
 ### Evidence Discipline for Docs and PRs
 
-DAAF holds its own agents to an evidence-graded reporting standard, and we ask contributors to write the same way. The core rule is simple:
+DAAF holds its own agents to an evidence-graded reporting standard, and we ask contributors to write PR descriptions, issue reports and review notes the same way. The core rule is simple:
 
 **Separate what you *ran* from what *exists*.** Never write an unqualified "all tests pass." Instead, report the command you actually executed and its result *separately* from the mere presence of test files. "I ran `bats tests/bash/context_reporter.bats` and it reported all cases passing" is evidence of execution. "The bats suite covers this" describes what exists, which is a weaker, different claim. Both are fine to state -- just don't let the second masquerade as the first.
 
 This matters most for **negative claims**. "The shim doesn't expose token counts" or "this route doesn't work on Windows" carries a higher burden than a positive result, because a false negative fails silently and, once repeated, starts to sound authoritative. If you claim something doesn't work, show the probe that established it -- the command you ran and what you saw -- or label it explicitly as your inference rather than a tested fact.
+
+Shipped documentation works a little differently. A doc describes how DAAF works in this release, checked against the code it describes, so it doesn't carry your test log or a "verified on" date for DAAF's own behavior. A date belongs in a doc only on a fact that changes outside DAAF's releases (a model's limits, a Claude Code version, a vendor's API), as § Dated Stamps of [`agent_reference/DOCUMENTATION_STANDARDS.md`](agent_reference/DOCUMENTATION_STANDARDS.md) describes. The negative-claim rule holds in docs too: don't write that something doesn't work unless you've checked it.
 
 Why we care: DAAF's whole reason for existing is to make LLM-assisted work *worth reviewing*. A PR that says "tests pass" without saying which tests ran, on which route, forces the maintainer to redo the verification from scratch. A PR that quotes its commands and their output can be reviewed on its evidence. The second kind gets merged faster, and it is genuinely kinder to the person on the other end of the review.
 
@@ -345,7 +351,7 @@ When opening a bug report, the more context you can provide, the faster it gets 
 - **What happened vs. what you expected** -- be specific about the failure. "It didn't work" is hard to debug. "It produced a cleaned dataset with 50,000 rows when I expected ~200,000, and the suppression rate was 75% which triggered a STOP condition" is very debuggable.
 - **Which stage failed** -- if you can identify it. DAAF's multi-stage pipeline means the same symptom can have very different causes depending on where it occurs. Even a rough sense ("it failed during data fetch" or "the plan looked wrong" or "the code reviewer flagged something as a BLOCKER") helps narrow things down enormously. Look at the output files for each as needed, as well as any failed script file versions and accompanying comments/output logs.
 - **Session log excerpts** -- check `.claude/logs/sessions/` for the relevant Markdown log. These logs capture the full sequence of tool calls, subagent invocations, and their results. Copy the section where things went wrong (redact any API keys or sensitive content first!!!). See [Using Session Logs](#using-session-logs-for-debugging-and-issue-reports) below for details on finding and reading these logs.
-- **Your environment** -- Docker or native install, OS, Claude Code authentication method (API key vs. subscription), and which Claude model you were using (Opus 4.5, Opus 4.6, Sonnet, etc.). Model differences can produce meaningfully different behavior. Please note it'll be REALLY hard to diagnose issues if you're not using the standard, recommendation installation format followed by users -- if you're contributing, please make that a priority.
+- **Your environment** -- your host OS; your provider route (Anthropic subscription or API key, OpenRouter, OpenAI API key or ChatGPT subscription through the provider shim, or Bedrock/Vertex); the exact model ID (type `/model` in Claude Code); and the DAAF version and model, which the header of each session log in `.claude/logs/sessions/` records automatically. Model differences can produce meaningfully different behavior. Please note it'll be REALLY hard to diagnose issues if you're not using the standard, recommended installation that users follow -- if you're contributing, please make that a priority.
 - **Reproducibility** -- Can you trigger the same failure again? If so, does it happen every time or intermittently? Intermittent failures are often context-window-related (the model "forgets" something at higher utilization) or just the unfortunate nature of working with LLMs (remember, the goal is not to **eliminate slop**, which is likely impossible in the LLM paradigm, but to just drastically reduce it), while consistent failures usually point to a real bug in the framework logic.
 
 ### Feature Requests and Suggestions
@@ -410,7 +416,7 @@ Agent and protocol changes are the hardest to test because their effects cascade
 
 If you're modifying hooks (`.claude/hooks/`), Docker configuration, or other infrastructure:
 
-1. **Test in a clean environment.** Start from a fresh Docker build (`docker compose up -d --build`) to make sure your changes work from a clean state, not just from your existing environment.
+1. **Test in a rebuilt environment.** Rebuild the image to make sure your changes work from a fresh container, not just from your existing environment: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. The script first copies the Dockerfile and docker-compose.yml out of the container, because `docker compose up -d --build` reads only the host copies and would miss edits made inside the container. It reuses Docker's layer cache, so layers above your change are not rebuilt.
 2. **Verify hook execution.** Check `.claude/logs/` for evidence that hooks fired correctly (audit log entries, session archives, etc.).
 3. **Test the safety boundaries.** If your change is anywhere near the safety infrastructure (the `bash-safety.sh` hook, permission deny rules, etc.), test that the safety boundaries are still enforced. Try a few commands that should be blocked and verify they're still blocked. For systematic coverage, run the regression batteries — `bash /daaf/scripts/test_safety_hooks.sh` (bash-safety.sh block/allow cases) and `bash /daaf/scripts/test_enforce_single_command.sh` (command-chaining guard) — both should report all-pass against the live hooks (pass a staged draft path as `$1` to vet a change before installing it; for `bash-safety.sh`, keep a `bash-safety.site.sh` beside the draft, because the hook reads DAAF's settings from that sibling file and blocks every command without it).
 
@@ -484,12 +490,12 @@ The section above tells you *how* to test each kind of change. This one helps yo
 
 ### The Change-Surface Matrix
 
-DAAF's components are wired together at many small registration points -- an agent isn't "added" until it appears in the agent index, the coordination matrix, the root README count, and more. The maintainer's canonical, item-by-item checklist for every component type lives in [`agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md`](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md). The table below is a compact router into it: find your change type, see roughly which registration points and tests are in play, then open the checklist for the exact items. (This is a map, not the territory -- the checklist governs when the two disagree.)
+DAAF's components are wired together at many small registration points -- an agent isn't "added" until it appears in the agent index, the coordination matrix, and more. The maintainer's canonical, item-by-item checklist for every component type lives in [`agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md`](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md). The table below is a compact router into it: find your change type, see roughly which registration points and tests are in play, then open the checklist for the exact items. (This is a map, not the territory -- the checklist governs when the two disagree.)
 
 | If you are changing... | Registration points (see the checklist) | Tests to run |
 |------------------------|------------------------------------------|--------------|
 | A **data source or methodology skill** | § 1 (S1-S10 new / SM1-SM6 modify) | The skill sequence under [Testing Your Changes](#testing-your-changes): Data Discovery, Fetch, and Context tests |
-| An **agent** protocol | § 2 (A1-A16 / AM1-AM6) -- incl. the agent index, coordination matrix, and root-README count | Dependency-chain trace, run the affected stage, gate-satisfaction check, ideally a full pipeline |
+| An **agent** protocol | § 2 (A1-A16 / AM1-AM6) -- incl. the agent index and coordination matrix | Dependency-chain trace, run the affected stage, gate-satisfaction check, ideally a full pipeline |
 | An **engagement mode** | § 3 (M1-M21 / MM1-MM7) -- the largest surface: orchestrator SKILL.md, BOUNDARIES, user docs, disclosure reference | A full pipeline that exercises the mode, including its confirmation gate and Scope Check |
 | A **reference file** in `agent_reference/` | § 4 (R1-R6 / RM1-RM4) -- CLAUDE.md table plus every "When to Read" trigger | Link and cross-reference checks; render the Markdown |
 | A **hook** (`.claude/hooks/`) | § 5 (H1-H5) -- note hooks are human-deployed (deny-protected) | The safety regression batteries `bash scripts/test_safety_hooks.sh` and `bash scripts/test_enforce_single_command.sh`, plus both allow and block scenarios |
@@ -503,8 +509,9 @@ DAAF's components are wired together at many small registration points -- an age
 | The **notebook decompilers** (`scripts/decompile_notebook.py` / `.R`) or the canonical Stage 9 bundle format they read | No checklist section -- keep in step: the notebook-assembler bundle rules (Marimo Cell 3 log literal and fence, Quarto callout, Step 6c conditions), the Stage 12 MANIFEST checks (`WORKFLOW_PHASE5_SYNTHESIS.md` step 5, `VALIDATION_CHECKPOINTS.md` PO.2), Reproducibility Verification RV-1 step 10's reading of the MANIFEST warning sections, the `marimo`/`quarto` skill cautions, and the fixtures in `tests/fixtures/reproducibility_verification/` | `bats tests/bash/reproducibility_verification_python.bats tests/bash/reproducibility_verification_r.bats` (run in CI), plus a decompile of an existing real notebook to confirm unchanged output |
 | A **binary or system tool in the image** (a release download or apt package added straight to the `Dockerfile`, e.g. TinyTeX) | § 9 FC16-FC17 applied to the image -- a categorized framework layer, never USER ADDITIONS (Ask First); the license named in the block comment and the README acknowledgments; the `daaf-apt-update` call-site count in `tests/bash/daaf_lib.bats` updated for a new apt layer. These go beyond FC16-FC17: a release download pins its version and a SHA-256 per architecture, checked before unpacking, and is added to the Dockerfile banner's "NOT covered by the environment date" list (apt packages are covered by `UBUNTU_SNAPSHOT`); any bundled CA list replaced by the system store and added to the `daaf-check-distrusted-roots` scans; the docs that describe the image's contents and size (`user_reference/01_installation_and_quickstart.md`, `04_extending_daaf.md` § How DAAF Freezes the Environment, `07_faq_technical.md`) | `bats tests/bash/daaf_lib.bats`, then a rebuild (`bash rebuild_daaf.sh` from `daaf-docker`) whose build-time checks and any smoke step pass, plus the `scripts/smoke_tests/` smoke that exercises the tool, if one exists |
 | A **deployment / provider configuration** (API key, model remap, base URL) | Route/env coherence | deploy-smoke `--route <route> --tiers 0,D,N` (free preflight), adding Tier 1/2 as needed (Tier 2 is 8 live calls per profile); before a release, the release run `--tiers 0,D,N,1,2,A,3` on the two subscription installs plus every install whose route code or configuration changed (the `daaf-deploy-smoke-testing` skill, When to Run), with its packages triaged on the main container; an install not run is named as a waiver in the changelog's verification line |
-| **Documentation only** | -- | Read it aloud, check links and cross-references, render the Markdown |
-| **Any of the above** | § 10 cross-cutting (CC1-CC11) | Sweep for stale count words, broken cross-references, naming drift, and stale examples/templates; after any `settings.json` edit, confirm it still parses and holds no boolean `attribution`; confirm no new subagent-written `.md` name starts with `report`, `summary`, `findings` or `analysis`; confirm every rostered agent is dispatched and is never asked to do what its tools cannot |
+| **Documentation only** | -- | Read it aloud, check links and cross-references, render the Markdown; run `bash tests/lint/docs-triage.sh --untracked` and review the hits in your files (a review queue, not a gate) |
+| The **documentation triage lint** (`tests/lint/docs-triage.sh` + `docs-triage-allowlist.tsv`) | -- (keep its options and families in step with `agent_reference/DOCUMENTATION_STANDARDS.md` § The Triage Lint) | `bats tests/bash/docs_triage.bats`, `shellcheck`, `bash tests/lint/check-daaf-conventions.sh` |
+| **Any of the above** | § 10 cross-cutting (CC1-CC13) | Sweep for stale count words, broken cross-references, naming drift, and stale examples/templates; after any `settings.json` edit, confirm it still parses and holds no boolean `attribution`; confirm no new subagent-written `.md` name starts with `report`, `summary`, `findings` or `analysis`; confirm every rostered agent is dispatched and is never asked to do what its tools cannot |
 
 Two zero-cost batteries are worth knowing regardless of what you touched: the deployment smoke suite's **Tier D** deterministic battery (bats, Pester, lint, and safety-hook tests) and the conventions linter both run without any provider cost, and CI runs those batteries on every push that touches a script. "CI - Integration" also runs the deploy-smoke free tiers (`--tiers 0,N,D`) inside the standard image, on the pushes and schedule that trigger it.
 
@@ -520,15 +527,17 @@ None of this needs to be heavy. A few honest lines about what you ran, where, an
 
 ---
 
-## Upgrading Custom Components to v3.0.0
+## Guardrails Your Custom Components Must Follow
 
-If you built your own agents, skills, or automation against DAAF v2.1.x, several v3.0.0 changes may affect them. Most are safety and reproducibility guardrails that now apply framework-wide. Walk your custom components against this list; each item's full reasoning lives in [`CLAUDE.md`](CLAUDE.md) or the [integration checklist](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md).
+If you build your own agents, skills, or automation for DAAF, these safety and reproducibility guardrails apply to them as they do to DAAF's own. Walk your custom components against this list; each item's full reasoning lives in [`CLAUDE.md`](CLAUDE.md) or the [integration checklist](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md).
 
-- **Agents no longer run `git commit` for research artifacts.** Committing is now gated behind an opt-in "Git commit management" user preference (default off) and, when enabled, is executed only by the orchestrator with in-session user approval. If your agent committed on its own, remove that.
+> **Recognizing older forms.** Components written for DAAF v2.1.x often commit on their own, install packages at runtime, run `python` or `Rscript` directly, or omit the `tools:` list. Adopt the patterns below.
+
+- **Agents never run `git commit` for research artifacts.** Committing is gated behind an opt-in "Git commit management" user preference (default off) and, when enabled, is executed only by the orchestrator with in-session user approval. If your agent commits on its own, remove that.
 - **Runtime package installs are blocked -- for both Python and R.** `pip`/`uv`/`conda` and the R install paths (`R CMD INSTALL`, `install.packages()`, and friends) are refused, whether typed at the command line or written inside a script. Add packages to the Dockerfile and rebuild instead.
-- **Coding agents can no longer run `python`/`Rscript` directly.** Execution is file-first: write the script, then run it through `scripts/run_with_capture.sh`, which captures the audit trail. Direct interpreter invocation is hook-blocked for coding agents.
+- **Coding agents never run `python`/`Rscript` directly.** Execution is file-first: write the script, then run it through `scripts/run_with_capture.sh`, which captures the audit trail. Direct interpreter invocation is hook-blocked for coding agents.
 - **Script fixes go into new versioned copies.** Once a script has its execution log appended it is immutable; create revisions with `scripts/create_script_revision.sh` (`_a`, `_b`, …) rather than editing in place.
-- **`/tmp` writes are blocked.** Working files belong inside the project (`{PROJECT_DIR}/scripts/scratch/`), which is inside the backup and audit boundary; scratch is kept but never relied on, so a file that anything cites moves to a named project folder first. Repo-level `scripts/scratch/` belongs to framework tooling (tests, CI, smoke tools), and Claude Code's own temp root lives apart from both, in the top-level `claude-code-tmp/` (see [`CLAUDE.md`](CLAUDE.md) § Project Conventions > Scratch Files). Reading DAAF's own `/tmp` coordination caches is still fine.
+- **`/tmp` writes are blocked.** Working files belong inside the project (`{PROJECT_DIR}/scripts/scratch/`), which is inside the backup and audit boundary; scratch is kept but never relied on, so a file that anything cites moves to a named project folder first. Repo-level `scripts/scratch/` belongs to framework tooling (tests, CI, smoke tools), and Claude Code's own temp root lives apart from both, in the top-level `claude-code-tmp/` (see [`CLAUDE.md`](CLAUDE.md) § Project Conventions > Scratch Files). Reading DAAF's own `/tmp` coordination caches is fine.
 - **Command chaining is blocked.** One command per Bash call -- no `&&`, `;`, or `||`. Split compound commands into separate calls.
 - **Agents need an explicit `tools:` list that never includes `Agent` or `Task`.** Omitting the field inherits every tool, including dispatch. Nested dispatch (a subagent spawning subagents) is blocked in three layers: the harness spawn-depth limit (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`, observed on 2.1.261 and 2.1.281 to withhold `Agent`/`Task` from every subagent), then these explicit `tools:` lists, then the `block-nested-dispatch.sh` backstop hook. A subagent returns remaining work to the orchestrator for redelegation.
 - **The `isolation` parameter on dispatches is stripped.** Remote/worktree isolation isn't available in the container, so it's removed from Agent/Task calls automatically.
@@ -540,7 +549,7 @@ If one of these breaks a custom component, that's expected -- the guardrail is d
 
 ## What DAAFBench Scores Mean
 
-DAAF ships a benchmark suite, DAAFBench (under [`benchmarks/`](benchmarks/README.md)), and it is easy to misread what its scores say. In short: **DAAFBench measures protocol *adherence*, not research quality.** It asks whether a model acting as the orchestrator follows DAAF's rules -- classifying requests into the right mode, presenting confirmation gates, dispatching the right subagent with a properly structured prompt, loading the prescribed skills and references. It does **not** score answer quality, analytical capability, code correctness, or scientific validity. A brilliant analyst model that skips confirmation gates scores poorly; a more modest model that follows protocol faithfully scores well.
+DAAF ships a benchmark suite, DAAFBench (under [`benchmarks/`](benchmarks/README.md)), and it is easy to misread what its scores say. In short: **DAAFBench measures behavioral adherence to DAAF's protocols, not research quality.** It asks whether a model acting as the orchestrator follows DAAF's rules -- classifying requests into the right mode, presenting confirmation gates, dispatching the right subagent with a properly structured prompt, loading the prescribed skills and references. It does **not** score answer quality, analytical capability, code correctness, or scientific validity. A brilliant analyst model that skips confirmation gates scores poorly; a more modest model that follows protocol faithfully scores well.
 
 Two more boundaries are worth keeping straight when you cite a score:
 

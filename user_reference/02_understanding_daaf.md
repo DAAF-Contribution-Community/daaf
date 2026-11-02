@@ -101,7 +101,7 @@ This single move is the key: nearly everything that has happened in AI over the 
 
 ### Context Windows and Context Rot
 
-While all of that is really valuable and important, different models can only "digest" a certain amount of context before predicting the next word. That capacity is known as the model's **context window**. (Capacity is technically measured in tokens -- word fragments, with one token roughly 3/4 of a word -- but thinking in words is close enough.) For perspective: GPT-3 could only really "read" about 1,500 words -- any more than that was ignored or would break it. Current Claude Opus models handle roughly 150,000 words out of the box, and can run with a much larger window of about 750,000 words (roughly a million tokens). DAAF's setup enables that larger ~1-million-token window by default, as noted in the [Installation Guide](01_installation_and_quickstart.md). Expanding this capacity is one major frontier of model advancement, because the more context a model can hold, the more expertise and framing it can use for the task at hand.
+While all of that is really valuable and important, different models can only "digest" a certain amount of context before predicting the next word. That capacity is known as the model's **context window**. (Capacity is technically measured in tokens -- word fragments, with one token roughly 3/4 of a word -- but thinking in words is close enough.) For perspective: GPT-3 could only really "read" about 1,500 words -- any more than that was ignored or would break it. DAAF's default model on an Anthropic subscription or API key, Claude Opus 5.5, can hold about 750,000 words at once (a 1-million-token window; observed 2026-09-24, Claude Code 2.1.281), as noted in the [Installation Guide](01_installation_and_quickstart.md). Expanding this capacity is one major frontier of model advancement, because the more context a model can hold, the more expertise and framing it can use for the task at hand.
 
 But more context isn't automatically better, because **not all context is treated equally**: models weigh different parts of their context in complex, sometimes unpredictable ways. Fill the window with scattered, conflicting, or poorly structured material, and the model becomes confused, erratic, and forgetful. This failure mode is called **context rot**, and it needs to be avoided at all costs.
 
@@ -209,9 +209,9 @@ Ultimately, the orchestrator's job is to know which agent/team member to call up
 
 If agents define *behavior* ("how should I work?"), then **skills** define *knowledge* ("what do I need to know?"). Skills are basically structured knowledge documents that agents load into their own context on demand. You can think of them as specialized reference manuals that your research team pulls off the shelf when they need domain-specific information or how-to's for a niche task or issue. These are nice because they are easily transferable across agents, and so work well for implementing knowledge/context that several agents are likely to need access to for their work.
 
-DAAF's skills are currently organized into a few categories:
+DAAF's skills fall into a few categories. The names below are examples; the [skills folder](../.claude/skills/) holds the full set.
 
-**Data source skills** -- one for each major education data source:
+**Data source skills** -- one per data source, such as each major education data source and county-level presidential election returns (`election-data-source-countypres`):
 - What endpoints exist and what they contain
 - What variables mean and how they're coded
 - What caveats and limitations to watch for
@@ -220,7 +220,7 @@ DAAF's skills are currently organized into a few categories:
 - `education-data-explorer` and `education-data-query` for finding and fetching data
 - `education-data-context` for interpreting data caveats and coded values
 
-**Technical skills** -- how to use certain toolsets:
+**Technical skills** -- how to use certain toolsets, for example:
 - `data-scientist` for general methodology, mindset/philosophy, and rigor principles
 - `polars` for data manipulation in Python (similar to tidyverse or pandas)
 - `tidyverse` for data manipulation in R (dplyr, tidyr, readr, purrr, and more)
@@ -235,6 +235,8 @@ DAAF's skills are currently organized into a few categories:
 - `skill-authoring` for creating and integrating new skills in a unified format and with best practices
 - `agent-authoring` for creating and integrating new agents in a unified format, and with best practices 
 
+Other skills cover statistical modeling (such as `statsmodels`, `pyfixest`, `fixest` and `r-stats`), literature search and PDF reading (`scholarly-search`, `pdf-reading`, `literature-review`), stress-testing a result before you rely on it (`creative-verification`), and synthetic stand-in data for sensitive datasets (`synthetic-data-workflow`).
+
 **The key insight:** In DAAF, skills are generally intended to be loaded *by agents*, not by the orchestrator. When the orchestrator delegates a task to the research-executor, it tells the agent: "Load the `education-data-source-scorecard` skill for this task." The agent pulls up the relevant reference material, uses it to guide its work, and then returns its findings to the orchestrator. This keeps the orchestrator's context lean (it doesn't need to hold the full contents of every skill in memory) and ensures each agent gets exactly the knowledge it needs for its specific task.
 
 <img width="2398" height="1053" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d142b457-3459-498b-b718-4b0cb7123d29" />
@@ -245,7 +247,7 @@ Four things to keep in mind as you use DAAF:
 
 1. In addition to the context engineering DAAF orchestrates behind the scenes, **what you ask Claude to do and how you ask it to do it** is an immensely important element of getting better quality output from DAAF/Claude. So a lot of what we'll talk about here (and in [**03. Best Practices**](03_best_practices.md)) is how to do this thoughtfully and well to maximize your chances of getting something useful from DAAF.
 2. The system is **designed to intelligently select and inject the right context to Claude before your query/question/chat**, based on what you provide in your query/question/chat. But this is **NOT** foolproof, and simply cannot account for every possibility. Feel free to go off the beaten path at will, but just be aware that it's going to necessarily be less supported and structured from there; you may ultimately find it's not working very well for what you want, because I wasn't able to design for that style of work. Trying to write your query in a different way can help, or you can help us improve DAAF by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) and telling us about it!
-3. Because thoughtfully shaping the context is our way of shaping Claude's thinking, DAAF is built for **frontier models** and works them hard, taking advantage of their full context windows wherever possible. That does make DAAF genuinely compute-intensive -- pushing capable models to their limits is inherently so. But cost is a **dial you control**, not a fixed barrier: [empirical benchmarking](https://daaf.openaugments.org/bench/) shows that several models drive DAAF's workflows excellently at very different price points -- cheaper Anthropic tiers, OpenAI's GPT-5.6 line and the newer GPT-6 Astra flagship (including on a flat-monthly ChatGPT subscription), and high-performing open-weight alternatives (Kimi K3, GLM 5.2, DeepSeek, Gemma) via OpenRouter. The quality-cost tradeoff is yours to tune through your choice of model and provider route, and the [DAAFBench results](https://daaf.openaugments.org/bench/) plus the [model-selection FAQ](07_faq_technical.md#q-which-claude-model-should-i-use) are the best starting references for making that call.
+3. Because thoughtfully shaping the context is our way of shaping Claude's thinking, DAAF is built for **frontier models** and works them hard, taking advantage of their full context windows wherever possible. That does make DAAF genuinely compute-intensive -- pushing capable models to their limits is inherently so. But cost is a **dial you control**, not a fixed barrier: [empirical benchmarking](https://daaf.openaugments.org/bench/) (DAAFBench July 2026 corpus; the live page adds later models and prices) shows that several models drive DAAF's workflows excellently at very different price points -- cheaper Anthropic tiers, OpenAI's GPT-5.6 line (including on a flat-monthly ChatGPT subscription), and high-performing open-weight alternatives (Kimi K3, GLM 5.2, DeepSeek, Gemma) via OpenRouter. OpenAI's GPT-6 Astra is supported but has no DAAFBench result in that corpus. The quality-cost tradeoff is yours to tune through your choice of model and provider route, and the [DAAFBench results](https://daaf.openaugments.org/bench/) plus the [model-selection FAQ](07_faq_technical.md#q-which-claude-model-should-i-use) are the best starting references for making that call.
 4. While DAAF's reference files, skills, and workflow instructions are all carefully designed to be loaded at specific moments, Claude may occasionally fail to load them, skip a step, or deviate from its instructions in subtle ways. When this happens, you get an agent working without the specialized knowledge it was supposed to have, which means it falls back on its general training -- its fuzzy long-term memory -- and that's when hallucinations, fabricated variable names, and plausible-sounding-but-wrong details creep in. This is why **Verbose output** -- which DAAF turns on by default (you can confirm it in Claude Code's `/config` settings) -- is particularly useful: it lets you see what DAAF's agents are actually thinking behind the scenes, including what motivates which files they're reading and which skills they're loading (or what shortcuts they're deciding on, if they are).
 
 ---
@@ -256,7 +258,7 @@ DAAF first classifies every request you make into one of ten **engagement modes*
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." That first confirmation is about *how* DAAF will work: it describes what the mode does, where you'll be asked to weigh in, and what you'll get, and it names anything you pointed it to (a document, a prior project, a link, a dataset) that it will read first. What it won't do yet is guess at the details -- which sources, which years, how many files -- because it hasn't read anything.
 
-The details come in a second step. In the larger modes (Full Pipeline, Revision and Extension, Reproducibility Verification, Data Onboarding, Literature Review and Framework Development), once you've confirmed the mode DAAF reads your materials and then shows you a **scope check**: what it read, what exactly it proposes to do, what your materials changed compared with your original request, and any decisions it needs from you. Nothing substantial starts until you approve it. In the lighter modes, DAAF just reads what you pointed to and adapts -- in Ad Hoc Collaboration and Data Discovery it will briefly tell you what it sees and what it plans before anything multi-step, without stopping to wait. Here's a quick reference of all ten:
+The details come in a second step. In the larger modes (Full Pipeline, Revision and Extension, Reproducibility Verification, Data Onboarding, Literature Review and Framework Development), once you've confirmed the mode DAAF reads your materials and then shows you a **scope check**: what it read, what exactly it proposes to do, what your materials changed compared with your original request, and any decisions it needs from you. Nothing substantial starts until you approve it. In the lighter modes, DAAF just reads what you pointed to and adapts -- in Ad Hoc Collaboration (and in Data Discovery, when you pointed it to materials) it will briefly tell you what it sees and what it plans before anything multi-step, without stopping to wait. Here's a quick reference of all ten:
 
 | Mode | When to Use | What You Get |
 |------|-------------|--------------|
@@ -284,7 +286,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 - Supporting context where relevant (e.g., "this variable uses coded values where 1=Regular school, 2=Special education, 3=Vocational...")
 - Pointers to relevant documentation if you want to dig deeper
 
-**Expected time investment:** Seconds. One question, one answer.
+**What to expect:** One question, one answer.
 
 **When to use it:** When you already know what you're looking for and just need the specific detail. "What does `free_lunch` mean in the CCD data?" "What years are available for CRDC?" "What's the difference between `enrollment` and `fall_enrollment` in IPEDS?"
 
@@ -302,7 +304,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 - A feasibility assessment -- can the question be addressed with available data?
 - If the answer is "yes, this looks promising," DAAF will offer to escalate to Full Pipeline mode
 
-**Expected time investment:** A few minutes of conversation, usually just one or two exchanges. It might launch some "subagents" to do some digging in the background for a few minutes, too.
+**What to expect:** A short conversation, usually just one or two exchanges. It might launch some "subagents" to do some digging in the background, too.
 
 **When to use it:** When you're not sure what data exists for a topic, when you want to know if a question is answerable before committing to a full analysis, or when you're brainstorming research directions and want to see what's possible. This is genuinely a great starting point for new users -- ask DAAF what it can do before asking it to do it.
 
@@ -354,7 +356,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - Access to all of DAAF's specialized capabilities -- code execution, debugging, data source research, code review, analysis planning -- on demand, as you need them
 - Rigorous, methodology-aware advice grounded in the same domain expertise that powers the full pipeline
 
-**Expected time investment:** As long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
+**What to expect:** The session runs as long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
 
 **When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "How do I use ggplot2 to create faceted bar charts with custom themes?" "Help me think through the right approach for a school-level poverty analysis." "Help me poke holes in this result before I present it -- I want to know it holds up, without re-reading every line of code."
 
@@ -377,7 +379,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
-**Expected time investment:** About 20-30 minutes of active engagement time spread across four "check-in" points where DAAF pauses for your review and approval, a few hours of DAAF working independently in the background, and then whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. Full duration will depend heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and QA. Plan accordingly!
+**What to expect:** Your active part is the scope check at the start and four "check-in" points where DAAF pauses for your review and approval; between them DAAF works independently in the background, and at the end comes whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. How long a run takes depends heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and review. Plan accordingly!
 
 **When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly: after you confirm the mode, it reads anything you pointed it to (a prior study, a memo, a codebook) and opens with a pre-flight scope check -- the data sources, years, and geography it proposes, and anything your materials changed -- for your approval before any exploration starts.
 
@@ -395,7 +397,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - A full Final Review even for minor fixes (no shortcuts on quality)
 - All prior versions preserved in the same project folder
 
-**Expected time investment:** Depends on the scope of the revision. Changing a year range might take 15 minutes; fundamentally rethinking the methodology could be nearly as long as a new analysis (and you may seriously want to consider going that route instead with clearer and more directed prompts/research questions, depending!).
+**What to expect:** It depends on the scope of the revision. Changing a year range is a small job; fundamentally rethinking the methodology could be nearly as much work as a new analysis (and you may seriously want to consider going that route instead with clearer and more directed prompts/research questions, depending!).
 
 **When to use it:** After you've received a completed analysis and want to adjust something. Reference your project by keywords or date -- e.g., "Can you update the Texas poverty analysis to include 2023 data?" or "In the 2026-01-15 enrollment study, can we use a different measure of school size?"
 
@@ -413,7 +415,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 
 **What you get:** A standalone data source skill (`.claude/skills/`) that future analyses can reference, plus a research project folder with all profiling scripts, QA reviews, and session state.
 
-**A fork in the road -- the sensitivity gate:** Right at the start of onboarding, DAAF asks you directly whether your data is sensitive -- PII, proprietary, regulated (FERPA/HIPAA), locked in a secure enclave, or simply something that can't leave your environment. This is the "sensitivity gate." If you confirm the data is safe to bring in, onboarding proceeds normally (the data is copied into the container and profiled there). But if you *can't* confirm that -- if the data genuinely shouldn't enter the container -- DAAF takes a different path entirely: the **synthetic-data protocol**. Instead of importing your data, DAAF hands you a disclosure-controlled profiling script that you run yourself, wherever the data lives. Only a summary profile report crosses the boundary; DAAF then builds a synthetic stand-in dataset and a data source skill from that report alone, so you can develop and debug your whole analysis against realistically-shaped fake data. The real data never enters the container. When your code is finished and vetted, you run it against the real data yourself, in its own secure environment, to get the actual results. It's a way to get almost all of DAAF's help without ever exposing the sensitive data itself. One thing to keep in mind: the disclosure controls are careful engineering that minimizes what leaves your machine, but they are not a formal privacy guarantee — you always review the profile report yourself and confirm you're comfortable with it before it crosses the boundary, and that judgment about what is safe to share stays with you. (For the full picture, see the FAQ entry [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).)
+**A fork in the road -- the sensitivity gate:** Right at the start of onboarding, DAAF asks you directly whether your data is sensitive -- PII, proprietary, regulated (FERPA/HIPAA), locked in a secure enclave, or simply something that can't leave your environment. This is the "sensitivity gate." If you confirm the data is safe to bring in, onboarding proceeds normally (the data is copied into the container and profiled there). But if you *can't* confirm that -- if the data genuinely shouldn't enter the container -- DAAF takes a different path entirely: the **synthetic-data protocol**. Instead of importing your data, DAAF hands you a disclosure-controlled profiling script that you run yourself, wherever the data lives. Only a summary profile report crosses the boundary (or, at the highest disclosure tier, synthetic rows you generate yourself); DAAF then builds a synthetic stand-in dataset and a data source skill from what crossed, so you can develop and debug your whole analysis against realistically-shaped fake data. The real data never enters the container. When your code is finished and vetted, you run it against the real data yourself, in its own secure environment, to get the actual results. It's a way to get almost all of DAAF's help without ever exposing the sensitive data itself. One thing to keep in mind: the disclosure controls are careful engineering that minimizes what leaves your machine, but they are not a formal privacy guarantee — you always review the profile report yourself and confirm you're comfortable with it before it crosses the boundary, and that judgment about what is safe to share stays with you. (For the full picture, see the FAQ entry [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).)
 
 **Checkpoints:** two checkpoints, then you review the finished skill -- one checkpoint after project setup (the scope check, to confirm the profiling plan), one after profiling completes (to review and confirm/modify the preliminary interpretations before they become part of the skill), and finally your review of the skill itself once it's written.
 
@@ -436,7 +438,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - **Whether to re-fetch the data** (default: yes) — re-download the data and test whether acquisition still works today, or work from a frozen copy of the original raw files instead — in which case whether the data could still be re-downloaded today is simply left out of scope.
 - **How deep the methodological review goes** (default: light) — a light pass focuses on mechanical reproduction and any notable concerns; a full pass also scrutinizes the methodology, assumptions, and interpretation.
 
-**Expected time investment:** Depends on the complexity of the original analysis. A straightforward single-source analysis might take 15-30 minutes; a multi-source analysis with extensive transformations could take longer. You'll review the Reproduction Report at the end.
+**What to expect:** The work grows with the complexity of the original analysis: a straightforward single-source analysis re-runs more quickly than a multi-source analysis with extensive transformations. You'll review the Reproduction Report at the end.
 
 **When to use it:** After completing a Full Pipeline analysis and wanting to verify it reproduces before sharing or publishing. When reviewing someone else's DAAF analysis and wanting an independent verification. For periodic verification of important findings to ensure they still hold against updated data sources.
 
@@ -473,7 +475,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - File paths to relevant documentation if you want to read further
 - Gentle routing to the right mode when your questions naturally evolve into wanting to *do* something, not just learn about something
 
-**Expected time investment:** As long as you need. There are no checkpoints, no gates, no deliverables. Just a conversation.
+**What to expect:** A conversation that runs as long as you need. There are no checkpoints, no gates, no deliverables.
 
 **When to use it:** When you're new and want to understand what DAAF is before jumping in. When you want to know which mode fits your needs. When you're troubleshooting a Docker, Git, or setup issue. When you're curious about how agents, skills, or the pipeline work under the hood. When you want tips on writing better prompts or reviewing output more effectively. When you have questions about Claude Code features or configuration.
 
@@ -502,7 +504,7 @@ Here are the most common transitions you'll encounter:
 
 Beyond these common paths, DAAF supports transitions between any pair of modes where the shift makes sense -- for example, a Data Lookup that reveals a broader question might escalate to Data Discovery, or a completed analysis might surface framework improvements worth addressing in Framework Development mode. The full transition matrix is handled internally; the important thing to know is that DAAF will always propose a transition explicitly and explain why before making it.
 
-> **Key takeaway:** Think of these as different types of conversations, from a quick factual question to a complete multi-hour research project. You choose the scope; DAAF adapts.
+> **Key takeaway:** Think of these as different types of conversations, from a quick factual question to a complete research project. You choose the scope; DAAF adapts.
 
 ---
 
@@ -686,7 +688,9 @@ research/2026-01-24_School_Poverty_Analysis/
 │   │   ├── stage5_01_cr1.py
 │   │   ├── stage5_02_cr1.py
 │   │   ├── stage6_01_cr1.py
-│   │   └── ...
+│   │   ├── ...
+│   │   ├── stage8_01_cra1.py
+│   │   └── stage8_02_crb1.py
 │   └── debug/                        (if debugging was needed)
 ├── data/
 │   ├── raw/
@@ -747,7 +751,7 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 - Further revisions use `_b`, `_c`, etc. before the language extension
 - The notebook only includes the final successful version
 
-**The `cr/` subdirectory:** This is where the code-reviewer's quality-inspection scripts live. Each script is a diagnostic that the reviewer wrote and ran to verify a specific analysis script. The naming convention is `stage{N}_{step}_cr{iteration}.py` for Python or `.R` for R -- so `stage5_01_cr1.py` (or `stage5_01_cr1.R`) is the first inspection of the first Stage 5 script. If the reviewer found something suspicious and needed to investigate further, you'll see `cr2`, `cr3`, etc.
+**The `cr/` subdirectory:** This is where the code-reviewer's quality-inspection scripts live. Each script is a diagnostic that the reviewer wrote and ran to verify a specific analysis script. The naming convention is `stage{N}_{step}_cr{iteration}.py` for Python or `.R` for R -- so `stage5_01_cr1.py` (or `stage5_01_cr1.R`) is the first review of the first script in `scripts/stage5_fetch/`. If the reviewer found something suspicious and needed to investigate further, you'll see `cr2`, `cr3`, etc. Reviews of the scripts in `scripts/stage8_analysis/` carry an extra letter: `cra` for the statistical review (`stage8_01_cra1.py`) and `crb` for the figure review (`stage8_02_crb1.py`).
 
 ### The Research Notebook (Marimo or Quarto)
 
@@ -757,7 +761,7 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 - **Section headers** identifying which script stage is being shown
 - **Archived script code:** the real, unmodified script code from the analysis — shown for you to read, but locked so it can't re-run
 - **Captured execution logs** showing exactly what happened when each script ran -- verbatim in a collapsed Marimo accordion or Quarto callout, never summarized
-- **Optional bounded display cells/chunks** -- the only permitted new display code: either preview an existing Parquet file without transforming it (first 100 rows in Marimo; `glimpse()` plus first 20 rows in Quarto) or display an already-created Stage 8 figure. They never perform new analysis or generate a new figure.
+- **Optional bounded display cells/chunks** -- the only permitted new display code: either preview an existing Parquet file without transforming it (first 100 rows in Marimo; `glimpse()` plus first 20 rows in Quarto) or display a figure the analysis scripts already saved in `output/figures/`. They never perform new analysis or generate a new figure.
 
 **What you won't see:** New analysis code, interactive dashboards, filter widgets, additional transformations, or newly generated figures. Every archived script must also carry its real execution log — a script with an empty or missing log can't be assembled into the notebook. The notebook is a viewer, not an analysis tool.
 
@@ -845,14 +849,16 @@ These are validation checks *embedded directly in the analysis scripts themselve
 
 | Checkpoint | When It Runs | What It Catches |
 |------------|-------------|-----------------|
-| **CP1** | After data fetch | Empty datasets, wrong data types, >90% missing values in critical fields |
-| **CP2** | After data cleaning | Invalid coded values, suppression rates above 50%, impossible analysis types |
-| **CP3** | After each transformation | Unexpected row loss (>90%), broken joins, surprise null values |
+| **CP1** | After data fetch | Empty datasets, missing required columns or expected years, >90% missing values in a required column |
+| **CP2** | After data cleaning | >90% of rows lost in cleaning, suppression above the Plan's threshold (50% by default for education data), coded missing values left in the cleaned data |
+| **CP3** | After each transformation | Row counts that don't change the way the Plan expected, >90% row loss, new null values, columns that should have survived but didn't |
 | **CP4** | After analysis and visualization | Invalid or non-finite analysis results, nulls in the columns being analyzed, missing or empty figures, a script reading the wrong data file |
 
-A separate **Pre-Output Verification** pass happens later, at delivery time (Stage 12). That one is not embedded in a script -- it is a checklist the `data-verifier` agent works through, confirming that the report has every section the Plan promised, that the outputs match the Plan's commitments, that every Research Outcome is addressed with evidence, and that any Hypotheses are transparently assessed.
+Joins get an extra check of their own (`JOIN VALIDATION`), which looks for rows multiplied by duplicate keys, lost rows, and keys that don't match, and also stops the script if it fails.
 
-Each checkpoint reports one of three results -- **PASSED**, **PASSED WITH WARNINGS**, or **FAILED** -- along with a count of how many individual checks passed, warned, failed, could not be verified, or were skipped as not applicable. A check that *could not run* (a required input was missing) counts as "not verified" and makes the whole checkpoint FAILED, because a check that never ran has not actually validated anything.
+A separate **Pre-Output Verification** pass happens later, at delivery time. That one is not embedded in a script -- it is a checklist the `data-verifier` agent works through, confirming that the report has every section the Plan promised, that the outputs match the Plan's commitments, that every Research Outcome is addressed with evidence, and that any Hypotheses are transparently assessed.
+
+Each checkpoint reports one of three results -- **PASSED**, **PASSED WITH WARNINGS**, or **FAILED** -- along with a count of how many individual checks passed, warned, failed, could not be verified, or were skipped as not applicable. A check that *could not run* (a required input was missing) counts as "not verified" and makes the whole checkpoint FAILED, because a check that never ran has not actually validated anything. You can read these results yourself in each script's execution log: every checkpoint prints a count line such as `Checks: 6 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped`, followed by its verdict, such as `CP2 VALIDATION: PASSED WITH WARNINGS`.
 
 If a checkpoint fails, execution stops. Period. DAAF doesn't try to power through -- it reports the failure and either attempts a fix or escalates to you.
 
@@ -868,9 +874,11 @@ After every single script passes its embedded checkpoints, a *completely separat
 | **QA4a** | After analysis scripts | Invalid statistical methods, violated assumptions, unreliable results |
 | **QA4b** | After visualization scripts | Misleading charts, incorrect data sources, missing labels |
 
-**Why two layers?** Because they catch different types of errors. Primary validation catches *operational failures* -- the data is empty, the types are wrong, something clearly broke. Secondary QA catches *methodological errors* -- the code runs fine and produces output, but the methodology is wrong, the join logic is subtly off, or the interpretation doesn't match what the data actually shows. These are the insidious errors that humans regularly miss when reviewing LLM-generated code, and they're exactly the errors that matter most for research integrity.
+The reviewer's own scripts are saved in the project's `scripts/cr/` folder (`stage5_01_cr1.py`, and for analysis and figure scripts `stage8_01_cra1.py` and `stage8_02_crb1.py`; see [The Scripts Directory](#the-scripts-directory)). Each one prints a result line near the end of its execution log, such as `QA2 RESULT: WARNING`. The result is PASSED, WARNING, or BLOCKER, and a BLOCKER sends the script back for revision (or, for a problem with the methodology rather than the code, straight to you).
 
-**The critical rule:** Every script should get both layers of review. No exceptions. And the code-reviewer inspects each script *immediately* after it's executed -- not batched at the end of a stage. This matters because an error in script 1 that goes undetected will silently propagate through scripts 2, 3, and 4, compounding into a mess that's far harder to diagnose and fix.
+**Why two layers?** Because they catch different types of errors. Primary validation catches *operational failures* -- the data is empty, required columns are missing, something clearly broke. Secondary QA catches *methodological errors* -- the code runs fine and produces output, but the methodology is wrong, the join logic is subtly off, or the interpretation doesn't match what the data actually shows. These are the insidious errors that humans regularly miss when reviewing LLM-generated code, and they're exactly the errors that matter most for research integrity.
+
+**The critical rule:** Every script should get both layers of review. No exceptions. And the code-reviewer inspects each script after it runs and *before* anything that builds on it starts -- not batched at the end of a stage. This matters because an error in script 1 that goes undetected will silently propagate through scripts 2, 3, and 4, compounding into a mess that's far harder to diagnose and fix.
 
 > **What this looks like in practice:** Two real catches from the sample analysis described in [Looking at the Sample Projects](#looking-at-the-sample-projects). During data acquisition, the code-reviewer flagged that a variable named `open_public` was being interpreted as "open admissions" -- a sanity check showed Harvard and Stanford both coded as 1, because the field actually means "currently operating." The selectivity classification at the heart of the analysis would otherwise have been silently wrong. Later, during independent final verification, the data-verifier traced every key statistic in the draft report back to the raw script outputs and found a regression coefficient that had been plausibly invented rather than transcribed -- an error that changed the report's central claim -- and blocked delivery until it was corrected against the execution log.
 
@@ -882,20 +890,25 @@ Here's how a typical task flows through the system during a Full Pipeline analys
 
 1. **You** ask a research question
 2. **The orchestrator** classifies the request as Full Pipeline and confirms with you
-3. **The orchestrator** sends a subagent to explore what data exists
-4. **The orchestrator** sends a research assistant to deep-dive each data source (one per source), reading its documentation and caveats
-5. **A synthesizer** consolidates all those findings into unified guidance
-6. **The orchestrator** pauses for your review (Phase Status Update 1) ← *your checkpoint*
-7. **A research design lead** drafts a detailed Plan, which a separate checker validates
-8. **The orchestrator** pauses for your review again (Phase Status Update 2) ← *your checkpoint*
-9. **A technician/analyst** works through each task in the Plan, one at a time, with **a separate reviewer** inspecting each script immediately after it runs
-10. **The orchestrator** pauses twice more for your review to provide updates and get your input on any key decisions/issues (Phase Status Updates 3 and 4) ← *your checkpoints*
-11. **An assembler** compiles all the scripts into a browsable notebook
-12. **A writer** creates the stakeholder report
-13. **A final verifier** performs adversarial verification on the report, checking it closely for errors and drift from the outputs of the actual analytic scripts
-14. **The orchestrator** delivers everything to you with file paths for final review.
+3. **The orchestrator** reads anything you pointed it to and shows you a pre-flight scope check (the data sources, years, and geography it proposes, and anything your materials changed), then waits for your approval ← *your go-ahead*
+4. **The orchestrator** sends a subagent to explore what data exists
+5. **The orchestrator** sends a research assistant to deep-dive each data source (one per source), reading its documentation and caveats
+6. **A synthesizer** consolidates all those findings into unified guidance
+7. **The orchestrator** pauses for your review of the discovery findings (checkpoint 1 of 4) ← *your checkpoint*
+8. **A research design lead** drafts a detailed Plan, which a separate checker validates
+9. **The orchestrator** pauses for your review of the Plan (checkpoint 2 of 4) ← *your checkpoint*
+10. **A technician/analyst** fetches and cleans the data, task by task from the Plan, with **a separate reviewer** inspecting each script after it runs, before anything that builds on it starts
+11. **The orchestrator** pauses for your review of the data's quality (checkpoint 3 of 4) ← *your checkpoint*
+12. **The technician/analyst** transforms the data, runs the analyses, and makes the figures, again with each script reviewed before anything that builds on it starts
+13. **An assembler** compiles all the scripts into a browsable notebook, and the orchestrator gathers the reviewers' findings from the whole run, confirming that no blocking issue is left unresolved
+14. **The orchestrator** pauses for your review of the results (checkpoint 4 of 4) ← *your checkpoint*
+15. **A writer** creates the stakeholder report
+16. **A final verifier** performs adversarial verification on the report, checking it closely for errors and drift from the outputs of the actual analytic scripts
+17. **The orchestrator** delivers everything to you with file paths for final review.
 
-That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And you get four mandatory check-in points where DAAF pauses and waits for your explicit approval before continuing.
+Each checkpoint message is headed with the work just finished, such as "Checkpoint: Discovery Complete" or "Checkpoint: Planning Complete", and a progress bar shows how far along the analysis is.
+
+That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And after the scope check at the start, you get four mandatory check-in points where DAAF pauses and waits for your explicit approval before continuing.
 
 **Between those checkpoints, you won't be left in the dark.** DAAF doesn't assume you're watching every step as it happens -- you might kick off a round of work and step away. So whenever it finishes a round and hands control back to you, it ends with a plain-language briefing of what happened since your last message: the bottom line first, then the key findings, decisions, and any files produced, and finally anything it needs from you to keep going. The four formal checkpoints above are the big, structured versions of this; the briefings in between are lighter, but they follow the same habit of catching you up rather than making you piece together what happened from the transcript.
 
@@ -974,12 +987,12 @@ You don't need to know what's in most of these directories -- the two that matte
 | Directory | What's In It | Who It's For |
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
-| `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
+| `user_reference/` | User documentation (you're reading one right now) | **You** (guides and FAQs written for people) |
 | `.claude/agents/` | Specialized agent protocols (18 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`, `launch_code_server.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
-| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
+| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`daaf`, the DAAF Control Panel and the recommended way in; `run_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 

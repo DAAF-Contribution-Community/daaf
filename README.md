@@ -23,7 +23,7 @@ Enter <a href="https://daaf.openaugments.org"><strong>**DAAF, the Data Analyst A
 - Enforcing strict auditability and reproducibility standards for all work, thus allowing you to **verify everything** Claude does on your behalf
 - Preventing potentially dangerous unintended file access and editing, by sandboxing Claude with strict protections and logging traces
 - Setting high standards of care, rigor, and thoroughness in all data analysis, by forcing Claude to comment, verify, and review all analytic code before you ever see it
-- Embedding best practices for a wide variety of research methodologies like causal inference and geospatial analysis, by providing rich Skills that extend Claude's base capabilities with real research and resources
+- Embedding best practices for a wide variety of research methodologies like causal inference and geospatial analysis, by providing rich Skills (reference manuals Claude loads on demand when a task calls for them) that extend Claude's base capabilities with real research and resources
 - Collaborating with **you**, the human expert, directly on all key decisions, thus keeping you firmly in the driver's seat
 
 Think of it as a **force-multiplying exoskeleton** for human researchers -- a tool explicitly designed to **augment** your hard-earned expertise, not replace it. The goal is to make it easy for researchers to use Claude Code effectively **and** responsibly. Importantly, DAAF is not and will never be perfect -- but it is already immensely useful, and this is the worst a tool like DAAF will ever be from now on with the help and support of the broader research community.
@@ -43,7 +43,6 @@ Install and begin using it in as little as 10 minutes from a fresh install with 
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
   <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
   <a href="https://daafguide.substack.com/"><strong>DAAF Field Guide Substack</strong></a> &nbsp;|&nbsp;
-  <a href="https://discord.gg/7FWTnZJDqy"><strong>AI for Responsible and Rigorous Research Discord</strong></a> &nbsp;|&nbsp;
   <a href="CONTRIBUTING.md"><strong>Contributing to DAAF</strong></a>
 </p>
 
@@ -55,10 +54,11 @@ If you're already comfortable with the Terminal and Claude Code, you can get sta
 
 **Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an account with one of the supported AI providers:
 
-- **[Anthropic subscription](https://claude.com/pricing/max)** (Max recommended, $100-200/mo) — flat-rate, best value for heavy use.
+- **[Anthropic subscription](https://claude.com/pricing)** (Max at $100/mo or Ultra at $200/mo recommended; verified against Anthropic's pricing page on 2026-11-01) — flat-rate, best value for heavy use.
 - **[Anthropic API key](https://console.anthropic.com/)** — pay-per-use; no subscription, but a full analysis can run $50+.
-- **[OpenRouter](https://openrouter.ai/)** — pay-per-token, no subscription; provides access to Anthropic models plus high-performing open-weight alternatives like GLM 5.2.
-- **OpenAI API key or ChatGPT subscription** — run DAAF on GPT models via DAAF's automatic compatibility layer; a supported route that will benefit from wider community testing (see the [Installation Guide](user_reference/01_installation_and_quickstart.md)'s Option F).
+- **[OpenRouter](https://openrouter.ai/)** — pay-per-token, no subscription; provides access to Anthropic models plus high-performing open-weight alternatives like GLM 5.2; a supported route that benefits from wider community testing.
+- **OpenAI API key or ChatGPT subscription** — run DAAF on GPT models through DAAF's provider shim, a small translator built into DAAF (you turn it on in `environment_settings.txt` and restart the container); supported routes that benefit from wider community testing (see [Option F in the Installation Guide](user_reference/01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim)).
+- **AWS Bedrock or Google Vertex AI** — route through your organization's cloud platform; DAAF ships configuration templates, but these routes aren't maintainer-validated end-to-end (see [Using DAAF with Sensitive or Regulated Data](#using-daaf-with-sensitive-or-regulated-data)).
 
 Open a terminal in your desired installation directory.
 
@@ -84,7 +84,21 @@ cd daaf-docker
 .\daaf.ps1
 ```
 
-On first launch, Claude Code will prompt you to authenticate. DAAF defaults to **Opus 5.5** with 1 million token context. Several other models also perform excellently at very different price points — Anthropic's lower-cost **Sonnet** tier [sits in the top performance tier on DAAF's orchestration benchmarks](https://daaf.openaugments.org/bench/) at roughly half the cost, and strong GPT-5.6 / GPT-6 Astra and open-weight options exist too (see the [model-selection FAQ](user_reference/07_faq_technical.md#q-which-claude-model-should-i-use)); if you'd like to switch, type `/model`.  You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
+**Using OpenRouter, Bedrock or Vertex?** Before you start Claude Code, add your provider settings to `environment_settings.txt` in your `daaf-docker` folder, then choose **11) Restart Container** in the Control Panel. The Installation Guide shows what to add: [Configure authentication via environment_settings.txt](user_reference/01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt).
+
+**Using OpenAI or ChatGPT?** Before you start Claude Code, set up DAAF's provider shim. With an OpenAI API key, follow [Option F in the Installation Guide](user_reference/01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim). With a ChatGPT subscription, follow the [ChatGPT subscription steps](user_reference/01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend) instead: they use different settings and include a one-time sign-in (turn on device-code login in your ChatGPT security settings, then run `codex login --device-auth` from Control Panel option **6) Open Terminal in Container**). Either way, add the settings your steps list to `environment_settings.txt`, then choose **11) Restart Container**.
+
+From the Control Panel menu, choose **1) Start Claude Code**. With an Anthropic subscription or API key, Claude Code asks you to sign in the first time; follow its prompts.
+
+DAAF's default model is Claude Code's `opus` model setting, which on an Anthropic subscription or API key means **Opus 5.5** with a 1-million-token context window (observed 2026-09-24, Claude Code 2.1.281). You can also choose from several other models:
+
+- Anthropic's **Sonnet 5** and OpenAI's **GPT-5.6 Sol** sit in the top performance tier on DAAF's benchmark, [DAAFBench](https://daaf.openaugments.org/bench/), at roughly half to two-thirds of the benchmark cost of Opus 4.8 (the model those costs are measured against; DAAFBench July 2026 corpus — the live results page adds later models and prices).
+- OpenAI's **GPT-6 Astra** is supported but has no DAAFBench result in that corpus.
+- Open-weight models are available through OpenRouter.
+
+The [model-selection FAQ](user_reference/07_faq_technical.md#q-which-claude-model-should-i-use) compares them. To switch models, type `/model` in Claude Code.
+
+You're ready to go! See [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF.
 
 ---
 
@@ -93,7 +107,7 @@ On first launch, Claude Code will prompt you to authenticate. DAAF defaults to *
 DAAF explicitly embraces the fact that LLM research assistants will never be perfect and can never be trusted as a matter of course. But with the right guardrails, they can still be immensely valuable for critically-minded researchers. Every design decision serves five core requirements:
 
 - **Transparent.** Because LLMs will always be susceptible to lying, hallucinating, and cutting corners, DAAF forces Claude Code to operate using file-first principles: all data operations are drafted and run as actual Python or R files, all reasoning is stored as verbose comments, plan documents, and structured code output that you can review and intervene on at any time.
-- **Scalable.** Because most LLMs are trained as generalists susceptible to sycophancy and overconfidence, DAAF provides a comprehensive and extensible set of explicit instructions and standards enforcing highly opinionated best practices (via agent and skill documents), injecting the right information at the right time for any specific task -- so you don't have to hold its hand every time to get good output.
+- **Scalable.** Because most LLMs are trained as generalists susceptible to sycophancy and overconfidence, DAAF provides a comprehensive and extensible set of explicit instructions and standards enforcing highly opinionated best practices (via skill documents and agent documents; an agent is a specialist version of Claude with its own working protocol), injecting the right information at the right time for any specific task -- so you don't have to hold its hand every time to get good output.
 - **Rigorous.** Because LLMs can perform extensive computation on your behalf, DAAF's workflows force Claude to be meticulous, cautious, self-checking, and extremely thorough. Code is broken into hyper-atomic steps and adversarially reviewed. Plans and reports are informed by deep-dives into actual data documentation and actual exploratory analyses, then also reviewed by equally informed counterparts.
 - **Reproducible.** Because good science needs to be reproducible, every single data file, script, and output is automatically stored throughout the entire process. You **do not** have to just trust DAAF or Claude Code -- you can and should verify everything yourself.
 - **Responsible.** Because AI-assisted research demands accountability, DAAF ensures that data sources are properly cited, AI assistance is transparently disclosed via the [GUIDE-LLM](https://llm-checklist.com/) reporting standard, data usage terms are respected, limitations are honestly acknowledged, and the human researcher's judgment remains the final authority on all analytical decisions.
@@ -108,7 +122,7 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *What you do:* Point DAAF to your data (local file, web download, or API) and any associated documentation
 - *What DAAF does:* Runs a multi-stage data profiling process to learn all the ins and outs, with fully reproducible code
 - *What you get:* An in-depth data documentation Skill that DAAF references for all future work with your data -- fully portable, share with colleagues
-- *Sensitive data?* If your data can't leave your environment, DAAF routes it through a privacy-preserving [synthetic-data path](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) -- you profile it locally and only a summary crosses the boundary
+- *Sensitive data?* If your data can't leave your environment, DAAF routes it through a privacy-preserving [synthetic-data path](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) -- you profile it locally and only a summary (or, at the highest disclosure tier, synthetic rows you generate locally) crosses the boundary
 - *Example:* I've got a new BLS employment dataset I want to explore and understand a bit more. I've got this link to the dataset and a technical paper from them: can you start profiling it?
 
 **Data Lookup:** Your personal data documentation oracle
@@ -169,18 +183,23 @@ When you open DAAF, just begin by asking it any question or for support with any
 
 ## Capabilities
 
-The base framework comes ready to analyze any or all of the 40+ foundational public education datasets available via the [Urban Institute Education Data Portal](https://educationdata.urban.org/documentation/), and is readily extensible to new data domains and methodologies. DAAF also comes out-of-the-box with a deep understanding of many of the most common social science research methods and beyond: from causal inference techniques like difference-in-differences, to geospatial analysis, to unsupervised machine learning methods. Several additional skills are included to help DAAF support broader science communication skills, as well -- embedding many best practices related to data visualization, data dashboarding, science communication, and more.
+The base framework comes ready to analyze any or all of the 40+ foundational public education datasets available via the [Urban Institute Education Data Portal](https://educationdata.urban.org/documentation/), and is readily extensible to new data domains and methodologies. DAAF also comes out-of-the-box with a deep understanding of many of the most common social science research methods and beyond: from causal inference techniques like difference-in-differences, to geospatial analysis, to unsupervised machine learning methods. It can also search and review the research literature, read PDFs, and retrieve web pages, keeping a record of every source it reads. Several additional skills are included to help DAAF support broader science communication skills, as well -- embedding many best practices related to data visualization, data dashboarding, science communication, and more.
 
-**Included data sources:** CCD, CRDC, EdFacts, EADA, FSA, IPEDS, MEPS, NACUBO, NCCS, NHGIS, PSEO, SAIPE, College Scorecard, Campus Safety
+**Included data sources:** CCD, CRDC, EdFacts, EADA, FSA, IPEDS, MEPS, NACUBO, NCCS, NHGIS, PSEO, SAIPE, College Scorecard, Campus Safety, plus County Presidential Election Returns 2000-2024 from the MIT Election Data and Science Lab (this one needs a Harvard Dataverse API key; see [Set up data source API keys](user_reference/01_installation_and_quickstart.md#set-up-data-source-api-keys))
 
 **Methodological support:**
 Difference-in-differences &bull; Fixed/random effects &bull; Mixed effects models &bull; Instrumental variables &bull; Regression discontinuity &bull; Synthetic control &bull; Event studies &bull; Propensity score matching &bull; Time series analysis &bull; Complex survey analysis &bull; Geospatial analysis & spatial statistics &bull; Network analysis & community detection &bull; Decomposition analysis &bull; Quantile regression &bull; Exploratory data analysis &bull; DAG modeling &bull; Predictive analytics &bull; Cross-validation &bull; Algorithmic fairness assessment &bull; Cluster analysis &bull; Wild bootstrap inference &bull; Sensitivity analysis
 
+**Literature, PDFs, and web pages:**
+- *Literature search and review:* DAAF searches OpenAlex, Semantic Scholar, and ERIC together, follows citations forward and backward from key papers, finds legal open-access copies, and checks every reference it cites against a database record and for retractions. You choose how deep a review goes: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review in which you make the judgment calls. A free OpenAlex API key is strongly recommended; see [Set up data source API keys](user_reference/01_installation_and_quickstart.md#set-up-data-source-api-keys).
+- *PDF reading:* DAAF reads papers, codebooks, and reports page by page and checks each quote and number it takes from a PDF against the page it came from. Scanned pages are read with OCR, and quotes from them count as weaker evidence.
+- *Web retrieval:* DAAF saves every web page it reads exactly as fetched, with a plain-text copy and a record of where and when it came from, so you can trace any quote back to its source.
+
 **Python library expertise:**
-polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-learn &bull; geopandas &bull; igraph &bull; plotly &bull; plotnine &bull; marimo &bull; svy &bull; fairlearn &bull; SHAP &bull; PySAL &bull; LightGBM &bull; seaborn &bull; rdrobust &bull; marginaleffects
+polars &bull; pyfixest &bull; linearmodels &bull; statsmodels &bull; scikit-learn &bull; geopandas &bull; igraph &bull; plotly &bull; plotnine &bull; great-tables &bull; marimo &bull; svy &bull; fairlearn &bull; SHAP &bull; PySAL &bull; LightGBM &bull; seaborn &bull; rdrobust &bull; marginaleffects
 
 **R library expertise:**
-tidyverse (data manipulation) &bull; ggplot2 (static visualization) &bull; fixest (high-dimensional fixed effects) &bull; r-stats (base statistical modeling) &bull; quarto (reproducible notebooks) &bull; plotly-r (interactive visualization) &bull; sf-terra (spatial analysis) &bull; igraph-r (network analysis) &bull; plm (panel data) &bull; tidymodels (machine learning) &bull; survey-r (complex surveys) &bull; gt (table formatting)
+tidyverse packages: dplyr, tidyr, readr, purrr, stringr, forcats, lubridate (data manipulation) &bull; ggplot2 (static visualization) &bull; fixest (high-dimensional fixed effects) &bull; stats and sandwich (base statistical modeling, robust standard errors) &bull; Quarto (reproducible notebooks) &bull; plotly (interactive visualization) &bull; sf and terra (spatial analysis) &bull; igraph and tidygraph (network analysis) &bull; plm (panel data) &bull; tidymodels (machine learning) &bull; survey (complex surveys) &bull; gt (table formatting)
 
 R is a core execution lane engineered for parity with Python -- the same pipeline, the same validation, the same reproducibility standards -- with Python as the default and R a one-line preference away. A few method-level differences between the two remain and are documented honestly in the [technical FAQ](user_reference/07_faq_technical.md#q-are-there-any-known-differences-between-python-and-r-support).
 
@@ -189,14 +208,14 @@ Need a Python or R package that isn't listed? You can add your own by editing th
 **Additional features:**
 Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo for Python, Quarto for R) &bull; Browser-based code editor (code-server) &bull; R/tidyverse-Python code translation &bull; Python-R code translation &bull; Stata-Python code translation &bull; Stata-R code translation &bull; Citation propagation & verification &bull; GUIDE-LLM AI use disclosure &bull; Git version control &bull; Session transcript archiving &bull; DAAF Log Explorer &bull; Docker-based safety sandboxing &bull; Destructive command prevention &bull; Secret/credential scanning &bull; File-first execution enforcement &bull; Science communication
 
-**Model benchmarking:** [DAAFBench](https://daaf.openaugments.org/bench/) measures how faithfully different models follow DAAF's research protocols (protocol adherence, not research quality) -- a practical guide when choosing a model or budget.
+**Model benchmarking:** [DAAFBench](https://daaf.openaugments.org/bench/) measures how faithfully different models follow DAAF's research protocols (behavioral adherence to DAAF's protocols, not research quality) -- a practical guide when choosing a model or budget.
 
 ---
 
 ## Demos & Sample Projects
 
 - [**Watch the Getting Started tutorial**](https://youtu.be/BPlR9bXZxnY) -- a full 30-minute walkthrough that installs DAAF from scratch and orients you to the whole environment: the Docker setup, Claude Code, DAAF itself, and everyday essentials like the browser file editor, the session log viewer, and keeping your installation up to date
-- [**Watch the v2.0.0 Showcase**](https://youtu.be/747r7VT4a78) highlighting all the current functionalities of DAAF
+- [**Watch the v2.0.0 Showcase**](https://youtu.be/747r7VT4a78), a tour of DAAF's features at version 2.0.0 (it does not cover R support, non-Anthropic providers, or literature review)
 - [**Explore a sample Full Pipeline project**](https://daaf.openaugments.org/anatomy/) on our interactive online explainer, or [browse the actual repo files](research/2026-03-29_College_Graduation_Rate_Selectivity_Analysis/README.md) to see what kinds of reports, visualizations, reproducible scripts, and other artifacts DAAF can produce.
 - [**Explore a sample Reproducibility Verification project**](research/2026-03-30_College_Graduation_Rate_Selectivity_Analysis_Reproduction/README.md) to explore the outputs of a Reproducibility Verification process (using the same Full Pipeline project above) -- see the project README for a guided walkthrough.
 - [**Watch the data onboarding demo**](https://www.youtube.com/watch?v=G5uKSlI6jls) explaining how the data onboarding process works and talking through a use-case where we replicate the NYTimes' "Red Shift" interactive data visualization
@@ -207,20 +226,23 @@ Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo for P
 ## Why does DAAF have education datasets bundled with it?
 DAAF is designed to be fully domain-extensible -- you can readily bring your own data sources into the ecosystem by engaging with the Data Onboarding mode (see this [10-minute tutorial](https://youtu.be/G5uKSlI6jls) for a demonstration). 
 
-Note: If you plan to use DAAF with private, proprietary, or regulated data (FERPA, HIPAA, etc.), your data-privacy situation depends entirely on your specific Anthropic license and access method. Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees. **It is your responsibility to understand and evaluate these nuances for your use case before using DAAF with any non-public data.** Consult your IT team and legal counsel, and review [Anthropic's current data policies](https://www.anthropic.com/policies) for your specific agreement type.
-
-DAAF ships configuration templates for the Bedrock and Vertex routes, though these routes aren't maintainer-validated end-to-end -- treat them as a starting point you'll need to stand up and test in your own environment. For more detail, see the [Data Privacy FAQ](user_reference/07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy).
-
-And if your data genuinely can't leave your environment, DAAF includes a built-in **synthetic-data protocol** for exactly this situation -- you profile the data locally and DAAF works from a disclosure-controlled summary alone, so the real data never enters the container. Its disclosure controls minimize what leaves your machine but are not a formal privacy guarantee -- you review the profile summary yourself before it ever crosses the boundary. See [Can I use DAAF with data that can't leave my secure environment?](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).
-
-
-All that being said, the [Urban Institute Education Data Portal](https://educationdata.urban.org/) serves as an excellent out-of-the-box demonstration domain because it offers:
+The [Urban Institute Education Data Portal](https://educationdata.urban.org/) serves as an excellent out-of-the-box demonstration domain because it offers:
 
 - High-quality, well-documented public data
 - Real, immediate policy relevance (K-12 schools, districts, colleges, outcomes)
 - Sufficient complexity to stress-test the system (multiple sources, coded values, suppression rules, cross-state comparability issues)
 
 These datasets allow new users to quickly and easily experiment with DAAF using genuine research questions, nuanced datasets, and complex analytic plans. The architecture, agents, methodological skills, validation protocols, engagement modes, and workflow stages are all domain-agnostic.
+
+---
+
+## Using DAAF with Sensitive or Regulated Data
+
+If you plan to use DAAF with private, proprietary, or regulated data (FERPA, HIPAA, etc.), your data-privacy situation depends on which AI provider you connect through and on your agreement with it. Your prompts, and whatever Claude reads or prints during a session (file excerpts, sample rows, summary statistics, diagnostic results), go to that provider as part of the conversation: Anthropic, with an Anthropic subscription or API key; OpenAI, with an OpenAI API key or ChatGPT subscription through DAAF's provider shim; OpenRouter and the model provider it routes to, with OpenRouter; or your organization's own cloud account, with AWS Bedrock or Google Vertex AI. Enterprise agreements, Bedrock, and Vertex each offer different data governance guarantees. **It is your responsibility to understand and evaluate these nuances for your use case before using DAAF with any non-public data.** Consult your IT team and legal counsel, and review your provider's data policies for your agreement type (for example, [Anthropic's policies](https://www.anthropic.com/policies) or [OpenAI's data controls for its API](https://platform.openai.com/docs/guides/your-data)).
+
+DAAF ships configuration templates for the Bedrock and Vertex routes, though these routes aren't maintainer-validated end-to-end -- treat them as a starting point you'll need to stand up and test in your own environment. For more detail, see the [Data Privacy FAQ](user_reference/07_faq_technical.md#q-where-is-my-data-sent-what-about-privacy).
+
+If your data genuinely can't leave your environment, DAAF includes a built-in **synthetic-data protocol** for exactly this situation -- you profile the data locally and DAAF works from a disclosure-controlled summary alone, so the real data never enters the container. Its disclosure controls minimize what leaves your machine but are not a formal privacy guarantee -- you review the profile summary yourself before it ever crosses the boundary. See [Can I use DAAF with data that can't leave my secure environment?](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).
 
 ---
 
@@ -272,7 +294,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
 }
 ```
 
-GitHub also provides a "Cite this repository" button (powered by the [`CITATION.cff`](CITATION.cff) file) that generates APA and BibTeX citations automatically. Following [FORCE11 Principle 6](https://force11.org/info/software-citation-principles-published-2016/) (Specificity), please cite the **exact version** of DAAF you used -- every DAAF report automatically records the git commit hash and version in its AI Use Disclosure section.
+GitHub also provides a "Cite this repository" button (powered by the [`CITATION.cff`](CITATION.cff) file) that generates APA and BibTeX citations automatically. Following [FORCE11 Principle 6](https://force11.org/info/software-citation-principles-published-2016/) (Specificity), please cite the **exact version** of DAAF you used -- every DAAF report automatically records the git commit hash in its AI Use Disclosure section and the version number in its References.
 
 ### Automatic Citation Tracking
 
@@ -315,7 +337,7 @@ Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I ha
 - **PDF reading stack** -- [Poppler](https://poppler.freedesktop.org/) (`pdftotext`, `pdftoppm`; GPL-2 or GPL-3), [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) (Apache-2.0), [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) with its bundled PDFium (BSD-3-Clause, Apache-2.0), [pdfplumber](https://github.com/jsvine/pdfplumber) (MIT) and [RapidFuzz](https://github.com/rapidfuzz/RapidFuzz) (MIT) power DAAF's page-anchored PDF reading layer (`pdf_ingest.sh`, `lit_verify.sh`; the `pdf-reading` skill)
 - **[uv](https://github.com/astral-sh/uv)** ([Astral](https://astral.sh/)) -- Fast Python package manager powering DAAF's build
 - **[Git](https://git-scm.com/)** and **[pre-commit](https://pre-commit.com/)** -- Version control and commit-time safety checks
-- DAAF also relies on a broad ecosystem of specific Python and R packages for statistical computing, visualization, and geospatial analysis -- see the [Dockerfile](Dockerfile) for the full list. It pins the top-level Python packages with `==` and freezes the Python and system-package layers to fixed dates, normally one shared environment date: uv's `UV_EXCLUDE_NEWER` cutoff fixes the complete Python set, transitive dependencies included, and system packages come from a dated Ubuntu snapshot (it currently runs one month ahead of the Python date as a documented security exception; see [How DAAF Freezes the Environment](user_reference/04_extending_daaf.md#how-daaf-freezes-the-environment-reproducible-rebuilds)). R packages come from their own date-pinned Posit Package Manager snapshot.
+- DAAF also relies on a broad ecosystem of specific Python and R packages for statistical computing, visualization, and geospatial analysis -- see the [Dockerfile](Dockerfile) for the full list. It freezes the Python, system, and R package sets to fixed dates so a rebuild reproduces the same environment: uv's `UV_EXCLUDE_NEWER` cutoff fixes the complete Python package set, system packages come from a dated Ubuntu snapshot, and R packages from a date-pinned Posit Package Manager snapshot (see [How DAAF Freezes the Environment](user_reference/04_extending_daaf.md#how-daaf-freezes-the-environment-reproducible-rebuilds)).
 
 ### Methodological Foundations
 
