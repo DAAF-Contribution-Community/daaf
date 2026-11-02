@@ -9,7 +9,7 @@ metadata:
 
 # DAAF Orchestrator Framework
 
-Operational framework for the DAAF orchestrator agent. Defines the nine engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
+Operational framework for the DAAF orchestrator agent. Defines the ten engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
 
 ## Identity & Mission
 
@@ -50,7 +50,7 @@ Every conversation begins with a brief preamble before mode classification. Expa
 When a user asks for more information, expand naturally on these points:
 
 - DAAF structures analysis into phases with human oversight — you pause at each milestone for feedback rather than running start-to-finish
-- Nine modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce), Framework Development (modify DAAF itself — skills, agents, modes, templates, configuration), User Support (questions about DAAF, its tools, setup, and troubleshooting)
+- Ten modes: Data Onboarding (profile new datasets, create reusable data source skills), Data Lookup (focused answer), Literature Review (what published research says, from a quick scan of abstracts to a formal systematic review, with every reference and quote checked), Data Discovery (lightweight exploration, no code), Ad Hoc Collaboration (flexible, multi-turn working session), Full Pipeline (complete pipeline, 4 checkpoints), Revision and Extension (revise or extend existing work), Reproducibility Verification (re-run an existing analysis to verify its findings reproduce), Framework Development (modify DAAF itself — skills, agents, modes, templates, configuration), User Support (questions about DAAF, its tools, setup, and troubleshooting)
 - The user is always in control — you explain what to expect and wait for go-ahead
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
@@ -134,7 +134,7 @@ silently propagate — no need to re-ask.
 
 ## Engagement Mode Classification
 
-Before executing any user request, classify it into one of nine engagement modes. This classification determines your workflow, outputs, and which references to load.
+Before executing any user request, classify it into one of ten engagement modes. This classification determines your workflow, outputs, and which references to load.
 
 ### Pre-Check: Session Recovery
 
@@ -150,6 +150,11 @@ User Request
     │
     ├─ Asks a specific lookup question (coded values, variable info)?
     │   └─ YES → Data Lookup Mode
+    │
+    ├─ Asks what the published research says, for a literature
+    │  review, related work, the state of research, or to find
+    │  papers on a topic?
+    │   └─ YES → Literature Review Mode
     │
     ├─ Asks what data exists or if something is feasible?
     │   └─ YES → Data Discovery Mode
@@ -183,7 +188,7 @@ User Request
            seems to want general guidance about DAAF.
 ```
 
-Keywords are heuristics, not deterministic. When multiple modes seem applicable, consider the user's primary intent. Examples: "create a chart from existing data" may be Revision (not Full Pipeline); "explore the relationship between X and Y" implies analysis (Full Pipeline, not Data Discovery).
+Keywords are heuristics, not deterministic. When multiple modes seem applicable, consider the user's primary intent. Examples: "create a chart from existing data" may be Revision (not Full Pipeline); "explore the relationship between X and Y" implies analysis (Full Pipeline, not Data Discovery). "Research X using data" is Full Pipeline; "what has research found about X" is Literature Review.
 
 ### Mode Summary Table
 
@@ -191,6 +196,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 |------|------------------|----------------|----------------|
 | **Data Onboarding** | "ingest", "onboard", "profile", "new dataset", "add data source", "sensitive data", "PII", "can't share the data" | SKILL.md + Research Project with profiling scripts | `data-onboarding-mode.md` |
 | **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
+| **Literature Review** | "literature review", "lit review", "what does the research say", "related work", "state of the research", "find papers on", "systematic review" | Quick-scan memo or literature review synthesis, checked reference list, list of gaps + Research Project with the search, screening and reading record | `literature-review-mode.md` |
 | **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
 | **Ad Hoc Collaboration** | "help me with", "review this", "debug this", "how do I", "advise on", "think through" | Conversation + optional workspace artifacts | `ad-hoc-collaboration-mode.md` |
 | **Full Pipeline** | "analyze", "research", "create", "generate" | Plan.md + Plan_Tasks.md + Notebook + Report | `full-pipeline-mode.md` |
@@ -242,6 +248,9 @@ Use the appropriate boilerplate below as a starting point. Fill in the bracketed
 > [Classification reasoning]. I'll read the data lookup mode workflow reference, then [what you'll look up and where]. **Sound good?**
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
+
+**Literature Review:**
+> [Why this is a **Literature Review**]. [Your goal in one line]. I'll read the literature review workflow, set up a project folder, and ask how deep you'd like to go: a quick scan of abstracts, a standard review where I read the key papers in full (recommended for most questions), or a formal systematic review that you lead. Then I'll come back with a scope check: the question as I understand it, where I'll search, what counts as in or out, and the expected reading and cost, before any full search starts. Along the way you'll look over the reference list before the final version and approve the final write-up; in a standard or formal review you'll also agree which papers get read in full and see what each round found. Every reference is matched to a database record, every quote and number is checked against its page, and results from different studies are never averaged into one number. [If materials: I'll read [X] first.] **Shall I proceed?**
 
 **Data Discovery:**
 > [Classification reasoning]. I'll read the data discovery mode workflow reference, then do a read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
@@ -297,6 +306,14 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Data Onboarding (complete) | Framework Development | User wants to refine the skill just created beyond what Onboarding produced |
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience; System Update Action Plan in LEARNINGS.md has actionable items — proactively suggest "incorporate learnings" |
 | Data Onboarding (complete) | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., skill template gaps discovered during profiling) |
+| Data Discovery | Literature Review | User wants to know what published research has found ("what's known about …") before choosing data |
+| Literature Review | Data Discovery | A gap in the literature is answerable with data and the user wants to see what data exists (handoff: `output/LitReview_Handoff_v{N}.md`) |
+| Literature Review | Full Pipeline | User wants a data-answerable gap analysed (handoff: `output/LitReview_Handoff_v{N}.md`) |
+| Full Pipeline (Phase 1) | Literature Review | User wants the literature reviewed before planning |
+| Full Pipeline (complete) | Literature Review | A surprising finding needs grounding in published research |
+| Ad Hoc Collaboration | Literature Review | User wants a recorded review with checked citations |
+| Literature Review | Ad Hoc Collaboration | User wants to discuss the literature rather than run review rounds |
+| Literature Review | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., a search backend quirk or a gate behaviour) |
 | User Support | Any mode | User's questions reveal they want to *do* something, not just learn — route to appropriate mode |
 | User Support (update conflicts) | Framework Development | Conflict resolution reveals customizations needing architectural re-integration beyond merge fixes — finish git operation first, then new session |
 | Any mode | User Support | Persistent confusion signals despite reactive help; user explicitly asks for general DAAF guidance |
@@ -331,6 +348,9 @@ All user-facing messages (mode confirmations, checkpoints, status updates, error
 | STATE.md | "session state" or "saved progress" |
 | LEARNINGS.md | *(never reference directly — internal artifact)* |
 | Transformation Sequence | "analysis steps" or "the planned sequence of steps" |
+| LR-0 … LR-8, LR-7Q, LR-8Q (Literature Review stage codes) | Describe the activity (e.g., "searching", "choosing papers", "reading the key papers", "writing up"); full list in `literature-review-mode.md` § Plain-Language Vocabulary |
+| CP-1 / CP-K / CP-S / CP-A / CP-R / CP-G / CP-F (Literature Review checkpoints, with a hyphen; not CP1-CP4) | "scope check" / "key-paper list" / "full-text decisions" / "checklist review" / "round check-in" / "reference check" / "final review" |
+| Literature Review status and verdict codes (page-check verdicts, `verify` verdicts, citation statuses such as `pending_adjudication`, reading-audit outcomes, review levels), its agent names, and claim, finding and edge ids or `.lr-*` markers | The wording in `literature-review-mode.md` § Plain-Language Vocabulary (e.g., "matches the database record", "matches the record; not yet confirmed", "accepted by you", "the AI reader"); ids and markers never appear in user-facing prose |
 
 **Exceptions:** If the user themselves uses internal terminology (e.g., a returning power user says "what's the QA status?"), mirror their language. The plain-language rule applies to orchestrator-initiated communication, not to matching user vocabulary.
 
@@ -405,6 +425,7 @@ This standard is model-agnostic by design. The same structural discipline — le
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` | Synthetic (privacy-preserving) onboarding path: DS-1–DS-5 stages, tier-selection PSU, inverted three-part QA (disclosure-safety / report-consistency / synthetic-vs-profile), seeded generation, rejoin with synthetic provenance | Before entering the synthetic path at the DI-1 sensitivity gate (Data Onboarding, sensitive-data outcome) |
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Optional pre-authoring research dispatch, skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before the Pre-Authoring Research Offer / Stage DI-7 |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
+| `{SKILL_REFS}/literature-review-mode.md` | Literature Review workflow by level (quick, standard, formal), rounds, checkpoint templates, dispatch templates, orchestrator-run gates, citation second check, plain-language vocabulary, recovery, boundaries | After confirming Literature Review mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
 | `{SKILL_REFS}/ad-hoc-collaboration-mode.md` | Ad hoc dispatch loop, workspace setup, agent invocation patterns, output handling | After confirming Ad Hoc Collaboration mode |
 | `{SKILL_REFS}/full-pipeline-mode.md` | Complete 12-stage workflow, invocation templates, QA protocols, context requirements, gates, checklists, PSU templates, quality framework | After confirming Full Pipeline mode |
@@ -429,6 +450,12 @@ Mode Confirmed
     │
     ├─ Data Lookup Mode
     │   └─ Read: {SKILL_REFS}/data-lookup-mode.md
+    │
+    ├─ Literature Review Mode
+    │   └─ Read: {SKILL_REFS}/literature-review-mode.md
+    │          ├─ Stage LR-0 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_LITREVIEW.md
+    │          ├─ Consuming a review's outputs (another mode picking up its handoff, tables or reference list): Read {BASE_DIR}/agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md
+    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
     ├─ Data Discovery Mode
     │   └─ Read: {SKILL_REFS}/data-discovery-mode.md
@@ -638,6 +665,10 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | `report-writer` | `default` (read/write) | Stakeholder report (Stage 11, RV-4) |
 | `data-verifier` | `plan` (read-only) | Final verification (Stage 12, RV-3) |
 | `data-ingest` | `default` (read/write) | Dataset profiling (Data Onboarding Mode) |
+| `literature-searcher` | `default` (writes its own inputs and scoping record only) | Literature Review search protocol: scoping searches, searching and screening, reference and retraction checks, open-access retrieval and PDF ingest (LR-1 to LR-4), second-screener and resolution passes; every step through the framework CLIs |
+| `paper-reader` | `default` (writes its own reading notes only) | Literature Review full reading of one paper into a page-checked evidence card (LR-5), one paper per dispatch |
+| `literature-synthesizer` | `default` (writes its own deliverables and inputs only) | Literature Review quick-scan memo, round syntheses and final synthesis (LR-6, LR-7, LR-7Q); never runs `lit_verify report` on its own deliverable |
+| `citation-adjudicator` | `plan` (read-only: Read only, no Bash) | Literature Review citation second check, one bundle per dispatch; dispatched only once an evaluated identity exists (`literature-review-mode.md` § The Citation Second Check) |
 | `framework-engineer` | `default` (read/write) | Framework artifact authoring and integration (Framework Development Mode) |
 | `search-agent` | `plan` (read-only) | Broad-purpose read-only exploration — codebase, documentation, web, data (any mode/stage) |
 
@@ -662,8 +693,8 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 
 | Tier | Agents | Why |
 |------|--------|-----|
-| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
-| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
+| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest, paper-reader, literature-synthesizer, citation-adjudicator | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis, page-checked paper reading, literature synthesis and certainty wording, citation-identity judgment |
+| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent, literature-searcher | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration, executing an approved literature search protocol |
 
 **Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.
 
@@ -673,16 +704,19 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 - The work product feeds a high-stakes decision or a downstream verification gate.
 - The artifact under review cannot be executed and static review is the terminal quality gate — when there is no runtime check downstream, the reviewer's judgment *is* the gate and warrants the more capable model.
 - A search-agent dispatch is review-role or interpretive-synthesis work (adversarial reading of code or documents, generalizing conventions across sources) rather than mechanical lookup — the latter (structured lookup, reference-tracing) stays Sonnet.
+- A literature-searcher dispatch is formal-level screening, a second-screener pass or a resolution pass (`literature-review-mode.md` § Subagent Invocation).
 
 **Downgrade Opus → Sonnet when:**
 - Reviewing a small, mechanical script (risk-scaled review — a trivial diff does not need Opus).
 - The judgment work is trivially bounded.
 
-**Never downgrade the last line of defense.** Final verification (data-verifier at Stage 12) and plan verification (plan-checker at Stage 4.5) stay on Opus — do not cheap out on the terminal quality gates.
+**Never downgrade the last line of defense.** Final verification (data-verifier at Stage 12), plan verification (plan-checker at Stage 4.5) and the Literature Review claim spot-check (data-verifier at LR-8) stay on Opus — do not cheap out on the terminal quality gates.
 
 **Ceiling rule.** Never dispatch a subagent on a *higher* tier than the current session model. A user who chose a cheaper session model did so deliberately (cost control); silently upgrading subagents defeats that choice. The orchestrator cannot reliably determine its own session model from context, so the `enforce-model-ceiling.sh` PreToolUse hook enforces this deterministically: if a dispatch would exceed the session tier, the hook denies it and its message names the session model and the tier alias to use (e.g. `model: sonnet`). **Trust and follow the hook** — re-dispatch at the tier it states. (The hook is a fail-open cost guard, not a safety boundary: if it cannot detect the session model it allows the dispatch.)
 
 **Alternative providers.** Users on OpenRouter, the provider shim, or a cloud platform set all four tier aliases host-side in `environment_settings.txt`. `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` carry DAAF's two-tier routing (their models, same semantics); the OPUS remap should also set the session model, because settings.json ships the soft default `ANTHROPIC_DEFAULT_MODEL=opus` (inferred from Claude Code's alias resolution, not tested on every route — the user can confirm with `/status`). `ANTHROPIC_DEFAULT_HAIKU_MODEL` (Claude Code's housekeeping calls → fast model) and `ANTHROPIC_DEFAULT_FABLE_MODEL` (→ strong model) keep Claude Code from requesting a model the route does not serve; no DAAF agent uses either tier. "One model for everything" means all four aliases set to the same model — `CLAUDE_CODE_SUBAGENT_MODEL` no longer flattens DAAF's agents, because each agent's `model:` frontmatter outranks it (Claude Code ≥ 2.1.251). When the opus/sonnet aliases are remapped, the ceiling hook stands down (it cannot rank custom models). When they are not and the session runs a non-Claude model, the hook denies every Claude-tier dispatch; re-dispatching at another tier cannot help, so do not retry — relay the hook's remap guidance to the user. OpenAI GPT models are supported this way through OpenRouter or DAAF's provider shim (recommended: Sol for FABLE/OPUS and Luna for SONNET/HAIKU — provider-prefixed `openai/gpt-6-sol` / `openai/gpt-6-luna` on OpenRouter, bare `gpt-6-sol[1m]` / `gpt-6-luna[1m]` on the shim; Astra, `openai/gpt-6-astra` or `gpt-6-astra[1m]`, is a premium strong tier; GPT-6.1 Sol, `openai/gpt-6.1-sol` or `gpt-6.1-sol[1m]`, is a newer strong-tier option read like `gpt-6-sol`).
+
+**Reading PDFs on GPT routes.** Literature Review's paper-reader keeps the `opus` tier on GPT routes: the recommended sonnet mapping, Luna, is not on the `pdf-reading` skill's vision-validated list, so on that tier PDFs are read as text only, never as page images. The list names the exact model IDs and routes it covers (`pdf-reading/references/vision-validation.md`); a reader whose model and route are not on it reads text only whatever its tier.
 
 ### Orchestrator Context Budget
 

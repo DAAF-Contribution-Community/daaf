@@ -1,7 +1,7 @@
 ---
 name: web-retrieval
 description: >-
-  DAAF's protocol for retrieving web documents that an agent needs to READ (docs pages, articles, API references, issue threads). Retrieval runs through the framework CLI `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`, which saves the raw response, a deterministic extract, and a provenance manifest to disk — the built-in WebFetch is blocked because it returns an AI paraphrase, not source text. Covers when to fetch at all (check local skills first), tool syntax and flags, the two-artifact + MANIFEST provenance model, the exit-code failure table, the untrusted-content rule, thin-extract diagnosis, extract size rules, and destination conventions. Use when a permitted context (search-agent, data-ingest, debugger, orchestrator) must pull a specific web page into context to read or quote it. NOT for discovery — WebSearch stays built-in for finding URLs. NOT for pipeline data acquisition — Stage 5 / onboarding scripts fetching datasets into parquet are a separate, unchanged activity for any pipeline agent.
+  DAAF's protocol for retrieving web documents that an agent needs to READ (docs pages, articles, API references, issue threads). Retrieval runs through the framework CLI `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`, which saves the raw response, a deterministic extract, and a provenance manifest to disk — the built-in WebFetch is blocked because it returns an AI paraphrase, not source text. Covers when to fetch at all (check local skills first), tool syntax and flags, the two-artifact + MANIFEST provenance model, the exit-code failure table, the untrusted-content rule, thin-extract diagnosis, extract size rules, and destination conventions. Use when a permitted context (search-agent, data-ingest, debugger, literature-searcher, orchestrator) must pull a specific web page into context to read or quote it. NOT for discovery — WebSearch stays built-in for finding URLs. NOT for pipeline data acquisition — Stage 5 / onboarding scripts fetching datasets into parquet are a separate, unchanged activity for any pipeline agent.
 metadata:
   audience: web-tooled-agents
   domain: framework-tooling
@@ -31,17 +31,17 @@ what this skill governs:
 
 | Activity | What it is | Tool | Permitted contexts |
 |----------|-----------|------|--------------------|
-| **Web retrieval** | Fetching a document (page, article, docs, issue thread) for an agent to *read or quote* | `scripts/web_fetch.sh` (this skill) | search-agent, data-ingest, debugger, orchestrator |
+| **Web retrieval** | Fetching a document (page, article, docs, issue thread) for an agent to *read or quote* | `scripts/web_fetch.sh` (this skill) | search-agent, data-ingest, debugger, literature-searcher (a Literature Review's open-access retrieval), orchestrator |
 | **Pipeline data acquisition** | Stage 5 / Data Onboarding scripts fetching *datasets* into parquet under IAT | Normal fetch scripts (education-data-query, etc.) — unchanged | any pipeline agent |
 
 If you are pulling a dataset into `data/raw/` as parquet under an inline audit
 trail, that is pipeline data acquisition — this skill does not apply and nothing
 about it changed. If you are pulling a *document to read*, use `web_fetch.sh`.
 
-Agents outside the four permitted contexts should not perform agent-reading web
+Agents outside the five permitted contexts should not perform agent-reading web
 retrieval. Enforcement is doctrinal (curl/httpx are physically available to any
 Bash-capable agent), so this is a boundary of discipline, not a hard block: if
-you are not one of the four contexts and you find yourself wanting to fetch a
+you are not one of the five contexts and you find yourself wanting to fetch a
 document, return that need to the orchestrator instead.
 
 ## When to Fetch at All

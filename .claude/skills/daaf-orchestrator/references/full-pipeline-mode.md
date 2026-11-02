@@ -2026,3 +2026,12 @@ For the complete re-run guidance table (situations, stages to re-run, and refres
 
 See `agent_reference/ERROR_RECOVERY.md` "Re-run Procedures" for complete re-run decision trees.
 
+---
+
+## Literature Review Handoffs
+
+Each direction needs the user's explicit confirmation (`SKILL.md` § Mode Escalation Paths; `literature-review-mode.md` § Escalation Triggers):
+- **Before planning:** when the user wants the published research reviewed before the plan is written (most often at the Phase 1 checkpoint), propose Literature Review mode and pass the Phase 1 notes on.
+- **After delivery:** when a surprising finding needs grounding in published research, offer a Literature Review, passing the report path and the findings.
+- **Arriving from a review:** a Literature Review that finds a gap the user wants analysed hands over `output/LitReview_Handoff_v{N}.md` in its project folder: the question, the final deliverable's path, the gaps marked answerable with data, the reference list and the manifest pointer. Read it in the pre-flight as a user-referenced material (§ Scope Check). Any fact about the literature comes only from the files `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` § Files Consumers May Read lists; a fact not there is a request for another review round.
+

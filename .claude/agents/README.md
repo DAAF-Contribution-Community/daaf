@@ -59,7 +59,7 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path; also re-derives the CPS-INTAKE / CPS-GEN script verdicts), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output files; RV-2: original/reproduction paths, declared artifacts, path-audit MATCH, data strategy/scope exclusions, preliminary notes, and frozen-hash context | QA scripts + severity report; RV-2: per-script status with separate log metrics and direct-artifact evidence, helper JSON/dimensions, deviations, and evidence gaps |
 | **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
 | **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3, LR-8 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present; LR-8: final literature synthesis, its report check, the orchestrator's claim sample, reader table and reference glance record | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions; LR-8: per-claim CONFIRMED/DISPUTED/NOT DIRECTLY VERIFIED rows with the page text that settles each |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
@@ -69,6 +69,10 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Standard pipeline artifacts; RV-4: complete Reproduction Report plus persisted full-fidelity RV-3 findings | Report.md; RV-4 synthesis with derived gap/exclusion counts and canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict |
 | **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
+| **literature-searcher** | Run a Literature Review's approved search protocol: searches, citation snowballing, screening decisions, reference and retraction checks, open-access retrieval and PDF ingest, all through DAAF's CLIs | `literature-searcher` | Literature Review Mode (LR-1, LR-2/3, LR-3b, LR-4, LR-4') | `sonnet` (`opus` for formal-level screening and every second-screener or resolution pass) | Task, level, round, approved `Protocol_v{N}.md`, seeds, paper keys, destinations, spend approval | MANIFEST-recorded searches, corpus, screening and search-log table versions, attached reference checks, `papers/{key}/` ingests, the scoping record; counts returned as text |
+| **paper-reader** | Read one ingested paper in full and write its page-checked evidence card, revising until `lit_verify card` accepts each quote and number on its cited page | `paper-reader` | Literature Review Mode (LR-5, standard and formal levels) | `opus` | Paper key, ingest manifest, page range (or chunk), review question, level, references to trace, route line, image cap, PDF page-image preference | `evidence_card{S}.md` (schema `lit-verify-card-v3`) and its `card_check{S}.json`, or chunk notes for a long paper |
+| **literature-synthesizer** | Write a Literature Review's deliverables from page-checked claims and the review's tables, recording findings and gaps through `lit_corpus` and wording each one no surer than its certainty | `literature-synthesizer` | Literature Review Mode (LR-6, LR-7, LR-7Q) | `opus` | Protocol, question, level, round, deliverable kind (draft or final) and version, approved key papers, reader table, researcher decisions and ratings | Quick-scan memo, round syntheses with gap register and follow-up plan, final synthesis (versioned, in `output/`); findings, gaps, paper notes and abstract claims recorded through `lit_corpus` |
+| **citation-adjudicator** | Judge, for each row of one adjudication bundle, whether the stored database record is the cited work (SAME_WORK / DIFFERENT_WORK / UNCERTAIN); closed world, Read only | `citation-adjudicator` | Literature Review Mode, citation second check (dispatched only once an evaluated identity exists) | `opus` (dispatched as `model: "opus"`; `adjudications pack --model-id` is given the exact model ID that alias runs as) | The rendered `{batch_id}_prompt.txt`, verbatim, naming one bundle | One JSONL block, which the orchestrator persists to `data/adjudication_raw/{batch_id}.jsonl` for `lit_corpus adjudications ingest` |
 
 ### Commonly Confused Pairs
 
@@ -86,6 +90,11 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **framework-engineer** vs **data-ingest** | Engineer creates/modifies *framework* artifacts (skills, agents, modes, config); ingest *profiles data* to produce findings for skill authoring |
 | **search-agent** vs **source-researcher** | Search-agent explores *broadly* across any information space with flexible output; source-researcher examines a *single known data source* in depth using an existing DAAF skill, producing a fixed five-section deliverable |
 | **search-agent** vs **plan-checker** | Search-agent *gathers information* before or during work (exploration); plan-checker *validates* an existing plan against six dimensions (verification) |
+| **literature-synthesizer** vs **research-synthesizer** | Literature-synthesizer states what *published studies* show, at a recorded certainty, from page-checked claims, for a researcher (Literature Review mode); research-synthesizer resolves conflicts among *data-source* findings so data-planner can plan an analysis (Stage 3.5) |
+| **paper-reader** vs **source-researcher** | Reader turns one *research paper's* pages into an evidence card checked quote by quote against its cited pages; source-researcher examines one *data source* through its DAAF skill and writes five-section source notes |
+| **literature-searcher** vs **search-agent** | Searcher executes one *approved review protocol* and leaves a screening ledger that counts, reporting and the report gate read; search-agent explores *ad hoc* and returns findings nothing else is bound by. A grey-literature lookup or a missing-PDF hunt outside the protocol goes to search-agent |
+| **citation-adjudicator** vs **data-verifier** | Adjudicator asks whether a stored database record *is the work a citation names*; data-verifier asks whether a *claim is true to its evidence*. The verifier may read the ledger the adjudicator's judgments end up in; it never produces it |
+| **citation-adjudicator** vs **search-agent** | Search-agent *finds* records, on the web or anywhere; the adjudicator is *barred from finding* (Read only, one bundle, no recall of papers). A record that is not the cited work becomes DIFFERENT_WORK or UNCERTAIN, and finding the right one is a new search by an agent allowed to search |
 
 ---
 
@@ -266,6 +275,19 @@ Shows which agents produce output consumed by other agents:
 | **search-agent** | research-synthesizer | Exploration baseline findings across sources | Full Pipeline Stage 3.5 |
 | **search-agent** | framework-engineer | Scoping findings (current state, affected files, patterns) | Framework Development Mode |
 | **search-agent** | Orchestrator | Flexible findings report with confidence assessment | Any mode/stage |
+| **Orchestrator** | literature-searcher | Task, level, round, the approved `Protocol_v{N}.md`, seeds, paper keys, destinations, spend approval | Literature Review Mode (LR-1, LR-2/3, LR-3b, LR-4, LR-4') |
+| **literature-searcher** | paper-reader | `papers/{key}/` ingests (the `pdf_ingest` manifest and page files each reader starts from) | Literature Review Mode, LR-4 -> LR-5 |
+| **literature-searcher** | literature-synthesizer | Corpus, screening and search-log tables with the attached reference and retraction checks | Literature Review Mode, LR-6, LR-7, LR-7Q |
+| **literature-searcher** | Orchestrator | Counts per round, seed recall, key-paper candidates, protocol issues | After every searcher dispatch |
+| **Orchestrator** | paper-reader | Paper key, ingest manifest, page range or chunk, review question, level, references to trace, route line, image cap, PDF page-image preference | Literature Review Mode, LR-5 |
+| **paper-reader** | literature-synthesizer | Checked evidence cards (`evidence_card{S}.md` with its `card_check{S}.json`), passed on once the orchestrator has audited each reader's latest card | Literature Review Mode, LR-6, LR-7 |
+| **paper-reader** | Orchestrator | Return status (card checked, chunk handoff, incomplete, blocked) and the dispatch's agent ID, from which the orchestrator runs `lit_verify audit` on the latest card | After every reader dispatch |
+| **Orchestrator** | literature-synthesizer | Deliverable, kind (draft or final), version, protocol, question, approved key papers, reader table, researcher decisions and ratings | Literature Review Mode, LR-6, LR-7, LR-7Q |
+| **literature-synthesizer** | Orchestrator | Deliverable path, findings and gaps recorded, references by status, items for the researcher; the orchestrator then runs `lit_verify report` on the deliverable | After every synthesizer dispatch |
+| **literature-synthesizer** | data-verifier | The final synthesis and the claims it marks, sampled by the orchestrator's captured claim-sample script | Literature Review Mode, LR-8 |
+| **data-verifier** (LR-8) | Orchestrator | Per-claim CONFIRMED / DISPUTED / NOT DIRECTLY VERIFIED rows with the page text that settles each and, for a disputed claim, the findings resting on it; persisted by the orchestrator to `output/claim_spot_check_v{N}.md` | LR-8 |
+| **Orchestrator** | citation-adjudicator | The rendered `data/adjudication_bundles/{batch_id}_prompt.txt`, verbatim, nothing added | Literature Review Mode, citation second check (only once an evaluated identity exists) |
+| **citation-adjudicator** | Orchestrator | One JSONL block, persisted verbatim to `data/adjudication_raw/{batch_id}.jsonl` for `lit_corpus adjudications ingest` | After every adjudicator dispatch |
 
 **Preliminary Notes Persistence:** Discovery and profiling agents' full returns are persisted to `output/preliminary_notes/` as lossless markdown files by the orchestrator. Downstream agents reference these files by path for full-fidelity access, while the orchestrator retains compressed summaries for its own coordination. This applies to search-agent (Stage 2), source-researcher (Stage 3), research-synthesizer (Stage 3.5), and data-ingest (DI-3 through DI-6) returns. See orchestrator SKILL.md for the complete protocol.
 
@@ -331,6 +353,8 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Stub detection and silent failure audit
 
 **Reproducibility Verification (RV-3):** In RV mode, data-verifier compares persisted original and reproduced claims, tables, supported Parquet artifacts, and side-by-side figures using MATCH / DIVERGED / NOT DIRECTLY VERIFIED; logs alone are insufficient. It returns per-claim/figure/finding evidence sources and derived coverage counts, keeps exact pre-RV-2 scope exclusions separate, and RETURNS findings to the orchestrator (read-only) rather than writing the Reproduction Report.
+
+**Literature Review (LR-8):** At the standard and formal levels, data-verifier spot-checks a sample of the final synthesis's marked claims (drawn by the orchestrator's captured claim-sample script) against the pages they cite, rating each CONFIRMED / DISPUTED / NOT DIRECTLY VERIFIED and naming the findings that rest on a disputed claim. It reads the page reading copies, opens a page render only when its own model ID and the dispatch's route line are on the vision-validated list, reads the reference glance and audit records as context, and RETURNS its rows; the orchestrator runs every CLI and persists the return to `output/claim_spot_check_v{N}.md`.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -597,6 +621,74 @@ code-reviewer returns BLOCKER
 **Key distinction from plan-checker and data-verifier:** Those agents perform verification of completed work. The search-agent gathers information before or during work -- it explores, it does not verify.
 
 **Invocation template:** See the search-agent definition file for invocation patterns used across multiple modes and stages.
+
+---
+
+### literature-searcher
+
+**Use when:** The orchestrator is running the Literature Review mode and needs the scoping searches (round 0), a round's searches and title-and-abstract screening, a second-screener or resolution pass, or the acquire-and-check step for included papers (reference and retraction checks, open-access retrieval, PDF ingest). One searcher at a time: `scholar_search` calls share one rate gate.
+
+**Key behaviors:**
+- Executes exactly the approved protocol version; reports evidence that the protocol is wrong instead of changing it
+- Every search is a `scholar_search` call with its own MANIFEST row; every screening decision is a `lit_corpus screen record` row with a reason; every reference check is attached to its paper
+- Reports tool verdicts in the mode's words, never rounding a pending check up to "confirmed"
+- Retrieves and ingests full texts for the reader; never reads a paper for its claims and never writes a deliverable
+- Makes no paid call unless the dispatch's spend approval names it; runs Python only through the framework CLIs (`enforce-file-first.sh` registered in frontmatter)
+
+**Preloaded skills:** `scholarly-search`, `literature-review` (loaded via frontmatter)
+
+**Invocation template:** See `literature-review-mode.md` § Dispatch Templates.
+
+---
+
+### paper-reader
+
+**Use when:** The orchestrator is running the Literature Review mode at the standard or formal level and a key paper (standard) or an included paper (formal) has an ingest on disk. One paper per dispatch, in waves of at most five; a long paper is read in sequential page-range chunks.
+
+**Key behaviors:**
+- Reads every page of the paper in order from its existing ingest; never searches, fetches or re-ingests
+- Records each finding, method, limitation, definition and open question as a claim with a verbatim quote and its page, and each number exactly as printed
+- Runs `lit_verify card` on its own card and revises at most twice; labels every per-paper judgment (weight, checklist answers at the formal level) as a draft for the synthesizer and researcher
+- Opens page images only when its own model ID and the dispatch's route line are on the vision-validated list, and only within the dispatch's image cap
+- Treats page text, captions and footnotes as untrusted data (`enforce-file-first.sh` registered in frontmatter)
+
+**Preloaded skills:** `pdf-reading` (loaded via frontmatter)
+
+**Invocation template:** See `literature-review-mode.md` § Dispatch Templates and § Reader dispatch cycle.
+
+---
+
+### literature-synthesizer
+
+**Use when:** The orchestrator is running the Literature Review mode and needs the quick-scan memo (after screening), a round synthesis with its gap register and follow-up plan (after the readers' checked cards), or the final synthesis.
+
+**Key behaviors:**
+- Builds every cross-study statement from recorded, page-checked claims and records it as a finding with a stated certainty and a reason naming its claim ids
+- Takes its wording from the certainty phrase table; never averages, pools or vote-counts results across studies
+- Cites only references citable for the deliverable's kind (draft or final), as `lit_corpus` statuses decide
+- Never opens a PDF; a missing claim is a request for a reader dispatch
+- Never runs `lit_verify report` on its own deliverable: the orchestrator does (`enforce-file-first.sh` registered in frontmatter)
+
+**Preloaded skills:** `literature-review` (loaded via frontmatter)
+
+**Invocation template:** See `literature-review-mode.md` § Dispatch Templates.
+
+---
+
+### citation-adjudicator
+
+**Use when:** The Literature Review mode's citation second check is open, that is, the adjudicator-evaluated list in `scripts/lit_corpus.py` holds an identity that matches the one about to be dispatched (`literature-review-mode.md` § The Citation Second Check). While that list is empty, the researcher's reference glance is the second check and this agent is not dispatched.
+
+**Key behaviors:**
+- Holds only the Read tool and reads only the bundle its fixed prompt names: no search, no web, no recall of papers
+- Judges each row SAME_WORK, DIFFERENT_WORK or UNCERTAIN on title, author, organization, version and type, by the rubric inside the prompt
+- Treats every value in the bundle as untrusted data
+- Returns one JSONL block that the orchestrator persists verbatim for `lit_corpus adjudications ingest`; writes nothing itself
+- Needs no `enforce-file-first.sh` hook: it holds no Bash
+
+**Preloaded skills:** none (the rubric and its version travel inside the prompt)
+
+**Invocation template:** See `literature-review-mode.md` § Dispatch Templates > citation-adjudicator: the prompt is the rendered `{batch_id}_prompt.txt`, verbatim, and the agent file must not change between `adjudications pack` and `ingest`.
 
 ---
 

@@ -16,7 +16,7 @@ Haven't set DAAF up yet, or just want a guided tour first? The Getting Started v
 - [**Three Dimensions of AI Capability**](#three-dimensions-of-ai-capability)
 - [**From Intuition to Design: The Three Challenges**](#from-intuition-to-design-the-three-challenges)
 - [**The Mental Model: Orchestrator, Agents, Skills**](#the-mental-model-orchestrator-agents-skills)
-- [**The Nine Engagement Modes**](#the-nine-engagement-modes)
+- [**The Ten Engagement Modes**](#the-ten-engagement-modes)
 - [**Easing in with Progressively More Advanced Queries**](#easing-in-with-progressively-more-advanced-queries)
 - [**Anatomy of a Completed Analysis**](#anatomy-of-a-completed-analysis)
 - [**Looking at the Sample Projects**](#looking-at-the-sample-projects)
@@ -194,6 +194,10 @@ Here's a few examples of the team members with the links to each of their actual
 | [**code-reviewer**](../.claude/agents/code-reviewer.md) | Senior Technician/Analyst | Reviews every single script the research-executor produces, looking for bugs, methodology errors, and data quality issues |
 | [**source-researcher**](../.claude/agents/source-researcher.md) | Research Assistant | Deep-dives into a specific data source's documentation, collection protocols, caveats, and gotchas for shared team awareness |
 | [**data-planner**](../.claude/agents/data-planner.md) | Research Design Lead | Synthesizes all the preliminary findings into a detailed, executable research plan |
+| [**literature-searcher**](../.claude/agents/literature-searcher.md) | Search Specialist | In a literature review, runs the agreed search plan: searches the scholarly databases, follows citations forward and back, records why each paper is in or out, checks each reference against a database record and for retractions, and finds legal free copies of papers |
+| [**paper-reader**](../.claude/agents/paper-reader.md) | Reader | In a literature review, reads one paper in full and writes reading notes on it, with every quote and number checked against the page it came from |
+| [**literature-synthesizer**](../.claude/agents/literature-synthesizer.md) | Writer | In a literature review, turns the checked reading notes into the memo or the written review, wording each conclusion no more confidently than the evidence allows and never averaging results across studies |
+| [**citation-adjudicator**](../.claude/agents/citation-adjudicator.md) | Reference Checker | Judges whether a database record is the work a reference names: DAAF's second check (an AI judgment). It is used only for a model that has passed DAAF's test of this judgment, and no model has; without one, you do your reference check yourself, glancing at the reference list before a final write-up |
 
 The point here is that we want to provide very different context to Claude when faced with different tasks. Trying to get Claude to do everything equally well is impossible given fixed context window limitations, and trying to do so will ultimately confuse it and cause the dreaded **context rot** we covered earlier. This means that we need to split responsibilities across "versions" of Claude provided very different instructions and behavioral protocols to get it to perform these tasks well in tandem, each working with a lean, focused context of its own.
 
@@ -246,18 +250,19 @@ Four things to keep in mind as you use DAAF:
 
 ---
 
-## The Nine Engagement Modes
+## The Ten Engagement Modes
 
-DAAF first classifies every request you make into one of nine **engagement modes**. This is how we properly context-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
+DAAF first classifies every request you make into one of ten **engagement modes**. This is how we properly context-engineer Claude, because each mode triggers a fundamentally different workflow, different outputs, and different expectations for what input you'll need to provide to steer it well. Understanding these modes is the single most useful thing you can do to work with DAAF effectively, because it helps you frame your questions in the way most likely to get you what you actually want, and better understand what's going on behind the scenes.
 
 Before doing anything else, DAAF will tell you which mode it's classifying your request into, explain why, and ask you to confirm. This is intentional. You should always have the chance to say "actually, I just wanted a quick lookup" or "actually, let's go deeper on this." That first confirmation is about *how* DAAF will work: it describes what the mode does, where you'll be asked to weigh in, and what you'll get, and it names anything you pointed it to (a document, a prior project, a link, a dataset) that it will read first. What it won't do yet is guess at the details -- which sources, which years, how many files -- because it hasn't read anything.
 
-The details come in a second step. In the larger modes (Full Pipeline, Revision and Extension, Reproducibility Verification, Data Onboarding and Framework Development), once you've confirmed the mode DAAF reads your materials and then shows you a **scope check**: what it read, what exactly it proposes to do, what your materials changed compared with your original request, and any decisions it needs from you. Nothing substantial starts until you approve it. In the lighter modes, DAAF just reads what you pointed to and adapts -- in Ad Hoc Collaboration and Data Discovery it will briefly tell you what it sees and what it plans before anything multi-step, without stopping to wait. Here's a quick reference of all nine:
+The details come in a second step. In the larger modes (Full Pipeline, Revision and Extension, Reproducibility Verification, Data Onboarding, Literature Review and Framework Development), once you've confirmed the mode DAAF reads your materials and then shows you a **scope check**: what it read, what exactly it proposes to do, what your materials changed compared with your original request, and any decisions it needs from you. Nothing substantial starts until you approve it. In the lighter modes, DAAF just reads what you pointed to and adapts -- in Ad Hoc Collaboration and Data Discovery it will briefly tell you what it sees and what it plans before anything multi-step, without stopping to wait. Here's a quick reference of all ten:
 
 | Mode | When to Use | What You Get |
 |------|-------------|--------------|
 | Data Lookup | Quick variable/dataset question | Direct answer with supporting context |
 | Data Discovery | Scoping what data exists | Feasibility assessment, available sources |
+| Literature Review | What the published research says | Memo or written review, checked reference list, list of gaps |
 | Ad Hoc Collaboration | Flexible working session | Thought partner for code, debugging, planning |
 | Full Pipeline | Complete research analysis | Plan, scripts, notebook, report, all artifacts |
 | Revision and Extension | Modify an existing analysis | New versioned artifacts, full QA |
@@ -304,6 +309,39 @@ And here's what each of them do in more detail, and how the workflow works so yo
 **When NOT to use it:** When you already know what general data exists and you're ready to analyze it with a specific research question. In that case, jump straight to Full Pipeline.
 
 **Escalation:** If Data Discovery turns up promising data, DAAF will suggest: "Based on these findings, would you like me to proceed with a Full Pipeline analysis?" You can say yes, refine the question, or say no and walk away with just the findings.
+
+### Literature Review Mode
+
+**Trigger words:** "literature review," "lit review," "what does the research say," "what has research found about," "related work," "state of the research," "find papers on," "systematic review"
+
+**What it is:** A recorded review of the published research on your question. DAAF searches the scholarly databases (OpenAlex, Semantic Scholar and ERIC), picks out the relevant papers with you, reads them, and writes up what the evidence shows. Everything lives in a research project folder that keeps the whole record: every search, every decision about which papers are in or out, the reading notes on each paper, and every check. You choose how deep the review goes at the start:
+
+| | Quick scan | Standard review (the default) | Formal systematic review |
+|---|---|---|---|
+| What DAAF reads | Titles and abstracts | The key papers, in full | Every included paper, in full |
+| What you get | A short memo of pointers: what studies report, where to start reading, gaps that seem open | A written review: a note on each key paper (its design, its limitations in its own words, how much weight it deserves) and how sure we can be about each conclusion | The same, plus the written protocol, the checklist answers for each study and your own ratings of how sure we can be |
+| What you decide | The search plan, then the final memo and its references | The search plan; which papers are read in full; after each round, whether to search again, change the plan or write up; the references; the final review | All of that, plus the protocol, every full-text inclusion, every checklist judgment and every certainty rating. DAAF drafts the checklist answers with the passages behind them; you make every judgment |
+
+A standard or formal review runs in **rounds**: one cycle of searching, choosing papers and reading them, then a check-in where you choose another round, a change of plan, or the final write-up.
+
+**What is checked, at every level:**
+- Every search is saved with its exact wording and results.
+- Every reference is matched to a database record and checked for retractions: the automatic reference check. A one-word change in a title can fool that match. DAAF has a second check for references (an AI judgment), but it is used only for a model that has passed DAAF's test of that judgment, and no model has. So before a final write-up you do your reference check: you glance at the reference list, each reference's title as cited next to the title on record, with one reply covering the whole list.
+- Every quote and number taken from a paper is checked against the page it came from. When a number was read from a picture of a page (a table, say), DAAF also checks that a model tested for that kind of reading did it, and lists anything you should compare by eye.
+- Results from different studies are never averaged into one number, and the wording never sounds surer than the evidence.
+
+**Check-ins:**
+- **Quick scan:** two -- the plan, then the memo with its reference list.
+- **Standard review:** the plan; in each round, the list of papers to read in full and the round check-in; then your reference check and the final review.
+- **Formal systematic review:** the plan; in each round, your full-text decisions, a checklist review and the round check-in; then your reference check and the final review.
+
+**What to expect:** After you confirm the mode and choose a level, DAAF sets up the project folder, runs a few first searches (for a standard or formal review) and shows you a scope check before any full search starts: the question, the wordings it will search with, the databases, what counts as in or out, the papers you expect to see, and the expected reading and cost -- how many searches, about how many papers it will read in full, and roughly how much of your plan's usage that takes. The scope check also tells you whether, on your setup, DAAF can check numbers in tables against pictures of the pages or reads the text of PDFs only. Paid search services are used only if you approve them. The plan is saved, and any later change becomes a new version of it. A free OpenAlex API key is strongly recommended; see [Set up data source API keys](01_installation_and_quickstart.md#set-up-data-source-api-keys).
+
+**When to use it:** When you want to know what is already known before starting a study, need a related-work section for a paper or proposal, or want a checked list of references on a topic. "What does the research say about summer bridge programs and first-year persistence?" "Find me the key papers on school-level poverty measures." "I need a systematic review of tutoring interventions; I'll lead it."
+
+**When NOT to use it:** When you want to know what *data* exists for a question (Data Discovery), or want to analyze data (Full Pipeline). If you'd rather talk through a few papers informally than run a recorded review, Ad Hoc Collaboration is lighter.
+
+**Escalation:** If the review turns up a gap that data could answer, DAAF can offer to see what data exists for it (Data Discovery) or to analyze it (Full Pipeline). Going the other way, Data Discovery, Ad Hoc Collaboration or a Full Pipeline analysis can lead into a literature review -- for example, to see prior work before choosing data, or to ground a surprising finding in what research has already shown.
 
 ### Ad Hoc Collaboration Mode
 
@@ -456,6 +494,10 @@ Here are the most common transitions you'll encounter:
 | Data Onboarding | Full Pipeline | You profiled a dataset and now want to analyze it |
 | Ad Hoc Collaboration | Full Pipeline | Your working session evolved into something worth formalizing |
 | Full Pipeline | Reproducibility Verification | You want to verify a completed analysis reproduces |
+| Data Discovery | Literature Review | You want to know what research has found before choosing data |
+| Literature Review | Data Discovery | Your review found a gap that data could answer, and you want to see what data exists |
+| Literature Review | Full Pipeline | Your review found a gap that data could answer, and you want to analyze it |
+| Full Pipeline | Literature Review | You want the literature reviewed before planning an analysis, or a surprising finding needs grounding in prior research |
 | Any mode | User Support | You have questions about how DAAF or its tools work |
 
 Beyond these common paths, DAAF supports transitions between any pair of modes where the shift makes sense -- for example, a Data Lookup that reveals a broader question might escalate to Data Discovery, or a completed analysis might surface framework improvements worth addressing in Framework Development mode. The full transition matrix is handled internally; the important thing to know is that DAAF will always propose a transition explicitly and explain why before making it.
@@ -501,6 +543,18 @@ I know there are a couple of different ways of measuring school poverty. Can you
 ```
 
 **What you're testing:** How does DAAF surface relevant information, variables, tables, and so on, when faced with broader options and less explicit direction? What issues might arise, and does it seem to recognize strengths/pitfalls of each possibility it flags appropriately?
+
+### Alongside Any Level: A Literature Quick Scan (Literature Review Mode)
+
+Ask DAAF for a quick scan of the research on a topic you know well. A quick scan reads titles and abstracts only, so it is a light way to see how DAAF searches and how it checks references.
+
+```
+Can you do a quick scan of the research literature on how class size
+affects student achievement? I'd expect the Tennessee STAR studies
+to show up.
+```
+
+**What you're testing:** Does the search find the papers you expect? Do the memo's summaries match what the abstracts actually say? When you glance at the reference list, is every reference a real paper with the right title, authors and year? Once that holds up, try a standard review, where DAAF reads the key papers in full and you can check its quotes and numbers against the papers yourself.
 
 ### Level 3: Data Onboarding (Data Onboarding Mode)
 
@@ -921,7 +975,7 @@ You don't need to know what's in most of these directories -- the two that matte
 |-----------|-------------|-------------|
 | `research/` | Your analysis projects -- notebooks, data, reports, scripts | **You** (this is where all your work lives) |
 | `user_reference/` | User documentation (you're reading one right now) | **You** (human-written guides and FAQs) |
-| `.claude/agents/` | Specialized agent protocols (14 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
+| `.claude/agents/` | Specialized agent protocols (18 behavioral definitions) | **DAAF** (and curious users who want to understand how agents work) |
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`, `launch_code_server.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |

@@ -136,6 +136,24 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Template paragraph:**
 > This reproduction was conducted using DAAF's Reproducibility Verification mode. An AI agent decompiled the delivered DAAF Stage 9 [Marimo/Quarto] archive, performed the bounded post-normalization path audit, and re-executed [N] in-scope scripts. [Data strategy: Stage 5 acquisition was re-executed / frozen raw inputs were hash-verified and Stage 5 was excluded by the user-confirmed design, so acquisition and mirrors were not tested.] Log comparison was limited to metrics printed in both logs; supported Parquet or exact-byte artifacts were compared directly, figures were visually reviewed, and unsupported or missing evidence was labeled NOT DIRECTLY VERIFIED. The AI performed artifact comparison, methodological review, and claim verification against reproduced evidence, and recorded model/runtime provenance with unknown versions left explicit. The human researcher reviewed the Reproduction Report, applied judgment to deviations, scope exclusions, methodological concerns, provenance, and evidence gaps, and remained responsible for the final verdict of [FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED].
 
+### Literature Review Mode
+
+**Depth:** Moderate to comprehensive, scaling with the review level (quick scan, standard review, formal systematic review).
+
+**Where it goes:** the deliverable's Methods section carries the disclosure (the literature-synthesizer writes it from the dispatch and the review's tables), and the final check-in summarizes it for the researcher in plain words. Literature reviews follow the RAISE guidance on AI in evidence synthesis (`literature-review` skill, `formal-review.md` § Reporting): state what AI judged or drafted, what code checked, and that the researcher made every judgment call and remains responsible for the review.
+
+**Key points to disclose:**
+- **What AI did:** ran the searches and citation-following, drafted screening decisions (title and abstract; full text at the formal level), read papers and wrote reading notes, drafted checklist answers and a weight per paper, and drafted every synthesis and memo
+- **What code checked, not AI:** every search is saved with its exact wording and results; every reference was matched to a database record and checked for retraction; every quote and number was found on the PDF page it cites; the wording of each conclusion matches its stated certainty; no results were pooled or averaged across studies
+- **How each reference was confirmed**, using the deliverable's own labels: "you confirmed it" (the researcher's reference glance), "accepted by you" (the researcher kept a reference whose record did not match, or reversed the second check, with a recorded reason), and, only once an evaluated adjudicator exists, "confirmed by DAAF's second check (an AI judgment)"
+- **Numbers read from pictures of pages:** whether any were used, the model that read them, and that each was confirmed by the reading audit or compared with the page by the researcher
+- **What the researcher decided:** the review plan and each change to it, the papers read in full (or every full-text inclusion and the checklist judgments, at the formal level), the certainty ratings at the formal level, the reference replies and page comparisons, all recorded in their own words
+- **Where AI stood in for a person:** an AI second screener at the formal level is a declared protocol deviation; a quick scan states that it had no second screener and rates no certainty
+- **Models:** the session model plus each specialist model dispatched (search, reading, writing; see "Multi-Model Sessions" above)
+
+**Template paragraph:**
+> This [quick scan / literature review / systematic review] was conducted using DAAF's Literature Review mode with [session model ID, plus the specialist model IDs for searching, reading and writing] via Claude Code CLI on [date(s)]. DAAF version: [commit hash]. AI ran the searches, [drafted screening decisions,] [read [n] papers in full and wrote page-checked reading notes,] and drafted the synthesis. Code, not AI, checked that every reference matches a database record and has no retraction notice, that every quote and number appears on the page it cites, and that each conclusion's wording matches its stated certainty; no results were pooled across studies. The researcher approved the review plan [and its [n] revisions], chose the papers read in full, [made every full-text inclusion, checklist judgment and certainty rating,] and confirmed each reference ([k] references accepted by the researcher despite the automatic check [, and [m] confirmed by DAAF's second check, an AI judgment]). The search record, screening log, reading notes and their checks are archived in the project folder; the researcher remains responsible for the review.
+
 ### User Support Mode
 
 **Depth:** None — User Support produces no research artifacts, analysis outputs, or formal deliverables. All interaction is conversational guidance about DAAF itself.
@@ -248,4 +266,5 @@ This reference is consumed by:
 |---|---|
 | **report-writer** (Stage 11) | Populates the "AI Use Disclosure" section of REPORT_TEMPLATE.md using `[AUTO]` field mappings |
 | **Orchestrator** (all modes) | Provides mode-specific disclosure templates for non-pipeline outputs |
+| **literature-synthesizer** (Literature Review) | Writes the deliverable's Methods-section disclosure per § Literature Review Mode |
 | **Researcher** (post-delivery) | Completes `[RESEARCHER]` fields, adapts methods boilerplate for manuscripts, prepares GUIDE-LLM checklist as supplementary material |

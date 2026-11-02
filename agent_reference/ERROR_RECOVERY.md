@@ -1112,6 +1112,48 @@ RV mode has a lightweight, language-paired error recovery pattern. The per-scrip
 
 **Key difference from Full Pipeline:** RV mode does NOT stop on individual script failures. The goal is a complete reproduction picture — failed scripts are documented and the process continues to the next script.
 
+### Literature Review Mode Error Recovery
+
+Literature Review runs no analysis code: its errors are tool exits from the framework CLIs (`scholar_search`, `web_fetch`, `pdf_ingest`, `lit_corpus`, `lit_verify`) and agent returns. The orchestrator runs every gate it does not author (`lit_verify report`, `audit`, `settle`, the `adjudications` subcommands, `lit_corpus manifest`), so it handles their exits itself; agents handle their own CLIs' exits and report the rest. Each CLI's full exit table is in its skill (`scholarly-search`, `web-retrieval`, `pdf-reading`, and the `literature-review` references `lit-corpus.md` and `lit-verify-report.md`); exit 3 is reserved by `run_with_capture.sh` and never emitted by these tools. The mode file's § Error Handling is the short form of this section.
+
+**Gate exits the orchestrator handles:**
+
+| Tool and exit | Meaning | Recovery |
+|---------------|---------|----------|
+| `lit_verify report` 11 | FAIL (result file written) | Revision loop: re-dispatch the literature-synthesizer with the next VERSION and REVISE FROM the result file; at most 2 revisions per deliverable, then present the open items to the user and ask how to proceed |
+| `lit_verify report --kind final` 10 | A stored source file, the corpus table or the exported reference list is missing | Restore the source or have the searcher ingest the paper again; run `export-bib` if the list is missing. Never skip the final check |
+| Synthesizer return `AWAITING_GLANCE` | A finding rests on references or readings not yet citable at final | Run the reference glance (or the audit, or `settle`) for the listed papers, record the reply, run `export-bib`, and re-dispatch with the same VERSION |
+| `lit_verify audit` 11 | `person_must_check`, `mismatch` or `chain_unconfirmed` (a result, recorded) | `person_must_check` / `mismatch`: `settle --list`, then show the listed items at the round check-in (or the reference check). `chain_unconfirmed`: never settled by a comparison; the searcher fetches the paper again or the user places their PDF in `user_pdfs/`, then it is ingested and read again |
+| `lit_verify audit` 9 | The card changed after its check, the check's record does not match, or the card was audited before | Do not re-audit; a new card version (a reader re-dispatch) and a new audit are needed |
+| `lit_verify settle` 11 / 9 / 8 | 11: refused, nothing written (empty words, missing rationale for `does_not_match`, an id twice or not this audit's); 9: the card or audit changed since the audit; 8: an unreadable items file | 11: read the refusal and fix the items file; never reword the user's words. 9: a new card version and audit are needed. 8: rewrite the items file from the ids `--list` printed, copied verbatim |
+| Page comparison reply `does_not_match` | The researcher found a number read from a picture of the page is wrong | Dispatch the paper-reader again for that paper with the correction line (mode file § Dispatch Templates > paper-reader); then `card`, a new audit and, if needed, a new comparison |
+| `adjudications record-human` 11 | Refused, nothing written (no words; no rationale where one is required; an EXISTS or NOT FOUND row, which cannot be recorded) | Fix the rows file (lines copied verbatim from `reference_glance_v{N}_rows.txt`, one file per decision); never reword the user's words. An EXISTS or NOT FOUND reference is checked again by the searcher, or left out |
+| `adjudications ingest` refuses a batch (11 or 9) | A stray Read in the audit log, a row not in the bundle, a second judgment, a broken combination rule, or a bundle that differs from its pack log | Persist nothing more; keep the batch's rows on the reference glance. Never re-pack a packed batch; never edit `citation-adjudicator.md` between pack and ingest |
+| Adjudicator return NOT_JUDGED | The agent stopped before judging (a STOP condition) | Persist nothing; dispatch the same prompt again |
+| `lit_corpus` 9 (any subcommand) | Integrity mismatch: a table or input changed after it was recorded | STOP: tell the user; no further writes to the review's tables until the cause is found |
+| `lit_corpus` 10 | A required input is missing (no corpus yet, a search without a records file, a pack log, the bundle, the audit log) | Supply the input: a search older than its records file is re-run; a missing pack log means the batch was never packed |
+| `lit_corpus` 11 | Input rejected by validation, no version written (reasons in the MANIFEST row) | Read the reasons; the agent that wrote the input corrects it in the next `{seq}` file (a recorded input is never rewritten) |
+
+**Agent returns and tool exits the agents report:**
+
+| Signal | Recovery |
+|--------|----------|
+| `scholar_search` exit 4 / 6 (network failure or timeout) | The searcher retries once, then reports; the orchestrator reports at the round check-in which backends answered |
+| `scholar_search` exit 12 twice, or a backend failing all round | Report at the round check-in with the backends that did answer; offer a re-run in the next round. Never retry in a loop |
+| `scholar_search` exit 10 (a required key is not configured) | Tell the user the key belongs in host-side `environment_settings.txt`; continue with the backends that need no key |
+| `scholar_search` exit 11 | NOT FOUND or `verify` MISMATCH are recorded results, not errors: they go to the reference glance as "no record found" or "does not match the record"; a service error is reported |
+| `web_fetch` exit 5 (non-2xx) | The searcher retries once with `--browser-ua` on a 403, then tries the next open-access candidate (`oa --all-legs`); if none fetches, the paper is "not retrieved" |
+| `web_fetch` exit 8 (not HTML) | Not a failure: an open-access PDF was saved; the searcher ingests it with `pdf_ingest` |
+| `pdf_ingest` exit 2 | Refused by a guard: a source outside `/daaf` (copy it into `user_pdfs/` first, one `cp` per call), a key already holding another PDF, or a hash mismatch with the `web_fetch` record (the file changed after download: report it) |
+| A key paper has no open-access PDF | List it as "not retrieved" at the key-paper list (or the full-text decisions); the user may add a PDF they have to `user_pdfs/`. DAAF never uses a paywalled or shadow-library copy |
+| A searcher return with a retraction flag | Raise it at the next checkpoint; keeping a retracted paper is the researcher's decision |
+| Reader BLOCKED (missing ingest, a scan without a validated vision model) | Re-dispatch the searcher to ingest, or tell the user those pages cannot be covered |
+| Reader INCOMPLETE (`lit_verify card` FAIL after its 2 revisions) | The card supplies no findings; offer a re-read on opus or keep the paper as "per abstract" context, the user's choice |
+| Reader CHUNK_HANDOFF | Not a failure: dispatch the remaining page range with PRIOR CHUNK NOTES and record chunk k of m in STATE.md |
+| Synthesizer or searcher INCOMPLETE under context pressure | Re-dispatch the remaining items it lists (the early-return protocol, CLAUDE.md § Context & Session Health); recorded findings, gaps and inputs stand |
+
+**Error budget:** a paper-reader card gets at most 2 self-revisions inside its dispatch; a synthesizer deliverable gets at most 2 report-driven revisions; then the user decides. A Literature Review does not stop on one paper's failure: the paper is reported as not read or not checked, and the round continues.
+
 ### Framework Development Mode Error Recovery
 
 Framework Development errors are typically file-level issues (template compliance failures, integration checklist gaps, cross-reference breaks). Recovery is straightforward:

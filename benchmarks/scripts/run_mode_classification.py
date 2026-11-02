@@ -82,6 +82,7 @@ MODE_REF_FILES = [
     "full-pipeline-mode.md",
     "data-onboarding-mode.md",
     "data-lookup-mode.md",
+    "literature-review-mode.md",
     "data-discovery-mode.md",
     "ad-hoc-collaboration-mode.md",
     "revision-and-extension-mode.md",
@@ -116,6 +117,15 @@ MODE_KEYWORDS: dict[str, list[str]] = {
         "look that up",
         "focused answer",
         "direct answer",
+    ],
+    "literature_review": [
+        "literature review",
+        "lit review",
+        "what does the research say",
+        "related work",
+        "state of the research",
+        "find papers on",
+        "systematic review",
     ],
     "data_discovery": [
         "data discovery",

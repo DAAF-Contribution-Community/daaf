@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default. User Support has no persistent state — sessions are fully stateless.
+Enable stateless recovery when resuming an interrupted analysis after LLM context has been cleared. Persistent memory varies by mode: Full Pipeline uses Plan.md + Plan_Tasks.md + STATE.md; Revision and Extension uses prior version Plan.md + Plan_Tasks.md + STATE.md plus new-version Plan files; Data Onboarding uses STATE.md only; Literature Review uses STATE.md only (from `agent_reference/STATE_TEMPLATE_LITREVIEW.md`), with the protocol versions and the tools' MANIFEST records beside it; Reproducibility Verification uses Reproduction_Report.md (no STATE.md). Framework Development uses SESSION_NOTES.md (same lightweight pattern as Ad Hoc Collaboration); no STATE.md by default. User Support has no persistent state — sessions are fully stateless.
 
 ## When to Use
 
@@ -45,6 +45,8 @@ If the project has a `LEARNINGS.md` file, read it to recover accumulated insight
 ### Step 3: Read Plan.md Selectively
 
 > **Data Onboarding projects:** Skip Steps 3-5 entirely (there is no Plan.md or Plan_Tasks.md). Proceed directly to the "Recovery from Different Stages (Data Onboarding)" table below.
+
+> **Literature Review projects:** Skip Steps 3-5 the same way (no Plan.md or Plan_Tasks.md; the review plan is `Protocol_v{N}.md`), apart from Step 5b and the Step 5c row. Proceed to "Recovery from Literature Review Mode" below.
 
 **Do NOT read the entire Plan.md file.** Use targeted section loading to minimize context consumption and preserve capacity for execution work. Also verify that Plan_Tasks.md exists alongside Plan.md.
 
@@ -323,6 +325,23 @@ Before resuming a Revision and Extension session:
 - [ ] scripts/repro/ contains re-executed scripts (count matches inventory)
 - [ ] Script Inventory status column is current
 - [ ] No partially written Per-Script Results sections
+
+### Recovery from Literature Review Mode
+
+**Identification:** the project folder name holds `_LitReview_` (`research/YYYY-MM-DD_LitReview_{Short_Topic}/`), and its STATE.md has a Reader Table and a `Scope Check status` line (`agent_reference/STATE_TEMPLATE_LITREVIEW.md`).
+
+**Recovery procedure:**
+1. Read STATE.md in full (Step 2) and LEARNINGS.md (Step 2b). Skip Steps 3-5; apply Step 5b (re-tier any carried dispatch plan) and Step 5c (the Literature Review row).
+2. Check `Scope Check status`: "awaiting confirmation" or absent means re-present the review plan (CP-1) from the latest `Protocol_v{N}.md` and the round-0 scoping notes, before any full search; "confirmed YYYY-MM-DD" means resume from Current Position.
+3. Apply the recovery rules in order, as `STATE_TEMPLATE_LITREVIEW.md` § Integration with Session Recovery lists them (the mode file's § State, Recovery and LEARNINGS.md > Session recovery holds the same rules in short form). The ones that most often apply: a Reader Table dispatch with no card is dispatched again with an unused card path; a card with no audit record is audited (`lit_verify audit`, with every recorded agent ID for that card, one per chunk) before anything else; a glance sheet shown with no reply recorded is shown again; a packed but un-ingested adjudication batch is dispatched again with the same bundle, never packed again.
+4. If a tool record on disk is newer than STATE.md (a card, audit, settlement or report check no row names; a MANIFEST row after Last Updated), rebuild the rows from `papers/MANIFEST.jsonl`, `data/MANIFEST.jsonl` and the files, tag each `[reconstructed]`, and tell the user. A researcher's words that are in neither STATE.md nor a tool's MANIFEST row were never recorded: ask again, never reconstruct them.
+
+**Verification checklist:**
+- [ ] STATE.md read: Current Position, Scope Check status, Route record, Round Table, Reader Table, Adjudication and Glance Batches, Spend Ledger, Open Review Items
+- [ ] The protocol version in force (`Protocol_v{N}.md`) located
+- [ ] Every Reader Table row checked against `papers/{key}/` (card, `card_check`, `vision_audit`)
+- [ ] Any check-in awaiting a reply (scope check, key-paper list, round check-in, reference check) identified for re-presentation
+- [ ] User confirmed ready to proceed
 
 ### Recovery from Framework Development Mode
 

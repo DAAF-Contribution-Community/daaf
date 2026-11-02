@@ -102,7 +102,7 @@ DAAF explicitly embraces the fact that LLM research assistants will never be per
 
 ## Engagement Modes
 
-When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of nine possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
+When you open DAAF, just begin by asking it any question or for support with any type of task. DAAF intelligently responds to your needs by automatically selecting and walking you through one of ten possible research workflow modes (and you can feel free to redirect it if it gets it wrong!) while providing easy opportunities to transition across supported workflows as needed:
 
 **Data Onboarding:** Make Claude an expert in **your** data
 - *What you do:* Point DAAF to your data (local file, web download, or API) and any associated documentation
@@ -122,6 +122,12 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *What DAAF does:* Launches explorations across all available data documentation relevant to your question
 - *What you get:* An in-depth summary of relevant opportunities, insights, clarifications, and caveats to consider
 - *Example:* What are all the socioeconomic status related variables we have access to across the Urban Institute Education Portal datasets?
+
+**Literature Review:** Find out what the published research says, with every reference and quote checked
+- *What you do:* Ask what the research literature says about a question, and choose how deep to go: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review that you lead
+- *What DAAF does:* Agrees a search plan with you, searches the scholarly databases, picks out the relevant papers with you, reads them, and writes up what the evidence shows. It checks every reference against a database record (you glance at the reference list before the final write-up), checks every quote and number against the page it came from, and never averages results from different studies into one number
+- *What you get:* A short memo of pointers (quick scan) or a written review with a note on each key paper and how sure we can be about each conclusion, plus a checked reference list, a list of open gaps, and a project folder with the full search and reading record
+- *Example:* What does the research say about how summer bridge programs affect first-year persistence in college? A standard review is fine.
 
 **Ad Hoc Collaboration:** A smarter, more grounded research partner (including creatively stress-testing your findings together)
 - *What you do:* Ask DAAF to help you riff on anything research-related -- code review, debugging, brainstorming, writing scripts

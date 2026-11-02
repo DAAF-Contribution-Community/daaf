@@ -212,12 +212,13 @@ If you use **Chrome or Edge**, there's also a shortcut: right-click a folder and
 
 ### What are engagement modes and how do I choose one?
 
-DAAF has nine engagement modes, each designed for a different type of task. You don't need to memorize them -- just describe what you want to do and DAAF will suggest the right mode. But here's a quick overview:
+DAAF has ten engagement modes, each designed for a different type of task. You don't need to memorize them -- just describe what you want to do and DAAF will suggest the right mode. But here's a quick overview:
 
 - **Full Pipeline** — Complete research analysis from question to report ("Analyze how X relates to Y")
 - **Data Onboarding** — Profile and register a new dataset ("I have this CSV I want to use")
 - **Data Discovery** — Explore what data exists ("Is it possible to study X?")
 - **Data Lookup** — Quick factual answers ("What are the coded values for variable X?")
+- **Literature Review** — Find and review the published research, with every reference checked ("What does the research say about X?")
 - **Ad Hoc Collaboration** — Flexible working session ("Help me debug this" / "Think through this with me" / "Stress-test this result before I present it")
 - **Revision and Extension** — Modify existing work ("Update the analysis to include 2024 data")
 - **Reproducibility Verification** — Verify an analysis reproduces ("Re-run this and check the results match")

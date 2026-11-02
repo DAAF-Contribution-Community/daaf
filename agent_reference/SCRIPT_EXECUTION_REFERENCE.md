@@ -392,6 +392,14 @@ research/YYYY-MM-DD_[Title]/
 
 Profiling scripts use the same file-first execution pattern, IAT documentation standards, and `run_with_capture.sh` wrapper. See `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` for the profiling script template and part-specific details.
 
+**Literature Review captured scripts** transform no data: they print keys, hashes and samples from the review's tables so that agents copy them from a log rather than from memory, and the pack script runs `lit_corpus adjudications pack` so its hashes land in an immutable log. They sit under `scripts/`:
+- `lr_search/` (the literature-searcher's index scripts)
+- `lr_synthesis/` (the literature-synthesizer's index scripts)
+- `lr_adjudication/` (the orchestrator's pack, identity-check and rows scripts for the citation second check)
+- `lr_verification/` (the orchestrator's claim-sample script before the final spot-check)
+
+Each folder numbers its scripts `{NN}` in order of creation; the scripts follow the same file-first pattern, flat style and IAT comments, and a failed one is revised with `create_script_revision.sh`. Naming patterns are in § Stage-Based Script Directories; the mode file is `.claude/skills/daaf-orchestrator/references/literature-review-mode.md` (§ Project Layout).
+
 **Everything stays inside the project.** All script outputs, intermediates, and scratch files are written under the project directory — never `/tmp`, which is outside the backup and audit boundary. The `bash-safety.sh` hook and `settings.json` deny rules block the `/tmp` writes they can see, not all of them: a script that needs a temporary directory passes an explicit project path (`tempfile.mkdtemp(dir=...)` in Python, `tempfile(tmpdir = ...)` in R, `mktemp -d -p "$PROJECT_DIR/scripts/scratch"` in shell), because Python `tempfile`, R `tempdir()` and `mktemp` default to `/tmp` (CLAUDE.md § Provenance Boundary). Working files go in `{PROJECT_DIR}/scripts/scratch/` (created on first use); they are kept but never relied on, and anything that something outside scratch will cite is moved to its named home first (CLAUDE.md § Project Conventions > Scratch Files). (Reading DAAF's own `/tmp` coordination caches, e.g. `/tmp/claude-model-*`, is permitted — only writes to `/tmp` are blocked.)
 
 ### Scratch Graduation Check
@@ -473,6 +481,10 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 | DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
 | DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
 | RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
+| LR-1 to LR-4 (Literature Review search index, literature-searcher) | `scripts/lr_search/` | `{NN}_index_r{R}_{step}.py` | `01_index_r1_screen.py` |
+| LR-6, LR-7, LR-7Q (Literature Review synthesis index, literature-synthesizer) | `scripts/lr_synthesis/` | `{NN}_index_r{R}_v{N}.py` | `01_index_r1_v1.py` |
+| Literature Review citation second check (orchestrator) | `scripts/lr_adjudication/` | `{NN}_pack_batch_{batch_id}.py`, `{NN}_identity_check.py`, `{NN}_rows_{label}.py` | `01_pack_batch_b01.py` |
+| LR-8 (Literature Review claim sample, orchestrator) | `scripts/lr_verification/` | `{NN}_claim_sample_v{N}.py` | `01_claim_sample_v1.py` |
 | Smoke Tests | `scripts/smoke_tests/` | `smoke_{skill-name}.R` | `smoke_tidyverse.R` |
 | Probes, cited (Stage 3 source research, QA reviews, any) | `scripts/probes/` | name kept from `scripts/scratch/` (moved unchanged with its log; a rename to `{seq:02d}_probe-{slug}.py` is optional) | `01_probe-ccd-schema.py` |
 | Scratch (any) | `scripts/scratch/` | free-form (working files, never relied on or cited; see § Scratch Graduation Check) | `stripped_08_fetch.py` |
