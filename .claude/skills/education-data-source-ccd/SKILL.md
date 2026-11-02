@@ -70,7 +70,7 @@ What information do you need?
 │   ├─ District-level detail → School District Finance Survey (F-33)
 │   └─ See ./references/survey-components.md#finance
 ├─ Graduation/dropout rates → Dropout and Completers
-│   └─ See ./references/survey-components.md#dropout-completers
+│   └─ See ./references/survey-components.md#dropout-and-completers
 └─ School type, charter status, locale → Directory
     └─ See ./references/survey-components.md#directory
 ```
@@ -86,25 +86,25 @@ Unexpected data values?
 ├─ State appears as outlier → Check state-specific reporting
 │   └─ See ./references/data-quality.md#state-variations
 ├─ Large number of zeros → Check suppression rules
-│   └─ See ./references/data-quality.md#suppression
+│   └─ See ./references/data-quality.md#data-suppression
 └─ Locale codes don't match → Pre/post 2006 locale system change
-    └─ See ./references/historical-changes.md#locale-codes
+    └─ See ./references/historical-changes.md#locale-codes-2006
 ```
 
 ### Can I compare across time?
 
 ```
 Building a time series?
-├─ Race/ethnicity categories → Major change in 2010
-│   └─ See ./references/historical-changes.md#race-ethnicity
+├─ Race/ethnicity categories → Major change from 2008-09 to 2010-11 (file years 2008-2010)
+│   └─ See ./references/historical-changes.md#raceethnicity-categories-2008-09-to-2010-11
 ├─ Locale codes → Completely revised in 2006
-│   └─ See ./references/historical-changes.md#locale-codes
+│   └─ See ./references/historical-changes.md#locale-codes-2006
 ├─ School/district IDs → Check for ID changes
 │   └─ See ./references/variable-definitions.md#identifiers
 ├─ Free/reduced lunch → CEP and direct certification changes
-│   └─ See ./references/data-quality.md#frpl
+│   └─ See ./references/data-quality.md#freereduced-price-lunch-frpl-limitations
 └─ Finance data → Definition changes and inflation
-    └─ See ./references/historical-changes.md#finance
+    └─ See ./references/data-quality.md#finance-data-quality
 ```
 
 ## Quick Reference: CCD Components
@@ -402,6 +402,6 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | FRPL limitations | `./references/data-quality.md` |
 | Data suppression | `./references/data-quality.md` |
 | Locale code changes (2006) | `./references/historical-changes.md` |
-| Race/ethnicity changes (2010) | `./references/historical-changes.md` |
+| Race/ethnicity changes (2008-09 to 2010-11) | `./references/historical-changes.md` |
 | LEA type changes (2007) | `./references/historical-changes.md` |
 | ID changes over time | `./references/historical-changes.md` |

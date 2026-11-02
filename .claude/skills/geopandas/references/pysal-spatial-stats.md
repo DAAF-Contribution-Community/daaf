@@ -336,16 +336,19 @@ print(ols.summary)
 
 ### LM Test Decision Rule
 
-```
-LM test results from OLS:
-├─ LM-lag significant, LM-error not → Spatial Lag Model (SAR)
-├─ LM-error significant, LM-lag not → Spatial Error Model (SEM)
-├─ Both significant → Check robust versions:
-│   ├─ Robust LM-lag significant → SAR
-│   ├─ Robust LM-error significant → SEM
-│   └─ Both robust significant → Spatial Durbin Model or SAR+SEM combo
-└─ Neither significant → OLS is fine, no spatial model needed
-```
+Follow these steps in order on the OLS diagnostics (spreg attributes in brackets). Rule verified against Anselin (2005), *Exploring Spatial Data with GeoDa: A Workbook*, §23.6.3, pp. 197-200, on 2026-11-02.
+
+1. Read LM-lag [`ols.lm_lag`] and LM-error [`ols.lm_error`], the standard (non-robust) tests. Each is a (statistic, p-value) tuple.
+2. Neither significant → keep OLS. If Moran's I on residuals is still significant, suspect heteroskedasticity or non-normality rather than spatial dependence (Anselin 2005, p. 198 fn. 8).
+3. Exactly one significant → estimate the matching model: LM-lag → spatial lag (`ML_Lag`/`GM_Lag`); LM-error → spatial error (`ML_Error`/`GM_Error`). Do not look at the robust tests here; they are only valid when both standard tests are significant (p. 197).
+4. Both significant → read Robust LM-lag [`ols.rlm_lag`] and Robust LM-error [`ols.rlm_error`]:
+   a. One significant and the other not, or one orders of magnitude more significant → estimate that model.
+   b. Both highly significant → choose the model with the larger robust statistic, with caution: re-run with other spatial weights and revisit the non-spatial specification, since another misspecification may be present (p. 200).
+   c. Neither significant → do not fit a spatial model yet; fix the more serious misspecification first (p. 200).
+5. Ignore LM-SARMA [`ols.lm_sarma`] for model choice: it is significant under either single alternative (p. 197).
+6. The "- Spatial Durbin -" block of the spreg summary (`lm_wx`, `rlm_wx`, `rlm_durlag`, `lm_spdurbin`; Koley & Bera 2024) answers a different question (whether WX belongs in the model). Never feed "Robust LM Lag - SDM" into steps 1-4.
+
+Refinements (verified against Anselin, Serenini & Amaral 2024, "Spatial Econometric Model Specification Search: Another Look", pp. 10, 12, 26, on 2026-11-02): in case 4b the authors estimate the lag model by spatial 2SLS and run the Anselin-Kelejian test (`spreg.AKtest`): significant → SAR-Error (`GM_Combo`), otherwise lag. Their simulations support p = 0.01 per decision rather than 0.05. SDM is selected only through the Koley-Bera tests (joint SDM test significant, then both robust ρ and WX tests significant), not through steps 1-4.
 
 ### Spatial Lag Model (SAR)
 

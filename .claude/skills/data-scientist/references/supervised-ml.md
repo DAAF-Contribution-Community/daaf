@@ -218,6 +218,8 @@ No single algorithm dominates across all datasets — this is the "No Free Lunch
 
 **Start simple, establish a baseline, then add complexity.** Logistic regression is competitive on many social science datasets and is fully interpretable. Try more complex models only if the baseline is insufficient for the decision the predictions will inform.
 
+**scikit-learn's `LogisticRegression` is penalized by default.** In scikit-learn 1.8.0 the defaults are an L2 penalty (`l1_ratio=0.0`) with `C=1.0` and `max_iter=100`, so `coef_` is shrunk toward zero by an amount that depends on each feature's scale, and no standard errors are reported. For prediction, keep the penalty and tune `C` by cross-validation. To interpret or test coefficients, fit the model in `statsmodels` (`Logit`, or a binomial GLM) instead. When effectively unpenalized estimates are needed inside a scikit-learn pipeline, use `LogisticRegression(C=1e10, max_iter=1000)`: in 1.8.0 `penalty=None` is deprecated (FutureWarning, removal in 1.10) and `C=np.inf` raises a UserWarning. The `scikit-learn` skill, `classification.md` § LogisticRegression, has the details.
+
 ### The Interpretability-Performance Tradeoff
 
 Following Rudin's (2019) influential argument in *Nature Machine Intelligence*, for high-stakes policy decisions:

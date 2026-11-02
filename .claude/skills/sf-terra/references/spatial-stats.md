@@ -217,11 +217,22 @@ print(rs_tests)
 # errors ("Invalid test selected - must be either 'all' or a vector of tests").
 # "all" returns the full five-test set cleanly.
 
-# Decision rule:
-# RSlag significant, RSerr not -> Spatial Lag Model (SAR)
-# RSerr significant, RSlag not -> Spatial Error Model (SEM)
-# Both significant -> Check adjusted (robust) versions (adjRSlag, adjRSerr)
-# Neither significant -> OLS is fine
+# Decision rule (verified against Anselin 2005, GeoDa Workbook §23.6.3, pp. 197-200, on 2026-11-02):
+# 1. Neither RSlag nor RSerr significant -> keep OLS (a significant Moran's I alone
+#    may reflect heteroskedasticity/non-normality, p. 198 fn. 8)
+# 2. Exactly one significant -> estimate that model (RSlag -> lagsarlm, RSerr -> errorsarlm);
+#    do not read adjRS* here: robust tests are valid only when both RS tests are significant
+# 3. Both significant -> read adjRSlag and adjRSerr:
+#    a. one significant (or orders of magnitude more so) -> that model
+#    b. both highly significant -> larger adjRS statistic, cautiously; re-check weights
+#       and the non-spatial specification (p. 200)
+#    c. neither significant -> fix other misspecification first; no spatial model yet
+# 4. SARMA is not a model-choice test (significant under either single alternative, p. 197)
+# Refinement (Anselin, Serenini & Amaral 2024, pp. 10, 26): in case 3b, test a 2SLS lag
+# model for remaining error autocorrelation (Anselin-Kelejian test) -> SAR-Error
+# (sacsarlm) if significant; p = 0.01 per decision is preferred. spatialreg 1.4-3 and
+# spdep 1.4-2 ship no Anselin-Kelejian test (spreg's AKtest in Python does).
+# SDM is not selected by this rule.
 ```
 
 ### Spatial Lag Model (SAR / SLM)

@@ -56,7 +56,7 @@ Missing data in CCD tends to cluster by state:
 | FTE staff counts | Inconsistent state reporting | Varies |
 | Enrollment by grade | Some states report all as "ungraded" | Varies |
 | Finance data | Lag in reporting | Most recent 1-2 years |
-| Student demographics | Race/ethnicity changes | Pre-2010 |
+| Student demographics | Race/ethnicity changes: no Two or More Races or separate NHPI rows before 2008; in 2008-2009 only adopting states report them | Portal 2008-2010 (SY 2008-09 to 2010-11); earlier years use 5 categories |
 
 ### Missing Data Check
 
@@ -156,8 +156,8 @@ School locale codes were completely revised in 2006:
 |------|--------|
 | 2002 | (Illustrative/unsourced — verify) Grade span definitions refined |
 | 2006 | Locale codes revised |
+| 2008-2010 | Race categories expanded to 7 (optional in SY 2008-09 and 2009-10, required from SY 2010-11) |
 | 2010 | ACGR first collected by ED (SY 2010-11, via EDFacts) |
-| 2010 | Race categories expanded |
 | 2014 | (Illustrative/unsourced — verify) Virtual school identification improved |
 | 2020 | COVID-related enrollment disruptions |
 

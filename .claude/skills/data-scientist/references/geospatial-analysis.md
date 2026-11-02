@@ -362,6 +362,7 @@ Identifies statistically significant clusters of high values (hot spots) and low
 - Unlike Local Moran's I, **cannot identify spatial outliers** (HL or LH)
 - Positive standardized Gi* → high-value cluster; negative → low-value cluster
 - Simpler interpretation than LISA but less information
+- **Gi* includes the focal unit in its own neighborhood sum; Gi excludes it.** In esda, pass `star=True` to `G_Local` for Gi*: the default `star=False` computes Gi (esda 2.9.0 `getisord.py`, `G_Local.__init__`). Name the variant in the write-up. For code, see the `geopandas` skill, `pysal-spatial-stats.md` § Local Getis-Ord Gi*
 
 ### Proper LISA Interpretation
 

@@ -66,15 +66,15 @@ Research topic?
 │   ├─ School-related arrests → ./references/data-elements.md#discipline
 │   └─ Preschool suspensions → ./references/data-elements.md#discipline
 ├─ Restraint and seclusion
-│   └─ Physical restraint, mechanical, seclusion → ./references/data-elements.md#restraint-seclusion
+│   └─ Physical restraint, mechanical, seclusion → ./references/data-elements.md#restraint-and-seclusion
 ├─ Harassment and bullying
-│   ├─ Allegations by type → ./references/data-elements.md#harassment
-│   └─ Disciplined for harassment → ./references/data-elements.md#harassment
+│   ├─ Allegations by type → ./references/data-elements.md#harassment-and-bullying
+│   └─ Disciplined for harassment → ./references/data-elements.md#harassment-and-bullying
 ├─ Course access and enrollment
-│   ├─ AP/IB courses → ./references/data-elements.md#advanced-courses
-│   ├─ Gifted/talented → ./references/data-elements.md#gifted-talented
-│   ├─ Math/science courses → ./references/data-elements.md#course-access
-│   └─ Computer science → ./references/data-elements.md#course-access
+│   ├─ AP/IB courses → ./references/data-elements.md#advanced-courses-apibgifted
+│   ├─ Gifted/talented → ./references/data-elements.md#advanced-courses-apibgifted
+│   ├─ Math/science courses → ./references/data-elements.md#course-access-and-offerings
+│   └─ Computer science → ./references/data-elements.md#course-access-and-offerings
 ├─ Chronic absenteeism
 │   └─ Students missing 15+ days → ./references/data-elements.md#chronic-absenteeism
 ├─ Special populations
@@ -92,23 +92,23 @@ Research topic?
 
 ```
 Civil rights law question?
-├─ Race/ethnicity discrimination → ./references/civil-rights-context.md#title-vi
-├─ Sex/gender discrimination → ./references/civil-rights-context.md#title-ix
-├─ Disability discrimination → ./references/civil-rights-context.md#section-504
-├─ Special education services → ./references/civil-rights-context.md#idea
-├─ Age discrimination → ./references/civil-rights-context.md#age-discrimination-act
-└─ OCR enforcement process → ./references/civil-rights-context.md#ocr-enforcement
+├─ Race/ethnicity discrimination → ./references/civil-rights-context.md#title-vi-of-the-civil-rights-act-of-1964
+├─ Sex/gender discrimination → ./references/civil-rights-context.md#title-ix-of-the-education-amendments-of-1972
+├─ Disability discrimination → ./references/civil-rights-context.md#section-504-of-the-rehabilitation-act-of-1973
+├─ Special education services → ./references/civil-rights-context.md#idea-individuals-with-disabilities-education-act
+├─ Age discrimination → ./references/civil-rights-context.md#age-discrimination-act-of-1975
+└─ OCR enforcement process → ./references/civil-rights-context.md#ocr-enforcement-process
 ```
 
 ### Data quality concerns?
 
 ```
 Data quality issue?
-├─ Missing or suppressed data → ./references/data-quality.md#suppression
+├─ Missing or suppressed data → ./references/data-quality.md#suppression-rules
 ├─ Definition inconsistencies → ./references/data-quality.md#definition-variation
 ├─ Year-to-year comparability → ./references/historical-changes.md
-├─ COVID-19 impact (2020-21, Portal year 2020) → ./references/data-quality.md#covid-impact
-├─ Underreporting concerns → ./references/data-quality.md#underreporting
+├─ COVID-19 impact (2020-21, Portal year 2020) → ./references/data-quality.md#covid-19-impact-2020-21
+├─ Underreporting concerns → ./references/data-quality.md#underreporting-concerns
 └─ State-level variations → ./references/data-quality.md#state-variations
 ```
 

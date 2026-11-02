@@ -18,8 +18,8 @@ This reference documents significant changes to CCD data collection, definitions
 | 2006-07 | **Locale codes revised** | Major discontinuity |
 | 2007-08 | LEA type codes revised | Charter agencies distinguished |
 | 2007-08 | School type code 5 added | Reportable programs tracked |
+| 2008-09 to 2010-11 | **Race/ethnicity categories revised** (7 categories optional 2008-09 and 2009-10, required from 2010-11) | Major discontinuity across the whole span |
 | 2010-11 | ACGR first collected by ED (EDFacts) | Graduation rate methodology change |
-| 2010-11 | **Race/ethnicity categories revised** | Major discontinuity |
 | 2013-14 | Virtual school indicator added | Virtual schools tracked |
 | 2014-15 | CEP nationwide | FRPL interpretation affected |
 | 2016-17 | Long file format | Data structure changed |
@@ -84,7 +84,7 @@ NCES provides files for 2003-04 through 2005-06 that include both old and new co
 
 ---
 
-## Race/Ethnicity Categories (2010)
+## Race/Ethnicity Categories (2008-09 to 2010-11)
 
 ### The Change
 
@@ -147,26 +147,34 @@ States transitioned at different times:
 ### Recommended Approach
 
 ```python
+import polars as pl
+
 # Portal uses integer race codes (not NCES string codes)
 # Current Portal codes: 1=White, 2=Black, 3=Hispanic, 4=Asian,
-#                       5=AIAN, 6=NHPI, 7=Two+, 99=Total
+#                       5=AIAN, 6=NHPI, 7=Two+, 9=Unknown, 99=Total
 
-# For time series spanning 2010
+# For time series that include any of file years 2008-2010 (the 2008-09 to
+# 2010-11 transition)
 # Option 1: Collapse new categories to match old 5-category system
-def collapse_to_5_categories(race_code: int) -> int:
-    """Collapse 7-category (post-2010) to 5-category (pre-2010) equivalent."""
-    mapping = {
-        5: 5,   # American Indian/Alaska Native stays same
-        4: 4,   # Asian stays Asian
-        6: 4,   # Pacific Islander → Asian (combined pre-2010)
-        2: 2,   # Black stays Black
-        3: 3,   # Hispanic stays Hispanic
-        1: 1,   # White stays White
-        7: -1,  # Two or more → cannot map (treat as missing)
-    }
-    return mapping.get(race_code, -1)
+df = df.with_columns(
+    pl.col("race").replace_strict(
+        {
+            5: 5,   # American Indian/Alaska Native stays same
+            4: 4,   # Asian stays Asian
+            6: 4,   # Pacific Islander → Asian (combined in the 5-category scheme)
+            2: 2,   # Black stays Black
+            3: 3,   # Hispanic stays Hispanic
+            1: 1,   # White stays White
+            7: -1,  # Two or more → cannot map (treat as missing)
+            9: 9,   # Unknown stays Unknown (its own code, not missing)
+            99: 99, # Total stays Total, so race_collapsed == 99 still selects the totals
+        },
+        default=-1,
+    ).alias("race_collapsed")
+)
 
-# Option 2: Analyze pre-2010 and post-2010 separately
+# Option 2: Analyze 5-category years (through file year 2007) and 7-category
+# years (from file year 2010) separately; 2008-2009 mix both schemes by state
 # Note the break in your time series documentation
 ```
 
@@ -176,25 +184,29 @@ library(dplyr)
 
 # Portal uses integer race codes (not NCES string codes)
 # Current Portal codes: 1=White, 2=Black, 3=Hispanic, 4=Asian,
-#                       5=AIAN, 6=NHPI, 7=Two+, 99=Total
+#                       5=AIAN, 6=NHPI, 7=Two+, 9=Unknown, 99=Total
 
-# For time series spanning 2010
+# For time series that include any of file years 2008-2010 (the 2008-09 to
+# 2010-11 transition)
 # Option 1: Collapse new categories to match old 5-category system
 df <- df |> mutate(
   race_collapsed = recode_values(
     race,
     5 ~ 5L,   # American Indian/Alaska Native stays same
     4 ~ 4L,   # Asian stays Asian
-    6 ~ 4L,   # Pacific Islander -> Asian (combined pre-2010)
+    6 ~ 4L,   # Pacific Islander -> Asian (combined in the 5-category scheme)
     2 ~ 2L,   # Black stays Black
     3 ~ 3L,   # Hispanic stays Hispanic
     1 ~ 1L,   # White stays White
     7 ~ -1L,  # Two or more -> cannot map (treat as missing)
+    9 ~ 9L,   # Unknown stays Unknown (its own code, not missing)
+    99 ~ 99L, # Total stays Total, so race_collapsed == 99 still selects the totals
     default = -1L  # recode_values supersedes case_match (soft-deprecated dplyr 1.2.0)
   )
 )
 
-# Option 2: Analyze pre-2010 and post-2010 separately
+# Option 2: Analyze 5-category years (through file year 2007) and 7-category
+# years (from file year 2010) separately; 2008-2009 mix both schemes by state
 # Note the break in your time series documentation
 ```
 
@@ -456,37 +468,38 @@ Some schools may be classified differently before and after this change. Check s
 ### Code Pattern for Time-Sensitive Analysis
 
 ```python
-def prepare_longitudinal_data(df, variable, start_year, end_year):
-    """Prepare data accounting for known historical changes."""
-    
-    # Check for locale code issues
-    if variable == "locale" and start_year < 2006 and end_year >= 2006:
-        print("WARNING: Locale code methodology changed in 2006")
-        print("Consider separate pre/post-2006 analysis")
-    
-    # Check for race/ethnicity issues
-    if variable in ["race", "enrollment_by_race"] and start_year < 2010 and end_year >= 2010:
-        print("WARNING: Race/ethnicity categories changed in 2010")
-        print("Two or More Races (TR) and HP rows start in 2008; real counts only from adopting states until 2010")
-    
-    # Check for FRPL issues
-    if variable in ["frpl", "free_lunch", "reduced_lunch"] and end_year >= 2011:
-        print("NOTE: CEP phased in from SY 2011-12 (Portal year 2011) in 11 jurisdictions; nationwide from SY 2014-15 (Portal year 2014). FRPL interpretation affected")
-    
-    return df
+# variable, start_year and end_year describe your series (e.g. "race", 2005, 2009)
+
+# Check for locale code issues
+if variable == "locale" and start_year < 2006 and end_year >= 2006:
+    print("WARNING: Locale code methodology changed in 2006")
+    print("Consider separate pre/post-2006 analysis")
+
+# Check for race/ethnicity issues: file years 2008-2010 are the transition, so
+# warn when the series includes any of them (a 2005-2009 series is affected too)
+if variable in ["race", "enrollment_by_race"] and start_year <= 2010 and end_year >= 2008:
+    print("WARNING: Race/ethnicity categories changed between 2008-09 and 2010-11 (file years 2008-2010)")
+    print("Two or More Races (TR) and HP rows start in 2008; real counts only from adopting states until 2010")
+
+# Check for FRPL issues
+if variable in ["frpl", "free_lunch", "reduced_lunch"] and end_year >= 2011:
+    print("NOTE: CEP phased in from SY 2011-12 (Portal year 2011) in 11 jurisdictions; nationwide from SY 2014-15 (Portal year 2014). FRPL interpretation affected")
 ```
 
 ```r
 # R equivalent
+# variable, start_year and end_year describe your series (e.g. "race", 2005, 2009)
+
 # Check for locale code issues
 if (variable == "locale" && start_year < 2006 && end_year >= 2006) {
   cat("WARNING: Locale code methodology changed in 2006\n")
   cat("Consider separate pre/post-2006 analysis\n")
 }
 
-# Check for race/ethnicity issues
-if (variable %in% c("race", "enrollment_by_race") && start_year < 2010 && end_year >= 2010) {
-  cat("WARNING: Race/ethnicity categories changed in 2010\n")
+# Check for race/ethnicity issues: file years 2008-2010 are the transition, so
+# warn when the series includes any of them (a 2005-2009 series is affected too)
+if (variable %in% c("race", "enrollment_by_race") && start_year <= 2010 && end_year >= 2008) {
+  cat("WARNING: Race/ethnicity categories changed between 2008-09 and 2010-11 (file years 2008-2010)\n")
   cat("Two or More Races (TR) and HP rows start in 2008; real counts only from adopting states until 2010\n")
 }
 
