@@ -789,7 +789,7 @@ class LiveEvaluatorTests(unittest.TestCase):
              "mode workflow reference, then check the CCD skill. **Sound good?**", Verdict.PASS),
             ("Classification: Ad Hoc Collaboration. Would you like me to proceed this way?", Verdict.PASS),
             ("I'd handle this in data-discovery mode. Shall I proceed?", Verdict.PASS),
-            # Too loose before the fix: the bare word "mode" plus any "?".
+            # The bare word "mode" plus any "?" is not a named mode and a confirmation question.
             ("Which mode? I can help with that.", Verdict.FAIL),
             ("I can switch mode if needed. What year?", Verdict.FAIL),
             ("Do you mean the CCD? Let me know.", Verdict.FAIL),
@@ -811,13 +811,110 @@ class LiveEvaluatorTests(unittest.TestCase):
         v, d, facts = sp._evaluate_t32(answer, [])
         self.assertEqual(v, Verdict.WARN)
         self.assertIn("answered without loading the skill", d)
-        self.assertIn("education-data-context or daaf-orchestrator", d)
+        self.assertIn("education-data-context or education-data-source-ccd", d)
+        self.assertIn("daaf-orchestrator did not load either", d)
         v, d, _ = sp._evaluate_t32(answer, orch)
         self.assertEqual(v, Verdict.WARN)
-        self.assertNotIn("or daaf-orchestrator", d)
+        self.assertNotIn("daaf-orchestrator did not load", d)
         self.assertEqual(sp._evaluate_t32(answer, orch + ctx)[0], Verdict.PASS)
         failed_ctx = [_use("c", "Skill", {"skill": "education-data-context"}), _res("c", "err", True)]
         self.assertEqual(sp._evaluate_t32(answer, failed_ctx)[0], Verdict.WARN)
+
+    def test_t32_counts_retrieval_in_a_specialist_transcript(self):
+        # Data Lookup: the orchestrator hands the lookup to a specialist
+        # (search-agent by default, source-researcher for a deep lookup), which
+        # loads the data skill in its own transcript. Retrieval counts there too.
+        answer = "grade = -1 means Pre-K."
+        orch = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o")]
+        ctx_sub = [_use("c", "Skill", {"skill": "education-data-context"}), _res("c")]
+        v, d, facts = sp._evaluate_t32(answer, orch, [[], ctx_sub])
+        self.assertEqual(v, Verdict.PASS, d)
+        self.assertEqual((facts["retrieval_signal"], facts["retrieval_where"], facts["subagent_transcripts"]),
+                         ("Skill education-data-context", "subagent", 2))
+        self.assertIn("specialist (subagent) transcript", d)
+        # The CCD source skill counts as well, bare, '/name' or plugin-qualified.
+        for skill in ("education-data-source-ccd", "/education-data-source-ccd", "x:education-data-source-ccd"):
+            with self.subTest(skill=skill):
+                ccd = [_use("k", "Skill", {"skill": skill}), _res("k")]
+                v, d, facts = sp._evaluate_t32(answer, orch, [ccd])
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual(facts["retrieval_signal"], "Skill education-data-source-ccd")
+        # The main transcript is checked first and reported as "main".
+        v, _, facts = sp._evaluate_t32(answer, orch + ctx_sub, [ctx_sub])
+        self.assertEqual((v, facts["retrieval_where"]), (Verdict.PASS, "main"))
+
+    def test_t32_counts_a_skill_md_read(self):
+        answer = "grade = -1 means Pre-K."
+        abs_read = [_use("r", "Read", {"file_path": "/daaf/.claude/skills/education-data-context/SKILL.md"}),
+                    _res("r")]
+        v, d, facts = sp._evaluate_t32(answer, [], [abs_read])
+        self.assertEqual(v, Verdict.PASS, d)
+        self.assertEqual((facts["retrieval_signal"], facts["retrieval_where"]),
+                         ("Read education-data-context/SKILL.md", "subagent"))
+        rel_read = [_use("r", "Read", {"file_path": ".claude/skills/education-data-source-ccd/SKILL.md"}), _res("r")]
+        v, d, facts = sp._evaluate_t32(answer, rel_read)
+        self.assertEqual(v, Verdict.PASS, d)
+        self.assertEqual((facts["retrieval_signal"], facts["retrieval_where"]),
+                         ("Read education-data-source-ccd/SKILL.md", "main"))
+        self.assertIn("the main transcript", d)
+
+    def test_t32_non_signals_still_warn(self):
+        answer = "grade = -1 means Pre-K."
+        skill_md = "/daaf/.claude/skills/education-data-context/SKILL.md"
+        cases = {
+            "errored SKILL.md read": [_use("r", "Read", {"file_path": skill_md}), _res("r", "err", True)],
+            "SKILL.md read with no result": [_use("r", "Read", {"file_path": skill_md})],
+            "CCD reference page read": [
+                _use("r", "Read", {"file_path": "/daaf/.claude/skills/education-data-source-ccd/references/"
+                                                "variable-definitions.md"}), _res("r")],
+            "lookalike folder": [_use("r", "Read", {"file_path": "/x/myskills/education-data-context/SKILL.md"}),
+                                 _res("r")],
+            "unrelated skill": [_use("s", "Skill", {"skill": "polars"}), _res("s")],
+            "CCD skill with no result": [_use("s", "Skill", {"skill": "education-data-source-ccd"})],
+        }
+        for label, recs in cases.items():
+            with self.subTest(case=label):
+                v, d, facts = sp._evaluate_t32(answer, recs, [recs])
+                self.assertEqual(v, Verdict.WARN, d)
+                self.assertIn("answered without loading the skill", d)
+                self.assertEqual((facts["retrieval_seen"], facts["retrieval_signal"], facts["retrieval_where"]),
+                                 (False, None, None))
+
+    def test_t32_tolerates_malformed_inputs(self):
+        # The transcript is untrusted: a string or list `input`, or a non-list
+        # subagent entry, must not raise.
+        answer = "grade = -1 means Pre-K."
+        bad = [_use("a", "Skill", "education-data-context"), _res("a"),
+               _use("b", "Read", ["/daaf/.claude/skills/education-data-context/SKILL.md"]), _res("b"),
+               _use("c", "Read", {"file_path": None}), _res("c"),
+               {"type": "assistant", "message": "not-a-dict"}, "not-a-record"]
+        v, d, facts = sp._evaluate_t32(answer, bad, [bad, "not-records", None])
+        self.assertEqual(v, Verdict.WARN, d)
+        self.assertFalse(facts["retrieval_seen"])
+        self.assertEqual(sp._evaluate_t32(None, None, None)[0], Verdict.FAIL)
+
+    def test_t32_live_data_lookup_shape_passes(self):
+        # The 2026-11-01 anthropic-subscription shape (session 17375d34): the main
+        # transcript loads the orchestrator and dispatches source-researcher; the
+        # specialist loads the CCD skill, reads two CCD reference pages, then the
+        # education-data-context SKILL.md. Results there carried no is_error key.
+        main = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o"),
+                _use("m", "Read", {"file_path": "/daaf/.claude/skills/daaf-orchestrator/references/"
+                                                "data-lookup-mode.md"}), _res("m"),
+                _use("a", "Agent", {"subagent_type": "source-researcher", "prompt": "p"}), _res("a")]
+        no_flag = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "k", "content": "ok"}]}}
+        sub = [_use("k", "Skill", {"skill": "education-data-source-ccd"}), no_flag,
+               _use("r1", "Read", {"file_path": "/daaf/.claude/skills/education-data-source-ccd/references/"
+                                                 "variable-definitions.md"}), _res("r1"),
+               _use("r2", "Read", {"file_path": "/daaf/.claude/skills/education-data-context/SKILL.md"}), _res("r2")]
+        v, d, facts = sp._evaluate_t32("**`grade = -1` in CCD enrollment data means Pre-Kindergarten.**", main, [sub])
+        self.assertEqual(v, Verdict.PASS, d)
+        self.assertEqual(facts, {"prek_answer": True, "retrieval_seen": True,
+                                 "retrieval_signal": "Skill education-data-source-ccd",
+                                 "retrieval_where": "subagent", "subagent_transcripts": 1,
+                                 "orchestrator_skill_loaded": True})
+        self.assertIn("daaf-orchestrator loaded too", d)
 
 
 def _fake_run(response="SMOKE_TIER1_COMPLETE", init=None):
@@ -853,13 +950,110 @@ class TierRunnerWiringTests(unittest.TestCase):
     def test_tier3_resumes_same_session(self):
         runs = [_fake_run("Ad Hoc Collaboration mode. Shall I proceed?"), _fake_run("grade -1 is Pre-K")]
         with mock.patch.object(sp, "execute_smoke_run", side_effect=runs) as ex, \
-             mock.patch.object(sp, "find_transcript", return_value=None):
+             mock.patch.object(sp, "find_transcript", return_value=None), \
+             mock.patch.object(sp, "find_subagent_transcripts", return_value=[]) as subs:
             results = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
-        # No transcript, so no education-data-context load is visible: T3.2 WARNs.
+        # No transcript, so no skill retrieval is visible anywhere: T3.2 WARNs.
         self.assertEqual([r.verdict for r in results], [Verdict.PASS, Verdict.WARN])
         self.assertIn("answered without loading the skill", results[1].detail)
+        self.assertTrue(results[1].hint)
         self.assertEqual(ex.call_args_list[1].kwargs["resume_session_id"], runs[0][1]["session_id"])
         self.assertIsNone(ex.call_args_list[0].kwargs["max_budget_usd"])
+        subs.assert_called_with(runs[0][1]["session_id"])
+        # The pre-gate transparency facts are recorded even with nothing to see.
+        facts1 = json.loads(next(e.output for e in results[0].evidence if e.output.startswith('{"mode_named"')))
+        self.assertIs(facts1["dispatch_seen"], False)
+        facts2 = json.loads(next(e.output for e in results[1].evidence if e.output.startswith('{"prek_answer"')))
+        self.assertEqual(facts2["subagent_transcripts_before_t32"], 0)
+        self.assertIsNone(facts2["retrieval_before_t32"])
+        self.assertNotIn("predate the T3.2 call", results[1].detail)
+        self.assertNotIn("The T3.1 turn already shows retrieval", results[1].detail)
+
+    def test_tier3_records_main_transcript_retrieval_in_the_t31_turn(self):
+        # The orchestrator loads education-data-context in the T3.1 turn (before
+        # the gate). recs2 holds the same main transcript, so T3.2 PASSes as
+        # before; the fact and a detail clause show where the retrieval sits.
+        runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
+        t31_path, t32_path = Path("t31-fake.jsonl"), Path("t32-fake.jsonl")
+        t31 = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o"),
+               _use("c", "Skill", {"skill": "education-data-context"}), _res("c")]
+        loaded = {t31_path: t31, t32_path: t31}
+        with mock.patch.object(sp, "execute_smoke_run", side_effect=runs), \
+             mock.patch.object(sp, "find_transcript", side_effect=[t31_path, t32_path]), \
+             mock.patch.object(sp, "find_subagent_transcripts", return_value=[]), \
+             mock.patch.object(sp, "load_transcript_records", side_effect=lambda p: list(loaded.get(p, []))):
+            r1, r2 = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        self.assertEqual((r1.verdict, r2.verdict), (Verdict.PASS, Verdict.PASS), (r1.detail, r2.detail))
+        facts2 = json.loads(next(e.output for e in r2.evidence if e.output.startswith('{"prek_answer"')))
+        self.assertEqual((facts2["retrieval_before_t32"], facts2["retrieval_where"],
+                          facts2["subagent_transcripts_before_t32"]),
+                         ("Skill education-data-context", "main", 0))
+        self.assertTrue(r2.detail.endswith(" The T3.1 turn already shows retrieval: Skill education-data-context."),
+                        r2.detail)
+        self.assertNotIn("predate the T3.2 call", r2.detail)
+
+    def test_tier3_records_a_pre_gate_dispatch_without_changing_verdicts(self):
+        # A specialist dispatched in the T3.1 turn (before the gate) is visible in
+        # the evidence: T3.1's dispatch_seen, T3.2's subagent_transcripts_before_t32
+        # and a clause in T3.2's detail. Neither verdict changes.
+        runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
+        t31_path, t32_path, sub_path = Path("t31-fake.jsonl"), Path("t32-fake.jsonl"), Path("agent-fake.jsonl")
+        t31 = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o"),
+               _use("a", "Agent", {"subagent_type": "source-researcher"}), _res("a")]
+        sub = [_use("k", "Skill", {"skill": "education-data-source-ccd"}), _res("k")]
+        loaded = {t31_path: t31, t32_path: t31, sub_path: sub}
+        with mock.patch.object(sp, "execute_smoke_run", side_effect=runs), \
+             mock.patch.object(sp, "find_transcript", side_effect=[t31_path, t32_path]), \
+             mock.patch.object(sp, "find_subagent_transcripts", return_value=[sub_path]), \
+             mock.patch.object(sp, "load_transcript_records", side_effect=lambda p: list(loaded.get(p, []))):
+            r1, r2 = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        self.assertEqual(r1.verdict, Verdict.PASS, r1.detail)
+        facts1 = json.loads(next(e.output for e in r1.evidence if e.output.startswith('{"mode_named"')))
+        self.assertEqual((facts1["mode_named"], facts1["dispatch_seen"]), ("Data Lookup", True))
+        self.assertEqual(r2.verdict, Verdict.PASS, r2.detail)
+        self.assertTrue(r2.detail.endswith(" 1 specialist transcript(s) predate the T3.2 call."), r2.detail)
+        facts2 = json.loads(next(e.output for e in r2.evidence if e.output.startswith('{"prek_answer"')))
+        self.assertEqual((facts2["subagent_transcripts_before_t32"], facts2["subagent_transcripts"],
+                          facts2["retrieval_where"]), (1, 1, "subagent"))
+
+    def test_tier3_pre_gate_clause_survives_a_warn(self):
+        # The clause is appended to a WARN detail too; the verdict stays WARN.
+        runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
+        with mock.patch.object(sp, "execute_smoke_run", side_effect=runs), \
+             mock.patch.object(sp, "find_transcript", return_value=None), \
+             mock.patch.object(sp, "find_subagent_transcripts", side_effect=[[Path("a.jsonl"), Path("b.jsonl")],
+                                                                             [Path("a.jsonl"), Path("b.jsonl")]]), \
+             mock.patch.object(sp, "load_transcript_records", return_value=[]):
+            _, r2 = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        self.assertEqual(r2.verdict, Verdict.WARN, r2.detail)
+        self.assertIn("answered without loading the skill", r2.detail)
+        self.assertTrue(r2.detail.endswith(" 2 specialist transcript(s) predate the T3.2 call."), r2.detail)
+
+    def test_tier3_counts_retrieval_in_a_subagent_transcript(self):
+        runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
+        sub_path = Path("agent-fake.jsonl")
+        sub = [_use("k", "Skill", {"skill": "education-data-source-ccd"}), _res("k")]
+        main_path = Path("main-fake.jsonl")
+        main = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o"),
+                _use("a", "Agent", {"subagent_type": "source-researcher"}), _res("a")]
+        loaded = {main_path: main, sub_path: sub}
+        with mock.patch.object(sp, "execute_smoke_run", side_effect=runs), \
+             mock.patch.object(sp, "find_transcript", return_value=main_path), \
+             mock.patch.object(sp, "find_subagent_transcripts", side_effect=[[], [sub_path]]), \
+             mock.patch.object(sp, "load_transcript_records", side_effect=lambda p: list(loaded.get(p, []))):
+            results = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        r2 = results[1]
+        self.assertEqual(r2.verdict, Verdict.PASS, r2.detail)
+        self.assertIn("Skill education-data-source-ccd", r2.detail)
+        facts = json.loads(next(e.output for e in r2.evidence if e.output.startswith('{"prek_answer"')))
+        self.assertEqual((facts["retrieval_where"], facts["subagent_transcripts"], facts["orchestrator_skill_loaded"]),
+                         ("subagent", 1, True))
+        # The specialist appeared only after the T3.1 turn: no pre-gate clause.
+        self.assertEqual(facts["subagent_transcripts_before_t32"], 0)
+        self.assertIsNone(facts["retrieval_before_t32"])
+        self.assertNotIn("predate the T3.2 call", r2.detail)
+        self.assertNotIn("The T3.1 turn already shows retrieval", r2.detail)
+        self.assertEqual(r2.hint, "")
 
     def test_tier1_new_probes_and_stream_json(self):
         init = {"apiKeySource": "none", "model": "claude-opus-5-5[1m]"}
@@ -929,6 +1123,77 @@ class ContractAndHintTests(unittest.TestCase):
                          "Prompt is too long (backend context length exceeded)"):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, hint)
+
+    def test_t32_hint_fits_the_summary_cell(self):
+        # run_deploy_smoke cuts the problems table's "Likely cause" cell at 300
+        # characters; the T3.2 hint must survive whole.
+        import smoke_package
+        hint = sp.PROBE_HINTS["T3.2"]
+        self.assertLess(len(hint), 300)
+        for text in ("education-data-context", "education-data-source-ccd", "transcripts/<sid8>/main.jsonl",
+                     "transcripts/<sid8>/subagents/", "specialist dispatch"):
+            with self.subTest(text=text):
+                self.assertIn(text, hint)
+        for marker in smoke_package.DROP_LINE_MARKERS:
+            self.assertNotIn(marker, hint.lower())
+        self.assertNotRegex(hint, r"(?i)\bwhere(?: to fix)?:")
+
+    def test_t3_where_to_fix_locations(self):
+        import run_deploy_smoke as runner
+        self.assertEqual(runner._where_to_fix("T3.1", sp.PROBE_HINTS["T3.1"]), ".claude/skills/daaf-orchestrator/")
+        t32 = runner._where_to_fix("T3.2", sp.PROBE_HINTS["T3.2"])
+        for loc in (".claude/skills/daaf-orchestrator/references/data-lookup-mode.md", ".claude/agents/",
+                    "search-agent", "source-researcher", ".claude/skills/education-data-{context,source-ccd}/"):
+            with self.subTest(loc=loc):
+                self.assertIn(loc, t32)
+        # The summary table cuts the Where-to-fix cell at 200 characters.
+        for prefix, loc in list(runner._FIX_LOCATIONS) + [("*.CRASH", runner._CRASH_LOCATION)]:
+            with self.subTest(prefix=prefix):
+                self.assertLessEqual(len(loc), 200)
+                self.assertEqual(runner._cell(loc, 200), loc)
+
+    def test_crash_records_route_to_the_harness(self):
+        # Every synthetic *.CRASH record routes to scripts/deploy_smoke/ and the
+        # Verdict Semantics synthetic-records paragraph, never to a tier's
+        # install location or a probe row that does not exist.
+        import run_deploy_smoke as runner
+        crash_ids = ["T0.CRASH", "T1.CRASH", "T2.CRASH", "TA.CRASH", "T3.CRASH", "TN.CRASH", "TD.CRASH",
+                     "POST.CRASH", "RUN.CRASH"]
+        for pid in crash_ids:
+            with self.subTest(probe=pid):
+                loc = runner._where_to_fix(pid, "")
+                self.assertEqual(loc, runner._CRASH_LOCATION)
+                self.assertTrue(loc.startswith("scripts/deploy_smoke/"))
+                self.assertIn("interpreting-results.md § Verdict Semantics, Synthetic records", loc)
+                self.assertNotIn(f"(row {pid})", loc)
+        # The runner's own crash records, with their real hints, route the same way.
+        for tier, pid in (("3", "T3.CRASH"), ("1", "T1.CRASH"), ("run", "RUN.CRASH"),
+                          (runner.POST_RUN_TIER, "POST.CRASH")):
+            with self.subTest(tier=tier):
+                r = runner._crash_result(tier, "fixture", RuntimeError("boom"))
+                self.assertEqual(r.probe_id, pid)
+                self.assertEqual(runner._where_to_fix(r.probe_id, r.hint), runner._CRASH_LOCATION)
+        # The T3.1 and T3.2 locations are unchanged by the crash rule.
+        self.assertEqual(runner._where_to_fix("T3.1", ""), ".claude/skills/daaf-orchestrator/")
+        self.assertEqual(runner._where_to_fix("T3.2", ""), dict(runner._FIX_LOCATIONS)["T3.2"])
+        # The paragraph the pointer names exists and says the fix is in the harness.
+        doc = (Path(runner.BASE_DIR) / runner._SKILL_REF).read_text()
+        self.assertIn("## Verdict Semantics", doc)
+        self.assertIn("**Synthetic records.**", doc)
+        self.assertIn("the fix is in `scripts/deploy_smoke/`, not the install", doc)
+
+    def test_find_subagent_transcripts_fails_open_on_os_error(self):
+        # An unreadable session folder makes Path.exists() (or the glob) raise;
+        # the lookup returns [] instead of crashing the tier.
+        denied = PermissionError(13, "Permission denied")
+        with mock.patch.object(sp.Path, "exists", side_effect=denied):
+            self.assertEqual(sp.find_subagent_transcripts(str(uuid.UUID(int=7))), [])
+        with mock.patch.object(sp.Path, "exists", return_value=True), \
+             mock.patch.object(sp.Path, "glob", side_effect=denied):
+            self.assertEqual(sp.find_subagent_transcripts(str(uuid.UUID(int=7))), [])
+        with mock.patch.object(sp.Path, "exists", return_value=True), \
+             mock.patch.object(sp.Path, "glob", return_value=iter([Path("b.jsonl"), Path("a.jsonl")])):
+            self.assertEqual(sp.find_subagent_transcripts(str(uuid.UUID(int=7))), [Path("a.jsonl"), Path("b.jsonl")])
 
     def test_apply_hints_only_fills_fail_warn(self):
         ok = rd.ProbeResult("T0.5", "n", "0", verdict=Verdict.PASS)

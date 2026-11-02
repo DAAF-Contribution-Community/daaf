@@ -21,7 +21,8 @@ Route-appropriate probes then run across tiers:
   Tier 2  functional battery     capability-structural probes (dispatch, coding in Python and R, web,
                                  skill, isolation, nested-dispatch prevention, guardrails)
   Tier A  Auto mode (opt-in)     one claude -p --permission-mode auto call
-  Tier 3  golden path (opt-in)   mode-confirmation gate + skill retrieval through the orchestrator
+  Tier 3  golden path (opt-in)   mode-confirmation gate + Pre-K answer with a curated-skill retrieval
+                                 (by the orchestrator or its Data Lookup specialist)
 
 The suite runs on any DAAF image (T0.0 reports whether it is the developer
 image, which adds the bats and Pester batteries). Before any paid tier (1, 2,
@@ -710,15 +711,25 @@ _FIX_LOCATIONS = (
     ("T1.", "provider credentials and route; .claude/hooks/ for the plumbing probes"),
     ("T2.", ".claude/agents/, .claude/skills/, .claude/hooks/ (see the transcript)"),
     ("TA.", "Auto-mode settings; shim classifier path on shim routes"),
-    ("T3.", ".claude/skills/daaf-orchestrator/, .claude/skills/education-data-context/"),
+    ("T3.1", ".claude/skills/daaf-orchestrator/"),
+    ("T3.2", ".claude/skills/daaf-orchestrator/references/data-lookup-mode.md (Data Lookup); .claude/agents/ "
+             "(search-agent, source-researcher); .claude/skills/education-data-{context,source-ccd}/"),
 )
 _SKILL_REF = ".claude/skills/daaf-deploy-smoke-testing/references/interpreting-results.md"
+# Every synthetic *.CRASH record (T<tier>.CRASH, POST.CRASH, RUN.CRASH) is a
+# harness exception or an interrupted run, not an install defect, and has no
+# probe row of its own: it is checked before the tier prefixes in
+# _FIX_LOCATIONS, which would otherwise send T0.CRASH to the install.
+_CRASH_LOCATION = (f"scripts/deploy_smoke/ (an interrupt needs only a re-run); see {_SKILL_REF} "
+                   "§ Verdict Semantics, Synthetic records")
 
 
 def _where_to_fix(probe_id: str, hint: str) -> str:
     m = re.search(r"(?i)\bwhere(?: to fix)?:\s*(.+)$", hint or "")
     if m:
         return m.group(1).strip()
+    if probe_id.endswith(".CRASH"):
+        return _CRASH_LOCATION
     for prefix, loc in _FIX_LOCATIONS:
         if probe_id == prefix or (prefix.endswith(".") and probe_id.startswith(prefix)):
             return loc

@@ -475,11 +475,17 @@ def find_subagent_transcripts(session_id: str):
     Subagent transcripts live beside the main transcript under
     <projects>/<slug>/<session_id>/subagents/agent-<id>.jsonl (per subagent-bar.sh's
     sidecar contract, where <slug> is the BASE_DIR-derived _PROJECT_SLUG, e.g.
-    "-daaf" for /daaf) — best-effort, fail-open to an empty list."""
+    "-daaf" for /daaf) — best-effort, fail-open to an empty list. An OSError
+    from the lookup (an unreadable session folder: Path.exists() re-raises
+    EACCES) also returns [], so a folder the harness cannot read never crashes
+    a tier (smoke_package.locate_transcripts guards its own call the same way)."""
     projects_dir = Path.home() / ".claude" / "projects" / _PROJECT_SLUG
     sub_dir = projects_dir / session_id / "subagents"
-    if sub_dir.exists():
-        return sorted(sub_dir.glob("agent-*.jsonl"))
+    try:
+        if sub_dir.exists():
+            return sorted(sub_dir.glob("agent-*.jsonl"))
+    except OSError:
+        return []
     return []
 
 
@@ -5605,16 +5611,18 @@ T32_PROMPT = "Yes, go ahead."
 # A confirmation QUESTION: a confirm phrase followed, within the same sentence,
 # by a question mark ("Shall I proceed?", "Sound good?", "Would you like me to
 # look this up?" — the orchestrator's confirmation templates end this way). A
-# bare "?" anywhere in the tail no longer counts (review S6, 2026-10-13).
+# bare "?" anywhere in the tail does not count: a reply can ask the user a
+# clarifying question without stopping at the gate.
 _CONFIRM_Q_RE = re.compile(
     r"(?:confirm|proceed|shall i|should i|would you like|do you want|want me to|go ahead|sounds? good|"
     r"ok(?:ay)? to|does that work|is that (?:ok|okay|right|correct|what you want))[^.!?\n]{0,160}\?",
     re.IGNORECASE)
-# The nine DAAF engagement modes by name (daaf-orchestrator SKILL.md § Mode
-# Summary Table). The bare word "mode" no longer counts.
-_DAAF_MODE_NAMES = ("Data Onboarding", "Data Lookup", "Data Discovery", "Ad Hoc Collaboration",
-                    "Full Pipeline", "Revision and Extension", "Reproducibility Verification",
-                    "Framework Development", "User Support")
+# The ten DAAF engagement modes by name (daaf-orchestrator SKILL.md § Mode
+# Summary Table). A mode must be named: the bare word "mode" does not count,
+# because ordinary replies use it without classifying the request.
+_DAAF_MODE_NAMES = ("Data Onboarding", "Data Lookup", "Literature Review", "Data Discovery",
+                    "Ad Hoc Collaboration", "Full Pipeline", "Revision and Extension",
+                    "Reproducibility Verification", "Framework Development", "User Support")
 _MODE_RE = re.compile(r"\b(?:" + "|".join(n.replace(" ", r"[\s-]+") for n in _DAAF_MODE_NAMES) + r")\b",
                       re.IGNORECASE)
 _PREK_RE = re.compile(r"pre-?\s?k(indergarten)?\b|prekindergarten", re.IGNORECASE)
@@ -5656,27 +5664,79 @@ def _skill_loaded(records, skill_name):
                for name, inp, is_error in _tool_calls(records))
 
 
-def _evaluate_t32(response_text, records):
+# The curated skills that carry the T3.2 fact (grade -1 is Pre-K); both state it.
+_T32_RETRIEVAL_SKILLS = ("education-data-context", "education-data-source-ccd")
+
+
+def _t32_retrieval_signal(records):
+    """The first T3.2 retrieval signal in one transcript's records, or None.
+
+    A signal is a Skill call for one of _T32_RETRIEVAL_SKILLS (bare, '/name' or
+    'plugin:name', the _skill_loaded normalization), or a Read whose file_path
+    is that skill's SKILL.md (ending in skills/<name>/SKILL.md, absolute or
+    relative). Either needs a recorded non-error tool_result: a call with no
+    result or an errored one does not count. A Read of another file in those
+    skills (a references/*.md page) is not the skill and does not count alone.
+    Returns "Skill <name>" or "Read <name>/SKILL.md"."""
+    for name, inp, is_error in _tool_calls(records):
+        if is_error is not False:
+            continue
+        if name == "Skill":
+            skill = str(_tool_input(inp).get("skill", "")).lstrip("/").split(":")[-1]
+            if skill in _T32_RETRIEVAL_SKILLS:
+                return f"Skill {skill}"
+        elif name == "Read":
+            path = str(_tool_input(inp).get("file_path", ""))
+            for skill in _T32_RETRIEVAL_SKILLS:
+                suffix = f"skills/{skill}/SKILL.md"
+                if path == suffix or path.endswith("/" + suffix):
+                    return f"Read {skill}/SKILL.md"
+    return None
+
+
+def _evaluate_t32(response_text, records, subagent_records=()):
     """T3.2: the continued answer says grade -1 means Pre-K, a fact the
-    education-data-context skill carries. PASS needs the Pre-K answer AND a
-    successful education-data-context Skill load in the session transcript;
-    the Pre-K answer without that load is WARN ("answered without loading the
-    skill": the model may know the fact unaided, so retrieval is not proven).
-    The detail also says whether daaf-orchestrator loaded."""
+    education-data-context and education-data-source-ccd skills carry.
+
+    In Data Lookup (the mode the orchestrator picked for the T3.1 question in
+    the observed 2026-11-01 run) the orchestrator hands the lookup to a
+    specialist: search-agent by default, source-researcher for a deep lookup
+    (source-researcher in that run), which loads the data skill in its own
+    transcript. Retrieval therefore counts in the main transcript (records) or
+    in any subagent transcript of the session, whatever its agent type
+    (subagent_records, one record list per transcript; T3.1 and T3.2 share the
+    session, so all of its subagents are scanned). See _t32_retrieval_signal
+    for what counts. PASS needs the Pre-K answer AND a retrieval signal; the
+    Pre-K answer without one is WARN ("answered without loading the skill": the
+    model may know the fact unaided, so retrieval is not proven); no Pre-K
+    answer is FAIL. facts records the signal and where it was seen ("main" or
+    "subagent", main first); daaf-orchestrator loading is judged on the main
+    transcript and reported in the detail."""
     text = response_text or ""
-    context = _skill_loaded(records, "education-data-context")
+    subagent_records = list(subagent_records or ())
+    signal, where = _t32_retrieval_signal(records), "main"
+    if signal is None:
+        where = None
+        for sub in subagent_records:
+            signal = _t32_retrieval_signal(sub)
+            if signal is not None:
+                where = "subagent"
+                break
     orchestrator = _skill_loaded(records, "daaf-orchestrator")
-    facts = {"prek_answer": bool(_PREK_RE.search(text)), "context_skill_loaded": context,
-             "orchestrator_skill_loaded": orchestrator}
+    facts = {"prek_answer": bool(_PREK_RE.search(text)), "retrieval_seen": signal is not None,
+             "retrieval_signal": signal, "retrieval_where": where,
+             "subagent_transcripts": len(subagent_records), "orchestrator_skill_loaded": orchestrator}
     if not facts["prek_answer"]:
         return Verdict.FAIL, "The continued answer does not say grade -1 means Pre-K.", facts
-    if context:
-        return Verdict.PASS, ("The answer says grade -1 is Pre-K, with the education-data-context skill loaded"
+    if signal is not None:
+        place = "the main transcript" if where == "main" else "a specialist (subagent) transcript"
+        return Verdict.PASS, (f"The answer says grade -1 is Pre-K, with skill retrieval in {place}: {signal}"
                               + (" (daaf-orchestrator loaded too)." if orchestrator else ".")), facts
-    missing = "education-data-context" + ("" if orchestrator else " or daaf-orchestrator")
-    return Verdict.WARN, (f"The answer says grade -1 is Pre-K, but it was answered without loading the skill "
-                          f"(no {missing} Skill load in the transcript), so skill retrieval is not "
-                          "proven."), facts
+    return Verdict.WARN, ("The answer says grade -1 is Pre-K, but it was answered without loading the skill: "
+                          "no Skill load or SKILL.md Read of education-data-context or education-data-source-ccd "
+                          f"in the session or its specialists' transcripts ({len(subagent_records)} subagent "
+                          "transcript(s) scanned), so skill retrieval is not proven"
+                          + ("." if orchestrator else "; daaf-orchestrator did not load either.")), facts
 
 
 def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = "", evidence_dir=None) -> list:
@@ -5684,7 +5744,23 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
     no mode confirmed (PASS when the reply stops at the gate), T3.2 resumes THE
     SAME session by id (`--resume <sid>`; the design's `claude -c -p` would pick
     the most recent conversation in /daaf, which may not be ours) with
-    "Yes, go ahead." and checks the Pre-K answer. Signature mirrors run_tier1/2."""
+    "Yes, go ahead." and checks the Pre-K answer. T3.2 judges skill retrieval
+    over the main transcript plus every subagent transcript of the session,
+    because in Data Lookup the orchestrator hands the lookup to a specialist
+    (search-agent by default, source-researcher for a deep lookup) that loads
+    the data skill in its own transcript; the live-run health gate still judges
+    the main transcript only.
+
+    T3.1 and T3.2 share the session, so retrieval in the T3.1 turn (before
+    the gate), by a specialist dispatched then or in the main transcript,
+    would also count for T3.2. The evidence shows it without changing either
+    verdict: T3.1's facts record dispatch_seen (an Agent/Task call in its main
+    transcript), and T3.2's facts record subagent_transcripts_before_t32
+    (subagent transcripts present before the T3.2 call) and
+    retrieval_before_t32 (the retrieval signal already in the main transcript
+    after the T3.1 turn, or None), each adding a clause to T3.2's detail when
+    set.
+    Signature mirrors run_tier1/2."""
     budget = _budget_for(route, "3")
     res1, meta1 = execute_smoke_run(prompt=T31_PROMPT, max_turns=8, timeout=timeout, extra_env=extra_env,
                                     output_format="stream-json", max_budget_usd=budget)
@@ -5694,7 +5770,10 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
     r1 = ProbeResult(probe_id="T3.1", name="Mode-confirmation gate", tier="3", profile=profile_name)
     r1.add_evidence(f"claude -p {T31_PROMPT!r} (session {sid[:8]})", output=(res1.response_text or "")[-400:])
     v1, d1, facts1 = _evaluate_t31(res1.response_text)
-    r1.add_evidence("mode named + confirmation request in the reply tail", output=json.dumps(facts1))
+    # Recorded, not judged: T3.1 grades the reply text only.
+    facts1 = dict(facts1, dispatch_seen=any(name in ("Agent", "Task") for name, _, _ in _tool_calls(recs1)))
+    r1.add_evidence("mode named + confirmation request in the reply tail; Agent/Task call in the T3.1 turn",
+                    output=json.dumps(facts1))
     if not _apply_live_failure(r1, f1, w1):
         r1.verdict, r1.detail = v1, d1
         _apply_live_warning(r1, w1)
@@ -5704,13 +5783,25 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
     if f1:
         r2.verdict, r2.detail = Verdict.SKIP, "T3.1 did not reach a real model; nothing to continue."
         return apply_hints([r1, r2])
+    subs_before = len(find_subagent_transcripts(sid))
     res2, meta2 = execute_smoke_run(prompt=T32_PROMPT, max_turns=20, timeout=timeout, extra_env=extra_env,
                                     output_format="stream-json", max_budget_usd=budget, resume_session_id=sid)
     recs2 = load_transcript_records(find_transcript(sid))
     f2, w2 = _live_run_health(res2, recs2)
     r2.add_evidence(f"claude -p --resume {sid[:8]} {T32_PROMPT!r}", output=(res2.response_text or "")[:400])
-    v2, d2, facts2 = _evaluate_t32(res2.response_text, recs2)
-    r2.add_evidence("Pre-K in the answer; Skill education-data-context", output=json.dumps(facts2))
+    subs2 = [load_transcript_records(p) for p in find_subagent_transcripts(sid)]
+    v2, d2, facts2 = _evaluate_t32(res2.response_text, recs2, subs2)
+    # Recorded, not judged: shows whether retrieval may come from the T3.1 turn,
+    # in a specialist dispatched then or in the main transcript (recs1 holds the
+    # main transcript as it stood before the T3.2 call).
+    facts2["subagent_transcripts_before_t32"] = subs_before
+    facts2["retrieval_before_t32"] = _t32_retrieval_signal(recs1)
+    if subs_before:
+        d2 += f" {subs_before} specialist transcript(s) predate the T3.2 call."
+    if facts2["retrieval_before_t32"]:
+        d2 += f" The T3.1 turn already shows retrieval: {facts2['retrieval_before_t32']}."
+    r2.add_evidence("Pre-K in the answer; a non-error Skill load or SKILL.md Read of education-data-context "
+                    "or education-data-source-ccd (main + subagent transcripts)", output=json.dumps(facts2))
     if not _apply_live_failure(r2, f2, w2):
         r2.verdict, r2.detail = v2, d2
         _apply_live_warning(r2, w2)
@@ -5778,7 +5869,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "TN.4": "Check the mirror in education-data-query/references/mirrors.yaml (pinned hf_revision) and network access to huggingface.co.",
     "TA.1": "Auto mode refused or failed: on shim routes check the classifier terminals in shim.log and CLAUDE_CODE_AUTO_MODE_SERVER; after 2026-10-23 do not move the CLI pin past 2.1.281 until this passes.",
     "T3.1": "The orchestrator did not stop at the mode-confirmation gate (no named mode plus confirmation question, or the question was already answered): check daaf-orchestrator loading and read the transcript.",
-    "T3.2": "The golden-path answer missed the Pre-K fact, or gave it without loading education-data-context: check skill retrieval in the transcript.",
+    "T3.2": "The answer missed the Pre-K fact, or gave it with no Skill load or SKILL.md Read of education-data-context or education-data-source-ccd: read transcripts/<sid8>/main.jsonl for the specialist dispatch, then transcripts/<sid8>/subagents/ for the retrieval.",
 })
 
 
