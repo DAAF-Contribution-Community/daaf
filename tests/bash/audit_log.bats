@@ -36,9 +36,8 @@
 # pattern step is wrapped in try/catch, a 128-char tail margin is dropped
 # when the cap cut the input, the value stream carries a pair-count check,
 # the value-feeding printf is `builtin printf`, and a missing jq still
-# writes the all-"unknown" record. The "(_c)" tests fail on the _b hook by
-# design until _c is installed; run them against
-#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_c/audit-log.sh
+# writes the all-"unknown" record. The "(_c)" tests failed on the _b hook by
+# design until _c was installed.
 # Revision _d (2026-10-01): inline-literal gaps F1 closed (rule 9 accepts a
 # hyphenated api-key header name and a segment-bounded pass / passphrase key;
 # new rule 10 credential-flag; new rule 11 url-userinfo) and the F4 counter
@@ -51,9 +50,7 @@
 # tests/bash/helpers/fake_shapes.bash (read its NO-LITERAL RULE before adding
 # a case) and check outcomes with its masked checks only -- never
 # assert_output / refute_output on a generated value. The gap cases and the
-# F4 counter case fail on the _c hook by design until _d is installed; run
-# them against
-#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_d/audit-log.sh
+# F4 counter case failed on the _c hook by design until _d was installed.
 #
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft:
 #   AUDIT_LOG_SH=/path/to/draft.sh bats audit_log.bats
@@ -716,7 +713,7 @@ _make_fault_copy() {
 # SECRET_NAME_ALLOWLIST lines must be byte-identical in audit-log.sh and
 # output-scanner.sh. The three carriers are output-scanner.sh, audit-log.sh
 # and scripts/run_with_capture.sh (bash-safety.sh does not carry the block:
-# its env guard was deferred on 2026-09-26).
+# its environment-disclosure guard, §9, uses its own narrower name rule).
 @test "cross-hook agreement: SECRET_NAME_VOCAB and SECRET_NAME_ALLOWLIST identical in audit-log and output-scanner" {
     local a s
     a="$(grep -E '^SECRET_NAME_(VOCAB|ALLOWLIST)=' "$AUDIT_LOG_SH")"

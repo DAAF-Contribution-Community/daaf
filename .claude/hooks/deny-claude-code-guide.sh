@@ -2,7 +2,10 @@
 # deny-claude-code-guide.sh
 # Blocks the claude-code-guide built-in agent from being spawned.
 # This is a built-in agent with an opaque system prompt that doesn't
-# align with DAAF's transparency requirements.
+# align with DAAF's transparency requirements. It also runs on Haiku (Claude
+# Code subagents docs, verified 2026-11-02), a tier DAAF does not use for
+# subagents; the deny message gives that second, since it is a vendor fact
+# that can change.
 #
 # Hook type: PreToolUse (matcher: Agent, Task)
 # Decision: deny if subagent_type=claude-code-guide
@@ -19,45 +22,34 @@
 #       "subagent_type" key bound to the exact value "claude-code-guide"
 #       (whitespace-tolerant around the colon, case-sensitive to match the jq
 #       path's exact-match semantics). On a match, block with the same
-#       message on stderr plus `exit 2` — Claude Code's documented plain-text
-#       block, which blocks the tool call regardless of stdout JSON validity
-#       (guaranteed as of the 2.1.214 fix). On no match, exit 0 (allow).
-#       [2026-09-24 hook-maintenance pass] Previously the jq-less path could
-#       not see subagent_type at all and exited 0 with no decision, which the
-#       harness read as ALLOW — a silent fail-OPEN on the banned agent.
-#     - UNEXPECTED ERROR: the ERR trap blocks with stderr + exit 2. It is
-#       deliberately jq-FREE: the previous trap serialized its deny with
-#       `jq -n`, which itself fails (and so allows) on exactly the jq-less
-#       container the trap is meant to cover.
+#       message on stderr plus `exit 2` — Claude Code's plain-text block,
+#       which blocks the tool call whatever stdout holds (Claude Code hooks
+#       reference, verified 2026-11-02). On no match, exit 0 (allow).
+#     - UNEXPECTED ERROR: the ERR trap blocks with stderr + exit 2. It uses
+#       no jq: a deny written with `jq -n` would itself fail, and so allow, on
+#       the jq-less container the trap is meant to cover.
 #   Other subagent types still ALLOW on every non-error path, including empty
 #   or malformed stdin: without a parse there is no positive identification
 #   of claude-code-guide, and blocking every dispatch on a bookkeeping failure
 #   would halt the pipeline (the same reasoning enforce-explore-model.sh
 #   records for its fallback).
 #
-# MULTI-VALUE STDIN [2026-09-26 bundle revision _a, SafetyHookHardening
-# session] — a concatenated payload such as a benign Agent object glued to a
-# {"tool_input":{"subagent_type":"claude-code-guide"}} object (either order,
-# with or without a newline) used to ALLOW: `jq -r` printed one line per
-# object, so SUBAGENT_TYPE held two lines and never equalled
-# "claude-code-guide". Probed on 2026-09-26 (all four concatenated orders,
-# banned+garbage, garbage+banned, and a top-level array: rc 0, no decision).
-# The jq path now DENIES when ANY top-level value (or any element of a
-# top-level array) is an object whose tool_input.subagent_type is exactly
-# "claude-code-guide". jq runs in streaming mode, so the values it parsed
-# before a later syntax error still count; if jq reports any error, the
-# jq-free raw-text match below is also applied, so a banned pair after the
-# garbage is still identified. Plain malformed or empty stdin that carries no
-# banned pair still ALLOWS (the documented fail-open posture is unchanged).
-# Whether the harness can ever emit such a payload is inference (it sends one
-# object); this is defence in depth, mirroring enforce-file-first.sh's
+# MULTI-VALUE STDIN. The jq path denies when any top-level value, or any
+# element of a top-level array, is an object whose tool_input.subagent_type
+# is exactly "claude-code-guide", so a banned object glued to a benign one
+# (either order, with or without a newline) is still caught. jq runs in
+# streaming mode, so the values it parsed before a later syntax error count;
+# after any jq error the jq-free raw-text match below also runs, so a banned
+# pair after the garbage is identified too. Malformed or empty stdin that
+# carries no banned pair ALLOWS (the fail-open posture above). Claude Code
+# sends one object; this is defence in depth, mirroring enforce-file-first.sh's
 # one-object gate for a hook that must stay fail-open on malformed input.
 set -uo pipefail
 
 # Deny message — single source of truth for the JSON path and the jq-free
 # fallback. Plain assignment (not a heredoc) so the string carries no trailing
 # newline, preserving the exact reason text the JSON path has always emitted.
-REASON="claude-code-guide is NOT permitted in this project. It runs on the Haiku model, which lacks the reasoning depth and nuance required for accurate Claude Code guidance. Instead, spawn a search-agent (subagent_type: search-agent) and instruct it to use WebSearch to locate the relevant official Claude Code documentation pages (start at https://code.claude.com/docs/en/overview), then retrieve each page with the DAAF web-retrieval protocol — bash /daaf/scripts/web_fetch.sh URL DEST_DIR (see the web-retrieval skill) — and read the saved extract thoroughly for the question at hand. The search-agent defaults to the Sonnet tier (model can be overridden per dispatch); it uses built-in WebSearch for discovery and web_fetch.sh for document retrieval (the built-in WebFetch is blocked in this project)."
+REASON="claude-code-guide is NOT permitted in this project. Spawn a search-agent instead (subagent_type: search-agent): claude-code-guide is a built-in agent with an opaque system prompt, which conflicts with DAAF's transparency requirement, and it runs on the Haiku model, a tier DAAF does not use for subagents (Claude Code subagents docs, verified 2026-11-02). Instruct the search-agent to use WebSearch to find the official Claude Code documentation pages (start at https://code.claude.com/docs/en/overview), retrieve each page with the DAAF web-retrieval protocol, bash /daaf/scripts/web_fetch.sh URL DEST_DIR (see the web-retrieval skill), and read the saved extract for the question at hand. The search-agent defaults to the Sonnet tier (the model can be overridden per dispatch); the built-in WebFetch is blocked in this project."
 
 # Fail-closed ERR trap, deliberately jq-FREE (see DEPENDENCY POSTURE above).
 trap 'printf "%s\n" "deny-claude-code-guide hook encountered an unexpected error; blocking the dispatch (fail-closed)." >&2; exit 2' ERR

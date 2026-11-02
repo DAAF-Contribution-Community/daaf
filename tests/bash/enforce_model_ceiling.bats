@@ -4,7 +4,7 @@
 # ============================================================================
 # Contract (from the hook header): a subagent must never run on a HIGHER model
 # tier than the current main session model. Ranks by substring match:
-#   haiku=1, sonnet=2, opus=3, fable=4; a non-Claude slug = rank 0.
+#   haiku=1, sonnet=2, opus=3, fable=4, mythos=4; a non-Claude slug = rank 0.
 # Decision order (first match wins): (a) CLAUDE_CODE_SUBAGENT_MODEL_FORCE enabled
 # ("1" or "true", any case) -> ALLOW — CLAUDE_CODE_SUBAGENT_MODEL alone does NOT
 # stand the hook down (since Claude Code 2.1.251 it is only a fallback for
@@ -23,7 +23,7 @@
 #
 # Session-model control in these tests is deterministic via a synthetic
 # transcript file placed in TEST_DIR whose last `.message.model` line the hook
-# reads (same extraction as context-reporter.sh cache_model()). We avoid the
+# reads from the transcript's final 50 lines. We avoid the
 # /tmp/claude-model-<session_id> cache leg by using unique bogus session ids.
 #
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft copy:
@@ -252,6 +252,24 @@ _make_agent_fixture() {
 @test "session opus + requested opus: ALLOW (equal tier)" {
     local tp; tp="$(_make_transcript "claude-opus-4-8")"
     run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-5" "$tp" "claude-opus-4-8")
+    assert_success
+    assert_output ""
+}
+
+# Mythos ranks with Fable (4). A Mythos session is a Claude session: every
+# DAAF tier is within its ceiling, and it must never get the rule (f)
+# non-Claude deny. Covers the parameter leg and the frontmatter leg (a
+# dispatch with no tool_input.model, as the orchestrator usually sends).
+@test "session claude-mythos-5: opus, sonnet, fable and frontmatter requests ALLOW (Mythos ranks with Fable)" {
+    local tp; tp="$(_make_transcript "claude-mythos-5")"
+    local model
+    for model in opus sonnet fable claude-opus-5-5; do
+        run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-mythos-${model}" "$tp" "$model")
+        assert_success
+        assert_output ""
+    done
+    local stype; stype="$(_make_agent_fixture "fixture-opus-mythos" "model: opus   # High-judgment tier note words")"
+    run env DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR="$TEST_DIR" bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-mythos-fm" "$tp" "" "$stype")
     assert_success
     assert_output ""
 }

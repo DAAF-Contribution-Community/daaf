@@ -3,14 +3,26 @@
 #
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
-# persistence, and session recovery (see CLAUDE.md utilization gates — the
-# thresholds are quality-tier conditional: Fable/Mythos and Opus 5.5 (admitted
-# to that tier by user policy decision 2026-09-23) use 40%/50%/60% OR
-# 400k/500k/600k (numbers set by user policy decision 2026-10-23, raised from
-# 30/40/50% OR 300/400/500k); the exact extended-horizon GPT ids (GPT 5.6 Sol, GPT-6
-# Astra, GPT-6 Sol, GPT-6.1 Sol, and their flagship -pro forms) use 60%/75%/90% OR
-# 300k/400k/500k; all other models use 40%/60%/75%
-# OR 150k/200k/250k, whichever fires first; see calculate() below).
+# persistence, and session recovery (see CLAUDE.md § Context Quality Curve).
+# The thresholds depend on the threshold profile of the measured model,
+# whichever of the percentage or absolute gate fires first (see calculate()):
+#   Claude extended-horizon (Fable/Mythos patterns, plus Opus 5.5:
+#     claude-opus-5-5, bare or [1m]): ELEVATED >= 40% OR >= 400k,
+#     HIGH >= 50% OR >= 500k, CRITICAL >= 60% OR >= 600k.
+#   GPT extended-horizon (exact GPT 5.6 Sol and GPT-6 Astra, plus GPT-6 Sol,
+#     GPT-6.1 Sol and the flagship -pro form of each; see GPT_EXTENDED_RE):
+#     60%/75%/90% percentage gates with 300k/400k/500k absolute gates.
+#   Every other model: ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k,
+#     CRITICAL >= 75% OR >= 250k.
+# POLICY ADMISSIONS (the canonical note for this hook): Opus 5.5 in the
+# Claude profile; the Claude profile's 40/50/60% OR 400/500/600k numbers
+# (Fable/Mythos were validated at 30/40/50% OR 300/400/500k); GPT-6 Sol,
+# GPT-6.1 Sol and every flagship -pro form in the GPT profile; and the GPT-6
+# window mappings and ChatGPT-lane cap for the forms not measured (see
+# GPT_FLAGSHIP_RE) are admitted by user policy, not by DAAF validation; see
+# CLAUDE.md § Context Quality Curve and
+# agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md. Other comments in this
+# hook point here rather than restating it.
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
@@ -36,10 +48,12 @@
 #   settings.json PreToolUse hooks also fire for tool calls made BY subagents.
 #   In that case the hook's stdin JSON carries the PARENT's session_id and the
 #   PARENT's main transcript_path, plus an `agent_id` field that is present
-#   ONLY inside subagent calls. When agent_id is present, this script measures
+#   ONLY inside subagent calls (Claude Code hooks reference, verified
+#   2026-11-02). When agent_id is present, this script measures
 #   the SUBAGENT's own transcript, located at:
 #     <dirname(transcript_path)>/<session_id>/subagents/agent-<agent_id>.jsonl
-#   Entries in subagent transcripts all carry isSidechain:true, so the
+#   Entries in subagent transcripts all carry isSidechain:true (layout and
+#   flag observed 2026-11-02, Claude Code 2.1.281), so the
 #   sidechain filter (used to isolate the main chain in the parent transcript)
 #   is disabled when measuring a subagent's own transcript. Each subagent also
 #   gets its own rate-limit gate file (see "Rate limiting" above), and its
@@ -59,62 +73,38 @@
 #   transcript directly (basename == agent-<id>.jsonl) there is no parent
 #   transcript to scan, so the parent model comes from the cache alone (or is
 #   left empty). A measured subagent is then mapped by ITS OWN model/window and
-#   never assumed to share the session model (see Convention 10 in the
-#   hardening spec).
+#   never assumed to share the session model.
 #
-# Threshold tier (see calculate()):
+# Threshold profile (see calculate()):
 #   The severity thresholds are keyed on the model identity of the agent being
 #   measured — main-session measurements use the session model; subagent
-#   measurements use that subagent's own model. Fable/Mythos patterns get the
-#   Claude extended-horizon tier (40/50/60% OR 400/500/600k). Fable/Mythos
-#   were registered as validated at 30/40/50% OR 300/400/500k; by USER POLICY
-#   DECISION of 2026-10-23 (not validation) the whole tier, Opus 5.5
-#   included, was raised to 40/50/60% OR 400/500/600k, so the raised gates
-#   rest on the user's policy decision, not on a DAAF validation. Provenance
-#   (maintainer-only research workspace):
-#   research/2026-10-23_FrameworkDev_ClaudeExtendedHorizonRaise/SESSION_NOTES.md.
-#   The GPT tier below keeps its 300/400/500k absolute gates, so the two
-#   extended tiers no longer share absolute gates (Claude CRITICAL at 600k,
-#   GPT at 500k). The exact
-#   terminal extended-horizon GPT slugs — gpt-5.6-sol and gpt-5.6-sol[1m], plus
-#   the second registered extended-horizon model gpt-6-astra and gpt-6-astra[1m]
-#   — use 60/75/90% gates while retaining 300/400/500k absolute gates. By USER
-#   POLICY DECISION of 2026-09-29 (not validation), gpt-6-sol and the flagship
-#   -pro form of all three (e.g. gpt-6-sol-pro[1m]) join that GPT tier
-#   (GPT_EXTENDED_RE); provenance:
-#   research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames. By USER POLICY
-#   DECISION of 2026-10-12 (not validation), gpt-6.1-sol (and its -pro form)
-#   joins it on the same terms as gpt-6-sol. Provider
-#   paths are accepted only when one of those exact slugs is the final path
-#   segment. All other models (every Opus model except Opus 5.5 — see below —,
-#   Sonnet, other GPT variants including GPT-6 Luna, GLM, unknown/empty) get
-#   the conservative tier (40/60/75% OR 150/200/250k). This
-#   is deliberately separate from physical-window mapping: the broad GPT 5.6
-#   family and the GPT-6 flagships (Astra, Sol, Luna) each map to a 1.05M
-#   physical window on API/OpenRouter
-#   routes, while the matched ChatGPT-subscription/Codex lane is finally capped
-#   at 919k for accounting (measured 2026-09-05 for both Sol and Astra;
-#   previously 370,000 (2026-07-16), now stale). Only the exact extended-horizon
-#   GPT slugs get their own 300/400/500k absolute quality-horizon gates
-#   without inheriting the Claude tier's percentage or absolute gates.
-#   Likewise, claude-opus-4-8[1m] AND Opus 5
+#   measurements use that subagent's own model. Fable/Mythos patterns and
+#   Opus 5.5 get the Claude extended-horizon profile. The exact terminal
+#   extended-horizon GPT slugs (GPT_EXTENDED_RE: gpt-5.6-sol and gpt-6-astra,
+#   plus gpt-6-sol, gpt-6.1-sol and the -pro form of each, each optionally
+#   followed by [1m]) get the GPT profile, with its own 300/400/500k absolute
+#   gates rather than the Claude profile's. Provider paths are accepted only
+#   when one of those exact slugs is the final path segment. All other models
+#   (every Opus model except Opus 5.5, Sonnet, other GPT variants including
+#   GPT-6 Luna, GLM, unknown/empty) get the conservative profile. Profile
+#   membership is deliberately separate from physical-window mapping: the
+#   broad GPT 5.6 family and the GPT-6 flagships (Astra, Sol, Luna) each map
+#   to a 1.05M physical window on API/OpenRouter routes, while the matched
+#   ChatGPT-subscription/Codex lane is capped at 919k for accounting (see the
+#   lane-cap block below). Likewise, claude-opus-4-8[1m] AND Opus 5
 #   (claude-opus-5, bare and [1m]) have 1M physical windows but keep the
-#   conservative tier.
-#   Opus 5.5 (claude-opus-5-5, bare and [1m]) is the ONE Opus exception: it
-#   joins the extended-horizon tier (then 30/40/50% OR 300/400/500k; 40/50/60%
-#   OR 400/500/600k since 2026-10-23, above) by USER POLICY
-#   DECISION of 2026-09-23, not by validation — this deliberately departs from
-#   the 2026-07-24 "validate before promoting" doctrine (no sustained DAAF
-#   quality measurement past 300k exists for it yet). Every other Opus model,
-#   bare Opus 5 included, stays conservative: the profile arm names
-#   claude-opus-5-5 exactly (bare or as a provider path's final segment) rather
-#   than substring-matching, so near misses such as claude-opus-5-5-mini and
-#   xclaude-opus-5-5 cannot inherit the relaxed gates. Provenance:
-#   research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280.
+#   conservative profile.
+#   Opus 5.5 (claude-opus-5-5, bare and [1m]) is the ONE Opus exception (see
+#   POLICY ADMISSIONS). Every other Opus model, bare Opus 5 included, stays
+#   conservative: the profile arm names claude-opus-5-5 exactly (bare or as a
+#   provider path's final segment) rather than substring-matching, so near
+#   misses such as claude-opus-5-5-mini and xclaude-opus-5-5 cannot inherit
+#   the relaxed gates.
 #   Provider-dotted Claude ids (OpenRouter's anthropic/claude-opus-5.5 form) are
 #   rewritten to the hyphenated form by normalize_model_id before any of the
 #   above classification, so they reach the same arms as claude-opus-5-5.
-#   If model resolution fails, the conservative tier applies (fail-conservative).
+#   If model resolution fails, the conservative profile applies
+#   (fail-conservative).
 #
 # Exit codes:
 #   0 = success (stdout/JSON processed by Claude Code)
@@ -138,7 +128,7 @@ is_canonical_positive_decimal() {
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
 }
 
-# Bounded identifier allowlist (Convention 2). Leading alnum, then
+# Bounded identifier allowlist. Leading alnum, then
 # alnum/dot/underscore/hyphen, max 128 chars. Rejects slashes, traversal (..),
 # control chars, leading dash, empty, and >128. Every session_id / agent_id must
 # pass this BEFORE it is interpolated into any transcript or /tmp cache path, so
@@ -161,8 +151,8 @@ transcript_signature() {
 # paths consumed by audit-log.sh and statusline components. The neighboring
 # .transcript-signature sidecar is the commit marker: unchanged signatures reuse
 # a nonempty bare cache without parsing; changed signatures refresh from the last
-# nonempty, non-synthetic model via a FULL scan of the JSONL (Convention 4 —
-# a long tail of zero-token/synthetic placeholders cannot hide the real model).
+# nonempty, non-synthetic model via a FULL scan of the JSONL (a long tail of
+# zero-token/synthetic placeholders cannot hide the real model).
 # Both files are replaced through same-directory temporary siblings, with the
 # signature moved last so interrupted writes force a safe refresh on the next
 # invocation. When called with an empty transcript (e.g. the parent transcript
@@ -194,7 +184,7 @@ resolve_model_cache() {
     [[ -z "$model" ]] && model="$cached_model"
 
     if [[ -n "$model" && -n "$signature" ]]; then
-        # Convention 6: wrap the redirection so an open() failure on the temp
+        # Wrap the redirection so an open() failure on the temp
         # target cannot leak "No such file"/"Permission denied" to the display
         # stream (redirections apply left-to-right, so a bare `> f 2>/dev/null`
         # would still print the open() diagnostic before 2> takes effect).
@@ -211,14 +201,13 @@ resolve_model_cache() {
     [[ -n "$model" ]] && printf '%s' "$model"
 }
 
-# Provider-dotted Claude model ids (added 2026-09-29). OpenRouter reports Claude
+# Provider-dotted Claude model ids. OpenRouter reports Claude
 # models with a DOTTED version (anthropic/claude-opus-5.5, claude-opus-4.8,
 # claude-opus-5.5[1m]), while every Claude pattern in this hook expects
-# Anthropic's hyphenated form (claude-opus-5-5). Reproduced 2026-09-29 against
-# the live hook: a dotted Opus 5.5 subagent at 250k read [CRITICAL] (it missed
-# the anchored extended-horizon profile arm; expected NOMINAL), and a dotted
-# Opus 4.8 subagent at 150k read [CRITICAL] 150k / 200k (it missed the
-# *opus-4-8* window arm; expected ELEVATED 150k / 1000k). normalize_model_id
+# Anthropic's hyphenated form (claude-opus-5-5). Unnormalized, a dotted id
+# misses the anchored extended-horizon profile arm and the *opus-4-8* window
+# arm, so a dotted Opus 5.5 or Opus 4.8 subagent would be measured against
+# the conservative profile or a 200k window. normalize_model_id
 # rewrites ONLY an id that ENDS in claude-<family>-<major>.<minor>, optionally
 # followed by [1m], to the hyphenated form, keeping any provider prefix
 # (anthropic/claude-opus-5.5 -> anthropic/claude-opus-5-5, which the anchored
@@ -227,15 +216,15 @@ resolve_model_cache() {
 # conservative (fail-conservative) and GPT ids are never touched. It is applied
 # at CLASSIFICATION points only (SESSION_MODEL / AGENT_MODEL right after they
 # are resolved, so the same/different-model comparison, the physical-window
-# lookup, the ChatGPT-lane flagship predicate, and the quality tier all see the
+# lookup, the ChatGPT-lane flagship predicate, and the threshold profile all see the
 # normalized id); resolve_model_cache has already written the shared model
 # caches with the RAW name, and this hook displays no model name. The block
 # between the section-sign markers is kept BYTE-IDENTICAL with
 # .claude/scripts/subagent-bar.sh (lockstep test in
-# tests/bash/context_reporter.bats). Provenance:
-# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames (OpenRouter
-# catalogue, which lists the dotted ids anthropic/claude-opus-5.5, -4.8, -4.7
-# and claude-fable-5.1: web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json).
+# tests/bash/context_reporter.bats). Provenance: the OpenRouter model
+# catalogue (https://openrouter.ai/api/v1/models, fetched 2026-09-29), which
+# lists the dotted ids anthropic/claude-opus-5.5, -4.8, -4.7 and
+# claude-fable-5.1.
 # §§ NORMALIZE_MODEL_ID
 normalize_model_id() {
     local model="${1:-}"
@@ -253,7 +242,7 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SE
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null) || AGENT_ID=""
 
-# Convention 2: allowlist ids BEFORE any path/cache interpolation. Fail open
+# Allowlist ids BEFORE any path/cache interpolation. Fail open
 # (emit nothing, exit 0) on a rejected id — do not construct or read/write any
 # path built from it. SESSION_ID is always used (every /tmp cache is keyed on
 # it); AGENT_ID is only checked when present (its absence marks the main
@@ -282,8 +271,8 @@ if [[ -n "$AGENT_ID" ]]; then
     if [[ "$(basename "$TRANSCRIPT_PATH")" == "agent-${AGENT_ID}.jsonl" ]]; then
         # Robustness for future Claude Code versions that may pass the
         # subagent's transcript path directly. In this case the supplied path
-        # IS the subagent transcript, so there is NO parent transcript to scan
-        # (Convention 10): the parent/session model must come from the parent
+        # IS the subagent transcript, so there is NO parent transcript to scan:
+        # the parent/session model must come from the parent
         # cache alone, never by re-parsing this subagent transcript.
         MEASURE_TRANSCRIPT="$TRANSCRIPT_PATH"
         PARENT_TRANSCRIPT=""
@@ -310,7 +299,7 @@ fi
 
 INJECT_INTERVAL=60  # seconds between injections
 
-# Convention 3: closed-set GPT flagship grammar. Only these exact terminal
+# Closed-set GPT flagship grammar. Only these exact terminal
 # slugs (after stripping any provider path prefix) are eligible for the
 # 1,050,000-token physical window and the 919k ChatGPT-lane cap arm. New
 # codenames are a deliberate one-line registry edit (validate-before-trust,
@@ -323,40 +312,35 @@ INJECT_INTERVAL=60  # seconds between injections
 # e.g. gpt-5.6-mini-pro), unregistered GPT-6 names (gpt-6, gpt-6-terra,
 # gpt-6-sol-mini), gpt-5.60, and left-boundary near misses (xgpt-6-astra,
 # gpt-6-astrab).
-# USER POLICY DECISION 2026-09-29, not validation
-# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames): (1) any
-# FLAGSHIP -pro model reads exactly as its non-pro base — same physical window,
-# same 919k ChatGPT-lane cap eligibility, same quality tier; -pro sits
-# immediately before the optional [1m]. (2) gpt-6-sol is treated identically to
-# gpt-5.6-sol and gpt-6-luna identically to gpt-5.6-luna. There is NO
-# gpt-6-terra (retired for the GPT-6 generation, per the user). Windows per the
-# OpenRouter catalogue fetched 2026-09-29 (context_length 1050000 for
-# openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro,
-# gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry):
-# web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
-# workspace. Capping at 919k can only make a reading more conservative.
-# USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (one exact
-# alternative, optional -pro and [1m]) is treated identically to gpt-6-sol —
-# 1,050,000 window, live-tested 919k ChatGPT-lane cap,
-# extended quality tier. Window per OpenRouter openai/gpt-6.1-sol
-# fetched 2026-10-12
-# (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/).
-# No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
-# GPT_EXTENDED_RE is the QUALITY-TIER grammar used by calculate(), deliberately
+# Flagship rules (see POLICY ADMISSIONS): (1) any FLAGSHIP -pro model reads
+# exactly as its non-pro base — same physical window, same 919k ChatGPT-lane
+# cap eligibility, same profile; -pro sits immediately before the optional
+# [1m]. (2) gpt-6-sol is treated identically to gpt-5.6-sol and gpt-6-luna
+# identically to gpt-5.6-luna; gpt-6.1-sol (one exact alternative, optional
+# -pro and [1m]) is treated identically to gpt-6-sol. There is NO
+# gpt-6-terra, and no gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini,
+# etc. stay unregistered. Windows per the OpenRouter catalogue fetched
+# 2026-09-29 (context_length 1050000 for openai/gpt-6-sol, gpt-6-sol-pro,
+# gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro, gpt-5.6-{sol,terra,luna}-pro,
+# gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry):
+# https://openrouter.ai/api/v1/models; and OpenRouter openai/gpt-6.1-sol
+# (https://openrouter.ai/openai/gpt-6.1-sol, fetched 2026-10-12). Capping at
+# 919k can only make a reading more conservative.
+# GPT_EXTENDED_RE is the PROFILE grammar used by calculate(), deliberately
 # narrower than the window grammar: gpt-5.6-sol and gpt-6-astra (validated),
-# plus gpt-6-sol, gpt-6.1-sol, and the -pro form of each (policy decisions above);
-# gpt-6-luna and every Terra/Luna form keep a 1.05M window but the
-# conservative tier. Both strings are kept byte-identical with subagent-bar.sh
+# plus gpt-6-sol, gpt-6.1-sol, and the -pro form of each (see POLICY
+# ADMISSIONS); gpt-6-luna and every Terra/Luna form keep a 1.05M window but the
+# conservative profile. Both strings are kept byte-identical with subagent-bar.sh
 # (gpt_flagship_re, gpt_extended_re) and, for the flagship grammar, with
 # context-bar.sh (lockstep tests in tests/bash/context_reporter.bats).
 GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
 GPT_EXTENDED_RE='^(gpt-5\.6-sol|gpt-6-(astra|sol)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
-# Closed-set mini/chat grammars (Convention 3), byte-consistent with
-# subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
-# open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
+# Closed-set mini/chat grammars, byte-consistent with subagent-bar.sh and
+# context-bar.sh's anchored EREs. They are anchored rather than open-ended
+# globs (*-mini*/*-chat*), so suffixed near-misses (e.g.
 # gpt-5.6-mini-preview) fail the anchor and fall through to the conservative
-# 200k default rather than being mapped to 400k/128k. Anchored on the same
-# provider-stripped PHYSICAL_SLUG the globs inspected.
+# 200k default rather than being mapped to 400k/128k. Anchored on the
+# provider-stripped terminal slug.
 GPT_MINI_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 GPT_CHAT_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 
@@ -367,9 +351,9 @@ GPT_CHAT_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 # SESSION's window; a subagent on a different model is mapped by its own model
 # below. An absent or non-canonical cache leaves MAX_CONTEXT EMPTY here so the
 # model-keyed static map below can fill it. Deliberately NO fallback to "the
-# most recent cache from any session": that inherited an unrelated session's
-# window (a Claude 1M session's 1000000, or a 200k session's 200000) into
-# this one, which is neither authoritative nor related to the measured model.
+# most recent cache from any session": that would bring in an unrelated
+# session's window (a Claude 1M session's 1000000, or a 200k session's
+# 200000), which is neither authoritative nor related to the measured model.
 CTX_CACHE="${reporter_cache_dir}/claude-ctx-window-${SESSION_ID}"
 MAX_CONTEXT=""
 if [[ -f "$CTX_CACHE" ]]; then
@@ -380,9 +364,9 @@ if ! is_canonical_positive_decimal "$MAX_CONTEXT"; then
 fi
 
 # Refresh model identity before same/different-model window selection, final-cap
-# selection, and quality-tier selection. The main and subagent consumers share
+# selection, and threshold-profile selection. The main and subagent consumers share
 # these bare cache paths and their synchronized .transcript-signature sidecars.
-# Convention 10: the session model is derived ONLY from a genuine parent source
+# The session model is derived ONLY from a genuine parent source
 # (PARENT_TRANSCRIPT — empty when the supplied path is itself a subagent
 # transcript), never by re-parsing a subagent transcript. An empty
 # PARENT_TRANSCRIPT makes resolve_model_cache return the cached parent model (or
@@ -412,17 +396,17 @@ fi
 # static_window_for_model: map a model id to the physical context window Claude
 # Code provisions for it. Echoes a canonical positive integer; unknown or empty
 # ids map to the conservative 200000. Physical GPT classification uses the
-# terminal provider-stripped slug and the closed-set flagship predicate
-# (Convention 3): the 1,050,000 flagship window is granted only to exact
+# terminal provider-stripped slug and the closed-set flagship predicate:
+# the 1,050,000 flagship window is granted only to exact
 # matches, while mini/chat retain their smaller windows and malformed codenames
 # fall through to the conservative default. Physical size remains independent
-# of the quality tier. OUTPUT-consistent (not byte-identical — the code shape
+# of the threshold profile. OUTPUT-consistent (not byte-identical — the code shape
 # differs) with subagent-bar.sh's function of the same name and with the static
 # map in context-bar.sh: the GPT EREs and the flagship-family glob below are
 # copied verbatim into both, so every flagship/mini/chat id and every malformed
 # flagship-family id (e.g. gpt-6-sol[1m]-pro -> 200k) maps identically
 # (cross-script agreement tests in tests/bash/context_reporter.bats and
-# tests/bash/subagent_bar.bats). Known, pre-existing difference: malformed
+# tests/bash/subagent_bar.bats). Known difference: malformed
 # gpt-5 / gpt-5.2-family spellings (e.g. gpt-5-pro) map to 400k here and in
 # context-bar.sh but to 200k in subagent-bar.sh (anchored prev EREs; 1M there
 # if the id carries [1m], via its generic Claude arm).
@@ -438,8 +422,8 @@ static_window_for_model() {
             window=1048576 ;;
         *)
             # gpt-5.4/5.5/5.6 family plus the GPT-6 Astra/Sol/Luna flagships
-            # (broad globs select the arm; gpt-6-sol and gpt-6-luna admitted
-            # 2026-09-29, gpt-6.1-sol 2026-10-12, by user policy decision). Within it: the 1,050,000
+            # and gpt-6.1-sol (broad globs select the arm; see POLICY
+            # ADMISSIONS for the GPT-6 forms). Within it: the 1,050,000
             # flagship window is granted ONLY to an exact closed-set match
             # (GPT_FLAGSHIP_RE, which also accepts the flagship -pro forms);
             # mini/chat keep their smaller windows. A malformed codename that
@@ -450,7 +434,7 @@ static_window_for_model() {
             # inheriting the flagship window.
             case "$slug" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*|gpt-6.1-sol|gpt-6.1-sol[-\[]*)
-                    # Closed-set classification (Convention 3): only the anchored
+                    # Closed-set classification: only the anchored
                     # flagship/mini/chat grammars earn a GPT window. Order
                     # flagship, then mini, then chat. Malformed suffixes that
                     # reached this family glob match none and map conservatively.
@@ -473,24 +457,18 @@ static_window_for_model() {
                     # "42.8k/1m tokens" and `claude-opus-5[1m]` reported
                     # "48.2k/1m", so the bare id must map to 1,000,000 and not
                     # fall through to the 200k arm. Opus 5 nonetheless stays on
-                    # the CONSERVATIVE quality profile below (physical window and
-                    # quality threshold are separate lookups). Provenance:
-                    # research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261
-                    # (to-do 03 Branch A).
+                    # the CONSERVATIVE profile below (physical window and
+                    # threshold profile are separate lookups).
                     # Opus 5.5 (claude-opus-5-5, bare AND [1m]) is likewise a
                     # native 1M-window model (Claude Code CHANGELOG 2.1.280:
                     # "Added Claude Opus 5.5 (`claude-opus-5-5`), now the
-                    # default Opus model — 1M context"). The pre-existing
-                    # *opus-5* arm ALREADY substring-matched claude-opus-5-5 —
-                    # proven by an executed `case` repro on 2026-09-23 — so the
-                    # explicit *opus-5-5* arm changes no behavior; it is added
-                    # for auditability, because the implicit match is correct
-                    # only by coincidence (5.5 happens to be 1M) and the next
-                    # Opus generation may not be. A loose substring is
-                    # acceptable HERE and not in the profile arm below: mapping
-                    # a physical window is descriptive, not a privilege grant,
-                    # and *opus-5* already covered these slugs. Provenance:
-                    # research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280.
+                    # default Opus model — 1M context"). The explicit
+                    # *opus-5-5* arm states Opus 5.5's 1M window; *opus-5*
+                    # also matches it, but only because both happen to be
+                    # 1M, and the next Opus generation may not be. A loose
+                    # substring is acceptable HERE and not in the profile arm
+                    # below: mapping a physical window is descriptive, not a
+                    # privilege grant.
                     case "$model" in
                         *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*\[1m\]*)
                             window=1000000 ;;
@@ -508,17 +486,16 @@ static_window_for_model() {
 #      subagent inside a 1M fable session has 200k — its severity must be
 #      computed against 200k, or HIGH/CRITICAL fire far too late. When
 #      SESSION_MODEL is empty (no parent cache) and AGENT_MODEL is set, they
-#      differ, so this arm still runs and never assumes same-model
-#      (Convention 10).
+#      differ, so this arm still runs and never assumes same-model.
 #   2. Otherwise (main session, or a same-model subagent): this session's
 #      cache when present — it is authoritative, written by the statusline
 #      from Claude Code's own provisioned window.
-#   3. Otherwise: the static map for the MEASURED model. This closes the gap
-#      where an uncached main session or same-model child (statusline not yet
-#      rendered, or a headless/dispatch context that never renders one) fell
-#      to 200k regardless of model — a GPT-6 Astra or Opus 5 session at 300k
-#      then read 100%/CRITICAL and subagents falsely throttled. An unknown or
-#      empty model still yields 200000 (fail-conservative).
+#   3. Otherwise: the static map for the MEASURED model. An uncached main
+#      session or same-model child (statusline not yet rendered, or a
+#      headless/dispatch context that never renders one) maps by its own
+#      model, so a GPT-6 Astra or Opus 5 session is not measured against 200k
+#      (at 300k it would read 100%/CRITICAL). An unknown or empty model
+#      yields 200000 (fail-conservative).
 # The user override and the ChatGPT-lane cap below apply after this, unchanged.
 if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" ]]; then
     MAX_CONTEXT=$(static_window_for_model "$AGENT_MODEL")
@@ -534,17 +511,16 @@ fi
 
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a measured model in
-# the anchored flagship arm (Convention 3 closed set — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra, and (user policy decisions 2026-09-29 and 2026-10-12,
-# not measurement) gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and the flagship -pro forms, which
-# inherit the cap from their bases; mini/chat are excluded because they carry
-# suffixes the ERE does not accept). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
+# the anchored flagship arm (the closed set GPT_FLAGSHIP_RE accepts; mini/chat
+# are excluded because they carry suffixes the ERE does not accept).
+# Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
 # 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827
 # and rejected 921,973. 919000 is therefore the lane-wide accounting ceiling for
-# this arm, MEASURED for Sol and Astra alike and consistent with Astra's
-# documented 922,000-token max input (1,050,000 window - 128,000 output).
-# Provenance: previously 370,000 (2026-07-16), now stale. Applying
+# this arm, consistent with Astra's documented 922,000-token max input
+# (1,050,000 window - 128,000 output). gpt-6.1-sol was measured against the
+# same cap on 2026-10-13; gpt-6-sol, gpt-6-luna and the flagship -pro forms
+# inherit it from their bases (see POLICY ADMISSIONS). Applying
 # min(resolved, 919000) after model/cache/override resolution prevents stale or
 # unsafe ordinary values from surviving while preserving lower valid values.
 # This is accounting, not compaction or a transport-level blocker.
@@ -569,13 +545,13 @@ MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
 # calculate: Parse the transcript's most recent usage data and format a
-# utilization message with timestamp. Scans the FULL JSONL (Convention 4) and
+# utilization message with timestamp. Scans the FULL JSONL and
 # takes the last POSITIVE usage sum, so trailing zero-token shim placeholders
 # cannot mask a real reading.
 # Args: $1 = transcript path, $2 = allow_sidechain (true/false). When true,
 # sidechain entries count; when false, only main-chain entries count.
-# $3 = model id of the agent being measured (drives the threshold tier; may
-# be empty → conservative tier).
+# $3 = model id of the agent being measured (drives the threshold profile;
+# may be empty → conservative profile).
 # Outputs a single line to stdout, or nothing if data is unavailable.
 # ---------------------------------------------------------------------------
 calculate() {
@@ -588,7 +564,7 @@ calculate() {
     # Map each qualifying usage entry to its token sum, then take the last
     # POSITIVE sum. Shim-routed transcripts can end with zero-token streaming
     # placeholders; native Claude transcripts are unchanged by last-positive.
-    # Convention 4: full-transcript scan via `< "$transcript"` (the -f guard
+    # Full-transcript scan via `< "$transcript"` (the -f guard
     # above keeps a missing/binary file fail-open).
     tokens=$(jq -s --argjson allow_sidechain "$allow_sidechain" '
         [.[] | select(
@@ -602,7 +578,7 @@ calculate() {
         )] | map(select(. > 0)) | last // 0
     ' < "$transcript" 2>/dev/null) || tokens=0
 
-    # Convention 5: bound the numerator before tokens*100 so a huge (but
+    # Bound the numerator before tokens*100 so a huge (but
     # jq-emitted, int64-valid) value cannot overflow signed-64 and wrap pct
     # negative. Require a canonical positive decimal <= floor(INT64_MAX/100);
     # anything else (including 0, non-numeric, or over-large) fails open by
@@ -614,30 +590,25 @@ calculate() {
     [[ $pct -gt 100 ]] && pct=100
     local used_k=$((tokens / 1000))
 
-    # Quality-tier matching deliberately remains narrower than physical-family
+    # Profile matching deliberately remains narrower than physical-family
     # matching. Fable/Mythos and Opus 5.5 use the Claude extended-horizon
-    # gates, 40/50/60% OR 400/500/600k since the 2026-10-23 user policy
-    # decision (Fable/Mythos were validated at 30/40/50% OR 300/400/500k; see
-    # the header); the exact terminal extended-horizon GPT slugs — Sol and
-    # the second registered extended-horizon model GPT-6 Astra (validated),
-    # plus GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of each (user policy
-    # decisions 2026-09-29 and 2026-10-12, not validation; see GPT_EXTENDED_RE) — use 60/75/90%
+    # gates, 40/50/60% OR 400/500/600k (see POLICY ADMISSIONS); the exact
+    # terminal extended-horizon GPT slugs — GPT 5.6 Sol and GPT-6 Astra
+    # (validated), plus GPT-6 Sol, GPT-6.1 Sol, and the flagship -pro form of
+    # each (see GPT_EXTENDED_RE and POLICY ADMISSIONS) — use 60/75/90%
     # percentage gates with their own 300/400/500k absolute gates. Each is matched
     # only as the bare slug or the final segment of a provider path (the ERE is
     # tested against the provider-stripped terminal slug); left- or
     # right-boundary near misses (xgpt-6-astra, gpt-6-astra-pro-x,
     # gpt-6-astra-mini, gpt-6-astra[1m]-x, gpt-6-sol[1m]-pro) and gpt-6-luna
-    # (1.05M window, conservative tier like gpt-5.6-luna) fall through to the
-    # conservative tier.
+    # (1.05M window, conservative profile like gpt-5.6-luna) fall through to
+    # the conservative profile.
     #
     # Opus 5.5 (claude-opus-5-5, bare or [1m]) JOINS the
-    # extended-horizon arm below. USER POLICY DECISION, 2026-09-23 (Checkpoint 1,
-    # research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
-    # § Key Decisions #3): this deliberately departs from the 2026-07-24
-    # "validate before promoting" doctrine — no sustained-session DAAF
-    # measurement of Opus 5.5 quality past 300k exists yet; the user accepted the
-    # extended-horizon gates on the model's documented long-horizon design
-    # ("built for long-running agentic coding and knowledge work"). The Opus 5.5
+    # extended-horizon arm below by user policy (see POLICY ADMISSIONS), on the
+    # model's documented long-horizon design ("built for long-running agentic
+    # coding and knowledge work"), not on a DAAF quality measurement past
+    # 300k. The Opus 5.5
     # pattern is BOUNDARY-ANCHORED, not a substring glob: this arm GRANTS a
     # privilege (relaxed gates), and a privilege-granting arm must name exactly
     # what it privileges. A loose `*opus-5-5*` would silently hand the 40/50/60%
@@ -650,14 +621,12 @@ calculate() {
     # model — plus every near miss — stay conservative-default via the `*`
     # fallthrough arm, which tests/bash/context_reporter.bats locks. The
     # physical-window case block above keeps its broad `*opus-5-5*`
-    # deliberately: mapping a window is not a privilege grant, and `*opus-5*`
-    # already matched those slugs before this change. $model arrives already
-    # normalized (normalize_model_id), so a provider-dotted
+    # deliberately: mapping a window is not a privilege grant. $model arrives
+    # already normalized (normalize_model_id), so a provider-dotted
     # anthropic/claude-opus-5.5 reaches this arm as anthropic/claude-opus-5-5.
     # Kept lockstep-identical with .claude/scripts/subagent-bar.sh. The six
     # threshold assignment lines below must match that file byte for byte
-    # (numeric lockstep test in tests/bash/context_reporter.bats, added
-    # 2026-10-23 with the raise to 40/50/60% OR 400/500/600k).
+    # (numeric lockstep test in tests/bash/context_reporter.bats).
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
         *fable-5*|*mythos-5*|claude-opus-5-5|*/claude-opus-5-5|claude-opus-5-5\[1m\]|*/claude-opus-5-5\[1m\])
@@ -694,7 +663,7 @@ NOW=$(date +%s)
 LAST_INJECT=0
 [[ -f "$LAST_INJECT_FILE" ]] && LAST_INJECT=$(cat "$LAST_INJECT_FILE" 2>/dev/null)
 
-# Convention 11: a corrupt or future gate timestamp would make (NOW - LAST_INJECT)
+# A corrupt or future gate timestamp would make (NOW - LAST_INJECT)
 # negative — always under the interval — and suppress every future report
 # indefinitely. Treat a non-canonical value OR one greater than NOW as corrupt
 # and reset to 0 (allow the report). The short-circuit keeps the -gt arithmetic
@@ -712,7 +681,7 @@ fi
 MSG=$(calculate "$MEASURE_TRANSCRIPT" "$ALLOW_SIDECHAIN" "$MEASURE_MODEL")
 [[ -z "${MSG:-}" ]] && exit 0
 
-# Update the per-agent timestamp gate. Convention 6: wrap the redirection so an
+# Update the per-agent timestamp gate. Wrap the redirection so an
 # open() failure (unwritable /tmp, ENOTDIR) cannot leak its diagnostic to the
 # display stream before 2> takes effect. If the write fails, continue without
 # gating — display output is preserved and the hook still exits 0.

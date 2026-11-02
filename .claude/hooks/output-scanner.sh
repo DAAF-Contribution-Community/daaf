@@ -1,37 +1,36 @@
 #!/usr/bin/env bash
 # output-scanner.sh — PostToolUse hook that scans tool output for leaked secrets
 #
-# Checks tool_response content for patterns matching common credential formats:
+# Checks tool_response content for seven credential shape families:
 #   - AWS Access Key IDs (AKIA...)
-#   - Generic API keys (sk-..., sk_live_..., rk_live_...)
-#   - GitHub Personal Access Tokens (ghp_..., gho_..., ghs_...)
+#   - AWS Secret Access Key assignments (aws_secret_access_key = <40 chars>)
+#   - Generic API keys (sk-...)
+#   - Stripe live keys (sk_live_..., rk_live_..., pk_live_...)
+#   - GitHub tokens (ghp_..., gho_..., ghs_..., ghr_..., github_pat_...)
 #   - Private key headers (-----BEGIN...PRIVATE KEY-----)
-#   - Generic high-entropy tokens (Bearer <long-token>)
-# and, since the 2026-09-26 bundle revision _a, for the literal VALUE of any
-# credential-named environment variable (see VALUE-BASED DETECTION below).
+#   - Long Bearer tokens (Bearer <50+ chars>)
+# and for the literal VALUE of any credential-named environment variable
+# (see VALUE-BASED DETECTION below).
 #
 # Response shapes: tool_response may be a STRING, an ARRAY, or an OBJECT
 # (Claude Code sends object-shaped responses for several tools, e.g.
 # {"stdout": ..., "stderr": ...}). Every shape is stringified with jq
 # `tostring` before the first 10,000 characters are scanned, so non-string
-# responses are scanned as their JSON text. [2026-09-24 hook-maintenance
-# pass] Previously the extractor sliced `.tool_response` directly; an object
-# made jq fail ("Cannot index object with object"), the response resolved
-# to empty, and nothing was scanned.
+# responses are scanned as their JSON text. Slicing an object without
+# `tostring` makes jq fail ("Cannot index object with object"), which would
+# leave nothing to scan.
 #
-# Probe input [revision _c 2026-09-27, review NIT 6]: the shape probes feed
-# grep with `printf '%s\n'`, not `echo`. With an inherited xpg_echo
-# (BASHOPTS=xpg_echo in the environment), `echo` interprets backslash
-# escapes and a literal \c ends its output, so a secret after "\c" in the
-# tool output was never scanned.
+# Probe input: the shape probes feed grep with `printf '%s\n'`, not `echo`.
+# With an inherited xpg_echo (BASHOPTS=xpg_echo in the environment), `echo`
+# interprets backslash escapes and a literal \c ends its output, which would
+# hide a secret after "\c" in the tool output.
 #
 # Pattern agreement: audit-log.sh redacts the same credential families from
 # the tool INPUT side before logging. When a pattern here changes, update
 # the matching gsub() in audit-log.sh's redact() filter (and vice versa);
 # tests/bash/audit_log.bats carries a cross-hook agreement test.
 #
-# VALUE-BASED DETECTION [2026-09-26 bundle revision _a, SafetyHookHardening
-# session; revision _b 2026-09-27: comparison length cap, xtrace guard]
+# VALUE-BASED DETECTION
 #   The seven shape families miss secrets with no recognizable prefix — e.g.
 #   a UUID-shaped data-source API key. So the hook also compares the scanned
 #   text against the ACTUAL values of the credential-named environment
@@ -49,14 +48,14 @@
 #       exposure), and never written anywhere.
 #     - Both the raw value and its JSON-string-escaped form are checked:
 #       after `tostring`, an object response escapes \ " newline CR and tab.
-#     - COMPARISON LENGTH CAP [revision _b]: only the first 512 characters
-#       of a value are compared (SV_CMP_MAX). bash's `*"$v"*` match costs
-#       roughly (text length x value length) on repetitive input: the _a
-#       review measured 1.5-2 s for 20 values of 3,000-5,000 characters
-#       against a 10 KB run of one character. The cap bounds that cost, and
-#       a value longer than the 10,000-character window can now match at all
-#       (by its prefix). A 512-character prefix of a secret appearing in
-#       the output is itself a leak, so the warning stays truthful.
+#     - COMPARISON LENGTH CAP: only the first 512 characters of a value are
+#       compared (SV_CMP_MAX). bash's `*"$v"*` match costs roughly (text
+#       length x value length) on repetitive input: about 1.5-2 s for 20
+#       values of 3,000-5,000 characters against a 10 KB run of one
+#       character. The cap bounds that cost, and it lets a value longer than
+#       the 10,000-character window match by its prefix. A 512-character
+#       prefix of a secret appearing in the output is itself a leak, so the
+#       warning stays truthful.
 #     - A match adds "value of <NAME> appears in this tool output". Only the
 #       NAME of a MATCHING variable is ever printed — never a value, never
 #       the name of a non-matching variable.
@@ -69,14 +68,29 @@
 #   Shared vocabulary: the name list is carried in one variable after a
 #   `SECRET-NAME-VOCAB v1` marker line that is kept byte-identical across
 #   output-scanner.sh, audit-log.sh and scripts/run_with_capture.sh.
-#   bash-safety.sh does NOT carry it: its env-disclosure guard was deferred
-#   as an accepted gap by user decision on 2026-09-26.
+#   bash-safety.sh does not carry this vocabulary: its environment-disclosure
+#   guard (§9) uses its own narrower rule (the last `_`-segment of an
+#   uppercase name).
 #
-# If a pattern is detected, injects a warning via stdout so the model
-# is aware and can avoid propagating the secret.
+# OUTPUT: when anything matches, the hook prints one JSON object,
+#   {"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":…}},
+#   whose additionalContext lists the matched families and variable NAMES and
+#   tells the model to tell the user and stop (CLAUDE.md § Boundaries &
+#   Safety > Credential & Secret Protection), or, when a key-shape match is
+#   plainly a placeholder or a test fixture by its own text, to say so and
+#   continue: shipped sample keys and the test suites match the shape
+#   families, and a hard stop on them would halt ordinary work. A "value of
+#   NAME" match is a live environment value, so the exception never applies
+#   to it, and a doubtful match counts as real. Claude Code adds additionalContext
+#   to the model's context next to the tool result, whereas it writes a
+#   PostToolUse hook's plain stdout only to its debug log (verified against
+#   the Claude Code hooks reference on 2026-11-02). Nothing is printed when
+#   nothing matches. If jq cannot build the JSON, the same text goes to
+#   stdout as plain text, which reaches only the debug log.
 #
 # Exit codes:
-#   0 = always (PostToolUse hooks must never block execution)
+#   0 = always (an advisory hook never blocks, and exit 0 is the exit code
+#       Claude Code expects with JSON output)
 #
 # Hook event: PostToolUse (matcher: "")
 # Registered in: .claude/settings.json
@@ -93,7 +107,7 @@ set +x
 
 # SECRET-NAME-VOCAB v1 — keep identical in: output-scanner.sh, audit-log.sh, run_with_capture.sh
 SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"
-SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"
+SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP CLAUDE_CODE_SESSION_ID"
 # Whole-name ERE built from the vocabulary; matched against the UPPERCASED
 # name, which makes the test case-insensitive without `nocasematch` (that
 # option would also make the value comparison below case-insensitive).
@@ -180,11 +194,17 @@ for sv_name in "${ENV_NAMES[@]}"; do
 done
 unset sv_val sv_esc
 
-# If any warnings were generated, output them for the model to see
+# Hand any warning to the model as PostToolUse additionalContext (see OUTPUT
+# in the header). WARNINGS holds `\n` escapes and only family labels and
+# variable NAMES, so expanding it with %b is safe; jq escapes the text into
+# a single-line JSON string, the only thing printed on stdout.
 if [[ -n "$WARNINGS" ]]; then
-    echo "WARNING: Potential secrets detected in tool output:"
-    echo -e "$WARNINGS"
-    echo "Do NOT display, log, or commit these values. Treat them as sensitive."
+    WARN_TEXT="WARNING: Potential secrets detected in tool output:
+$(printf '%b' "$WARNINGS")
+Do NOT display, log, or commit these values. Tell the user that a credential appeared in this tool output, then stop and wait for their instructions (CLAUDE.md § Boundaries & Safety > Credential & Secret Protection). The one exception: for a key-shape match (never a \"value of …\" line, which is a live environment value), if the match is plainly a placeholder or a test fixture by its own text (such as sk-your_key_here), say that it is one and continue. If in doubt, treat it as real."
+    jq -n -c --arg ctx "$WARN_TEXT" \
+        '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $ctx}}' 2>/dev/null \
+        || printf '%s\n' "$WARN_TEXT"
 fi
 
 exit 0

@@ -2,12 +2,9 @@
 # ============================================================================
 # Tests for enforce-single-command.sh -- the one-command-per-Bash-call hook
 # ============================================================================
-# Before 2026-09-18 this hook had NO bats coverage at all (its only automated
-# coverage was scripts/test_enforce_single_command.sh, which pins the LIVE hook
-# path, plus one DAAFBench integrity probe). This suite is the regression
-# baseline for the hook's EXISTING rules and the specification for the
-# 2026-09-18 hardening pass (findings items 8, 10, 13, 14 --
-# research/2026-09-18_FrameworkDev_SafetyHookHardening/).
+# The regression suite for the hook's rules. Its companion is
+# scripts/test_enforce_single_command.sh, a standalone battery that covers
+# many of the same shapes and pins the same residuals (R6, R7).
 #
 # CONTRACT: exit 0 = ALLOW the Bash call, exit 2 = BLOCK it. Chaining
 # operators at top level (`&&`, `||`, `;`, a lone `&`) BLOCK. Operators inside
@@ -17,18 +14,17 @@
 # IMPORTANT -- .claude/hooks/ is deny-protected, so hook revisions are authored
 # as drafts outside it. This suite defaults to the LIVE hook and accepts an
 # override so a draft can be validated before the user installs it:
-#   ENFORCE_SINGLE_COMMAND_SH=/daaf/research/2026-09-18_FrameworkDev_SafetyHookHardening/enforce-single-command.sh.proposed \
+#   ENFORCE_SINGLE_COMMAND_SH=/path/to/draft.sh \
 #     bats tests/bash/enforce_single_command.bats
 #
-# Tests tagged "(NEW 2026-09-18)" encode behavior the draft introduces and are
-# EXPECTED TO FAIL against the pre-hardening live hook. Every other test must
-# pass against BOTH, which is what makes this suite a faithful baseline.
+# Tests named "stdin gate" pin the fail-closed "exactly one JSON object on
+# stdin" gate (hook header, "Fail-closed input"). A hook without the gate
+# fails their BLOCK cases; the controls pass either way.
 #
-# Tests tagged "(NEW 2026-09-26)" pin the fail-closed "exactly one JSON object
-# on stdin" gate (hook header, "Fail-closed input posture"; staged as
-# research/2026-09-18_FrameworkDev_SafetyHookHardening/enforce-single-command_a.sh.proposed).
-# Its BLOCK cases are EXPECTED TO FAIL against a hook without the gate; its
-# ALLOW / control cases pass against both.
+# Tests named "RESIDUAL Rn" pin a documented residual (hook header KNOWN
+# RESIDUALS) at its verdict in this release ("ALLOW today"). A change that
+# flips one must flip its expectation here, and for R6 and R7 also in
+# scripts/test_enforce_single_command.sh.
 #
 # Case strings live INSIDE this file and are fed to the hook via a jq envelope
 # (never on a command line), so the live PreToolUse hooks vetting the `bats`
@@ -106,89 +102,86 @@ _AMP_MSG="Command chaining with '&' (background) detected"
 # reading, not by execution.
 
 # =========================================================================
-# (NEW 2026-09-26) Fail-closed on stdin that is not exactly one JSON object
+# Fail-closed on stdin that is not exactly one JSON object (stdin gate)
 # =========================================================================
 # Without the gate, concatenated objects make `jq -r .tool_name` yield two
 # lines ("Read\nBash", "Bash\nBash"), the `!= "Bash"` gate reads "not Bash",
 # and the chain in the second object is never scanned (ALLOW). Malformed text,
 # whitespace only, a bare JSON string and an array all resolve TOOL_NAME to ""
-# and ALLOW the same way. Credit: the 2026-09-24 hook-maintenance session's
-# enforce-file-first.sh finding. The chained strings below are fed as raw
-# JSON from inside this file, never from a command line.
+# and ALLOW the same way. The chained strings below are fed as raw JSON from
+# inside this file, never from a command line.
 
 _MALFORMED_MSG="stdin is not a single JSON object"
 
-@test "(NEW 2026-09-26) concatenated objects, Read then chained Bash: BLOCK" {
+@test "stdin gate: concatenated objects, Read then chained Bash: BLOCK" {
     _run_hook_raw '{"tool_name":"Read","tool_input":{"file_path":"/x"}}{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) concatenated objects, chained Bash then Read: BLOCK" {
+@test "stdin gate: concatenated objects, chained Bash then Read: BLOCK" {
     _run_hook_raw '{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}{"tool_name":"Read","tool_input":{"file_path":"/x"}}'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) concatenated objects, benign Bash then chained Bash: BLOCK" {
+@test "stdin gate: concatenated objects, benign Bash then chained Bash: BLOCK" {
     _run_hook_raw '{"tool_name":"Bash","tool_input":{"command":"ls"}}{"tool_name":"Bash","tool_input":{"command":"echo a && echo b"}}'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) newline-separated objects (JSON Lines), Read then chained Bash: BLOCK" {
+@test "stdin gate: newline-separated objects (JSON Lines), Read then chained Bash: BLOCK" {
     _run_hook_raw $'{"tool_name":"Read","tool_input":{"file_path":"/x"}}\n{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}\n'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) malformed non-JSON text: BLOCK" {
+@test "stdin gate: malformed non-JSON text: BLOCK" {
     _run_hook_raw 'not json {{{'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) whitespace-only stdin: BLOCK" {
+@test "stdin gate: whitespace-only stdin: BLOCK" {
     _run_hook_raw $'   \n\t '
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) bare JSON string: BLOCK" {
+@test "stdin gate: bare JSON string: BLOCK" {
     _run_hook_raw '"echo a; echo b"'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) array wrapping a chained Bash object: BLOCK" {
+@test "stdin gate: array wrapping a chained Bash object: BLOCK" {
     _run_hook_raw '[{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}]'
     assert_failure
     assert_output --partial "$_MALFORMED_MSG"
 }
 
-@test "(NEW 2026-09-26) control: single benign Bash object passes the gate: ALLOW" {
+@test "stdin gate control: single benign Bash object passes the gate: ALLOW" {
     _run_hook_raw '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
     assert_success
 }
 
-@test "(NEW 2026-09-26) control: single non-Bash (Read) object passes the gate: ALLOW" {
+@test "stdin gate control: single non-Bash (Read) object passes the gate: ALLOW" {
     _run_hook_raw '{"tool_name":"Read","tool_input":{"file_path":"/daaf/CLAUDE.md"}}'
     assert_success
 }
 
-@test "(NEW 2026-09-26) control: single chained Bash object still reaches the scanner: BLOCK" {
+@test "stdin gate control: single chained Bash object still reaches the scanner: BLOCK" {
     _run_hook_raw '{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}'
     assert_failure
     assert_output --partial "$_SEMI_MSG"
     refute_output --partial "$_MALFORMED_MSG"
 }
 
-# RESIDUAL R7 (hook header "Known residuals"; added 2026-09-27 after Phase 4
-# review N4): the gate checks that stdin is ONE object but not the TYPE of
-# tool_name, so a non-string tool_name reads as "not Bash" at the `!= "Bash"`
-# gate and the chain is never scanned. Passes against the 2026-09-26 install
-# and against `_a` (not tagged NEW). Mirrored in
-# scripts/test_enforce_single_command.sh.
+# RESIDUAL R7 (hook header KNOWN RESIDUALS): the gate checks that stdin is ONE
+# object but not the TYPE of tool_name, so a non-string tool_name reads as
+# "not Bash" at the `!= "Bash"` gate and the chain is never scanned. Mirrored
+# in scripts/test_enforce_single_command.sh.
 @test "RESIDUAL R7: non-string tool_name (array) with a chained command: ALLOW today" {
     _run_hook_raw '{"tool_name":["Bash"],"tool_input":{"command":"echo a; echo b"}}'
     assert_success
@@ -355,45 +348,45 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 }
 
 # =========================================================================
-# ITEM 8 (NEW 2026-09-18): quote-aware heredoc detection + CRLF terminator
+# Quote-aware heredoc detection + CRLF terminator
 # =========================================================================
-# The pre-hardening stripper matched `<<` anywhere on a line, including inside
-# quotes, so a quoted `<<EOF` swallowed every following line as a "body" and
-# the chain was never scanned. That is a scan EVASION, not a convention gap.
+# A `<<` opens a heredoc only outside quotes. If a quoted `<<EOF` opened one,
+# every following line would be dropped as its "body" and a chain there would
+# never be scanned: a scan evasion, not a convention gap.
 
-@test "(NEW 2026-09-18) SML2: quoted <<EOF must not swallow the next line: BLOCK" {
+@test "SML2: quoted <<EOF must not swallow the next line: BLOCK" {
     _run_hook $'echo "x <<EOF"\nrm a; rm b'
     assert_failure
     assert_output --partial "$_SEMI_MSG"
 }
 
-@test "(NEW 2026-09-18) single-quoted <<EOF must not swallow the next line: BLOCK" {
+@test "single-quoted <<EOF must not swallow the next line: BLOCK" {
     _run_hook $'echo \'x <<EOF\'\nrm a; rm b'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) CRLF heredoc terminator still closes the body: BLOCK" {
+@test "CRLF heredoc terminator still closes the body: BLOCK" {
     _run_hook $'cat <<EOF\nbody\r\nEOF\r\nrm a; rm b'
     assert_failure
     assert_output --partial "$_SEMI_MSG"
 }
 
-@test "(NEW 2026-09-18) <<EOF appearing only inside a comment: BLOCK" {
+@test "<<EOF appearing only inside a comment: BLOCK" {
     _run_hook $'echo hi # <<EOF\nrm a; rm b'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) <<EOF inside \$(( )) is a left shift, chain still seen: BLOCK" {
+@test "<<EOF inside \$(( )) is a left shift, chain still seen: BLOCK" {
     _run_hook $'echo $(( 1 <<EOF ))\nrm a; rm b'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) two heredocs on one line close in order: ALLOW" {
+@test "two heredocs on one line close in order: ALLOW" {
     _run_hook $'cat <<A <<B\nx; y\nA\np && q\nB'
     assert_success
 }
 
-@test "(NEW 2026-09-18) chain after two queued heredocs close: BLOCK" {
+@test "chain after two queued heredocs close: BLOCK" {
     _run_hook $'cat <<A <<B\nx\nA\ny\nB\nrm a; rm b'
     assert_failure
 }
@@ -404,22 +397,22 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 }
 
 # =========================================================================
-# ITEM 10 (NEW 2026-09-18): a lone & is a chaining operator
+# A lone & is a chaining operator
 # =========================================================================
 
-@test "(NEW 2026-09-18) SBY1: background & followed by another command: BLOCK" {
+@test "SBY1: background & followed by another command: BLOCK" {
     _run_hook 'sleep 1 & echo second'
     assert_failure
     assert_output --partial "$_AMP_MSG"
 }
 
-@test "(NEW 2026-09-18) & with no space before the next command: BLOCK" {
+@test "& with no space before the next command: BLOCK" {
     _run_hook 'a &b'
     assert_failure
     assert_output --partial "$_AMP_MSG"
 }
 
-@test "(NEW 2026-09-18) a & b: BLOCK" {
+@test "a & b: BLOCK" {
     _run_hook 'a & b'
     assert_failure
 }
@@ -466,52 +459,52 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 }
 
 # =========================================================================
-# ITEM 13 (NEW 2026-09-18): shell-carrier bodies are scanned for operators
+# Shell-carrier bodies are scanned for operators
 # =========================================================================
 
-@test "(NEW 2026-09-18) SBY10: bash -c with && in the body: BLOCK" {
+@test "SBY10: bash -c with && in the body: BLOCK" {
     _run_hook 'bash -c "echo a && echo b"'
     assert_failure
     assert_output --partial "$_AND_MSG"
 }
 
-@test "(NEW 2026-09-18) SBY9: eval with ; in the body: BLOCK" {
+@test "SBY9: eval with ; in the body: BLOCK" {
     _run_hook 'eval "echo a; echo b"'
     assert_failure
     assert_output --partial "$_SEMI_MSG"
 }
 
-@test "(NEW 2026-09-18) sh -c with ; in the body: BLOCK" {
+@test "sh -c with ; in the body: BLOCK" {
     _run_hook "sh -c 'echo a; echo b'"
     assert_failure
 }
 
-@test "(NEW 2026-09-18) absolute-path carrier /bin/bash -c: BLOCK" {
+@test "absolute-path carrier /bin/bash -c: BLOCK" {
     _run_hook '/bin/bash -c "echo a; echo b"'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) wrapper in front of the carrier (timeout N bash -c): BLOCK" {
+@test "wrapper in front of the carrier (timeout N bash -c): BLOCK" {
     _run_hook 'timeout 5 bash -c "echo a && echo b"'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) attached flag form bash -c\"...\": BLOCK" {
+@test "attached flag form bash -c\"...\": BLOCK" {
     _run_hook 'bash -c"echo a; echo b"'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) nested carriers sh -c 'bash -c \"a; b\"': BLOCK" {
+@test "nested carriers sh -c 'bash -c \"a; b\"': BLOCK" {
     _run_hook "sh -c 'bash -c \"echo a; echo b\"'"
     assert_failure
 }
 
-@test "(NEW 2026-09-18) xargs ... sh -c body with a chain: BLOCK" {
+@test "xargs ... sh -c body with a chain: BLOCK" {
     _run_hook 'xargs -I{} sh -c "echo {} && rm {}"'
     assert_failure
 }
 
-@test "(NEW 2026-09-18) & inside a carrier body: BLOCK" {
+@test "& inside a carrier body: BLOCK" {
     _run_hook 'bash -c "sleep 1 & echo second"'
     assert_failure
     assert_output --partial "$_AMP_MSG"
@@ -553,20 +546,20 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 }
 
 # =========================================================================
-# ITEM 14 (NEW 2026-09-18): # comments
+# Operators inside # comments are not chaining
 # =========================================================================
 
-@test "(NEW 2026-09-18) SFP1: && inside a trailing comment: ALLOW" {
+@test "SFP1: && inside a trailing comment: ALLOW" {
     _run_hook 'echo hi # this && that'
     assert_success
 }
 
-@test "(NEW 2026-09-18) whole-line comment then one command: ALLOW" {
+@test "whole-line comment then one command: ALLOW" {
     _run_hook $'# comment\necho a'
     assert_success
 }
 
-@test "(NEW 2026-09-18) ; inside a trailing comment: ALLOW" {
+@test "; inside a trailing comment: ALLOW" {
     _run_hook 'ls -la # then; also'
     assert_success
 }
@@ -599,40 +592,41 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 }
 
 # =========================================================================
-# DEFERRED items 11 and 12 -- KNOWN RESIDUALS, ALLOW today
+# KNOWN RESIDUALS R1 and R2 -- ALLOW today
 # =========================================================================
 # These are chains that the hook does NOT catch. They are recorded as ALLOW so
-# that a future change which deliberately flips them shows up as a failing
-# test to be updated, rather than passing silently. See the hook header's
-# "Known residuals" block (R1, R2) and findings items 11/12 (deferred for
-# medium false-positive risk).
+# that a change which deliberately flips them shows up as a failing test to
+# be updated, rather than passing silently. See the hook header's KNOWN
+# RESIDUALS block (R1, R2): both are deferred for false-positive risk (R1:
+# an argument such as `echo done` must not close a loop; R2: telling a bare
+# `(` from `$(`, `<(` and `((` without blocking `$( )` arguments).
 
-@test "RESIDUAL R2 (item 12, probe SBY2): bare subshell with ;: ALLOW today" {
+@test "RESIDUAL R2: bare subshell with ;: ALLOW today" {
     _run_hook '(echo a; echo b)'
     assert_success
 }
 
-@test "RESIDUAL R2 (item 12, probe SBY3): bare subshell with &&: ALLOW today" {
+@test "RESIDUAL R2: bare subshell with &&: ALLOW today" {
     _run_hook '(echo a && rm x)'
     assert_success
 }
 
-@test "RESIDUAL R2 (item 12): (cd x && make) idiom: ALLOW today" {
+@test "RESIDUAL R2: (cd x && make) idiom: ALLOW today" {
     _run_hook '(cd build && make)'
     assert_success
 }
 
-@test "RESIDUAL R1 (item 11, probe SBY5): chain after a closed for loop: ALLOW today" {
+@test "RESIDUAL R1: chain after a closed for loop: ALLOW today" {
     _run_hook 'for i in 1; do :; done; echo chained'
     assert_success
 }
 
-@test "RESIDUAL R1 (item 11, probe SBY6): chain after a closed if block: ALLOW today" {
+@test "RESIDUAL R1: chain after a closed if block: ALLOW today" {
     _run_hook 'if true; then :; fi; rm x'
     assert_success
 }
 
-@test "RESIDUAL R1 (item 11, probe SML5): newline chain after a closed for loop: ALLOW today" {
+@test "RESIDUAL R1: newline chain after a closed for loop: ALLOW today" {
     _run_hook $'for i in 1; do :; done\nrm x'
     assert_success
 }
@@ -643,15 +637,17 @@ _MALFORMED_MSG="stdin is not a single JSON object"
 # what THIS Bash call runs locally. See the hook header's R6 and
 # agent_reference/BOUNDARIES.md (enforce-single-command row, known residuals).
 # bash-safety.sh deliberately takes the opposite view (it promotes quoted
-# spans after `ssh`), so this pin is single-command-only. (Added 2026-09-26.)
+# spans after `ssh`), so this pin is single-command-only.
 @test "RESIDUAL R6: ssh remote command body with && is not decomposed: ALLOW today" {
     _run_hook "ssh deploy@host 'cd /srv/app && git pull'"
     assert_success
 }
 
 # =========================================================================
-# Performance -- a timed-out hook ALLOWS the call (Anthropic hooks docs), so
-# slow is the same as broken. settings.json allows 5 s; assert well under.
+# Performance -- a PreToolUse hook that times out does not block: the call
+# continues through the normal permission flow (verified against the Claude
+# Code hooks reference on 2026-11-02), so slow is the same as broken.
+# settings.json allows 5 s; assert well under.
 # =========================================================================
 
 @test "20 kB single-line command completes in under 2 s" {

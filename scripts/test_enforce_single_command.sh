@@ -5,20 +5,21 @@
 #   - Commands that SHOULD be blocked (chaining violations)
 #   - Commands that SHOULD be allowed (legitimate single commands)
 #   - Edge cases (quote handling, nesting, heredocs, compound commands)
-#   - Fail-closed input posture (NEW 2026-09-26): stdin that is not exactly
-#     one JSON object (concatenated objects, malformed text, whitespace only,
-#     a bare JSON string, an array) must BLOCK — mirrored in
+#   - Fail-closed input: stdin that is not exactly one JSON object
+#     (concatenated objects, malformed text, whitespace only, a bare JSON
+#     string, an array) must BLOCK — mirrored in
 #     tests/bash/enforce_single_command.bats
 #
-# Usage: bash /daaf/scripts/test_enforce_single_command.sh
+# Usage: bash /daaf/scripts/test_enforce_single_command.sh                    # tests the LIVE hook
+#        bash /daaf/scripts/test_enforce_single_command.sh /path/to/draft.sh  # tests a STAGED draft
 #        HOOK=/path/to/draft.sh bash /daaf/scripts/test_enforce_single_command.sh
 #
 # Each test case sends simulated Claude Code JSON to the hook via stdin
-# and checks whether the exit code matches the expected result. The HOOK
-# environment override lets the battery run against a STAGED draft before the
-# user installs it (.claude/hooks/ is deny-protected) — behavior-neutral for CI.
+# and checks whether the exit code matches the expected result. A draft path
+# (as $1, or in HOOK when $1 is absent) lets the battery run against a STAGED
+# draft before the user installs it (.claude/hooks/ is deny-protected).
 
-HOOK="${HOOK:-/daaf/.claude/hooks/enforce-single-command.sh}"
+HOOK="${1:-${HOOK:-/daaf/.claude/hooks/enforce-single-command.sh}}"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -94,7 +95,7 @@ test_non_bash() {
 #   $1 = "allow" or "block"
 #   $2 = description
 #   $3 = exact bytes to send on the hook's stdin
-# Used for the fail-closed input cases (NEW 2026-09-26), where the payload is
+# Used for the fail-closed input cases (section 19), where the payload is
 # deliberately NOT one well-formed JSON object, so it cannot come from jq -n.
 # ---------------------------------------------------------------------------
 test_raw_stdin() {
@@ -463,11 +464,11 @@ test_case allow \
     "(( x > 0 ))"
 
 test_case allow \
-    "$() command substitution" \
+    '$() command substitution' \
     'echo $(date)'
 
 test_case allow \
-    "Nested $() with operators" \
+    'Nested $() with operators' \
     'echo "$(echo foo && echo bar)"'
 
 test_case allow \
@@ -657,25 +658,21 @@ test_case allow \
 echo ""
 
 # ===================================================================
-# SECTION 18: KNOWN LIMITATIONS (document expected behavior)
+# SECTION 18: TERMINATORS, NESTING AND ONE RESIDUAL
 # ===================================================================
-echo "--- KNOWN LIMITATIONS ---"
-echo "  These test expected behavior of KNOWN EDGE CASES."
-echo "  Some may be false positives/negatives by design."
+echo "--- TERMINATORS, NESTING AND ONE RESIDUAL ---"
+echo "  These pin how the scanner treats a trailing ;, a quoted ;, and && inside"
+echo "  \$( ), plus one documented residual (R6)."
 echo ""
 
-# find -exec uses ; as terminator. The ; here is trailing (nothing
-# follows it), so the scanner correctly treats it as non-chaining.
-# This was initially expected to be a false positive but the trailing-;
-# logic handles it correctly.
+# find -exec uses ; as its terminator. The ; is trailing (nothing follows
+# it), so it is not chaining.
 test_case allow \
     "find -exec with trailing ; (correctly allowed — trailing ;)" \
     "find /path -name '*.py' -exec wc -l {} ;"
 
-# sed with multiple expressions: the ; is inside single quotes,
-# so the quote-aware scanner correctly ignores it.
-# This was initially expected to be a false positive but quote
-# tracking handles it correctly.
+# sed with multiple expressions: the ; is inside single quotes, so the
+# quote-aware scanner ignores it.
 test_case allow \
     "sed with ; inside quotes (correctly allowed — inside quotes)" \
     "sed 's/a/b/;s/c/d/' file"
@@ -690,8 +687,9 @@ test_case allow \
     "&& inside command substitution (correctly allowed)" \
     'echo $(cmd1 && cmd2)'
 
-# RESIDUAL R6 (hook header "Known residuals"; pinned ALLOW today, 2026-09-26):
-# the carrier set is the LOCAL shell set, so a remote command body after
+# RESIDUAL R6 (hook header KNOWN RESIDUALS; pinned ALLOW today, which means
+# the hook allows it in this release): the carrier set is the LOCAL shell
+# set, so a remote command body after
 # `ssh` is not decomposed and its && is not counted. Deliberate scope choice
 # (the one-command rule governs what this Bash call runs locally); mirrored in
 # tests/bash/enforce_single_command.bats. A change that flips it must update
@@ -703,63 +701,61 @@ test_case allow \
 echo ""
 
 # ===================================================================
-# SECTION 19 (NEW 2026-09-26): FAIL-CLOSED INPUT — not exactly one JSON object
+# SECTION 19: FAIL-CLOSED INPUT — not exactly one JSON object
 # ===================================================================
 # A hook without the single-object gate ALLOWS every BLOCK row below:
 # concatenated objects make `jq -r .tool_name` yield two lines, and the other
 # shapes resolve TOOL_NAME to "", so the `!= "Bash"` gate reads "not Bash".
-# Credit: the 2026-09-24 hook-maintenance session's enforce-file-first.sh
-# finding. Mirrored 1:1 in tests/bash/enforce_single_command.bats.
-echo "--- FAIL-CLOSED INPUT: not exactly one JSON object (NEW 2026-09-26) ---"
+# Mirrored 1:1 in tests/bash/enforce_single_command.bats.
+echo "--- FAIL-CLOSED INPUT: not exactly one JSON object ---"
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) concatenated objects, Read then chained Bash" \
+    "stdin gate: concatenated objects, Read then chained Bash" \
     '{"tool_name":"Read","tool_input":{"file_path":"/x"}}{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) concatenated objects, chained Bash then Read" \
+    "stdin gate: concatenated objects, chained Bash then Read" \
     '{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}{"tool_name":"Read","tool_input":{"file_path":"/x"}}'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) concatenated objects, benign Bash then chained Bash" \
+    "stdin gate: concatenated objects, benign Bash then chained Bash" \
     '{"tool_name":"Bash","tool_input":{"command":"ls"}}{"tool_name":"Bash","tool_input":{"command":"echo a && echo b"}}'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) newline-separated objects (JSON Lines), Read then chained Bash" \
+    "stdin gate: newline-separated objects (JSON Lines), Read then chained Bash" \
     $'{"tool_name":"Read","tool_input":{"file_path":"/x"}}\n{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}\n'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) malformed non-JSON text" \
+    "stdin gate: malformed non-JSON text" \
     'not json {{{'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) whitespace-only stdin" \
+    "stdin gate: whitespace-only stdin" \
     $'   \n\t '
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) bare JSON string" \
+    "stdin gate: bare JSON string" \
     '"echo a; echo b"'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) array wrapping a chained Bash object" \
+    "stdin gate: array wrapping a chained Bash object" \
     '[{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}]'
 
 test_raw_stdin allow \
-    "(NEW 2026-09-26) control: single benign Bash object passes the gate" \
+    "stdin gate control: single benign Bash object passes the gate" \
     '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}'
 
 test_raw_stdin allow \
-    "(NEW 2026-09-26) control: single non-Bash (Read) object passes the gate" \
+    "stdin gate control: single non-Bash (Read) object passes the gate" \
     '{"tool_name":"Read","tool_input":{"file_path":"/daaf/CLAUDE.md"}}'
 
 test_raw_stdin block \
-    "(NEW 2026-09-26) control: single chained Bash object still reaches the scanner" \
+    "stdin gate control: single chained Bash object still reaches the scanner" \
     '{"tool_name":"Bash","tool_input":{"command":"echo a; echo b"}}'
 
-# RESIDUAL R7 (hook header "Known residuals"; pinned ALLOW today, added
-# 2026-09-27 after Phase 4 review N4): the gate checks that stdin is ONE object
-# but not the TYPE of tool_name, so a non-string tool_name reads as "not Bash"
-# and the chain is never scanned. Passes on the 2026-09-26 install and on `_a`.
+# RESIDUAL R7 (hook header KNOWN RESIDUALS; pinned ALLOW today): the gate
+# checks that stdin is ONE object but not the TYPE of tool_name, so a
+# non-string tool_name reads as "not Bash" and the chain is never scanned.
 # Mirrored in tests/bash/enforce_single_command.bats. A change that flips it
 # must update both pins and the BOUNDARIES.md row.
 test_raw_stdin allow \

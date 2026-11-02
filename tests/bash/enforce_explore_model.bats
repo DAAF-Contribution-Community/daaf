@@ -3,9 +3,10 @@
 # Tests for enforce-explore-model.sh -- PreToolUse Explore-subagent guard
 # ============================================================================
 # Contract (from the hook): a dispatch whose tool_input.subagent_type is
-# "Explore" is DENIED and redirected to the DAAF-native `search-agent` (Explore
-# runs on Haiku, which lacks the reasoning depth DAAF wants for codebase
-# analysis). Any other subagent_type is ALLOWED (exit 0, empty stdout).
+# "Explore" is DENIED and redirected to the DAAF-native `search-agent`, which
+# follows DAAF's conventions and can write its record (Explore starts without
+# CLAUDE.md and cannot write files). Any other subagent_type is ALLOWED (exit 0,
+# empty stdout).
 #
 # Failure posture: the hook only blocks on a positively identified "Explore"
 # dispatch, so unidentifiable payloads (empty stdin, malformed JSON) ALLOW --
@@ -20,10 +21,8 @@
 #
 # Multi-value stdin (2026-09-26): a concatenated or array payload carrying an
 # Explore object among benign ones used to ALLOW; the MULTI-VALUE STDIN
-# section below pins the fix (added to the 2026-09-24 hook bundle as
-# hooks_a/enforce-explore-model.sh). Those DENY cases FAIL on the live hook
-# until the user installs the bundle; run them against the draft:
-#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_a/enforce-explore-model.sh
+# section below pins the fix (revision _a of the 2026-09-24 hook bundle,
+# installed); the DENY cases failed on the earlier hook by design.
 #
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft copy:
 #   ENFORCE_EXPLORE_MODEL_SH=/path/to/draft.sh bats enforce_explore_model.bats

@@ -2,7 +2,7 @@
 # enforce-single-command.sh — PreToolUse hook that blocks command chaining
 #
 # Enforces the CLAUDE.md rule: "Every Bash tool call must contain exactly
-# one command. No &&, ;, or || chaining."
+# one command. No &&, ;, ||, background & or line-break chaining."
 #
 # This prevents chained commands from bypassing safety hooks and permission
 # checks that evaluate each Bash call individually. Claude Code evaluates a
@@ -82,22 +82,19 @@
 #       commands does this Bash call run HERE?". The asymmetry is deliberate:
 #       the one-command rule exists so each LOCAL command is independently
 #       vetted by the local hooks, and a remote chain is outside that scope.
-#   R7. [2026-09-27, Phase 4 component review N4] A single, well-formed JSON
-#       object whose `tool_name` is not the STRING "Bash" is allowed unscanned,
-#       whatever its `tool_input.command` holds. The one-object stdin gate
-#       checks only that stdin is exactly one object; it does not check the
-#       TYPE of `tool_name`. An array (`["Bash"]`), an object, `null`, a number,
-#       or a missing key makes `jq -r '.tool_name // empty'` print something
-#       other than exactly `Bash` (or nothing), and the `!= "Bash"` gate reads
-#       that as "not a Bash call" (probe: scripts/scratch/hf2_n4_probe.sh in the
-#       2026-09-18 workspace — rows N4A/N4O/N4N/N4I/N4M exit 0 on this file and
-#       on the 2026-09-26 install, N4S with the string exits 2). Accepted
-#       because Claude Code always sends `tool_name` as a string; a payload with
-#       any other type is not a real Bash call reaching this hook (inference
-#       from the hook input contract, not a harness test). Closing it would be
-#       one more clause in the stdin gate's jq test (`(.[0].tool_name | type) ==
-#       "string"`), deliberately not done in `_a`, which stays purely additive
-#       to the installed file. Pinned as ALLOW today in both regression suites.
+#   R7. A single, well-formed JSON object whose `tool_name` is not the STRING
+#       "Bash" is allowed unscanned, whatever its `tool_input.command` holds.
+#       The one-object stdin gate checks the object count, not the TYPE of
+#       `tool_name`: an array (`["Bash"]`), an object, `null`, a number, or a
+#       missing key makes `jq -r '.tool_name // empty'` print something other
+#       than exactly `Bash` (or nothing), and the `!= "Bash"` gate reads that as
+#       "not a Bash call". Accepted because Claude Code sends `tool_name` as a
+#       string, so a payload with any other type is not a real Bash call
+#       (inference from the hook input contract, not a harness test). Closing it
+#       takes one more clause in the stdin gate's jq test,
+#       `(.[0].tool_name | type) == "string"`. Pinned as ALLOW by
+#       tests/bash/enforce_single_command.bats (RESIDUAL R7) and
+#       scripts/test_enforce_single_command.sh.
 #
 # ---------------------------------------------------------------------------
 # FAILURE POSTURE
@@ -108,47 +105,45 @@
 #     CONVENTION hook, not a security boundary — `bash-safety.sh` is the
 #     security layer — so a scanner bug must not block all Bash usage. The
 #     heredoc stripper, by contrast, must never be able to HIDE a chain; that
-#     is why step 2 is quote-aware (see the SML2 evasion in
-#     research/2026-09-18_FrameworkDev_SafetyHookHardening/).
+#     is why step 2 is quote-aware (see the SML2 evasion, pinned by
+#     tests/bash/enforce_single_command.bats "SML2", and case SML2 below).
 #
-# Fail-closed input posture [2026-09-26]: the hook BLOCKS (exit 2) when jq is
-# missing, when stdin is empty, and when stdin is not exactly one JSON object
-# (unparseable text, whitespace only, a bare scalar or array, or several
-# concatenated JSON values). Previously anything that was not one object made
-# `jq -r .tool_name` yield "" or several lines, so the `!= "Bash"` gate read
-# "not a Bash call" and ALLOWED -- contradicting the fail-closed contract
-# above. The concrete case: a benign object followed by a Bash object with a
-# chained command yields TOOL_NAME="Read<newline>Bash" (or "Bash<newline>Bash"),
-# so the chain was never scanned. Claude Code sends exactly one JSON object per
-# hook call, so this gate is defense-in-depth and is not expected to fire on
-# real traffic. Credit: the 2026-09-24 hook-maintenance session found this
-# class in enforce-file-first.sh
-# (research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/enforce-file-first.diff);
-# the same jq test is applied here (only the hook name in the message
-# differs). Pinned by the "(NEW 2026-09-26)" cases in both regression suites.
+# Fail-closed input: the hook BLOCKS (exit 2) when jq is missing, when stdin
+# is empty, and when stdin is not exactly one JSON object (unparseable text,
+# whitespace only, a bare scalar or array, or several concatenated JSON
+# values). Without this gate, input that is not one object makes
+# `jq -r .tool_name` yield "" or several lines, which the `!= "Bash"` gate
+# reads as "not a Bash call" and allows: a benign object followed by a Bash
+# object with a chained command yields TOOL_NAME="Read<newline>Bash", and the
+# chain is never scanned. Claude Code sends exactly one JSON object per hook
+# call, so the gate is defense in depth and is not expected to fire on real
+# traffic. enforce-file-first.sh uses the same jq test. Pinned by the
+# fail-closed input cases in both regression suites.
 #
 # Exit codes (Claude Code PreToolUse convention):
 #   0 = allow the command to proceed
 #   2 = BLOCK the command (stderr message shown to the model)
 #
-# NOTE: settings.json gives this hook a 5 s timeout and a timed-out command
-# hook ALLOWS the tool call (Anthropic hooks docs). All processing is linear
-# in command length; tests/bash/enforce_single_command.bats asserts a 20 kB
-# command and a 500-line heredoc complete in under 2 s.
+# NOTE: settings.json gives this hook a 5 s timeout, and a PreToolUse command
+# hook that times out does not block the tool call (verified against the
+# Claude Code hooks reference on 2026-11-02; `onFailure: "block"` would change
+# that, but it requires Claude Code 2.1.295 or later, and DAAF does not set
+# it). All processing is linear in command
+# length; tests/bash/enforce_single_command.bats asserts a 20 kB command and a
+# 500-line heredoc complete in under 2 s.
 #
-# Dependencies: bash, awk, sed, tr, jq (no new dependencies vs. the 2026-07
-# version).
+# Dependencies: bash, awk, sed, tr, jq.
 #
 # Hook event: PreToolUse (matcher: "Bash")
 # Registered in: .claude/settings.json
 
 # Fail CLOSED: if anything unexpected goes wrong, block the command.
 # This is a safety-adjacent hook — ambiguous failures must not silently allow.
-trap 'echo "BLOCKED by enforce-single-command hook: unexpected error in chain detection" >&2; exit 2' ERR
+trap 'echo "BLOCKED by enforce-single-command hook: unexpected error in chain detection. The hook failed while checking this command, so the command was not run. Try the call again, in a simpler form if you can; if this keeps happening, tell the user, because the hook may need repair." >&2; exit 2' ERR
 
 # --- Dependency check (fail-closed) ---
 if ! command -v jq &>/dev/null; then
-    echo "BLOCKED by enforce-single-command hook: jq is not installed (required for hook)" >&2
+    echo "BLOCKED by enforce-single-command hook: jq is not installed (required for hook). This container is missing a standard tool, so every Bash command is blocked. Ask the user to rebuild the container: choose 10) Rebuild Container in the DAAF Control Panel." >&2
     exit 2
 fi
 
@@ -156,7 +151,7 @@ INPUT=$(cat)
 
 # --- Empty input guard (fail-closed) ---
 if [[ -z "$INPUT" ]]; then
-    echo "BLOCKED by enforce-single-command hook: received empty input (expected JSON)" >&2
+    echo "BLOCKED by enforce-single-command hook: received empty input (expected JSON). The problem is in the hook's input, not in your command. Try the call again; if this keeps happening, tell the user." >&2
     exit 2
 fi
 
@@ -169,11 +164,11 @@ fi
 #   be checked; `-e` makes jq exit non-zero on a false result, and a parse
 #   error is non-zero too. Runs inside `if !`, so the ERR trap does not fire.
 # ASSUMES: Claude Code always sends exactly one object (see header,
-#   "Fail-closed input posture"), so this should never block real traffic.
+#   "Fail-closed input"), so this should never block real traffic.
 #   The gate does NOT check the type of `tool_name`: a non-string value passes
 #   here and then ALLOWS at the `!= "Bash"` gate (Known Residual R7).
 if ! printf '%s' "$INPUT" | jq -e -s 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1; then
-    echo "BLOCKED by enforce-single-command hook: stdin is not a single JSON object (malformed hook input)" >&2
+    echo "BLOCKED by enforce-single-command hook: stdin is not a single JSON object (malformed hook input). The problem is in the hook's input, not in your command. Try the call again; if this keeps happening, tell the user." >&2
     exit 2
 fi
 
@@ -212,8 +207,7 @@ ENDBLOCK
 # Shared awk function: strip_comments(s)
 #
 # INTENT: remove `#`-to-end-of-line comments so that operators mentioned in a
-#   comment are not read as chaining (item 14 / case SFP1:
-#   `echo hi # this && that` was a false positive).
+#   comment are not read as chaining (case SFP1: `echo hi # this && that`).
 # REASONING: defined once here and injected into BOTH awk programs below (the
 #   pre-processing pass and the scanner's carrier recursion) so the two can
 #   never drift apart. A `#` is only a comment when it BEGINS a word in normal
@@ -224,7 +218,8 @@ ENDBLOCK
 #   single-quoted shell string).
 # NOTE ON COST: the function accumulates output by SLICE, not character by
 #   character, so a 20 kB command costs O(n) string work rather than O(n^2).
-#   This matters because a hook that exceeds its 5 s timeout ALLOWS the call.
+#   This matters because a hook that exceeds its 5 s timeout does not block
+#   the call (see the header NOTE).
 # ---------------------------------------------------------------------------
 read -r -d '' AWK_STRIP_COMMENTS <<'AWKFN' || true
 function strip_comments(s,   out, i, j, n, c, st, esc, wstart, segstart) {
@@ -264,7 +259,7 @@ AWKFN
 # ---------------------------------------------------------------------------
 
 # 1. Strip `#` comments (see AWK_STRIP_COMMENTS above).
-#    INTENT: item 14. Runs FIRST so a `<<` that exists only inside a comment
+#    INTENT: runs FIRST so a `<<` that exists only inside a comment
 #    (`echo hi # <<EOF`) cannot make step 2 swallow the following lines.
 PROCESSED=$(printf '%s\n' "$CMD" | awk -v sq="'" "
 $AWK_STRIP_COMMENTS
@@ -275,19 +270,16 @@ END { printf \"%s\", strip_comments(buf) }
 
 # 2. Strip heredoc bodies, QUOTE-AWARE.
 #
-#    INTENT (item 8): keep the line containing `<<DELIM` but remove the body
-#      through the closing delimiter line, so that prose or data inside a
-#      heredoc is not mistaken for chained commands.
-#    WHAT THIS CLOSES: the previous version matched `<<` ANYWHERE on a line,
-#      including inside quotes. `echo "x <<EOF"` followed by `rm a; rm b`
-#      (case SML2) therefore treated line 2 as a heredoc body and never
-#      scanned the chain — a scan EVASION, not a convention gap. The walker
-#      below only opens a heredoc when it is outside single/double quotes.
-#    ALSO CLOSED: `<<<` here-strings are no longer read as heredoc openers;
-#      `<<` inside `$(( … ))` (a left-shift) is ignored; a closing delimiter
-#      line with a trailing `\r` now terminates the body (the CRLF regression
-#      case pinned by qwen-code issue #10446, quoted in
-#      output/preliminary_notes/2026-09-18_research_guardfall-and-data-vs-code.md §4).
+#    INTENT: keep the line containing `<<DELIM` but remove the body through
+#      the closing delimiter line, so that prose or data inside a heredoc is
+#      not mistaken for chained commands.
+#    REASONING: a `<<` opens a heredoc only outside single/double quotes. If
+#      one inside quotes opened a heredoc, `echo "x <<EOF"` followed by
+#      `rm a; rm b` (case SML2) would drop line 2 unscanned and let the chain
+#      through. `<<<` (a here-string) and `<<` inside `$(( … ))` (a left
+#      shift) open nothing. A delimiter line ending in `\r` closes the body,
+#      because model-written commands can carry CRLF line endings (qwen-code
+#      issue #10446).
 #    ASSUMES: quote state and the escape flag carry ACROSS lines, because a
 #      double-quoted string may legitimately span newlines.
 #    CONSERVATIVE BIAS: when a delimiter cannot be parsed, no heredoc is
@@ -389,7 +381,7 @@ $AWK_STRIP_COMMENTS
 "'
 # is_carrier: does a quoted span sit in shell-CODE position?
 #
-# INTENT (item 13): `bash -c "echo a && echo b"` and `eval "echo a; echo b"`
+# INTENT: `bash -c "echo a && echo b"` and `eval "echo a; echo b"`
 #   chain two commands behind one tool call (cases SBY9, SBY10). The body is
 #   shell code, so it must face the same scan as the outer command.
 # REASONING: p1 is the token immediately before the span, p2 the one before
@@ -495,7 +487,7 @@ function scan(s, d,   i, n, c, c2, prevc, st, dep, esc, curw, p1, p2, pp1, pp2, 
             if (c == "|" && c2 == "|") return "OR"
         }
 
-        # --- Single & : background operator (item 10) ---
+        # --- Single & : background operator ---
         # INTENT: `sleep 1 & echo second` (case SBY1) runs two commands from
         #   one tool call, so it is chaining.
         # REASONING: a bare & is only chaining when something follows it. All
@@ -558,7 +550,8 @@ case "$SCAN_RESULT" in
         if echo "$CMD" | grep -qE '^\s*(for|while|until|if|elif|case|select)\b'; then
             exit 0
         fi
-        block "Command chaining with ';' detected."
+        # Step 5 turns line breaks into `;`, so the message names that case too.
+        block "Command chaining with ';' detected (a line break between two commands also counts as ';')."
         ;;
     OK)
         exit 0

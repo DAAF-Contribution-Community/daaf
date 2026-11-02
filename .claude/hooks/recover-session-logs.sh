@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # recover-session-logs.sh -- SessionStart hook: activity logging + crash recovery
 #
-# Replaces the previous inline SessionStart command. Performs:
-#   1. Original work: mkdir -p + activity.log append
+# Performs:
+#   1. Logging: creates the log folders and appends a line to activity.log
 #   2. Background recovery: reconciles Claude Code's raw transcript storage
 #      against DAAF's archive directory, archiving any missed sessions
 #
+# Why recovery matters: Claude Code deletes session transcripts after
+# cleanupPeriodDays days (default 30), without a message (verified against the
+# Claude Code settings reference on 2026-11-02). A session that ended without
+# its SessionEnd hook running (a crash, for example) would otherwise leave no
+# DAAF archive once its transcript is swept.
+#
 # Recovery approach:
 #   - Derives the Claude Code transcript directory from the current session's
-#     transcript_path (a common field available in all hook events)
+#     transcript_path, one of the input fields every hook event receives
+#     (verified against the Claude Code hooks reference on 2026-11-02)
 #   - Builds an index of already-archived session IDs with their file sizes
 #   - Scans for raw transcripts newer than the last recovery timestamp
 #   - For each unarchived (or grown) transcript, pipes a synthesized JSON
@@ -17,9 +24,13 @@
 #     if a session is still running and its transcript grows, the next
 #     archive invocation (SessionEnd or recovery) will re-archive it
 #
-# Also processes stale pending log collection markers left by
-# collect_session_logs.sh if archive-session.sh didn't process them
-# (e.g., the session that wrote the marker crashed before SessionEnd).
+# Also processes every pending log collection marker it finds (written by
+# collect_session_logs.sh), copying the already-archived sessions that mention
+# each marker's project, and deletes the marker. That includes a marker from a
+# session that is still running: SessionStart also fires after a compaction
+# (verified against the Claude Code hooks reference on 2026-11-02), and the
+# callers below run this hook outside a session. Such a session's own archive
+# then reaches the project only through a later collect_session_logs.sh run.
 #
 # Performance:
 #   - Timestamp-gated: only processes transcripts modified since last recovery
@@ -37,6 +48,11 @@
 #
 # Hook event: SessionStart (matcher: "")
 # Registered in: .claude/settings.json
+# Also run outside a session, with a synthesized payload (session_id "recovery",
+# transcript_path "/home/appuser/.claude/projects/-daaf/_.jsonl",
+# CLAUDE_PROJECT_DIR=/daaf), by scripts/host/view_logs.sh, view_logs.ps1 and
+# the refresh endpoint of scripts/log_viewer_server.py. Keep the input contract
+# in step with them.
 
 # Fail OPEN: session start is observability, not a security gate
 trap '' ERR
@@ -57,7 +73,7 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 LOG_DIR="$PROJECT_DIR/.claude/logs"
 ARCHIVE_DIR="$LOG_DIR/sessions"
 
-# --- Section 1: Original SessionStart work ---
+# --- Section 1: activity log ---
 mkdir -p "$LOG_DIR"
 mkdir -p "$ARCHIVE_DIR"
 DAAF_VERSION=$(git -C "$PROJECT_DIR" describe --always --dirty 2>/dev/null || echo "unknown")
@@ -131,7 +147,7 @@ if [ -n "$TRANSCRIPT_PATH" ]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S') RECOVERY: archived $RECOVERED session(s), skipped $SKIPPED" >> "$LOG_DIR/activity.log"
         fi
 
-        # --- Process stale pending log collection markers ---
+        # --- Process pending log collection markers (all of them; see header) ---
         PENDING_FILE="$LOG_DIR/pending_log_collection.jsonl"
         if [ -f "$PENDING_FILE" ]; then
             PENDING_TMP="${PENDING_FILE}.recovery.$$"

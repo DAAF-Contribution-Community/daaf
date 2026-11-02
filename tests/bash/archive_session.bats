@@ -153,6 +153,50 @@ _archive() {
     assert_output --partial "Tokens: in=120, out=42"
 }
 
+# A transcript whose assistant turn dispatches a subagent through tool $1
+# ("Agent" today, "Task" in older transcripts). The prompt is longer than the
+# 500-character cap on the generic JSON rendering, so a dispatch that fell
+# through to that branch would show as cut JSON with the input field names.
+_write_dispatch_transcript() {
+    local long_prompt
+    long_prompt=$(printf 'scope the viewer %.0s' {1..40})
+    {
+        printf '%s\n' '{"timestamp":"2026-09-23T10:00:00.000Z","message":{"role":"user","content":"check the logs"}}'
+        jq -nc --arg tool "$1" --arg prompt "$long_prompt" '{
+            timestamp: "2026-09-23T10:00:05.000Z",
+            message: {role: "assistant", model: "claude-opus-5", content: [
+                {type: "tool_use", name: $tool, input: {
+                    subagent_type: "search-agent",
+                    description: "Scope the log viewer",
+                    model: "sonnet",
+                    prompt: $prompt}}]}}'
+    } > "$TRANSCRIPT"
+}
+
+@test "an Agent dispatch renders its agent type and description, not raw JSON" {
+    _write_dispatch_transcript "Agent"
+    _archive "a9e17000-1111-2222" "$TRANSCRIPT"
+    assert_success
+    run cat "${ARCHIVE_DIR}"/*_a9e17000_orchestrator.md
+    assert_output --partial "Tool: Agent"
+    assert_output --partial "**Type:** search-agent"
+    assert_output --partial "**Task:** Scope the log viewer"
+    refute_output --partial '"subagent_type"'
+    refute_output --partial "truncated"
+}
+
+@test "a Task dispatch (older transcripts) still renders the same way" {
+    _write_dispatch_transcript "Task"
+    _archive "7a5c0000-1111-2222" "$TRANSCRIPT"
+    assert_success
+    run cat "${ARCHIVE_DIR}"/*_7a5c0000_orchestrator.md
+    assert_output --partial "Tool: Task"
+    assert_output --partial "**Type:** search-agent"
+    assert_output --partial "**Task:** Scope the log viewer"
+    refute_output --partial '"subagent_type"'
+    refute_output --partial "truncated"
+}
+
 @test "Token line counts cache reads and writes in the input total" {
     # input_tokens is only the uncached part; the archive's "in" must be the sum
     # of all three fields (as context-reporter.sh computes), with the cached share

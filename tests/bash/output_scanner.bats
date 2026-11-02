@@ -5,9 +5,14 @@
 # Contract (from the hook header): scan `tool_response` (first 10KB) for
 # common credential shapes -- AWS access key IDs, AWS secret access keys,
 # generic `sk-` keys, Stripe live keys, GitHub tokens, PEM private-key
-# headers, and long Bearer tokens -- and, when any match, print a WARNING
-# block on stdout so the model sees it. This is ADVISORY only: the hook never
-# blocks, always exits 0, and prints nothing on clean output.
+# headers, and long Bearer tokens -- and, when any match, print ONE JSON
+# object whose hookSpecificOutput.additionalContext carries the WARNING text,
+# so Claude Code passes it to the model (a PostToolUse hook's plain stdout
+# goes only to the debug log). This is ADVISORY only: the hook never blocks,
+# always exits 0, and prints nothing on clean output. The family and
+# value-based tests match fragments with --partial, which also works on the
+# JSON text; the tests that call _assert_context_json check the shape and
+# then read the decoded warning.
 #
 # Response shapes (STRUCTURED-RESPONSE, 2026-09-24 hook-maintenance pass):
 # the fixed extractor is `(.tool_response // "" | tostring)[0:10000]`, so a
@@ -15,8 +20,7 @@
 # previous extractor sliced without `tostring`; an OBJECT made jq error out,
 # the response resolved to empty, and nothing was scanned. The object tests
 # below were flipped from that CURRENT-BEHAVIOR pin to the desired behavior.
-# The fix was installed on 2026-09-26 (it was staged as
-# research/2026-09-18_FrameworkDev_SafetyHookHardening/output-scanner.sh.proposed).
+# The fix was installed on 2026-09-26.
 #
 # VALUE-BASED DETECTION (2026-09-26, hook bundle revision _a): the scanner
 # also warns when the literal value of a credential-named environment
@@ -30,9 +34,8 @@
 # on hooks_a by design, and the marker pin now reads the _b marker text
 # (three carriers). The 512-cap pins (positive and negative) pass on _b.
 # Revision _c (2026-09-27) feeds the shape probes with printf instead of
-# echo; its "(_c)" test fails on the _b hook by design until _c is
-# installed; run it against
-#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_c/output-scanner.sh
+# echo; its "(_c)" test failed on the _b hook by design until _c was
+# installed.
 #
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft:
 #   OUTPUT_SCANNER_SH=/path/to/draft.sh bats output_scanner.bats
@@ -66,6 +69,24 @@ _scan() {
     }')
 }
 
+# Assert $output is exactly one JSON object of the form
+# {"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"…"}}
+# with nothing else on stdout, then replace $output with the decoded
+# additionalContext text so the assertions after it read the warning itself.
+_assert_context_json() {
+    if ! printf '%s' "$output" | jq -e -s 'length == 1
+            and (.[0] | type == "object")
+            and (.[0] | keys == ["hookSpecificOutput"])
+            and (.[0].hookSpecificOutput | keys == ["additionalContext", "hookEventName"])
+            and (.[0].hookSpecificOutput.hookEventName == "PostToolUse")
+            and (.[0].hookSpecificOutput.additionalContext | type == "string")' >/dev/null 2>&1; then
+        echo "stdout is not one PostToolUse additionalContext JSON object: ${output:0:200}"
+        return 1
+    fi
+    output="$(printf '%s' "$output" | jq -r '.hookSpecificOutput.additionalContext')"
+    mapfile -t lines <<<"$output"
+}
+
 # =========================================================================
 # Static checks
 # =========================================================================
@@ -90,6 +111,7 @@ _scan() {
 @test "detects an AWS Access Key ID (AKIA + 16 uppercase/digits)" {
     _scan "aws_key = AKIA""IOSFODNN7EXAMPLE and more text"
     assert_success
+    _assert_context_json
     assert_output --partial "WARNING: Potential secrets detected"
     assert_output --partial "AWS Access Key ID detected"
 }
@@ -142,13 +164,46 @@ _scan() {
 @test "multiple families in one response: each is listed separately" {
     _scan "AKIA""IOSFODNN7EXAMPLE and ghp_""abcdefghijklmnopqrstuvwxyz01"
     assert_success
-    assert_output --partial "AWS Access Key ID detected"
-    assert_output --partial "GitHub token detected"
+    _assert_context_json
+    assert_output --partial "  - AWS Access Key ID detected (AKIA...)"
+    assert_output --partial "  - GitHub token detected"
 }
 
 @test "warning text instructs the model not to propagate the value" {
     _scan "AKIA""IOSFODNN7EXAMPLE"
+    _assert_context_json
     assert_output --partial "Do NOT display, log, or commit these values"
+}
+
+# CLAUDE.md § Boundaries & Safety > Credential & Secret Protection: when a
+# secret appears in tool output, acknowledge the leak and stop.
+@test "warning text tells the model to tell the user and stop (CLAUDE.md rule)" {
+    _scan "AKIA""IOSFODNN7EXAMPLE"
+    _assert_context_json
+    assert_output --partial "Tell the user that a credential appeared in this tool output, then stop"
+    assert_output --partial "Credential & Secret Protection"
+}
+
+# Shipped sample keys and the test suites match the shape families, so the
+# warning lets the model continue past a plain placeholder or test fixture.
+@test "warning text lets a plain placeholder or test fixture continue" {
+    _scan "AKIA""IOSFODNN7EXAMPLE"
+    _assert_context_json
+    assert_output --partial "if the match is plainly a placeholder or a test fixture"
+    assert_output --partial "say that it is one and continue"
+}
+
+# Claude Code writes a PostToolUse hook's plain stdout only to its debug log,
+# so the warning must be JSON to reach the model (Claude Code hooks reference,
+# read 2026-11-02). The decoded text keeps its line structure.
+@test "warning is one PostToolUse additionalContext JSON object on stdout, not plain text" {
+    _scan "AKIA""IOSFODNN7EXAMPLE"
+    assert_success
+    refute_output --partial $'\nWARNING:'
+    [[ "$output" == "{"* ]]
+    _assert_context_json
+    [ "${lines[0]}" = "WARNING: Potential secrets detected in tool output:" ]
+    [ "${#lines[@]}" -eq 3 ]
 }
 
 # =========================================================================
@@ -374,8 +429,11 @@ _scan_env() {
 @test "value-based: raw value in a string response is flagged by variable NAME" {
     _scan_env "DAAFTEST_FAKE_API_KEY=${FAKE_VAL}" "fetched with key ${FAKE_VAL} ok"
     assert_success
+    refute_output --partial "$FAKE_VAL"
+    _assert_context_json
     assert_output --partial "WARNING: Potential secrets detected"
     assert_output --partial "value of DAAFTEST_FAKE_API_KEY appears in this tool output"
+    refute_output --partial "$FAKE_VAL"
 }
 
 @test "value-based: the warning names the variable but never contains the value" {
@@ -391,6 +449,8 @@ _scan_env() {
         "tool_response": {"stdout": ("key=" + $v), "stderr": "", "interrupted": false}
     }')
     assert_success
+    refute_output --partial "$FAKE_VAL"
+    _assert_context_json
     assert_output --partial "value of DAAFTEST_FAKE_TOKEN appears in this tool output"
     refute_output --partial "$FAKE_VAL"
 }
@@ -450,6 +510,12 @@ _scan_env() {
 
 @test "value-based: an allowlisted name is ignored (DBUS_SESSION_BUS_ADDRESS)" {
     _scan_env "DBUS_SESSION_BUS_ADDRESS=unix:abstract=fakebus_0123456789" "bus unix:abstract=fakebus_0123456789 up"
+    assert_success
+    [ -z "$output" ]
+}
+
+@test "value-based: the Claude Code session ID is allowlisted (it appears in harness paths)" {
+    _scan_env "CLAUDE_CODE_SESSION_ID=0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" "saved to /home/x/.claude/projects/-daaf/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0/tool-results/y.txt"
     assert_success
     [ -z "$output" ]
 }

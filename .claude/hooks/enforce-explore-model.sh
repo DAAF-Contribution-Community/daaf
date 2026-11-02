@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # enforce-explore-model.sh
-# Prevents Explore-type subagents from being launched with the haiku model.
-# Explore agents need frontier-tier reasoning for thorough codebase analysis.
+# Blocks every dispatch of Claude Code's built-in Explore subagent and points
+# the caller to search-agent. Explore starts without CLAUDE.md, so it does not
+# follow DAAF's conventions, and it cannot write files, so it cannot save a
+# record of what it found (Claude Code subagents docs, verified 2026-11-02).
+# search-agent loads CLAUDE.md, carries the web-retrieval protocol, and writes
+# its record to the path a dispatch names. The model is not the reason:
+# Explore runs on the main conversation's model, capped at Opus (Claude Code
+# v2.1.198 release note, quoted in anthropics/claude-code#72940; verified
+# 2026-11-02).
 #
 # Hook type: PreToolUse (matchers: Task, Agent — both registered in
 # .claude/settings.json)
-# Decision: deny if subagent_type=Explore (Explore always runs on Haiku)
+# Decision: deny if subagent_type=Explore, whatever model the dispatch names
 #
 # DEPENDENCY POSTURE (jq)
 #   The decision is CONDITIONAL on tool_input.subagent_type, so jq is normally
@@ -18,38 +25,30 @@
 #       a "subagent_type" key whose value is "Explore" (whitespace-tolerant,
 #       case-sensitive to match the jq path's exact-match semantics). On a
 #       match, block with the same message on stderr plus `exit 2` — Claude
-#       Code's documented plain-text block, which blocks the tool call
-#       regardless of stdout JSON validity (guaranteed as of the 2.1.214 fix).
-#       On no match, exit 0 (allow). Previously the jq-less path could not see
-#       subagent_type at all and therefore allowed an Explore dispatch through.
-#   Non-Explore dispatches still ALLOW on every path: this guard is a routing
+#       Code's plain-text block, which blocks the tool call whatever stdout
+#       holds (Claude Code hooks reference, verified 2026-11-02). On no
+#       match, exit 0 (allow).
+#   Non-Explore dispatches ALLOW on every path: this guard is a routing
 #   preference, not a safety boundary, so it must never block the pipeline
 #   wholesale. Only the ERR trap (a genuinely unexpected failure) blocks
-#   unconditionally, matching the prior behavior — and it, too, is jq-free.
+#   unconditionally, and it is jq-free.
 #
-# MULTI-VALUE STDIN [2026-09-26, added to the 2026-09-24 hook-maintenance
-# bundle as revision _a by the SafetyHookHardening session] — a concatenated
-# payload such as a benign Agent object glued to a
-# {"tool_input":{"subagent_type":"Explore"}} object (either order, with or
-# without a newline) used to ALLOW: `jq -r` printed one line per object, so
-# SUBAGENT_TYPE held two lines and never equalled "Explore". Probed on
-# 2026-09-26 (all four concatenated orders, banned+garbage, garbage+banned,
-# and a top-level array: rc 0, no decision). The jq path now DENIES when ANY
-# top-level value (or any element of a top-level array) is an object whose
-# tool_input.subagent_type is exactly "Explore". jq runs in streaming mode,
-# so the values it parsed before a later syntax error still count; if jq
-# reports any error, the jq-free raw-text match below is also applied, so an
-# Explore pair after the garbage is still identified. Plain malformed or
-# empty stdin that carries no Explore pair still ALLOWS (the routing-
-# preference posture above is unchanged). Whether the harness can ever emit
-# such a payload is inference (it sends one object); this is defence in
-# depth. Same change as deny-claude-code-guide.sh.
+# MULTI-VALUE STDIN. The jq path denies when any top-level value, or any
+# element of a top-level array, is an object whose tool_input.subagent_type
+# is exactly "Explore", so an Explore object glued to a benign one (either
+# order, with or without a newline) is still caught. jq runs in streaming
+# mode, so the values it parsed before a later syntax error count; after any
+# jq error the jq-free raw-text match below also runs, so an Explore pair
+# after the garbage is identified too. Malformed or empty stdin that carries
+# no Explore pair ALLOWS (the routing-preference posture above). Claude Code
+# sends one object; this is defence in depth, the same as in
+# deny-claude-code-guide.sh.
 set -uo pipefail
 
 # Deny message — single source of truth for the JSON path and the jq-free
 # fallback. Plain assignment (not a heredoc) so the string carries no trailing
 # newline, preserving the exact reason text the JSON path has always emitted.
-REASON="Explore subagents are blocked in this project. Explore runs on Haiku, which lacks sufficient reasoning depth. Use subagent_type search-agent instead — it is a DAAF-native read-only agent that defaults to the Sonnet tier (model can be overridden per dispatch), has web access (built-in WebSearch for discovery, plus the DAAF web-retrieval protocol — bash /daaf/scripts/web_fetch.sh URL DEST_DIR, see the web-retrieval skill — for document retrieval; the built-in WebFetch is blocked), and understands DAAF conventions."
+REASON="Explore subagents are blocked in this project. Use subagent_type search-agent instead: it follows DAAF's conventions (CLAUDE.md) and can write its findings to the file a dispatch names, while Explore starts without CLAUDE.md and cannot write files (Claude Code subagents docs, verified 2026-11-02). search-agent defaults to the Sonnet tier (the model can be overridden per dispatch) and has web access: built-in WebSearch to find pages, and bash /daaf/scripts/web_fetch.sh URL DEST_DIR (see the web-retrieval skill) to retrieve them; the built-in WebFetch is blocked."
 
 # Fail-closed ERR trap, deliberately jq-FREE: an error path that serialized its
 # deny with `jq -n` would itself fail (silently allowing) on a container missing

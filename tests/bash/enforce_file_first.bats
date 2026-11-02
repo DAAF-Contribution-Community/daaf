@@ -199,6 +199,30 @@ _nojq_bin() {
     assert_output --partial "R CMD BATCH"
 }
 
+# A read-only search whose regex alternation holds an interpreter name is
+# refused: the boundary scan reads the `|` inside the pattern as a pipe. Both
+# messages name the workaround (one -e pattern per alternative), which the
+# ALLOW case below confirms passes.
+@test "CURRENT BEHAVIOR: grep -E alternation with |python3 is blocked, and the message gives the -e workaround" {
+    _run_cmd "grep -n -E 'foo|python3 x' notes.md"
+    [ "$status" -eq 2 ]
+    assert_output --partial "If this was a search, not a run"
+    assert_output --partial "grep -n -e 'a' -e 'python3 x'"
+}
+
+@test "CURRENT BEHAVIOR: grep -E alternation with |Rscript is blocked, and the message gives the -e workaround" {
+    _run_cmd "grep -n -E 'foo|Rscript x' notes.md"
+    [ "$status" -eq 2 ]
+    assert_output --partial "If this was a search, not a run"
+    assert_output --partial "grep -n -e 'a' -e 'Rscript x'"
+}
+
+@test "ALLOW: the -e workaround (one pattern per alternative) passes" {
+    _run_cmd "grep -n -e 'foo' -e 'python3 x' -e 'Rscript x' notes.md"
+    assert_success
+    [ -z "$output" ]
+}
+
 # =========================================================================
 # ALLOW: the sanctioned file-first pattern
 # =========================================================================
@@ -366,13 +390,22 @@ _nojq_bin() {
 # Registration: the hook is agent-scoped, not project-wide
 # =========================================================================
 
-@test "registered in the frontmatter of exactly the four coding agents" {
-    run grep -l "enforce-file-first.sh" "${REPO_ROOT}"/.claude/agents/research-executor.md \
-        "${REPO_ROOT}"/.claude/agents/code-reviewer.md \
-        "${REPO_ROOT}"/.claude/agents/debugger.md \
-        "${REPO_ROOT}"/.claude/agents/data-ingest.md
-    assert_success
-    [ "${#lines[@]}" -eq 4 ]
+# Every agent with Bash in its `tools` line registers the hook in its
+# frontmatter (the A13 probe of agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
+# § 10). README.md is skipped: its example frontmatter line names Bash.
+@test "registered in the frontmatter of every agent with Bash in its tools" {
+    local f holders=0 missing=""
+    for f in "${REPO_ROOT}"/.claude/agents/*.md; do
+        [[ "$f" == */README.md ]] && continue
+        grep -qE '^tools:.*Bash' "$f" || continue
+        holders=$((holders + 1))
+        grep -qE 'command:.*enforce-file-first' "$f" || missing="${missing} $(basename "$f")"
+    done
+    [ "$holders" -gt 0 ]
+    if [ -n "$missing" ]; then
+        echo "Bash holders without enforce-file-first.sh:${missing}"
+        return 1
+    fi
 }
 
 @test "NOT registered project-wide in settings.json" {

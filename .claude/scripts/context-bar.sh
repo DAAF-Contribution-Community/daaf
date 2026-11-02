@@ -191,7 +191,7 @@ if [[ "$session_id_safe" -eq 1 ]]; then
     model_tmp="${model_cache}.tmp.$$"
     # Brace-wrap the redirect so 2>/dev/null also covers an open() failure on '>'
     # (redirections apply left-to-right; a bare `> f 2>/dev/null` still prints the
-    # open() diagnostic before 2> takes effect). Convention 6.
+    # open() diagnostic before 2> takes effect).
     if { printf '%s' "$model_id" > "$model_tmp"; } 2>/dev/null; then
         mv "$model_tmp" "$model_cache" 2>/dev/null || rm -f "$model_tmp" 2>/dev/null
     else
@@ -240,9 +240,8 @@ or_context_resolved=0
 # context_cache_dir and the session-ID path guard are initialized immediately
 # after payload extraction. Malformed session IDs skip this cache-backed branch.
 if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
-    # model_id already extracted in the consolidated jq pass above
-    # (byte-identical to the old `.model.id // empty`, minus any #<effort>
-    # suffix; catalogue ids never contain '#').
+    # model_id comes from the consolidated jq pass above (.model.id, or empty,
+    # minus any #<effort> suffix; catalogue ids never contain '#').
     or_cache="${context_cache_dir}/claude-or-models-${session_id}"
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
@@ -251,7 +250,7 @@ if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]
         # overlapping session refreshes. Validate that the body is a JSON object
         # carrying a .data array BEFORE the atomic promote, so a truncated or
         # garbage 200-body (curl -sf already rejects non-2xx/timeout) cannot poison
-        # the cache for the rest of the session. Convention 6/8.
+        # the cache for the rest of the session.
         or_tmp="${or_cache}.tmp.$$"
         if { curl -sf --connect-timeout 3 --max-time 3 \
             "https://openrouter.ai/api/v1/models" > "$or_tmp"; } 2>/dev/null; then
@@ -303,7 +302,7 @@ fi
 # have smaller windows than the base gpt-5.4/5.5/5.6 flagships (the whole
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
-# Closed-set GPT flagship grammar (Convention 3). Only the exact flagship set —
+# Closed-set GPT flagship grammar. Only the exact flagship set —
 # bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, and the GPT-6
 # flagships gpt-6-astra, gpt-6-sol, and gpt-6-luna, each with an optional -pro
 # and then an optional [1m] badge — is eligible for the 1,050,000 physical
@@ -314,20 +313,20 @@ fi
 # spellings (gpt-5.6-mini-pro), and left-boundary near misses (xgpt-6-astra,
 # gpt-6-astrab) fall through to the ordinary default rather than being mapped
 # to the flagship window. New codenames are a deliberate one-line edit here.
-# USER POLICY DECISION 2026-09-29, not validation
-# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames): any flagship
-# -pro reads exactly as its non-pro base; gpt-6-sol and gpt-6-luna read as
-# gpt-5.6-sol and gpt-5.6-luna; there is no gpt-6-terra. Windows per the
-# OpenRouter catalogue fetched 2026-09-29 (context_length 1050000 for
-# openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro,
-# gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry),
-# web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
-# workspace. USER POLICY DECISION 2026-10-12, not validation: gpt-6.1-sol (exact
-# alternative, optional -pro and [1m]) reads as gpt-6-sol — 1,050,000 window per
-# OpenRouter openai/gpt-6.1-sol fetched 2026-10-12
-# (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/opus_audit_2026-10-12/);
-# its ChatGPT-lane ceiling was measured 2026-10-13 (accepted 919,744, rejected
-# 921,973), matching the 919k lane cap.
+# POLICY ADMISSIONS (the canonical note for this script): gpt-6-sol, gpt-6-luna,
+# gpt-6.1-sol and every flagship -pro form are admitted by user policy, not by
+# DAAF validation; see CLAUDE.md § Context Quality Curve and
+# agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md. Any flagship -pro
+# reads exactly as its non-pro base; gpt-6-sol and gpt-6-luna read as
+# gpt-5.6-sol and gpt-5.6-luna; gpt-6.1-sol (one exact alternative, optional
+# -pro and [1m]) reads as gpt-6-sol; there is no gpt-6-terra. Windows per the
+# OpenRouter catalogue (https://openrouter.ai/api/v1/models, fetched 2026-09-29:
+# context_length 1050000 for openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna,
+# gpt-6-luna-pro, gpt-6-astra-pro, gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro,
+# gpt-5.4-pro; no gpt-6-terra entry) and the OpenRouter openai/gpt-6.1-sol page
+# (https://openrouter.ai/openai/gpt-6.1-sol, fetched 2026-10-12: 1,050,000).
+# gpt-6.1-sol's ChatGPT-lane ceiling (observed 2026-10-13: accepted 919,744,
+# rejected 921,973) matches the 919k lane cap.
 # No gpt-6.1-* wildcard: gpt-6.1-luna, gpt-6.1-sol-mini, etc. stay unregistered.
 # Kept byte-identical with subagent-bar.sh's gpt_flagship_re and
 # context-reporter.sh's GPT_FLAGSHIP_RE (three-way lockstep test in
@@ -336,12 +335,12 @@ fi
 # pitfalls; defined unconditionally so it is in scope for the ChatGPT-lane
 # predicate below even when this static-map block is skipped.
 gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna)|gpt-6\.1-sol)(-pro)?(\[1m\])?$'
-# Closed-set mini/chat grammars (Convention 3), byte-consistent with
-# subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
-# (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
-# anchor and fall through to the conservative 200k default rather than being
-# mapped to 400k/128k. Anchored on the same provider-stripped physical_slug the
-# globs inspected. Defined here alongside the flagship grammar for locality.
+# Closed-set mini/chat grammars, byte-consistent with subagent-bar.sh's anchored
+# EREs. Anchored rather than open-ended globs (*-mini*/*-chat*), so suffixed
+# near-misses (e.g. gpt-5.6-mini-preview) fail the anchor and fall through to
+# the conservative 200k default rather than being mapped to 400k/128k. Tested
+# on the provider-stripped physical_slug. Defined here alongside the flagship
+# grammar for locality.
 gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
@@ -357,12 +356,11 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
         *)
             case "$physical_slug" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*|gpt-6.1-sol|gpt-6.1-sol[-\[]*)
-                    # Closed-set classification (Convention 3), byte-consistent
-                    # with subagent-bar.sh: only the anchored flagship/mini/chat
+                    # Closed-set classification, byte-consistent with
+                    # subagent-bar.sh: only the anchored flagship/mini/chat
                     # grammars earn a GPT window. Order flagship, then mini, then
-                    # chat. The family glob only admits candidates (gpt-6-sol and
-                    # gpt-6-luna added 2026-09-29, gpt-6.1-sol 2026-10-12, both by
-                    # user policy decision); the
+                    # chat. The family glob only admits candidates (including the
+                    # policy-admitted names; see POLICY ADMISSIONS above); the
                     # anchored ERE decides. Malformed suffixes that reached this
                     # family glob (e.g. gpt-5.4-, gpt-5.6-experimental,
                     # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x, gpt-6-astra-pro-x,
@@ -395,17 +393,16 @@ fi
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a model in the same
 # anchored flagship arm used by the static map above — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra, and (user policy decisions 2026-09-29 and
-# 2026-10-12, not measurement) gpt-6-sol, gpt-6-luna, gpt-6.1-sol, and the
-# flagship -pro forms, which inherit
-# the cap from their bases (mini/chat variants are excluded by the arm's
-# ordering). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
+# family plus gpt-6-astra, and the policy-admitted gpt-6-sol, gpt-6-luna,
+# gpt-6.1-sol and flagship -pro forms (see POLICY ADMISSIONS above), which
+# inherit the cap from their bases (mini/chat variants are excluded by the
+# arm's ordering). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
 # 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827
 # and rejected 921,973. 919000 is therefore the lane-wide accounting ceiling for
 # this mapped flagship family, MEASURED for Sol and Astra alike and consistent
 # with Astra's documented 922,000-token max input (1,050,000 window - 128,000
-# output). Provenance: previously 370,000 (2026-07-16), now stale. Apply min()
+# output). Apply min()
 # only after every ordinary resolution source, including an incoming [1m] payload and
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS, so neither can raise the matched lane above the
 # backend ceiling while an explicitly lower positive value remains lower.
@@ -416,7 +413,7 @@ fi
 # lane values fail-open, while API/OpenRouter routes retain their wider windows.
 gpt_flagship=0
 physical_slug="${model_id##*/}"
-# Same anchored closed-set predicate as the static map (Convention 3): the 919k
+# Same anchored closed-set predicate as the static map: the 919k
 # lane cap applies only to the exact flagship set, so mini/chat variants and
 # malformed near-misses keep their resolved (wider or default) window fail-open.
 if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
@@ -434,11 +431,11 @@ max_k=$((max_context / 1000))
 # payload). Unsafe session IDs skip the path construction and retain fail-open
 # statusline output without creating an attacker-controlled cache path.
 if [[ "$session_id_safe" -eq 1 ]]; then
-    # Atomic publish (Convention 7): a concurrent reader (context-reporter.sh) must
+    # Atomic publish: a concurrent reader (context-reporter.sh) must
     # never observe a momentarily-empty file from a direct truncate-write and fall
     # back to 200k. Write a writer-private temp then rename, mirroring the model
-    # cache above. Brace-wrap so 2>/dev/null covers an open() failure on '>' too
-    # (Convention 6); if the cache dir is unusable, skip caching and keep rendering.
+    # cache above. Brace-wrap so 2>/dev/null covers an open() failure on '>' too;
+    # if the cache dir is unusable, skip caching and keep rendering.
     ctx_window_cache="${context_cache_dir}/claude-ctx-window-${session_id}"
     ctx_window_tmp="${ctx_window_cache}.tmp.$$"
     if { printf '%s\n' "$max_context" > "$ctx_window_tmp"; } 2>/dev/null; then
@@ -454,9 +451,8 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     # POSITIVE sum rather than the last entry outright. Defensive: shim-routed
     # (GPT) transcripts end with streaming-placeholder usage entries whose token
     # fields are all 0; taking `last` unconditionally would compute 0 and stall
-    # the bar at the ~baseline reading. Not currently triggered on main
-    # transcripts (the main session is native Claude today) but mirrors the
-    # context-reporter.sh / subagent-bar.sh fix so all three stay consistent.
+    # the bar at the ~baseline reading. The same rule is in
+    # context-reporter.sh and subagent-bar.sh, so all three agree.
     # Native Claude transcripts are unaffected (last entry is already positive,
     # so last-positive == last). `// 0` preserves the fail-open contract.
     context_length=$(jq -s '
@@ -472,7 +468,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     baseline=20000
     bar_width=10
 
-    # Bounded numerator (Convention 5): only multiply context_length by 100 when it
+    # Bounded numerator: only multiply context_length by 100 when it
     # is a canonical positive decimal AND <= floor(INT64_MAX/100) = 92233720368547758,
     # so a huge but int64-valid token count cannot overflow signed-64 arithmetic and
     # wrap pct negative (a negative pct evades the `-gt 100` clamp and would render).
@@ -483,7 +479,8 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         pct=$((context_length * 100 / max_context))
         pct_prefix=""
     else
-        # At conversation start, ~40k baseline is already loaded
+        # No usable token count (none yet, or out of range): show the 20k
+        # baseline estimate, marked with ~.
         pct=$((baseline * 100 / max_context))
         pct_prefix="~"
     fi
@@ -533,7 +530,7 @@ fi
 # segment so effort reads as a property of the model rather than a standalone
 # indicator.
 #
-# D2 display sanitization (shim/GPT models routed through the provider shim).
+# Display sanitization (shim/GPT models routed through the provider shim).
 # The client reports the *configured* model slug as the display name, which for
 # shim sessions can carry an effort suffix (#high/#xhigh/#medium/...) AND a
 # duplicated [1m] context badge (the client re-appends its own [1m] to a slug
@@ -848,7 +845,7 @@ if [[ -z "$rl_seg" && \
             codex_parsed=1
         fi
 
-        # Plan-usage percent parity with the native rate-limit path (Convention 9):
+        # Plan-usage percent parity with the native rate-limit path:
         # floor a fractional percent (69.9 -> 69) so a legitimate fractional value
         # is KEPT rather than dropped by the integer-only validator below, and so
         # the <=100 clamp has an integer to compare. The strip is gated on a strict
@@ -917,7 +914,7 @@ output+="${rl_seg}"
 # Render with %s (not %b): the color bytes already live in the $'...' constants,
 # so untrusted field content (model name, effort, cwd, branch, message) is emitted
 # verbatim and its backslash sequences stay inert — a printable \033]52;c;... OSC
-# payload in a field can never be re-materialized into a real escape. Convention 1.
+# payload in a field can never be re-materialized into a real escape.
 printf '%s\n' "$output"
 
 # Get user's last message (text only, not tool results, skip unhelpful messages)

@@ -8,17 +8,18 @@
 #   to the orchestrator for redelegation (the early-return protocol) rather
 #   than spawning its own nested subagents.
 #
-#   Claude Code >= v2.1.172 lets a subagent spawn its own subagents. DAAF
-#   prevents that in three layers: (1) the harness spawn-depth limit —
-#   settings.json env sets CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1, and on
-#   2.1.261/2.1.281 subagents were observed to receive no Agent/Task tool at
-#   all; (2) DAAF's named agents each carry an explicit `tools:` list that
-#   omits Agent/Task; (3) this hook, the backstop. Before the depth limit, the
-#   generic built-in types DAAF sanctions (`general-purpose` = "all tools",
-#   and `Plan`) inherited Agent/Task with no DAAF-authored `tools:` list, and a
-#   live probe (2026-07-16) confirmed a `general-purpose` subagent could nest.
-#   This hook still closes that gap should the depth limit ever be lifted or
-#   regress. Scope caveat: this layered prevention covers
+#   Claude Code lets subagents spawn their own subagents at its default
+#   spawn depth of 3 (Claude Code environment-variables docs, verified
+#   2026-11-01). DAAF prevents that in three layers: (1) the harness
+#   spawn-depth limit — settings.json env sets
+#   CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1, and with it subagents receive no
+#   Agent or Task tool (observed 2026-11-02, Claude Code 2.1.281); (2) DAAF's
+#   named agents each carry an explicit `tools:` list that omits Agent/Task;
+#   (3) this hook, the backstop. Without the depth limit, the generic built-in
+#   types DAAF sanctions (`general-purpose` = "all tools", and `Plan`) carry
+#   no DAAF-authored `tools:` list, and a `general-purpose` subagent can nest
+#   (observed 2026-07-16); this hook covers that case should the depth limit
+#   ever be lifted or regress. Scope caveat: this layered prevention covers
 #   SPAWN-style dispatch (the Task/Agent tool matchers this hook binds).
 #   Primitives that route work to already-running agents (e.g. a
 #   SendMessage-style tool) do not match Task/Agent and are governed by the
@@ -31,9 +32,12 @@
 #     agent_id   — present ONLY inside a subagent call; absent on the main
 #                  (orchestrator) thread.
 #     agent_type — the subagent's type inside a subagent call; absent on the
-#                  main thread (audit-log.sh defaults it to "orchestrator"
-#                  itself when writing its log — the field is not literally
-#                  sent as "orchestrator" on main-thread calls today).
+#                  main thread, except in a session started with --agent,
+#                  where it names that agent (Claude Code hooks reference,
+#                  verified 2026-11-02). DAAF does not start sessions with
+#                  --agent; one that did would have every orchestrator
+#                  dispatch denied here. audit-log.sh writes "orchestrator"
+#                  into its log itself; the field is not sent that way.
 #
 # DECISION
 #   AGENT_ID   = .agent_id   // empty
@@ -52,11 +56,12 @@
 #   caller triggers the deny.
 #
 #   ASSUMPTION (single-literal carve-out): the allow-set is exactly the
-#   lowercase literal "orchestrator" — deliberately narrow. Verified 2026-07-16:
-#   the harness sends NO agent_type on main-thread calls (audit-log.sh
-#   synthesizes the "orchestrator" default itself), so today this branch never
-#   fires. If a future harness starts labeling main-thread calls with any OTHER
-#   value or casing (e.g. "claude", "Orchestrator"), this hook hard-DENIES every
+#   lowercase literal "orchestrator" — deliberately narrow. The harness sends
+#   no agent_type on main-thread calls outside --agent sessions (observed
+#   2026-07-16; audit-log.sh synthesizes the "orchestrator" default itself),
+#   so this branch does not fire. If a harness starts labeling main-thread
+#   calls with any OTHER value or casing (e.g. "claude", "Orchestrator"), or
+#   a session is started with --agent, this hook hard-DENIES every
 #   orchestrator dispatch — a pipeline-halting failure, NOT a fail-open. If all
 #   dispatches suddenly deny after a harness upgrade, re-verify the on-wire
 #   contract here first. Do NOT casually broaden the allow-set as a fix:
@@ -87,12 +92,10 @@
 #         (the convention for Task/Agent-tool hooks, per enforce-explore-model.sh
 #         and enforce-model-ceiling.sh).
 #
-# DEPLOYMENT
-#   This script is a workspace deliverable. Human deployment into
-#   .claude/hooks/ (deny-protected) plus settings.json registration under BOTH
-#   the "Task" and "Agent" PreToolUse matchers (alongside the four existing
-#   dispatch hooks) is a user-only step the orchestrator coordinates after
-#   this draft passes its regression suite.
+# REGISTRATION
+#   Registered in .claude/settings.json under both the "Task" and "Agent"
+#   PreToolUse matchers, alongside the four other dispatch hooks. Hooks are
+#   changed only by the user (CLAUDE.md § Safety-System Integrity).
 #   Regression tests: tests/bash/block_nested_dispatch.bats.
 # ---------------------------------------------------------------------------
 

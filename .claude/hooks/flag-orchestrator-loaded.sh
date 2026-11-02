@@ -7,17 +7,18 @@
 # If so, writes a session-scoped flag file that remind-orchestrator.sh checks
 # to stop issuing reminders.
 #
-# Flag location — persistent home volume, NOT /tmp (changed 2026-07-15):
+# Flag location — persistent home volume, NOT /tmp:
 #   See remind-orchestrator.sh header for the full rationale. Short version:
 #   transcripts (~/.claude, claude-config volume) survive container rebuilds
 #   and resumed sessions reuse their original session_id, so the "skill
-#   already loaded" flag must survive rebuilds too. The old /tmp flag was
-#   wiped by every rebuild, causing a redundant skill re-load on the first
-#   prompt of every resumed session.
+#   already loaded" flag lives in ~/.claude/daaf-state/ and survives rebuilds
+#   too. A /tmp flag would be wiped by every rebuild, and the first prompt of
+#   every resumed session would load the skill again.
 #
 # Housekeeping: flags older than 30 days are pruned at write time (i.e., once
 # per session, when the skill loads — negligible cost). 30 days matches Claude
-# Code's default transcript retention (cleanupPeriodDays): a session whose
+# Code's default transcript retention (cleanupPeriodDays defaults to 30;
+# Claude Code settings docs, verified 2026-11-02): a session whose
 # transcript has been cleaned up can no longer be resumed, so its flag is dead
 # weight. A pruned-too-early flag is harmless — the reminder simply fires once
 # more on that session's next resume.

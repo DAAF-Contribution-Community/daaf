@@ -102,15 +102,40 @@ case "$EXT" in
         ;;
 esac
 
-# Language-aware version suffix
+# Next unused revision name, printed in every "create a revision" command
+# below so an agent can copy it as is. Revisions add one letter: 02_src.py ->
+# 02_src_a.py -> 02_src_b.py (CLAUDE.md § Versioning & Naming). One trailing
+# `_<letter>` is stripped to find the sequence's root, so a logged 02_src_a.py
+# continues at 02_src_b.py. The root file is not required to exist: a
+# Reproducibility copy 01_x_repro_a.py continues at 01_x_repro_b.py with no
+# 01_x_repro.py beside it. Then the first letter whose file does not exist is
+# taken, because create_script_revision.sh refuses an existing destination. A
+# script whose own name ends in `_<letter>` gets a sibling name, never the
+# name of an existing file.
 BASE="${SCRIPT_PATH%.${EXT}}"
+REV_ROOT="$BASE"
+if [[ "$BASE" =~ _[a-z]$ ]]; then
+    REV_ROOT="${BASE%_?}"
+fi
+NEXT_REVISION=""
+for rev_letter in {a..z}; do
+    if [ ! -e "${REV_ROOT}_${rev_letter}.${EXT}" ]; then
+        NEXT_REVISION="${REV_ROOT}_${rev_letter}.${EXT}"
+        break
+    fi
+done
+if [ -z "$NEXT_REVISION" ]; then
+    NEXT_REVISION="${REV_ROOT}_<next unused letter>.${EXT}"
+fi
 
 # Check if script already has an execution log
 if grep -q "^# EXECUTION LOG" "$SCRIPT_PATH"; then
-    echo "WARNING: Script already has an execution log." >&2
-    echo "If you need to re-run with fixes, create a new version:" >&2
-    echo "  bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH ${BASE}_a.${EXT}" >&2
-    echo "Then run the new version." >&2
+    echo "BLOCKED: This script was not run. It already has an execution log, which" >&2
+    echo "stays as the record of that run." >&2
+    echo "Detail: run_with_capture.sh — re-run refused (execution log present)" >&2
+    echo "To run a fixed version, create a revision, apply your fixes to it, and run it:" >&2
+    echo "  bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH $NEXT_REVISION" >&2
+    echo "  bash /daaf/scripts/run_with_capture.sh $NEXT_REVISION" >&2
     exit 1
 fi
 
@@ -161,9 +186,10 @@ fi
 # before the verb (["uv","pip","--python","3.12","install"]), or a list whose
 # elements sit on separate lines or have unusual whitespace. Forms
 # §8 blocks at the command line but this scan does not token (uvx, `uv run
-# --with`, conda update/create) are residuals too. These mirror the
-# shell-hook §8 residual class and are accepted (the hook and, for coding
-# agents, enforce-file-first.sh remain in depth behind this scan).
+# --with`, `python -m ensurepip`, conda update/create and conda env
+# update/create) are residuals too. Nothing else catches these forms inside a
+# script body: bash-safety.sh §8 and enforce-file-first.sh check only the Bash
+# command line.
 if [ "$EXT" = "py" ]; then
     # The Python SCAN_TOKENS is the four PY_*_TOKENS alternations joined with
     # `|`; PY_LIST_FLAGS (zero or more quoted `-...` list elements) is spliced
@@ -182,7 +208,9 @@ fi
 
 if [ -n "$INSTALL_HITS" ]; then
     echo "============================================================" >&2
-    echo "BLOCKED: run_with_capture.sh — runtime package install detected" >&2
+    echo "BLOCKED: This script was not run. It installs, updates or removes" >&2
+    echo "packages, which DAAF does only through the Dockerfile." >&2
+    echo "Detail: run_with_capture.sh — runtime package install detected" >&2
     echo "============================================================" >&2
     echo "Offending line(s) in $SCRIPT_PATH:" >&2
     echo "$INSTALL_HITS" >&2
@@ -195,11 +223,12 @@ if [ -n "$INSTALL_HITS" ]; then
     echo "" >&2
     echo "WHAT TO DO:" >&2
     echo "  1. Remove the install call from the script." >&2
-    echo "  2. If the package is genuinely missing, STOP and report to the" >&2
-    echo "     orchestrator/user so it can be added to the Dockerfile (the" >&2
-    echo "     user additions block near the end) and the container rebuilt:" >&2
-    echo "     exit the container, then run 'bash rebuild_daaf.sh'" >&2
-    echo "     ('.\\rebuild_daaf.ps1' on Windows) from the daaf-docker folder." >&2
+    echo "  2. If the package is genuinely missing, STOP and report it to the" >&2
+    echo "     orchestrator/user. To add it: put it in /daaf/Dockerfile (the" >&2
+    echo "     user additions block near the end), exit the container, then" >&2
+    echo "     choose 10) Rebuild Container in the DAAF Control Panel, or run" >&2
+    echo "     'bash rebuild_daaf.sh' ('.\\rebuild_daaf.ps1' on Windows) from" >&2
+    echo "     the daaf-docker folder." >&2
     echo "" >&2
     echo "NOTE: NO execution log was appended — immutable script versioning has" >&2
     echo "NOT engaged. You may edit THIS script file in place and re-run it once" >&2
@@ -251,7 +280,7 @@ fi
 #
 # SECRET-NAME-VOCAB v1 — keep identical in: output-scanner.sh, audit-log.sh, run_with_capture.sh
 SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"
-SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"
+SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP CLAUDE_CODE_SESSION_ID"
 # A NAME is credential-named when one of its underscore-delimited segments is
 # in the vocabulary. Q matches either quote character around a literal name.
 Q="[\"']"
@@ -315,7 +344,9 @@ fi
 
 if [ -n "$SECRET_HITS" ]; then
     echo "============================================================" >&2
-    echo "BLOCKED: run_with_capture.sh — environment-secret print detected" >&2
+    echo "BLOCKED: This script was not run. It appears to print environment" >&2
+    echo "variables, which can hold your API keys, into its permanent execution log." >&2
+    echo "Detail: run_with_capture.sh — environment-secret print detected" >&2
     echo "============================================================" >&2
     echo "Offending line(s) in $SCRIPT_PATH (line text withheld):" >&2
     printf '%s' "$SECRET_HITS" >&2
@@ -464,7 +495,7 @@ on_signal() {
         echo "An execution log had ALREADY been appended before the signal arrived," >&2
         echo "but it was NOT verified. Treat this run as EVIDENCE INCOMPLETE:" >&2
         echo "immutable versioning has engaged, so create a clean revision and re-run:" >&2
-        echo "  bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH ${BASE}_a.${EXT}" >&2
+        echo "  bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH $NEXT_REVISION" >&2
     else
         echo "No execution log was appended; the script remains runnable in place." >&2
     fi
@@ -500,9 +531,8 @@ echo ""
 # --- Execute -----------------------------------------------------------------
 # Timing in integer seconds (avoids bc dependency and macOS date +%N
 # incompatibility). Both pipeline statuses are read: [0] is the script's own
-# exit code (COMPUTATION), [1] is tee's (CAPTURE). Under the old single-status
-# read a failed tee left a truncated buffer that was then archived as if it
-# were the complete output.
+# exit code (COMPUTATION), [1] is tee's (CAPTURE). A failed tee leaves a
+# truncated buffer, which must not be archived as the complete output.
 START_TIME=$(date +%s)
 "$INTERPRETER" "$SCRIPT_PATH" 2>&1 | tee "$CAPTURE_BUF"
 PIPE_STATUS=("${PIPESTATUS[@]}")
@@ -623,10 +653,10 @@ if [ -z "$PERSIST_FAIL" ] && [ "$CAPTURE_OK" -eq 1 ]; then
         echo "Next steps:"
         echo "  1. Review the execution log appended to the script"
         echo "  2. Create a clean revision (strips the appended execution log):"
-        echo "     bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH ${BASE}_a.${EXT}"
+        echo "     bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH $NEXT_REVISION"
         echo "  3. Apply fixes to the new version"
         echo "  4. Run the new version:"
-        echo "     bash /daaf/scripts/run_with_capture.sh ${BASE}_a.${EXT}"
+        echo "     bash /daaf/scripts/run_with_capture.sh $NEXT_REVISION"
     fi
     exit "$EXIT_CODE"
 fi
@@ -660,7 +690,7 @@ if [ -n "$PERSIST_FAIL" ] && ! grep -q "^# EXECUTION LOG" "$SCRIPT_PATH"; then
 else
     echo "  - An execution log IS present on the script (immutable versioning has" >&2
     echo "    engaged). Create a clean revision and re-run it:" >&2
-    echo "    bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH ${BASE}_a.${EXT}" >&2
+    echo "    bash /daaf/scripts/create_script_revision.sh $SCRIPT_PATH $NEXT_REVISION" >&2
 fi
 echo "  - Keep the retained capture buffer as failure evidence; report the" >&2
 echo "    exit-74 outcome and this banner to the orchestrator/user." >&2

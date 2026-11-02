@@ -40,10 +40,14 @@ SITE_EXTRA_PROTECTED_DIRS=('benchmarks/harness/hooks')
 # Where the §6 /tmp messages tell the model to put working files.
 SITE_SCRATCH_DIR='{PROJECT_DIR}/scripts/scratch/'
 
-# The §8 package-install messages end with "rebuild ${SITE_REBUILD_HINT}."
+# The sentence that ends each §8 package-install message: where to add the
+# package and how to rebuild. The sentence before it ends on the package, so
+# "it" reads as the package. DAAF's Control Panel menu labels the rebuild
+# "10) Rebuild Container"; the user additions block is the USER ADDITIONS
+# section near the end of the Dockerfile, which rebuilds fast.
 # SC2016: the backticks are literal message text, not expansions.
 # shellcheck disable=SC2016
-SITE_REBUILD_HINT='(exit the container, then run `bash rebuild_daaf.sh` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild'
+SITE_REBUILD_HINT='Add it to /daaf/Dockerfile (the user additions block), then choose 10) Rebuild Container in the DAAF Control Panel, or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your daaf-docker folder.'
 
 # The closing alternative in the §9 category D (interpreter one-liner
 # environment print) message. DAAF's script runner scans for environment prints.

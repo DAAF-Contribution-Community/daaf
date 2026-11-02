@@ -83,7 +83,7 @@ setup() {
 
 teardown() {
     # rm -rf the whole per-test scratch dir removes every cache file AND the
-    # (empty) directory the Convention 6 EISDIR test plants at a gate path, so no
+    # (empty) directory the EISDIR redirection test plants at a gate path, so no
     # cross-test residue survives and nothing is left under the repo for the
     # workspace-invariants check.
     rm -rf "$SCRATCH_DIR"
@@ -674,9 +674,8 @@ _claude_extended_matrix() {
 # *opus-5*: its only Opus entry is the anchored claude-opus-5-5 slug (added
 # 2026-09-23), so Opus 5 keeps 40/60/75% + 150/200/250k.
 #
-# NOTE (historical): these four cases were written ahead of the user-applied
-# research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261/context-reporter_opus5.patch;
-# that patch is deployed, and they pass against the live hook.
+# NOTE (historical): these four cases were written ahead of a user-applied
+# hook patch; that patch is deployed, and they pass against the live hook.
 # =========================================================================
 
 @test "mixed: bare claude-opus-5 subagent maps to 1000k and is ELEVATED at 150k" {
@@ -1318,13 +1317,12 @@ _claude_extended_matrix() {
 # ############################################################################
 # HARDENING CASES (2026-07-20 StatuslineHardening)
 # ----------------------------------------------------------------------------
-# The cases below exercise the CORRECTED logic in context-reporter.proposed.sh
-# (findings 2,3,4,7,8,10,11). They are parameterized on CONTEXT_REPORTER_SH:
-# run them against the proposed copy pre-apply, e.g.
-#   CONTEXT_REPORTER_SH=/daaf/research/2026-07-20_FrameworkDev_StatuslineHardening/context-reporter.proposed.sh \
+# The cases below exercise the CORRECTED logic from the 2026-07-20 hardening
+# pass (findings 2,3,4,7,8,10,11), now in the installed hook, and pass against
+# the default (installed) path. They are parameterized on CONTEXT_REPORTER_SH,
+# so a draft can be checked before it is installed, e.g.
+#   CONTEXT_REPORTER_SH=/path/to/draft.sh \
 #     bats /daaf/tests/bash/context_reporter.bats
-# Once the user copies the proposed file over the installed hook from the host,
-# they pass with the default (installed) path too.
 # ############################################################################
 
 # --- Additional fixture helpers for the hardening cases ---
@@ -1347,7 +1345,8 @@ _payload_subagent_aid() {
 
 # Emit a DIRECT-subagent payload: transcript_path IS the subagent's own
 # transcript (basename agent-<agent>.jsonl), the future-Claude-Code shape that
-# Convention 10 guards. No parent transcript is available to scan.
+# the parent-model isolation guards cover. No parent transcript is available
+# to scan.
 _payload_direct_subagent() {
     # $1 = path to the subagent's own transcript (basename = agent-<agent>.jsonl)
     printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s","agent_id":"%s"}' \
@@ -1377,7 +1376,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 2 — identifier allowlist before path construction (finding 2)
+# Identifier allowlist before path construction
 # =========================================================================
 
 @test "adversarial session_id is rejected before any path build (exit 0, no injection)" {
@@ -1439,7 +1438,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 4 — full-transcript usage recovery (finding 3)
+# Full-transcript usage recovery
 # =========================================================================
 
 @test "full-scan recovery: >50 trailing zero-token placeholders do not hide real usage" {
@@ -1468,7 +1467,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 3 — closed-set flagship classifier grammar (finding 4)
+# Closed-set flagship classifier grammar
 # =========================================================================
 # The physical-window classifier must grant the 1,050,000 flagship window ONLY
 # to exact closed-set matches. Malformed codenames that the OLD broad glob
@@ -1517,7 +1516,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 5 — bounded numerator before x100 (finding 10)
+# Bounded numerator before x100
 # =========================================================================
 # The exact boundary floor(INT64_MAX/100) = 92233720368547758. jq coerces usage
 # sums through IEEE-754 doubles, so the input_tokens literals below are chosen as
@@ -1551,12 +1550,11 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 10 — parent-model isolation on a direct subagent transcript
-# (finding 7)
+# Parent-model isolation on a direct subagent transcript
 # =========================================================================
 
 @test "direct subagent transcript: session model comes from the parent cache, subagent mapped by its OWN window" {
-    # Target scenario from Convention 10: parent ctx cache 1,000,000; legacy
+    # Target scenario: parent ctx cache 1,000,000; legacy
     # parent model Fable; a DIRECT Sonnet subagent transcript; usage 100,000; no
     # subagent-model cache. Must report 100k / 200k (50%) ELEVATED (Sonnet's own
     # conservative window) -- NOT 100k / 1000k (10%), which is the pre-fix bug
@@ -1590,7 +1588,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 11 — future/corrupt gate timestamp (finding 8)
+# Future/corrupt gate timestamp
 # =========================================================================
 
 @test "future gate timestamp is treated as corrupt (reset to 0) and does not suppress the report" {
@@ -1616,7 +1614,7 @@ _write_main_transcript_raw_tokens() {
 }
 
 @test "a legitimate recent-past gate timestamp still suppresses within the interval" {
-    # Regression guard: the Convention 11 reset must not defeat normal rate
+    # Regression guard: the corrupt-timestamp reset must not defeat normal rate
     # limiting. A valid value a few seconds in the past stays under 60s.
     _seed_window 1000000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
@@ -1627,12 +1625,12 @@ _write_main_transcript_raw_tokens() {
 }
 
 # =========================================================================
-# Convention 6 — suppress redirection-open diagnostics (finding 11)
+# Suppress redirection-open diagnostics
 # =========================================================================
 
 @test "gate write open() failure (gate path is a directory) leaks no diagnostic and still injects" {
     # Force an open() failure by making the gate path (under the test cache seam)
-    # an (empty) DIRECTORY: EISDIR on the '>' redirect. Convention 6 wraps the
+    # an (empty) DIRECTORY: EISDIR on the '>' redirect. The hook wraps the
     # write so the "Is a directory" diagnostic cannot reach the display stream;
     # the injection still emits and the hook exits 0. teardown's rm -rf of the
     # scratch dir removes the planted directory.
@@ -1719,22 +1717,19 @@ _write_main_transcript_raw_tokens() {
 # (then 30/40/50% + 300/400/500k; 40/50/60% + 400/500/600k since the
 # 2026-10-23 user policy decision), by USER POLICY DECISION of 2026-09-23 (not by
 # validation)
-# (research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
+# (maintainer-only record, not shipped:
+# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
 # § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
 # as a provider path's final segment), NEVER *opus-5* and never a loose
 # *opus-5-5* substring: bare
 # Opus 5 must keep the conservative gates, which the last two cases lock, and
 # near misses are locked by the boundary-anchoring block appended below.
 #
-# NOTE (historical): the two PROFILE cases below were written ahead of the
-# user-applied
-# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/context-reporter_opus55.patch;
-# that patch is deployed, and they pass against the live hook. The two WINDOW cases and the two
+# NOTE (historical): the two PROFILE cases below were written ahead of a
+# user-applied hook patch; that patch is deployed, and they pass against the
+# live hook. The two WINDOW cases and the two
 # bare-Opus-5 lock cases pass with or without the patch (the physical-window
 # *opus-5* arm already substring-matches claude-opus-5-5).
-# Before deployment, the profile cases were proven against the proposed hook with:
-#   CONTEXT_REPORTER_SH=<workspace>/scripts/scratch/context-reporter.mod.sh \
-#     bats tests/bash/context_reporter.bats
 # =========================================================================
 
 @test "mixed: bare claude-opus-5-5 subagent maps to a 1000k window" {
@@ -1929,11 +1924,11 @@ _write_main_transcript_raw_tokens() {
 # its non-pro base; gpt-6-sol reads as gpt-5.6-sol (1.05M window + extended
 # tier); gpt-6-luna reads as gpt-5.6-luna (1.05M window, conservative tier);
 # gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
-# Provenance: research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames.
+# Provenance (maintainer-only record, not shipped:
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames).
 #
 # PATCH DEPENDENCE (historical): .claude/hooks/context-reporter.sh is
-# deny-protected, so the change shipped as the user-applied
-# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/context-reporter_dotted.patch.
+# deny-protected, so the change shipped as a user-applied patch.
 # It is applied and committed (98e0ba0), so every case in this block runs
 # against the live hook; no patched copy is needed.
 # =========================================================================
@@ -2374,11 +2369,11 @@ _static_window_from() {
 # the '#' id (window cache = raw payload 1000000) and the hook's second run
 # classified the '#' id as conservative -> [CRITICAL] 350k / 1000k (35%).
 # After the strip: cache = bare id, window cache = 919000 (ChatGPT-lane cap),
-# hook -> [ELEVATED] 350k / 919k (38%). Reviewer recipe:
-# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/scripts/scratch/
-# 2026-09-29_phase4-r34-review/03_sighit_probe.sh. Fail-before is demonstrated by
+# hook -> [ELEVATED] 350k / 919k (38%). Reviewer recipe (maintainer-only, not shipped):
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/probes/2026-09-29_phase4-r34-review/03_sighit_probe.sh.
+# Fail-before is demonstrated by
 # pointing CONTEXT_BAR_SH at the pre-strip copy in that workspace's
-# scripts/scratch/2026-09-29_effort-suffix/.
+# probes/2026-09-29_effort-suffix/.
 #
 # Args: $1 statusline .model.id carrying a '#<effort>' suffix. The transcript
 # carries the bare id (what the shim echoes back as the response model).

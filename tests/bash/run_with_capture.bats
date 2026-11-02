@@ -366,6 +366,64 @@ setup() {
     [ "$status" -eq 1 ]
 }
 
+# --- Revision name suggested in the printed commands -------------------------
+# Every "create a revision" command names the next unused revision: one
+# trailing _<letter> is stripped to find the root, then the first letter whose
+# file does not exist is taken (create_script_revision.sh refuses an existing
+# destination). Fixtures carry a marker line, so the wrapper refuses them
+# before running anything.
+
+@test "re-run refusal names the first revision for an original script (02_src.py -> 02_src_a.py)" {
+    local d="${BATS_TEST_TMPDIR}"
+    printf '%s\n' 'print("x")' '' '# EXECUTION LOG' > "${d}/02_src.py"
+    run bash "$RUN_WITH_CAPTURE_SH" "${d}/02_src.py"
+    [ "$status" -eq 1 ]
+    assert_output --partial "BLOCKED: This script was not run."
+    assert_output --partial "create_script_revision.sh ${d}/02_src.py ${d}/02_src_a.py"
+    assert_output --partial "run_with_capture.sh ${d}/02_src_a.py"
+}
+
+@test "re-run refusal on a revision continues the sequence (02_src_a.py -> 02_src_b.py)" {
+    local d="${BATS_TEST_TMPDIR}"
+    printf '%s\n' 'print("x")' '' '# EXECUTION LOG' > "${d}/02_src.py"
+    printf '%s\n' 'print("x")' '' '# EXECUTION LOG' > "${d}/02_src_a.py"
+    run bash "$RUN_WITH_CAPTURE_SH" "${d}/02_src_a.py"
+    [ "$status" -eq 1 ]
+    assert_output --partial "create_script_revision.sh ${d}/02_src_a.py ${d}/02_src_b.py"
+    refute_output --partial "02_src_a_a.py"
+}
+
+@test "re-run refusal skips revision names that already exist (01_src.py with _a and _b present -> 01_src_c.py)" {
+    local d="${BATS_TEST_TMPDIR}"
+    printf '%s\n' 'print("x")' '' '# EXECUTION LOG' > "${d}/01_src.py"
+    printf '%s\n' 'print("a")' > "${d}/01_src_a.py"
+    printf '%s\n' 'print("b")' > "${d}/01_src_b.py"
+    run bash "$RUN_WITH_CAPTURE_SH" "${d}/01_src.py"
+    [ "$status" -eq 1 ]
+    assert_output --partial "create_script_revision.sh ${d}/01_src.py ${d}/01_src_c.py"
+}
+
+@test "re-run refusal continues a revision whose root file is absent (01_x_repro_a.R -> 01_x_repro_b.R)" {
+    local d="${BATS_TEST_TMPDIR}"
+    printf '%s\n' 'cat("x\n")' '' '# EXECUTION LOG' > "${d}/01_x_repro_a.R"
+    run bash "$RUN_WITH_CAPTURE_SH" "${d}/01_x_repro_a.R"
+    [ "$status" -eq 1 ]
+    assert_output --partial "create_script_revision.sh ${d}/01_x_repro_a.R ${d}/01_x_repro_b.R"
+}
+
+@test "failed run's next steps name the next unused revision (03_src_a.py -> 03_src_b.py)" {
+    python3() { printf 'partial work\n'; return 7; }
+    export -f python3
+    local d="${BATS_TEST_TMPDIR}"
+    printf '%s\n' '# root' > "${d}/03_src.py"
+    printf '%s\n' '# inert fixture' > "${d}/03_src_a.py"
+    run bash "$RUN_WITH_CAPTURE_SH" "${d}/03_src_a.py"
+    [ "$status" -eq 7 ]
+    assert_output --partial "create_script_revision.sh ${d}/03_src_a.py ${d}/03_src_b.py"
+    assert_output --partial "run_with_capture.sh ${d}/03_src_b.py"
+    refute_output --partial "03_src_a_a.py"
+}
+
 # --- Regression: usage / missing-file paths unchanged -----------------------
 
 # NOTE: historically a missing argument died on the `set -u` nounset preamble
@@ -948,7 +1006,7 @@ _expect_scan_pass() {
     run grep -c '^# SECRET-NAME-VOCAB v1 — keep identical in: output-scanner.sh, audit-log.sh, run_with_capture.sh$' "$RUN_WITH_CAPTURE_SH"
     assert_output "1"
     grep -q '^SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"$' "$RUN_WITH_CAPTURE_SH"
-    grep -q '^SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"$' "$RUN_WITH_CAPTURE_SH"
+    grep -q '^SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP CLAUDE_CODE_SESSION_ID"$' "$RUN_WITH_CAPTURE_SH"
 }
 
 # ============================================================================

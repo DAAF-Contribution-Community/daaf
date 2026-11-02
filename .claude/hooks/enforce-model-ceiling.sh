@@ -13,19 +13,20 @@
 #   stated tier.
 #
 #   Ranks (by substring match on the resolved model id/alias):
-#     haiku = 1, sonnet = 2, opus = 3, fable = 4
+#     haiku = 1, sonnet = 2, opus = 3, fable = 4, mythos = 4
+#   Mythos shares Fable's rank, so a Mythos session's ceiling alias is fable
+#   (no DAAF agent asks for more than opus).
 #   A requested rank strictly greater than the session rank is denied.
 #
-# SUBAGENT MODEL RESOLUTION (Claude Code sub-agents docs, fetched 2026-10-12)
-#   1. the per-invocation `model` parameter (Agent tool enum: sonnet | opus |
-#      haiku | fable — Claude aliases only; enum observed in the orchestrator's
-#      Agent tool schema on 2026-10-12, not listed in the public docs)
+# SUBAGENT MODEL RESOLUTION (Claude Code subagents docs, verified 2026-11-02)
+#   1. the per-invocation `model` parameter (Agent tool: sonnet | opus |
+#      haiku | fable — Claude aliases only, never a full model ID)
 #   2. the agent definition's `model:` frontmatter (`inherit` = main model)
 #   3. CLAUDE_CODE_SUBAGENT_MODEL
 #   4. the main conversation's model
 #   Since Claude Code 2.1.251, CLAUDE_CODE_SUBAGENT_MODEL is only that level-3
 #   FALLBACK for subagents without a model of their own. Every DAAF agent sets
-#   `model: opus|sonnet`, so it no longer overrides DAAF dispatches. Only
+#   `model: opus|sonnet`, so it does not override DAAF dispatches. Only
 #   CLAUDE_CODE_SUBAGENT_MODEL_FORCE (2.1.257+, documented "Set to 1") forces one
 #   model (CLAUDE_CODE_SUBAGENT_MODEL, or the main model when that is unset) onto
 #   every subagent and stops Claude passing a per-dispatch model.
@@ -53,13 +54,14 @@
 #      `model:` field parsed from the dispatched agent's frontmatter
 #      (/daaf/.claude/agents/{subagent_type}.md). Missing file, absent field,
 #      or `inherit` -> ALLOW (nothing to constrain; inherit tracks the session).
-#   d. Resolve the SESSION model from the transcript (same extraction approach
-#      as cache_model() in context-reporter.sh), then fall back to the model
-#      cache file /tmp/claude-model-${SESSION_ID}. Neither available -> ALLOW
+#   d. Resolve the SESSION model: the last real model in the transcript's
+#      final 50 lines, else the /tmp/claude-model-${SESSION_ID} cache that
+#      context-reporter.sh keeps current. Neither available -> ALLOW
 #      (fail-open) with a stderr note.
 #   e. Classify both models into ranks by substring match.
-#   f. Session model detected but matches NO Claude family (non-Claude provider,
-#      e.g. GLM via OpenRouter) AND requested model IS Claude-family -> DENY.
+#   f. Session model detected but matches NO Claude family in the rank table
+#      (non-Claude provider, e.g. GLM via OpenRouter) AND requested model IS
+#      Claude-family -> DENY.
 #      The requested Claude tier almost certainly does not exist on the user's
 #      endpoint, and a per-dispatch fix is impossible (the parameter accepts
 #      only Claude aliases), so point the user at the tier-alias env vars.
@@ -88,10 +90,11 @@
 # OUTPUT  Allow: exit 0 (no JSON). Deny: JSON permissionDecision=deny
 #         (the convention for Task/Agent-tool hooks, per enforce-explore-model.sh).
 #
-# DEPLOYMENT
-#   This script is a workspace deliverable. Human deployment into
-#   .claude/hooks/ (deny-protected) plus settings.json registration is
-#   documented in DEPLOYMENT.md alongside this file.
+# REGISTRATION
+#   Registered in .claude/settings.json under both the Task and Agent
+#   PreToolUse matchers. Hooks are changed only by the user (CLAUDE.md
+#   § Safety-System Integrity). Regression tests:
+#   tests/bash/enforce_model_ceiling.bats.
 # ---------------------------------------------------------------------------
 
 # -u: catch unset-variable typos. Deliberately omit -e: this hook inspects
@@ -138,7 +141,8 @@ deny() {
 # ---------------------------------------------------------------------------
 # rank_of: classify a model id/alias into a tier rank by substring match.
 # Echoes 1..4 for a known Claude family, or 0 when no family matches
-# (empty input or a non-Claude provider slug).
+# (empty input or a non-Claude provider slug). Mythos ranks with Fable, so
+# alias_of_rank names fable as a Mythos session's tier.
 # ---------------------------------------------------------------------------
 rank_of() {
   local m
@@ -147,7 +151,7 @@ rank_of() {
     *haiku*)  echo 1 ;;
     *sonnet*) echo 2 ;;
     *opus*)   echo 3 ;;
-    *fable*)  echo 4 ;;
+    *fable*|*mythos*) echo 4 ;;
     *)        echo 0 ;;
   esac
 }
@@ -211,9 +215,10 @@ fi
 # --- (d) Resolve the session model: transcript first, then cache file ---
 SESSION_MODEL=""
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  # Same extraction approach as context-reporter.sh cache_model(): the most
-  # recent assistant message carrying a `.message.model` field. tail -50 keeps
-  # this cheap — the latest usage/model entry is always near the file end.
+  # The most recent entry carrying a real `.message.model` in the last 50
+  # lines. The 50-line window is a cost shortcut: a long run of placeholder
+  # entries can push the model out of it, and then the cache below decides
+  # (context-reporter.sh scans the whole transcript to keep that cache right).
   SESSION_MODEL=$(tail -50 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r '
     select(.message.model and .message.model != "<synthetic>") | .message.model
   ' 2>/dev/null | tail -1) || SESSION_MODEL=""
@@ -238,7 +243,7 @@ SESS_RANK=$(rank_of "$SESSION_MODEL")
 
 # --- (f) Non-Claude session + Claude-family request -> deny with remap guidance ---
 if [ "$SESS_RANK" -eq 0 ] && [ "$REQ_RANK" -gt 0 ]; then
-  deny "Session runs a non-Claude model (${SESSION_MODEL}) — the requested Claude tier '${REQUESTED_MODEL}' does not exist on this endpoint and would fail or silently downgrade. This cannot be fixed per dispatch: the Agent tool's model parameter accepts only the Claude aliases sonnet | opus | haiku | fable. Ask the user to map DAAF's tier aliases to their provider's models in environment_settings.txt — ANTHROPIC_DEFAULT_OPUS_MODEL and ANTHROPIC_DEFAULT_SONNET_MODEL (the tiers DAAF agents use) and, for full coverage, ANTHROPIC_DEFAULT_HAIKU_MODEL (also used for Claude Code's housekeeping calls, such as naming the session) and ANTHROPIC_DEFAULT_FABLE_MODEL — then recreate the container and start a new session. See the model routing section of environment_settings.txt."
+  deny "Session runs a non-Claude model (${SESSION_MODEL}) — the requested Claude tier '${REQUESTED_MODEL}' does not exist on this endpoint and would fail or silently downgrade. This cannot be fixed per dispatch: the Agent tool's model parameter accepts only the Claude aliases sonnet | opus | haiku | fable. Ask the user to map DAAF's tier aliases to their provider's models in environment_settings.txt — ANTHROPIC_DEFAULT_OPUS_MODEL and ANTHROPIC_DEFAULT_SONNET_MODEL (the tiers DAAF agents use) and, for full coverage, ANTHROPIC_DEFAULT_HAIKU_MODEL (also used for Claude Code's housekeeping calls, such as naming the session) and ANTHROPIC_DEFAULT_FABLE_MODEL — then restart the container (DAAF Control Panel option 11, Restart Container) and start a new Claude Code session. See the Model Routing section of environment_settings.txt."
 fi
 
 # If the requested model isn't a recognized Claude family (custom/non-Claude
