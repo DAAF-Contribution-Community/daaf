@@ -1472,7 +1472,7 @@ JSON
 # gpt-6-terra; bare gpt-6 and GPT-6 mini/chat stay unregistered. context-bar.sh
 # applies no quality tier, so only the physical window and the lane cap are
 # asserted here. Windows per the OpenRouter catalogue fetched 2026-09-29
-# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/).
+# (https://openrouter.ai/api/v1/models).
 # =========================================================================
 
 @test "gpt-6-sol, gpt-6-luna, and flagship -pro slugs map to the 1,050,000 window" {

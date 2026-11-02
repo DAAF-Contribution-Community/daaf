@@ -13,7 +13,7 @@ Complete reference for PSEO variables, codes, and status flags.
 >
 > **Key Points:**
 > - All variable names are **lowercase** in Portal data
-> - `opeid` is an **8-character string** (zero-padded, e.g. `"00182600"`; may contain letters), not an integer
+> - `opeid` is an **8-character string** (zero-padded, e.g. `"00182600"`; may contain letters) in the 2001-2018 shards but **Int64** (leading zeros dropped, e.g. `365800`) in the 2019-2021 shards of the pinned mirror vintage; normalize before joining
 > - `cipcode` is a **2-digit integer** (e.g., `11` for Computer Science)
 > - `industry` is a **String**, not an integer (e.g., `"54"`, `"31-33"`)
 > - Missing data codes: `-1` (missing), `-2` (not applicable), `-3` (suppressed) — but PSEO earnings columns were observed as `-1` only, never `-3` (see Missing Data Codes below)
@@ -43,12 +43,12 @@ Complete reference for PSEO variables, codes, and status flags.
 | Variable | Description | Type |
 |----------|-------------|------|
 | `unitid` | IPEDS Unit ID | Integer |
-| `opeid` | Office of Postsecondary Education ID | String (8 characters, zero-padded) |
+| `opeid` | Office of Postsecondary Education ID | String (8 characters, zero-padded) in 2001-2018 shards; Int64 (no leading zeros) in 2019-2021 shards |
 | `fips` | State FIPS code of institution | Integer |
 
-> **Note:** Portal stores `unitid` as an integer and `opeid` as an 8-character string; the Census API uses `INSTITUTION` in the same 8-character form (e.g., "00365800").
+> **Note:** Portal stores `unitid` as an integer. `opeid` is an 8-character string in the 2001-2018 mirror shards and an Int64 without leading zeros in the 2019-2021 shards; the Census API uses `INSTITUTION` in the 8-character form (e.g., "00365800"). Normalize every shard with `pl.col("opeid").cast(pl.String).str.zfill(8)` (R: `stringr::str_pad(as.character(opeid), width = 8, pad = "0")`) before concatenating or joining; a relaxed concat otherwise leaves `"00365800"` and `"365800"` side by side.
 >
-> **Provenance (`opeid` dtype):** observed in an executed mirror load of `pseo/colleges_pseo_2018` on 2026-07-16 (Hugging Face `main`, not the pinned revision; values `00182600` and `0033290W`, run log `research/2026-07-16_institutional_predictors_1/scripts/stage5_fetch/02_gate-pseo-testfile_b_b.R`), and in a Portal API probe of 2026-10-19 returning `"opeid":"00365800"` (UT Austin). Same dtype on the pinned vintage is inference.
+> **Provenance (`opeid` dtype):** probed 2026-10-27 on the pinned mirror revision `0ad00ce0` (Portal v0.26.1). The schema is String in all 18 shards 2001-2018 (2018: 939 distinct opeid-unitid pairs, all 8 characters, one alphanumeric, `0033290W`) and Int64 in shards 2019-2021 (values 105100-30182251; UT Austin, unitid 228778, is `365800`). The skill's two example OPEIDs, `00182600` and `0033290W`, both carry `unitid` -1 (the Portal missing code) in the 2018 shard, so a unitid join or filter drops them. Maintainer-only run log, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-27_mA_pseo_probe_a.py`. A Portal API probe of 2026-10-19 returned `"opeid":"00365800"` (UT Austin).
 
 ### Program Identifiers (Portal Integer Encoding)
 
@@ -192,6 +192,8 @@ df_clean <- df |> mutate(
 | 2-digit | Broad field | `11` = Computer and Information Sciences |
 
 > **Note:** Portal data uses 2-digit integer CIP codes only (no decimal points).
+>
+> **Observed on the pinned mirror vintage (Portal v0.26.1, revision `0ad00ce0`, probed 2026-10-27):** `cipcode` is Int64 in all 21 shards (2001-2021). In the two shards tabulated (2018, 2021) it holds bare 2-digit family codes plus `99` (45 and 43 distinct values; no 4- or 6-digit values), so `cipcode == 11` matches rows (150,390 in the 2018 shard). IPEDS `completions-2digcip` stores the same family in a 6-digit style (`110000`), and the Portal-derived PSEO variable list (`education-data-explorer` `variable-dictionary-pseo.md`) also labels values that way, but the PSEO file does not use it. To join PSEO to IPEDS completions, map the family code (×10000, leaving `99`); this mapping is inferred from the two probes, not a tested join. IPEDS also carries a few programs under full 6-digit codes beside their family code (e.g. `220101` beside `220000`, `511201` beside `510000`), and those rows sit outside the family row: in the IPEDS 1991 and 2023 shards (total rows), `cipcode == 99` equals the family rows plus these 6-digit rows (probed 2026-10-28). Add them to their family before comparing totals; whether PSEO's family code covers the same programs was not probed. Maintainer-only run logs, not shipped: `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-27_mA2_pseo_cipcode_probe.py`, `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/probes/2026-10-28_mB2_ipeds_completions_totals_probe_a.py`.
 
 ### Common 2-Digit CIP Codes (Portal Integers)
 
@@ -238,14 +240,14 @@ Full reference: [CIPCODE Labels (CSV)](https://lehd.ces.census.gov/data/schema/l
 
 ### Portal Format
 
-In the Education Data Portal, `unitid` is an integer and `opeid` an 8-character string:
+In the Education Data Portal, `unitid` is an integer; `opeid` is an 8-character string in the 2001-2018 mirror shards and an Int64 in the 2019-2021 shards (pinned mirror vintage):
 
 | Variable | Type | Example |
 |----------|------|---------|
 | `unitid` | Integer | `100751` (University of Alabama) |
-| `opeid` | String | `"00105100"` (8 characters, zero-padded) |
+| `opeid` | String (2001-2018) / Int64 (2019-2021) | `"00105100"` / `105100` |
 
-> **Note:** The Census API and the Portal both use 8-character OPEID strings (e.g., "00365800").
+> **Note:** The Census API uses 8-character OPEID strings (e.g., "00365800"); the Portal mirror matches that form only in its 2001-2018 shards. Zero-pad to 8 (see Institution Identifiers above) before joining.
 
 ### Example UNITID Values
 

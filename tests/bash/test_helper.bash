@@ -114,8 +114,8 @@ common_teardown() {
 # ============================================================================
 # Shared docker arms: the startup checks of backup_daaf.sh / restore_from_backup.sh
 # ============================================================================
-# Fix pass #26 (F1 compatibility, research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
-# scoping/04_F1_compat_audit.md) added three docker calls BEFORE anything is created:
+# Fix pass #26 (F1 compatibility; maintainer-only audit, not shipped:
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md) added three docker calls BEFORE anything is created:
 #   docker version --format '{{.Client.Version}} {{.Server.Version}}'   (refuse < 25)
 #   docker image inspect <pinned busybox>                               (present?)
 #   docker pull <pinned busybox>                                        (only if absent)

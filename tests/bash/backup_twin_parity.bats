@@ -1999,7 +1999,8 @@ _i3_attempt_guarded() {
 # ===========================================================================
 # F1 (fix pass #26): pinned helper image, version/image checks, PS hardening
 # ===========================================================================
-# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md:
+# Source (maintainer-only audit, not shipped:
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md):
 # the untagged `busybox` moved to the untested 1.38.0, so ONE digest-pinned string lives
 # in 7 places (the BUSYBOX_IMAGE / $BusyboxImage constant of backup, restore and migrate
 # .sh + .ps1, and docker-compose.yml's daaf-init image:). The backup/restore twins share

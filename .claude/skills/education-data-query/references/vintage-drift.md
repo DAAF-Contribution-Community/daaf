@@ -15,8 +15,9 @@ moved, *how much*, and *whether the change is real or cosmetic*, so you can size
 the reproducibility impact before re-running anything.
 
 **Evidence base.** Every figure here traces to the drift battery and build
-validation for the v2 update. The underlying artifacts (read these for full
-per-column detail, examples, and method notes):
+validation for the v2 update. The underlying artifacts are maintainer-only and
+not shipped; they hold the full per-column detail, examples, and method notes,
+and this file carries every figure an analysis needs:
 
 - Drift report: `research/2026-08-06_FrameworkDev_MirrorV2Update/2026-08-06_drift-battery/2026-08-06_vintage-drift-report.md`
 - Drift manifest + new-file profiles: `…/2026-08-06_drift-battery/drift_manifest.parquet`, `…/new_files_profile.parquet`, plus per-pair `drift_details/*__colstats.parquet` and `*__examples.parquet`

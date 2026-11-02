@@ -937,7 +937,8 @@ SH
 
 @test "chatgpt-lane auth preflight accepts a pre-existing-format auth.json unchanged (codex 0.153.2 upgrade regression guard)" {
     # Regression guard for the Codex CLI 0.144.1 -> 0.153.2 upgrade. Primary-source
-    # verification (research/2026-09-05_FrameworkDev_GPT6-Astra, notes 05) found NO
+    # verification (maintainer-only notes, not shipped:
+    # research/2026-09-05_FrameworkDev_GPT6-Astra, notes 05) found NO
     # change to `codex login status`, the auth.json schema/location, or the
     # device-auth flow across releases 0.145.0-0.153.4. This locks in that the
     # launcher's chatgpt-lane auth-store preflight still READS a pre-existing

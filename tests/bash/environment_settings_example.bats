@@ -16,8 +16,8 @@
 #
 # This lint enforces the machine-checkable invariants of that convention so a
 # future edit cannot silently reintroduce a parser hazard or drift the CONTENTS
-# map out of sync with the section banners. See the design record at
-# research/2026-07-12_FrameworkDev_InstallSettingsSeeding/.
+# map out of sync with the section banners. Design history (maintainer-only
+# record, not shipped: research/2026-07-12_FrameworkDev_InstallSettingsSeeding/).
 #
 # Assertions:
 #   (a) no UTF-8 BOM (first 3 bytes)
