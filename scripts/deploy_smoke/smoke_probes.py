@@ -5735,7 +5735,10 @@ def _t32_retrieval_signal(records):
     Either needs a recorded non-error tool_result: a call with no result or an
     errored one does not count. Returns "Skill <name>" or
     "Read <name>/<path inside the skill>", e.g.
-    "Read education-data-source-ccd/references/variable-definitions.md"."""
+    "Read education-data-source-ccd/references/variable-definitions.md".
+    These are T3.2's primary signals; a Bash command naming such a path is a
+    narrower one, sought only when no transcript holds either
+    (_t32_bash_signal, _evaluate_t32)."""
     for name, inp, is_error in _tool_calls(records):
         if is_error is not False:
             continue
@@ -5750,6 +5753,56 @@ def _t32_retrieval_signal(records):
             m = _T32_SKILL_FILE_RE.search(posixpath.normpath(raw)) if raw else None
             if m:
                 return f"Read {m.group(1)}/{m.group(2)}"
+    return None
+
+
+# A token in a Bash command that mentions 'education-data-', a candidate path.
+# The token ends at whitespace, a quote, a backtick or one of | ; & ) < >; the
+# shell is not parsed, so the rule is the path plus a non-empty result. The
+# token is matched after normalization (below), so a path written with '..'
+# segments counts by where it resolves, as for a Read.
+_T32_BASH_PATH_TOKEN_RE = re.compile(r"[^\s\"'`|;&)<>]*" + re.escape(_T32_SKILL_PREFIX) + r"[^\s\"'`|;&)<>]*")
+# The normalized token names an education-data-* skill folder itself or a path
+# inside it. "skills" must be a whole segment (or follow an option's '='), so a
+# lookalike folder such as myskills/ does not count.
+_T32_BASH_SKILL_PATH_RE = re.compile(r"(?:^|[/=])skills/(" + re.escape(_T32_SKILL_PREFIX) + r"[^/]+)(?:/(.*))?$")
+# Claude Code records a Bash call that printed nothing with this placeholder as
+# the tool_result text (observed 2026-10-30, Claude Code 2.1.281), so it counts
+# as empty output.
+_T32_BASH_NO_OUTPUT = "(Bash completed with no output)"
+
+
+def _t32_bash_signal(records):
+    """The first T3.2 Bash retrieval signal in one transcript's records, or None.
+
+    A signal is a Bash call whose command names a path under a
+    skills/education-data-*/ folder (a file or the folder itself, absolute or
+    relative; the first such path in the command, judged after
+    posixpath.normpath as for a Read, so '.../education-data-context/../polars/'
+    does not count) and whose recorded tool_result is non-error with non-empty
+    text (_T32_BASH_NO_OUTPUT counts as empty). Only the command's output
+    reaches the model (for a grep, the matching lines), so this is narrower
+    than a Skill load or a Read, and _evaluate_t32 seeks it only when no
+    transcript holds one of those. Returns "Bash <name>/<path inside the skill>"
+    or "Bash <name>/" for the folder, e.g.
+    "Bash education-data-source-ccd/references/variable-definitions.md"."""
+    texts = _tool_results_text(records)
+    for rec in records or []:
+        if not isinstance(rec, dict) or rec.get("type") != "assistant":
+            continue
+        msg = rec.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use" or block.get("name") != "Bash":
+                continue
+            res = texts.get(block.get("id"))
+            if res is None or res[0] or res[1].strip() in ("", _T32_BASH_NO_OUTPUT):
+                continue
+            command = _tool_input(block.get("input")).get("command")
+            for token in _T32_BASH_PATH_TOKEN_RE.findall(command if isinstance(command, str) else ""):
+                m = _T32_BASH_SKILL_PATH_RE.search(posixpath.normpath(token))
+                if m:
+                    return f"Bash {m.group(1)}/{m.group(2) or ''}"
     return None
 
 
@@ -5812,10 +5865,15 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
     and the default (continued) serves callers that judge the answer alone.
     FAIL when the resume did not continue the T3.1 session (state False) or
     the answer lacks Pre-K (_PREK_RE). Otherwise PASS needs a retrieval signal
-    (_t32_retrieval_signal) AND a checked resume; the Pre-K answer with no
-    signal is WARN ("answered without loading the skill": the model may know
-    the fact unaided, so retrieval is not proven), as is an unchecked resume
-    (state None).
+    AND a checked resume; the Pre-K answer with no signal is WARN ("answered
+    without loading the skill": the model may know the fact unaided, so
+    retrieval is not proven), as is an unchecked resume (state None).
+
+    A signal is a Skill load or Read (_t32_retrieval_signal) or, only when no
+    transcript holds one of those, a Bash command naming a path under an
+    education-data-* skill with non-empty output (_t32_bash_signal). A Bash
+    signal counts toward PASS like the others; the detail says it was a Bash
+    read, because only the command's output reached the model.
 
     In Data Lookup the orchestrator hands the lookup to a specialist
     (search-agent by default, source-researcher for a deep lookup), which loads
@@ -5823,21 +5881,20 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
     main transcript (records) or in any subagent transcript of the session,
     whatever its agent type (subagent_records, one record list per
     transcript). facts records the signal and where it was seen ("main" or
-    "subagent", main first); daaf-orchestrator loading is read from the main
-    transcript and reported in the detail. With no main-transcript records the
-    load is not checked: orchestrator_skill_loaded is None, as in T3.1, and the
-    detail names no load either way."""
+    "subagent", main first within each kind of signal); daaf-orchestrator
+    loading is read from the main transcript and reported in the detail. With
+    no main-transcript records the load is not checked:
+    orchestrator_skill_loaded is None, as in T3.1, and the detail names no load
+    either way."""
     text = response_text or ""
     subagent_records = list(subagent_records or ())
     resumed, resume_reason = resume
-    signal, where = _t32_retrieval_signal(records), "main"
-    if signal is None:
-        where = None
-        for sub in subagent_records:
-            signal = _t32_retrieval_signal(sub)
-            if signal is not None:
-                where = "subagent"
-                break
+    # Skill loads and Reads first, across every transcript (main, then each
+    # subagent); a Bash read is sought only when none of them holds one.
+    transcripts = [("main", records)] + [("subagent", sub) for sub in subagent_records]
+    signal, where = next(((found, place) for finder in (_t32_retrieval_signal, _t32_bash_signal)
+                          for place, recs in transcripts for found in (finder(recs),) if found is not None),
+                         (None, None))
     orchestrator = _skill_loaded(records, "daaf-orchestrator") if records else None
     facts = {"resumed_same_session": resumed, "prek_answer": bool(_PREK_RE.search(text)),
              "retrieval_seen": signal is not None, "retrieval_signal": signal, "retrieval_where": where,
@@ -5851,13 +5908,15 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
     unchecked = f"The resume is not proven: {resume_reason}. " if resumed is None else ""
     if signal is not None:
         place = "the main transcript" if where == "main" else "a specialist (subagent) transcript"
-        detail = (f"The answer says grade -1 is Pre-K, with skill retrieval in {place}: {signal}"
+        how = " by a Bash read (only its output reaches the model)" if signal.startswith("Bash ") else ""
+        detail = (f"The answer says grade -1 is Pre-K, with skill retrieval in {place}{how}: {signal}"
                   + (" (daaf-orchestrator loaded too)." if orchestrator else "."))
         return (Verdict.PASS if resumed else Verdict.WARN), unchecked + detail, facts
     return Verdict.WARN, (unchecked
                           + f"Pre-K answered without loading the skill: no retrieval in the main transcript or the "
                           f"{len(subagent_records)} specialist transcript(s) scanned (no non-error Skill load of an "
-                          "education-data-* skill or Read of a file under one), so retrieval is not proven"
+                          "education-data-* skill, Read of a file under one, or Bash command naming a path under one "
+                          "with output), so retrieval is not proven"
                           + ("; daaf-orchestrator did not load either." if orchestrator is False else ".")), facts
 
 
@@ -5908,7 +5967,8 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
     v2, d2, facts2 = _evaluate_t32(res2.response_text, recs2, subs2, resume)
     r2.add_evidence("resume continued the T3.1 session (CLI session id + the T3.2 user turn in its transcript); "
                     "Pre-K in the answer; a non-error Skill load of an education-data-* skill or Read of a file "
-                    "under one (main + subagent transcripts)", output=json.dumps(facts2))
+                    "under one, else a Bash command naming a path under one with output (main + subagent "
+                    "transcripts)", output=json.dumps(facts2))
     if not _apply_live_failure(r2, f2, w2):
         r2.verdict, r2.detail = v2, d2
         _apply_live_warning(r2, w2)

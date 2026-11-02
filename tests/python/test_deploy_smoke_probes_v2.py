@@ -1119,6 +1119,142 @@ class LiveEvaluatorTests(unittest.TestCase):
         # The no-retrieval WARN keeps its transcript count inside the cell too.
         self.assertIn("1 specialist transcript(s) scanned", sp._evaluate_t32(answer, [], [[]], unchecked)[1][:200])
 
+    # The live main-transcript grep (session d99a40c0, anthropic-subscription,
+    # 2026-11-02) and the first of the four lines of output it returned, shortened.
+    _LIVE_GREP = ('grep -n "grade = -1\\|grade=-1\\|lowest_grade_offered\\|Pre-K | Inclusion" '
+                  "/daaf/.claude/skills/education-data-source-ccd/references/variable-definitions.md "
+                  "/daaf/.claude/skills/education-data-source-ccd/references/data-quality.md "
+                  "/daaf/.claude/skills/education-data-source-ccd/SKILL.md")
+    _LIVE_GREP_OUT = ("/daaf/.claude/skills/education-data-source-ccd/references/variable-definitions.md:20:> "
+                      "**Semantic trap:** In enrollment data, `grade = -1` means **Pre-K**, NOT missing!")
+
+    def test_t32_counts_a_bash_read_of_skill_text(self):
+        # A Bash command naming a path under an education-data-* skill, with a
+        # non-empty non-error result, is a (narrower) retrieval signal: the
+        # first such path in the command, file or folder, absolute or relative.
+        answer = "grade = -1 means Pre-K."
+        cases = {
+            self._LIVE_GREP: "Bash education-data-source-ccd/references/variable-definitions.md",
+            "grep -n Pre-K .claude/skills/education-data-context/SKILL.md": "Bash education-data-context/SKILL.md",
+            "grep -rn 'Pre-K' /daaf/.claude/skills/education-data-source-ccd/": "Bash education-data-source-ccd/",
+            "grep -rn Pre-K skills/education-data-context": "Bash education-data-context/",
+            'cat "/daaf/.claude/skills/education-data-context/SKILL.md"|head -5': "Bash education-data-context/SKILL.md",
+            "grep -n x /daaf/.claude/skills/polars/SKILL.md /daaf/.claude/skills/education-data-query/SKILL.md":
+                "Bash education-data-query/SKILL.md",
+            "grep -n x /daaf/.claude/skills/x/../education-data-context/./SKILL.md;echo":
+                "Bash education-data-context/SKILL.md",
+        }
+        for command, signal in cases.items():
+            with self.subTest(command=command):
+                recs = [_use("b", "Bash", {"command": command}), _res("b", self._LIVE_GREP_OUT)]
+                v, d, facts = sp._evaluate_t32(answer, recs)
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual((facts["retrieval_seen"], facts["retrieval_signal"], facts["retrieval_where"]),
+                                 (True, signal, "main"))
+                self.assertIn("in the main transcript by a Bash read (only its output reaches the model)", d)
+                self.assertIn(signal, d)
+        # In a specialist transcript, and with a list-shaped tool_result body.
+        listed = {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "b",
+                                                            "content": [{"type": "text", "text": "20: Pre-K"}]}]}}
+        sub = [_use("b", "Bash", {"command": self._LIVE_GREP}), listed]
+        v, d, facts = sp._evaluate_t32(answer, [], [[], sub])
+        self.assertEqual(v, Verdict.PASS, d)
+        self.assertEqual((facts["retrieval_signal"], facts["retrieval_where"]),
+                         ("Bash education-data-source-ccd/references/variable-definitions.md", "subagent"))
+        self.assertIn("specialist (subagent) transcript by a Bash read", d)
+
+    def test_t32_bash_non_signals_still_warn(self):
+        answer = "grade = -1 means Pre-K."
+        ccd_page = "/daaf/.claude/skills/education-data-source-ccd/references/variable-definitions.md"
+        grep = f"grep -n Pre-K {ccd_page}"
+        cases = {
+            "empty output": [_use("b", "Bash", {"command": grep}), _res("b", "")],
+            "whitespace output": [_use("b", "Bash", {"command": grep}), _res("b", " \n ")],
+            "no-output placeholder": [_use("b", "Bash", {"command": grep}),
+                                      _res("b", "(Bash completed with no output)")],
+            "errored result": [_use("b", "Bash", {"command": grep}), _res("b", "Exit code 1", True)],
+            "no recorded result": [_use("b", "Bash", {"command": grep})],
+            "non-education skill folder": [_use("b", "Bash", {"command": "grep -rn x /daaf/.claude/skills/polars/"}),
+                                           _res("b", "hit")],
+            "resolves outside the skill": [
+                _use("b", "Bash", {"command": "cat /daaf/.claude/skills/education-data-context/../polars/SKILL.md"}),
+                _res("b", "hit")],
+            "lookalike folder": [_use("b", "Bash", {"command": "cat /x/myskills/education-data-context/SKILL.md"}),
+                                 _res("b", "hit")],
+            "prefix alone": [_use("b", "Bash", {"command": "ls /daaf/.claude/skills/education-data-/"}),
+                             _res("b", "hit")],
+            "name only in a pattern": [_use("b", "Bash", {"command": "grep -rln education-data-context .claude/"}),
+                                       _res("b", "hit")],
+            "not a Bash call": [_use("b", "Glob", {"command": grep}), _res("b", "hit")],
+            "malformed input": [_use("b", "Bash", grep), _res("b", "hit"),
+                                _use("c", "Bash", {"command": None}), _res("c", "hit")],
+        }
+        for label, recs in cases.items():
+            with self.subTest(case=label):
+                v, d, facts = sp._evaluate_t32(answer, recs, [recs])
+                self.assertEqual(v, Verdict.WARN, d)
+                self.assertIn("answered without loading the skill", d)
+                self.assertIn("or Bash command naming a path under one with output", d)
+                self.assertEqual((facts["retrieval_seen"], facts["retrieval_signal"], facts["retrieval_where"]),
+                                 (False, None, None))
+
+    def test_t32_skill_and_read_signals_outrank_a_bash_read(self):
+        # Skill loads and Reads are sought in every transcript before any Bash
+        # read, so the live sessions record the specialist's Skill load.
+        answer = "grade = -1 means Pre-K."
+        bash = [_use("b", "Bash", {"command": self._LIVE_GREP}), _res("b", self._LIVE_GREP_OUT)]
+        skill = [_use("k", "Skill", {"skill": "education-data-source-ccd"}), _res("k")]
+        read = [_use("r", "Read", {"file_path": "/daaf/.claude/skills/education-data-context/SKILL.md"}), _res("r")]
+        cases = (
+            ("Bash in main, Skill in a subagent", bash, [skill], "Skill education-data-source-ccd", "subagent"),
+            ("Bash in main, Read in a subagent", bash, [read], "Read education-data-context/SKILL.md", "subagent"),
+            ("Bash in subagent 1, Skill in subagent 2", [], [bash, skill], "Skill education-data-source-ccd",
+             "subagent"),
+            ("Bash in main and a subagent", bash, [bash],
+             "Bash education-data-source-ccd/references/variable-definitions.md", "main"),
+        )
+        for label, main, subs, signal, where in cases:
+            with self.subTest(case=label):
+                v, d, facts = sp._evaluate_t32(answer, main, subs)
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual((facts["retrieval_signal"], facts["retrieval_where"]), (signal, where))
+                self.assertEqual("by a Bash read" in d, signal.startswith("Bash "), d)
+        # No retrieval_kind fact: the signal's first word names the kind.
+        self.assertNotIn("retrieval_kind", sp._evaluate_t32(answer, bash)[2])
+
+    def test_t32_bash_details_lead_with_the_reason(self):
+        # The report's Observed cell keeps the first 200 characters: a Bash-only
+        # PASS (or unchecked-resume WARN) says it was a Bash read inside them,
+        # and the no-retrieval WARN keeps its reason there with the longer
+        # parenthetical.
+        answer = "grade = -1 means Pre-K."
+        bash = [_use("b", "Bash", {"command": self._LIVE_GREP}), _res("b", self._LIVE_GREP_OUT)]
+        orch = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o")]
+        unchecked = sp._t32_resume_check("sid", "sid", [])
+        for label, main, subs, resume, want in (
+                ("main, resumed", orch + bash, [], (True, ""), Verdict.PASS),
+                ("subagent, resumed", orch, [[], [], bash], (True, ""), Verdict.PASS),
+                ("subagent, unchecked resume", [], [bash], unchecked, Verdict.WARN)):
+            with self.subTest(case=label):
+                v, d, _ = sp._evaluate_t32(answer, main, subs, resume)
+                self.assertEqual(v, want, d)
+                head = d[:200]
+                self.assertIn("grade -1 is Pre-K, with skill retrieval in", head)
+                self.assertIn("by a Bash read", head)
+                if resume[0] is None:
+                    self.assertTrue(head.startswith("The resume is not proven: no main transcript was found"), d)
+                else:
+                    self.assertIn("Bash education-data-source-ccd/", head)
+        for subs in ([], [[]], [[], [], []]):
+            for resume in ((True, ""), unchecked):
+                with self.subTest(subagents=len(subs), resume=resume[0]):
+                    v, d, _ = sp._evaluate_t32(answer, [], subs, resume)
+                    self.assertEqual(v, Verdict.WARN, d)
+                    head = d[:200]
+                    self.assertIn("answered without loading the skill", head)
+                    self.assertIn(f"{len(subs)} specialist transcript(s) scanned", head)
+                    self.assertIn("Bash command naming a path under one", d)
+
 
 def _fake_run(response="SMOKE_TIER1_COMPLETE", init=None):
     result = types.SimpleNamespace(
