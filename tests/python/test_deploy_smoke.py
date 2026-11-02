@@ -2199,7 +2199,7 @@ class Tier1VerdictTests(unittest.TestCase):
         r.verdict, r.detail = Verdict.PASS, "ok."
         smoke_probes._apply_live_warning(r, "1 transient API-error record(s) recovered")
         self.assertEqual(r.verdict, Verdict.WARN)
-        self.assertIn("recovered", r.detail)
+        self.assertEqual(r.detail, "Live-run warning: 1 transient API-error record(s) recovered. ok.")
         r2 = route_detection.ProbeResult(probe_id="T2.5", name="t", tier="2")
         r2.verdict, r2.detail = Verdict.SKIP, "nothing to strip."
         smoke_probes._apply_live_warning(r2, "x")
@@ -2207,7 +2207,54 @@ class Tier1VerdictTests(unittest.TestCase):
         r3 = route_detection.ProbeResult(probe_id="T2.1", name="t", tier="2")
         r3.verdict, r3.detail = Verdict.PASS, "ok."
         smoke_probes._apply_live_warning(r3, "")
-        self.assertEqual(r3.verdict, Verdict.PASS)
+        self.assertEqual((r3.verdict, r3.detail), (Verdict.PASS, "ok."))
+        # A PASS with no detail of its own gets the warning alone, no stray space.
+        r4 = route_detection.ProbeResult(probe_id="T2.4", name="t", tier="2")
+        r4.verdict, r4.detail = Verdict.PASS, ""
+        smoke_probes._apply_live_warning(r4, "x")
+        self.assertEqual((r4.verdict, r4.detail), (Verdict.WARN, "Live-run warning: x."))
+
+    def test_live_warning_leads_a_downgraded_pass(self):
+        # The report's Problems-table Observed cell keeps only the detail's
+        # first 200 characters (run_deploy_smoke._cell), so a PASS turned WARN
+        # opens with the warning and its own PASS reason follows. Each warning
+        # the gate can raise, and both joined, must show inside that cell.
+        max_turns = _cli_result(subtype="error_max_turns")
+        clean = [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD]
+        recovered = [_REAL_TOOL_USE_RECORD, _SERVER_ERROR_RECORD, _REAL_FINAL_RECORD]
+        reached_max = "the run stopped at --max-turns"
+        retried = "1 transient API-error record(s) recovered"
+        cases = {"max-turns": (max_turns, clean, (reached_max,)),
+                 "recovered": (_cli_result(), recovered, (retried,)),
+                 "both": (max_turns, recovered, (reached_max, retried))}
+        for name, (res, records, reasons) in cases.items():
+            with self.subTest(warning=name):
+                failure, warning = smoke_probes._live_run_health(res, records)
+                self.assertEqual(failure, "")
+                verdict, detail = _judge_t11("SMOKE_TIER1_COMPLETE", failure, warning)
+                self.assertEqual(verdict, Verdict.WARN)
+                self.assertTrue(detail.startswith(f"Live-run warning: {warning}. "), detail)
+                self.assertTrue(detail.endswith(f"returned {smoke_probes.TIER1_TOKEN}."), detail)
+                cell = run_deploy_smoke._cell(detail)
+                for reason in reasons:
+                    self.assertIn(reason, cell)
+
+    def test_live_warning_follows_a_non_pass_reason(self):
+        # A probe whose own verdict is not PASS keeps its reason first.
+        for verdict in (Verdict.WARN, Verdict.FAIL, Verdict.SKIP, Verdict.INFO):
+            with self.subTest(verdict=verdict):
+                r = route_detection.ProbeResult(probe_id="T2.4", name="t", tier="2")
+                r.verdict, r.detail = verdict, "Own reason."
+                smoke_probes._apply_live_warning(r, "w")
+                self.assertEqual((r.verdict, r.detail), (verdict, "Own reason. Live-run warning: w."))
+        # Through T1.1: a max-turns stop without the token FAILs on the token
+        # check, and that reason leads.
+        failure, warning = smoke_probes._live_run_health(
+            _cli_result(subtype="error_max_turns"), [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD])
+        verdict, detail = _judge_t11("partial", failure, warning)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertTrue(detail.startswith("A model answered but the response lacks the completion token"), detail)
+        self.assertTrue(detail.endswith(f" Live-run warning: {warning}."), detail)
 
     # --- F3: --max-turns stop is its own WARN, not "no real model" -----------
 

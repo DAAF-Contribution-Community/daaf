@@ -747,14 +747,22 @@ def _apply_live_failure(r: ProbeResult, failure: str, warning: str = "") -> bool
 
 
 def _apply_live_warning(r: ProbeResult, warning: str) -> None:
-    """After the probe-specific verdict: downgrade a PASS to WARN and append the
-    live-run warning (recovered transient API error, or --max-turns stop) to the
-    detail. FAIL/SKIP/INFO keep their verdict and gain the note."""
+    """After the probe-specific verdict, record a live-run warning (a recovered
+    transient API error, a --max-turns stop, or both joined by "; ").
+
+    A PASS becomes WARN, and its detail opens with "Live-run warning: …" ahead
+    of the probe's own PASS reason: the warning is why the probe is a WARN, and
+    the report's Problems-table Observed cell keeps only the detail's first 200
+    characters. A WARN, FAIL, SKIP or INFO keeps its verdict and its own reason
+    first, and the warning is appended."""
     if not warning:
         return
+    note = f"Live-run warning: {warning}."
     if r.verdict == Verdict.PASS:
         r.verdict = Verdict.WARN
-    r.detail = f"{r.detail} Live-run warning: {warning}."
+        r.detail = " ".join(part for part in (note, r.detail) if part)
+    else:
+        r.detail = f"{r.detail} {note}"
 
 
 def _tool_input(value) -> dict:
@@ -2850,7 +2858,8 @@ def _judge_t11(r: ProbeResult, response_text, failure: str, warning: str = ""):
     """T1.1 verdict on the shared live-run helpers, exactly as the Tier 2 probes
     apply them: _apply_live_failure (gate FAIL + health evidence), then the
     token check, then _apply_live_warning (a recovered transient API error or a
-    --max-turns stop turns a PASS into WARN and is appended to the detail).
+    --max-turns stop turns a PASS into WARN whose detail opens with it, and is
+    appended to any other verdict's detail).
     Sets r.verdict / r.detail and returns them."""
     if not _apply_live_failure(r, failure, warning):
         r.verdict, r.detail = _evaluate_t11(response_text)

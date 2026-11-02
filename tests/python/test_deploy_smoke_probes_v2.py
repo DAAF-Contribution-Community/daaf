@@ -1377,7 +1377,7 @@ class TierRunnerWiringTests(unittest.TestCase):
     def _facts(result, first_key):
         return json.loads(next(e.output for e in result.evidence if e.output.startswith('{"' + first_key + '"')))
 
-    def _golden_path(self, t32_main=None, t32_run=None, sub_skill="education-data-source-ipeds"):
+    def _golden_path(self, t32_main=None, t32_run=None, sub_skill="education-data-source-ipeds", t31_run=None):
         """run_tier_3 over fake transcripts: the T3.1 main transcript (prompt,
         orchestrator load, Data Lookup dispatch), the same file after the T3.2
         call (t32_main; by default it gained the resumed user turn) and one
@@ -1392,7 +1392,8 @@ class TierRunnerWiringTests(unittest.TestCase):
         t31_path, t32_path, sub_path = Path("t31-fake.jsonl"), Path("t32-fake.jsonl"), Path("agent-fake.jsonl")
         loaded = {t31_path: t31, t32_path: t32_main,
                   sub_path: [_use("k", "Skill", {"skill": sub_skill}), _res("k")]}
-        ex = mock.Mock(side_effect=[_fake_run("Data Lookup. Sound good?"), t32_run or _fake_run("grade -1 is Pre-K")])
+        ex = mock.Mock(side_effect=[t31_run or _fake_run("Data Lookup. Sound good?"),
+                                    t32_run or _fake_run("grade -1 is Pre-K")])
         calls = []
         with mock.patch.object(sp, "execute_smoke_run", ex), \
              mock.patch.object(sp, "find_transcript", side_effect=[t31_path, t32_path]), \
@@ -1506,6 +1507,35 @@ class TierRunnerWiringTests(unittest.TestCase):
         self.assertIn("did not reach a real model", r1.detail)
         self.assertEqual(ex.call_count, 1)
         subs.assert_not_called()
+
+    def test_max_turns_stop_leads_the_detail_of_ta1_t31_t32(self):
+        # Runs whose own checks PASS but which stopped at --max-turns: each
+        # runner turns the PASS into WARN with the warning first, so the
+        # report's Observed cell (the detail's first 200 characters) says why.
+        import hashlib
+
+        def stopped(response):
+            run = _fake_run(response)
+            run[0].raw_json["messages"][0]["subtype"] = sp._MAX_TURNS_SUBTYPE
+            return run
+
+        digest = hashlib.sha256((Path(sp.BASE_DIR) / "CLAUDE.md").read_bytes()).hexdigest()
+        bash = [_use("b", "Bash", {"command": "openssl dgst -sha256 /daaf/CLAUDE.md"}), _res("b", f"SHA2-256= {digest}")]
+        with mock.patch.object(sp, "execute_smoke_run", return_value=stopped(f"Digest: {digest}")), \
+             mock.patch.object(sp, "find_transcript", return_value=Path("ta1-fake.jsonl")), \
+             mock.patch.object(sp, "load_transcript_records", return_value=bash):
+            (ta1,) = sp.run_tier_a("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        r1, r2, _ = self._golden_path(t31_run=stopped("Data Lookup. Sound good?"),
+                                      t32_run=stopped("grade -1 is Pre-K"))
+        own = {"TA.1": "Auto mode ran the command and the digest matches.",
+               "T3.1": "daaf-orchestrator loaded in the main transcript.",
+               "T3.2": "The answer says grade -1 is Pre-K"}
+        for r in (ta1, r1, r2):
+            with self.subTest(probe=r.probe_id):
+                self.assertEqual(r.verdict, Verdict.WARN, r.detail)
+                self.assertTrue(r.detail.startswith("Live-run warning: the run stopped at --max-turns"), r.detail)
+                self.assertIn("before the model finished", r.detail[:199])
+                self.assertIn(own[r.probe_id], r.detail)
 
     def test_tier1_new_probes_and_stream_json(self):
         init = {"apiKeySource": "none", "model": "claude-opus-5-5[1m]"}
