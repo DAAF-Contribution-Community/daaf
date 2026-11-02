@@ -3787,7 +3787,12 @@ def _is_pip_install_command(command, _depth=0):
 
 
 def _tool_results_text(records):
-    """{tool_use_id: (is_error, flattened result text)} for every tool_result."""
+    """{tool_use_id: (is_error, flattened result text)} for every tool_result.
+
+    A null or absent body, a null list item and a block with no or null "text"
+    (an image block, say) add no text, so they flatten to "" and never to the
+    string "None". A body that is neither a list nor null is rendered with
+    str()."""
     out = {}
     for rec in records or []:
         if not isinstance(rec, dict) or rec.get("type") != "user":
@@ -3796,10 +3801,11 @@ def _tool_results_text(records):
         content = msg.get("content") if isinstance(msg, dict) else None
         for block in content if isinstance(content, list) else []:
             if isinstance(block, dict) and block.get("type") == "tool_result":
-                body = block.get("content", "")
+                body = block.get("content")
                 if isinstance(body, list):
-                    body = " ".join(str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in body)
-                out[block.get("tool_use_id")] = (bool(block.get("is_error")), str(body))
+                    parts = (b.get("text") if isinstance(b, dict) else b for b in body)
+                    body = " ".join(str(p) for p in parts if p is not None)
+                out[block.get("tool_use_id")] = (bool(block.get("is_error")), "" if body is None else str(body))
     return out
 
 
@@ -5673,9 +5679,10 @@ def _evaluate_t31(response_text, records):
     does not. Not FAIL: the structural causes of a no-load are FAILs elsewhere
     (T0.6 hook registration, T0.23 skill frontmatter, T1.9 the reminder
     firing), so a no-load in a real session is most likely model behaviour,
-    and the transcript shows which. With no main transcript records (none was
-    found, or it could not be read) the load cannot be checked: WARN, with
-    orchestrator_skill_loaded None, as T3.2 records an unchecked resume.
+    and the transcript shows which. With no main transcript records (the
+    transcript is missing, empty or unreadable) the load cannot be checked:
+    WARN, with orchestrator_skill_loaded None, as T3.2 records an unchecked
+    resume.
 
     Gate adherence is DAAFBench's to grade, so the reply's gate behaviour is
     recorded as information only and never changes the verdict: mode_named
@@ -5696,8 +5703,8 @@ def _evaluate_t31(response_text, records):
                 f"asks confirmation: {'yes' if facts['asks_confirmation'] else 'no'}; "
                 f"Pre-K mentioned: {'yes' if facts['prek_already_answered'] else 'no'}.")
     if loaded is None:
-        return Verdict.WARN, ("daaf-orchestrator load not checked: no main transcript was found for the "
-                              "session." + recorded), facts
+        return Verdict.WARN, ("daaf-orchestrator load not checked: main transcript missing, empty or "
+                              "unreadable." + recorded), facts
     if loaded:
         return Verdict.PASS, "daaf-orchestrator loaded in the main transcript." + recorded, facts
     return Verdict.WARN, "daaf-orchestrator did not load in the main transcript." + recorded, facts
@@ -5763,8 +5770,12 @@ def _t32_retrieval_signal(records):
 # segments counts by where it resolves, as for a Read.
 _T32_BASH_PATH_TOKEN_RE = re.compile(r"[^\s\"'`|;&)<>]*" + re.escape(_T32_SKILL_PREFIX) + r"[^\s\"'`|;&)<>]*")
 # The normalized token names an education-data-* skill folder itself or a path
-# inside it. "skills" must be a whole segment (or follow an option's '='), so a
-# lookalike folder such as myskills/ does not count.
+# inside it. "skills" must be a whole segment or follow '=' (an option's value,
+# --file=skills/...), so a lookalike folder such as myskills/ does not count.
+# "skills" directly after ':' does not count: that is mostly a path list
+# (PATH=$PATH:skills/...), a remote copy (scp host:skills/...) or plain text,
+# none of which puts skill text in front of the model, while a path after ':'
+# with a '/' before "skills" (git show HEAD:.claude/skills/...) counts through it.
 _T32_BASH_SKILL_PATH_RE = re.compile(r"(?:^|[/=])skills/(" + re.escape(_T32_SKILL_PREFIX) + r"[^/]+)(?:/(.*))?$")
 # Claude Code records a Bash call that printed nothing with this placeholder as
 # the tool_result text (observed 2026-10-30, Claude Code 2.1.281), so it counts
@@ -5780,12 +5791,16 @@ def _t32_bash_signal(records):
     relative; the first such path in the command, judged after
     posixpath.normpath as for a Read, so '.../education-data-context/../polars/'
     does not count) and whose recorded tool_result is non-error with non-empty
-    text (_T32_BASH_NO_OUTPUT counts as empty). Only the command's output
-    reaches the model (for a grep, the matching lines), so this is narrower
-    than a Skill load or a Read, and _evaluate_t32 seeks it only when no
-    transcript holds one of those. Returns "Bash <name>/<path inside the skill>"
-    or "Bash <name>/" for the folder, e.g.
-    "Bash education-data-source-ccd/references/variable-definitions.md"."""
+    text (_T32_BASH_NO_OUTPUT and a null body count as empty). Only the
+    command's output reaches the model (for a grep, the matching lines), so
+    this is narrower than a Skill load or a Read, and _evaluate_t32 seeks it
+    only when no transcript holds one of those. Returns "Bash <name>/<path
+    inside the skill>" or "Bash <name>/" for the folder, e.g.
+    "Bash education-data-source-ccd/references/variable-definitions.md". The
+    shell is not parsed, so a glob or brace path appears as written after the
+    skills/ segment (normalized), and its first part is then not a skill name:
+    "Bash education-data-*/SKILL.md",
+    "Bash education-data-{context,source-ccd}/SKILL.md"."""
     texts = _tool_results_text(records)
     for rec in records or []:
         if not isinstance(rec, dict) or rec.get("type") != "assistant":
@@ -5845,13 +5860,14 @@ def _t32_resume_check(session_id, cli_session_id, records):
     to resume.
 
     state is True when both hold; False when the CLI reports another session
-    id or the transcript lacks the T3.2 turn; None when no main transcript was
-    found, so the resume cannot be checked."""
+    id or the transcript lacks the T3.2 turn; None when the main transcript
+    has no records (missing, empty or unreadable), so the resume cannot be
+    checked."""
     cli = str(cli_session_id or "")
     if cli and cli != session_id:
         return False, f"the CLI reported session {cli[:8]}, not the resumed {str(session_id)[:8]}"
     if not records:
-        return None, "no main transcript was found for the session"
+        return None, "main transcript missing, empty or unreadable"
     if not _user_prompt_seen(records, T32_PROMPT):
         return False, f"the T3.1 transcript has no {T32_PROMPT!r} user turn"
     return True, ""
@@ -5883,9 +5899,9 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
     transcript). facts records the signal and where it was seen ("main" or
     "subagent", main first within each kind of signal); daaf-orchestrator
     loading is read from the main transcript and reported in the detail. With
-    no main-transcript records the load is not checked:
-    orchestrator_skill_loaded is None, as in T3.1, and the detail names no load
-    either way."""
+    no main-transcript records (missing, empty or unreadable) the load is not
+    checked: orchestrator_skill_loaded is None, as in T3.1, and the detail
+    names no load either way."""
     text = response_text or ""
     subagent_records = list(subagent_records or ())
     resumed, resume_reason = resume

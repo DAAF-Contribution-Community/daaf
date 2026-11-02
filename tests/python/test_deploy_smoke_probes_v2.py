@@ -793,7 +793,8 @@ class LiveEvaluatorTests(unittest.TestCase):
         prompt_only = [{"type": "user", "message": {"role": "user", "content": sp.T31_PROMPT}}]
         outcomes = ((orch, Verdict.PASS, True, "daaf-orchestrator loaded in the main transcript."),
                     (prompt_only, Verdict.WARN, False, "daaf-orchestrator did not load in the main transcript."),
-                    ([], Verdict.WARN, None, "daaf-orchestrator load not checked: no main transcript was found"))
+                    ([], Verdict.WARN, None,
+                     "daaf-orchestrator load not checked: main transcript missing, empty or unreadable."))
         replies = [
             # (reply, mode_named, asks_confirmation, prek_already_answered)
             ("This is a quick definitional question, so I'd treat it as Data Lookup. I'll read the data lookup "
@@ -1093,7 +1094,7 @@ class LiveEvaluatorTests(unittest.TestCase):
         v, d, facts = sp._evaluate_t32(answer, [], [sub], sp._t32_resume_check("sid", "sid", []))
         self.assertEqual(v, Verdict.WARN, d)
         self.assertIn("Skill education-data-source-ccd", d)
-        self.assertTrue(d.startswith("The resume is not proven: no main transcript was found"), d)
+        self.assertTrue(d.startswith("The resume is not proven: main transcript missing, empty or unreadable."), d)
         self.assertIsNone(facts["resumed_same_session"])
 
     def test_t32_unchecked_resume_leads_the_warn_detail(self):
@@ -1112,7 +1113,8 @@ class LiveEvaluatorTests(unittest.TestCase):
                 v, d, facts = sp._evaluate_t32(answer, [], subs, unchecked)
                 self.assertEqual(v, Verdict.WARN, d)
                 head = d[:200]
-                self.assertTrue(head.startswith("The resume is not proven: no main transcript was found"), d)
+                self.assertTrue(head.startswith("The resume is not proven: main transcript missing, empty or "
+                                                "unreadable."), d)
                 self.assertIn("resume", head)
                 self.assertIn(reason, head)
                 self.assertIsNone(facts["resumed_same_session"])
@@ -1172,6 +1174,11 @@ class LiveEvaluatorTests(unittest.TestCase):
             "whitespace output": [_use("b", "Bash", {"command": grep}), _res("b", " \n ")],
             "no-output placeholder": [_use("b", "Bash", {"command": grep}),
                                       _res("b", "(Bash completed with no output)")],
+            # A null body, a [None] body and a text block whose text is null are
+            # no output, never the text "None".
+            "null body": [_use("b", "Bash", {"command": grep}), _res("b", None)],
+            "[None] body": [_use("b", "Bash", {"command": grep}), _res("b", [None])],
+            "null text block": [_use("b", "Bash", {"command": grep}), _res("b", [{"type": "text", "text": None}])],
             "errored result": [_use("b", "Bash", {"command": grep}), _res("b", "Exit code 1", True)],
             "no recorded result": [_use("b", "Bash", {"command": grep})],
             "non-education skill folder": [_use("b", "Bash", {"command": "grep -rn x /daaf/.claude/skills/polars/"}),
@@ -1181,6 +1188,13 @@ class LiveEvaluatorTests(unittest.TestCase):
                 _res("b", "hit")],
             "lookalike folder": [_use("b", "Bash", {"command": "cat /x/myskills/education-data-context/SKILL.md"}),
                                  _res("b", "hit")],
+            "lookalike after '/'": [_use("b", "Bash", {"command": "ls https://x/myskills/education-data-context/"}),
+                                    _res("b", "hit")],
+            "relative path after ':'": [
+                _use("b", "Bash", {"command": "export PATH=$PATH:skills/education-data-context/bin"}),
+                _res("b", "hit"),
+                _use("c", "Bash", {"command": "scp host:skills/education-data-context/SKILL.md ."}),
+                _res("c", "hit")],
             "prefix alone": [_use("b", "Bash", {"command": "ls /daaf/.claude/skills/education-data-/"}),
                              _res("b", "hit")],
             "name only in a pattern": [_use("b", "Bash", {"command": "grep -rln education-data-context .claude/"}),
@@ -1197,6 +1211,63 @@ class LiveEvaluatorTests(unittest.TestCase):
                 self.assertIn("or Bash command naming a path under one with output", d)
                 self.assertEqual((facts["retrieval_seen"], facts["retrieval_signal"], facts["retrieval_where"]),
                                  (False, None, None))
+
+    def test_tool_results_text_null_bodies_are_empty(self):
+        # A null or absent body, a null list item and a block with no or null
+        # text flatten to "" (never "None"); a string body is its own text, and a
+        # dict body is rendered with str().
+        def flat(block_content, absent=False):
+            block = {"type": "tool_result", "tool_use_id": "t", "is_error": False}
+            if not absent:
+                block["content"] = block_content
+            return sp._tool_results_text([{"type": "user", "message": {"content": [block]}}])["t"][1]
+        for label, body, want in (("null", None, ""), ("[None]", [None], ""), ("[]", [], ""),
+                                  ("null text", [{"type": "text", "text": None}], ""),
+                                  ("image block", [{"type": "image", "source": {}}], ""),
+                                  ("mixed list", ["a", None, {"type": "text", "text": "b"}], "a b"),
+                                  ("string", "x", "x"),
+                                  ("dict", {"type": "text", "text": "y"}, str({"type": "text", "text": "y"}))):
+            with self.subTest(body=label):
+                self.assertEqual(flat(body), want)
+        self.assertEqual(flat(None, absent=True), "")
+        # T2.7, the helper's other caller, classifies a null body as it does an
+        # empty one: a non-error result ran (FAIL), an errored one is
+        # unrecognized (WARN), and its excerpt quotes no "None".
+        pip = _use("p", "Bash", {"command": "pip install requests"})
+        self.assertEqual(sp._evaluate_t27([pip, _res("p", None, False)], read_half=False)[0], Verdict.FAIL)
+        for body in (None, [None], ""):
+            with self.subTest(t27_error_body=body):
+                v, facts, detail = sp._evaluate_t27([pip, _res("p", body, True)], read_half=False)
+                self.assertEqual((v, facts["pip_unrecognized"]), (Verdict.WARN, 1), detail)
+                self.assertNotIn("None", detail)
+
+    def test_t32_bash_label_shows_glob_and_brace_paths_as_written(self):
+        # The shell is not parsed: a glob or brace path counts, and the label
+        # shows it as written after the skills/ segment, not as a skill name.
+        answer = "grade = -1 means Pre-K."
+        for command, signal in (
+                ("grep -n Pre-K /daaf/.claude/skills/education-data-*/SKILL.md", "Bash education-data-*/SKILL.md"),
+                ("cat /daaf/.claude/skills/education-data-{context,source-ccd}/SKILL.md",
+                 "Bash education-data-{context,source-ccd}/SKILL.md")):
+            with self.subTest(command=command):
+                recs = [_use("b", "Bash", {"command": command}), _res("b", self._LIVE_GREP_OUT)]
+                v, d, facts = sp._evaluate_t32(answer, recs)
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual(facts["retrieval_signal"], signal)
+
+    def test_t32_bash_path_may_follow_equals(self):
+        # "skills" may follow '=' (an option's value) as well as '/' or the token
+        # start; a path after ':' with a '/' before "skills" counts through it.
+        answer = "grade = -1 means Pre-K."
+        for command, signal in (
+                ("grep --file=skills/education-data-context/SKILL.md x", "Bash education-data-context/SKILL.md"),
+                ("git show HEAD:.claude/skills/education-data-context/SKILL.md",
+                 "Bash education-data-context/SKILL.md")):
+            with self.subTest(command=command):
+                recs = [_use("b", "Bash", {"command": command}), _res("b", self._LIVE_GREP_OUT)]
+                v, d, facts = sp._evaluate_t32(answer, recs)
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual(facts["retrieval_signal"], signal)
 
     def test_t32_skill_and_read_signals_outrank_a_bash_read(self):
         # Skill loads and Reads are sought in every transcript before any Bash
@@ -1242,7 +1313,7 @@ class LiveEvaluatorTests(unittest.TestCase):
                 self.assertIn("grade -1 is Pre-K, with skill retrieval in", head)
                 self.assertIn("by a Bash read", head)
                 if resume[0] is None:
-                    self.assertTrue(head.startswith("The resume is not proven: no main transcript was found"), d)
+                    self.assertTrue(head.startswith("The resume is not proven: main transcript missing"), d)
                 else:
                     self.assertIn("Bash education-data-source-ccd/", head)
         for subs in ([], [[]], [[], [], []]):
@@ -1331,10 +1402,10 @@ class TierRunnerWiringTests(unittest.TestCase):
         # T3.2 sees no retrieval and cannot check the resume (WARN).
         self.assertEqual([r.verdict for r in results], [Verdict.WARN, Verdict.WARN])
         self.assertEqual([r.name for r in results], ["Orchestrator engaged", "Golden path (resume + skill retrieval)"])
-        self.assertTrue(results[0].detail.startswith("daaf-orchestrator load not checked: no main transcript"),
+        self.assertTrue(results[0].detail.startswith("daaf-orchestrator load not checked: main transcript missing"),
                         results[0].detail)
         self.assertIn("answered without loading the skill", results[1].detail)
-        self.assertTrue(results[1].detail.startswith("The resume is not proven: no main transcript"),
+        self.assertTrue(results[1].detail.startswith("The resume is not proven: main transcript missing"),
                         results[1].detail)
         self.assertTrue(results[0].hint and results[1].hint)
         self.assertEqual(ex.call_args_list[1].kwargs["resume_session_id"], runs[0][1]["session_id"])
@@ -1364,8 +1435,8 @@ class TierRunnerWiringTests(unittest.TestCase):
             r1, _ = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
         self.assertEqual(r1.verdict, Verdict.WARN, r1.detail)
         self.assertIsNone(self._facts(r1, "orchestrator_skill_loaded")["orchestrator_skill_loaded"])
-        self.assertTrue(r1.detail.startswith("daaf-orchestrator load not checked: no main transcript was found"),
-                        r1.detail)
+        self.assertTrue(r1.detail.startswith("daaf-orchestrator load not checked: main transcript missing, empty "
+                                             "or unreadable."), r1.detail)
         self.assertNotIn("did not load", r1.detail)
         self.assertLessEqual(len(r1.detail), 200, r1.detail)
         self.assertIn("T1.2", r1.hint)
@@ -1678,7 +1749,8 @@ class ContractAndHintTests(unittest.TestCase):
              mock.patch.object(sp, "find_subagent_transcripts", return_value=[Path("a.jsonl")]), \
              mock.patch.object(sp, "load_transcript_records", return_value=[]):
             _, r2 = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
-        self.assertTrue(r2.detail.startswith("The resume is not proven: no main transcript was found"), r2.detail)
+        self.assertTrue(r2.detail.startswith("The resume is not proven: main transcript missing, empty or "
+                                             "unreadable."), r2.detail)
         self.assertIn("answered without loading the skill", r2.detail[:200])
         self.assertIn("1 specialist transcript(s) scanned", r2.detail[:200])
 
