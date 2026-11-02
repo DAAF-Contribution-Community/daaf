@@ -901,8 +901,10 @@ def probe_hook_registration(base_dir: str = BASE_DIR) -> ProbeResult:
 
     # A hook counts as registered if its filename appears in some command string.
     # Note: some hooks legitimately live outside settings.json (per-agent
-    # frontmatter, e.g. enforce-file-first.sh) — those are reported as INFO, not FAIL.
-    per_agent_only = {"enforce-file-first.sh"}
+    # frontmatter: enforce-file-first.sh for every Bash holder,
+    # adjudicator-read-scope.sh for citation-adjudicator) — those are reported
+    # as INFO, not FAIL. Exact names on purpose, as for _SOURCED_HOOK_FILES.
+    per_agent_only = {"enforce-file-first.sh", "adjudicator-read-scope.sh"}
     missing = [h for h in hook_scripts
                if h not in blob and h not in per_agent_only and h not in _SOURCED_HOOK_FILES]
     per_agent = [h for h in hook_scripts if h in per_agent_only and h not in blob]

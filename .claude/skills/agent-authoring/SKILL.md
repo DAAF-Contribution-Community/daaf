@@ -76,7 +76,7 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] Learning Signal uses standardized 5-category model
    - [ ] Anti-patterns in 4-column table format (# | Anti-Pattern | Problem | Correct Approach) (minimum 5)
    - [ ] STOP Conditions use standardized format
-   - [ ] Invocation Pattern shows complete Agent() syntax with BASE_DIR
+   - [ ] Invocation Pattern gives the `subagent_type` and points to the canonical invocation template (WORKFLOW_PHASE or mode reference file); a full Agent() example, if shown, matches that template, BASE_DIR line included when the template has one
    - [ ] COMPLETE criteria: minimum 3
    - [ ] INCOMPLETE criteria: minimum 3
    - [ ] Self-Check has minimum 4 questions
@@ -181,6 +181,7 @@ hooks:
 - Hook scripts live in `.claude/hooks/` and are protected by the deny rule `Edit(.claude/hooks/*)` — human-only deployment. On Claude Code ≥ 2.1.261 the file-permission matcher honors only `Edit(path)` rules, and an `Edit` rule covers all file-editing tools (`Write` included), so no paired `Write(...)` rule is needed (adding one is inert and emits a startup warning). Shell-level writes to the same paths are blocked separately by `bash-safety.sh`
 - Use `exit 2` with stderr message to block Bash commands (convention from `bash-safety.sh`)
 - Use JSON `permissionDecision: deny` output for Agent/Task tool hooks (convention from `enforce-explore-model.sh`)
+- A fail-closed guard on a non-Bash tool may print the JSON deny and also exit 2 (convention from `adjudicator-read-scope.sh`): exit 2 blocks even when the JSON is malformed, whereas JSON that cannot be parsed on an exit-0 path lets the call through (Claude Code hooks reference, verified 2026-10-27)
 - Fail-closed design: ERR trap should block, not allow — and neither the trap nor the deny path may depend on the very tool whose absence they cover (pre-check `jq`; fall back to stderr + `exit 2`, never `jq -n`, so a missing dependency cannot turn a deny into a silent allow)
 - Verify dependencies (e.g., `jq`) explicitly rather than relying on fallbacks that silently degrade
 

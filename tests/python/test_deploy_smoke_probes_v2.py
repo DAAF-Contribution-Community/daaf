@@ -514,6 +514,16 @@ class HookRegistrationTests(unittest.TestCase):
         self.assertTrue(any("sourced by a hook" in (e.note or "") and "bash-safety.site.sh" in e.note
                             for e in r.evidence))
 
+    def test_adjudicator_read_scope_is_per_agent(self):
+        # citation-adjudicator registers adjudicator-read-scope.sh in its own
+        # frontmatter, so settings.json must not need it.
+        root = self._tree(["bash-safety.sh", "bash-safety.site.sh", "enforce-file-first.sh",
+                           "adjudicator-read-scope.sh"])
+        r = sp.probe_hook_registration(str(root))
+        self.assertEqual(r.verdict, Verdict.PASS, r.detail)
+        self.assertTrue(any("per-agent-frontmatter" in (e.note or "") and "adjudicator-read-scope.sh" in e.note
+                            for e in r.evidence))
+
     def test_unregistered_real_hook_still_fails(self):
         root = self._tree(["bash-safety.sh", "bash-safety.site.sh", "new-guard.sh"])
         r = sp.probe_hook_registration(str(root))

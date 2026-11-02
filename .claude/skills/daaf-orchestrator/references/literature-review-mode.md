@@ -202,7 +202,7 @@ Every final deliverable's references reach the researcher, at every level, as on
 5. **Export:** `bash {BASE_DIR}/scripts/lit_corpus.sh export-bib {PROJECT_DIR}`, so the reference list carries the statuses `report` reads.
 6. **STATE:** the glance version, the rows files, each `record-human` call and its decision, in the Adjudication and glance batches table.
 
-`record-human` is meant to sit behind a user-applied Ask-First permission rule, so the user approves the call that shows their own words; run it as its own Bash call and never inside a script.
+`record-human` sits behind the Ask-First rule `Bash(*lit_corpus*record-human*)` in `.claude/settings.json`, so the user approves the call that shows their own words; run it as its own Bash call and never inside a script. The same holds for `lit_verify settle` with `--decision`, behind `Bash(*lit_verify*settle*--d*)` (§ Readings From Pictures of Pages: the Audit and the Person's Comparison, step 4). `run_with_capture.sh` refuses a script that calls either (exit 3, `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Researcher-Decision Command Scan).
 
 ### Active only once an evaluated identity exists: the adjudicator flow
 
@@ -210,7 +210,7 @@ Every final deliverable's references reach the researcher, at every level, as on
 
 1. **Pack** through a captured script, `{PROJECT_DIR}/scripts/lr_adjudication/{NN}_pack_batch_{batch_id}.py` (batch ids `b01`, `b02`, …): a flat script that runs `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications pack {PROJECT_DIR} --batch {batch_id} --model-id {exact model ID} --max-rows 30` with `subprocess.run`, its stdout reaching the script's stdout unchanged, and asserts exit 0. `--model-id` is the exact model ID the `opus` tier resolves to in this session (STATE's Subagent Model Tiers row, a trailing `[1m]` dropped). Execute it with `bash {BASE_DIR}/scripts/run_with_capture.sh {that path}`; the hashes land in its immutable log, which `ingest` reads.
 2. **Dispatch** (§ Dispatch Templates > citation-adjudicator): the prompt is the content of `data/adjudication_bundles/{batch_id}_prompt.txt`, verbatim, nothing added; `model: "opus"`, the tier alias whose resolved ID pack recorded (the Agent tool takes tier aliases, not model IDs). One bundle per dispatch. `ingest` records the model ID from the pack log and does not check which model actually ran; adding that check to `ingest` is part of preparing the adjudicator evaluation. Never dispatch when the `opus` tier resolves to a model other than the one packed.
-3. **Persist** only the lines inside the return's `jsonl` fence to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`. NOT_JUDGED: persist nothing; re-dispatch the same prompt.
+3. **Persist** only the lines inside the return's `jsonl` fence to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`. NOT_JUDGED: persist nothing; re-dispatch the same prompt. If the return quotes an `adjudicator-read-scope.sh` refusal of the bundle path, do not re-dispatch: the same prompt carries the same path, which the hook refuses (a project outside `research/`, or a symlink on the path); report it to the user.
 4. **Ingest:** `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications ingest {PROJECT_DIR} --batch {batch_id} --agent-id {agent ID from the dispatch result}`.
 5. **Glance** the rows still undecided (unevaluated, `UNCERTAIN`, below the title floor, `org_unchecked`) as above; a user reversing a model's `DIFFERENT_WORK` is `same_work` with a rationale (→ `human_overridden`, "accepted by you" in messages to the user).
 

@@ -329,7 +329,7 @@ For agent landscape context, see `.claude/agents/README.md`.
 ```
 
 **Guidance:**
-- Do NOT include a full Agent() call template — the `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates
+- The `agent_reference/WORKFLOW_PHASE*.md` files and mode reference files are the sources of truth for invocation templates. The section may also show the full Agent() call as "the general shape" when seeing the whole prompt helps the agent check what it receives; keep it identical to the canonical template, field for field, and fix the example whenever the two differ (`AGENT_TEMPLATE.md` § Section 11). Exemplar: `paper-reader.md` § Invocation
 - Specify `subagent_type` so readers know the agent's capability level at a glance
 - Reference the relevant WORKFLOW_PHASE file for stage-specific invocation templates (e.g., `WORKFLOW_PHASE3_ACQUISITION.md` for Stage 5-6 agents)
 - The invocation template must map to Upstream Inputs (Section 3)

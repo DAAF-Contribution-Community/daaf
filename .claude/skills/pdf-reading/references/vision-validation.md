@@ -178,10 +178,14 @@ bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit vision_audit{S}.json
   the ids of those numbers. Also a MANIFEST row.
 - **The decision** records ONE reply of the user for a batch of items: one
   call per decision. `--user-words` is the user's reply verbatim; as a
-  command-line argument it appears in the permission prompt when the user has
-  added an ask rule for `lit_verify.sh settle` (as for `lit_corpus.sh
-  adjudications record-human`). `does_not_match` needs `--rationale` (which
-  number, and what the page prints). The record is
+  command-line argument it appears in the permission prompt that the ask rule
+  `Bash(*lit_verify*settle*--d*)` in `.claude/settings.json` raises (as
+  `Bash(*lit_corpus*record-human*)` does for `lit_corpus.sh adjudications
+  record-human`). Only the orchestrator runs it, as its own
+  Bash call: `run_with_capture.sh` refuses a script that calls `settle` with
+  a decision (exit 3), while `--list` may run from a script.
+  `does_not_match` needs `--rationale` (which number, and what the page
+  prints). The record is
   `PAPER_DIR/audit_settlement{S}_{n}.json` (exclusive create, `n` the next
   free number; schema `lit-verify-audit-settlement-v1`, rules
   `audit-settle-v1`): the audit, card and `card_check` SHA-256, the decision,

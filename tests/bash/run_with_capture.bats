@@ -16,6 +16,8 @@
 # 2026-10-30: Python package REMOVAL forms (string and list) are refused;
 # read-only uv pip subcommands in list form are allowed; the string-literal
 # false positive is pinned as refused.
+# The researcher-decision scan (lit_corpus record-human; lit_verify settle with
+# a decision flag) shares the same refusal path; see the last section.
 #
 # SCRIPT UNDER TEST is parameterized: RUN_WITH_CAPTURE_SH defaults to the
 # in-repo wrapper but can be pointed at a draft copy for pre-deployment testing.
@@ -947,4 +949,242 @@ _expect_scan_pass() {
     assert_output "1"
     grep -q '^SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"$' "$RUN_WITH_CAPTURE_SH"
     grep -q '^SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"$' "$RUN_WITH_CAPTURE_SH"
+}
+
+# ============================================================================
+# Researcher-decision scan
+# ============================================================================
+# The wrapper refuses (exit 3, no log appended, script editable in place) a
+# script that calls `lit_corpus adjudications record-human` or `lit_verify
+# settle` with a decision flag: those record a researcher's own decision and
+# are run only by the orchestrator, behind a permission prompt. It cites each
+# offending line as "N:text".
+#
+# SAFETY: the commands in these fixtures are inert text. Every test shadows
+# both interpreters (_inert_interpreters), every BLOCK fixture exits at its
+# top before the call line, and the paths name no real project, so a scan
+# miss fails the test (status 0, INERT marker) without recording anything.
+# ============================================================================
+
+# _expect_decision_block FILE LINE... -- a full refusal citing each LINE number.
+_expect_decision_block() {
+    local f="$1" ln
+    shift
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "BLOCKED: This script was not run. It appears to run a command"
+    assert_output --partial "researcher decision command detected"
+    assert_output --partial "records a researcher's own"
+    assert_output --partial "move that text into a data file"
+    assert_output --partial "selftest <SCRATCH_DIR>"
+    assert_output --partial "NO execution log was appended"
+    refute_output --partial "EXECUTING:"
+    refute_output --partial "INERT_COMPUTATION_COMPLETED"
+    # A cited line reads "N:text" at the start of an output line.
+    for ln in "$@"; do
+        grep -qE "^${ln}:" <<< "$output"
+    done
+    # No log appended (a count, so $output stays the refusal for the caller).
+    [ "$(grep -c '^# EXECUTION LOG' "$f")" -eq 0 ]
+}
+
+# _expect_decision_pass FILE -- the scan let the file through (inert run, log appended).
+_expect_decision_pass() {
+    local f="$1"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    assert_success
+    assert_output --partial "SUCCESS: Script passed."
+    refute_output --partial "researcher decision command detected"
+    [ "$(grep -c '^# EXECUTION LOG' "$f")" -eq 1 ]
+    grep -q '^# INERT_COMPUTATION_COMPLETED' "$f"
+}
+
+# --- Block -----------------------------------------------------------------------
+
+@test "decision scan blocks .py record-human through the lit_corpus.sh wrapper (list form)" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_01.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "adjudications", "record-human", "proj", "--rows", "rows.txt", "--decision", "same_work", "--user-words", "all look right"])' > "$f"
+    _expect_decision_block "$f" 3
+    assert_output --partial "3:subprocess.run"
+}
+
+@test "decision scan blocks .py record-human through the lit_corpus.py module (string form and import)" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_02.py"
+    printf '%s\n' 'import os, sys' 'raise SystemExit(0)  # inert guard' \
+        'os.system("python3 /daaf/scripts/lit_corpus.py adjudications record-human proj --rows r.txt --decision defer --user-words later")' > "$f"
+    _expect_decision_block "$f" 3
+    f="${BATS_TEST_TMPDIR}/dec_02b.py"
+    printf '%s\n' 'import sys' 'raise SystemExit(0)  # inert guard' 'sys.path.insert(0, "/daaf/scripts")' 'import lit_corpus' \
+        'lit_corpus.main(["adjudications", "record-human", "proj", "--rows", "r.txt", "--decision", "defer", "--user-words", "later"])' > "$f"
+    _expect_decision_block "$f" 5
+}
+
+@test "decision scan blocks .py record-human held in a variable" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_03.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' 'ACTION = "record-human"' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "adjudications", ACTION, "proj"])' > "$f"
+    _expect_decision_block "$f" 3
+}
+
+@test "decision scan blocks .py settle with --decision through the .sh wrapper and the .py module" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_04.py"
+    printf '%s\n' 'import subprocess, sys' 'raise SystemExit(0)  # inert guard' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_verify.sh", "settle", "papers/k", "--audit", "vision_audit.json", "--items", "items.txt", "--decision", "matches", "--user-words", "they match"])' > "$f"
+    _expect_decision_block "$f" 3
+    f="${BATS_TEST_TMPDIR}/dec_04b.py"
+    printf '%s\n' 'import subprocess, sys' 'raise SystemExit(0)  # inert guard' \
+        'subprocess.run([sys.executable, "/daaf/scripts/lit_verify.py", "settle", "papers/k", "--audit", "vision_audit.json", "--items", "items.txt", "--decision", "does_not_match", "--user-words", "2 is wrong", "--rationale", "page 4 prints 0.31"])' > "$f"
+    _expect_decision_block "$f" 3
+}
+
+@test "decision scan blocks .py settle whose list is split across lines (cites the settle and flag lines)" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_05.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'LV = "/daaf/scripts/lit_verify.sh"' \
+        'cmd = ["bash", LV,' \
+        '       "settle", "papers/k", "--audit", "vision_audit.json",' \
+        '       "--items", "items.txt",' \
+        '       "--decision", "matches", "--user-words", "they match"]' \
+        'subprocess.run(cmd)' > "$f"
+    _expect_decision_block "$f" 5 7
+}
+
+@test "decision scan blocks .py settle with an abbreviated decision flag (--d, --dec, --decision=)" {
+    _inert_interpreters
+    local f n=0
+    for flag in '"--d", "matches"' '"--dec", "matches"' '"--decision=matches"'; do
+        n=$((n + 1))
+        f="${BATS_TEST_TMPDIR}/dec_06_${n}.py"
+        printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+            "subprocess.run([\"bash\", \"/daaf/scripts/lit_verify.sh\", \"settle\", \"papers/k\", \"--audit\", \"a.json\", \"--items\", \"i.txt\", ${flag}, \"--user-words\", \"ok\"])" > "$f"
+        echo "flag form: $flag"
+        _expect_decision_block "$f" 3
+    done
+}
+
+@test "decision scan blocks .R settle via system2() and record-human via system()" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_07.R"
+    printf '%s\n' 'quit(status = 0)  # inert guard' \
+        'system2("bash", c("/daaf/scripts/lit_verify.sh", "settle", "papers/k", "--audit", "vision_audit.json", "--items", "items.txt", "--decision", "matches", "--user-words", "they match"))' > "$f"
+    _expect_decision_block "$f" 2
+    f="${BATS_TEST_TMPDIR}/dec_07b.R"
+    printf '%s\n' 'quit(status = 0)  # inert guard' \
+        "system(\"bash /daaf/scripts/lit_corpus.sh adjudications record-human proj --rows r.txt --decision defer --user-words 'later'\")" > "$f"
+    _expect_decision_block "$f" 2
+}
+
+@test "decision scan refuses a string literal that only quotes the command (documented fail-closed false positive)" {
+    # A line grep cannot tell a printed hint from a call. Pinned so a change is
+    # deliberate; the script header gives the workaround (a data file).
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_08.py"
+    printf '%s\n' 'raise SystemExit(0)  # inert guard' \
+        'print("next: bash /daaf/scripts/lit_corpus.sh adjudications record-human PROJECT --rows FILE")' > "$f"
+    _expect_decision_block "$f" 2
+}
+
+@test "decision scan refuses a settle --list script that prints a hint naming --decision (false positive; banner gives the workaround)" {
+    # The script only lists items, then prints the next step. The banner must
+    # say "appears to run" and point to the data-file workaround.
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_08b.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'LV = "/daaf/scripts/lit_verify.sh"' \
+        'subprocess.run(["bash", LV, "settle", "papers/k", "--audit", "vision_audit.json", "--list"])' \
+        'print("Next: the orchestrator records the reply with --decision after the researcher answers.")' > "$f"
+    _expect_decision_block "$f" 4 5
+}
+
+@test "decision scan blocks .py settle with CRLF line endings and a tab-indented list split across lines" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_09.py"
+    printf 'import subprocess\r\nraise SystemExit(0)  # inert guard\r\nLV = "/daaf/scripts/lit_verify.sh"\r\ncmd = ["bash", LV,\r\n\t"settle", "papers/k",\r\n\t"--items", "items.txt",\r\n\t"--decision", "matches", "--user-words", "ok"]\r\nsubprocess.run(cmd)\r\n' > "$f"
+    [ "$(tr -cd '\r' < "$f" | wc -c)" -eq 8 ]
+    _expect_decision_block "$f" 5 7
+}
+
+@test "decision scan blocks a lowercase .r script with system2() and --decision=matches" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_10.r"
+    printf '%s\n' 'quit(status = 0)  # inert guard' \
+        'lv <- "/daaf/scripts/lit_verify.sh"' \
+        'system2("bash", c(lv, "settle", "papers/k", "--items", "i.txt", "--decision=matches", "--user-words", "ok"))' > "$f"
+    _expect_decision_block "$f" 3
+}
+
+@test "decision scan blocks .py settle with the --decisio prefix" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_11.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_verify.sh", "settle", "papers/k", "--items", "i.txt", "--decisio", "matches", "--user-words", "ok"])' > "$f"
+    _expect_decision_block "$f" 3
+}
+
+@test "decision scan still refuses when the script contains a NUL byte" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_nul.py"
+    printf 'import subprocess\nraise SystemExit(0)  # inert guard\nx = "a\000b"\nsubprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "adjudications", "record-human", "proj"])\n' > "$f"
+    [ "$(tr -cd '\000' < "$f" | wc -c)" -eq 1 ]
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "researcher decision command detected"
+    refute_output --partial "INERT_COMPUTATION_COMPLETED"
+}
+
+# --- Allow -----------------------------------------------------------------------
+
+@test "decision scan allows settle --list (.py and .R): it records no decision" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_01.py"
+    printf '%s\n' 'import subprocess' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_verify.sh", "settle", "papers/k", "--audit", "vision_audit.json", "--list"])' > "$f"
+    _expect_decision_pass "$f"
+    f="${BATS_TEST_TMPDIR}/dec_ok_01b.R"
+    printf '%s\n' 'system2("bash", c("/daaf/scripts/lit_verify.sh", "settle", "papers/k", "--audit", "vision_audit.json", "--list"))' > "$f"
+    _expect_decision_pass "$f"
+}
+
+@test "decision scan allows other lit_corpus and lit_verify calls and MANIFEST reads" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_02.py"
+    printf '%s\n' 'import json, subprocess' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "adjudications", "glance-sheet", "proj", "--deliverable", "d.md"])' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "manifest", "proj"])' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_verify.sh", "report", "proj", "d.md", "--data-version", "corpus=3"])' \
+        'rows = [json.loads(l) for l in open("papers/MANIFEST.jsonl")]' \
+        'settled = [r for r in rows if r.get("kind") == "lit_verify_settle" and r.get("command") == "settle"]' \
+        'decisions = [r["parameters"]["decision"] for r in settled]' \
+        'names = ["audit_settlement_1.json", "settle_items.txt"]' > "$f"
+    _expect_decision_pass "$f"
+}
+
+@test "decision scan allows .py and .R whose only mentions are on full-line comments" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_03.py"
+    printf '%s\n' '# The orchestrator records the reply itself, never this script:' \
+        '#   bash /daaf/scripts/lit_corpus.sh adjudications record-human PROJECT --rows FILE --decision same_work' \
+        '    # bash /daaf/scripts/lit_verify.sh settle PAPER_DIR --audit A --items F --decision matches' \
+        'print("ok")' > "$f"
+    _expect_decision_pass "$f"
+    f="${BATS_TEST_TMPDIR}/dec_ok_03b.R"
+    printf '%s\n' '# system2("bash", c("/daaf/scripts/lit_verify.sh", "settle", "p", "--decision", "matches"))' \
+        '# lit_corpus.sh adjudications record-human' 'cat("ok\n")' > "$f"
+    _expect_decision_pass "$f"
+}
+
+@test "decision scan allows the word settle and a --decision flag in a script that never names lit_verify" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_04.py"
+    printf '%s\n' 'import argparse' \
+        'print("let the estimates settle before comparing")' \
+        'p = argparse.ArgumentParser()' \
+        'p.add_argument("--decision")' > "$f"
+    _expect_decision_pass "$f"
 }

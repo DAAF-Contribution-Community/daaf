@@ -288,7 +288,9 @@ so a later edit of the log shows.
    `daaf_version`, `model` (session-wide, so never used for the model ID),
    `agent_type` and, on subagent calls, `agent_id`. A clean scan is evidence,
    not proof: the hook writes after the tool runs and can lose a record. The
-   real boundary is an agent-scoped Read path hook (user-applied).
+   boundary is the agent-scoped `adjudicator-read-scope.sh` hook, which refuses
+   any other Read before it runs; it cannot tell which bundle the prompt
+   names, so this scan stays the check for that.
 4. `data/adjudication_raw/{batch}.jsonl`, one object per judged row:
    `{row_sha256, verdict, dimension_verdicts: {dimension: verdict}, rationale}`.
    Refused (exit 11): a row not in the bundle, a second judgment of a row, a
@@ -327,8 +329,10 @@ person's row copies the model fields of the row it supersedes.
 
 **`record-human`** (hardening (h)). The user's words are a command-line
 argument, quoted verbatim from the user's own message (never a paraphrase,
-never a subagent's text), so a user-applied Ask-First permission rule on this
-subcommand shows them in the prompt the user approves. One call binds one
+never a subagent's text), so the Ask-First rule `Bash(*lit_corpus*record-human*)`
+in `.claude/settings.json` shows them in the prompt the user approves. Only the orchestrator
+runs it, as its own Bash call: `run_with_capture.sh` refuses a script that
+calls it (exit 3). One call binds one
 reply to every row the rows file lists; the MANIFEST row lists each row hash.
 Refused (exit 11, nothing written): no words; no rationale (except `defer`); a
 row attached to no paper; a row listed twice; an EXISTS or NOT FOUND row (re-run

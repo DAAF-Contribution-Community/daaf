@@ -10,8 +10,9 @@
 # This script:
 # 1. Detects the script language from the file extension
 # 2. Refuses to run a script that already carries an execution log
-# 3. Scans the script body for runtime package-install calls and for
-#    environment-secret prints (either refuses with exit 3)
+# 3. Scans the script body for runtime package-install calls, for
+#    environment-secret prints, and for the Literature Review commands that
+#    record a researcher's decision (any of them refuses with exit 3)
 # 4. Creates a capture buffer NEXT TO the script (inside the project, so
 #    partial output survives a fault or interruption inside the backup and
 #    audit boundary)
@@ -35,7 +36,8 @@
 #   1     usage error, script not found, unsupported extension, or the script
 #         already has an execution log (re-run refused)
 #   3     pre-execution content scan blocked execution -- a package-install
-#         call or an environment-secret print (no log appended)
+#         call, an environment-secret print, or a researcher-decision command
+#         (no log appended)
 #   74    EVIDENCE INCOMPLETE: capture buffer could not be created, the tee
 #         failed, the append failed, or post-append verification failed.
 #         The script's own exit code is stated in the banner. Any capture
@@ -123,9 +125,9 @@ fi
 # before executing. Full-line comments are excluded so a commented-out example
 # does not false-block; an inline TRAILING comment that contains a token IS an
 # accepted false positive (rare, and erring toward blocking is the safe default
-# for a reproducibility guard). Both scans run grep with -a (treat the file as
-# text): without it, a single NUL byte anywhere in the script makes GNU grep
-# classify the file as binary and print no matching lines, and both scans
+# for a reproducibility guard). All three scans run grep with -a (treat the
+# file as text): without it, a single NUL byte anywhere in the script makes GNU
+# grep classify the file as binary and print no matching lines, and the scans
 # would silently pass. Scan tokens are extension-specific: R is
 # case-sensitive so its tokens match case-sensitively (fewer false positives);
 # Python tokens match case-insensitively and cover package installs AND
@@ -339,6 +341,89 @@ if [ -n "$SECRET_HITS" ]; then
     echo "NOTE: NO execution log was appended — immutable script versioning has" >&2
     echo "NOT engaged. You may edit THIS script file in place and re-run it once" >&2
     echo "the flagged line(s) are removed (no _a/_b version needed)." >&2
+    echo "============================================================" >&2
+    exit 3
+fi
+
+# --- Pre-execution researcher-decision scan -----------------------------------
+# Two Literature Review commands record a researcher's own decision, bound to
+# the researcher's words quoted verbatim: `lit_corpus adjudications
+# record-human` (a citation decision) and `lit_verify settle ... --decision`
+# (the researcher's comparison of readings with the PDF pages). The
+# orchestrator runs each as its own Bash call after the researcher replies,
+# and settings.json ask rules make that call prompt, so the researcher
+# approves the command that shows their words. Called from a script, the
+# command runs in a subprocess no permission rule sees, so this scan refuses
+# the script on the same terms as the scans above: exit 3, NO log appended,
+# script editable in place, full-line comments excluded. Both languages get
+# the same case-sensitive rules (the CLIs take these words as written):
+#   - record-human: any line holding the token `record-human`, whether it
+#     reaches lit_corpus through the .sh wrapper, the .py module or an
+#     imported module's main([...]), in a command string, a list
+#     (["adjudications", "record-human", ...]) or a variable.
+#   - settle: the script names lit_verify on some line (wrapper, module or
+#     import), one line holds the word `settle`, and one line holds a
+#     decision flag: `--decision`, `--decision=...`, or any shorter prefix
+#     down to `--d`, which argparse expands to --decision for settle. The
+#     three may sit on different lines, so a list split across lines is
+#     caught. `settle --list` passes no decision flag and runs.
+# ACCEPTED FALSE POSITIVES (fail-closed, as for the install scan): a string
+# literal, docstring or inline trailing comment that holds these words
+# without running them, such as a printed hint quoting the command or a
+# MANIFEST filter on the command name "adjudications record-human".
+# Workaround: keep such text in a data file the script reads.
+# ACCEPTED RESIDUALS: a command name or flag built by concatenation or
+# interpolation ("record-" + "human", or a flag made from a dict key), a
+# script that imports a module and calls its internal functions directly
+# (lit_corpus.cmd_adj_record_human(...), lit_verify.run_settle(...)), which
+# pass the decision as a value rather than a command word or flag, a settle
+# call in a script that never names lit_verify, and a call made by another
+# program the script runs. The ask rules and the orchestrator's instructions
+# remain behind this scan.
+DECISION_COMMENT_RE='^[0-9]+:[[:space:]]*#'
+DECISION_HITS=$(grep -anE 'record-human' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+LIT_VERIFY_LINES=$(grep -anE 'lit_verify' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+if [ -n "$LIT_VERIFY_LINES" ]; then
+    SETTLE_LINES=$(grep -anE '(^|[^A-Za-z0-9_-])settle([^A-Za-z0-9_-]|$)' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+    DECISION_FLAG_LINES=$(grep -anE '(^|[^A-Za-z0-9_-])--d(e(c(i(s(i(o(n)?)?)?)?)?)?)?([^A-Za-z0-9_-]|$)' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+    if [ -n "$SETTLE_LINES" ] && [ -n "$DECISION_FLAG_LINES" ]; then
+        DECISION_HITS=$(printf '%s\n' "$DECISION_HITS" "$SETTLE_LINES" "$DECISION_FLAG_LINES" | grep -v '^$' | sort -t: -k1,1n -u)
+    fi
+fi
+
+if [ -n "$DECISION_HITS" ]; then
+    echo "============================================================" >&2
+    echo "BLOCKED: This script was not run. It appears to run a command that" >&2
+    echo "records a researcher's own decision, and only the orchestrator runs" >&2
+    echo "those, after the researcher has replied." >&2
+    echo "Detail: run_with_capture.sh — researcher decision command detected" >&2
+    echo "============================================================" >&2
+    echo "Offending line(s) in $SCRIPT_PATH:" >&2
+    echo "$DECISION_HITS" >&2
+    echo "" >&2
+    echo "WHY: The orchestrator runs such a command as its own Bash call, so the" >&2
+    echo "permission prompt shows the researcher their words before anything is" >&2
+    echo "recorded. A script would skip that prompt. The scan reads lines, so it" >&2
+    echo "cannot tell a call from text that only quotes the command. The" >&2
+    echo "commands: lit_corpus adjudications record-human (a citation decision)" >&2
+    echo "and lit_verify settle with --decision (the researcher's check of numbers" >&2
+    echo "the AI read from page images against the PDF pages)." >&2
+    echo "" >&2
+    echo "WHAT TO DO:" >&2
+    echo "  1. If the script runs the command, remove the call. The orchestrator" >&2
+    echo "     runs it itself, at the prompt, with the researcher's words quoted" >&2
+    echo "     verbatim." >&2
+    echo "  2. If a cited line only quotes the command (a printed hint, a filter" >&2
+    echo "     on a MANIFEST row), move that text into a data file the script" >&2
+    echo "     reads." >&2
+    echo "  3. 'lit_verify settle --list' records no decision and may stay in a" >&2
+    echo "     script. To test the recording commands, run their selftests" >&2
+    echo "     (lit_corpus.sh selftest <SCRATCH_DIR>, lit_verify.sh selftest" >&2
+    echo "     <SCRATCH_DIR>)." >&2
+    echo "" >&2
+    echo "NOTE: NO execution log was appended — immutable script versioning has" >&2
+    echo "NOT engaged. You may edit THIS script file in place and re-run it once" >&2
+    echo "the cited lines are changed (no _a/_b version needed)." >&2
     echo "============================================================" >&2
     exit 3
 fi

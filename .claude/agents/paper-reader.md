@@ -489,7 +489,7 @@ PRIOR CHUNK NOTES: {absolute paths | none}
 QUESTION: {review question, verbatim}
 KEY REFERENCES TO TRACE: {paper keys or external:<doi or W-id> | none}
 RECORD: {citekey, title, authors, year, venue, DOI or OpenAlex id | none}
-ROUTE: {the line copied verbatim from `lit_verify route` output | omit the line when none was recorded}
+ROUTE: {the line copied verbatim from STATE's Route record | omit the line when none was recorded}
 WINDOW: {200k|1M}   IMAGE CAP: {8|30}
 PDF page-image cross-checking (user preference): {auto|all-pages|off}
 GUIDE (formal only): {BASE_DIR}/.claude/skills/literature-review/references/guide-{design}.md

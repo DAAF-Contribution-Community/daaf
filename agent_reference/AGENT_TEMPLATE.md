@@ -416,13 +416,15 @@ Before returning output, verify:
 **Invocation type:** `subagent_type: "[agent-name]"`
 
 The stage-specific invocation template with full context fields is in the relevant `agent_reference/WORKFLOW_PHASE[N]_[NAME].md` or mode reference file.
+
+[Optional: the general shape of the call, as a full Agent() example]
 ```
 
 **Guidelines:**
 - Specifies the `subagent_type` for quick reference
-- References the relevant WORKFLOW_PHASE file or mode reference file for stage-specific context fields and invocation templates
+- References the relevant WORKFLOW_PHASE file or mode reference file for stage-specific context fields and invocation templates; that file holds the canonical template
 - The invocation template must map to Upstream Inputs (Section 3)
-- Do NOT duplicate the full Agent() call syntax here — that lives in the WORKFLOW_PHASE or mode reference files
+- May show the full Agent() call (`subagent_type`, `model`, and the prompt with its BASE_DIR line and context fields) when seeing the whole prompt helps the agent check what it receives, as the Literature Review agents do. The example matches the canonical template field for field, BASE_DIR line included when the template carries one (citation-adjudicator's fixed, hashed prompt carries none). When the two differ, the WORKFLOW_PHASE or mode reference file governs: fix the example
 
 ---
 
@@ -487,6 +489,6 @@ These elements MUST be identical across all agents:
 | STOP format | Standardized template (see Section 8) |
 | Anti-pattern format | 4-column table (# | Anti-Pattern | Problem | Correct Approach) + DO NOT paragraphs |
 | Terminology | "STOP Conditions" (not "Escalation", not "When to Escalate") |
-| Path resolution | All paths absolute; BASE_DIR in every Agent prompt |
+| Path resolution | All paths absolute; BASE_DIR in every Agent prompt, except a fixed, hashed prompt sent verbatim whose paths are all absolute (only citation-adjudicator) |
 | Frontmatter description | Third person; includes what AND when |
 | Per-agent hooks | Use `hooks` frontmatter for agent-scoped enforcement; see `agent-authoring` skill |

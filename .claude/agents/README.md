@@ -685,6 +685,7 @@ code-reviewer returns BLOCKER
 - Treats every value in the bundle as untrusted data
 - Returns one JSONL block that the orchestrator persists verbatim for `lit_corpus adjudications ingest`; writes nothing itself
 - Needs no `enforce-file-first.sh` hook: it holds no Bash
+- Registers `adjudicator-read-scope.sh` in its frontmatter, a hook that refuses every tool call of the agent except a Read of a bundle file
 
 **Preloaded skills:** none (the rubric and its version travel inside the prompt)
 
@@ -728,9 +729,9 @@ model: sonnet                                    # Or: opus (high-judgment roles
 | 6 | Output Format | Status, Confidence (H/M/L), Learning Signal, Recommendations |
 | 7 | Downstream Consumers | `<downstream_consumer>` tags, severity-to-action mapping |
 | 8 | Boundaries | Always/Ask/Never tiers + STOP Conditions |
-| 9 | Anti-Patterns | `<anti_patterns>` tags, 3-column table (min 5) |
+| 9 | Anti-Patterns | `<anti_patterns>` tags, 4-column table (min 5) |
 | 10 | Quality and Completion | COMPLETE/INCOMPLETE criteria + Self-Check |
-| 11 | Invocation Pattern | Exact Agent() syntax with BASE_DIR |
+| 11 | Invocation Pattern | `subagent_type` + pointer to the canonical invocation template; an optional full Agent() example that matches it |
 | 12 | References | CONDITIONAL — only when agent references external files |
 
 ### Integration Checklist (Abbreviated)

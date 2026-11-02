@@ -157,12 +157,14 @@ No other sections use tag wrappers.
 
 ### 8. Path Resolution
 
-Every agent's Invocation Pattern MUST include:
+Every invocation template for an agent (the canonical one in its WORKFLOW_PHASE or mode reference file, and any full Agent() example in the agent's own Invocation section) MUST include:
 
 ```markdown
 **BASE_DIR:** {BASE_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 ```
+
+The one exception is a fixed prompt that is hashed and sent verbatim (citation-adjudicator): any added line would change the hashed text, so its bundle path is absolute and nothing else is added.
 
 All file paths in Agent prompts to subagents MUST be absolute paths. Relative paths in documentation are for human readability only.
 

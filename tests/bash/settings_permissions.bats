@@ -242,6 +242,20 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     assert_success
 }
 
+@test "settings permissions: Literature Review record rules are ask rules, never allow-listed" {
+    # `lit_corpus … record-human` and `lit_verify … settle --decision` record a
+    # person's words as that person's decision, so the person approves each
+    # call (literature-review-mode.md). Static contract only, as above.
+    run jq -e '
+        . as $settings
+        | (["Bash(*lit_corpus*record-human*)", "Bash(*lit_verify*settle*--d*)"]
+           | all(. as $rule | ($settings.permissions.ask // []) | index($rule) != null))
+        and ([($settings.permissions.allow // [])[]
+              | select(test("record-human|settle"))] | length == 0)
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
 @test "settings permissions: attribution is never the boolean form" {
     # Claude Code 2.1.281 added "attribution": false, but older CLIs (including
     # the rollback target) skip a settings file that holds the boolean form,

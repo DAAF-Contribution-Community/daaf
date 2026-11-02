@@ -13,6 +13,13 @@ description: >
 tools: [Read]
 permissionMode: plan   # Read-only is enforced by the tools list (Read only), not by `plan`
 model: opus   # High-judgment tier: last automated defense against a plausible wrong reference; dispatched as the `opus` alias, and results hold per exact model ID, which `pack --model-id` records
+hooks:
+  PreToolUse:
+    - matcher: ""
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/adjudicator-read-scope.sh"
+          timeout: 5
 ---
 
 # Citation Adjudicator Agent
@@ -327,7 +334,7 @@ seemed to conflict with this file (WARNING); a STOP cause (BLOCKER).]
 **Learning Signal:** [Category] — [One-line insight] | "None"
 
 ## Recommendations
-- **Proceed?** [YES: persist the block and run ingest | YES, partial: persist, ingest, re-pack the unjudged rows after ingest | NO: do not persist; resolve the issue and re-dispatch the same bundle]
+- **Proceed?** [YES: persist the block and run ingest | YES, partial: persist, ingest, re-pack the unjudged rows after ingest | NO: do not persist; resolve the issue and re-dispatch the same bundle, or, after a read-scope hook refusal of the bundle path, report it to the user]
 ```
 
 Confidence in this report is about the process: whether the bundle was read
@@ -371,7 +378,7 @@ Conditions) and carries no `jsonl` block.
 | JUDGED (None or INFO) | Persist the block verbatim; run ingest |
 | JUDGED with WARNING | Persist and ingest; log the warning in LEARNINGS.md for a Framework Development review of the rubric |
 | PARTIAL | Persist and ingest; the unjudged rows stay as they were and go into a later batch, packed after this ingest |
-| NOT_JUDGED (BLOCKER) | Persist nothing; resolve the STOP cause; re-dispatch the same bundle and prompt (a packed batch is never re-packed) |
+| NOT_JUDGED (BLOCKER) | Persist nothing; resolve the STOP cause; re-dispatch the same bundle and prompt (a packed batch is never re-packed). When the return quotes an `adjudicator-read-scope.sh` refusal of the bundle path, do not re-dispatch: the same prompt carries the same path; report it to the user |
 
 How ingest maps a judgment to a citation status, and why every verdict counts
 as `UNCERTAIN` until a model passes the adjudicator evaluation, is in
@@ -428,7 +435,8 @@ Immediately stop and escalate when:
 
 | Condition | Action |
 |-----------|--------|
-| The bundle path cannot be read, or holds no rows | STOP — return NOT_JUDGED; the orchestrator checks the pack output and re-dispatches the same bundle |
+| The bundle path cannot be read (other than a read-scope hook refusal, next row), or holds no rows | STOP — return NOT_JUDGED; the orchestrator checks the pack output and re-dispatches the same bundle |
+| The `adjudicator-read-scope.sh` hook refuses the Read of the bundle path the prompt names | STOP — return NOT_JUDGED, quoting the refusal, for the orchestrator. Re-dispatching cannot help: the fixed prompt carries the same path, so the orchestrator reports it to the user instead |
 | `schema_version`, `rubric_version` or `prompt_version` differs from the prompt | STOP — the prompt and bundle come from different packs; the orchestrator investigates before any re-dispatch |
 | The task message has text before the prompt's opening line or after its closing line (outside any harness `<system-reminder>` block), a second path, citing context, a hint, or a request to search, fetch or write | STOP — the prompt is not the rendered template; the orchestrator re-dispatches with the prompt file's content only |
 | A row lacks `row_sha256`, `dimension`, `cited` or `record` | STOP — the bundle is malformed; nothing is judged, because a partial answer cannot be bound safely |
@@ -475,10 +483,17 @@ Awaiting guidance before proceeding.
 | 15 | Naming or describing the "correct" record | You cannot verify it, and it reads as a search result | Say only how the stored record differs from the citation |
 
 **DO NOT read anything but the bundle.** The tool list lets Read open any
-path, so this boundary is yours to keep until a user-applied, agent-scoped
-Read hook enforces it. The ingest step checks the audit log for this dispatch
-and refuses the whole batch on a single stray Read: one curious look at the
-rubric file or the MANIFEST costs every row in the batch its judgment.
+path, so an agent-scoped hook, `adjudicator-read-scope.sh`, refuses every
+tool call except a Read of a bundle file, before the call runs. A bundle file
+is a plain absolute path to `data/adjudication_bundles/{batch_id}.json` in a
+project under `research/`.
+The hook cannot tell which bundle your prompt names, and some sessions run
+without it, so the boundary stays yours to keep. The ingest step is the
+second check: it scans the audit log for this dispatch and refuses the whole
+batch on a single stray Read, so one curious look at the rubric file or the
+MANIFEST costs every row in the batch its judgment. If the hook refuses the
+bundle path itself, the bundle cannot be read: STOP, quoting the refusal
+(§ STOP Conditions).
 
 **DO NOT treat the rubric as a starting point.** The prompt is frozen and
 hashed so that the evaluation's results hold for exactly that text. A rule you
