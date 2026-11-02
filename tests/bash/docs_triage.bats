@@ -203,6 +203,151 @@ setup() {
     assert_output --partial "$(printf 'README.md\t4\t')"
 }
 
+@test "family D reports PSU written out as Phase Status Update in a user-facing file" {
+    mkdir -p "${FIX}/user_reference"
+    printf '%s\n' 'The next Phase Status Update lists what is done.' > "${FIX}/user_reference/guide.md"
+    git -C "${FIX}" add user_reference/guide.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf '1\tD\tuser_reference/guide.md\t1\t')"
+}
+
+# The placeholder and Literature Review tests below append lines 3-6 to the
+# fixture README.md (a family D file): the first three must be reported, the
+# last must not.
+
+@test "family D reports Stage placeholders but not a Stage Name column" {
+    printf '%s\n' \
+        'Currently at Stage [N] ([Stage Name]).' \
+        'Re-entry at Stage [N.N] or Stage [DI-N].' \
+        'Fill in Stage N here.' \
+        'The Stage Name column and Stage [name of the step] stay plain.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf 'README.md\t3\t')"
+    assert_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+    refute_output --partial "$(printf 'README.md\t6\t')"
+}
+
+@test "family D reports mode-code placeholders but not a word after the hyphen" {
+    printf '%s\n' \
+        'Record DI-[N] here.' \
+        'Record [DI-N] or DS-N here.' \
+        'Record [LR-n] here.' \
+        'The DI-Net and LR-new labels stay plain.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf 'README.md\t3\t')"
+    assert_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+    refute_output --partial "$(printf 'README.md\t6\t')"
+}
+
+@test "family D reports checkpoint placeholders but not other braced names" {
+    printf '%s\n' \
+        'Decided at [CP-x].' \
+        'Read the `CP{n} VALIDATION:` line.' \
+        'Read the `QA{n} RESULT:` line and QAP[N].' \
+        'Folders such as QA{version}/ and CP{name}/ stay plain.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf 'README.md\t3\t')"
+    assert_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+    refute_output --partial "$(printf 'README.md\t6\t')"
+}
+
+@test "family D reports Literature Review stage codes but not LR look-alikes" {
+    printf '%s\n' \
+        'Next: LR-2, then LR-3b.' \
+        "At LR-7Q or LR-4' the memo is checked." \
+        'Stage list: LR-0 to LR-8, LR-5a, LR-8Q.' \
+        'The LR-test statistic and code HLR-1 stay plain.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf 'README.md\t3\t')"
+    assert_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+    refute_output --partial "$(printf 'README.md\t6\t')"
+}
+
+@test "family D reports Literature Review checkpoint codes but not code page CP-1252" {
+    printf '%s\n' \
+        'Open checkpoint: CP-K.' \
+        'Show the plan again (CP-1).' \
+        'Then CP-S, CP-A, CP-R, CP-G or CP-F.' \
+        'Files in code page CP-1252 and a CP-Z label stay plain.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    assert_output --partial "$(printf 'README.md\t3\t')"
+    assert_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+    refute_output --partial "$(printf 'README.md\t6\t')"
+}
+
+@test "the restart prompts in the Full Pipeline and Data Onboarding STATE templates carry no family D code" {
+    # The real templates are copied into the fixture, which has no allowlist, so
+    # an allowlist fragment such as "Stage " or "DI-" cannot hide a hit here.
+    # The block runs from the "### User Restart Prompt" heading to the line
+    # before the next heading: the lead-in, the prompt and the orchestrator note.
+    mkdir -p "${FIX}/agent_reference"
+    for name in STATE_TEMPLATE.md STATE_TEMPLATE_ONBOARDING.md; do
+        cp "${REPO_ROOT}/agent_reference/${name}" "${FIX}/agent_reference/${name}"
+        git -C "${FIX}" add "agent_reference/${name}"
+    done
+    run bash "${LINT}" --root "${FIX}" --family D --format tsv
+    assert_success
+    printf '%s\n' "${output}" > "${BATS_TEST_TMPDIR}/family_d.tsv"
+    for name in STATE_TEMPLATE.md STATE_TEMPLATE_ONBOARDING.md; do
+        file="agent_reference/${name}"
+        read -r start end < <(awk '
+            /^### User Restart Prompt[[:space:]]*$/ { s = NR; next }
+            s && !e && /^#+ / { e = NR - 1 }
+            END { if (s && !e) e = NR; print s + 0, e + 0 }
+        ' "${FIX}/${file}")
+        echo "${file}: restart-prompt block lines ${start}-${end}"
+        [ "${start}" -gt 0 ]
+        [ "${end}" -gt "${start}" ]
+        # The block holds the quoted prompt the user pastes.
+        prompts="$(awk -v s="${start}" -v e="${end}" 'NR >= s && NR <= e && /^> / { n++ } END { print n + 0 }' "${FIX}/${file}")"
+        [ "${prompts}" -ge 1 ]
+        # The scan read the file: its agent-facing fields have family D hits.
+        total="$(awk -F '\t' -v f="${file}" '$3 == f { n++ } END { print n + 0 }' "${BATS_TEST_TMPDIR}/family_d.tsv")"
+        [ "${total}" -gt 0 ]
+        inside="$(awk -F '\t' -v f="${file}" -v s="${start}" -v e="${end}" '$3 == f && $4 + 0 >= s && $4 + 0 <= e' "${BATS_TEST_TMPDIR}/family_d.tsv")"
+        if [ -n "${inside}" ]; then
+            echo "family D hits inside the restart-prompt block of ${file}:"
+            printf '%s\n' "${inside}"
+            return 1
+        fi
+    done
+}
+
+@test "family C skips a dated line that names an external tool but reports a DAAF-internal date" {
+    printf '%s\n' \
+        'Embedding is verified against Quarto 1.10.18 (2026-11-01).' \
+        'moby daemon/list.go matches the name filter exactly (read 2026-10-05).' \
+        'The check ran only on fresh installs until 2026-10-02.' \
+        >> "${FIX}/README.md"
+    git -C "${FIX}" add README.md
+    run bash "${LINT}" --root "${FIX}" --family C --format tsv
+    assert_success
+    refute_output --partial "$(printf 'README.md\t3\t')"
+    refute_output --partial "$(printf 'README.md\t4\t')"
+    assert_output --partial "$(printf 'README.md\t5\t')"
+}
+
 @test "a directory outside any git work tree exits 2" {
     mkdir -p "${BATS_TEST_TMPDIR}/plain"
     # The ceiling stops git from finding an enclosing repository, since TMPDIR

@@ -1,0 +1,45 @@
+# CI: Documentation Triage (advisory)
+#
+# Runs tests/lint/docs-triage.sh when documentation or the lint itself
+# changes, and prints its review queue in the job log. The lint exits 0
+# whatever it finds, so this workflow never blocks a merge; continue-on-error
+# keeps a lint crash (exit 2) advisory too. Family E needs .git/info/exclude,
+# which a CI checkout lacks, so the lint skips it with a note.
+#
+# The lint's own bats tests run in ci-scripts.yml (bats-tests), which already
+# triggers on tests/**.
+
+name: CI - Docs Triage
+
+on:
+  push:
+    paths:
+      - '**.md'
+      - '**.cff'
+      - 'scripts/host/*.txt'
+      - 'tests/lint/docs-triage*'
+      - '.github/workflows/ci-docs.yml'
+  pull_request:
+    paths:
+      - '**.md'
+      - '**.cff'
+      - 'scripts/host/*.txt'
+      - 'tests/lint/docs-triage*'
+      - '.github/workflows/ci-docs.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-triage:
+    name: Documentation Triage (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Documentation triage
+        continue-on-error: true
+        env:
+          NO_COLOR: "1"
+        run: bash tests/lint/docs-triage.sh

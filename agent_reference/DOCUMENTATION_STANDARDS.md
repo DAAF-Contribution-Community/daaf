@@ -138,7 +138,11 @@ explained in plain words where the user meets it.
 
 The glossary of internal terms and their user-facing wording is the orchestrator's Plain-Language
 Rule table (`.claude/skills/daaf-orchestrator/SKILL.md` § User-Facing Communication Standards >
-Plain-Language Rule). Add new terms there, not to a second list.
+Plain-Language Rule). Add new terms there, not to a second list. One exception: a mode reference
+file may keep a glossary of its own terms when the Plain-Language Rule table has a row pointing to
+it (Literature Review: `literature-review-mode.md` § Plain-Language Vocabulary). A term
+goes there only when it belongs to that mode; every other term goes in the Plain-Language Rule
+table.
 
 **Why.** Users judge the work by what they can follow. Internal codes are coordination language
 between agents; to a researcher they are noise

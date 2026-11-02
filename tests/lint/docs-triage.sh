@@ -30,8 +30,12 @@
 #      are not matched.
 #   D  Internal codes (user-facing files only): Stage N, PSU..., G1, GFD-,
 #      GDI-1, GDS-1, QA1, QAP, QAS, QAS-A, CP1, CPP, CPS-INTAKE, CPS-GEN, DI-1,
-#      DS-1, RV-1. Bare CPS is not matched: it also names the Current
-#      Population Survey.
+#      DS-1, RV-1, and "Phase Status Update" (PSU written out); the
+#      Literature Review codes LR-0 to LR-8 (LR-3b, LR-7Q, LR-4' ...) and
+#      CP-1, CP-K, CP-S, CP-A, CP-R, CP-G, CP-F; and template placeholders
+#      for these codes: Stage [N], Stage [N.N], Stage [DI-N], Stage N,
+#      DI-[N], DS-N, LR-n, CP-x, CP{n}, QA{n}.
+#      Bare CPS is not matched: it also names the Current Population Survey.
 #   E  Paths hidden by .git/info/exclude (all shipped files). Only a
 #      maintainer checkout has that file; when it is absent or holds no
 #      patterns (CI), E is skipped with a one-line note. Paths hidden by
@@ -214,11 +218,23 @@ B_RE='formerly|(new|added|introduced|changed|removed) in v[0-9]+|as of v[0-9]+|b
 # part of a file name or timestamp), minus lines carrying a token that marks an
 # outside fact. Case-sensitive so that "API" does not match inside words.
 C_DATE_RE='(^|[^0-9])20[0-9]{2}-[0-9]{2}-[0-9]{2}([^0-9A-Za-z_]|$)'
-C_EXTERNAL_RE='Claude Code|claude-|2\.1\.[0-9]|[Gg][Pp][Tt]-|Opus|Sonnet|Haiku|Fable|Mythos|GLM|Gemini|Codex|OpenRouter|Anthropic|OpenAI|API|https?://|www\.|PyPI|CRAN|Docker (Desktop|Engine|[0-9])|Ubuntu|Windows|macOS|GitHub|upstream|vendor|fetched|retrieved|accessed|OpenAlex|Semantic Scholar|ERIC|Scite|Elicit|arXiv|Crossref|Census|NCES|Urban Institute|[Pp]ortal|mirror|vintage|UV_EXCLUDE_NEWER|UBUNTU_SNAPSHOT|snapshot'
+C_EXTERNAL_RE='Claude Code|claude-|2\.1\.[0-9]|[Gg][Pp][Tt]-|Opus|Sonnet|Haiku|Fable|Mythos|GLM|Gemini|Codex|OpenRouter|Anthropic|OpenAI|API|https?://|www\.|PyPI|CRAN|Docker (Desktop|Engine|Client|[0-9])|Compose|moby|busybox|PowerShell|Quarto|TinyTeX|texlive|CTAN|P3M|Mozilla|NSS|IANA|OSV|Ubuntu|Windows|macOS|GitHub|upstream|vendor|fetched|retrieved|accessed|OpenAlex|Semantic Scholar|ERIC|Scite|Elicit|arXiv|Crossref|Census|NCES|Urban Institute|[Pp]ortal|mirror|vintage|UV_EXCLUDE_NEWER|UBUNTU_SNAPSHOT|snapshot'
 C_SKILLKEY_RE='skill-(authored|last-updated):'
 
-# D: case-sensitive whole-word match.
-D_RE='PSU[-A-Z0-9]*|Stage [0-9]+|G[0-9]+|GFD-[A-Z0-9-]*|GDI-[0-9]+|GDS-[0-9]+|QA[0-9][a-z0-9]*|QAP[0-9]*|QAS(-[A-C])?|CP[0-9]+|CPP[0-9]*|CPS-(INTAKE|GEN)|DI-[0-9]+|DS-[0-9]+|RV-[0-9]+'
+# D: case-sensitive whole-word match. D_CODES_RE holds the concrete codes;
+# D_PLACEHOLDER_RE holds the template placeholders that stand for them (Stage
+# [N], Stage [N.N], Stage [DI-N], Stage N, DI-[N], DS-N, LR-n, CP-x, CP{n},
+# QA{n}), which a restart prompt or other user-read line would otherwise carry
+# unseen; D_LITREVIEW_RE holds the Literature Review stage codes (LR-0 to LR-8
+# with suffixes such as LR-3b, LR-7Q, LR-4') and checkpoint codes (CP-1, CP-K,
+# CP-S, CP-A, CP-R, CP-G, CP-F). Brackets and braces are written as bracket
+# expressions ([[], [{], [}]) so every POSIX regex library reads them the same.
+# The whole-word rule keeps ordinary words out: "Stage Name" and "CP-1252" are
+# not matched.
+D_CODES_RE='PSU[-A-Z0-9]*|Stage [0-9]+|G[0-9]+|GFD-[A-Z0-9-]*|GDI-[0-9]+|GDS-[0-9]+|QA[0-9][a-z0-9]*|QAP[0-9]*|QAS(-[A-C])?|CP[0-9]+|CPP[0-9]*|CPS-(INTAKE|GEN)|DI-[0-9]+|DS-[0-9]+|RV-[0-9]+|Phase Status Update'
+D_PLACEHOLDER_RE='Stage ([[][A-Z0-9.-]+]|[{][A-Za-z0-9.-]+[}]|N(\.N)?)|(DI|DS|RV|LR)-([[][Nn]]|[{][Nn][}]|[Nn])|CP-([Nnx]|[[][Nnx]])|(CPP|CP|QAP|QA)([[][Nn]]|[{][Nn][}])'
+D_LITREVIEW_RE='LR-[0-9]+[A-Za-z]?|CP-[1KSARGF]'
+D_RE="${D_CODES_RE}|${D_PLACEHOLDER_RE}|${D_LITREVIEW_RE}"
 
 # E: path-like tokens; the awk copy below must match this one.
 E_LINE_RE='[A-Za-z0-9_.-]/[A-Za-z0-9_.-]'
