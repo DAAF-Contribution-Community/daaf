@@ -43,13 +43,14 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.6.0-daaf", "0.4.0"))
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.7.0-daaf", "0.4.0"))
         # The certainty phrase table and its lockstep copy carry the contract version (0.4.0 from S5 W1-c).
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
         self.assertEqual(lc.SCHEMAS["citation_adjudications"], "lit-adjudications-v1")
         self.assertEqual(lc.RULE_VERSIONS["paperkey"], "paperkey-v1")
         self.assertEqual(lc.RULE_VERSIONS["verify_regrade"], "verify-regrade-v3")
+        self.assertEqual(lc.RULE_VERSIONS["glance_words"], "glance-words-v2")
         self.assertIn("exec python3 \"$TOOL\" \"$@\"", (_SCRIPTS / "lit_corpus.sh").read_text())
 
     def test_usage_exits_1_and_guards_exit_2(self):
@@ -183,7 +184,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 31/31", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0, 1.6.0: 1
+            self.assertIn("SELFTEST PASS: 32/32", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0-1.7.0: 1 each
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -1331,6 +1332,8 @@ class SecondCheckCommandTests(unittest.TestCase):
                    "title as cited. It is shown only so you can compare.")
     LEAD = ("Each row puts the title as cited next to the title of the database record found for it, where one was "
             "found. ")
+    # 1.7.0 (glance-words-v2): the words that end "Where it stands" for a reference no reply can keep
+    LEFT_OUT = "left out of the reference list unless an automatic check matches it"
 
     def sheet_row(self, text, citekey):
         # the cells of the sheet's table row for one citekey: [number, citekey, title as cited, title on record,
@@ -1353,7 +1356,7 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertEqual(cells[7], "Journal of Invented Studies, article")
         self.assertEqual(cells[8], "does not match the record |")
         self.assertIn(self.NOTE_MISMATCH, text)
-        self.assertNotIn(self.NOTE_EXISTS, text)                  # one sentence per label shown
+        self.assertNotIn(self.NOTE_EXISTS, text)                  # one note per label shown
         self.assertIn(self.LEAD, text)
         for code_word in lc.CITATION_STATUSES + lc.ADJ_VERDICTS + ("CONFIDENT", "WEAK", "MISMATCH"):
             self.assertNotIn(code_word, text)
@@ -1407,7 +1410,8 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertEqual(self.sheet_row(text, self.paper(self.P3)["citekey"])[3], f"Not compared: {p3['title']}")
         nf_cells = self.sheet_row(text, self.paper(p4["key"])["citekey"])
         self.assertEqual((nf_cells[3], nf_cells[5], nf_cells[7], nf_cells[8]),
-                         ("(none recorded)", "(none recorded)", "(none recorded)", "no record found |"))
+                         ("(none recorded)", "(none recorded)", "(none recorded)",
+                          f"no record found; {self.LEFT_OUT} |"))
         self.assertIn(self.NOTE_EXISTS, text)
         self.assertNotIn(self.NOTE_MISMATCH, text)
         self.assertIn(self.LEAD, text)
@@ -1415,7 +1419,7 @@ class SecondCheckCommandTests(unittest.TestCase):
 
     def test_glance_sheet_after_an_override_shows_the_bound_record_unlabelled(self):
         # quality review W5: a reference kept with override_mismatch stores its record (verify_record_json), so the
-        #   sheet shows that record as the reference's own: no "Does not match:" label and no sentence about it. Kills
+        #   sheet shows that record as the reference's own: no "Does not match:" label and no note about it. Kills
         #   the mutation that drops the `not rec and` guard.
         miss = dict(lc.demo_work_json(lc.DEMO_PAPERS[2]), display_name="A Completely Different Invented Dentistry Study")
         m = self.attach((2, {"work": miss}))[self.P3]
@@ -1460,6 +1464,262 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertNotIn(self.NOTE, text)
         for label in ("Does not match:", "Not compared:"):
             self.assertNotIn(label, text)
+
+    # 1.7.0 (user decision of 2026-11-02): a reference no reply can decide cannot be cited, so the sheet says it will
+    #   be left out of the reference list, never that nothing needs a reply.
+    def test_glance_sheet_of_only_left_out_references_says_they_are_left_out(self):
+        p3, p4 = lc.DEMO_PAPERS[2], lc.DEMO_PAPERS[3]
+        ex = lc.demo_verify_row(str(self.pd), p3, verdict="EXISTS")
+        nf = lc.demo_verify_row(str(self.pd), p4, verdict="NOT FOUND")
+        code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": ex, "paper_key": self.P3},
+                                                                          {"row_sha256": nf, "paper_key": p4["key"]}]))
+        self.assertEqual(code, 0, out)
+        code, out, text, rows, _ = self.glance("--keys", f"{self.P3},{p4['key']}")
+        self.assertEqual(code, 0, out)
+        for claim in ("nothing needs a reply", "already decided"):
+            self.assertNotIn(claim, text)
+        self.assertIn(self.LEAD + "Numbers 1 and 2 could not be confirmed against a database record, so they will be "
+                      "left out of the reference list unless an automatic check matches them. To keep one, ask for it "
+                      "to be checked again.\n", text)
+        self.assertEqual(self.sheet_row(text, self.paper(self.P3)["citekey"])[8],
+                         f"the identifier exists, but its title was not compared; {self.LEFT_OUT} |")
+        self.assertEqual(self.sheet_row(text, self.paper(p4["key"])["citekey"])[8], f"no record found; {self.LEFT_OUT} |")
+        self.assertEqual([x for x in rows.splitlines() if not x.startswith("#")], [])     # no reply can keep them
+        # with a decided reference beside them: one left out (singular words), the rest already decided
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{p4['key']}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "Number 2 could not be confirmed against a database record, so it will be left out "
+                      "of the reference list unless an automatic check matches it. To keep it, ask for it to be "
+                      "checked again. Every other reference below is already decided.\n", text)
+        self.assertEqual(self.sheet_row(text, self.paper(self.P1)["citekey"])[8], "you confirmed it |")
+        self.assertNotIn("nothing needs a reply", text)
+
+    def test_glance_sheet_mixed_names_only_the_left_out_numbers(self):
+        # a reference a reply can confirm, one no reply can keep, and one whose record does not match
+        miss = dict(lc.demo_work_json(lc.DEMO_PAPERS[2]), display_name="A Completely Different Invented Dentistry Study")
+        shas = self.attach((0, {}), (1, {"verdict": "NOT FOUND"}), (2, {"work": miss}))
+        code, out, text, rows, _ = self.glance("--keys", f"{self.P1},{self.P2},{self.P3}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "Please read down the list and reply in your own words, for example \"all of them "
+                      "look right\" or \"number 3 is a different paper\". One reply can cover the whole list. Number 2 "
+                      "could not be confirmed against a database record, so it will be left out of the reference list "
+                      "unless an automatic check matches it. To keep it, ask for it to be checked again.\n", text)
+        self.assertNotIn("already decided", text)
+        self.assertEqual(self.sheet_row(text, self.paper(self.P1)["citekey"])[8],
+                         "matches the record; not yet confirmed |")
+        self.assertEqual(self.sheet_row(text, self.paper(self.P3)["citekey"])[8], "does not match the record |")
+        self.assertEqual([x.split()[0] for x in rows.splitlines() if not x.startswith("#")], [shas[self.P1]])
+        # nothing a reply can confirm: the keep-a-mismatch request, then the left-out words
+        code, out, text, _, _ = self.glance("--keys", f"{self.P3},{self.P2}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "None of these references can be confirmed as they stand. To keep one whose record "
+                      "does not match, say so with your reason. Number 2 could not be confirmed against a database "
+                      "record, so it will be left out of the reference list unless an automatic check matches it. To "
+                      "keep it, ask for it to be checked again.\n", text)
+
+    def test_attach_verify_refuses_a_row_with_no_verdict(self):
+        # review cycle 3 C1: a verify call that failed before grading writes a row with no verdict, which
+        #   verify_regrade would read as MISMATCH; attach refuses it (exit 11), and nothing is written, not even the
+        #   good row in the same map.
+        p3 = lc.DEMO_PAPERS[2]
+        before = (self.paper(self.P1)["verify_row_sha256"], self.paper(self.P3)["verify_row_sha256"])
+        unfinished = lc.demo_search_row(str(self.pd), "verify", "verify", p3["doi"], [], sidecar=False,
+                                        raw_requests=[{"backend": "openalex", "response": lc.demo_work_json(p3)}],
+                                        raw_params={"title": p3["title"]}, row_extra={"exit_code": 12})
+        good = lc.demo_verify_row(str(self.pd), lc.DEMO_PAPERS[0])
+        for name, sha in (("no verdict field", unfinished),
+                          ("verdict null", lc.demo_verify_row(str(self.pd), p3, verdict=None)),
+                          ("a verdict verify never gives", lc.demo_verify_row(str(self.pd), p3, verdict="PENDING"))):
+            with self.subTest(name):
+                code, out = self.run_lc("attach", "verify", self.pd, self.jsonl(
+                    [{"row_sha256": good, "paper_key": self.P1}, {"row_sha256": sha, "paper_key": self.P3}]))
+                self.assertEqual(code, 11, out)
+                row = [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()][-1]
+                self.assertEqual((row["exit_code"], row["artifacts"]), (11, []))
+                self.assertEqual(row["refusals"], [f"line 2: verify row {sha[:12]} records no verdict that verify "
+                                                   "gives (the check did not finish, or the row was changed); run the "
+                                                   "check again and attach the new row"])
+        self.assertEqual((self.paper(self.P1)["verify_row_sha256"], self.paper(self.P3)["verify_row_sha256"]), before)
+        # a finished check of the same paper is attached
+        done = lc.demo_verify_row(str(self.pd), p3, verdict="MISMATCH")
+        self.assertEqual(self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": done,
+                                                                               "paper_key": self.P3}]))[0], 0)
+        self.assertEqual(self.paper(self.P3)["verify_row_sha256"], done)
+
+    def test_glance_sheet_authors_as_cited_is_the_author_the_check_looked_for(self):
+        # quality review I6 / review cycle 3 C4: where a check was run with --author (and --first-author), "Authors as
+        #   cited" shows that name, so an author-only mismatch is visible; display only, nothing stored changes.
+        p2, p3 = lc.DEMO_PAPERS[1], lc.DEMO_PAPERS[2]
+
+        def checked(p, params, verdict):
+            return lc.demo_search_row(str(self.pd), "verify", "verify", p["doi"], [], sidecar=False,
+                                      raw_requests=[{"backend": "openalex", "response": lc.demo_work_json(p)}],
+                                      raw_params=dict(params, title=p["title"]),
+                                      row_extra={"verdict": verdict, "verify_cutoffs": {
+                                          "rules_version": lc.sc.VERIFY_RULES_VERSION,
+                                          "confident_min": lc.sc.VERIFY_CONFIDENT_MIN},
+                                          "title_similarity": 1.0, "title_similarity_subtitle_aware": 1.0})
+        vmap = [{"row_sha256": checked(p2, {"author": "Zzyzxson"}, "MISMATCH"), "paper_key": self.P2},
+                {"row_sha256": checked(p3, {"author": "Chen", "first_author": True}, "CONFIDENT"),
+                 "paper_key": self.P3}]
+        self.assertEqual(self.run_lc("attach", "verify", self.pd, self.jsonl(vmap))[0], 0)
+        stored = {k: self.paper(k)["authors_json"] for k in (self.P1, self.P2, self.P3)}
+        code, out, text, _, row = self.glance("--keys", f"{self.P1},{self.P2},{self.P3}")
+        self.assertEqual(code, 0, out)
+        c1, c2, c3 = (self.sheet_row(text, self.paper(k)["citekey"]) for k in (self.P1, self.P2, self.P3))
+        self.assertEqual((c2[4], c2[5]), ("Zzyzxson (the name the check looked for)", "Ben Baker"))
+        self.assertEqual((c3[4], c3[5]), ("Chen (the name the check looked for as first author)", "Cy Chen"))
+        self.assertEqual(c1[4], "; ".join(lc.DEMO_PAPERS[0]["authors"]))           # checked without --author
+        self.assertEqual({k: self.paper(k)["authors_json"] for k in stored}, stored)
+        self.assertEqual({a["table"] for a in row["artifacts"]}, {None})                # the sheet writes no table
+
+    def test_glance_sheet_authors_as_cited_is_escaped_and_keeps_its_explanation(self):
+        # the --author a check ran with is untrusted text: a pipe is escaped and a newline folded, so the table keeps
+        #   its nine columns; a long name is cut before the explanation is added, so the explanation stays whole.
+        p1, p4 = lc.DEMO_PAPERS[0], lc.DEMO_PAPERS[3]
+
+        def checked(p, params):
+            return lc.demo_search_row(str(self.pd), "verify", "verify", p["doi"], [], sidecar=False,
+                                      raw_requests=[{"backend": "openalex", "response": lc.demo_work_json(p)}],
+                                      raw_params=dict(params, title=p["title"]),
+                                      row_extra={"verdict": "CONFIDENT", "verify_cutoffs": {
+                                          "rules_version": lc.sc.VERIFY_RULES_VERSION,
+                                          "confident_min": lc.sc.VERIFY_CONFIDENT_MIN},
+                                          "title_similarity": 1.0, "title_similarity_subtitle_aware": 1.0})
+        vmap = [{"row_sha256": checked(p1, {"author": "Evil | Pipe\nNew line"}), "paper_key": self.P1},
+                {"row_sha256": checked(p4, {"author": "Z" * 320, "first_author": True}), "paper_key": p4["key"]}]
+        self.assertEqual(self.run_lc("attach", "verify", self.pd, self.jsonl(vmap))[0], 0)
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{p4['key']}")
+        self.assertEqual(code, 0, out)
+        c1 = self.sheet_row(text, self.paper(self.P1)["citekey"])
+        self.assertEqual(c1[4], "Evil \\| Pipe New line (the name the check looked for)")
+        line = next(x for x in text.splitlines() if x.startswith("| 1 | "))
+        self.assertEqual(len(re.findall(r"(?<!\\)\|", line)), 10, line)                 # nine cells, no bare pipe
+        self.assertEqual(self.sheet_row(text, self.paper(p4["key"])["citekey"])[4],
+                         "Z" * 199 + "… (the name the check looked for as first author)")
+
+    def test_glance_sheet_not_found_check_regraded_to_mismatch_is_left_out(self):
+        # a title search that verify graded NOT FOUND, whose saved response still holds the paper's record under a far
+        #   title: attach verify re-grades it to MISMATCH, but no reply can decide it (its verify row says NOT FOUND), so
+        #   the sheet marks it left out, shows no "Does not match:" record, offers no keep reply, and the decision
+        #   command refuses it.
+        p3 = lc.DEMO_PAPERS[2]
+        far = "A Completely Different Invented Dentistry Study"
+        sha = lc.demo_search_row(str(self.pd), "verify", "verify", f'title:"{far}"', [], sidecar=False,
+                                 raw_requests=[{"backend": "openalex", "endpoint": "https://api.openalex.org/works",
+                                                "response": {"results": [lc.demo_work_json(p3)]}}],
+                                 row_extra={"verdict": "NOT FOUND", "exit_code": 11, "verify_cutoffs": {
+                                     "rules_version": lc.sc.VERIFY_RULES_VERSION,
+                                     "confident_min": lc.sc.VERIFY_CONFIDENT_MIN}})
+        code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": sha, "paper_key": self.P3}]))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((self.paper(self.P3)["verify_verdict"], self.paper(self.P3)["citation_status"]),
+                         ("MISMATCH", "unverified"))
+        code, out, text, rows, _ = self.glance("--keys", self.P3)
+        self.assertEqual(code, 0, out)
+        cells = self.sheet_row(text, self.paper(self.P3)["citekey"])
+        self.assertEqual((cells[3], cells[8]), ("(none recorded)", f"no record found; {self.LEFT_OUT} |"))
+        self.assertIn(self.LEAD + "Number 1 could not be confirmed against a database record, so it will be left out "
+                      "of the reference list unless an automatic check matches it. To keep it, ask for it to be "
+                      "checked again.\n", text)
+        for claim in ("say so with your reason", "Does not match:", self.NOTE_MISMATCH):
+            self.assertNotIn(claim, text)
+        self.assertEqual([x for x in rows.splitlines() if not x.startswith("#")], [])
+        n = len(self.table("citation_adjudications"))
+        for decision, rationale in (("override_mismatch", "Same DOI."), ("defer", None)):
+            with self.subTest(decision):
+                code, out = self.human([sha], decision, "Keep it.", rationale)
+                self.assertEqual(code, 11, out)
+                self.assertIn("its verify row says NOT FOUND", out)
+        self.assertEqual(len(self.table("citation_adjudications")), n)                  # nothing written
+
+    def test_record_human_refuses_a_row_whose_verify_row_gives_no_verdict(self):
+        # a verify row with no verdict, or with one verify never gives, attached to a table before attach verify refused
+        #   such rows: its corpus verdict reads MISMATCH (verify_regrade's fallback), but no reply can decide it, so the
+        #   decision command refuses every decision on it and the sheet marks it left out.
+        p3 = lc.DEMO_PAPERS[2]
+        for verdict in (None, "PENDING"):
+            with self.subTest(verdict=verdict):
+                sha = lc.demo_verify_row(str(self.pd), p3, verdict=verdict)
+                self.forge_corpus(lambda r: dict(r, verify_row_sha256=sha, verify_verdict="MISMATCH",
+                                                 verify_record_json=None, citation_status="unverified",
+                                                 adjudication_ref=None) if r["paper_key"] == self.P3 else r)
+                n = len(self.table("citation_adjudications"))
+                for decision, rationale in (("override_mismatch", "Same DOI."), ("defer", None)):
+                    code, out = self.human([sha], decision, "Keep it.", rationale)
+                    self.assertEqual(code, 11, out)
+                    self.assertIn(f"its verify row says {verdict or 'no verdict'}", out)
+                self.assertEqual(len(self.table("citation_adjudications")), n)
+                code, out, text, _, _ = self.glance("--keys", self.P3)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.sheet_row(text, self.paper(self.P3)["citekey"])[8],
+                                 f"no record found; {self.LEFT_OUT} |")
+                self.assertIn("Number 1 could not be confirmed against a database record", text)
+                self.assertNotIn("Does not match:", text)
+
+    def test_glance_sheet_left_out_row_never_borrows_the_verify_rows_words(self):
+        # the check's saved response holds another paper's record only (corpus verdict None) while the verify row says
+        #   CONFIDENT, WEAK or MISMATCH: the cell reads "no record found" and the left-out words, never the row's own
+        #   words, which would ask for a decision no reply can record.
+        for verdict in ("CONFIDENT", "WEAK", "MISMATCH"):
+            with self.subTest(verdict=verdict):
+                other = lc.demo_verify_row(str(self.pd), lc.DEMO_PAPERS[1], verdict=verdict,
+                                           work=lc.demo_work_json(lc.DEMO_PAPERS[0]))
+                code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": other,
+                                                                                  "paper_key": self.P2}]))
+                self.assertEqual(code, 0, out)
+                self.assertIsNone(self.paper(self.P2)["verify_verdict"])
+                code, out, text, _, _ = self.glance("--keys", self.P2)
+                self.assertEqual(code, 0, out)
+                self.assertEqual(self.sheet_row(text, self.paper(self.P2)["citekey"])[8],
+                                 f"no record found; {self.LEFT_OUT} |")
+                for words in ("please decide", "does not match the record", "matches the record"):
+                    self.assertNotIn(words, text)
+
+    def test_glance_sheet_left_out_request_names_each_kind(self):
+        # one sentence names every left-out number ("1, 2 and 3" for three); a reference checked before is to be checked
+        #   again, one never checked (its cell "not checked yet" plus the left-out words) is to be checked, and a sheet
+        #   holding both kinds names the never-checked numbers apart.
+        p4 = lc.DEMO_PAPERS[3]["key"]
+        self.attach((0, {"verdict": "NOT FOUND"}), (1, {"verdict": "NOT FOUND"}), (2, {"verdict": "NOT FOUND"}))
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{self.P2},{self.P3}")
+        self.assertEqual(code, 0, out)
+        self.assertIn(self.LEAD + "Numbers 1, 2 and 3 could not be confirmed against a database record, so they will be "
+                      "left out of the reference list unless an automatic check matches them. To keep one, ask for it "
+                      "to be checked again.\n", text)
+        self.forge_corpus(lambda r: dict(r, verify_row_sha256=None, verify_verdict=None, verify_record_json=None,
+                                         citation_status="unverified", adjudication_ref=None)
+                          if r["paper_key"] in (self.P3, p4) else r)
+        code, out, text, rows, _ = self.glance("--keys", p4)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.sheet_row(text, self.paper(p4)["citekey"])[8], f"not checked yet; {self.LEFT_OUT} |")
+        self.assertIn(self.LEAD + "Number 1 could not be confirmed against a database record, so it will be left out of "
+                      "the reference list unless an automatic check matches it. To keep it, ask for it to be checked."
+                      "\n", text)
+        self.assertNotIn("checked again", text)
+        self.assertEqual([x for x in rows.splitlines() if not x.startswith("#")], [])
+        for keys, words in (
+                (f"{self.P1},{p4}", "Numbers 1 and 2 could not be confirmed against a database record, so they will be "
+                                    "left out of the reference list unless an automatic check matches them. Number 2 "
+                                    "has not been checked yet: to keep it, ask for it to be checked. To keep the other, "
+                                    "ask for it to be checked again.\n"),
+                (f"{self.P1},{self.P3},{p4}", "Numbers 1, 2 and 3 could not be confirmed against a database record, so "
+                                              "they will be left out of the reference list unless an automatic check "
+                                              "matches them. Numbers 2 and 3 have not been checked yet: to keep one of "
+                                              "them, ask for it to be checked. To keep the other, ask for it to be "
+                                              "checked again.\n"),
+                (f"{self.P1},{self.P2},{p4}", "Numbers 1, 2 and 3 could not be confirmed against a database record, so "
+                                              "they will be left out of the reference list unless an automatic check "
+                                              "matches them. Number 3 has not been checked yet: to keep it, ask for it "
+                                              "to be checked. To keep one of the others, ask for it to be checked "
+                                              "again.\n"),
+                (f"{self.P3},{p4}", "Numbers 1 and 2 could not be confirmed against a database record, so they will be "
+                                    "left out of the reference list unless an automatic check matches them. To keep "
+                                    "one, ask for it to be checked.\n")):
+            with self.subTest(keys=keys):
+                code, out, text, _, _ = self.glance("--keys", keys)
+                self.assertEqual(code, 0, out)
+                self.assertIn(self.LEAD + words, text)
 
 
 class PackLogParseTests(unittest.TestCase):

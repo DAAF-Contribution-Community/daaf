@@ -157,12 +157,14 @@ review is not using.
 ### Glance Records
 
 > Until an adjudicator passes its evaluation, every reference's second check is the researcher's
-> glance at the reference list before a final deliverable (one list, one reply per deliverable),
-> shown at the reference check (CP-G; at a quick scan, at the final review).
+> glance at the list to check before a final deliverable (one list, one reply per deliverable),
+> shown at the reference check (CP-G; at a quick scan, at the final review). A request to check a
+> left-out reference again is `check_again`, distinct from `defer` (the researcher's own later
+> look): it is never a `record-human` call, and its new list is the next row.
 
 | Glance sheet | Rows file | For deliverable | Shown | Researcher's words | Decision | `record-human` row |
 |--------------|-----------|-----------------|-------|--------------------|----------|--------------------|
-| `output/reference_glance_v[N].md` | `output/reference_glance_v[N]_rows.txt` | `output/[file]` | [YYYY-MM-DD HH:MM or "not yet"] | > [verbatim, or "awaiting reply"] | [same_work / different_work / defer / override_mismatch, per row group] | [data/MANIFEST.jsonl timestamp, or "not recorded"] |
+| `output/reference_glance_v[N].md` | `output/reference_glance_v[N]_rows.txt` | `output/[file]` | [YYYY-MM-DD HH:MM or "not yet"] | > [verbatim, or "awaiting reply"] | [same_work / different_work / defer / override_mismatch, per row group; check_again (searcher re-dispatch [agent ID], KEYS [keys]) for references asked to be checked again] | [data/MANIFEST.jsonl timestamp, "not recorded", or "none (check_again)"] |
 
 ### Adjudicator Batches
 

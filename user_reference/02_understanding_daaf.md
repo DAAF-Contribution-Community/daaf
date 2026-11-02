@@ -328,7 +328,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 
 **What is checked, at every level:**
 - Every search is saved with its exact wording and results.
-- Every reference is looked up in a database and checked for retractions: the automatic reference check. A one-word change in a title can fool that match. DAAF has a second check for references (an AI judgment), but it is used only for a model that has passed DAAF's test of that judgment, and no model has. So before a final write-up you do your reference check: you glance at the list to check, each reference's title as cited next to the title on record, with one reply covering the whole list.
+- Every reference is looked up in a database and checked for retractions: the automatic reference check. A one-word change in a title can fool that match. DAAF has a second check for references (an AI judgment), but it is used only for a model that has passed DAAF's test of that judgment, and no model has. So before a final write-up you do your reference check: you glance at the list to check, each reference's title as cited next to the title on record, with one reply covering the whole list. A reference the automatic check could not match to any database record is left out of the reference list unless you ask for it to be checked again and the new check matches it.
 - Every quote and number taken from a paper is checked against the page it came from. When a number was read from a picture of a page (a table, say), DAAF also checks that a model tested for that kind of reading did it, and lists anything you should compare by eye.
 - Results from different studies are never averaged into one number, and the wording never sounds surer than the evidence.
 

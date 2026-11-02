@@ -8,7 +8,7 @@ writes as JSONL. It computes what an agent must never type: paper keys and
 citekeys, the descriptive summary of three or more estimates, the sign test,
 the evidence of absence behind a gap. Source of truth: the header,
 `EXIT_CODES`, `SCHEMAS`, `RULE_VERSIONS` and `build_parser()` of
-`scripts/lit_corpus.py` (`TOOL_VERSION = "1.6.0-daaf"`;
+`scripts/lit_corpus.py` (`TOOL_VERSION = "1.7.0-daaf"`;
 `CONTRACT_VERSION = "0.4.0"`). If this page and the code disagree, the code
 wins: report the drift. `lit_verify report` (`lit-verify-report.md`) reads
 these tables to check a deliverable.
@@ -97,7 +97,7 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `ingest` | Adds every fused group of every open search call's records file to the corpus (or only `--rows`), with `found_by` and the round | `scholar_search` 1.7.0+ records files (`scholar-records-v1`); an older search without one: exit 10, re-run it |
 | `add-record` | Adds a user-supplied PDF or a `web_fetch` grey-literature row (looked up in the project's `web_fetches/` MANIFESTs) by hand | `--title` (required); `--authors` (`;`-separated), `--year`; `--method` `citation_searching` \| `websites` \| `organisations` \| `user_supplied` (default) |
 | `dedup decide` | Merges a listed duplicate pair (the `merge` key becomes an alias of the `keep` key; neither the key nor its citekey is ever reused). A key merged earlier resolves through that merge, so chains work. A paper that was read (a checked card, claims or a paper note) is never merged away: keep it instead (exit 11). The merged paper's screening rows move to the kept key unless both were screened at the same stage (exit 11); citation links are re-keyed | `{keep, merge, reason, decided_by: {...}}` (two different corpus keys; a non-empty reason; `decided_by` an object) |
-| `attach verify` / `oa` / `retractions` | Links a paper to the `scholar_search` row that checked it. `verify` re-grades the record in that row's own raw response against the title, year and author the citation was checked with (`verify-regrade-v3`: the title grade calls `verify`'s own word and mark checks, `title_words_differ` and `title_marks_differ`, so a re-grade matches `verify`; a paper with no DOI and no OpenAlex key is matched by its OpenAlex alias): the lower of that and the row's verdict is recorded, so an edited row can never raise it. A CONFIDENT check sets `citation_status` `pending_adjudication` (held for its second check, § Citation second check); a ledger row already bound to the same verify row keeps the status it derived. `retractions` re-derives the status from the row's raw response (OpenAlex `is_retracted`, Crossref notices; the more severe of that and the row counts, and no response for the DOI records "not checked"); 1.3.0 (`retraction-rederive-v3`): the status recorded is the most severe any retractions check of the DOI in `lit_search/` found, so a newer check (one where a database failed, say) never lowers it, and a WARNING names the more severe earlier finding. A row older than the check already attached for the paper is refused (exit 11: a re-attach never goes back), and a newer check of the same DOI in `lit_search/` is named in a WARNING (`lit_verify report` reads the newest one); older and newer = row timestamp, then position in the MANIFESTs | `{row_sha256, paper_key}` (the MANIFEST line's sha256) |
+| `attach verify` / `oa` / `retractions` | Links a paper to the `scholar_search` row that checked it. `verify` re-grades the record in that row's own raw response against the title, year and author the citation was checked with (`verify-regrade-v3`: the title grade calls `verify`'s own word and mark checks, `title_words_differ` and `title_marks_differ`, so a re-grade matches `verify`; a paper with no DOI and no OpenAlex key is matched by its OpenAlex alias): the lower of that and the row's verdict is recorded, so an edited row can never raise it. A verify row with no verdict (a call that failed before it graded a record), or with one `verify` never gives, is refused (exit 11): run the check again and attach the new row. A CONFIDENT check sets `citation_status` `pending_adjudication` (held for its second check, § Citation second check); a ledger row already bound to the same verify row keeps the status it derived. `retractions` re-derives the status from the row's raw response (OpenAlex `is_retracted`, Crossref notices; the more severe of that and the row counts, and no response for the DOI records "not checked"); 1.3.0 (`retraction-rederive-v3`): the status recorded is the most severe any retractions check of the DOI in `lit_search/` found, so a newer check (one where a database failed, say) never lowers it, and a WARNING names the more severe earlier finding. A row older than the check already attached for the paper is refused (exit 11: a re-attach never goes back), and a newer check of the same DOI in `lit_search/` is named in a WARNING (`lit_verify report` reads the newest one); older and newer = row timestamp, then position in the MANIFESTs | `{row_sha256, paper_key}` (the MANIFEST line's sha256) |
 | `attach decision` | Records the researcher's citation decision. `accept_weak` is the legacy path (`human_accepted_unbound`, never citable in a final deliverable); the Literature Review mode records a person's reply with `adjudications record-human` instead, and `accept_weak` never lowers a status the second check set | `{paper_key, decision: accept_weak \| include_retracted \| exclude, reason, decided_by: {role: researcher}}` |
 | `screen record` | Stores screening decisions; lists second-screener disagreements | `{paper_key, stage: ta \| ft, pass: primary \| second \| resolution \| researcher, decision: include \| exclude \| maybe, reason_code (exclude), rationale (exclude, maybe), screener: {model_id} or {role: researcher}, decided_at (optional)}`; `maybe` only at `ta`; an `ft` decision needs the paper's final `ta` decision to be include or maybe |
 | `screen sheet` | Writes a fenced title-and-abstract sheet for screeners (`output/screening/sheet_v{N}.md`) | `--keys` |
@@ -114,7 +114,7 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `adjudications ingest` | Binds the adjudicator's return to the audited pack, writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
 | `adjudications record-human` | Records a person's reply for one or more verify rows | `--rows FILE` (one verify row sha256 per line, `#` comments), `--decision`, `--user-words`, `--rationale` (required except with `defer`) |
 | `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--deliverable` (its `@citekey`s), `--keys`, both (one list: the deliverable's references, then each named paper it does not cite), or every included paper |
-| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (31 expectations) | — |
+| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (32 expectations) | — |
 
 ## Tables
 
@@ -140,7 +140,7 @@ latest version against the MANIFEST row that wrote it (exit 9).
 A reference whose rule check reads CONFIDENT is held as `pending_adjudication`
 until a second check confirms it (user decision, 2026-11-01). Until an adjudicator
 model passes its evaluation, that check is the researcher's glance at the
-reference list, recorded with `record-human`.
+list to check (`glance-sheet`), recorded with `record-human`.
 
 **Statuses** (`adjudication-v1`; `adjudication_status()` derives each one from
 a ledger row, and `lit_verify report` re-derives it with that function):
@@ -335,8 +335,12 @@ runs it, as its own Bash call: `run_with_capture.sh` refuses a script that
 calls it (exit 3). One call binds one
 reply to every row the rows file lists; the MANIFEST row lists each row hash.
 Refused (exit 11, nothing written): no words; no rationale (except `defer`); a
-row attached to no paper; a row listed twice; an EXISTS or NOT FOUND row (re-run
-the check with the title, or look the reference up again); `override_mismatch`
+row attached to no paper; a row listed twice; a row no reply can decide
+(`reply_can_decide()`: the paper's corpus verdict and its verify row's own
+verdict must both be CONFIDENT, WEAK or MISMATCH, so an EXISTS or NOT FOUND
+row, a check whose response holds no record of the paper, and a verify row
+with no verdict `verify` gives are refused; re-run the check with the title,
+or look the reference up again); `override_mismatch`
 on a row that is not MISMATCH; a MISMATCH row with anything but
 `override_mismatch` or `defer`; an `override_mismatch` row for which no single
 record of the paper can be identified in the check's own saved response, or
@@ -364,14 +368,34 @@ environment), so `human_binding_basis` says the binding was not detected and
 for the researcher: a table of number, reference (citekey), title as cited,
 title on record, authors as cited and on record, year cited and on record,
 where published (venue and record type in words), and where it stands in
-plain words (the rule version `glance-words-v1` covers only this column's
+plain words (the rule version `glance-words-v2` covers only this column's
 words: "matches the record; not yet confirmed", "partly matches; please
 decide", "does not match the record", "no record found", "the identifier
-exists, but its title was not compared", "you confirmed it", "accepted by you
-despite the automatic reference check", "confirmed by DAAF's second check (an
-AI judgment)"), plus "this paper was retracted" where it was. No status or
-verdict code appears. A MISMATCH or EXISTS reference stores no record (no
-`verify_record_json`) until a decision binds one, but its record columns show
+exists, but its title was not compared", "not checked yet", "you confirmed
+it", "accepted by you despite the automatic reference check", "confirmed by
+DAAF's second check (an AI judgment)", "partly matches; confirmed by DAAF's
+second check (an AI judgment)", "judged to be a different work; it will not be
+cited", "you accepted a partial match earlier; please look at it again", and
+the endings "; left out of the reference list unless an automatic check
+matches it", "; an AI check that has not passed DAAF's test thought it may be
+a different work" and "; this paper was retracted" (where it was). A
+reference that no reply can decide (`reply_can_decide()`, as for
+`record-human`: EXISTS, NOT FOUND, a check whose response holds no record of
+the paper, no check yet, or a verify row that says NOT FOUND or gives no
+verdict a reply can decide), and that no decision made citable or rejected,
+cannot be cited, so its words end "left out of the reference list unless an
+automatic check matches it"; such a row reads "not checked yet" when no check
+is attached, else "no record found" unless its verdict is EXISTS ("the
+identifier exists, but its title was not compared"). No status or verdict
+code appears. "Authors as cited"
+is the author the check was run with (`--author`), followed by "(the name the
+check looked for)", or "(the name the check looked for as first author)" with
+`--first-author` (a name is cut to 200 characters first, so the explanation
+stays whole), so a MISMATCH caused by the author alone shows beside
+"Authors on record"; for a check run without `--author` it is the review's
+own author list. A MISMATCH or EXISTS reference stores no record (no
+`verify_record_json`; only an `override_mismatch` can bind one, and only to a
+MISMATCH reference), but its record columns show
 the record found for its identifier, re-derived from the hash-checked raw
 response by `verify_regrade` (the same choice `attach verify` and an
 `override_mismatch` make). Its title on record opens with "Does not match:"
@@ -386,7 +410,10 @@ with its title on record (§ `record-human`). For "Not compared:" it says the
 record is shown only for comparison (an EXISTS row cannot be recorded).
 `glance-sheet` itself writes the record to no table. A NOT FOUND reference
 shows no record, and neither does a response that holds no record of the
-paper: the title on record, authors on record and where-published cells read
+paper, nor a MISMATCH reference no reply can decide (its verify row says NOT
+FOUND or gives no verdict a reply can decide), which carries no "Does not
+match:" label or note: the title on record, authors on record and
+where-published cells read
 "(none recorded)", and the year on record reads `?`. A reference already kept
 with `override_mismatch` shows its bound record unlabelled. The sheet's
 opening sentence puts the title as cited next to "the database record found
@@ -394,13 +421,20 @@ for it, where one was found". The rest of the sheet's wording (that sentence,
 the labels and the notes explaining them) is versioned by `TOOL_VERSION`,
 which every MANIFEST row records. The
 sheet asks for a reply only when a listed reference
-can still be confirmed; otherwise it says nothing needs a reply (or, when a
-listed record does not match, how to keep one). The `record-human` MANIFEST
+can still be confirmed, or (when a listed record does not match) says how to
+keep one. One sentence names by number every reference that will be left out:
+it could not be confirmed against a database record, so it will be left out
+of the reference list unless an automatic check matches it. To keep one, the
+researcher asks for it to be checked again, or checked, for a reference never
+checked; a sheet holding both kinds names the never-checked numbers apart.
+When nothing else needs a reply it adds that every other listed reference is
+already decided. Only a list of decided references says nothing needs a
+reply. The `record-human` MANIFEST
 row also holds `user_words_sha256`, the sha256 of the words it recorded. It
 also writes
 `output/reference_glance_v{N}_rows.txt`: one verify row sha256 per line (with
 `# number citekey`) for every listed row a reply can confirm (CONFIDENT or
-WEAK, not yet final or rejected), ready for `record-human --rows`.
+WEAK, not yet final or rejected, and not left out), ready for `record-human --rows`.
 
 Which references the sheet lists:
 
@@ -530,16 +564,17 @@ file.
 | 8 | An input cannot be parsed (JSONL, MANIFEST line, records file, raw log, card, card_check, an attach map line without `row_sha256` and `paper_key`, the prompt template block, a bundle, a rows file line) or is larger than 50 MiB |
 | 9 | Integrity mismatch, nothing written (bytes differ from their recorded sha256, or a table version no MANIFEST row wrote; an adjudication bundle, prompt or bundle row that differs from its pack log; a pack log and pack row that disagree; a bundle whose identity is not the one its pack log printed, or whose `template_sha256` is not the dispatched prompt's) |
 | 10 | Polars or pyarrow missing, or a required input missing (an input file; no corpus or other required table yet; a search without a records file; a `--rows` or `--web-fetch-row` sha256 in no MANIFEST of the project; nothing new to ingest; the prompt template, the adjudicator's agent file at `pack`, a completed pack log, the bundle, the adjudicator return or the audit log) |
-| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; the second-check refusals in § Citation second check); `selftest`: an expectation did not hold |
+| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; `attach verify` of a verify row with no verdict, or with one `verify` never gives; the second-check refusals in § Citation second check); `selftest`: an expectation did not hold |
 | 12 | Internal error |
 
 3 is reserved by `run_with_capture.sh` and never used.
 
 ## Tests and fixtures
 
-`tests/python/test_lit_corpus.py` (76 tests; the parquet and
+`tests/python/test_lit_corpus.py` (85 tests; the parquet and
 round-trip tests need polars or pyarrow, and rapidfuzz for the selftest and
-the second-check command tests, and are skipped without them, as on the bare CI runner) and `lit_corpus.sh selftest` (31 expectations). The P3 contract
+the second-check command tests, and are skipped without them; all
+three are pinned in the bare CI unit job, so they run there) and `lit_corpus.sh selftest` (32 expectations). The P3 contract
 bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.4.0:
 four invented papers with checked v3 cards, findings F01 and F02, two gaps
 (G02 left unclassified), one citation link, the second check of the four

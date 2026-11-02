@@ -150,7 +150,11 @@
 #   reference shows the record found for its identifier, its title labelled
 #   "Does not match:" or "Not compared:"; glance-sheet re-derives that record
 #   for display and stores it nowhere (an override_mismatch, a separate
-#   decision, binds a MISMATCH reference to that same record).
+#   decision, binds a MISMATCH reference to that same record). A reference no
+#   check matched to a record (EXISTS, NOT FOUND, no record of the paper, not
+#   checked), which no reply can keep, is marked as left out of the reference
+#   list (glance-words-v2). "Authors as cited" is the author the check looked
+#   for, where it was run with one.
 #
 # --- Licences ---------------------------------------------------------------
 #   A search row whose license_class is "restricted" or that names
@@ -202,8 +206,11 @@
 #       papers or mixed metrics, a gap whose search returned results; a
 #       CONFIDENT row under rules older than MIN_RULES_VERSION, a judgment on a
 #       row outside the bundle, an adjudicator tool call outside the bundle, a
-#       person's decision on an EXISTS or NOT FOUND row); the reasons are in
-#       the MANIFEST row; selftest: an expectation did not hold
+#       person's decision on a row no reply can decide (reply_can_decide:
+#       EXISTS, NOT FOUND, no record of the paper, a verify row with no
+#       verdict a reply can decide), a verify row with no verdict, or with one
+#       verify never gives, at attach verify); the reasons are in the MANIFEST
+#       row; selftest: an expectation did not hold
 #   12  internal error
 #
 # Titles, abstracts, quotes and every other text from a paper or a search
@@ -301,12 +308,28 @@ sc = _load_common()
 # 1.6.0 (2026-11-02, the user's decision that the reference check sheet shows the record a non-matching reference was
 # compared with): `adjudications glance-sheet` fills the record columns of a MISMATCH or EXISTS reference with the
 # record verify_regrade re-derives from the hash-checked raw log, its title prefixed "Does not match:" or "Not
-# compared:"; a NOT FOUND reference shows no record. A sentence per label above the table says what that record is,
+# compared:"; a NOT FOUND reference shows no record. A note per label above the table says what that record is,
 # and for "Does not match:" that a reference kept anyway (override_mismatch) is cited from it. The opening sentence
 # reads "the database record found for it, where one was found". This command writes the record to no table;
 # export-bib lists it only once an override_mismatch binds it (1.4.0). Rule versions unchanged (glance-words-v1
 # covers the "Where it stands" words, which did not change). Contract 0.4.0 (no output schema change).
-TOOL_VERSION = "1.6.0-daaf"
+# 1.7.0 (2026-11-02, the user's decisions that the reference check sheet says which references will be left out, and
+# how the researcher asks for one to be checked again): one rule, reply_can_decide, says whether a person's reply can
+# decide a reference: its corpus verdict and its verify row's own verdict must both be CONFIDENT, WEAK or MISMATCH.
+# `adjudications record-human` refuses every other row (that adds a verify row with no verdict, or with one verify
+# never gives, attached before this version). `adjudications glance-sheet` marks every listed reference that no reply
+# can decide and no decision made citable or rejected (EXISTS, NOT FOUND, no record of the paper in the check's
+# response, not checked, or a verify row that says NOT FOUND or gives no verdict a reply can decide): its "Where it
+# stands" words end "left out of the reference list unless an automatic check matches it" (glance-words-v2; such a
+# row reads "not checked yet" when no check is attached, else "no record found" unless its verdict is EXISTS ("the
+# identifier exists, but its title was not compared")), it shows no "Does not match:" record, and the request above
+# the table names its number, says it could not be confirmed against a database record and will be left out unless an
+# automatic check matches it, and asks for it to be checked again (checked, when it never was), in place of "nothing
+# needs a reply". "Authors as cited" shows the author the check looked for (and "as first author" when it was checked
+# as first author), where the check was run with one; nothing stored or exported changes. `attach verify` refuses a
+# verify row with no verdict, or with one verify never gives (exit 11), so a check that did not finish is never
+# recorded as a mismatch. Contract 0.4.0 (no output schema change).
+TOOL_VERSION = "1.7.0-daaf"
 # Output contract semver (pre-1.0; additive changes bump the minor version).
 # 0.1.0 (S4 D3): the first contract. 0.2.0 (S4 review-fix E, 2026-10-31,
 # additive): claims from a paper's stored abstract (claim_id {paper_key}-aNN,
@@ -353,9 +376,14 @@ RULE_VERSIONS = {"paperkey": "paperkey-v1", "citekey": "citekey-v2", "dedup": "d
                  "verify_regrade": "verify-regrade-v3", "retraction": "retraction-rederive-v3",
                  "abstract_claim": "abstract-claim-v1", "gap_words": "gap-words-v1",
                  "abstract_fill": "abstract-fill-v1", "adjudication": "adjudication-v1",
-                 "adj_selector": "adj-selector-v1", "glance_words": "glance-words-v1"}
+                 "adj_selector": "adj-selector-v1", "glance_words": "glance-words-v2"}
 # INTENT (1.1.0): the verify verdicts that can make a citation citable, ranked; anything else ranks 0.
 VERIFY_RANK = {"CONFIDENT": 2, "WEAK": 1}
+# INTENT (1.7.0): every verdict scholar_search verify gives; attach verify refuses a row with any other (or none).
+# REASONING: verify writes a raw log and a MANIFEST row even when a call fails before it grades a record, and such a
+#   row carries no verdict; verify_regrade reads a missing verdict as MISMATCH, which would label a check that did not
+#   finish as a mismatch.
+VERIFY_VERDICTS = ("CONFIDENT", "WEAK", "MISMATCH", "EXISTS", "NOT FOUND")
 RETRACTION_SEVERITY = {"retracted": 4, "expression of concern": 3, "corrected": 2, "updated": 1, "none": 0,
                        "commented": 0}
 # Crossref notice types (scholar_backends/crossref.py UPDATE_KINDS; a test keeps the two equal).
@@ -1256,6 +1284,11 @@ def cmd_attach(ctx, a):
             if e is None or e["row"].get("command") != want:
                 refusals.append(f"line {i}: row {m['row_sha256'][:12]} is not a {want} row of this project")
                 continue
+            if a.kind == "verify" and e["row"].get("verdict") not in VERIFY_VERDICTS:
+                refusals.append(f"line {i}: verify row {m['row_sha256'][:12]} records no verdict that verify gives (the "
+                                "check did not finish, or the row was changed); run the check again and attach the new "
+                                "row")
+                continue
             row, sr = corpus[key], e["row"]
             if a.kind == "verify":
                 # verify-regrade-v1 (Q-B2): the row's verdict is a ceiling; the record in the row's own raw
@@ -1441,6 +1474,10 @@ def verify_regrade(raw, corpus_row, row_verdict, openalex_ids=()):
         if not want & set(re.findall(r"[a-z]{2,}", names)):
             grade, why = "WEAK", "the cited author is not among the record's authors"
     rank = min(VERIFY_RANK.get(grade, 0), VERIFY_RANK.get(row_verdict, 0))
+    # REASONING (1.7.0): a row with no verdict reads MISMATCH here, which fails closed: never citable without a
+    #   person's override_mismatch, and the decision command refuses a new override on such a row (reply_can_decide).
+    #   attach verify refuses such a row, but lit_verify report re-derives every attached row with this function and
+    #   can still meet one in a corpus table written before 1.7.0, with an override recorded before then.
     verdict = {2: "CONFIDENT", 1: "WEAK"}.get(rank) or (grade if grade not in VERIFY_RANK else
                                                          (row_verdict or "MISMATCH"))
     return verdict, rec, why
@@ -2535,7 +2572,7 @@ def cmd_manifest(ctx, a):
     return 0
 
 
-# §§ CITATION SECOND CHECK (adjudication-v1, adj-selector-v1, glance-words-v1)
+# §§ CITATION SECOND CHECK (adjudication-v1, adj-selector-v1, glance-words-v2)
 def read_status(status):
     # The citation status as this version reads it: an old table's verified_rule is pending_adjudication; none is
     #   unverified. Every reader of citation_status (export, glance sheet, pack, the report gate) goes through it.
@@ -3135,6 +3172,22 @@ def cmd_adj_ingest(ctx, a, state):
     return 0
 
 
+# INTENT (1.7.0): the verdicts on which a person's reply can decide a reference: verdicts whose check compared a
+#   record with the citation.
+REPLY_VERDICTS = ("CONFIDENT", "WEAK", "MISMATCH")
+
+
+def reply_can_decide(corpus_verdict, row_verdict):
+    # True when a person's reply can decide this reference: both its corpus verdict (attach verify's re-grade) and its
+    #   verify row's own verdict are in REPLY_VERDICTS. The one rule behind record-human's refusal and the reference
+    #   check sheet's left-out mark (glance_left_out), so the two never disagree.
+    # REASONING: the corpus verdict alone is not enough. A NOT FOUND verify row whose saved response still holds the
+    #   paper's record under a far title re-grades to MISMATCH, and a verify row with no verdict (attached before
+    #   attach verify refused such rows) reads MISMATCH through verify_regrade's fallback; a reply on either would
+    #   stand in for a check that never compared that record with the citation.
+    return corpus_verdict in REPLY_VERDICTS and row_verdict in REPLY_VERDICTS
+
+
 def cmd_adj_record_human(ctx, a, state):
     # `adjudications record-human` (hardening (h), Q6): a person's reply, bound to the verify rows it covers.
     corpus = state["corpus"]
@@ -3164,9 +3217,10 @@ def cmd_adj_record_human(ctx, a, state):
         rv, row_v = (cr or {}).get("verify_verdict"), (e or {"row": {}})["row"].get("verdict")
         if cr is None or e is None:
             refusals.append(f"row {s[:12]} is not the reference check attached to any paper of the review")
-        elif rv in (None, "EXISTS") or row_v in ("EXISTS", "NOT FOUND"):
-            refusals.append(f"row {s[:12]} ({cr['paper_key']}) reads {rv or row_v or 'no record'}: re-run the check "
-                            "with the title, or look the reference up again; a person's decision cannot stand in")
+        elif not reply_can_decide(rv, row_v):
+            refusals.append(f"row {s[:12]} ({cr['paper_key']}) reads {rv or 'no record'} (its verify row says "
+                            f"{safe(row_v, 20) if row_v else 'no verdict'}): re-run the check with the title, or look "
+                            "the reference up again; a person's decision cannot stand in")
         elif a.decision == "override_mismatch" and rv != "MISMATCH":
             refusals.append(f"row {s[:12]} ({cr['paper_key']}) reads {rv}: override_mismatch is for MISMATCH rows only")
         elif rv == "MISMATCH" and a.decision not in ("override_mismatch", "defer"):
@@ -3244,9 +3298,10 @@ def cmd_adj_record_human(ctx, a, state):
     return 0
 
 
-# INTENT (glance-words-v1): where each reference stands, in the researcher's words: the automatic reference check,
-#   the researcher's own decision, or DAAF's AI second check (an AI judgment). No internal codes reach the sheet (a
-#   test checks every status and verdict code is absent).
+# INTENT (glance-words-v2): where each reference stands, in the researcher's words: the automatic reference check,
+#   the researcher's own decision, or DAAF's AI second check (an AI judgment), and, for a reference no reply can keep,
+#   that it is left out of the reference list. No internal codes reach the sheet (a test checks every status and
+#   verdict code is absent).
 GLANCE_STATUS_WORDS = {
     "pending_adjudication": "matches the record; not yet confirmed",
     "model_confirmed": "confirmed by DAAF's second check (an AI judgment)",
@@ -3259,11 +3314,12 @@ GLANCE_VERDICT_WORDS = {"WEAK": "partly matches; please decide", "MISMATCH": "do
                         "EXISTS": "the identifier exists, but its title was not compared",
                         "NOT FOUND": "no record found"}
 # INTENT (1.6.0): the label that opens the "Title on record" cell when the record shown is one the check did not
-#   match (display only), and the sentence above the table that says what such a record is. Only MISMATCH and EXISTS
+#   match (display only), and the note above the table that says what such a record is. Only MISMATCH and EXISTS
 #   references show one.
 # REASONING: a NOT FOUND reference shows no record, because a record beside "no record found" would contradict the
-#   verdict. The "Does not match" note names neither the title nor the authors as the cause: verify gives MISMATCH
-#   for a different title or for a cited author missing from the record (the title can then be identical), and
+#   verdict. The "Does not match" note names the title or the authors as possible causes, never one of them alone:
+#   verify gives MISMATCH for a different title, for a cited author who is not on the record, or, with --first-author,
+#   for a cited author who is on the record but not its first author (the titles can then be identical), and
 #   verify_regrade keeps the lower verdict. It says what keeping the reference does: an override_mismatch binds
 #   exactly this record, and export-bib then lists it (its title on record, not the title as cited). An EXISTS
 #   reference cannot be kept by a reply (record-human refuses it), so its record is shown only for comparison.
@@ -3276,6 +3332,33 @@ GLANCE_UNMATCHED_NOTES = {
     "Not compared": "A title on record that starts with \"Not compared:\" comes from the database record with the same "
                     "identifier (DOI or database ID) as that reference; the check did not compare that title with the "
                     "title as cited. It is shown only so you can compare."}
+# INTENT (glance-words-v2): the words that end "Where it stands" for a reference that cannot be cited and that no
+#   reply can keep (glance_left_out), so the researcher sees in the table itself, the part the mode shows, that it will
+#   not be in the reference list.
+# REASONING: "unless an automatic check matches it" is the only way in the code has: record-human refuses such a row,
+#   and only a new verify row attached to the paper changes its verdict. The words hold for a reference never checked
+#   as well as for one checked before, and they promise no match.
+GLANCE_LEFT_OUT = "left out of the reference list unless an automatic check matches it"
+# INTENT (1.7.0): plain words for the author a verify call was run with ("Authors as cited"), so an author-only
+#   mismatch shows on the sheet; --first-author is recorded in the raw log's parameters as first_author: true.
+GLANCE_AUTHOR_CHECKED = {False: "{author} (the name the check looked for)",
+                         True: "{author} (the name the check looked for as first author)"}
+
+
+def glance_left_out(row, row_verdict):
+    # True for a reference that cannot be cited and that no reply can keep (glance-words-v2): no decision made it
+    #   citable or rejected it, and no reply can decide it (reply_can_decide, the rule record-human refuses by): EXISTS,
+    #   NOT FOUND, no record of the paper in the check's response, not checked (row_verdict None: no verify row), or a
+    #   verify row whose own verdict is NOT FOUND or none a reply can decide. export-bib skips it (not in CITABLE), so
+    #   only a new check can bring it back.
+    # ASSUMES: such an undecided row is unverified, never pending_adjudication, human_accepted_unbound or a legacy
+    #   verified_rule (statuses export-bib lists). attach verify sets pending_adjudication only for a CONFIDENT re-grade
+    #   and human_accepted_unbound only for a WEAK one, and otherwise keeps a ledger row's status only when that row's
+    #   rule verdict equals the new verdict (cmd_attach); ledger rule verdicts are CONFIDENT, WEAK or MISMATCH, and
+    #   attach decision's accept_weak applies only to a WEAK row. A hand-edited table, or a verify row gone from the
+    #   lit_search MANIFESTs, can break this; record-human refuses such a row as well.
+    return not reply_can_decide(row.get("verify_verdict"), row_verdict) and \
+        read_status(row.get("citation_status")) not in CITABLE_FINAL + ("rejected",)
 
 
 def glance_cell(text, limit=300):
@@ -3285,11 +3368,19 @@ def glance_cell(text, limit=300):
 
 
 def glance_words(row, verdict, row_verdict, led):
-    # The "Where it stands" cell for one corpus row (glance-words-v1).
+    # The "Where it stands" cell for one corpus row (glance-words-v2).
+    left_out = glance_left_out(row, row_verdict)
     if not row.get("verify_row_sha256"):
-        return "not checked yet"
+        return "not checked yet" + (f"; {GLANCE_LEFT_OUT}" if left_out else "")
     st = read_status(row.get("citation_status"))
     words = GLANCE_STATUS_WORDS.get(st) if st != "unverified" else None
+    if left_out:
+        # REASONING (glance-words-v2): a left-out row never borrows a CONFIDENT, WEAK or MISMATCH verdict's words,
+        #   the verify row's or its own (its corpus verdict is None when the check's response holds no record of the
+        #   paper, and MISMATCH when a NOT FOUND or verdict-less verify row re-grades so), so the cell never asks for
+        #   a decision no reply can record.
+        words = words or GLANCE_VERDICT_WORDS.get(verdict if verdict in ("EXISTS", "NOT FOUND") else "NOT FOUND")
+        words += f"; {GLANCE_LEFT_OUT}"
     words = words or GLANCE_VERDICT_WORDS.get(verdict) or GLANCE_VERDICT_WORDS.get(row_verdict) or "no record found"
     if led and led.get("verdict") == "DIFFERENT_WORK" and led.get("effective_verdict") != "DIFFERENT_WORK":
         words += "; an AI check that has not passed DAAF's test thought it may be a different work"
@@ -3339,18 +3430,34 @@ def cmd_adj_glance(ctx, a, state):
     md = ["| # | Reference | Title as cited | Title on record | Authors as cited | Authors on record | Year (cited / "
           "on record) | Where published | Where it stands |",
           "|---|---|---|---|---|---|---|---|---|"]
-    confirmable, unmatched_labels = [], []
+    # INTENT (1.7.0): each listed reference not yet decided falls in exactly one list: a reply can confirm it
+    #   (confirmable), a reply can keep it although its record does not match (unmatched), or no reply can decide it
+    #   (left_out, with whether it was ever checked); the request is built from these three lists.
+    confirmable, unmatched_labels, unmatched, left_out = [], [], [], []
     for n, key in enumerate(keys, 1):
         r = corpus[key]
         rec = jload(r.get("verify_record_json"), {}) or {}
         label = None
         e = entries.get(r.get("verify_row_sha256") or "")
-        cited = {"title_raw": r.get("title"), "year": r.get("year")}
+        row_verdict = (e or {"row": {}})["row"].get("verdict")
+        out = glance_left_out(r, row_verdict)
+        cited = {"title_raw": r.get("title"), "year": r.get("year"),
+                 "authors": "; ".join(jload(r.get("authors_json"), []) or [])}
         if e is not None:
             raw = read_artifact(ctx, e, "raw_artifact", "raw_sha256", "verify raw log")
             if raw:
-                got = cited_from_log(json.loads(raw.decode("utf-8")))
-                cited = {"title_raw": got["title_raw"] or r.get("title"), "year": got["year"] or r.get("year")}
+                log = json.loads(raw.decode("utf-8"))
+                got = cited_from_log(log)
+                # INTENT (1.7.0): "Authors as cited" is the author the check looked for, where it was run with one, so
+                #   a MISMATCH caused by the author alone shows beside "Authors on record"; else the review's own list.
+                #   Display only: the corpus, the ledger and the exports keep their fields.
+                # REASONING: the name is cut to 200 characters before the explanation is added, so the cell's own
+                #   300-character cut never drops "(the name the check looked for ...)"; the cell is escaped once, below.
+                params = log.get("parameters") if isinstance(log.get("parameters"), dict) else {}
+                author = GLANCE_AUTHOR_CHECKED[params.get("first_author") is True].format(
+                    author=one_line(got["author_checked"], 200)) if got["author_checked"] else cited["authors"]
+                cited = {"title_raw": got["title_raw"] or r.get("title"), "year": got["year"] or r.get("year"),
+                         "authors": author}
                 # INTENT (1.6.0): a MISMATCH or EXISTS reference stores no record (verify_record_json is kept only for
                 #   CONFIDENT / WEAK or a bound override, so a non-matching record reaches the .bib only through an
                 #   override). The sheet still shows the record found for its identifier, labelled, so the researcher
@@ -3358,32 +3465,67 @@ def cmd_adj_glance(ctx, a, state):
                 # REASONING: verify_regrade is the same choice attach verify and an override binding make (the record
                 #   whose DOI or OpenAlex key is the paper's, from the hash-checked raw log); this command uses that
                 #   record for the sheet only and writes it to no table.
-                if not rec and r.get("verify_verdict") in GLANCE_UNMATCHED_LABELS:
-                    shown = verify_regrade(raw, r, e["row"].get("verdict"), openalex_aliases(state["aliases"], key))[1]
+                # REASONING (glance-words-v2): a left-out MISMATCH reference (its verify row says NOT FOUND, or gives
+                #   no verdict a reply can decide) shows no record, as a NOT FOUND one does: "Does not match:" and its
+                #   note would offer a keep reply that record-human refuses.
+                if not rec and r.get("verify_verdict") in GLANCE_UNMATCHED_LABELS and not (
+                        out and r["verify_verdict"] == "MISMATCH"):
+                    shown = verify_regrade(raw, r, row_verdict, openalex_aliases(state["aliases"], key))[1]
                     if shown:
                         rec = shown
                         label = GLANCE_UNMATCHED_LABELS[r["verify_verdict"]]
                         unmatched_labels.append(label)
         kind = str(rec.get("type") or "").replace("-", " ")
         where = ", ".join(x for x in (rec.get("venue"), kind) if x)
-        words = glance_words(r, r.get("verify_verdict"), (e or {"row": {}})["row"].get("verdict"),
-                             cur.get(r.get("verify_row_sha256") or ""))
+        words = glance_words(r, r.get("verify_verdict"), row_verdict, cur.get(r.get("verify_row_sha256") or ""))
         title_on_record = (f"{label}: " if label else "") + glance_cell(rec.get("title"))
         md.append(f"| {n} | {glance_cell(r['citekey'], 80)} | {glance_cell(cited['title_raw'])} | "
-                  f"{title_on_record} | {glance_cell('; '.join(jload(r.get('authors_json'), []) or []))}"
+                  f"{title_on_record} | {glance_cell(cited['authors'])}"
                   f" | {glance_cell('; '.join(rec.get('authors') or []))} | {cited['year'] or '?'} / "
                   f"{rec.get('year') or '?'} | {glance_cell(where, 160)} | {words} |")
-        if r.get("verify_verdict") in VERIFY_RANK and read_status(r.get("citation_status")) not in CITABLE_FINAL + (
-                "rejected",):
-            confirmable.append(f"{r['verify_row_sha256']}  # {n} {r['citekey']}")
+        if out:
+            left_out.append((n, bool(r.get("verify_row_sha256"))))
+        elif read_status(r.get("citation_status")) not in CITABLE_FINAL + ("rejected",):
+            if r.get("verify_verdict") in VERIFY_RANK:
+                confirmable.append(f"{r['verify_row_sha256']}  # {n} {r['citekey']}")
+            elif r.get("verify_verdict") == "MISMATCH":
+                unmatched.append(n)
     # INTENT: the request matches the list: a reply is asked for only when a reference in it can still be confirmed,
     #   or kept although its record does not match
-    unmatched = [k for k in keys if corpus[k].get("verify_verdict") == "MISMATCH" and read_status(
-        corpus[k].get("citation_status")) not in CITABLE_FINAL + ("rejected",)]
     ask = ("Please read down the list and reply in your own words, for example \"all of them look right\" or \"number "
            "3 is a different paper\". One reply can cover the whole list." if confirmable else
            "None of these references can be confirmed as they stand. To keep one whose record does not match, say so "
-           "with your reason." if unmatched else "Every reference below is already decided; nothing needs a reply.")
+           "with your reason." if unmatched else "" if left_out else
+           "Every reference below is already decided; nothing needs a reply.")
+    # INTENT (1.7.0): a reference no reply can decide is named by its number with what happens to it (left out of the
+    #   reference list unless an automatic check matches it) and the one way to keep it: a check, again for one that
+    #   was checked, for the first time for one that never was. A sheet of only such references never reads as
+    #   "nothing needs a reply".
+    # REASONING: one sentence names every left-out number; the ask that follows names the never-checked numbers apart
+    #   when the sheet holds both kinds, so each reference is asked for the check it can have.
+    if left_out:
+        nums = [x for x, _ in left_out]
+        fresh = [x for x, checked in left_out if not checked]
+        one = len(nums) == 1
+
+        def numbers(xs):
+            # "Number 4" / "Numbers 1 and 2" / "Numbers 1, 2 and 3"
+            return f"Number {xs[0]}" if len(xs) == 1 else \
+                f"Numbers {', '.join(str(x) for x in xs[:-1])} and {xs[-1]}"
+        ask = (ask + " " if ask else "") + (
+            f"{numbers(nums)} could not be confirmed against a database record, so {'it' if one else 'they'} will be "
+            f"left out of the reference list unless an automatic check matches {'it' if one else 'them'}.")
+        if not fresh:
+            ask += f" To keep {'it' if one else 'one'}, ask for it to be checked again."
+        elif len(fresh) == len(nums):
+            ask += f" To keep {'it' if one else 'one'}, ask for it to be checked."
+        else:
+            rest = len(nums) - len(fresh)
+            ask += (f" {numbers(fresh)} {'has' if len(fresh) == 1 else 'have'} not been checked yet: to keep "
+                    f"{'it' if len(fresh) == 1 else 'one of them'}, ask for it to be checked. To keep "
+                    f"{'the other' if rest == 1 else 'one of the others'}, ask for it to be checked again.")
+        if not confirmable and not unmatched and len(left_out) < len(keys):
+            ask += " Every other reference below is already decided."
     # INTENT: with both --deliverable and --keys the sheet says which references the deliverable cites and which were
     #   added by name, so the researcher (and the record) can tell the two apart.
     source = []
@@ -3399,7 +3541,7 @@ def cmd_adj_glance(ctx, a, state):
         if not nd:
             ctx["out"].append(f"lit_corpus: WARNING: {rel_deliverable} cites none of the corpus's papers; the sheet "
                               "lists the --keys papers only")
-    # INTENT (1.6.0): each label on the sheet is explained before the table, one sentence per label, so a record the
+    # INTENT (1.6.0): each label on the sheet is explained before the table, one note per label, so a record the
     #   check did not match is never read as the reference's confirmed record, and the researcher deciding whether to
     #   keep a "Does not match" reference knows it would be cited from that record.
     unmatched_note = []
@@ -3991,6 +4133,13 @@ def run_selftest(scratch, row):
         neg("record-human refuses override_mismatch on a CONFIDENT row (exit 11)",
             ["adjudications", "record-human", pd, "--rows", rows_file, "--decision", "override_mismatch",
              "--user-words", "Keep it.", "--rationale", "invented"], 11)
+        # 1.7.0: a verify call that failed before grading writes a row with no verdict; attaching it is refused
+        unfinished = demo_search_row(pd, "verify", "verify", DEMO_PAPERS[2]["doi"], [], sidecar=False,
+                                     raw_requests=[{"backend": "openalex", "response": demo_work_json(DEMO_PAPERS[2])}],
+                                     raw_params={"title": DEMO_PAPERS[2]["title"]}, row_extra={"exit_code": 12})
+        neg("attach verify refuses a verify row with no verdict (exit 11)",
+            ["attach", "verify", pd, demo_jsonl(pd, "verify_unfinished.jsonl", [
+                {"row_sha256": unfinished, "paper_key": DEMO_PAPERS[2]["key"]}])], 11)
         b01 = json.loads(open(bundle, "rb").read().decode("utf-8"))
         ident = (b01.get("template_sha256"), b01.get("rubric_version"), b01.get("agent_file_sha256"))
         selftest_expect(results, "pack records the identity (template, rubric, agent file sha256)",
