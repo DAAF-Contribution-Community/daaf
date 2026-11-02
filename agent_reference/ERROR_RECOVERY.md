@@ -15,8 +15,8 @@ This document provides decision trees and procedures for handling common errors 
 | Code execution error | 2 | Stop, escalate to user | Try alternative approach on 2nd attempt |
 | Validation failure (STOP condition) | 0 | Escalate immediately | Never retry STOP conditions |
 | Validation failure (warning) | N/A | Document and proceed | Warnings don't consume retries |
-| **QA BLOCKER (non-methodology)** | 2 | Stop, escalate to user | Apply Rule 5 fixes via revision (2 revision scripts: _a.py, _b.py after original fails) |
-| **QA BLOCKER (methodology)** | 0 | Escalate immediately | Becomes Rule 4 escalation |
+| **QA BLOCKER (any other: the fix restores what the Plan specifies, or corrects a defect without changing the method)** | 2 | Stop, escalate to user | Apply Rule 5 fixes via revision (2 revision scripts: _a.py, _b.py after original fails) |
+| **QA BLOCKER (methodology: a code-reviewer STOP with Issue Category `Methodology Conflict`)** | 0 | Escalate immediately | The Plan's own methodology looks wrong for the data, or the Plan does not settle the choice. Becomes Rule 4 escalation |
 | **QA WARNING** | N/A | Document, flag for Stage 10 | Warnings don't block progress |
 | Plan check failure | 2 revisions | Return to planning | Original check + max 2 revision cycles |
 | Verification gap | 3 | Stop, report to user | Gap may indicate fundamental issue |
@@ -31,7 +31,7 @@ After max attempts reached, use this format:
 
 **Error Type:** [type from table above]
 **Attempts Made:** [N]
-**Stage:** [current stage]
+**What I was doing:** [the activity in plain words]
 
 **What Was Tried:**
 1. **Attempt 1:** [description]
@@ -73,7 +73,7 @@ Awaiting your guidance before proceeding.
 | **Code Execution** | Syntax errors, runtime errors | Fix and retry | 2 attempts |
 | **Validation Failure** | Checkpoint failed | Investigate and fix or escalate | Varies by severity |
 | **QA BLOCKER** | Code-reviewer finds correctness issue | Revision via Rule 5 | 2 revisions |
-| **QA Methodology Issue** | Code contradicts Plan | Escalate immediately | 0 revisions |
+| **QA Methodology Issue** | The Plan's methodology looks wrong for the data, or the Plan does not settle the choice (`Methodology Conflict` STOP) | Escalate immediately | 0 revisions |
 | **Resource** | Memory, timeout | Optimize or escalate | 1 attempt |
 
 ## Error Recovery Routing
@@ -87,10 +87,15 @@ ERROR DETECTED
       |       +-> research-executor retry (max 2)
       |               +-> debugger (if still failing)
       |
-      +- QA BLOCKER found (code-reviewer)?
-      |       +-> Is it a methodology issue?
+      +- QA BLOCKER or STOP from code-reviewer?
+      |       +-> Is it a `Methodology Conflict` STOP (the Plan's method looks wrong,
+      |           or the Plan does not settle the choice)?
       |               +-> YES -> ESCALATE to user immediately
-      |               +-> NO -> research-executor revision
+      |               +-> Another STOP category -> route by Issue Category
+      |               |   (full-pipeline-mode.md § Gate Status Translation)
+      |               +-> NO, a BLOCKER (the fix restores the Plan, or corrects a
+      |                   defect without changing the method)
+      |                   -> research-executor revision
       |                       +-> code-reviewer re-reviews
       |                               +-> Resolved -> Proceed
       |                               +-> Still BLOCKER after 2 attempts -> ESCALATE
@@ -250,7 +255,7 @@ When any session limit is exceeded:
 To stay within budget:
 - **Be precise in subagent prompts** to avoid re-invocations
 - **Verify query parameters before execution** to avoid data access failures
-- **Review code before execution** when delegating complex transformations
+- **Pass the task's Plan_Tasks block and prior-transformation context in the dispatch** (`full-pipeline-mode.md` § Context Passing Requirements by Stage Transition)
 - **Escalate proactively** when patterns suggest fundamental issues
 
 ---
@@ -292,10 +297,13 @@ Error Encountered
     │   │        └─ NO → Document warning and proceed
     │   └─ NO → Continue
     │
-    ├─ Is it a QA BLOCKER from code-reviewer?
-    │   ├─ YES → Is it a methodology issue?
+    ├─ Is it a QA BLOCKER or STOP from code-reviewer?
+    │   ├─ YES → Is it a `Methodology Conflict` STOP?
     │   │        ├─ YES → ESCALATE IMMEDIATELY (Rule 4)
-    │   │        └─ NO → Apply revision (Rule 5)
+    │   │        ├─ Another STOP category → Route by Issue Category
+    │   │        │  (full-pipeline-mode.md § Gate Status Translation)
+    │   │        └─ NO, a BLOCKER (the fix restores the Plan, or corrects a
+    │   │           defect without changing the method) → Apply revision (Rule 5)
     │   │                 ├─ Revision attempt 1
     │   │                 ├─ Revision attempt 2
     │   │                 └─ Still BLOCKER? → ESCALATE
@@ -672,7 +680,7 @@ cat("\n=== DIAGNOSIS COMPLETE ===\n")
 
 ---
 
-### QA BLOCKER Recovery (NEW)
+### QA BLOCKER Recovery
 
 **Definition:** code-reviewer returns BLOCKER severity after script review.
 
@@ -680,11 +688,13 @@ cat("\n=== DIAGNOSIS COMPLETE ===\n")
 
 | Type | Examples | Recovery |
 |------|----------|----------|
-| **Correctness** | Wrong join type, incorrect filter, type mismatch | Fix via revision (Rule 5) |
+| **Correctness** | Wrong join type (a LEFT join where the Plan says INNER), incorrect filter, type mismatch | Fix via revision (Rule 5) |
 | **Validation Gap** | Missing checkpoint, inadequate invariants | Add validation via revision |
 | **Stub/Placeholder** | TODO, FIXME, pass, NotImplementedError | Complete implementation |
 | **Data Corruption** | Unexpected nulls, wrong row count | Fix transformation |
-| **Methodology** | Code contradicts Plan specification | ESCALATE immediately (Rule 4) |
+| **Methodology** | The Plan's own methodology looks wrong for the data, or the Plan does not settle the choice (a code-reviewer STOP with Issue Category `Methodology Conflict`) | ESCALATE immediately (Rule 4) |
+
+A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
 
 **Additional BLOCKER types for Data Onboarding profiling QA (QAP1-QAP4):**
 
@@ -711,11 +721,16 @@ cat("\n=== DIAGNOSIS COMPLETE ===\n")
 **Recovery Flow:**
 
 ```
-code-reviewer returns BLOCKER
+code-reviewer returns BLOCKER (or a STOP)
     │
-    ├─ Is it a methodology issue?
+    ├─ Is it a `Methodology Conflict` STOP (the Plan's method looks wrong,
+    │  or the Plan does not settle the choice)?
     │   ├─ YES → STOP, escalate to user (Rule 4)
-    │   └─ NO → Continue to revision
+    │   ├─ Another STOP category → Route by Issue Category
+    │   │  (full-pipeline-mode.md § Gate Status Translation; Stub Detection and
+    │   │  Validation Gap STOPs come back here for revision)
+    │   └─ NO, a BLOCKER (the fix restores what the Plan specifies, or corrects
+    │      a defect without changing the method) → Continue to revision
     │
     ├─ Revision Attempt 1
     │   ├─ Create new versioned script (_a.py/_a.R or next suffix)
@@ -832,13 +847,14 @@ CLAUDE.md § Boundaries & Safety (summary) and the full Defense-in-Depth Archite
 | Block category | Why it fired | Recovery |
 |----------------|-------------|----------|
 | **Anti-tampering (`bash-safety.sh` §7)** | A shell *write* targeting `.claude/hooks/`, `.claude/logs/`, `.claude/settings*.json`, or `benchmarks/harness/hooks/` — these are user-only. | Do not retry as an agent. Draft the change in the session workspace's `drafts/` folder (Framework Development; `framework-development-mode.md` § Workspace Setup) or another project-local staged path, never repo-level `scripts/scratch/` (tool scratch), and ask the **user** to apply it via a `!`-prefixed session command or a host terminal. Hooks do not vet user-typed `!` commands. (Reads and git index ops on these paths remain open; the Edit/Write tools on `settings.json` are also unaffected — only shell writes are blocked.) |
-| **Package install (`bash-safety.sh` §8)** | A runtime command-line install — **Python** (`pip`/`uv`/`conda`-type) or **R** (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — these drift from the Dockerfile and vanish on the next rebuild. | Add the dependency to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder) — by default in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required, e.g. a build-time system dependency). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
+| **Package install (`bash-safety.sh` §8)** | A runtime command-line install — **Python** (`pip`/`uv`/`conda`-type) or **R** (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — these drift from the Dockerfile and vanish on the next rebuild. | Ask the user to add the dependency: "Add it to /daaf/Dockerfile (the user additions block), then choose 10) Rebuild Container in the DAAF Control Panel, or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your daaf-docker folder." The user additions block sits near the end of the Dockerfile and rebuilds fast via layer caching (place the dependency earlier only when functionally required, e.g. a build-time system dependency). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
 | **In-script package install (`run_with_capture.sh` content scan, exit 3)** | The wrapper's pre-execution scan found an install or removal call written *inside* the `.py`/`.R` script body (e.g. `install.packages(...)`, `os.system("pip install ...")`, `["pip", "uninstall", ...]`) — the path shell-level hooks cannot see. The script was **not** executed and **no** execution log was appended. | Remove the install call from the script and re-run the **same file** — because no execution log was appended, immutable versioning has not engaged, so the file stays editable in place (no `_a`/`_b` version needed). If the package is genuinely missing, escalate: add it to the Dockerfile and rebuild (as in the §8 row above). |
 | **In-script environment-secret print (`run_with_capture.sh` content scan, exit 3)** | The same pre-execution scan found a line that would print environment values into the permanent execution log: the whole environment, `os.environ.items()`/`.values()` with an output sink or as a loop header, a credential-named variable inside a print or log call, an R bare top-level credential lookup (which auto-prints), or a shell-out that dumps the environment. The refusal names the line number and category, never the line text. The script was **not** executed and **no** execution log was appended. | Remove the print. To confirm a credential is configured, check its presence instead of printing its value (`"X_API_KEY" in os.environ` in Python; `nzchar(Sys.getenv("X_API_KEY"))` in R), and read credentials into a variable that is passed to the API, never printed. Then re-run the **same file**: no execution log was appended, so the file stays editable in place. If the flagged line does not print a value (a false positive), do not work around the scan; report the line number and category to the orchestrator. See `SCRIPT_EXECUTION_REFERENCE.md` § Environment-Secret Print Scan. |
 | **In-script researcher-decision command (`run_with_capture.sh` content scan, exit 3)** | The same pre-execution scan found a call to a Literature Review command that records a researcher's decision: `lit_corpus adjudications record-human`, or `lit_verify settle` with `--decision` (or a prefix of it) in a script that names `lit_verify`. Only the orchestrator runs these, each as its own Bash call, where a permission prompt shows the researcher their words. The refusal cites each line as `N:text`. The script was **not** executed and **no** execution log was appended. | Remove the call and re-run the **same file**: no execution log was appended, so it stays editable in place. The orchestrator records the decision itself after the researcher replies (`.claude/skills/daaf-orchestrator/references/literature-review-mode.md`); `settle --list` may stay in a script. If the line only quotes the command (a printed hint, a docstring), move that text into a data file the script reads. To test the recording commands, use their selftests or unit tests. See `SCRIPT_EXECUTION_REFERENCE.md` § Researcher-Decision Command Scan. |
 | **/tmp provenance (`bash-safety.sh` §6)** | A shell *write* to `/tmp`, which is outside the backup and audit boundary. | Write inside the project instead — `{PROJECT_DIR}/scripts/scratch/` for working files, never Claude Code's scratchpad if its path still starts with `/tmp/` (tell the user; CLAUDE.md § Project Conventions > Scratch Files). Do not route around the block through a variable or a program's output argument: those `/tmp` writes are merely unseen, not allowed. (Reading DAAF's own `/tmp` coordination caches stays allowed; only writes are blocked.) |
+| **Read-only search refused (`bash-safety.sh` §5-§8 search-pattern false positive)** | A `grep` or `rg` whose quoted pattern holds no space is scanned as command text, so a `\|`, `(`, `{` or backtick in it can start a "command": `grep -n -E "tmp\|mktemp" f` reads as a `mktemp` call, `grep -n "{cp" .claude/hooks/x` as a copy into a hook, `grep -n -E '"Bash\(rm' .claude/settings.json` as an `rm`. The refusal then names a mount, `mktemp`, copy or install you did not run. | Rewrite the pattern; each form returns the same lines: pass each alternative as its own `-e` (`grep -n -e tmp -e mktemp f`), write `(` or `{` as `[(]` or `[{]`, and single-quote a pattern that holds a backtick. Do not add a space to the pattern: that searches for different text. The hook header lists these shapes under DOCUMENTED RESIDUALS. This workaround covers §5-§8 only: for a §9 environment-disclosure refusal, follow the "Accidental environment disclosure" row below and do not rewrite the pattern, because §9 guards credential values. |
 | **`enforce-single-command`** | The command chained multiple statements (`&&`, `;`, `\|\|`, or newlines). | Split into separate Bash calls, one command each. |
-| **Accidental environment disclosure (`bash-safety.sh` §9, exit 2)** | The command would dump the whole environment to a terminal or a file (`env`, `set`, `export -p`, `printenv` with no program to run), echo or write out an uppercase variable whose last `_`-segment is a credential keyword (`…_KEY`, `…_TOKEN`, `…_SECRET`, …), read `/proc/<pid>/environ`, or print a whole environment object from an interpreter one-liner. The refusal names the category and a safe alternative, never the matched text. | Confirm presence instead of printing the value (`[ -n "${VAR:+set}" ]`, `${#VAR}`), list names only (`compgen -v`), give `env` a program to run, pass the credential straight to the program that needs it, or move the logic into a script run via `run_with_capture.sh`. If the command does not disclose a value (e.g. a `grep` whose search pattern merely contains `env)` or `/proc/self/environ`, or a benign `$CACHE_KEY`), do not rephrase around the guard — report the command shape and category to the orchestrator; these are documented residuals, not bugs to work around. |
+| **Accidental environment disclosure (`bash-safety.sh` §9, exit 2)** | The command would dump the whole environment to a terminal or a file (`env`, `set`, `export -p`, `printenv` with no program to run), echo or write out an uppercase variable whose last `_`-segment is a credential keyword (`…_KEY`, `…_TOKEN`, `…_SECRET`, …), read `/proc/<pid>/environ`, or print a whole environment object from an interpreter one-liner. The refusal names the category and a safe alternative, never the matched text. | Confirm presence instead of printing the value (`[ -n "${VAR:+set}" ]`, `${#VAR}`), list names only (`compgen -v`), give `env` a program to run, pass the credential straight to the program that needs it, or move the logic into a script run via `run_with_capture.sh`. If the command does not disclose a value (e.g. a `grep` whose search pattern merely contains `env)` or `/proc/self/environ`, or a benign `$CACHE_KEY`), do not rephrase around the guard — report the command shape and category to the orchestrator; these are documented residuals, not bugs to work around. The pattern rewrites in the "Read-only search refused" row above do not apply to §9. |
 | **Broken site file (`bash-safety.sh` load, exit 2, every command)** | The hook's site file, `.claude/hooks/bash-safety.site.sh`, is missing or unreadable, failed to load (a syntax error or a failing command), or left `SITE_ROOT` empty or malformed or a `SITE_EXTRA_PROTECTED_DIRS` entry malformed; or a site guard it defines (`site_extension_guards`) failed or returned non-zero. The hook loads it fail-closed: a load or validation failure blocks every Bash command, and a site guard blocks each command on which it fails or returns non-zero (every command that reaches it, if it always does); the message says the site file is broken and names the cause. | Stop issuing Bash commands: each one fails the same way. Hook files are user-only, so report the message to the orchestrator, which asks the **user** to restore the file or install a repaired copy from a host terminal or a `!`-prefixed session command. Tools other than Bash keep working. |
 | **`enforce-file-first`** (every agent with `Bash` in its `tools`) | Direct `python`/`python3`/`Rscript` (or bare `R` batch) execution, bypassing the audit trail. | Write the script to `scripts/` and run it via `run_with_capture.sh` (see `SCRIPT_EXECUTION_REFERENCE.md`). **False positive on a read-only search:** the hook reads a `\|` inside a regex alternation as a pipe, so a `grep -E` pattern containing `\|python3 `, `;python ` or `\|Rscript` is refused. Pass the alternatives as separate `-e` patterns (`grep -n -e 'foo' -e 'python3 x'`) instead of retrying. |
 
@@ -1096,7 +1112,7 @@ RV mode has a lightweight, language-paired error recovery pattern. The per-scrip
 | RV-1 (Containment) | Path audit global exit 1 DIVERGED or exit 2 NOT DIRECTLY VERIFIED; dispatched script lacks in-scope MATCH assessment | Supply each exact pre-RV-2 script exclusion through repeatable validated `--exclude`, then block RV-2 until the overall result—computed only from in-scope files—is exit 0 MATCH and every dispatched script's deterministic `file_assessments` entry is `IN_SCOPE` + `MATCH`. Keep excluded files and `excluded_issues` explicit; they never become matches. Audit source only before the unique `# EXECUTION LOG` boundary: `ORIGINAL_ROOT_LOG_RESIDUE` afterward is informational, but ambiguous boundaries fail closed. State bounded assurance; dynamic paths remain outside proof. |
 | RV-1 (Environment) | Original versions unpinned or R inventory incomplete | Record UNKNOWN / NOT DIRECTLY VERIFIED. Capture language-aware installed evidence via read-only commands or a diagnostic under project `scripts/repro_checks/`, executed through `run_with_capture.sh` with its appended log retained; never install packages at runtime. |
 | RV-2 (Frozen inputs) | Stage 5 would run, raw hash inventory changes, or frozen evidence absent | Do not execute Stage 5. If evidence is absent, return the data-strategy decision to the user as PSU-RV1 does (re-fetch, supply the missing raw evidence, or change scope); never fall back silently. If hashes differ, fail and investigate; acquisition/mirrors remain out of scope. |
-| RV-2 (Re-execution) | Python/R script fails or inherited log remains | Create `_repro_a` then `_repro_b` from clean log-free source. If `scripts/create_script_revision.sh` or a stripped failed copy is used, independently verify the inherited log marker is absent before fixes and re-execution. Apply minimal fixes, never rerun the just-failed appended file unchanged, and dispatch debugger after both revisions fail. |
+| RV-2 (Re-execution) | Python/R script fails or inherited log remains | Create `_repro_a` then `_repro_b` from the `original_files/scripts/` source. To re-run a logged script, create the folder for the copy if needed (`mkdir -p`), then run `bash /daaf/scripts/create_script_revision.sh <source> <destination>`; it copies the code without the execution log. Verify no `# EXECUTION LOG` marker remains before fixes and re-execution. Apply minimal fixes, never rerun the just-failed appended file unchanged, and dispatch debugger after both revisions fail. |
 | RV-2 (Log comparison) | Log helper exit 1 DIVERGED, exit 2 invalid/read failure, or exit 3 INCOMPLETE/INCONCLUSIVE | Aligning is by metric identity and stable context, never position. Exit 0 alone is CONSISTENT; exit 1 is divergent log evidence; correct exit-2 invocation/input failures; record exit 3 as NOT DIRECTLY VERIFIED, never success. Keep the result explicitly log-only. |
 | RV-2 (Artifact comparison) | Artifact helper exit 2 invalid/unsupported, exit 3 NOT DIRECTLY VERIFIED, unsupported artifact, missing side, or bound exceedance | For exit 2, correct the invocation or route the artifact to its separate evidence path; for exit 3 or unavailable direct evidence, record NOT DIRECTLY VERIFIED. Defaults cap each Parquet input at 536870912 bytes and 1000000 rows before full materialization and tolerant matching at 1000000 candidate pairs. Exact-key/cardinality divergence is decided before the pair limit; duplicate assessment follows actual verification. Never infer a match. Use the artifact helper for supported Parquet/exact evidence, Read for figures, and defined representations for tables/models. |
 | RV-2 (Re-execution) | Data re-fetch returns different data | Log as Data change deviation; if schema differs, STOP and present to user (escalation trigger) |
@@ -1228,7 +1244,7 @@ Re-execute the stage with this correction.
 ```markdown
 **[STOP | WARNING]: [Brief Issue Title]**
 
-**Stage:** [Stage number and name]
+**What I was doing:** [the activity in plain words, e.g. "cleaning the school enrollment data"; no stage number]
 **Severity:** [Critical | High | Medium | Low]
 
 **What Happened:**

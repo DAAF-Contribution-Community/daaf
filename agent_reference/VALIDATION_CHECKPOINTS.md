@@ -325,21 +325,21 @@ Are there multiple valid approaches requiring user preference?
 | Stage | Checkpoint(s) | Default Classification | Elevate to human-verify If |
 |-------|---------------|----------------------|---------------------------|
 | 5 (Fetch) | CP1 | auto | Data lag ≥3 years, unexpected shape |
-| 5-QA | QA1 | auto | Methodology BLOCKER (escalate immediately) |
+| 5-QA | QA1 | auto | Methodology BLOCKER: code-reviewer STOP, Issue Category `Methodology Conflict` (escalate immediately) |
 | 6 (Clean) | CP2 | auto | Suppression 30-50%, unusual patterns |
-| 6-QA | QA2 | auto | Methodology BLOCKER (escalate immediately) |
+| 6-QA | QA2 | auto | Methodology BLOCKER: code-reviewer STOP, Issue Category `Methodology Conflict` (escalate immediately) |
 | 7 (Transform) | CP3, Join Validation | auto | Row loss 50-90%, unexpected nulls |
-| 7-QA | QA3 | auto | Methodology BLOCKER (escalate immediately) |
+| 7-QA | QA3 | auto | Methodology BLOCKER: code-reviewer STOP, Issue Category `Methodology Conflict` (escalate immediately) |
 | 8 (Analyze & Visualize) | **CP4** | auto | Results differ from expectations |
-| 8-QA | QA4a | auto | Methodology BLOCKER (escalate immediately) |
+| 8-QA | QA4a, QA4b | auto | Methodology BLOCKER: code-reviewer STOP, Issue Category `Methodology Conflict` (escalate immediately) |
 | 9 (Notebook) | — | auto | Execution warnings |
 | 10 (QA Aggregation) | — | auto | Unresolved BLOCKERs, WARNING patterns, missing QA reviews |
 | 11 (Report) | — | human-verify | Always verify before delivery |
-| 12 (Final Review) | **Pre-Output Verification**, Substantiveness Validation, QA4b | human-verify | Always verify before delivery |
+| 12 (Final Review) | **Pre-Output Verification**, Substantiveness Validation | human-verify | Always verify before delivery |
 
 **CP4 placement.** CP4 is `checkpoint:auto` and runs **inside the Stage-8 analysis and visualization scripts** — it validates analysis outputs, critical nulls, figures, and the input source at the moment those artifacts are produced. Deliverable completeness at Stages 11-12 is covered by § Pre-Output Verification (Stage 12), which is `checkpoint:human-verify` and owned by data-verifier. Nothing at Stage 11 or 12 is labelled CP4.
 
-**Note:** QA substages (5-QA through 8-QA) run SEPARATELY after EACH individual Stage 5-8 script execution — not once at stage end. For example: Stage 5 with 2 fetch scripts = 2 independent QA1 invocations, each reviewing one script's output in isolation before the next script begins. Technical BLOCKERs trigger revision attempts (max 2 per script); methodology BLOCKERs escalate immediately.
+**Note:** QA substages (5-QA through 8-QA) run SEPARATELY after EACH individual Stage 5-8 script execution — not once at stage end. For example: Stage 5 with 2 fetch scripts = 2 independent QA1 invocations, each reviewing one script's output in isolation before any script that depends on it begins (same-wave scripts run in parallel, each with its own review; `full-pipeline-mode.md` § Wave-Based Parallel Execution). A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately.
 
 ---
 
@@ -2198,6 +2198,7 @@ not_applicable <- list()  # e.g. list(convergence = "lm() is closed-form and rep
 **Semantics reminders:**
 - CP4 runs at **Stage 8**, inside the analysis/visualization script — not at Stage 11 or 12. Deliverable completeness is § Pre-Output Verification (Stage 12).
 - CP4.3 passing means the file exists and is non-trivial in size. It does **not** mean the figure is correct. The executor must open each figure with Read; the printed reminder is part of the checkpoint, and a CP4 status reported without that inspection is incomplete.
+- A plotly figure is HTML-only, because the image has no plotly static export (kaleido and orca are not installed). For such a figure the executor inspects the paired static PNG drawn by the plotnine / ggplot2 script (`agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` § Stage 8.2: Visualization).
 - `[NOT VERIFIED]` makes the verdict `FAILED`. An empty `required_figures` or `critical_columns` is a configuration gap, not a pass.
 - `PASSED WITH WARNINGS` on the log line maps to reported status **`WARNING`**.
 - **CP4.4 scans the script, minus three exclusions.** A line is eligible for the data-source scan only if it is (a) not a comment, (b) not an `expected_input_dir` / `forbidden_input_dir` assignment, and (c) not inside the CP4 block (from the `# --- CP4 Validation` marker through the `CP4 FAILED - see details above` raise/stop). Without (b) and (c) the check reads its own configuration — `forbidden_input_dir = "data/raw/"` is a literal `data/raw/` present in *every* correct Stage-8 script — and returns `[FAIL]` unconditionally. Outcomes on the remaining lines: a forbidden literal is `[FAIL]` naming the line; otherwise an expected literal is `[PASS]` naming the line; otherwise `[NOT VERIFIED]`.
@@ -2239,7 +2240,7 @@ Verify these against the Plan document:
 3. **Geographic Scope Match:** the analysis covers the geography in the Plan
 4. **Methodology Alignment:** transformations and estimators followed the Plan's methodology, and any deviation is documented with its rationale
 5. **Output Count Match:** the number of visualizations and tables matches what the Plan committed to
-6. **Notebook Passes Its Checks:** the Stage 9 notebook passes its structural check, and its execution evidence shows every cell ran without error. Marimo, read-only: re-run `marimo check {PROJECT_DIR}/{notebook} --format json --select MB` (exit 0, `summary.errored` false, `summary.files_with_issues` 0), then verify Stage 9's `marimo export html` evidence without re-executing: the session snapshot `{PROJECT_DIR}/__marimo__/session/{notebook}.json` exists, is newer than the notebook, and passes every condition in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` § Verification Execution Protocol, step 5 (which holds the exact commands and conditions). A missing or stale snapshot, `no_output` above 0, or a cell count that differs from the notebook's is NOT VERIFIED, and the orchestrator has notebook-assembler Step 6 re-run; `errors` above 0 means the Stage 9 execution check did not pass. Then verify Stage 9's Step 6c verbatim fidelity evidence, also read-only (never re-run the decompiler): among the `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_[0-9]*` folders (the pattern skips most folders of a notebook whose name only starts with `{notebook-stem}`, such as `{notebook-stem}_draft.py`, but still matches those of `{notebook-stem}_2.py`; the Source Notebook check below catches those), the one whose `MANIFEST.md` is newest, newer than the notebook (`ls -l --time-style=full-iso`), with a `**Source Notebook:**` line (Grep tool) naming exactly `{notebook}`, its MANIFEST legacy-literal and early-fence counts 0 and validated count equal to the final-version script count, its decompiled `stage*/*.py` paths equal to the final versions you derive from `{PROJECT_DIR}/scripts`, and a re-run of the read-only `git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines` of `{PROJECT_DIR}/scripts` against that folder showing only ` => dev/null}` lines plus the single `/{dev/null => …/MANIFEST.md}` line (exact commands in the same step 5). No such folder, one older than the notebook, or one whose `**Source Notebook:**` names another notebook is NOT VERIFIED and the orchestrator has Step 6 re-run; a failed condition means the notebook does not archive the final scripts verbatim. Quarto: `quarto render {PROJECT_DIR}/{notebook}`
+6. **Notebook Passes Its Checks:** the Stage 9 notebook passes its structural check, and its execution evidence shows every cell ran without error. Marimo, read-only: re-run `marimo check {PROJECT_DIR}/{notebook} --format json --select MB` (exit 0, `summary.errored` false, `summary.files_with_issues` 0), then verify Stage 9's `marimo export html` evidence without re-executing: the session snapshot `{PROJECT_DIR}/__marimo__/session/{notebook}.json` exists, is newer than the notebook, and passes every condition in `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` § Verification Execution Protocol, step 5 (which holds the exact commands and conditions). A missing or stale snapshot, `no_output` above 0, or a cell count that differs from the notebook's is NOT VERIFIED, and the orchestrator has notebook-assembler Step 6 re-run; `errors` above 0 means the Stage 9 execution check did not pass. Then verify Stage 9's Step 6c verbatim fidelity evidence, also read-only (never re-run the decompiler): among the `{PROJECT_DIR}/__marimo__/stage9_check/decompiled_{notebook-stem}_[0-9]*` folders (the pattern skips most folders of a notebook whose name only starts with `{notebook-stem}`, such as `{notebook-stem}_draft.py`, but still matches those of `{notebook-stem}_2.py`; the Source Notebook check below catches those), the one whose `MANIFEST.md` is newest, newer than the notebook (`ls -l --time-style=full-iso`), with a `**Source Notebook:**` line (Grep tool where available, else `grep -n` via Bash) naming exactly `{notebook}`, its MANIFEST legacy-literal and early-fence counts 0 and validated count equal to the final-version script count, its decompiled `stage*/*.py` paths equal to the final versions you derive from `{PROJECT_DIR}/scripts`, and a re-run of the read-only `git diff --no-index --numstat --ignore-space-at-eol --ignore-blank-lines` of `{PROJECT_DIR}/scripts` against that folder showing only ` => dev/null}` lines plus the single `/{dev/null => …/MANIFEST.md}` line (exact commands in the same step 5). No such folder, one older than the notebook, or one whose `**Source Notebook:**` names another notebook is NOT VERIFIED and the orchestrator has Step 6 re-run; a failed condition means the notebook does not archive the final scripts verbatim. Quarto, read-only (data-verifier never runs `quarto render`, which writes output): verify Stage 9's render evidence, i.e. notebook-assembler's reported `quarto render` outcome passed in the dispatch and a rendered `{PROJECT_DIR}/{notebook-stem}.html` newer than the `.qmd` (`ls -l --time-style=full-iso`; exact rule in the same step 5). Missing or stale evidence is NOT VERIFIED and the orchestrator has notebook-assembler re-run Step 6
 
 A **major** deviation from the Plan blocks delivery; a **minor** scope change is acceptable when the Report documents it.
 
@@ -2257,7 +2258,7 @@ For each Research Outcome in the Plan:
 | Research Outcome | Evidence of Investigation | Status |
 |------------------|--------------------------|--------|
 | "Poverty rate variation across districts is characterized" | scatter plot in output/figures/, summary statistics in report, significance testing in analysis script | ADDRESSED |
-| "Analysis dataset includes all required variables" | check analysis.parquet schema | ADDRESSED |
+| "Analysis dataset includes all required variables" | analysis.parquet schema as printed in the final Stage 7 (CP3) execution log | ADDRESSED |
 | "Data limitations are documented with scope implications" | Limitations section present in Report.md with suppression rate impact | ADDRESSED |
 ```
 
@@ -4428,7 +4429,7 @@ Validation results appear in the notebook as accordion sections containing the s
 
 > **Mode:** These checkpoints apply to Data Onboarding Mode only. They are the profiling equivalent of CP1-CP4.
 >
-> **This section is canonical.** The blocks below are the only maintained copies of the CPP code. `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` tells the data-ingest agent *when* to embed each checkpoint and supplies the per-part `# --- Config ---` stanza, then points here for the block itself. Copy the block for the relevant checkpoint verbatim into the profiling script's `# --- Validate ---` section; do not paraphrase it and do not maintain a second copy elsewhere.
+> **This section is canonical.** The blocks below are the only maintained copies of the CPP code. `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` tells the data-ingest agent *when* to embed each checkpoint and supplies the per-part values for the config stanza shown above each block (the stanzas here are Python; the CPP1-CPP4 R stanzas sit in that file beside the values), then points here for the block itself. Copy the block for the relevant checkpoint verbatim into the profiling script's `# --- Validate ---` section; do not paraphrase it and do not maintain a second copy elsewhere.
 
 ### CPP Overview
 
@@ -4730,6 +4731,21 @@ if (cpp1_verdict == "FAILED") {
 ### CPP2: Post-Statistical Validation
 
 **Embedded in:** Last script of Part B (04, 05, or 06 depending on conditional execution)
+
+> **Reload NOTE (do not drop this when copying).** Each profiling script runs as its own
+> process; there is no shared in-memory state. Script 05 saves its result as a one-row
+> Parquet file, `{project_dir}/output/profiling/05_temporal-determination.parquet`, with a single
+> Boolean column `time_columns_found` (it creates `{project_dir}/output/profiling/` if needed; a suffixed
+> HIERARCHICAL script uses its own suffix, e.g. `05a_temporal-determination.parquet`).
+> Use the absolute project path: `run_with_capture.sh` runs the script from the caller's
+> directory, so a relative path lands outside the project.
+> When the block sits in a later Part B script (06), **load that file** in the script's
+> `# --- Config ---` region and assign `time_columns_found` from it (Python:
+> `pl.read_parquet(path)["time_columns_found"][0]`; R:
+> `arrow::read_parquet(path)$time_columns_found[1]`); script 05 itself assigns the value it
+> just computed. If script 05 was skipped by the conditional-execution rule, there is no
+> file: carry that decision into `not_applicable["temporal_detection"]` with its reason
+> (§ CPP Usage Notes) rather than leaving `time_columns_found` as `None`/`NULL`.
 
 **Config stanza (assign before the block):**
 ```python
@@ -5301,6 +5317,19 @@ if (cpp3_verdict == "FAILED") {
 > below it. Records are enumerable, so "zero records" is detectable; and each record's
 > text is still scanned **line by line**, so a hedge on the first line cannot cover the
 > rest.
+
+> **Reload NOTE (do not drop this when copying).** Each profiling script runs as its own
+> process; there is no shared in-memory state. Script 10 saves `data_dictionary_draft` as
+> a Parquet file, `{project_dir}/output/profiling/10_data-dictionary-draft.parquet`, with one row per
+> record and two string columns, `column` and `interpretation` (it creates
+> `{project_dir}/output/profiling/` if needed; a suffixed HIERARCHICAL script uses its own suffix, e.g.
+> `10a_data-dictionary-draft.parquet`). Use the absolute project path: `run_with_capture.sh`
+> runs the script from the caller's directory, so a relative path lands outside the project. When the block sits in script 11, **load that
+> file** (every suffixed file, stacked, for HIERARCHICAL) in the script's
+> `# --- Config ---` region and assign `data_dictionary_draft` from it (Python: `pl.read_parquet(path).to_dicts()`; R:
+> `as.data.frame(arrow::read_parquet(path))`); script 10 itself assigns the draft it just
+> built. A missing file leaves `data_dictionary_draft` as `None`/`NULL`, which is
+> `[NOT VERIFIED]`.
 
 **Config stanza (assign before the block):**
 ```python
@@ -5975,7 +6004,7 @@ if cpps_verdict == "FAILED":
 
 > **Mode:** These checkpoints apply to Data Onboarding Mode's **synthetic (privacy-preserving) path** only — the branch taken when the raw data must never enter the container. They replace CPP1-CPP4, which cannot run here because there is no source file to load and recompute against: everything DAAF knows about the data arrives as a profile report.
 >
-> **This section is canonical.** The blocks below are the only maintained copies of the CPS code. `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md` tells the executing agent *when* to embed each checkpoint and supplies the per-stage `# --- Config ---` values, then points here for the block itself. Copy the block verbatim into the validation script's `# --- Validate ---` section; do not paraphrase it and do not maintain a second copy elsewhere.
+> **This section is canonical.** The blocks below are the only maintained copies of the CPS code. `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md` tells the executing agent *when* to embed each checkpoint and supplies the per-stage config values, then points here for the block itself. Copy the block verbatim into the validation script's `# --- Validate ---` section, then set those values in the block's own `# --- Config ---` section (the only lines you change). Do not assign them anywhere else in the script: the block re-binds every config variable, so a value set outside it is overwritten. Do not paraphrase the block and do not maintain a second copy elsewhere.
 
 ### CPS Overview
 
@@ -6000,7 +6029,7 @@ One input deliberately comes from outside the report: `expected_threshold`, the 
 
 **Embedded in:** `scripts/profile_report_intake/01_validate-report.py` (`.R` for R)
 
-**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — assign your values there):**
+**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — set your values there, inside the copied block; a value assigned elsewhere in the script is overwritten when the block re-binds it):**
 ```python
 # --- Config ---
 report_path = None       # path to the returned profile report JSON; None if intake staged no file
@@ -9692,7 +9721,7 @@ CPS-GEN compares the generated frame against the profile report it was built fro
 
 **Embedded in:** `scripts/synth_generate/01_generate-synthetic.py` (`.R` for R) — CPS-GEN is embedded at the **end of the generation script itself**, after the synthetic parquet has been written, not in a separate validation script. The frame it checks is the one the script just produced. (T4: `scripts/synth_generate/01_import-synthetic.{py,R}`, at the end of the import — the frame it checks is the one the import just wrote.)
 
-**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — assign your values there):**
+**Config stanza (the block's own `# --- Config ---` region, reproduced for reference — set your values there, inside the copied block; a value assigned elsewhere in the script is overwritten when the block re-binds it):**
 ```python
 # --- Config ---
 synthetic_path = None      # the parquet the generation (T4: import) step wrote; None if it produced nothing
@@ -12206,10 +12235,10 @@ The same sweep collects every key and string value of the report into one escape
 
 | Row | Enum | Count columns |
 |-----|------|---------------|
-| CPS-INTAKE (DS-3 script) | `[PENDING/PASSED/PASSED WITH WARNINGS/FAILED]` | passed / warnings / failed / not verified / skipped |
+| CPS-INTAKE (DS-3 script) | `[PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)]` | passed / warnings / failed / not verified / skipped — or, when EXEMPT, the reason |
 | CPS-GEN (DS-5 script) | `[PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)]` | passed / warnings / failed / not verified / skipped — or, when EXEMPT, the reason |
 
-`PENDING` is the pre-run value; the five counts come straight from the block's count line. `EXEMPT (T4, no profile report)` is legal only on the CPS-GEN row, only at tier 4 when no profile report crossed: the block is not run, and the Counts cell records the reason in place of counts (see **Tier 4 and `seed_exception`** above).
+`PENDING` is the pre-run value; the five counts come straight from the block's count line. `EXEMPT (T4, no profile report)` is legal only at tier 4 when no profile report crossed, and only on these two rows and STATE's QAS-B row: neither block is run (DS-3 has no report to validate, and CPS-GEN has none to compare against), and the Counts cell records the reason in place of counts (see **Tier 4 and `seed_exception`** above, and `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant).
 
 **Execution.** Both blocks run inside a script under the file-first protocol, never interactively:
 

@@ -12,6 +12,13 @@ skills:
   - quarto
 permissionMode: default
 model: sonnet   # Well-specified tier: verbatim script-to-cell copying (override per-dispatch allowed)
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-file-first.sh"
+          timeout: 5
 ---
 
 # Notebook Assembler Agent
@@ -461,7 +468,8 @@ each cell must contain: which lines are copied, how they are prefixed, which
 banner lines are dropped, and which delimiter the log literal uses. You produce
 that text yourself with Read, Write and Edit; you do not execute these
 functions. Two parts of that work use tools. The delimiter and the outer fence
-length are chosen with the Grep tool on the script file ("Marimo: Check the Log
+length are chosen with a search of the script file (the Grep tool where
+available, else `grep -n` via Bash; "Marimo: Check the Log
 Before Emitting Cell 3"). The executed proof that the cells match the
 scripts is the Step 6c fidelity check, which rebuilds every archived script from
 the notebook and compares it with the original.
@@ -576,8 +584,10 @@ word, for example `TODO checks completed successfully`, is not a placeholder.
 
 ##### Marimo: Check the Log Before Emitting Cell 3
 
-Run these Grep tool searches on each final script file, with line numbers
-(`-n`). First find the marker line with the pattern `^# EXECUTION LOG$`: it
+Run these searches on each final script file, with line numbers (`-n`): the
+Grep tool where available, else `grep -n` via Bash (pass each pattern with its
+own `-e`; the hook refuses a `grep -E` alternation containing `|python3 ` or
+`|Rscript`, see `agent-authoring` SKILL.md § Per-Agent Hooks). First find the marker line with the pattern `^# EXECUTION LOG$`: it
 must match exactly one line, else STOP (the same rule as the helpers' marker
 check: a missing or ambiguous log boundary). Only matches *below* that line
 count; matches above it are in the script's code, such as docstrings, and do
@@ -604,7 +614,8 @@ closes it at a line of exactly `{N}` backticks. A tilde line never closes a
 backtick fence, and a backtick run inside a line never closes one. A fence one
 backtick longer than every backtick run in the log satisfies both rules and
 any renderer that follows either, so no log line can close it. Probed on marimo
-0.25.0 (`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_03_fence_render.py`):
+0.25.0 (maintainer-only probe, not shipped:
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/probes/phc_03_fence_render.py`):
 with a five-backtick fence, a log holding ```` ``` ````, ````` ````python `````,
 ````` ```` `````, `~~~` and an inline ```` ``` ```` displayed as one intact block,
 while the same log in a three-backtick fence was cut into three blocks, and a
@@ -653,8 +664,9 @@ def _(mo):
 """
 ```
 
-**Why the delimiter rule is enough** (probed on marimo 0.25.0 / Python 3.12,
-`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/fix2_raw_literal_probe.py`):
+**Why the delimiter rule is enough** (probed on marimo 0.25.0 / Python 3.12;
+maintainer-only probe, not shipped:
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/probes/fix2_raw_literal_probe.py`):
 in a raw literal a backslash only stops the quote right after it from closing
 the string, and keeps both characters. So `\'`, `\"`, a backslash at the end
 of a line, and a backslash at the end of the last log line are all archived
@@ -669,9 +681,9 @@ newline translation) and split it at `\n` only, which is how the Python parser
 and `scripts/decompile_notebook.py` read the notebook. Form feed, vertical tab,
 U+0085, U+2028, U+2029 and similar characters are ordinary characters to Python,
 also inside a raw literal, so a log line holding one is archived and decompiled
-unchanged (probes
-`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_01_python_newline_probe.py`
-and the `phc_e2e` notebook: 6a, 6b and 6c clean, display intact). Do not use
+unchanged (maintainer-only probes, not shipped:
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/probes/phc_01_python_newline_probe.py`
+and an end-to-end notebook from the same session: 6a, 6b and 6c clean, display intact). Do not use
 `splitlines()` or `textwrap.indent()` on script text: both also break lines at
 these characters. A carriage return (`\r`, e.g. a progress bar) cannot be
 archived: the Python parser reads both `\r\n` and a lone `\r` in the notebook as
@@ -679,8 +691,8 @@ a line break, including inside a string. A carriage return in the middle of a
 line therefore becomes an extra line break, which Step 6c reports, so the
 assembly STOPs. A carriage return directly before a line break (a CRLF line
 ending) is dropped without a trace: the archived line just ends without it, and
-6c shows no difference (probe
-`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/r3_literal_edges.py`,
+6c shows no difference (maintainer-only probe, not shipped:
+`research/2026-10-16_FrameworkDev_MarimoUpgrade/probes/r3_literal_edges.py`,
 cases c05 and c06). That loss is an accepted residual risk.
 
 ##### Marimo Helper: Find Final Script Version
@@ -936,7 +948,7 @@ marimo check {PROJECT_DIR}/{notebook} --format json --select MB
 ```
 marimo export html {PROJECT_DIR}/{notebook} -o {PROJECT_DIR}/__marimo__/stage9_check/{notebook-stem}.html --no-sandbox -f
 ```
-- The export runs every cell once and exits. **PASS** requires exit 0. Do not test with `marimo run … --headless`: it starts a server that runs no cells until a browser connects, so it never exits on its own and reports no cell failure.
+- The export runs every cell once and exits. **PASS** requires exit 0. Do not test with `marimo run … --headless`: it starts a server that runs no cells until a browser connects (verified against the marimo 0.25.0 source on 2026-11-02), so it never exits on its own and reports no cell failure.
 - `-o` writes the check HTML into the project's `__marimo__/` folder, beside marimo's own session snapshot (see the side effect below). Both are regenerable caches that embed the rendered data previews, and `.gitignore` excludes `__marimo__/` at any depth. Do not write it to the project's `scripts/scratch/`: the `.gitignore` rule `scripts/scratch/` matches only the repository root's `scripts/scratch/`, so a project's `scripts/scratch/` is not ignored. Never write it to `/tmp`. marimo creates `stage9_check/` if it is absent; `-f` overwrites an earlier check file. `--no-sandbox` keeps the run in the Dockerfile-defined environment.
 - **On exit 1** (`Export was successful, but some cells failed to execute`): stderr prints one error line per failing cell (for example `MarimoExceptionRaisedError: ...` or `MultipleDefinitionError: ...`). To locate the cells, read the session snapshot (see the side effect below): `jq -c '.cells | to_entries[] | select(any(.value.outputs[]?; .type == "error")) | {index: .key, id: .value.id, error: [.value.outputs[] | select(.type == "error") | .evalue]}' {PROJECT_DIR}/__marimo__/session/{notebook}.json`. `index` is the cell's 0-based position in the notebook file. Then sort each failure:
   - **Missing display input** (`No such file or directory` for a Parquet that a preview cell reads or a figure that an `mo.image()` cell shows, and `ls` confirms the file is absent): follow the two "Display input missing" Decision Points. If the file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md`, the file is a declared Stage 5-8 output and its absence is an upstream failure: STOP and report it, because removing the display would hide it. Otherwise remove each such display cell in one pass, log a WARNING per cell, and re-run 6a-6c. Do not create the file or point the display at a different one. If `ls` shows the file exists, the path is wrong: treat it as the next case.
@@ -972,7 +984,7 @@ marimo export html {PROJECT_DIR}/{notebook} -o {PROJECT_DIR}/__marimo__/stage9_c
 
 **On a failure of (ii), (iii) or (iv):** the notebook does not hold the final scripts verbatim. Report the missing, extra or differing paths. For a script that differs, show the lines with `git diff --no-index --ignore-space-at-eol --ignore-blank-lines {PROJECT_DIR}/scripts/<stage>/<file>.py {folder}/<stage>/<file>.py`. Then STOP: this is a verbatim fidelity failure. Typical causes: an omitted final script, an earlier version archived, a transcription slip in Cell 2 or 3, a log with a character the decompiler cannot rebuild (see STOP Conditions), or a script rerun or edited after the notebook was built.
 
-**What the two whitespace flags absorb.** `--ignore-space-at-eol` hides changes in whitespace at line ends, and `--ignore-blank-lines` hides added or removed blank lines. They are needed because the decompiler normalizes two things in every notebook (verified on marimo 0.25.0 with real `run_with_capture.sh` logs): a blank captured output line, archived in the script as `# ` (hash and space), comes back as `#`; and blank lines or trailing spaces at the end of the code section collapse to the two blank lines before the log banner. Without the flags, a faithful notebook whose log has a blank output line would fail. The flags also hide differences 6c is meant to find, so 6c cannot see: a blank line added or removed anywhere in a script, including inside a multi-line string, where it changes the string's value; trailing spaces or tabs added or dropped on any code or log line; and a CRLF line ending dropped from a log line (see "Line breaks" under "Marimo: Format the Log Literal"). These are accepted residual risks. The helper rules never add or drop blank lines or trailing whitespace, so a slip in copying produces the first two, with one known exception: **trailing whitespace does not survive the Write and Edit tools.** In a probe on 2026-10-19 (`research/2026-10-16_FrameworkDev_MarimoUpgrade/scratch/phc_ws_write_probe.txt`, inspected with `cat -A`), lines written with Write or added with Edit that ended in two spaces, a tab, or space-tab-space all came out with no trailing whitespace, while a tab inside a line survived and the same lines written with `printf` kept their trailing whitespace. Whether the tool or the model's output drops it was not determined. So a notebook written with these tools cannot archive a code or log line's trailing spaces or tabs, and 6c does not see the loss. To disclose it, run the Grep tool with pattern `[ \t]$` and line numbers on each final script; for each script with matches, add an INFO under Issues Found naming the script and the line numbers whose trailing whitespace the archive drops. This is disclosure, not a STOP: the visible text of every line is still archived verbatim.
+**What the two whitespace flags absorb.** `--ignore-space-at-eol` hides changes in whitespace at line ends, and `--ignore-blank-lines` hides added or removed blank lines. They are needed because the decompiler normalizes two things in every notebook (verified on marimo 0.25.0 with real `run_with_capture.sh` logs): a blank captured output line, archived in the script as `# ` (hash and space), comes back as `#`; and blank lines or trailing spaces at the end of the code section collapse to the two blank lines before the log banner. Without the flags, a faithful notebook whose log has a blank output line would fail. The flags also hide differences 6c is meant to find, so 6c cannot see: a blank line added or removed anywhere in a script, including inside a multi-line string, where it changes the string's value; trailing spaces or tabs added or dropped on any code or log line; and a CRLF line ending dropped from a log line (see "Line breaks" under "Marimo: Format the Log Literal"). These are accepted residual risks. The helper rules never add or drop blank lines or trailing whitespace, so a slip in copying produces the first two, with one known exception: **trailing whitespace does not survive the Write and Edit tools:** a line written with Write or added with Edit that ends in spaces or tabs is saved without them, while a tab inside a line survives (observed 2026-11-02, Claude Code 2.1.281). So a notebook written with these tools cannot archive a code or log line's trailing spaces or tabs, and 6c does not see the loss. To disclose it, search each final script for pattern `[ \t]$` with line numbers (the Grep tool where available, else `grep -n -P '[ \t]$'` via Bash); for each script with matches, add an INFO under Issues Found naming the script and the line numbers whose trailing whitespace the archive drops. This is disclosure, not a STOP: the visible text of every line is still archived verbatim.
 
 - `git diff --no-index` is used rather than `diff` because the shipped allow list has `Bash(git diff *)`; it compares any two paths and writes nothing. Leave the `decompiled_*` folder in place: like the check HTML it sits under the gitignored `__marimo__/` and is not a project output. At Stage 12, data-verifier re-checks it read-only: it takes the `decompiled_{notebook-stem}_[0-9]*` folder whose MANIFEST.md is newest, and that MANIFEST's `**Source Notebook:**` line must name this notebook, else NOT VERIFIED (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` § Verification Execution Protocol, step 5).
 - Max 2 fix attempts across 6a-6c, then STOP. A display-removal pass, a re-emitted raw Cell 3 and a Cell 3 switched to the right delimiter or fence length each count as one of the two. A failure of 6c (ii)-(iv) is never a fix attempt: it is a STOP.

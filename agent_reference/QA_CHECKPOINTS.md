@@ -1360,7 +1360,7 @@ Observations from qa1 that should trigger qa2+ investigation:
 
 ## QA4a: Post-Analysis Statistical Validity
 
-**Applies To:** Stage 8 scripts (statistical analysis and visualization)
+**Applies To:** Stage 8.1 scripts (statistical analysis), including the data representation of any figures an analysis script draws. Stage 8.2 visualization scripts, and the figures of an analysis script, get QA4b
 
 **Purpose:** Verify data is represented accurately, statistical analyses are correct, and no misrepresentation occurs.
 
@@ -2020,9 +2020,11 @@ Observations from cra1 that should trigger cra2+ investigation:
 
 ## QA4b: Post-Analysis Visualization Quality
 
-**Applies To:** Stage 8 scripts (visualization)
+**Applies To:** Stage 8.2 scripts (visualization), and a Stage 8.1 analysis script that also draws figures
 
 **Purpose:** Verify visualizations are complete, labeled, accessible, visually coherent, and publication-ready.
+
+**HTML-only figures.** A plotly figure is saved as HTML only, because the image has no plotly static export (kaleido and orca are not installed). For such a figure the review inspects the paired static PNG drawn by the plotnine / ggplot2 script (`agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` § Stage 8.2: Visualization).
 
 ### Default Checks
 
@@ -2545,7 +2547,7 @@ QA2 RESULT: PASSED | WARNING | BLOCKER
 - Else `PASSED`.
 - A run with zero substantive checks (`passed == 0`) is `WARNING`, not `PASSED`, with the count line showing `0 passed`. An all-skipped run can never read as clean.
 
-`PASSED | WARNING | BLOCKER` are the only three verdict strings, and they map directly onto the status the code-reviewer reports to the orchestrator.
+`PASSED | WARNING | BLOCKER` are the only three verdict strings. The code-reviewer reports the verdict on the `QA{n} RESULT:` line of its return; its `Status` field says only whether the review itself ran to completion (`.claude/agents/code-reviewer.md` § Output Format).
 
 ### Escalation Rule for NOT VERIFIED
 
@@ -2563,7 +2565,7 @@ The synthetic path's disclosure-safety checkpoints override the WARNING default 
 | **Aggregate-only evidence** | A `[PASS]` on a disclosure check carries counts of things examined and the threshold — e.g. `[PASS] no_subthreshold_cells: 12 categorical blocks + 3 crosstab blocks scanned, 148 visible cells, all >= threshold 5`. It never prints a cell value, a minimum, a level label with its count, or a per-level line. A `[FAIL]` names the column / block / cell position only. `[INFO]` on this path carries tier, threshold, and shape facts only | The general PASS-carries-its-numbers rule is satisfied by aggregates. Printing *which* number was smallest is itself a release, so the evidence requirement and the disclosure requirement are reconciled by counting rather than by quoting |
 | **Scan completeness is a check** | A sweep check enumerates its blocks explicitly, counts blocks scanned, and cross-checks that count against the number the report declares. Mismatch ⇒ `[FAIL] …: scanned N of M declared blocks — the sweep is incomplete`. Zero declared blocks ⇒ an evidence-bearing `[PASS]`, never not-applicable — CPS-INTAKE prints `[PASS] no_released_count_below_threshold: 0 of 0 declared blocks scanned (0 categorical + 0 cross-tab), 0 visible cells examined, all >= effective threshold G (declared d, approved e)` | A sweep that silently examined nothing is the exact defect these templates exist to eliminate; "nothing to scan" must be established, not assumed |
 
-### BLOCKER (Revision Required)
+### BLOCKER (Revision Required; a Methodology BLOCKER Escalates)
 
 A finding is BLOCKER severity when:
 
@@ -2576,6 +2578,8 @@ A finding is BLOCKER severity when:
    - Implementation contradicts Plan specification
    - Critical cleaning steps skipped or wrong
    - Business logic errors in calculations
+
+   A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately (§ QA Checkpoint STOP Conditions).
 
 3. **Validation Inadequate**
    - Code could pass despite data corruption
@@ -2672,11 +2676,11 @@ scripts/
 │   └── 02_enrollment-plot.py
 ├── cr/                              # Code-review scripts directory (iterative)
 │   ├── stage5_01_cr1.py             # QA1 for Stage 5, Step 01 (standard + profiling)
-│   ├── stage5_01_cr2.py             # QA2: Investigated year coverage anomaly
-│   ├── stage6_01_cr1.py             # QA1 for Stage 6, Step 01
-│   ├── stage7_01_cr1.py             # QA1 for Stage 7, Step 01
-│   ├── stage7_01_cr2.py             # QA2: Investigated join non-matches
-│   ├── stage7_01_cr3.py             # QA3: Traced 10 entities end-to-end
+│   ├── stage5_01_cr2.py             # QA1 cr2: Investigated year coverage anomaly
+│   ├── stage6_01_cr1.py             # QA2 for Stage 6, Step 01
+│   ├── stage7_01_cr1.py             # QA3 for Stage 7, Step 01
+│   ├── stage7_01_cr2.py             # QA3 cr2: Investigated join non-matches
+│   ├── stage7_01_cr3.py             # QA3 cr3: Traced 10 entities end-to-end
 │   ├── stage8_01_cra1.py            # QA4a (statistical validity) for Stage 8, Step 01
 │   └── stage8_02_crb1.py            # QA4b (visualization quality) for Stage 8, Step 02
 └── debug/
@@ -2699,13 +2703,14 @@ scripts/
 |-----------|-------------|---------|
 | `stage8` | Stage 8 (analysis & visualization) | `stage8` |
 | `{step}` | Step number from reviewed script | `01`, `02` |
-| `_cra{iteration}` | QA4a (statistical validity) suffix | `_cra1`, `_cra2` |
-| `_crb{iteration}` | QA4b (visualization quality) suffix | `_crb1`, `_crb2` |
+| `_cra{iteration}` | QA4a (statistical validity) suffix, for a Stage 8.1 analysis script | `_cra1`, `_cra2` |
+| `_crb{iteration}` | QA4b (visualization quality) suffix, for a Stage 8.2 visualization script or an analysis script that also draws figures | `_crb1`, `_crb2` |
 
 **Examples:**
 - Script `01_fetch-ccd.py` in Stage 5 → `stage5_01_cr1.py` (first iteration), `stage5_01_cr2.py` (if needed)
 - Script `02_aggregate.py` in Stage 7 → `stage7_02_cr1.py`
-- Script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a), `stage8_01_crb1.py` (QA4b)
+- Analysis script `01_regression-analysis.py` in Stage 8 → `stage8_01_cra1.py` (QA4a); if it also draws figures, `stage8_01_crb1.py` (QA4b) as well
+- Visualization script `02_enrollment-plot.py` in Stage 8 → `stage8_02_crb1.py` (QA4b)
 
 **Data Onboarding profiling QA naming:** For the profiling QA naming convention (`profile_{phase}_cr{N}.py`), see `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` and the QAP Script Naming Convention section within this document.
 
@@ -2790,6 +2795,8 @@ Stage 10 aggregates all QA findings from Stages 5-8:
 
 ### QA Summary for Stage 10
 
+Stage 8 gets two Execution Overview rows, `8 (QA4a)` and `8 (QA4b)`, because an analysis script that draws figures has one review of each kind. Outstanding WARNINGs also lists any WARNING carried from the Stage 9 integration check (the Stage 9 row of STATE.md § Final Review Log > Integration Checks).
+
 ```markdown
 ## QA Summary Report
 
@@ -2799,7 +2806,8 @@ Stage 10 aggregates all QA findings from Stages 5-8:
 | 5     | 2       | 2          | 0              | N/A               |
 | 6     | 2       | 2          | 0              | N/A               |
 | 7     | 3       | 3          | 2              | 2 (via revision)  |
-| 8     | 1       | 1          | 0              | N/A               |
+| 8 (QA4a) | 1    | 1          | 0              | N/A               |
+| 8 (QA4b) | 2    | 2          | 0              | N/A               |
 
 ### Resolved BLOCKERs
 | Script | Issue | Resolution | Revision Count |
@@ -2810,6 +2818,7 @@ Stage 10 aggregates all QA findings from Stages 5-8:
 | Script | Warning | Assessment | Documentation |
 |--------|---------|------------|---------------|
 | 01_clean-ccd.py | 38% suppression | Acceptable | Added to limitations |
+| Stage 9 integration check | Figure path in the notebook not verified from readable evidence | Re-checked at Stage 12 | Logged in STATE.md § Final Review Log > Integration Checks |
 
 ### INFO Items
 | Script | Observation |
@@ -2826,7 +2835,7 @@ QA checkpoints can trigger STOP conditions that prevent proceeding:
 | Condition | Checkpoint | Action |
 |-----------|------------|--------|
 | BLOCKER after 2 revision scripts (_a.py, _b.py) | Any | STOP, escalate to user |
-| Methodology violation | Any | STOP, escalate immediately |
+| Methodology conflict: the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice (Issue Category `Methodology Conflict`) | Any | STOP, escalate immediately |
 | Data corruption detected | QA3 | STOP, invoke debugger |
 | Statistical misrepresentation detected | QA4a | STOP, revision required |
 | Missing critical figures | QA4b | STOP, revision required |
@@ -2875,7 +2884,7 @@ The "BLOCKER When" column states only the failure condition. It is not the whole
 | Distribution label accuracy | `distribution_labels` | Distribution claims pass appropriate tests | "Normal" claim fails normality test at p < 0.01 | Profile makes no distributional claims (all columns categorical) — declare with that reason | A distribution label is present but the underlying column is absent, all-null, or has n below the test's minimum |
 | Outlier boundary reasonableness | `outlier_fences` | IQR fences are sensible | Fences exclude >20% of data without explanation | Outlier detection was not performed because no continuous columns exist — declare with that reason | Fence values are absent from the profile, or the column they refer to is missing from the frame |
 | Temporal break detection | `temporal_breaks` | Obvious structural breaks are flagged | Dramatic year-to-year changes missed | Script 05 did not run because Part A found no time column, and that determination is recorded — declare with that reason | Script 05's condition was never evaluated or its output is missing; or a time column exists but the coverage artifact does not |
-| Coverage completeness | `coverage_completeness` | Entity/geographic coverage is assessed against a known universe | Identifiers are present, a known universe is available, and coverage was not checked | Script 06 did not run because Part A found no entity/geographic identifier, and that determination is recorded — declare with that reason | Identifiers are present but no known universe (reference roster, expected entity count) is available to compare against — say which universe is missing. This is the case that previously read as PASS |
+| Coverage completeness | `coverage_completeness` | Entity/geographic coverage is assessed against a known universe | Identifiers are present, a known universe is available, and coverage was not checked | Script 06 did not run because Part A found no entity/geographic identifier, and that determination is recorded — declare with that reason | Identifiers are present but no known universe (reference roster, expected entity count) is available to compare against — say which universe is missing. Never record this case as PASS |
 
 ### QAP3: Post-Relational (Part C)
 
@@ -2916,7 +2925,7 @@ Profiling QA uses the same six-token vocabulary as analysis QA (§ Severity Clas
 - **SKIPPED:** The check was declared not applicable in the profiling script's `not_applicable` mapping, with the reason printed
 - **INFO:** Observation, suggestion, or a positive result resting on weak evidence
 
-The two tokens that did not exist before — NOT VERIFIED and SKIPPED — are what make the QAP tables above honest. Previously each check defined only its BLOCKER condition, so a check that could not run raised no BLOCKER and the checkpoint recorded PASSED over it: coverage completeness with no known universe available, documentation coverage with no documentation, any QAP2/QAP3 check bound to a conditional script (05, 06, 07b, 08) that never ran. Those cases are now `[NOT VERIFIED]` or, when the profiling agent declares them with a reason, `[SKIPPED]` — either way counted and visible in the count line.
+NOT VERIFIED and SKIPPED are what make the QAP tables above honest. A check defined only by its BLOCKER condition raises no BLOCKER when it cannot run, so the checkpoint would record PASSED over it: coverage completeness with no known universe available, documentation coverage with no documentation, any QAP2/QAP3 check bound to a conditional script (05, 06, 07b, 08) that never ran. These cases are `[NOT VERIFIED]` or, when the profiling agent declares them with a reason, `[SKIPPED]` — either way counted and visible in the count line.
 
 ### QAP Applicability Declarations
 
@@ -2945,7 +2954,7 @@ QAP3 RESULT: PASSED | WARNING | BLOCKER
 - Else `PASSED`.
 - A run with zero substantive checks (`passed == 0`) is `WARNING`, not `PASSED`, with the count line showing `0 passed`. An all-skipped part can never read as clean.
 
-`PASSED | WARNING | BLOCKER` are the only three verdict strings, and they are what the reviewer reports to the orchestrator and what the orchestrator records in STATE.md — with the counts, so a recorded PASSED can be read against how much actually ran.
+`PASSED | WARNING | BLOCKER` are the only three verdict strings. The code-reviewer reports the verdict on the `QAP{n} RESULT:` line of its return, with the counts, and the orchestrator records both in STATE.md, so a recorded PASSED can be read against how much actually ran; its `Status` field says only whether the review itself ran to completion (`.claude/agents/code-reviewer.md` § Output Format).
 
 **Escalation rule.** The default for a NOT VERIFIED check is WARNING. The reviewer escalates to BLOCKER when the profiling protocol explicitly promised the missing input — the file structure was classified HIERARCHICAL so script 07b was required, or documentation was supplied so script 11 was required, or Part A found a time column so script 05 was required. In those cases the input was owed and its absence is a gap in the profiling itself, falling under the "Validation Inadequate" BLOCKER criterion. The reviewer makes the call and records the reasoning in the QA report.
 
@@ -3009,6 +3018,8 @@ These are the review-severity family. Their script-halting counterparts — **CP
 
 **Trigger:** After the returned report is in `data/profile_report/` and the CPS-INTAKE validator script has run.
 
+**At T4 with no profile report**, DS-3 has no report to validate, so CPS-INTAKE and QAS-B are not run: STATE records both rows as `EXEMPT (T4, no profile report)` with the reason in place of a verdict and counts (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant). Treat an `EXEMPT` QAS-B row as a **BLOCKER** at tier 1–3 or when a profile report did cross — a report present means DS-3 runs.
+
 **Default Checks:** (the reviewer re-derives these from the report's own numbers — never from the report's embedded `all_passed`, which is the user's claim, not DAAF's verification)
 
 | Check | Key | Validates | BLOCKER If | Not Applicable (`[SKIPPED]`) | Not Verifiable (`[NOT VERIFIED]`) |
@@ -3046,7 +3057,7 @@ These are the review-severity family. Their script-halting counterparts — **CP
 | c10 Seed recorded | `seed_recorded` | The generation log carries the seed (at T4, the seed from the user's generation log) | The seed is absent and the T4 exception below is not in force; or CPS-GEN's `seed_exception` is set at tier 1–3, or alongside `seed` (both are CPS-GEN `[FAIL]`s). **BLOCKER by default** — the sole carve-out is the researcher-authorized T4 missing-seed path (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant): tier 4, `seed` unset, `seed_exception` set, and the authorization recorded in STATE.md § Synthetic Path Tracking > T4 Missing-Seed Exception. That case is a **WARNING**, mirroring CPS-GEN's `[WARNING] seed_recorded: tier 4 import with no recorded seed — researcher-authorized non-reproducible T4 exception (authorization recorded in STATE)`. The orchestrator obtains the authorization from the researcher; the reviewer confirms it is recorded and never grants it | Never — reproducibility is required at every tier | The generation log could not be read |
 | c11 Named relationship reproduced (T3) | `named_relationship_reproduced` | Synthetic OLS slope of `outcome ~ predictor` within ±10% of the reported slope; R² within ±0.10 | — (out of tolerance is **WARNING**) | Tier < 3, or `relationships.named` is empty / all `available:false` — declare with that reason | A named entry is available but the synthetic columns cannot support the regression |
 
-**At T4 (user-run local synthesis).** DS-5 imports the user's synthetic rows with `scripts/synth_generate/01_import-synthetic.{py,R}`. **With a profile report**, CPS-GEN is embedded at the end of that script and runs in full with `tier = 4` (the report's own `settings.tier` governs which blocks are expected), and QAS-C reviews it and the report as above. **Without a profile report**, CPS-GEN is not run and STATE records its row as `EXEMPT (T4, no profile report)`; QAS-C then validates against the user's declared metadata (row count, column set/types, declared marginals) and applies c10 to the user's generation log. Treat an `EXEMPT` CPS-GEN row as a **BLOCKER** at tier 1–3 or when a profile report did cross — a report present means CPS-GEN runs. A CPS-GEN run with `report_path` unset is not an exemption: its `[NOT VERIFIED]` lines force `FAILED`.
+**At T4 (user-run local synthesis).** The user's synthetic rows are imported with `scripts/synth_generate/01_import-synthetic.{py,R}` (at DS-5, or before DS-4 when no profile report crossed). **With a profile report**, CPS-GEN is embedded at the end of that script and runs in full with `tier = 4` (the report's own `settings.tier` governs which blocks are expected), and QAS-C reviews it and the report as above. **Without a profile report**, CPS-GEN is not run and STATE records its row as `EXEMPT (T4, no profile report)`; QAS-C then validates against the user's declared metadata (row count, column set/types, declared marginals) and applies c10 to the user's generation log. Treat an `EXEMPT` CPS-GEN row as a **BLOCKER** at tier 1–3 or when a profile report did cross — a report present means CPS-GEN runs. A CPS-GEN run with `report_path` unset is not an exemption: its `[NOT VERIFIED]` lines force `FAILED`.
 
 ### QAS Applicability Declarations
 
@@ -3086,7 +3097,7 @@ scripts/cr/
   qas_c_synthetic-validation.py   # QAS-C review scripts
 ```
 
-(`.R` in place of `.py` for R projects.) QAS-A produces no script — it is a static review of the outbound script, optionally supported by a synthetic-toy-input probe under `scripts/scratch/`.
+(`.R` in place of `.py` for R projects.) QAS-A produces no script — it is a static review of the outbound script, optionally supported by a synthetic-toy-input probe under `scripts/scratch/`, moved to `scripts/probes/` if the review cites it.
 
 > **Note:** The QAS-A/B/C check tables above are agent checklists, not script templates — this document carries no per-check QAS code, only the `not_applicable` config shape above. The code-reviewer writes each QAS script following the QA1-QA4b template patterns (accumulator counters, one line per check, derived verdict) with the QAS keys from the tables. The in-script synthetic-path checkpoints are separate and live in `agent_reference/VALIDATION_CHECKPOINTS.md` (CPS-INTAKE, CPS-GEN).
 
@@ -3100,7 +3111,7 @@ scripts/cr/
 
 **DO NOT create QA-of-QA loops.** QA scripts themselves don't need secondary review. If a QA script fails, debug the QA script or the original script, not both recursively.
 
-**DO NOT treat all BLOCKERs the same.** Methodology BLOCKERs escalate immediately. Technical BLOCKERs get revision attempts.
+**DO NOT treat all BLOCKERs the same.** A methodology BLOCKER (a `Methodology Conflict` STOP: the Plan's own method looks wrong, or the Plan does not settle the choice) escalates immediately. A BLOCKER whose fix brings the code back to what the Plan specifies, or corrects a defect (a bug, a stub, a validation gap) without changing the method, gets revision attempts. A code-reviewer STOP of any other Issue Category routes as `.claude/skills/daaf-orchestrator/references/full-pipeline-mode.md` § Gate Status Translation says.
 
 **DO NOT proceed with unresolved BLOCKERs.** The entire point of QA is to catch issues early. Proceeding with known BLOCKERs defeats the purpose.
 

@@ -85,7 +85,7 @@ The read-first rule, the tier table and the standard block are in `SKILL.md` § 
 |------|-------|----------|----------------|
 | GFD-1 | Phase 1 (Scope) | User-referenced materials read, work type classified, exploration complete, user confirmed scope at Checkpoint 1 (the Scope Check) | User explicitly confirms scope and approach |
 | GFD-2 | Phase 2 (Design) | Design approved (Complex) or Phase 2 skipped (Simple/Moderate) | User approves design OR complexity is Simple/Moderate |
-| GFD-3 | Phase 3 (Author & Integrate) | All artifacts authored, integration checklist executed, framework-engineer returned COMPLETED | framework-engineer status is COMPLETED and all applicable checklist items are done |
+| GFD-3 | Phase 3 (Author & Integrate) | All artifacts authored, integration checklist executed, and, when framework-engineer was dispatched, its status COMPLETED (Simple work the orchestrator authors directly has no framework-engineer return) | All applicable checklist items are done and, when framework-engineer was dispatched, its status is COMPLETED |
 | GFD-4 | Phase 4 (Review) | Review subagents returned, user approved final state at Checkpoint 2 | User explicitly approves OR requests only minor iteration |
 
 **Iteration limits:**
@@ -148,7 +148,7 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 3. **Downstream documentation:** Read `user_reference/02_understanding_daaf.md` mode sections, `README.md` modes table, `BOUNDARIES.md` mode sections, `AI_DISCLOSURE_REFERENCE.md`, `session-recovery.md`.
 
 **For New Reference File:**
-1. **Exemplars:** Read 2-3 existing reference files of the same type (same folder and purpose) for structure, depth and voice.
+1. **Exemplars:** Read 2-3 existing reference files of the same type (same folder and purpose) for structure and depth. Voice and audience come from `agent_reference/DOCUMENTATION_STANDARDS.md` (§ Audiences), not from the exemplars; note any exemplar that departs from the standard.
 2. **Loading surfaces:** Find where comparable references are registered and loaded (skill tables, mode loading trees, agent References tables, the CLAUDE.md Reference Files table); FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 lists the points.
 3. **Overlap check:** Grep for existing coverage of the topic, so the new file references rather than duplicates it.
 
@@ -181,6 +181,7 @@ Combine the relevant exploration sets. Distribute across 3 subagents by grouping
 
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — [focus area]
 
@@ -218,6 +219,7 @@ For the "Incorporate Learnings" work type, the 3 search-agent subagents have spe
 **Subagent 1: Learnings Scan**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Learnings Scan
 
@@ -254,6 +256,7 @@ of each file.
 **Subagent 2: Current State Check**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Current State of Action Item Targets
 
@@ -285,6 +288,7 @@ Keep output under 1500 words.
 **Subagent 3: Dependency and Ordering Analysis**
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Framework Exploration — Dependency and Ordering Analysis
 
@@ -349,6 +353,7 @@ Seed the **Focus areas** recommendation from the artifact being authored — do 
 
 ```
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task: Pre-Authoring Research — [artifact type and domain]
 
@@ -485,7 +490,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 - Simple count word updates ("eight" → "nine")
 - Single table row additions when the row content is obvious from context
-- Brief prose edits to user_reference when the change is straightforward
+- Brief prose edits to user_reference when the change is straightforward; the edit follows `agent_reference/DOCUMENTATION_STANDARDS.md` for user-facing text (§ S3 Plain for Users, § S5 Current State)
 - Cross-reference fixes identified during review
 
 ### When to Dispatch to framework-engineer
@@ -500,6 +505,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 ```
 **MODE: Framework Development**
 **BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
 
 ## Task
 
@@ -522,6 +528,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 [Specific instructions for this dispatch]
 Read FRAMEWORK_INTEGRATION_CHECKLIST.md and execute the applicable section.
+Read agent_reference/DOCUMENTATION_STANDARDS.md and apply it for each file's audience.
 Report all files created and modified.
 
 ## Output Format
@@ -554,13 +561,16 @@ Phase 4 review is **mandatory for all work, regardless of complexity.** Review s
 
 For **Moderate** and **Complex** work, launch 3 review subagents in parallel. For **Simple** work, launch Subagent 1 (Consistency) and Subagent 3 (Completeness) in parallel:
 
-> **Wave barrier discipline (async dispatch).** Under DAAF's shipped settings (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, observed on the pinned Claude Code 2.1.281) these review subagents return inline in the dispatching turn; without that setting, or on other versions, they return via completion notifications that may arrive one at a time. The barrier applies either way. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Wave barrier discipline (async dispatch).** See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. The barrier applies however they arrive. Treat mid-wave notifications as status-only: do not synthesize the review, present Checkpoint 2, or act on any single reviewer's findings until EVERY review subagent has returned. Synthesize once over the complete set of reviews — a reviewer that returns early or fails still counts as a completion to fold into that single synthesis, and its absence must be surfaced at the checkpoint rather than silently skipped. The same discipline applies to the Phase 1 scoping wave (the 3 parallel search-agents): wait for all before scoping conclusions.
 
 **Review records.** The review subagents are search-agents: they report problems and never fix the files under review. When a lossless review record is wanted, name a compliant path for each reviewer in its dispatch, such as `research/YYYY-MM-DD_FrameworkDev_{Topic}/reviews/NN_{angle}_review.md` (never a basename starting with `report`, `summary`, `findings` or `analysis`; CLAUDE.md § Project Conventions > Subagent File Output); the reviewer writes its full review there and returns a summary with the path. If a reviewer was given no path, or returned its review inline after a Write rejection, the orchestrator persists that return unmodified at the compliant path, with the provenance header from `SKILL.md` § Subagent Return Processing.
 
 ### Subagent 1: Consistency Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review all files created or modified during this Framework Development session
 for cross-file consistency.
 
@@ -571,6 +581,10 @@ Specific checks:
 - Table schemas: do new rows match the column structure of existing rows?
 - Escalation paths (if mode work): are they bidirectional?
 - Naming conventions: do names follow the established patterns?
+- Self-containment: no file that ships with DAAF cites a `research/` workspace,
+  scratch, or maintainer-local material (agent_reference/DOCUMENTATION_STANDARDS.md
+  § S4 Self-Contained). Run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked --family A,E`
+  and quote its hits on the files under review, or quote that there are none.
 
 Files to review: [list all created/modified files with absolute paths]
 
@@ -593,6 +607,9 @@ Report: list of inconsistencies found, with file paths and line numbers.
 ### Subagent 2: Quality Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review all files created or modified during this Framework Development session
 for quality against canonical templates and established patterns.
 
@@ -602,8 +619,12 @@ Specific checks:
   rules for skills)
 - Content quality: are descriptions clear and specific? Are anti-patterns
   genuinely useful? Are boundaries precise?
-- Style consistency: does new content match the tone and depth of adjacent
-  existing content?
+- Documentation standard: does new or changed text meet
+  agent_reference/DOCUMENTATION_STANDARDS.md for the file's audience? Apply
+  § The Audience Test, § S5 Current State (no change narration) and § Dated
+  Stamps (no DAAF-internal dated stamps). The standard is the bar, not adjacent content:
+  when a neighboring passage has drifted from the standard, report it rather
+  than treating it as the target.
 - Spirit and intention: does the artifact capture what was intended at the
   outset? Does it serve the stated purpose effectively?
 
@@ -629,6 +650,9 @@ Report: quality issues found, with specific improvement suggestions.
 ### Subagent 3: Completeness Review
 
 ```
+**BASE_DIR:** {absolute path to DAAF root}
+All relative paths in referenced files resolve from BASE_DIR.
+
 Review the integration of new/modified framework components for completeness.
 
 Specific checks:
@@ -641,6 +665,10 @@ Specific checks:
   that were not followed?
 - Extensions: are there other places this component should be mentioned or
   integrated that weren't in the checklist?
+- Documentation triage: run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked` and quote
+  its count summary and every hit on the files under review (or quote that there
+  are none). The lint is a review queue, not a pass/fail gate
+  (agent_reference/DOCUMENTATION_STANDARDS.md § The Triage Lint).
 
 Files to review: [list all created/modified files with absolute paths]
 Checklist: {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
@@ -724,7 +752,7 @@ If the user requests changes, loop back to Phase 3 for targeted fixes (respectin
 
 Additional skills (e.g., specific data source skills when the user is modifying one) are loaded by subagents when dispatched, following the standard pattern.
 
-**Context budget note:** Loading two skills at mode start consumes approximately 1,000-1,500 tokens of orchestrator context. Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
+**Context budget note:** Loading the two skills at mode start costs orchestrator context: their SKILL.md files run to several thousand words together (for the cost of a skill in general, see `SKILL.md` § Orchestrator Context Budget, "skills add 5K-20K tokens"). Avoid loading additional skills directly in orchestrator context beyond these two — defer to subagents for any further skill loading. If context utilization reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile), consider whether direct advisory responses could be delegated to a framework-engineer dispatch instead.
 
 ---
 
@@ -739,7 +767,7 @@ research/YYYY-MM-DD_FrameworkDev_{Topic}/SESSION_NOTES.md
 
 Follow the same deferred creation pattern as Ad Hoc Collaboration — only create the workspace when the first milestone warrants it.
 
-**Staged materials and the workspace.** The materials the user pointed to never trigger the workspace before Checkpoint 1: their fetches, PDF ingests and digest are staged (§ Phase 1 > Read User-Referenced Materials First). Phase 1's own scoping work (an exploration record, SESSION_NOTES.md at "Phase 1 scoping completes", the vendor-doc fetch of checklist item SB2) may create the workspace earlier, as before; a material read after that goes straight into the workspace rather than staging. When the user confirms Checkpoint 1 the staged items move in: `web_fetches/`, `papers/` and `user_pdfs/` to the same-named folders, the digest to `preliminary_notes/`, then any paper whose source PDF moved is re-ingested with `--reingest`. If the workspace does not exist yet, create it for them then; if any of those folders already exists (e.g. `web_fetches/` after an SB2 fetch), the whole staging tree goes in instead as one unit, the dated subfolder `{date}_scope_staging/`, digest included, so its layout and the digest's relative paths stay intact (`SKILL.md` § Scope Check > Read First).
+**Staged materials and the workspace.** The materials the user pointed to never trigger the workspace before Checkpoint 1: their fetches, PDF ingests and digest are staged (§ Phase 1 > Read User-Referenced Materials First). Phase 1's own scoping work (an exploration record, SESSION_NOTES.md at "Phase 1 scoping completes", the vendor-doc fetch of checklist item SB2) may create the workspace before Checkpoint 1; a material read after that goes straight into the workspace rather than staging. When the user confirms Checkpoint 1 the staged items move in: `web_fetches/`, `papers/` and `user_pdfs/` to the same-named folders, the digest to `preliminary_notes/`, then any paper whose source PDF moved is re-ingested with `--reingest`. If the workspace does not exist yet, create it for them then; if any of those folders already exists (e.g. `web_fetches/` after an SB2 fetch), the whole staging tree goes in instead as one unit, the dated subfolder `{date}_scope_staging/`, digest included, so its layout and the digest's relative paths stay intact (`SKILL.md` § Scope Check > Read First).
 
 **Workspace layout.** A Framework Development workspace uses these folders, each created on first use only (the layout records the practice of the existing Framework Development workspaces):
 
@@ -759,7 +787,7 @@ research/YYYY-MM-DD_FrameworkDev_{Topic}/
 └── logs/                # collect_session_logs.sh output
 ```
 
-Working files and probes start in `scripts/scratch/`, never `/tmp` or Claude Code's scratchpad (except scratchpad staging, `SKILL.md` § Scope Check > Read First). A root-level `scratch/` is not part of the layout; older workspaces that have one keep it as history. When a note, review or framework file is about to cite a scratch file, move it to `probes/` (or the folder its kind belongs in) and cite the new path (CLAUDE.md § Project Conventions > Scratch Files). Shipped framework files never cite a workspace's scratch: a file users need ships in a tracked home in the repository, and a citation of maintainer-only material names its research workspace path and says it is maintainer-only.
+Working files and probes start in `scripts/scratch/`, never `/tmp` or Claude Code's scratchpad (except scratchpad staging, `SKILL.md` § Scope Check > Read First). A root-level `scratch/` is not part of the layout; older workspaces that have one keep it as history. When a note or review is about to cite a scratch file, move it to `probes/` (or the folder its kind belongs in) and cite the new path (CLAUDE.md § Project Conventions > Scratch Files). Shipped framework files never cite this workspace or its scratch: a file users need ships in a tracked home in the repository, and a finding from this session is stated in a sentence where the framework file needs it (`agent_reference/DOCUMENTATION_STANDARDS.md` § S4 Self-Contained).
 
 **Natural restart boundaries:** Checkpoint 1 completion and Phase 3 completion are both natural restart boundaries. If context pressure is building, ensure SESSION_NOTES.md is updated at these points.
 
@@ -774,7 +802,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - Phase 1 scoping completes (work type classified, exploration done)
 - A framework artifact is created or substantially modified
 - A key design decision is made
-- Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds)
+- Context utilization reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -831,7 +859,7 @@ The researcher directed all framework design decisions and approved all changes.
 | Framework-engineer dispatch returns | Accomplishments + Integration Status |
 | Key design decision made | Key Decisions |
 | Review pass complete (Phase 4) | Accomplishments + In Progress |
-| Context reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | All sections (full checkpoint) |
+| Context reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 
@@ -878,6 +906,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Read what the user pointed to and scope the existing state before modifying anything (Phase 1 is mandatory)
 - Follow canonical templates for all new artifacts
 - Execute the applicable FRAMEWORK_INTEGRATION_CHECKLIST.md section
+- Apply `agent_reference/DOCUMENTATION_STANDARDS.md` to every new or changed text for its audience, and run `bash {BASE_DIR}/tests/lint/docs-triage.sh --untracked` over the session's changes before presenting Checkpoint 2
 - Always dispatch review subagents in Phase 4 — minimum 2 (Simple) or 3 (Moderate/Complex). The orchestrator must never self-review in lieu of subagent dispatch.
 - Present changes for user review at Checkpoint 2
 - Load `skill-authoring` and `agent-authoring` at mode start
@@ -888,15 +917,15 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 ### Ask First Before
 
 - Modifying CLAUDE.md (universal authority document)
-- Modifying settings.json or hook scripts (safety-critical configuration)
+- Modifying settings.json (safety-critical configuration), with the Edit tool only: shell writes to it are blocked (CLAUDE.md § Safety-System Integrity). Hook scripts are not an Ask First item: they are user-only (§ Never Do)
 - Changing the structure of existing templates (AGENT_TEMPLATE.md, MODE_TEMPLATE.md, etc.)
 - Deleting or renaming existing framework files
 - Making changes beyond the user's stated scope
-- Modifying Dockerfile or docker-compose.yml. **When proposing where a package or tool addition goes, recommend the user additions block near the end of the Dockerfile by default** — late layers rebuild fast because Docker layer caching spares the expensive layers above them; place an addition earlier only when functionally required (a system dependency a framework package needs at build time, or an R package that needs presence-gate coverage). **Framework-owned dependencies are the exception:** a package that a DAAF component needs (a framework CLI, skill tooling, the provider shim) goes in the categorized framework layers with the rest of the relevant installs, never in the user additions block, which is reserved for the user's own additions (see `FRAMEWORK_INTEGRATION_CHECKLIST.md` FC17). Additions resolve against the Dockerfile's frozen environment date (`UV_EXCLUDE_NEWER` for uv, `UBUNTU_SNAPSHOT` for apt, which runs through `daaf-apt-update`), so a version released after that date fails with uv's "No solution found". Propose a per-package `--exclude-newer-package` override, or an environment-date bump. A bump is a named, recurring Ask First maintenance action: move `UV_EXCLUDE_NEWER` and `UBUNTU_SNAPSHOT` together to one instant no earlier than the current `UBUNTU_SNAPSHOT` (the snapshot may run ahead of the Python date only as a dated security exception listed in the Dockerfile banner), re-pin the base digest only if the user wants it, and follow `user_reference/04_extending_daaf.md` § "Bumping the environment date". **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but `docker compose up -d --build` reads the host copy. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), (2) run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder — this copies the updated files from the container to the host and rebuilds the image automatically. If they don't have the rebuild script, the manual alternative is `docker compose cp daaf-docker:/daaf/<filename> ./<filename>` (run from the `daaf-docker` folder — the service-name form works regardless of the compose project name) followed by `docker compose up -d --build`. Point them to `user_reference/04_extending_daaf.md` § "The Recommended Path: Modify the Dockerfile" for the full procedure if they want more detail.
+- Modifying Dockerfile or docker-compose.yml. **When proposing where a package or tool addition goes, recommend the user additions block near the end of the Dockerfile by default** — late layers rebuild fast because Docker layer caching spares the expensive layers above them; place an addition earlier only when functionally required (a system dependency a framework package needs at build time, or an R package that needs presence-gate coverage). A LaTeX package goes in the TinyTeX block's `TT_PKGS` list instead, which installs it from a dated archive (`user_reference/04_extending_daaf.md` § "LaTeX Packages"). **Framework-owned dependencies are the exception:** a package that a DAAF component needs (a framework CLI, skill tooling, the provider shim) goes in the categorized framework layers with the rest of the relevant installs, never in the user additions block, which is reserved for the user's own additions (see `FRAMEWORK_INTEGRATION_CHECKLIST.md` FC17). Additions resolve against the Dockerfile's frozen environment date (`UV_EXCLUDE_NEWER` for uv, `UBUNTU_SNAPSHOT` for apt, which runs through `daaf-apt-update`), so a version released after that date fails with uv's "No solution found" error (observed 2026-11-02, uv 0.9.30). Propose a per-package `--exclude-newer-package` override, or an environment-date bump. A bump is a named, recurring Ask First maintenance action: move `UV_EXCLUDE_NEWER` and `UBUNTU_SNAPSHOT` together to one instant no earlier than the current `UBUNTU_SNAPSHOT` (the snapshot may run ahead of the Python date only as a dated security exception listed in the Dockerfile banner), re-pin the base digest only if the user wants it, and follow `user_reference/04_extending_daaf.md` § "Bumping the environment date". **When the user approves the edit, you must also remind them about the container-host boundary** before they rebuild: the file you just edited lives in the volume copy, but the image build reads the host copy in the user's `daaf-docker` folder. After making the edit, instruct the user to (1) exit Claude Code (`/exit`) and the container (`exit`), then (2) choose **10) Rebuild Container** in the DAAF Control Panel, or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from their `daaf-docker` folder. Both copy the updated files from the container to the host and rebuild the image. Do not offer typed `docker compose cp` / `docker compose up -d --build` commands instead: the rebuild script loads the project name, host ports and `DAAF_DEV` from `environment_settings.txt` before it calls Compose, and plain Compose does not read that file for them, so on a second install it acts on the default `daaf` project and on a `DAAF_DEV=1` install it builds without the developer toolchain. Point them to `user_reference/04_extending_daaf.md` § "The Container-Host Boundary (Read This First)" for why the rebuild script matters, and to § "The Recommended Path: Modify the Dockerfile (Python)" (or § "R Packages", § "LaTeX Packages") for the full procedure if they want more detail.
 
 ### Never Do
 
-- Create or modify files in `.claude/hooks/` without explicit user permission
+- Create or modify files in `.claude/hooks/`, even with the user's permission: hook changes are user-only (the `Edit(.claude/hooks/*)` deny rule blocks the file-editing tools and `bash-safety.sh` blocks shell writes; CLAUDE.md § Safety-System Integrity). Draft the change in the workspace's `drafts/` folder, as a patch or a full draft file, test it there, and give the user the exact command to apply it (`agent_reference/ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks)
 - Skip Phase 1 scoping (even for "simple" changes — you might discover unexpected connections)
 - Skip Checkpoint 1, the Scope Check (user must confirm scope before modifications begin)
 - Skip Phase 4 review subagent dispatch for any reason, including low complexity — self-review is never a substitute
@@ -916,6 +945,7 @@ When the user signals the session is ending, or after Checkpoint 2 approval with
    ```bash
    bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
    ```
+   It copies the archived sessions that mention the workspace and records a request that should copy this session into `logs/` when it ends (if it is missing afterwards, run the script again in a later session). A workspace used only in this session therefore has an empty `logs/` until the session ends, and the script reports that nothing was copied: that is expected
 4. Offer a brief summary to the user, naming any files graduated out of scratch:
 
 > "Here's what we modified:
@@ -924,9 +954,8 @@ When the user signals the session is ending, or after Checkpoint 2 approval with
 >
 > Session notes are saved in `SESSION_NOTES.md`.
 >
-> [If logs were collected:]
-> To browse the session timeline interactively, run in the Docker terminal:
-> `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}`"
+> [If step 3 ran:]
+> This session's transcript should reach the workspace's `logs/` folder when the session ends. After that, to browse the session timeline in your browser, choose **3) View Session Logs** in the DAAF Control Panel and pick this workspace. (From a terminal in the container, `bash /daaf/scripts/generate_log_viewer.sh {PROJECT_DIR}` does the same.)"
 
 ---
 

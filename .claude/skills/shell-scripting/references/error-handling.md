@@ -56,6 +56,20 @@ Write-Error "Docker daemon is not running. Start Docker Desktop or run 'sudo sys
 Write-Error "Docker not available"
 ```
 
+### Plain First Sentence for Messages Users See
+
+Many messages reach a user as well as an agent: host-script output, hook denials, validation errors an agent relays. Open such a message with a plain sentence the user can act on, with no internal codes (stage numbers, gate or checklist IDs, guard names) and no terms a researcher would not know (`agent_reference/DOCUMENTATION_STANDARDS.md` § S3 Plain for Users). Detail for agents and contributors, such as the rule that fired or the section to read, follows on later lines.
+
+```bash
+# GOOD: plain first line the user can act on; agent detail after
+echo "BLOCKED: Packages can't be installed while DAAF is running, because a rebuild would undo the change." >&2
+echo "  To add one, add it to the Dockerfile and rebuild." >&2
+echo "  Detail: CLAUDE.md § Runtime Package Installation." >&2
+
+# BAD: opens with an internal code and gives the user nothing to act on
+echo "BLOCKED: rule 8b match (SEG_OPEN_TOK)" >&2
+```
+
 ### Output Routing
 
 All diagnostic output goes to stderr so it does not contaminate stdout data streams:

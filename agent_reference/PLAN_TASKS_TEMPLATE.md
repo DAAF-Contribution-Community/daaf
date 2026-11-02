@@ -106,12 +106,12 @@ total_waves: 0                        # Total wave count (populated by data-plan
   <action>
     1. Load education-data-context skill
     2. Load raw data from input file
-    3. Filter coded values:
-       - Remove rows where [variable] == -1 (missing)
-       - Remove rows where [variable] == -2 (not applicable)
-       - Remove rows where [variable] == -3 (suppressed)
+    3. Calculate each key variable's suppression rate from the raw data (share of values equal to the suppression code)
+    4. Set coded values to null in place (rows are kept, so a code in one column does not discard the row's other values):
+       - [variable] == -1 (missing) → null
+       - [variable] == -2 (not applicable) → null
+       - [variable] == -3 (suppressed) → null
        *(Coded values above are education domain defaults — replace with values from Domain Configuration.)*
-    4. Calculate suppression rate for key variable
     5. Generate citation text
     6. Save to parquet format
     7. Run CP2 validation

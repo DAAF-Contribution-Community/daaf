@@ -49,7 +49,7 @@ must_haves:
 
 1. **Task actions must be specific enough to execute without clarification.**
    - Invalid: "Process the data appropriately"
-   - Valid: "Filter rows where enrollment == -1, save to data/processed/2026-01-31_ccd_clean.parquet"
+   - Valid: "Set enrollment values of -1, -2 and -3 to null (rows kept), save to data/processed/2026-01-31_ccd_clean.parquet"
 
 2. **File paths must be explicit (no placeholders in the final plan).**
    - Invalid: `data/raw/[filename].parquet`
@@ -92,11 +92,11 @@ must_haves:
 
 | File | Purpose |
 |------|---------|
-| `YYYY-MM-DD_[Title]_Plan_Tasks.md` | Machine-readable executable task sequence — contains all XML task blocks, wave execution rules, and task-specific operational details. Created by data-planner during Stage 4. |
-| `STATE.md` | Operational state tracking during execution — contains transformation progress, checkpoint status, runtime risks, QA findings summary, final review log, and session recovery context. Created by orchestrator during Stage 4. |
-| `LEARNINGS.md` | Session learnings — accumulated data quality insights, methodology lessons, and process observations. Created by orchestrator during Stage 4. |
+| `YYYY-MM-DD_[Title]_Plan_Tasks.md` | Machine-readable executable task sequence — contains all XML task blocks, wave execution rules, and task-specific operational details. Written with this plan. |
+| `STATE.md` | The session state file: tracks the analysis while it runs, with transformation progress, checkpoint status, risks found during the analysis, the quality review summary, the final review log, and what is needed to resume a session. Created during planning and kept up to date until delivery. |
+| `LEARNINGS.md` | The lessons file: data quality insights, methodology lessons, and process observations gathered during the project. Created during planning and added to as the analysis runs. |
 
-> **Immutability Rule:** This Plan document and the companion Plan_Tasks.md are **100% frozen after Stage 4.5** (Plan Validation). No runtime updates of any kind. All execution state goes to STATE.md. All runtime decisions go to STATE.md Key Decisions Made. All runtime risks go to STATE.md Runtime Risks.
+> **Immutability Rule:** This plan and its companion task file are **frozen once the plan has passed its review**. Nothing in them changes while the analysis runs. Progress goes to the session state file, `STATE.md`; decisions made during the analysis go to its § Key Decisions Made, and risks found during the analysis to its § Runtime Risks.
 
 ---
 
@@ -112,12 +112,12 @@ must_haves:
 **Coded Missing Values:** [list or "none", e.g., [-1, -2, -3]]
 **Suppression Code:** [value or N/A — the domain's suppression sentinel, e.g., -3 for Urban Institute Education Data Portal sources]
 **Suppression Threshold:** [decimal or N/A, e.g., 0.5]
-**Reported Suppression Rate:** [per-column mapping or "none", e.g., {"frl": 0.12, "enrollment": 0.0} — the rate the source documents, which QA2/CP2 recompute against]
+**Reported Suppression Rate:** [per-column mapping or "none", e.g., {"frl": 0.12, "enrollment": 0.0} — the rate the source documents; QA2 compares it with the rate it recomputes from the raw data]
 **Year Column:** [column name or N/A, e.g., "year"]
 **Flag Years:** [list or "none", e.g., [2020, 2021] for COVID-impacted years]
 **Governance Rules:** [list or "none", e.g., "Cross-state assessment comparison is NEVER valid"]
 
-> **The suppression fields feed the QA2 and CP2 suppression checks.** Those checks read **Suppression Code** as the sentinel to count in the raw frame, and compare each column's **Reported Suppression Rate** against the rate they recompute. `0` and `0.0` are valid reported rates and must not be treated as absent. If either field is `None` or absent, the check emits `[NOT VERIFIED]` — which forces `FAILED` on a CP verdict and at least `WARNING` on a QA result — rather than passing on missing evidence. A domain that genuinely has no suppression should say so here **and** be declared in the checkpoint script's `not_applicable` mapping with that reason, which records the check as `[SKIPPED]` instead. See `agent_reference/VALIDATION_CHECKPOINTS.md` and `agent_reference/QA_CHECKPOINTS.md`; per-column detail belongs in Phase 1: Discovery Results > Stage 3: Source Deep-Dive > **Suppression Patterns** below.
+> **The suppression fields feed the CP2 and QA2 suppression checks.** Both count **Suppression Code** as the sentinel in each key column of the raw frame. CP2 fails a column whose rate exceeds **Suppression Threshold** (and warns above 20%); it does not read the reported rate. QA2 compares each column's recomputed rate with its **Reported Suppression Rate** and raises a BLOCKER when they differ by more than 5 percentage points. `0` and `0.0` are valid reported rates and must not be treated as absent. A missing **Suppression Code** makes both checks emit `[NOT VERIFIED]` (forcing `FAILED` on the CP2 verdict and at least `WARNING` on the QA2 result) rather than passing on missing evidence; a column with no **Reported Suppression Rate** entry affects QA2 only, as `[NOT VERIFIED]`. A domain that genuinely has no suppression should say so here **and** be declared in the checkpoint script's `not_applicable` mapping with that reason, which records the check as `[SKIPPED]` instead. See `agent_reference/VALIDATION_CHECKPOINTS.md` and `agent_reference/QA_CHECKPOINTS.md`; per-column detail belongs in Phase 1: Discovery Results > Stage 3: Source Deep-Dive > **Suppression Patterns** below.
 
 ---
 
@@ -134,7 +134,7 @@ must_haves:
 
 ### Confirmed Pre-Flight Scope (Full Pipeline)
 
-> From the `CONFIRMED PRE-FLIGHT SCOPE:` field (the orchestrator's `output/preliminary_notes/{date}_preflight_scope-check.md`, written at Gate G1). The Plan follows it; any departure is recorded in the Decisions Log. Other modes: "N/A".
+> From the `CONFIRMED PRE-FLIGHT SCOPE:` field (the orchestrator's `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the user confirmed the pre-flight scope check). The Plan follows it; any departure is recorded in the Decisions Log. Other modes: "N/A".
 
 - **Scope as confirmed:** [research question, data sources, years, geography and approximate records, as the user approved them at the pre-flight, with their adjustments]
 - **What changed from the original request:** [as confirmed at the pre-flight, or "Nothing"]
@@ -230,7 +230,7 @@ must_haves:
   artifacts:
     # Python: .py (Marimo notebook); R: .qmd (Quarto notebook)
     - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"  # or .qmd for R
-      provides: "Stage 9 audit notebook compiled from executed scripts"
+      provides: "Audit notebook compiled from the executed scripts"
       min_lines: 200
       contains:
         Python / Marimo: "mo.md"
@@ -256,12 +256,12 @@ must_haves:
 
     - from: "YYYY-MM-DD_[Title].py"  # or .qmd for R
       to: "output/figures/"
-      via: "Stage 9 existing-figure display: Markdown image reference or Quarto knitr::include_graphics()"
+      via: "Existing-figure display in the notebook: Markdown image reference or Quarto knitr::include_graphics()"
       pattern: "(!\\[.*\\]\\(.*figures/|include_graphics\\(.*figures/)"
 
     - from: "scripts/stage8_analysis/*"
       to: "output/figures/"
-      via: "Stage 8 figure-generation code"
+      via: "Figure-generation code in the analysis scripts"
       pattern: "(ggsave|write_image|write_html|savefig)"
 
     - from: "YYYY-MM-DD_[Title]_Report.md"
@@ -271,8 +271,8 @@ must_haves:
 
     - from: "data/processed/*"
       to: "data/raw/*"
-      via: "Stage 6 cleaning scripts archived in the notebook"
-      pattern: "filter.*-[123]"  # Coded value filtering
+      via: "Cleaning scripts archived in the notebook"
+      pattern: "(is_in|%in%|na_if).*-[123]"  # Coded values set to null in place
 ```
 
 ### Common Must-Have Failures
@@ -483,7 +483,7 @@ must_haves:
 
 ### Data Freshness Check
 
-**IMPORTANT:** This section is populated during Stage 5 (CP1 validation). If significant lag is discovered, the orchestrator MUST update the user before proceeding.
+**IMPORTANT:** Filled in at planning with the expected latest year per source (from the Stage 2-3 year coverage). The Stage 5 findings (each source's CP1 year-freshness check) are recorded in STATE.md § Data Status, one Data Lag line per source, not here: this Plan is frozen after Stage 4.5. If significant lag is discovered, the orchestrator MUST update the user before proceeding.
 
 | Source | Requested Years | Latest Available | Lag | Impact | User Notified? |
 |--------|-----------------|------------------|-----|--------|----------------|
@@ -497,15 +497,15 @@ must_haves:
 - **Significant lag (3+ years):** ⚠️ **MUST update user before proceeding**
   - Explain the lag and its implications
   - Offer options: proceed with caveat, adjust year range, wait for updated data
-  - Document user decision in Decisions Log
+  - Document user decision in STATE.md § Key Decisions Made
 
 **Orchestrator Protocol for Significant Lag:**
-If CP1 Check 6 detects lag ≥3 years:
+If the CP1 year-freshness check detects lag ≥3 years for a source:
 1. PAUSE execution after Stage 5
-2. Update this table with lag details
-3. Report to user:
+2. Record the lag on that source's Data Lag line in STATE.md § Data Status and add a STATE.md § Runtime Risks row
+3. Report to user (one block per lagging source):
    ```
-   **Data Lag Detected**
+   **Data Lag Detected: {source}**
    Requested: {max_year_requested}
    Latest available: {max_year_available}
    Lag: {lag_years} years
@@ -517,18 +517,18 @@ If CP1 Check 6 detects lag ≥3 years:
    
    How would you like to proceed?
    ```
-4. Document decision in Decisions Log
+4. Document decision in STATE.md § Key Decisions Made
 5. Update analysis scope if years changed
 
 **COVID-19 Data Quality Considerations:**
-If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically. Document the following:
+If analysis includes 2020 or 2021 data (the education example; CP1 flags only the years listed under Domain Configuration > **Flag Years** above, which become CP1's `FLAG_YEARS` setting, so list them there), document the following:
 
 | Year | Data Quality Impact | Mitigation |
 |------|-------------------|------------|
 | 2020 | [Collection disruptions, missing data, non-representative samples] | [Exclude year, document caveat, compare to pre/post-COVID trends] |
 | 2021 | [Recovery period, partial return to normal collection] | [Document caveat, note recovery status] |
 
-**Note:** Data freshness verified during Stage 5 (CP1 Check 6). COVID impact flagged by CP1 Check 7. Both are updated before proceeding to Stage 6.
+**Note:** Stage 5 verifies both with the CP1 year-freshness and flagged-years checks, and records their findings in STATE.md § Data Status, on each source's Data Lag and Flagged Years lines, before Stage 6.
 
 ### Data Cleaning Specification
 
@@ -536,8 +536,10 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 *For complete coded value definitions, invoke the domain context skill (per Domain Configuration) via subagent.*
 
-| Variable | Codes to Filter | Rationale |
-|----------|-----------------|-----------|
+Coded values are set to null in the columns that carry them; rows are kept, so a code in one column does not discard the row's other values.
+
+| Variable | Codes Set to Null | Rationale |
+|----------|-------------------|-----------|
 | `enrollment` | -1, -2 | Missing/not applicable (domain-specific codes per Domain Configuration) |
 | `frl` | -1, -2, -3 | Missing/not applicable/suppressed (domain-specific codes per Domain Configuration) |
 
@@ -557,8 +559,8 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 |------|------|-----------|-----------|------------------|-------------|-------------|------------|
 | 1 | 1.1 | fetch-ccd | Fetch CCD schools data | ~100K rows | `scripts/stage5_fetch/01_fetch-ccd.py` | N/A | — |
 | 1 | 1.2 | fetch-meps | Fetch MEPS poverty data | ~100K rows | `scripts/stage5_fetch/02_fetch-meps.py` | N/A | — |
-| 2 | 2.1 | clean-ccd | Filter coded values | ~95K rows (5% loss) | `scripts/stage6_clean/01_clean-ccd.py` | N/A | 1.1 |
-| 2 | 2.2 | clean-meps | Filter coded values | ~98K rows (2% loss) | `scripts/stage6_clean/02_clean-meps.py` | N/A | 1.2 |
+| 2 | 2.1 | clean-ccd | Set coded values to null | ~100K rows (none dropped) | `scripts/stage6_clean/01_clean-ccd.py` | N/A | 1.1 |
+| 2 | 2.2 | clean-meps | Set coded values to null | ~100K rows (none dropped) | `scripts/stage6_clean/02_clean-meps.py` | N/A | 1.2 |
 | 3 | 3.1 | join-data | Join CCD + MEPS on ncessch | ~93K rows | `scripts/stage7_transform/01_join-data.py` | 1:1 | 2.1, 2.2 |
 | 4 | 4.1 | filter-state | Filter to FIPS == 6 (CA) | ~9K rows (10% retained) | `scripts/stage7_transform/02_filter-state.py` | N/A | 3.1 |
 | 4 | 4.2 | calc-ratio | Calculate student-teacher ratio | Add 1 column | `scripts/stage7_transform/03_calc-ratio.py` | N/A | 3.1 |
@@ -584,7 +586,7 @@ Record the plan's scope against the task-count bands in `agent_reference/SCOPE_P
 
 ### Stage Interface Specifications
 
-Define the expected data contracts between stages. The data-planner populates these during Plan creation. Code-reviewer validates against them during QA.
+Define the expected data contracts between stages. The data-planner populates these during Plan creation. They sit inside the Methodology Specification, which code-reviewer checks each script against, and the orchestrator passes the Plan's expected row counts to each QA review.
 
 #### Stage 5 → Stage 6 (Raw → Clean)
 - **Artifact pattern:** `data/raw/{date}_{source}.parquet`
@@ -625,7 +627,7 @@ Define the expected data contracts between stages. The data-planner populates th
 
 ### Notebook Structure
 
-Stage 9 notebooks are audit documents compiled from the final successful, already-executed Stage 5-8 scripts. They do not recreate the analysis as new notebook code.
+The analysis notebook is an audit document compiled from the final, already-run scripts that download, clean, transform and analyze the data. It does not recreate the analysis as new notebook code.
 
 **Marimo Notebook Structure (Python):**
 
@@ -648,22 +650,29 @@ Stage 9 notebooks are audit documents compiled from the final successful, alread
 7. **Optional Inspection/Display Chunk** — Non-transforming `arrow::read_parquet()` + `dplyr::glimpse()`/`head()` preview or existing figure display only
 8. **Metadata** — Script count and notebook format
 
-**Validation semantics:** Python notebooks must pass the `marimo check --select MB` structural gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check, which decompiles the notebook and confirms it archives exactly the final script versions, each matching its original (notebook-assembler Step 6); archive cells are comments plus `pass`, so none of the three re-runs archived scripts. R notebooks must pass `quarto render`; that render validates the document and explicitly enabled previews while archived Stage 5-8 script chunks remain unevaluated. Full analysis reproduction is a separate Reproducibility Verification workflow.
+**Validation semantics:** Python notebooks must pass the `marimo check --select MB` structural gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check, which decompiles the notebook and confirms it archives exactly the final script versions, each matching its original (notebook-assembler Step 6); archive cells are comments plus `pass`, so none of the three re-runs archived scripts. R notebooks must pass `quarto render`; that render validates the document and explicitly enabled previews while the archived script chunks remain unevaluated. Full analysis reproduction is a separate Reproducibility Verification workflow.
 
-**Interactive UI elements:** Not part of a Full Pipeline Stage 9 audit notebook in either format. Build a separately scoped application if interactive controls are required.
+**Interactive UI elements:** Not part of the audit notebook in either format. Build a separately scoped application if interactive controls are required.
 
 ### Report Structure
 
-**Report Sections:**
+**Report Sections:** the report follows `agent_reference/REPORT_TEMPLATE.md`, section for section and with its heading text:
 
-1. **Executive Summary** — Key findings in 4-5 sentences
+1. **Executive Summary** — Key findings and their implications in 4-5 sentences
 2. **Research Question** — What we set out to answer
-3. **Data & Methods** — Sources, cleaning, analysis approach
-4. **Findings** — Results with visualizations
-5. **Limitations** — Caveats and constraints
-6. **Data Sources** — Full citations
+3. **Data & Methods** — Sources, key variables, methodology, data cleaning
+4. **Quality Assurance** — What the quality reviews checked and found
+5. **Key Findings** — Results with visualizations, organized by research outcome
+6. **Summary Statistics** — The analysis dataset at a glance
+7. **Limitations** — Caveats and constraints specific to this analysis
+8. **References** — Data sources, methods, software and reporting standards
+9. **AI Use Disclosure** — How AI was used, following the GUIDE-LLM checklist
+10. **Technical Notes** — Reproducibility and the analysis environment
+11. **Appendix** — Additional figures, detailed methodology, data dictionary
 
-> **Note:** The report-writer agent (Stage 11) uses this Output Specification to structure the final report. The Research Outcomes section is particularly critical — each outcome is cross-checked against Key Findings in the report.
+**Emphasis for this audience:** [What the report should lead with or keep brief for the Target Audience above, e.g., "lead Key Findings with the poverty-enrollment relationship; keep Data & Methods short for a policy audience"]
+
+> **Note:** report-writer uses this Output Specification for the report's audience and emphasis. Each research outcome (frontmatter `must_haves.research_outcomes`) must be addressed in the report's Key Findings, and the final review checks every one.
 
 ### Analysis Requirements
 
@@ -701,36 +710,41 @@ Stage 9 notebooks are audit documents compiled from the final successful, alread
 
 ## Validation Checkpoints
 
+Each checkpoint is an automated validation block inside the scripts, and prints its result in a banner such as `CP1 VALIDATION: PASSED`. **STOP If** lists what makes the verdict `FAILED`, which halts the pipeline; **WARNING If** lists what makes it `PASSED WITH WARNINGS`, which continues with the warning recorded. A check whose project value is missing reports `[NOT VERIFIED]`, which also fails the checkpoint. The bands below restate `agent_reference/VALIDATION_CHECKPOINTS.md`, which owns them; fill in the Expected column for this project.
+
 ### CP1: After Data Fetch
 
 **Expected Values:**
 
-| Check | Expected | STOP If |
-|-------|----------|---------|
-| Row count | ~10,000 | 0 or >100,000 |
-| Columns | 15 | Missing critical columns |
-| Years present | 2020, 2021, 2022 | Missing years |
-| Critical variable missingness | <10% | >90% |
+| Check | Expected | WARNING If | STOP If |
+|-------|----------|------------|---------|
+| Row count | ~10,000 | Below 0.01× or above 10× the expected count | 0 rows |
+| Required columns | [list the columns, e.g., 15 named columns] | — | Any required column absent |
+| Years present | 2020, 2021, 2022 | Any expected year absent | Year column absent |
+| Missingness of each required column | ≤5% null | Above 5% null | Above 90% null |
+| Latest year available | 2022 | Earlier than the latest year requested (data lag) | Year column absent or entirely null |
+| Flagged years | [the Flag Years from Domain Configuration, e.g., 2020, 2021] | Any flagged year present in the fetched data | — |
 
 ### CP2: After Cleaning
 
 **Expected Values:**
 
-| Check | Expected | STOP If |
-|-------|----------|---------|
-| Row count change | -5% to -15% | >50% loss |
-| Suppression rate | <20% | >50% |
-| Coded values remaining | 0 | Any -1, -2, -3 in analysis vars |
+| Check | Expected | WARNING If | STOP If |
+|-------|----------|------------|---------|
+| Rows removed by cleaning | 0% (coded values are set to null, not dropped) | Above 50% of raw rows | Above 90% of raw rows |
+| Suppression rate (each key column, raw data) | <20% | Above 20% | Above the Suppression Threshold (Domain Configuration; education default 50%) |
+| Coded values remaining in key columns | 0 | Any -1, -2, -3 remaining | — |
 
 ### CP3: After Transformation
 
 **Expected Values:**
 
-| Check | Expected | STOP If |
-|-------|----------|---------|
-| Row count | Same as CP2 | >90% loss |
-| New columns exist | Yes | Missing derived columns |
-| Unexpected NAs | 0 | >10% NAs in derived columns |
+| Check | Expected | WARNING If | STOP If |
+|-------|----------|------------|---------|
+| Row-count relationship | [same / fewer / more / aggregated] | Output rows do not follow the expected relationship | An aggregation that adds rows; a relationship value other than the four listed |
+| Row loss | [e.g., none for a 1:1 join] | Above 50% | Above 90% |
+| New nulls in columns present before and after | 0 | Any such column gains nulls | — |
+| Preserved columns | [columns that must survive the transformation] | — | Any preserved column absent |
 
 ### CP4: After Analysis & Visualization (Stage 8)
 
@@ -761,7 +775,7 @@ See `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stag
 ### QA Tolerance Decisions
 
 *Document project-specific tolerance thresholds and WHY they differ from defaults (if they do).
-Code-reviewer uses these to calibrate BLOCKER vs WARNING severity.*
+The orchestrator passes these thresholds to code-reviewer with each QA review as the BLOCKER vs WARNING criteria.*
 
 | Check | Default Threshold | Project Threshold | Rationale |
 |-------|-------------------|-------------------|-----------|
@@ -773,7 +787,7 @@ Code-reviewer uses these to calibrate BLOCKER vs WARNING severity.*
 
 ## Decisions Log
 
-> **Frozen after Stage 4.5.** This section captures planning-phase decisions only. All runtime decisions made during Stages 5-12 are recorded in STATE.md `## Key Decisions Made`.
+> **Frozen once the plan has passed its review.** This section captures planning decisions only. Decisions made while the analysis runs are recorded in STATE.md `## Key Decisions Made`.
 
 | Decision | Options Considered | Choice Made | Rationale |
 |----------|-------------------|-------------|-----------|
@@ -802,13 +816,13 @@ Skip this for obvious choices (e.g., "CCD because the question is about public s
 
 Document risks identified during discovery and planning, with mitigation strategies.
 
-> **Frozen after Stage 4.5.** This section captures planning-phase risks identified during Stages 1-4. Risks discovered during execution (Stages 5-12) are recorded in STATE.md `## Runtime Risks`.
+> **Frozen once the plan has passed its review.** This section captures risks identified during discovery and planning. Risks found while the analysis runs are recorded in STATE.md `## Runtime Risks`.
 
-| Risk | Likelihood | Impact | Mitigation | Owner/Stage |
-|------|------------|--------|------------|-------------|
-| High suppression in key variable | Medium | High | Aggregate to district level if >30%; proceed with caveat if 30-50% | Stage 6 |
-| COVID data quality issues (2020) | High | Medium | Exclude 2020 or document caveat prominently | Stage 3 |
-| Cross-state variation in reporting | Medium | Medium | Check CRDC state-specific notes; restrict to comparable states | Stage 3 |
+| Risk | Likelihood | Impact | Mitigation | Step |
+|------|------------|--------|------------|------|
+| High suppression in key variable | Medium | High | Aggregate to district level if >30%; proceed with caveat if 30-50% | Data cleaning |
+| COVID data quality issues (2020) | High | Medium | Exclude 2020 or document caveat prominently | Source research |
+| Cross-state variation in reporting | Medium | Medium | Check CRDC state-specific notes; restrict to comparable states | Source research |
 
 **Risk Categories:**
 - **Data Availability:** Risk that needed data doesn't exist or has insufficient coverage
@@ -824,7 +838,7 @@ Document risks identified during discovery and planning, with mitigation strateg
 - **Stage 3 (Source Deep-Dive):** Add risks from source caveats that affect validity/completeness
 - **Any planning stage:** Add risks when data definitions changed between years or other quality issues arise
 
-> **Execution-phase risks** (Stage 5+), such as unexpected row loss or cardinality violations, are recorded in STATE.md `## Runtime Risks`.
+> **Risks found while the analysis runs**, such as unexpected row loss or cardinality violations, are recorded in STATE.md `## Runtime Risks`.
 
 ---
 
@@ -859,19 +873,19 @@ and QA reviewers understand what was intentionally accepted.*
 
 ## File Manifest
 
-*Updated at delivery*
+*Written at planning with the expected paths and not updated afterwards, because this plan is frozen. The files actually created are listed in the session state file, `STATE.md` § Files Created This Session.*
 
 | File | Path | Description |
 |------|------|-------------|
 | Plan | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md` | This document |
 | Plan Tasks | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | Executable task sequence (companion to Plan) |
-| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` (or `.qmd`) | Marimo (Python) or Quarto (R) Stage 9 audit notebook compiled from executed scripts |
+| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` (or `.qmd`) | Marimo (Python) or Quarto (R) audit notebook compiled from the executed scripts |
 | Report | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md` | Stakeholder report |
-| **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
+| **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Lessons file (started during planning, added to while the analysis runs, consolidated at the final review)** |
 | Raw Data | `research/YYYY-MM-DD_[Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |
 | Processed Data | `research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_*.parquet` | Cleaned data |
 | Figures | `research/YYYY-MM-DD_[Title]/output/figures/YYYY-MM-DD_*.png` | Visualizations |
-| Discovery Preliminary Notes | `research/YYYY-MM-DD_[Title]/output/preliminary_notes/{date}_stage{N}_{desc}.md` | Lossless agent findings from discovery phase (Stages 2, 3, 3.5) |
+| Discovery Preliminary Notes | `research/YYYY-MM-DD_[Title]/output/preliminary_notes/{date}_stage{N}_{desc}.md` | Full findings from discovery: data exploration, source research, and their combined summary |
 | Fetch Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage5_fetch/*.py` (or `*.R`) | Data retrieval code |
 | Clean Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage6_clean/*.py` (or `*.R`) | Context application code |
 | Transform Scripts | `research/YYYY-MM-DD_[Title]/scripts/stage7_transform/*.py` (or `*.R`) | Transformation code |

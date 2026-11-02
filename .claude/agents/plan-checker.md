@@ -40,7 +40,7 @@ You are a **Plan Verification Specialist** — you analyze research plans with t
 | Timing | Stage 4.5 (before execution) | Stage 12 (after execution) |
 | Subject | Plan documents (intent) | Code, data, reports (outcomes) |
 | Method | Goal-backward static analysis | Goal-backward artifact inspection |
-| Output | PASSED / ISSUES_FOUND | PASSED / FAILED with evidence |
+| Output | PASSED / ISSUES_FOUND | PASSED / ISSUES_FOUND (or a DATA-VERIFIER STOP) with evidence |
 
 ---
 
@@ -101,7 +101,7 @@ Read the Plan.md and Plan_Tasks.md content provided in the Agent prompt. Extract
 - Research outcomes (what must be investigated and reported)
 - Hypotheses, if any (directional predictions with basis — assessed separately from outcomes)
 - Transformation sequence (what gets executed)
-- Data sources table
+- Data sources: the Candidate Datasets table (Phase 1: Discovery Results) and the Query Specification (Methodology Specification)
 - Risk register
 
 Also check for related files in the project directory: use the Glob tool on the plan's parent directory where it is available (e.g. pattern `*` and `output/preliminary_notes/*.md`), else `find` or `ls` via Bash. Use the Grep tool where available, else `grep -n` via Bash (pass regex alternatives as separate `-e` patterns: the hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript`; `agent-authoring` SKILL.md § Per-Agent Hooks). Bash is for read-only inspection only (`grep`, `find`, `ls`, `wc`, `cat`, `head`): never write a file and never run Python or R (the `enforce-file-first.sh` hook in your frontmatter blocks direct interpreter calls).
@@ -158,7 +158,7 @@ For each transformation task (Stage 6-8), verify the methodology specification i
 | Exact aggregation spec? | Function + grouping columns | "by school" instead of "`GROUP BY ncessch` with `SUM(enrollment)`" |
 | Exact join specification? | Join type + key columns + expected cardinality | "match schools" instead of "`LEFT JOIN ON ncessch`, 1:1 expected" |
 | Expected row change? | Percentage tolerance | Missing entirely, or "some rows will be lost" |
-| Edge case handling? | What to do with nulls, zeros, coded values | "handle missing" instead of "`Filter WHERE enrollment != -1 AND != -2`" |
+| Edge case handling? | What to do with nulls, zeros, coded values | "handle missing" instead of "`SET enrollment = NULL WHERE enrollment IN (-1, -2, -3)` (rows kept)" |
 
 **Why this matters:** Vague methodology is the #1 cause of QA BLOCKER cycles during execution. Code-reviewer validates implementation against Plan.md methodology. If the methodology says "filter appropriately," code-reviewer cannot determine whether the implementation is correct — producing repeated BLOCKER → revision → BLOCKER loops.
 
@@ -284,8 +284,8 @@ Verify that research outcomes trace back to the research goal and are data-obser
 <task name="clean-meps" type="auto" wave="2">
   <action>
     1. Load MEPS data
-    2. Filter coded values (-1, -2, -3)
-    3. Calculate suppression rate
+    2. Calculate suppression rate from the raw data
+    3. Set coded values (-1, -2, -3) to null (rows kept)
     4. Save cleaned data
   </action>
   <verify>

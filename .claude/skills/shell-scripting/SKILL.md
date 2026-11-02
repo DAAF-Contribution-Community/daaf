@@ -203,6 +203,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
 | Probe / test-harness hygiene (self-cleaning symlinks and hostile-name fixtures, workspace invariant checker) | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
+| Comment content (purpose and reason; no line restatement or change history) | `./references/bash-standards.md` |
 | Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
 | Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
 | BSD vs GNU userland pitfalls (`sed -i`, `date -d`, `stat`, `readlink -f`) | `./references/bash-standards.md` |
@@ -216,6 +217,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | PSScriptAnalyzer | `./references/powershell-standards.md` |
 | Fail-closed principle | `./references/error-handling.md` |
 | User-facing output formatting | `./references/error-handling.md` |
+| Plain first sentence for messages users see (host-script output, hook denials) | `./references/error-handling.md` |
 | Exit code conventions | `./references/error-handling.md` |
 | Docker error handling | `./references/error-handling.md` |
 | Dependency validation | `./references/error-handling.md` |

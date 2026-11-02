@@ -190,6 +190,7 @@ model: sonnet                    # DAAF two-tier routing: opus | sonnet
 - Third person ("Reviews executed scripts..." not "Review executed scripts...")
 - Includes WHAT the agent does AND WHEN to use it
 - No angle brackets in description text
+- Written for its primary reader, the orchestrator deciding when to dispatch; user-friendly wording is added only where it also helps that reader. The rest of the agent file follows `agent_reference/DOCUMENTATION_STANDARDS.md` for agent-facing text (§ Audiences)
 
 **Model rules:**
 - Present on every DAAF agent; assign `opus` (high-judgment/adversarial/synthesis) or `sonnet` (well-specified/mechanical/skill-guided). Haiku is excluded by policy.

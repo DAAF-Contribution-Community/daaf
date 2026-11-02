@@ -4,29 +4,34 @@ Verify that an existing analysis can be mechanically reproduced from its deliver
 
 ## User Orientation
 
-After mode confirmation, briefly orient the user. Key points:
+The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
-- You will reproduce an existing analysis by re-running every in-scope script extracted from its notebook (marimo for Python, or a canonical DAAF Stage 9 Quarto archive for R); any exact exclusions must be approved before re-execution
-- You will receive a Reproduction Report documenting what matched, what diverged, and any methodological concerns
+- I re-run every in-scope script extracted from the analysis notebook (a marimo notebook for Python, or a DAAF Quarto notebook for R); you approve any scripts left out before the re-run starts
+- You get a Reproduction Report showing what matched, what diverged, and any methodological concerns
 - The original project is never modified — all reproduction work happens in a new project folder
-
-**When to skip:** User has indicated familiarity with this mode or is a returning user.
 
 **For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
 
 ---
 
-## User Decisions (Confirm Twice)
+## Scope Check
 
-Two decisions must be confirmed at **mode confirmation** AND reconfirmed **after RV-1** (once the inventory is visible):
+**Tier:** Hard (blocking). **Where:** PSU-RV1, the post-inventory checkpoint (§ PSU Templates), which embeds the standard block's "What I read" and "What changed" lines. **Read first:** RV-1 itself is the read: it locates and inventories the original Report and notebook, decompiles the scripts and reads the Report's AI disclosure. Anything else the user pointed to (a reviewer's query about a number, a note on what to check) is read after RV-1 step 3 has created the reproduction project folder and before PSU-RV1, per `SKILL.md` § Scope Check > Read First. **No staging here:** that folder exists before the Scope Check and holds only this reproduction's own records, so fetches go straight to `{PROJECT_DIR}/web_fetches/`, and a PDF's digest dispatch ingests into `{PROJECT_DIR}/papers/` and writes its record to `{PROJECT_DIR}/output/preliminary_notes/{date}_{slug}_materials-digest.md`. **Mode-specific carve-out:** RV-1 copies and inventories evidence but acts on no user decision; the two scope decisions are decided at PSU-RV1 (§ User Decisions). **Rule and standard block:** `SKILL.md` § Scope Check. **On resume:** when the Status line of the Reproduction Report's Scope Decisions reads "Confirmed at PSU-RV1 on YYYY-MM-DD", do not re-present the checkpoint; if it reads "Awaiting PSU-RV1", or no Status was recorded, re-present it.
 
-| Decision | Default | Options | Why Confirm Twice |
-|----------|---------|---------|-------------------|
-| Re-fetch data from mirrors? | Yes (re-fetch) | Yes / No (use frozen raw data copied from the original project) | Re-fetch executes Stage 5 and tests current acquisition; frozen mode hash-verifies supplied inputs, excludes Stage 5 by design, and does not test mirrors |
-| Methodological review depth | Light (concerns only) | Light / Full (Five Lenses per script) | Full review is thorough but significantly slower |
+---
 
-At mode confirmation: present defaults, ask user to confirm or adjust.
-After RV-1: present the script inventory, original-artifact inventory, and evidence gaps, then ask the user to reconfirm both decisions with the scope now concrete. If the user chose frozen data but `original_files/data/raw/` has no copied raw files, stop and require a new choice before RV-2; do not silently fall back to re-fetching or to processed data.
+## User Decisions (Previewed, Then Decided at PSU-RV1)
+
+Two decisions shape the reproduction. The mode confirmation previews them with their defaults; the user **decides** them at PSU-RV1, once RV-1 has shown what the original project holds:
+
+| Decision | Default | Options | Why Decide After the Inventory |
+|----------|---------|---------|--------------------------------|
+| Re-fetch data from mirrors? | Yes (re-fetch) | Yes / No (use frozen raw data copied from the original project) | Re-fetch executes Stage 5 and tests current acquisition; frozen mode hash-verifies supplied inputs, excludes Stage 5 by design, and does not test mirrors. Whether frozen data is even available is unknown until RV-1 has inventoried `data/raw/` |
+| Methodological review depth | Light (concerns only) | Light / Full (Five Lenses per script) | Full review is thorough but significantly slower; the script count from the inventory shows how much slower |
+
+At mode confirmation: preview both decisions and their defaults; do not ask the user to settle them. If the user volunteers a preference, record it and show it as the current setting at PSU-RV1.
+During RV-1: act on neither decision. RV-1 copies the original evidence the same way whichever data strategy the user prefers and leaves the reproduction project's `data/raw/` empty, so nothing has to be undone if the user decides differently.
+At PSU-RV1: present the script inventory, original-artifact inventory, and evidence gaps, then ask the user to decide both, plus any exact script exclusions. A choice made once the scope is concrete is a decision; a choice made before it would be a guess that "confirm again later" cannot fully undo. If the user chooses frozen data but `original_files/data/raw/` has no copied raw files, require a new choice before RV-2; do not silently fall back to re-fetching or to processed data.
 
 > **Bind-mounted inputs depend on externally-guaranteed files.** If the original analysis read inputs from a user-configured host bind mount (`/host_data`) rather than from data archived inside the project, those files live outside DAAF's hash/backup boundary — verification then depends on the user supplying the *same* mount contents. Confirm the frozen `data/raw/` copy (or an equivalent user-provided snapshot) is present before treating such a reproduction as complete; DAAF cannot hash-verify data it never archived.
 
@@ -52,7 +57,8 @@ User points to existing analysis folder
 │  7. Create Reproduction_Report.md from template     │
 │  8. Populate Script + artifact/evidence inventories │
 │                                                     │
-│  PSU: Present inventory, reconfirm scope decisions  │
+│  PSU-RV1 Scope Check: user decides data strategy,   │
+│  review depth and exclusions                        │
 │  GATE: User confirms before proceeding              │
 └──────────────────────┬──────────────────────────────┘
                        │ User confirms
@@ -60,9 +66,12 @@ User points to existing analysis folder
 ┌─────────────────────────────────────────────────────┐
 │ RV-2: Sequential Re-execution & Comparison          │
 │                                                     │
+│  0. If frozen data was chosen at PSU-RV1: seed      │
+│     data/raw/ and hash it (Frozen raw-data branch)  │
+│                                                     │
 │  For each in-scope script (in notebook order):      │
-│    1. Copy script → scripts/repro/{stage_dir}/      │
-│    2. Strip execution log from copy                 │
+│    1. Copy without log → scripts/repro/{stage_dir}/ │
+│    2. Verify no execution-log marker remains        │
 │    3. Execute via run_with_capture.sh               │
 │    4. Compare available evidence                    │
 │       - Optional log-level metrics helper           │
@@ -137,14 +146,14 @@ User points to existing analysis folder
    a. Before copying, inventory each bounded standard artifact class in the original project — `data/raw/`, `data/processed/`, `output/analysis/`, and `output/figures/` — recording whether it is present plus its file count and total size. Also inventory every additional output artifact declared by the notebook scripts or original Report that resolves beneath the original project's `output/` tree, preserving its project-relative path. Treat an absent class or declared artifact as missing evidence, not as a zero-file copy.
    b. Copy the Report and Notebook to `original_files/`. When present, recursively copy the inventoried standard classes to `original_files/data/raw/`, `original_files/data/processed/`, `original_files/output/analysis/`, and `original_files/output/figures/`. Copy each additional declared artifact under `output/` to `original_files/<same project-relative path>`. If `output/preliminary_notes/` is present, it is included as an additional output class and provides discovery-phase context.
    c. Verify copied file counts and total sizes against the pre-copy inventory. Record each copied or missing artifact class, each additional declared output path, and the before/after counts and sizes in the Reproduction Report. Never label an absent source or failed copy as copied.
-   d. If the user chose **use frozen data**, seed only the reproduction project's `data/raw/` from immutable `original_files/data/raw/` after copy verification. Do not seed `data/processed/` or `output/analysis/`; RV-2 must regenerate those outputs. If no frozen raw files were copied, stop at RV-1 and reconfirm whether to re-fetch, supply the missing raw evidence, or change scope.
+   d. Leave the reproduction project's `data/raw/` empty during RV-1, whatever data strategy the user previewed: the user decides between re-fetch and frozen data at PSU-RV1, and seeding waits for that decision (§ RV-2 Frozen raw-data branch). Record whether `original_files/data/raw/` holds copied raw files (count and size), because that is what makes the frozen option available. If none were copied, PSU-RV1 says the frozen option is unavailable, and the user chooses to re-fetch, supply the missing raw evidence, or change scope. Never seed `data/processed/` or `output/analysis/`, under either strategy; RV-2 must regenerate those outputs.
 6. Run the language-specific decompiler:
    - Python (marimo): `python3 /daaf/scripts/decompile_notebook.py <notebook_path> <project>/original_files/scripts/`
    - R (canonical DAAF Stage 9 Quarto archive): `Rscript /daaf/scripts/decompile_notebook.R <notebook_path> <project>/original_files/scripts/`
    Both are standalone framework utilities, so these direct CLI invocations are intentional exceptions to research-script file-first execution. Both require the extraction root to be new and refuse any existing file, directory, or symlink at that path; never pre-create, reuse, merge, or overwrite the extraction root. Both validate the complete extraction plan before writes and never evaluate notebook-derived code. The Python decompiler also rejects empty or placeholder logs such as `No execution log found`. `decompile_notebook.R` inverts the canonical DAAF Stage 9 archive contract rather than arbitrary Quarto semantics: it extracts R chunks identified by the exact marker, mirrors their stage-directory paths, and re-appends the immediately adjacent canonical collapsed callout; the bounded legacy `<details><summary>Execution Log</summary>...` form is fallback only. Both produce `MANIFEST.md`.
 7. **Path normalization and mandatory containment audit:**
    a. Run `python3 /daaf/scripts/normalize_project_dir.py <project>/original_files/scripts/ <project_absolute_path>`. The normalizer recursively processes `.py` and uppercase `.R` files and rewrites only the first recognized canonical `PROJECT_DIR` assignment: Python `Path("...")` or quoted string; R quoted string or `file.path(...)` with `<-` or `=`. Record its output in **Infrastructure Normalizations**. This deterministic rewrite is an infrastructure normalization, not a substantive modification.
-   b. Immediately run `python3 /daaf/scripts/audit_reproduction_paths.py <project>/original_files/scripts/ <original_project_absolute_path> <project_absolute_path> [--exclude <canonical-relative-script-path> ...]` and preserve its JSON result in the Reproduction Report. Supply `--exclude` once per exact user-approved pre-RV-2 script exclusion; each value must be a unique canonical POSIX-style relative path to an existing supported script beneath the scripts root. Exit 0 / global `MATCH` means every in-scope file passed. Exit 1 / `DIVERGED` or exit 2 / `NOT DIRECTLY VERIFIED` blocks RV-2 until the in-scope problem is corrected and the audit returns global MATCH. The deterministic `file_assessments` array must show each dispatched script as `scope: IN_SCOPE` and `assessment: MATCH`; excluded files remain explicit under `scope.excluded_files`, `file_assessments`, and `excluded_issues` but never enter the global verdict or count as matches.
+   b. Immediately run `python3 /daaf/scripts/audit_reproduction_paths.py <project>/original_files/scripts/ <original_project_absolute_path> <project_absolute_path> [--exclude <canonical-relative-script-path> ...]` and preserve its JSON result in the Reproduction Report. Supply `--exclude` once per exact user-approved pre-RV-2 script exclusion; each value must be a unique canonical POSIX-style relative path to an existing supported script beneath the scripts root. Exit 0 / global `MATCH` means every in-scope file passed. Exit 1 / `DIVERGED` or exit 2 / `NOT DIRECTLY VERIFIED` blocks RV-2 until the in-scope problem is corrected and the audit returns global MATCH. The deterministic `file_assessments` array must show each dispatched script as `scope: IN_SCOPE` and `assessment: MATCH`; excluded files remain explicit under `scope.excluded_files`, `file_assessments`, and `excluded_issues` but never enter the global verdict or count as matches. Exclusions are decided at PSU-RV1, so this first run uses only the exclusions the user has already named; if the PSU-RV1 decisions add or drop exclusions (frozen-mode Stage 5 scripts included), re-run the audit with the final `--exclude` list before RV-2 and preserve that JSON too.
    c. State the bounded assurance accurately: executable source is audited only before the unique canonical `# EXECUTION LOG` boundary. Exact original-root residue after that boundary is informational `ORIGINAL_ROOT_LOG_RESIDUE`, not a failure; multiple canonical boundaries fail closed as `AMBIGUOUS_EXECUTION_LOG_BOUNDARY`. A global pass proves that the exact original-root string is absent from each in-scope file's executable source and each in-scope supported script has one unique, statically resolvable canonical assignment equal to the reproduction root. It does not prove arbitrary dynamically constructed paths safe.
 8. Create `Reproduction_Report.md` from `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md`
 9. Populate the Script Inventory table from the decompiler's `MANIFEST.md`, mapping fields as follows:
@@ -156,10 +165,10 @@ User points to existing analysis folder
    - `Repro Status` — initialize all rows to `PENDING`
    Reconcile these script declarations against the step 5 artifact inventory. For any newly identified output artifact under the original project's `output/` tree, inventory and copy it to `original_files/<same project-relative path>`, verify count/size, and update the Reproduction Report before Gate RV-1.
 10. **Check for dangling references** — inspect the decompiler's `MANIFEST.md` for a "Dangling Reference Warnings" section. If present, these scripts may reference variables defined in other marimo cells or Quarto chunks and may fail during RV-2 re-execution. Record the warnings in the Reproduction Report's **Runtime Notes** and flag affected scripts in the PSU-RV1 checkpoint so the user is aware before re-execution begins. Also check for an "Execution-Log Literal Warnings" section (Python only). It lists scripts whose archived log sits in a legacy non-raw `mo.md('''...''')` string containing backslashes; Python decodes those escapes (`\n` in a Windows path becomes a line break), so the decompiled log may differ from what the script printed. Current Stage 9 notebooks store logs in a raw `mo.md(r'''...''')` literal and never trigger it. Record each listed script in **Runtime Notes** and treat its archived log as not verified verbatim: compare it with the original script's log where the original project still has it. An "Execution-Log Fence Warnings" section (Python only) lists scripts whose log has a line that can close the log's code fence early, so the notebook's display may cut that log off; the decompiled log is unaffected. Note it in **Runtime Notes** as a display defect of the archive, not a fidelity problem.
-11. Populate the Source Artifacts, Original Artifact Inventory, Evidence Coverage Summary, Scope Decisions, and Reproduction Environment sections. The inventory must distinguish copied evidence from missing evidence and retain the pre-copy and post-copy file counts/sizes.
+11. Populate the Source Artifacts, Original Artifact Inventory, Evidence Coverage Summary, Scope Decisions, and Reproduction Environment sections (including its Provider Route, found as `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route says, which the RV-4 AI disclosure reads). In Scope Decisions, fill the Status line as "Awaiting PSU-RV1" and leave the choices for PSU-RV1 to decide. The inventory must distinguish copied evidence from missing evidence and retain the pre-copy and post-copy file counts/sizes.
 12. **Language-aware Environment Compatibility Check** — Extract the DAAF version from the original Report's AI Use Disclosure (commit and/or semver), retrieve the original public build specification when available, and capture current installed evidence for the script language. When a project-local diagnostic is needed, write it under the reproduction project's `scripts/repro_checks/` directory and execute it through `run_with_capture.sh`; this is verification instrumentation, not new analysis. Keep every diagnostic and its appended log as provenance.
     - **Environment-date inputs (both languages):** from the original commit's Dockerfile (`original_files/Dockerfile.original`) and the current `/daaf/Dockerfile`, extract and record side by side `ARG UV_EXCLUDE_NEWER`, `ARG UBUNTU_SNAPSHOT`, the base-image digest (`ARG UBUNTU_BASE_IMAGE`, or the bare `FROM` line in older files), `ARG P3M_SNAPSHOT_DATE`, and every per-package `--exclude-newer-package PKG=DATE` override on a `uv pip install` line. Quote the matched lines, which are the evidence. Record an input the original Dockerfile does not declare as `ABSENT (pre-freeze)`, never as a guessed value; a tag-only `FROM` (e.g. `FROM ubuntu:24.04`, no digest) is recorded as `TAG ONLY`. Inside the current container, `echo $UV_EXCLUDE_NEWER` and `cat /etc/daaf/ubuntu-snapshot` confirm what the running image was actually built with.
-    - **Python:** inventory the Python runtime, marimo, and installed Python packages actually imported by the decompiled scripts, using read-only installed-package inspection (`uv pip list --format=json`, `pip list`, or equivalent). Which original versions are established depends on the original Dockerfile:
+    - **Python:** inventory the Python runtime, marimo, and installed Python packages actually imported by the decompiled scripts, using read-only installed-package inspection (`uv pip list --format=json` or `uv pip show <package>`; the image has no standalone `pip`). Which original versions are established depends on the original Dockerfile:
       - **Frozen original** (it declares `UV_EXCLUDE_NEWER`): its `==` pins, that cutoff, and any `--exclude-newer-package` overrides establish the **full** Python set, transitive dependencies included, so treat the full set as established rather than UNKNOWN — subject to two caveats that apply to both branches below. *Yanks and deletions:* PyPI yank status and file availability are read live at resolution time, so a transitive version yanked after the cutoff can resolve differently today, and a deleted file fails resolution. *Architecture:* resolution is per platform, so a comparison across architectures stays `NOT DIRECTLY VERIFIED` for platform-specific packages. (a) If the original and current `UV_EXCLUDE_NEWER` values, `==` pins, and overrides all match, the original versions equal the current image's resolution, and observed `uv pip list` versions can be classified directly — the current image's own `uv pip list` is the observed truth. (b) If any differ, reconstruct the original resolved set read-only: extract the original `==` pins into `{PROJECT_DIR}/scripts/repro_checks/<name>.in` and run `uv pip compile --exclude-newer <original UV_EXCLUDE_NEWER> [--exclude-newer-package PKG=DATE ...] [--python-platform <original platform, e.g. aarch64-manylinux_2_39>] {PROJECT_DIR}/scripts/repro_checks/<name>.in -o {PROJECT_DIR}/scripts/repro_checks/<name>.txt` as a single Bash command with absolute paths (each Bash call starts in `/daaf`, so a relative `-o` path would write into the framework's own `scripts/` tree) (resolve only, never install; it is not Python/R code, so it does not go through `run_with_capture.sh` — quote the command and its output in the report instead), then compare the result against current `uv pip list`. A reconstructed version that differs from an observed one, or a package whose resolution fails, is `NOT DIRECTLY VERIFIED`, not `MAJOR`/`MINOR` — the reconstruction itself may reflect a later yank or deletion rather than a real environment difference.
       - **Pre-freeze original** (no `UV_EXCLUDE_NEWER`): only its `==` pins establish versions. Transitive dependency versions stay `UNKNOWN` / `NOT DIRECTLY VERIFIED`, because they floated at build time.
     - **R:** inventory the R runtime, Quarto CLI, repository/snapshot metadata, and `installed.packages()` versions for packages actually imported by the decompiled `.R` scripts. Do not infer exact package versions from unversioned original `install.packages()` calls that lack snapshot evidence, and do not supply a version from memory for a snapshot date. A P3M snapshot date plus a package name does determine the version that snapshot serves. A version is therefore established only when the original Dockerfile's `P3M_SNAPSHOT_DATE` is extracted and either (a) it equals the current image's `P3M_SNAPSHOT_DATE` (snapshot-installed packages then match the current installed versions), or (b) the version is actually looked up in the snapshot's repository index at that date and the lookup is quoted. Mark everything else `UNKNOWN` / `NOT DIRECTLY VERIFIED`: no snapshot evidence, no lookup performed, or a package installed outside the snapshot (archive or source builds, repository overrides). A falsely complete table produced by parsing only Python-style `package==version` lines is prohibited.
@@ -169,7 +178,7 @@ User points to existing analysis folder
     - Populate the Reproduction Report with the observed command/script evidence, original evidence source, language-specific inventory, unknowns, and compatibility assessment.
 13. **Environment Compatibility Decision** — If SIGNIFICANT DIFFERENCES or UNKNOWN, present two options at PSU-RV1: (a) proceed as-is with the mismatch/unknowns as standing context for deviations, or (b) update the Dockerfile and have the user rebuild outside the container. Record the decision. If rebuilding is selected, update Session Continuity, stop, and wait for the user to rebuild and resume. Never claim the rebuilt environment matches until its installed inventory is observed and compared.
 
-**Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, environment compatibility check completed, user reconfirms scope decisions.
+**Gate RV-1:** All source artifacts present, decompiler succeeded, script inventory populated, environment compatibility check completed, user decides the scope decisions at PSU-RV1 (and, when frozen data is chosen, `data/raw/` is seeded and hashed after that decision).
 
 ### RV-2: Sequential Re-execution & Comparison
 
@@ -177,14 +186,14 @@ User points to existing analysis folder
 
 **Why code-reviewer:** The code-reviewer's adversarial stance and Five Lenses of Skeptical Review make it ideal for this task. It already has file-first execution capability (enforce-file-first.sh), writes QA-style comparison scripts, and classifies findings by severity. For reproduction, it both re-executes and evaluates — combining the mechanical work with skeptical assessment.
 
-**Frozen raw-data branch:** If the user confirmed frozen raw inputs, do not execute any Stage 5 acquisition script. After verified copy, seed reproduction `data/raw/` from `original_files/data/raw/`, capture a deterministic per-file inventory with SHA-256 hashes (or equivalent exact evidence), and record each Stage 5 script as **EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN**. This is a scope-design exclusion, not REPRODUCED, DIVERGED, FAILED, MODIFIED, or an ad hoc skip. Begin RV-2 with the first downstream script that consumes the frozen inputs. After all RV-2 execution, recompute and compare the frozen raw inventory/hashes; any change is a failure requiring investigation. Acquisition reproducibility and mirror behavior remain outside this branch's scope. If the user selected re-fetch, execute Stage 5 normally.
+**Frozen raw-data branch:** If the user chose frozen raw inputs at PSU-RV1, do not execute any Stage 5 acquisition script. After that decision, and before the first RV-2 dispatch, record the decision in the Reproduction Report's Scope Decisions table, then seed reproduction `data/raw/` from the verified copy in `original_files/data/raw/` (the only seeding point; RV-1 leaves `data/raw/` empty), capture a deterministic per-file inventory with SHA-256 hashes (or equivalent exact evidence), and record each Stage 5 script as **EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN**. On session recovery, a recorded frozen decision with no pre-RV-2 hash inventory means seeding has not finished: seed and hash before dispatching. This is a scope-design exclusion, not REPRODUCED, DIVERGED, FAILED, MODIFIED, or an ad hoc skip. Begin RV-2 with the first downstream script that consumes the frozen inputs. After all RV-2 execution, recompute and compare the frozen raw inventory/hashes; any change is a failure requiring investigation. Acquisition reproducibility and mirror behavior remain outside this branch's scope. If the user selected re-fetch, execute Stage 5 normally.
 
 Only exact exclusions confirmed before RV-2 are removed from verdict denominators and evidence-gap counts. Keep scope-design exclusions separate from ad hoc skipped/failed scripts in inventories, counts, and synthesis.
 
 **Per-script atomic cycle:**
 
-1. **COPY:** Copy `original_files/scripts/{stage_dir}/{script_name}` to `scripts/repro/{stage_dir}/{script_name}`
-2. **STRIP:** Remove the execution log from the copy. Find the line matching `# EXECUTION LOG` (or the `# =====` separator immediately preceding it) and delete from that point to EOF. After stripping, verify the file does NOT contain the string `# EXECUTION LOG` — `run_with_capture.sh` will refuse to execute scripts that already have a log marker. Strip in place on the `scripts/repro/` copy (e.g., with the Edit tool); if any intermediate/scratch buffer is needed, write it to `{PROJECT_DIR}/scripts/scratch/`, never `/tmp` (which is outside the backup and audit boundary and blocked by the bash-safety.sh hook).
+1. **COPY (log stripped):** Create `{PROJECT_DIR}/scripts/repro/{stage_dir}/` with `mkdir -p` if it does not exist yet (the revision tool writes into an existing folder and fails when the folder is missing), then copy the script without its execution log: `bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/original_files/scripts/{stage_dir}/{script_name} {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`. The tool writes only the code above the appended log block, checks that no `# EXECUTION LOG` marker line survived, refuses an existing destination, and never modifies the source. Never strip a log by hand with Edit or a plain `cp`: this tool is DAAF's sanctioned way to copy an executed script (CLAUDE.md § Execution Philosophy, immutable script versioning).
+2. **VERIFY:** Confirm the copy has no line starting with `# EXECUTION LOG` (`grep -c '^# EXECUTION LOG' <copy>` prints `0`): `run_with_capture.sh` refuses to execute a script that still has the marker.
 3. **EXECUTE:** `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
 4. **COMPARE:** Account for each available evidence source rather than treating log comparison as complete output verification. For every declared project-relative output path `{relative_path}`, compare the original at `{PROJECT_DIR}/original_files/{relative_path}` with the reproduced artifact at `{PROJECT_DIR}/{relative_path}`. Never compare against the untouched original project during RV-2.
    - **Log metrics only:** Use `compare_execution_logs.py` only for metrics printed in both appended logs. It aligns row, column, and statistic metrics by normalized identity plus stable log context, never by position or value. Public exits are 0=`CONSISTENT` only, 1=`DIVERGED`, 2=invalid invocation or input read/parse failure, and 3=`INCOMPLETE`/`INCONCLUSIVE`. Exit 3 is `NOT DIRECTLY VERIFIED` log evidence, never success. The helper never compares artifacts, and `CONSISTENT` applies only to its extracted log metrics.
@@ -197,10 +206,10 @@ Only exact exclusions confirmed before RV-2 are removed from verdict denominator
    - **Full mode:** Apply the Five Lenses of Skeptical Review
 7. **UPDATE REPORT:** Update Reproduction_Report.md — Script Inventory status, Per-Script Reproduction Results section, Deviation Log if applicable, Concerns Log if applicable, Session Continuity (Last Script Completed, Next Script)
 8. **IF FAILED:** If the script fails and a modification is needed for it to run:
-   - Create `{script_name%.py}_repro_a.py` or `{script_name%.R}_repro_a.R` from a clean, log-free source copy. Never copy the just-failed, log-appended reproduction file and rerun it unchanged.
-   - If a failed copy must be used as the starting point, strip the inherited execution log and verify the marker is absent before applying fixes and executing.
+   - Create `{script_name%.py}_repro_a.py` or `{script_name%.R}_repro_a.R` with the same tool, from the original source in `original_files/scripts/` (the tool strips its log): `bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/original_files/scripts/{stage_dir}/{script_name} {PROJECT_DIR}/scripts/repro/{stage_dir}/{revision_name}`. Never copy the just-failed, log-appended reproduction file and rerun it unchanged.
+   - If the failed copy must be the starting point (its fixes are worth keeping), give it to the tool as the source: the tool strips its inherited execution log. Either way, verify the marker is absent (step 2) before applying fixes and executing.
    - Apply and document the minimal fix, re-execute through `run_with_capture.sh`, and mark status MODIFIED (not REPRODUCED).
-   - Apply the same clean-source/log-absence rule to `_repro_b`; each revision receives exactly its own newly appended execution log.
+   - Create `_repro_b` the same way; each revision receives exactly its own newly appended execution log.
 
 **Invocation pattern:**
 
@@ -236,10 +245,13 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
 **PATH AUDIT EVIDENCE:** `audit_reproduction_paths.py` global exit 0 / `MATCH`, plus this exact script's deterministic `file_assessments` entry showing `scope: IN_SCOPE` and `assessment: MATCH` [paste or cite JSON]. Excluded files and `excluded_issues` are reported separately and are never dispatchable matches. If either the global result or this in-scope file assessment is absent or non-MATCH, STOP without execution.
 
 **INSTRUCTIONS:**
-1. Copy the original script to the reproduction target path
-2. Strip the execution log from the copy: find the line containing `# EXECUTION LOG`
-   (or the `# =====` separator immediately preceding it) and delete from that point to EOF.
-   After stripping, verify the file does NOT contain `# EXECUTION LOG` —
+1. Copy the original script to the reproduction target path without its execution
+   log. Create the target folder first if it does not exist (`mkdir -p
+   {PROJECT_DIR}/scripts/repro/{stage_dir}`; the tool fails on a missing folder), then run:
+   `bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/original_files/scripts/{stage_dir}/{script_name} {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
+   Never strip a log by hand with Edit or a plain `cp`.
+2. Verify the copy has no line starting with `# EXECUTION LOG`
+   (`grep -c '^# EXECUTION LOG' <copy>` prints 0) —
    run_with_capture.sh will refuse to execute scripts that still have a log marker.
 3. Execute via: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/repro/{stage_dir}/{script_name}`
 4. Compare the available evidence and account for its source.
@@ -304,8 +316,8 @@ caution when classifying deviation causes — version differences are a plausibl
 factor for any divergence.
 
 **IF SCRIPT FAILS:**
-- Create each `_repro_a` / `_repro_b` revision from the clean, log-free original source copy. Never clone the just-failed log-appended file and rerun it unchanged.
-- Before applying fixes, verify the revision contains no inherited `# EXECUTION LOG` marker; if inherited content exists, strip it and verify absence.
+- Create each `_repro_a` / `_repro_b` revision with `bash {BASE_DIR}/scripts/create_script_revision.sh <source> <revision>`, from the original source in `original_files/scripts/` (or from a failed revision whose fixes are worth keeping; the tool strips its inherited log). Never clone the just-failed log-appended file and rerun it unchanged.
+- Before applying fixes, verify the revision contains no `# EXECUTION LOG` marker line.
 - Apply necessary fixes (max 2 versions; preserve `.py` or `.R`), document ALL modifications, execute once through `run_with_capture.sh`, and mark MODIFIED rather than REPRODUCED.
 
 **OUTPUT FORMAT (2000-word hard cap):**
@@ -325,7 +337,7 @@ Return a concise summary:
 
 **Actor:** data-verifier agent (adversarial cross-artifact verification, read-only)
 
-**Note:** The data-verifier agent is read-only (`permissionMode: plan`). It RETURNS its findings to the orchestrator, which then updates the Reproduction Report. This is consistent with how data-verifier operates at Stage 12 in Full Pipeline — it verifies and reports, never writes.
+**Note:** The data-verifier agent is read-only (no Write or Edit tool; its Bash runs under the `enforce-file-first.sh` hook). It RETURNS its findings to the orchestrator, which then updates the Reproduction Report. This is consistent with how data-verifier operates at Stage 12 in Full Pipeline — it verifies and reports, never writes.
 
 **Orchestrator post-processing:** After receiving the data-verifier's return, the orchestrator:
 1. **[PERSIST]** Writes the full, unmodified data-verifier return to `output/preliminary_notes/{date}_rv3_report-verification.md` with provenance header (per orchestrator SKILL.md § Subagent Return Processing). This preserves the raw verification findings as an audit record and allows the RV-4 report-writer to reference full-fidelity findings rather than depending solely on the orchestrator's transcription.
@@ -401,11 +413,11 @@ Return structured findings for orchestrator to populate the Reproduction Report:
 
 ### Session Log Collection (Pre-Synthesis)
 
-Before RV-4 synthesis, collect session logs into the project:
+Before RV-4 synthesis, run the Scratch Graduation Check (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check; the Reproduction Report and preliminary notes never cite a file in `scripts/scratch/`), then collect session logs into the project:
 ```
 bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
 ```
-Update the Reproduction Report's Source Artifacts table to confirm `Reproduction Session Logs | logs/ | Yes`.
+Update the Reproduction Report's Source Artifacts table to confirm `Reproduction Session Logs | logs/ | Present`.
 
 ### RV-4: Synthesis
 
@@ -454,6 +466,13 @@ All project-relative paths resolve from PROJECT_DIR. All repo-level paths resolv
    - Provide overall methodological assessment
 5. Ensure the Report Verification Summary narrative is complete
 6. Determine overall assessment: FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED
+7. Write the AI Use Disclosure section from `agent_reference/AI_DISCLOSURE_REFERENCE.md`
+   § Reproducibility Verification Mode, taking the models, DAAF version, dates and
+   Provider Route from the Reproduction Environment table. Keep the `[RESEARCHER]`
+   sentence about the researcher's review as the template gives it: the researcher
+   confirms it after reading the report
+8. As the last edit, delete every `<!-- Agent note (deleted at RV-4): ... -->` line
+   (`agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` § Agent Notes)
 
 **ASSESSMENT CRITERIA:**
 - **FULLY REPRODUCED:** Every in-scope script is `REPRODUCED`; every in-scope material claim, figure, finding, declared artifact, and required comparison dimension is directly assessed `MATCH` (zero `NOT DIRECTLY VERIFIED` or `DIVERGED` items); and no in-scope script required substantive modification. Cosmetic differences are allowed only when they do not violate the applicable defined comparison.
@@ -493,6 +512,9 @@ research/YYYY-MM-DD_[OriginalProject]_Reproduction/
 │       ├── stage6_clean/
 │       ├── stage7_transform/
 │       └── stage8_analysis/
+├── web_fetches/                        # web_fetch.sh artifacts for materials the user pointed to (created on first use)
+├── papers/                             # pdf_ingest.sh output for a PDF the user pointed to (created on first use)
+├── logs/                               # collect_session_logs.sh output (Pre-Synthesis)
 ├── data/
 │   ├── raw/                            # Re-fetched, or seeded from original_files/data/raw/
 │   └── processed/                      # Regenerated during RV-2; never pre-seeded
@@ -534,9 +556,9 @@ The path normalization performed during RV-1 (step 7) is the canonical example o
 - Inventory counts and sizes before copying bounded original artifacts; verify copied counts/sizes and record copied versus missing classes in the Reproduction Report
 - Compare declared artifacts only as `original_files/<declared relative path>` versus `<PROJECT_DIR>/<declared relative path>`
 - Run the normalizer and then run `audit_reproduction_paths.py` with repeatable validated `--exclude` values for exact pre-RV-2 script exclusions; require global exit 0 / MATCH and each dispatched script's `file_assessments` entry to be in-scope MATCH before RV-2
-- When frozen data is selected, seed only `data/raw/` from immutable `original_files/data/raw/`; capture per-file hash inventory, exclude Stage 5 by explicit design, start downstream, and verify the frozen inventory is unchanged after RV-2
+- When the user chooses frozen data at PSU-RV1, seed only `data/raw/` from immutable `original_files/data/raw/`, after that decision and before RV-2; capture per-file hash inventory, exclude Stage 5 by explicit design, start downstream, and verify the frozen inventory is unchanged after RV-2
 - Document ANY modification required to run a script, no matter how small
-- Create every `_repro_a` / `_repro_b` revision from a clean log-free source and verify no inherited log marker before execution
+- Make every reproduction copy and every `_repro_a` / `_repro_b` revision with `scripts/create_script_revision.sh` (never a hand strip or a plain `cp`), and verify no log marker remains before execution
 - Use `compare_execution_logs.py` only for shared log metrics and `compare_reproduction_artifacts.py` for supported Parquet/exact-byte evidence; preserve JSON and exit semantics
 - Apply Reproduction Report tolerances only to dimensions supported by direct evidence; mark unavailable or unsupported dimensions `NOT DIRECTLY VERIFIED`
 - Never treat missing evidence, an absent artifact, an unsupported comparison, or an unlogged dimension as a match
@@ -580,9 +602,9 @@ Reproducibility Verification uses AI to re-execute scripts and compare outputs. 
 - AI performed the mechanical re-execution and output comparison
 - AI assessed methodological concerns (at user-selected depth)
 - AI cross-referenced Report claims against reproduced data
-- Human reviewed the final Reproduction Report and assessed significance of findings
+- That the researcher reviewed the final Reproduction Report and assessed the significance of findings, as a `[RESEARCHER]` sentence the researcher confirms after reading it (the disclosure is written before they see the report)
 
-See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification Mode.
+The disclosure is written into the Reproduction Report's AI Use Disclosure section at RV-4. See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification Mode.
 
 ---
 
@@ -590,10 +612,10 @@ See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification
 
 | Gate | After Stage | Criteria | STOP If |
 |------|-------------|----------|---------|
-| **Gate RV-1** | RV-1 | Exactly one user-selected Report and one supported DAAF Stage 9 notebook; new reproduction destination and new extraction root; original evidence inventoried/copied/verified; decompiler succeeded; normalizer completed; path audit invoked with each exact user-approved script exclusion as a validated repeatable `--exclude`; global exit 0 / MATCH; every dispatched script has an in-scope MATCH `file_assessments` entry; excluded files/issues and informational log residue recorded separately; bounded assurance recorded; Script Inventory populated; language-aware environment evidence captured; frozen `data/raw/` seeded and hashed only when selected; user reconfirms scope and exact exclusions | Ambiguous intake; destination/root already exists; decompiler fails; Report/Notebook missing; global path audit is DIVERGED or NOT DIRECTLY VERIFIED; any dispatched script lacks an in-scope MATCH assessment; frozen data selected but unavailable |
+| **Gate RV-1** | RV-1 | Exactly one user-selected Report and one supported DAAF Stage 9 notebook; new reproduction destination and new extraction root; original evidence inventoried/copied/verified; decompiler succeeded; normalizer completed; path audit invoked with each exact user-approved script exclusion as a validated repeatable `--exclude`; global exit 0 / MATCH; every dispatched script has an in-scope MATCH `file_assessments` entry; excluded files/issues and informational log residue recorded separately; bounded assurance recorded; Script Inventory populated; language-aware environment evidence captured; frozen raw-data availability recorded; user decides data strategy, review depth and exact exclusions at PSU-RV1 (audit re-run if the exclusions changed); frozen `data/raw/` seeded and hashed only when chosen, after that decision | Ambiguous intake; destination/root already exists; decompiler fails; Report/Notebook missing; global path audit is DIVERGED or NOT DIRECTLY VERIFIED; any dispatched script lacks an in-scope MATCH assessment; frozen data selected but unavailable |
 | **Gate RV-2** | RV-2 | All in-scope scripts processed; frozen-design Stage 5 exclusions recorded separately and raw hashes unchanged; Reproduction Report updated after every script; helper JSON/per-dimension artifact evidence and NOT DIRECTLY VERIFIED gaps populated | User requests stop; frozen raw inventory changed |
 | **Gate RV-3** | RV-3 | All in-scope claims, figures, findings, artifacts, and required dimensions assessed as MATCH, DIVERGED, or `NOT DIRECTLY VERIFIED`; exact scope-design exclusions remain separate; evidence coverage populated | N/A (always proceed to synthesis) |
-| **Gate RV-4** | RV-4 | Executive Summary written; overall assessment determined; Reproduction Report complete | N/A (final stage) |
+| **Gate RV-4** | RV-4 | Executive Summary written; overall assessment determined; Reproduction Report complete; no agent note or `[AUTO]` tag left in it: after the RV-4 return the orchestrator runs `grep -c -F -e "<!-- Agent note" -e "[AUTO" {PROJECT_DIR}/Reproduction_Report.md` and expects `0` before PSU-RV4 (a non-zero count: list them with the same command using `-n` instead of `-c`, delete them, since they are instructions rather than report text, then re-run the check) | N/A (final stage) |
 
 **Gate enforcement:** Gate RV-1 is a user-blocking gate (PSU + explicit user confirmation required). Gates RV-2 through RV-4 are automated (proceed when criteria met).
 
@@ -605,20 +627,23 @@ See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification
 
 ### PSU-RV1: Post-Inventory Checkpoint
 
-Present to the user after RV-1 completes, before proceeding to RV-2:
+Present to the user after RV-1 completes, before proceeding to RV-2. PSU-RV1 is this mode's Scope Check (`SKILL.md` § Scope Check): the inventory below is the proposed scope, and the decisions previewed at mode confirmation are made here. When the user decides, fill the Scope Decisions table and set its Status line to "Confirmed at PSU-RV1 on YYYY-MM-DD" before any RV-2 work. All text in the template is plain language (`SKILL.md` § Plain-Language Rule): no stage numbers, step codes or audit field names. Internal detail goes in the Reproduction Report, where the user can read it: the path audit's invocation, per-script assessments, exclusions, log residue and bounded assurance in § Mandatory Path Containment Audit, and the Dockerfile settings behind the environment dates in § Environment Compatibility Assessment. The agent-facing rules stay as written in RV-1 steps 7 and 12 and Gate RV-1 (the audit must pass before RV-2).
 
 ```markdown
-**Reproduction Setup Complete**
+**Reproduction Setup Complete: Scope Check**
+
+**What I read:** [the original Report and notebook (and its decompiled scripts), the Report's AI disclosure, plus anything else you pointed to — one line each on what in it shapes the reproduction]
+**What changed from your original request:** [differences the inventory introduced — e.g., "no raw data was archived, so the frozen-data option is unavailable", "two scripts reference variables from other notebook cells and may fail" — or "Nothing — your request and the materials agree"]
 
 **Original Analysis:** [project name]
-**Scripts Found:** [N] scripts across [N] stages
+**Scripts Found:** [N] scripts across [N] steps of the analysis
 
-| Stage | Scripts | Description |
-|-------|---------|-------------|
-| Fetch (5) | [N] | [brief] |
-| Clean (6) | [N] | [brief] |
-| Transform (7) | [N] | [brief] |
-| Analysis (8) | [N] | [brief] |
+| Step | Scripts | Description |
+|------|---------|-------------|
+| Download | [N] | [brief] |
+| Cleaning | [N] | [brief] |
+| Transformation | [N] | [brief] |
+| Analysis | [N] | [brief] |
 
 **Original Artifact Evidence:**
 - **Copied:** [artifact classes/declared paths with verified file counts and sizes]
@@ -626,21 +651,15 @@ Present to the user after RV-1 completes, before proceeding to RV-2:
 - **Declared outputs directly comparable:** [N] of [N]
 - **Material Report claims with direct original evidence identified:** [N] of [N]
 
-**Path Containment Audit:**
-- **Invocation:** `python3 /daaf/scripts/audit_reproduction_paths.py [scripts_root] [original_root] [reproduction_root] [--exclude exact/relative/script ...]`
-- **Result:** [MATCH + exit 0 required; include JSON evidence path]
-- **In-scope file assessments:** [Every dispatched script is `IN_SCOPE` + `MATCH`]
-- **Excluded files/issues:** [Exact pre-RV-2 exclusions and `excluded_issues`; never counted as matches]
-- **Informational log residue:** [`ORIGINAL_ROOT_LOG_RESIDUE` entries, or None; historical-log residue is not a failure]
-- **Bounded assurance:** Audits executable source before the unique canonical `# EXECUTION LOG` boundary. Confirms exact original-root residue is absent there and each supported in-scope script has one unique canonical PROJECT_DIR assignment resolving to the reproduction root; ambiguous boundaries fail closed and arbitrary dynamic paths are not proven safe.
+**Path check:** [Passed: each script's project folder setting now points at the reproduction folder, and no script names the original project's folder / Not passed for [N] scripts: [each script name and, in a few words, why (it still names the original folder, or its project folder setting could not be read)], with the fix or exclusion I propose under Decisions for you]. The full check is in the Reproduction Report; it cannot see a path a script builds while it runs.
 
 **Environment Compatibility:**
 - **Execution language:** [Python / R]
 - **Original DAAF Version:** [commit hash / semver from Report]
 - **Current DAAF Version:** [current commit hash / semver]
-- **Environment date (original → current):** `UV_EXCLUDE_NEWER` [value / ABSENT (pre-freeze)] → [value]; `UBUNTU_SNAPSHOT` [value / ABSENT (pre-freeze)] → [value]; base digest [MATCH / DIFFERS / TAG ONLY]; `P3M_SNAPSHOT_DATE` [value / ABSENT (pre-freeze)] → [value]; `--exclude-newer-package` overrides [MATCH / DIFFERS / none]
+- **Package freeze dates (original → current):** Python packages [date / none: built before DAAF froze package dates] → [date]; system packages [date / none] → [date]; R packages [date / none] → [date]; base system image [same / different / not pinned]; per-package date exceptions [same / different / none]. (The Reproduction Report lists the Dockerfile settings behind each date.)
 - **Overall Compatibility:** [COMPATIBLE / MINOR DIFFERENCES / SIGNIFICANT DIFFERENCES / UNKNOWN]
-- **UNKNOWN / NOT DIRECTLY VERIFIED versions:** [list; include unpinned R packages and pre-freeze transitive Python dependencies rather than inferring exact versions]
+- **Versions I could not confirm:** [list; include R packages with no recorded version and, when the original predates the package freeze, the Python packages installed as dependencies of others, rather than guessing exact versions]
 
 [If COMPATIBLE:]
 Environment matches the original — no version-related divergence expected.
@@ -655,17 +674,18 @@ Environment matches the original — no version-related divergence expected.
 
 You have two options:
 1. **Proceed as-is** — I'll document the environment mismatch and factor it into the reproduction assessment. Any deviations may be attributable to version differences.
-2. **Rebuild to match** — I can modify the Dockerfile to match the original versions. You'd exit, rebuild the container, and resume. This gives the cleanest reproduction.
+2. **Rebuild to match** — I can modify the Dockerfile to match the original versions. You'd exit Claude Code (`/exit`) and the container (`exit`), choose **10) Rebuild Container** in the DAAF Control Panel (or run `bash rebuild_daaf.sh` from your `daaf-docker` folder; `.\rebuild_daaf.ps1` on Windows), then start DAAF again and resume. This gives the cleanest reproduction.
 
 [If UNKNOWN:]
 **Note:** I couldn't determine the original environment (commit hash not found on the public repo). I'll proceed with the current environment and flag this limitation in the Reproduction Report.
 
-**Your Scope Decisions (please reconfirm):**
-- **Re-fetch data from mirrors?** Currently: [Yes/No]. [If Yes: execute Stage 5 and data may differ. If No: seed `data/raw/` from immutable copied evidence, capture per-file hashes, exclude Stage 5 acquisition scripts by explicit frozen-input design, start with downstream consumers, and verify raw hashes remain unchanged after RV-2. Acquisition/mirrors are not tested. If frozen raw evidence is absent: STOP and ask the user to choose re-fetch, supply evidence, or change scope.]
-- **Methodological review depth?** Currently: [Light/Full]. [Light flags only notable concerns; Full applies the Five Lenses to every in-scope script.]
+**Decisions for you:**
+- **Re-fetch data from mirrors, or use the frozen raw data?** Default: re-fetch[; you said earlier: [preference]]. Frozen option: [available — [N] raw files, [size] copied / unavailable — no raw data was archived]. [Re-fetch: the download scripts run again, and the data may differ from the original. Frozen: after you decide, I copy the archived raw data into the reproduction, record a fingerprint (hash) of every file, leave the download scripts out by design, start with the scripts that use that data, and check after the re-run that the raw files are unchanged. The download step and the data mirrors are then not tested. If you choose frozen data but none was archived, I'll ask you to choose re-fetch, supply the raw data, or change the scope.]
+- **Methodological review depth?** Default: Light[; you said earlier: [preference]]. [Light flags only notable concerns; Full reviews every in-scope script from five skeptical angles.]
+- **Scripts to exclude before re-execution?** Default: none. [Proposed exact exclusions with reasons, or "None proposed"; excluded scripts are left out of the counts and reported separately.]
 [If SIGNIFICANT DIFFERENCES:] - **Environment mismatch action?** [Proceed as-is / Rebuild to match]
 
-**What happens next:** I'll re-execute each in-scope script in notebook order, compare outputs against the originals, and update the Reproduction Report after each one. This runs through all [N] in-scope scripts; [N] exact pre-RV-2 exclusions remain separately reported. I will not stop early unless you ask me to.
+**What happens next:** I'll re-execute each in-scope script in notebook order, compare outputs against the originals, and update the Reproduction Report after each one. This runs through all [N] in-scope scripts; the [N] scripts you excluded are reported separately. I will not stop early unless you ask me to.
 
 **Shall I proceed with these settings, or would you like to adjust?**
 ```
@@ -680,14 +700,14 @@ Present to the user after RV-4 completes:
 **Overall Assessment:** [FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED]
 
 **Summary:**
-- **Scripts:** [N] of [N] in-scope scripts reproduced successfully ([X]%); [N] exact pre-RV-2 scope-design exclusions reported separately
+- **Scripts:** [N] of [N] in-scope scripts reproduced successfully ([X]%); [N] scripts you excluded before the re-run, reported separately
 - **Deviations:** [N] substantive, [N] cosmetic
 - **Modifications Required:** [N] scripts needed changes to run
 - **Report Claims:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
 - **Figures:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
 - **Findings:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
-- **Declared Artifacts:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
-- **Required Dimensions:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
+- **Output Files:** MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
+- **Comparison Checks** (row counts, values and other measures compared for each script): MATCH [N], DIVERGED [N], `NOT DIRECTLY VERIFIED` [N] of [N] in scope
 
 [2-3 sentence narrative from Executive Summary]
 
@@ -715,15 +735,15 @@ To browse the session timeline interactively in your browser, run in the Docker 
 
 The RV-2 per-script cycle is lightweight compared to Full Pipeline's Composite Execution Pattern. The re-execution IS the review — the code-reviewer both re-executes and evaluates in a single invocation.
 
-> **Wave barrier discipline (async dispatch).** RV-2 is deliberately sequential — one script's code-reviewer dispatch at a time, in notebook order. Dispatches return inline under DAAF's shipped settings (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, observed on the pinned Claude Code 2.1.281), but without that setting, or on other versions, they complete via async task notifications, so the barrier still applies at the single-dispatch level: do not begin the next script's cycle, advance Session Continuity, or draw cross-script conclusions until the current dispatch has actually returned. When RV-2 escalation dispatches the debugger, treat that as part of the same script's cycle — wait for it before moving on. (Updating the Reproduction Report after each script's own return is intended incremental behavior, not a barrier violation: each script is its own single-member wave.) See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Wave barrier discipline (async dispatch).** RV-2 is deliberately sequential — one script's code-reviewer dispatch at a time, in notebook order. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. However they arrive, the barrier applies at the single-dispatch level: do not begin the next script's cycle, advance Session Continuity, or draw cross-script conclusions until the current dispatch has actually returned. When RV-2 escalation dispatches the debugger, treat that as part of the same script's cycle — wait for it before moving on. (Updating the Reproduction Report after each script's own return is intended incremental behavior, not a barrier violation: each script is its own single-member wave.)
 
 **Atomic cycle per script:**
 
 | Step | Action | Detail |
 |------|--------|--------|
 | 0 | READ | Check Reproduction Report § Session Continuity and scope design. In frozen mode, Stage 5 rows are recorded as design exclusions and not dispatched. |
-| 1 | COPY | Copy original script to `scripts/repro/{stage_dir}/` |
-| 2 | STRIP | Remove execution log and verify no `# EXECUTION LOG` marker remains |
+| 1 | COPY | Copy the original script to `scripts/repro/{stage_dir}/` with `create_script_revision.sh`, which leaves the execution log out (create the folder first if missing) |
+| 2 | VERIFY | Verify no `# EXECUTION LOG` marker line remains |
 | 3 | EXECUTE | Run via `run_with_capture.sh` |
 | 4 | COMPARE | Use the identity/context-aligned log helper only for metrics printed in both logs (0 CONSISTENT only, 1 DIVERGED, 2 invalid/read failure, 3 INCOMPLETE/INCONCLUSIVE = NOT DIRECTLY VERIFIED); use `compare_reproduction_artifacts.py` JSON for supported Parquet/exact artifacts (0 MATCH, 1 DIVERGED, 2 invalid/unsupported, 3 NOT DIRECTLY VERIFIED), retaining its default 512 MiB/input, 1,000,000 rows/input, and 1,000,000 tolerant-pair bounds; inspect figures visually and saved table/model representations when defined. |
 | 5 | ASSESS | Classify: REPRODUCED / DIVERGED / FAILED / MODIFIED, retaining every NOT DIRECTLY VERIFIED qualifier. Keep pre-RV-2 design exclusions separate. |
@@ -732,8 +752,8 @@ The RV-2 per-script cycle is lightweight compared to Full Pipeline's Composite E
 | 8 | RETURN | Return concise summary to orchestrator |
 
 **Error handling within the cycle:**
-- If Step 3 fails: create `_repro_a.{ext}` from a clean, log-free source, verify no inherited marker, apply minimal fixes, execute once, document, and mark MODIFIED
-- If modification also fails: independently create `_repro_b.{ext}` from clean, log-free source (or strip and verify any inherited log before fixes); never copy and rerun the just-failed appended file unchanged; after 2 versions mark FAILED
+- If Step 3 fails: create `_repro_a.{ext}` with `create_script_revision.sh` from the `original_files/scripts/` source, verify no marker, apply minimal fixes, execute once, document, and mark MODIFIED
+- If modification also fails: create `_repro_b.{ext}` the same way (from the original source, or from `_repro_a` when its fixes are worth keeping; the tool strips its log), verify no marker before fixes; never copy and rerun the just-failed appended file unchanged; after 2 versions mark FAILED
 - If FAILED after 2 modification attempts: orchestrator may dispatch debugger (max 1 per script, max 3 per session)
 
 ---
@@ -786,15 +806,7 @@ Reproducibility Verification can span many scripts, each consuming subagent cont
 
 **Actions by utilization level:**
 
-Trigger points are **threshold-profile-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the profile selected from its own exact model ID. Profile selection is version-specific and independent of physical context-window mapping. Exact GPT 5.6 Sol and GPT-6 Astra share a separate validated profile with independent 60%/75%/90% percentage boundaries and validated absolute gates of 300k/400k/500k; Astra joins this profile at Sol parity, and Sol's own tier history is unchanged. Since 2026-09-29, by user policy decision rather than DAAF quality validation, `gpt-6-sol` and the `-pro` form of all three flagships also use this profile. Since 2026-10-12, likewise by user policy decision rather than DAAF quality validation, `gpt-6.1-sol` (with its `-pro` form) uses it too: one exact alternative, not a `gpt-6.1-*` wildcard. For that profile, the terminal model slug must be exactly `gpt-5.6-sol`, `gpt-6-astra`, `gpt-6-sol`, or `gpt-6.1-sol`, optionally followed by `-pro` and then optionally by `[1m]` (e.g., `gpt-6-sol-pro[1m]`); the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants (including near-misses such as `gpt-6-astra-pro-x` and `gpt-6-sol[1m]-pro`). GPT is not part of the Claude Fable/Mythos model family. Terra and Luna (including `gpt-6-luna` and their `-pro` forms), mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately registered, even when the wider GPT family maps to a 1,050,000-token physical window (Astra's, GPT-6 Sol's, GPT-6.1 Sol's, and GPT-6 Luna's physical windows are 1,050,000 tokens). See `agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md` for the full selection rules, including normalization of provider-dotted Claude IDs such as `anthropic/claude-opus-5.5`. That 1,050,000 figure is itself route-conditional: it holds on the API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped at **919,000 tokens**, measured directly for both `gpt-6-astra` and `gpt-5.6-sol` on 2026-09-05 (superseding an earlier 2026-07-16 Sol-only figure of ~370,000), which DAAF's hooks lane-gate automatically. At the 919,000-token cap, the exact-Sol/Astra 60%/75%/90% percentage boundaries are 551.4k, 689.25k, and 827.1k tokens, respectively, so the 300k/400k/500k absolute gates fire first. At the 1,050,000-token full window, the corresponding percentage boundaries are 630k, 787.5k, and 945k, so the absolute gates likewise fire first; the same exact-Sol/Astra quality profile applies on both lanes even though their physical windows differ.
-
-| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
-|-------------------|------------|-------------|---------|-------------|
-| **Claude Fable/Mythos extended-horizon** | Registered Claude Fable/Mythos models, plus `claude-opus-5-5` (bare and `[1m]`) — admitted 2026-09-23 by user policy decision, not by DAAF quality validation. Fable/Mythos were validated at 30%/40%/50% or 300k/400k/500k; the 2026-10-23 raise of the whole profile to the values shown is a user policy decision, not DAAF quality validation | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens | ≥ 60% or ≥ 600k tokens |
-| **GPT Sol/Astra extended-horizon** | Exact terminal model slugs, bare or provider-prefixed, each optionally followed by `[1m]`: `gpt-5.6-sol` and `gpt-6-astra` (validated), plus `gpt-6-sol` and the `-pro` form of all three (e.g. `gpt-6-sol-pro[1m]`) — admitted 2026-09-29 by user policy decision, not by DAAF quality validation — and `gpt-6.1-sol` (with its `-pro` form) — admitted 2026-10-12 by user policy decision, not by DAAF quality validation | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
-| **Conservative-default** | all Opus models except `claude-opus-5-5` (above), Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
-
-The status levels and their actions are identical across profiles (NOMINAL is any utilization below the ELEVATED trigger):
+See CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile. Act on the level the `context-reporter` hook reports. The actions below are the same under every threshold profile (NOMINAL is any utilization below the ELEVATED trigger):
 
 | Status | Action |
 |--------|--------|
@@ -827,6 +839,6 @@ A separate STATE.md would duplicate this without adding value.
 **Update discipline:** The Reproduction Report MUST be updated after every atomic action:
 - After each script re-execution (RV-2): Script Inventory + Per-Script Reproduction Results + Session Continuity
 - After report verification (RV-3): Report Verification sections
-- After synthesis (RV-4): Executive Summary + Synthesis of Methodological Concerns
+- After synthesis (RV-4): Executive Summary + Synthesis of Methodological Concerns + AI Use Disclosure, then the agent-note comments are deleted
 - At every stage transition: Session Continuity § Current Stage
 - Before any session break: Session Continuity § Restart Prompt

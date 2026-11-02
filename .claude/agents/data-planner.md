@@ -116,7 +116,7 @@ Every task passes this test:
 | Aggregation | "by school" | `GROUP BY ncessch` with `SUM(enrollment)` |
 | Join keys | "match schools" | `LEFT JOIN ON left.ncessch = right.ncessch` |
 | Cardinality | "link the data" | `1:1 expected, BLOCKER if >5% fan-out` |
-| Edge cases | "handle missing" | `Filter WHERE enrollment != -1 AND enrollment != -2` |
+| Edge cases | "handle missing" | `SET enrollment = NULL WHERE enrollment IN (-1, -2, -3)` (rows kept) |
 
 **Methodology Rigor Checklist (verify for EACH transformation task):**
 - [ ] **Exact variable names** -- Column names as they appear in the data

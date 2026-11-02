@@ -22,26 +22,26 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Executive Summary
 
-> **Written last, during RV-4 synthesis.** Do not fill in until all in-scope scripts have been processed and the report verification is complete; exact pre-RV-2 exclusions remain separately reported.
+<!-- Agent note (deleted at RV-4): written last, during RV-4 synthesis. Do not fill in until all in-scope scripts have been processed and the report verification is complete; exact pre-RV-2 exclusions remain separately reported. -->
 
 **Overall Reproducibility Assessment:** [FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED]
 
-**Scripts in Scope for Execution:** [N] (after [N] exact pre-RV-2 scope-design exclusions)
+**Scripts in Scope for Execution:** [N] (after [N] exclusions the researcher approved before re-running began)
 **Scripts Re-executed:** [N] of [N] in scope
 **Scripts Reproduced Successfully:** [N] ([X]% of in-scope scripts)
 **Scripts with Deviations:** [N]
 **Scripts that Failed:** [N]
 **Scripts Requiring Modifications:** [N]
-**Scripts Excluded by Frozen-Input Design:** [N] Stage 5 scripts (not executed; acquisition/mirrors not tested)
+**Scripts Excluded by Frozen-Input Design:** [N] data-download scripts (not run; data download and mirrors not tested)
 
 **Declared Output Artifacts:** [N] in scope; MATCH [N]; DIVERGED [N]; `NOT DIRECTLY VERIFIED` [N]
 **Material Report Claims:** [N] in scope; MATCH [N]; DIVERGED [N]; `NOT DIRECTLY VERIFIED` [N]
 **Figures:** [N] in scope; MATCH [N]; DIVERGED [N]; `NOT DIRECTLY VERIFIED` [N]
 **Key Findings:** [N] in scope; MATCH [N]; DIVERGED [N]; `NOT DIRECTLY VERIFIED` [N]
 **Required Comparison Dimensions:** [N] in scope; MATCH [N]; DIVERGED [N]; `NOT DIRECTLY VERIFIED` [N]
-**Scope-Design Exclusions:** [N] exact items approved before RV-2 (reported separately; excluded from denominators)
+**Scope-Design Exclusions:** [N] exact items approved before re-running began (reported separately; excluded from denominators)
 
-> `FULLY REPRODUCED` requires every in-scope script to be REPRODUCED and every in-scope claim, figure, finding, artifact, and required dimension to be `MATCH`, with zero `DIVERGED` or `NOT DIRECTLY VERIFIED` items and no substantive modifications. Any in-scope evidence gap caps the verdict at `PARTIALLY REPRODUCED`. Only exact exclusions user-approved before RV-2 are removed from denominators; ad hoc skips are not exclusions. Missing or unsupported evidence is never a match.
+> `FULLY REPRODUCED` requires every in-scope script to be REPRODUCED and every in-scope claim, figure, finding, artifact, and required dimension to be `MATCH`, with zero `DIVERGED` or `NOT DIRECTLY VERIFIED` items and no substantive modifications. Any in-scope evidence gap caps the verdict at `PARTIALLY REPRODUCED`. Only exact exclusions the researcher approved before re-running began are removed from denominators; items skipped later are not exclusions. Missing or unsupported evidence is never a match.
 
 **Summary of Findings:**
 [3-5 sentences: What reproduced cleanly, what diverged and why, what failed and why. Written in plain language for a non-technical reviewer.]
@@ -53,7 +53,9 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Methodological Concerns
 
-> **Accumulated during RV-2** as the reproduction agent encounters each script. **Synthesized during RV-4.** Each concern is tagged with the script that prompted it and a severity assessment.
+Each concern names the script that prompted it and a severity from the scale below.
+
+<!-- Agent note (deleted at RV-4): accumulated during RV-2 as the reproduction agent encounters each script; synthesized during RV-4. -->
 
 ### Concern Severity Scale
 
@@ -71,7 +73,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Synthesis of Methodological Concerns
 
-> **Written during RV-4.** Group related concerns, assess their collective impact on the analysis conclusions, and provide an overall methodological assessment.
+<!-- Agent note (deleted at RV-4): written during RV-4. Group related concerns, assess their collective impact on the analysis conclusions, and provide an overall methodological assessment. -->
 
 [Narrative synthesis here]
 
@@ -79,7 +81,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Reproduction Inventory
 
-> **Populated during RV-1** from notebook decompilation. Updated with status during RV-2 as each script is re-executed.
+<!-- Agent note (deleted at RV-4): populated during RV-1 from notebook decompilation; status updated during RV-2 as each script is re-executed. -->
 
 ### Source Artifacts
 
@@ -96,15 +98,15 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Decompiled Scripts | `original_files/scripts/` | [Present/Missing] |
 | Decompilation Manifest | `original_files/scripts/MANIFEST.md` | [Present/Missing] |
 | Path Containment Audit | [JSON output captured in this report or project-local evidence file] | [MATCH/DIVERGED/NOT DIRECTLY VERIFIED + exit code] |
-| Frozen Raw Pre-RV-2 Hash Inventory | [project-local evidence path / N/A for re-fetch] | [Present/N/A] |
-| Frozen Raw Post-RV-2 Hash Inventory | [project-local evidence path / N/A for re-fetch] | [MATCH/DIVERGED/N/A] |
+| Frozen Raw-Data Fingerprints Before Re-running | [project-local evidence path / N/A for re-fetch] | [Present/N/A] |
+| Frozen Raw-Data Fingerprints After Re-running | [project-local evidence path / N/A for re-fetch] | [MATCH/DIVERGED/N/A] |
 | Original Dockerfile | `original_files/Dockerfile.original` | [Present/Unavailable] |
-| RV-3 Verification Findings | `output/preliminary_notes/[date]_rv3_report-verification.md` | [Present/Missing] |
+| Report-Claim Verification Findings | `output/preliminary_notes/[date]_rv3_report-verification.md` | [Present/Missing] |
 | Reproduction Session Logs | `logs/` | [Present/Missing] |
 
 ### Original Artifact Inventory and Copy Verification
 
-> **Populate during RV-1 before RV-2.** Inventory file counts and total sizes in the untouched original project before copying. After copying to `original_files/<same project-relative path>`, verify destination counts and sizes. An absent source is `NOT PRESENT` or `MISSING EVIDENCE`, never `COPIED`. Add one row for every additional declared output artifact beneath the original project's `output/` tree.
+<!-- Agent note (deleted at RV-4): populate during RV-1, before RV-2. Inventory file counts and total sizes in the untouched original project before copying. After copying to `original_files/<same project-relative path>`, verify destination counts and sizes. An absent source is `NOT PRESENT` or `MISSING EVIDENCE`, never `COPIED`. Add one row for every additional declared output artifact beneath the original project's `output/` tree. -->
 
 | Artifact Class / Declared Relative Path | Original Location | Pre-Copy Files | Pre-Copy Size | Copied Location | Post-Copy Files | Post-Copy Size | Copy Status / Evidence Gap |
 |-----------------------------------------|-------------------|----------------|---------------|-----------------|-----------------|----------------|----------------------------|
@@ -114,24 +116,26 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | `output/figures/` | `[original_project]/output/figures/` | [N/N/A] | [bytes/N/A] | `original_files/output/figures/` | [N/N/A] | [bytes/N/A] | [COPIED/NOT PRESENT/MISSING/FAILED] |
 | `output/[additional/declared_artifact]` | `[original_project]/output/[same path]` | [N/N/A] | [bytes/N/A] | `original_files/output/[same path]` | [N/N/A] | [bytes/N/A] | [COPIED/NOT PRESENT/MISSING/FAILED] |
 
-**Frozen raw-data seed:** [Not selected / Seeded reproduction `data/raw/` from `original_files/data/raw/` after copy verification / BLOCKED — frozen raw data absent]
+**Frozen raw-data seed:** [Not selected / Seeded the reproduction's `data/raw/` from `original_files/data/raw/` after the researcher chose frozen data at the checkpoint after the inventory, before re-running began (setup leaves `data/raw/` empty) / BLOCKED — frozen raw data absent]
 
 ### Frozen Raw-Input Integrity (when selected)
 
-> Frozen mode excludes Stage 5 acquisition scripts by user-confirmed scope design; it does not reproduce acquisition or test mirrors. Capture the exact inventory before downstream RV-2 execution and recompute it afterward. Any changed, added, or missing raw file is a failure requiring investigation.
+With frozen inputs, the data-download scripts are left out by the researcher's choice, so data download and the data mirrors are not tested. Each raw file's size and fingerprint (SHA-256 hash) is recorded before re-running and checked again afterward; any changed, added or missing raw file is a failure that needs investigation.
 
-| Relative Raw Path | Pre-RV-2 Bytes | Pre-RV-2 SHA-256 | Post-RV-2 Bytes | Post-RV-2 SHA-256 | Assessment |
-|-------------------|-----------------|------------------|------------------|-------------------|------------|
+<!-- Agent note (deleted at RV-4): capture the exact inventory before downstream RV-2 execution and recompute it after all RV-2 execution. -->
+
+| Relative Raw Path | Bytes Before | SHA-256 Before | Bytes After | SHA-256 After | Assessment |
+|-------------------|--------------|----------------|-------------|---------------|------------|
 | `data/raw/[file]` | [bytes] | [hash] | [bytes] | [hash] | [MATCH/DIVERGED] |
 
-**Stage 5 acquisition scope:** [Re-fetch — in scope and executed / Frozen inputs — exact Stage 5 script list EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN]
-**Acquisition reproducibility:** [Tested in re-fetch mode / Out of scope in frozen mode; no mirror claim]
+**Data-download scope:** [Re-fetch — the data-download scripts were in scope and re-run / Frozen inputs — exact list of data-download scripts EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN]
+**Data-download reproducibility:** [Tested in re-fetch mode / Out of scope with frozen inputs; no claim about the data mirrors]
 
 ### Evidence Coverage Summary
 
-> Update during RV-1 as evidence is inventoried, after every RV-2 script, after RV-3 claim verification, and during RV-4 rollup. Counts are derived from the inventory and result tables, not recalled. User exclusions count as out of scope only when confirmed and recorded before RV-2.
+<!-- Agent note (deleted at RV-4): update during RV-1 as evidence is inventoried, after every RV-2 script, after RV-3 claim verification, and during the RV-4 rollup. Counts are derived from the inventory and result tables, not recalled. User exclusions count as out of scope only when confirmed and recorded before RV-2. -->
 
-| Evidence Unit | In Scope | Directly Verified | Matched | Diverged | NOT DIRECTLY VERIFIED | Excluded Before RV-2 |
+| Evidence Unit | In Scope | Directly Verified | Matched | Diverged | NOT DIRECTLY VERIFIED | Excluded Before Re-running |
 |---------------|----------|-------------------|---------|----------|-----------------------|----------------------|
 | Declared output artifacts | [N] | [N] | [N] | [N] | [N] | [N] |
 | Material Report claims | [N] | [N] | [N] | [N] | [N] | [N] |
@@ -151,23 +155,29 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 - **DIVERGED** — Re-execution completed but output differs from original
 - **FAILED** — Re-execution produced an error; script did not complete
 - **MODIFIED** — Script required changes to run; modifications documented below
-- **EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN** — Stage 5 acquisition script was removed from scope by the user-confirmed frozen-input design before RV-2. It was not run and must never be counted as REPRODUCED, DIVERGED, FAILED, or silently skipped.
+- **EXCLUDED BY USER-CONFIRMED FROZEN-INPUT DESIGN** — a data-download script left out of scope, before re-running began, because the researcher chose frozen inputs. It was not run and is never counted as REPRODUCED, DIVERGED, FAILED, or silently skipped.
 
 ### Scope Decisions
 
-> **Confirmed at mode confirmation AND after RV-1 inventory.**
+The researcher makes these choices at the checkpoint after the inventory, before any script is re-run.
+
+<!-- Agent note (deleted at RV-4): previewed at mode confirmation; decided at PSU-RV1, after the RV-1 inventory. RV-1 sets the Status to "Awaiting PSU-RV1" and leaves the choices unfilled; when the user decides, fill them and set "Confirmed at PSU-RV1 on YYYY-MM-DD". Session recovery reads this line, so keep its literal values. -->
+
+**Status:** [Awaiting PSU-RV1 / Confirmed at PSU-RV1 on YYYY-MM-DD]
 
 | Decision | User Choice | Rationale |
 |----------|-------------|-----------|
-| Re-fetch data from mirrors? | [Yes — execute Stage 5 / No — frozen inputs, exclude Stage 5 by design] | [Why; if No, confirm frozen seed + pre-hashes and state acquisition/mirrors are out of scope] |
+| Re-fetch data from mirrors? | [Yes — re-run the data-download scripts / No — frozen inputs, data-download scripts left out by design] | [Why; if No, confirm the frozen seed and the fingerprints taken before re-running, and state that data download and mirrors are out of scope] |
 | Methodological review depth | [Light / Full] | [Why] |
-| Scripts excluded by scope design before RV-2 | [None / exact list with reasons, including Stage 5 under frozen mode] | [User confirmation and why; these alone leave denominators] |
-| Declared outputs excluded before RV-2 | [None / exact project-relative paths with reasons] | [User confirmation and why] |
-| Material Report claims excluded before RV-2 | [None / exact claims/locations with reasons] | [User confirmation and why] |
+| Scripts excluded by scope design before re-running | [None / exact list with reasons, including the data-download scripts under frozen inputs] | [User confirmation and why; these alone leave denominators] |
+| Declared outputs excluded before re-running | [None / exact project-relative paths with reasons] | [User confirmation and why] |
+| Material Report claims excluded before re-running | [None / exact claims/locations with reasons] | [User confirmation and why] |
 
 ### Infrastructure Normalizations
 
-> **Applied during RV-1 setup** by running `normalize_project_dir.py` on all decompiled scripts in batch. Infrastructure normalizations are mechanical path/environment adjustments that make scripts executable in the reproduction project. They do not affect reproduction status — a script requiring only infrastructure normalizations retains REPRODUCED status. Paste the normalizer's Markdown table output below.
+Infrastructure normalizations are mechanical path and environment adjustments, applied during setup by `normalize_project_dir.py`, that make the decompiled scripts run in the reproduction project. They do not affect reproduction status: a script that needed only these adjustments can still be REPRODUCED.
+
+<!-- Agent note (deleted at RV-4): applied during RV-1 setup by running `normalize_project_dir.py` on all decompiled scripts in batch. Paste the normalizer's Markdown table output below. -->
 
 | File | Original Value | Normalized Value | Type |
 |------|----------------|------------------|------|
@@ -179,9 +189,9 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 **Utility:** `scripts/audit_reproduction_paths.py`
 **Invocation:** `python3 /daaf/scripts/audit_reproduction_paths.py [scripts_root] [exact_original_root] [expected_reproduction_root] [--exclude exact/canonical/relative-script.py] [--exclude another/script.R]`
 **Exit code / overall:** [0 MATCH / 1 DIVERGED / 2 NOT DIRECTLY VERIFIED]
-**RV-1 gate:** [PASSED — global exit 0 MATCH and every dispatched script has `scope: IN_SCOPE` + `assessment: MATCH` / BLOCKED — state the global or per-file failure]
+**Setup check:** [PASSED — global exit 0 MATCH and every dispatched script has `scope: IN_SCOPE` + `assessment: MATCH` / BLOCKED — state the global or per-file failure]
 **In-scope file assessments:** [List/cite deterministic `file_assessments`; every dispatched script must be MATCH]
-**In-scope audit issues:** [None required before RV-2]
+**In-scope audit issues:** [None; none may remain before re-running begins]
 **Excluded files and excluded issues:** [List `scope.excluded_files` and `excluded_issues` separately; excluded files never count as matches]
 **Informational historical-log residue:** [List `ORIGINAL_ROOT_LOG_RESIDUE` from `informational_evidence`, or None; it is not a failure]
 **Bounded assurance:** MATCH establishes only that the exact original-root string is absent from executable source before each in-scope script's unique canonical `# EXECUTION LOG` boundary and that every in-scope supported `.py`/uppercase `.R` script has one unique statically resolvable canonical `PROJECT_DIR` assignment equal to the reproduction root. Multiple canonical boundaries fail closed. Exact original-root residue after the unique boundary is informational immutable provenance, and arbitrary dynamically constructed paths are not proven safe.
@@ -192,7 +202,9 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Comparison Standards
 
-> **Adjudication standards for RV-2 dimensions supported by evidence.** `compare_execution_logs.py` is log-metric-only: it aligns metrics by normalized identity and stable context rather than position, and returns 0 only for `CONSISTENT`, 1 for `DIVERGED`, 2 for invalid invocation or input read/parse failure, and 3 for `INCOMPLETE`/`INCONCLUSIVE`. Exit 3 is `NOT DIRECTLY VERIFIED` evidence, never success. For supported artifacts, run `compare_reproduction_artifacts.py` and preserve its deterministic JSON/per-dimension result. Artifact-helper exit semantics are load-bearing: 0 `MATCH`, 1 `DIVERGED`, 2 invalid/unsupported invocation, 3 `NOT DIRECTLY VERIFIED`. Exit 2 requires a corrected invocation or a separate evidence path; exit 3 is an evidence gap. Neither is a match. Figures use side-by-side Read-tool review. Persisted tables/models use a defined inspectable representation or remain `NOT DIRECTLY VERIFIED`.
+<!-- Agent note (deleted at RV-4): adjudication standards for RV-2 dimensions supported by evidence. `compare_execution_logs.py` is log-metric-only: it aligns metrics by normalized identity and stable context rather than position, and returns 0 only for `CONSISTENT`, 1 for `DIVERGED`, 2 for invalid invocation or input read/parse failure, and 3 for `INCOMPLETE`/`INCONCLUSIVE`. Exit 3 is `NOT DIRECTLY VERIFIED` evidence, never success. For supported artifacts, run `compare_reproduction_artifacts.py` and preserve its deterministic JSON/per-dimension result. Artifact-helper exit semantics are load-bearing: 0 `MATCH`, 1 `DIVERGED`, 2 invalid/unsupported invocation, 3 `NOT DIRECTLY VERIFIED`. Exit 2 requires a corrected invocation or a separate evidence path; exit 3 is an evidence gap. Neither is a match. Figures use side-by-side Read-tool review. Persisted tables/models use a defined inspectable representation or remain `NOT DIRECTLY VERIFIED`. -->
+
+The table lists how each kind of output was compared with the original and how close a match must be. Evidence that is missing, or that no comparison tool supports, is labeled `NOT DIRECTLY VERIFIED`, never counted as a match.
 
 | Metric / Artifact | Tolerance / Tool | Notes |
 |-------------------|------------------|-------|
@@ -214,11 +226,11 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Per-Script Reproduction Results
 
-> **Updated incrementally during RV-2.** Each script gets its own section immediately after re-execution. Do NOT batch these — update the report after every single script.
+<!-- Agent note (deleted at RV-4): updated incrementally during RV-2. Each script gets its own section immediately after re-execution. Do NOT batch these: update the report after every single script. -->
 
 ### Script [#]: [script_name]
 
-**Stage:** [5/6/7/8] | **Step:** [N.N] | **Type:** [fetch/clean/transform/analysis/viz]
+**Script folder:** [e.g. `stage6_clean`] | **Step:** [N.N] | **Type:** [fetch/clean/transform/analysis/viz]
 
 #### Execution Comparison
 
@@ -231,26 +243,27 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Key statistics | [summary] | [summary] | [Both logs / inspectable persisted representation] | [MATCH/DIVERGED/NOT DIRECTLY VERIFIED] |
 | Declared artifact: [path/type] | [path/status] | [path/status] | [Artifact-helper JSON / visual Read review / defined saved representation / unavailable] | [MATCH/DIVERGED/NOT DIRECTLY VERIFIED] |
 
-> Add one **Declared artifact** row for every output the script declares. Preserve artifact-helper JSON and its exit code for each supported Parquet/exact pair. Compare PNGs visually. Compare tables/models through a defined inspectable saved representation; opaque models remain `NOT DIRECTLY VERIFIED`. Exact-byte `MATCH` means byte identity only. Never infer a match from successful execution, another matching dimension, or a log-helper summary.
+<!-- Agent note (deleted at RV-4): add one **Declared artifact** row for every output the script declares. Preserve artifact-helper JSON and its exit code for each supported Parquet/exact pair. Compare PNGs visually. Compare tables/models through a defined inspectable saved representation; opaque models remain `NOT DIRECTLY VERIFIED`. Exact-byte `MATCH` means byte identity only. Never infer a match from successful execution, another matching dimension, or a log-helper summary. -->
 
 #### Checkpoint Comparison
+
+A script with built-in automated validation prints a banner such as `CP2 VALIDATION: PASSED` in its execution log. This table compares the banner each run printed.
 
 | Checkpoint | Original Result | Reproduced Result | Evidence Source | Assessment |
 |------------|-----------------|-------------------|-----------------|------------|
 | [CP1/CP2/CP3/CP4] | [PASSED / PASSED WITH WARNINGS / FAILED + count line + key metrics] | [PASSED / PASSED WITH WARNINGS / FAILED + count line + key metrics] | [Both execution logs / unavailable] | [MATCH/DIVERGED/NOT DIRECTLY VERIFIED] |
 
-> Transcribe the verdict line exactly as each log printed it — the three legal CP strings are `PASSED`, `PASSED WITH WARNINGS`, and `FAILED` (QA logs print `QA{n} RESULT: PASSED | WARNING | BLOCKER`). `PASSED WITH WARNINGS` is not `PASSED`; recording it as one manufactures a match. Include each log's count line (`Checks: N passed, N warnings, N failed, N not verified, N skipped`): two runs can print the same verdict while differing in what was actually checked, and a run with `not verified > 0` verified less than its verdict suggests. Differing count lines under an identical verdict are a `DIVERGED` assessment, not a match.
+<!-- Agent note (deleted at RV-4): transcribe the verdict line exactly as each log printed it — the three legal CP strings are `PASSED`, `PASSED WITH WARNINGS`, and `FAILED` (QA logs print `QA{n} RESULT: PASSED | WARNING | BLOCKER`). `PASSED WITH WARNINGS` is not `PASSED`; recording it as one manufactures a match. Include each log's count line (`Checks: N passed, N warnings, N failed, N not verified, N skipped`): two runs can print the same verdict while differing in what was actually checked, and a run with `not verified > 0` verified less than its verdict suggests. Differing count lines under an identical verdict are a `DIVERGED` assessment, not a match. -->
 
 #### Deviations
 
-> If status is REPRODUCED with no deviations, write "None — all directly evidenced comparison dimensions match within tolerance." List any `NOT DIRECTLY VERIFIED` dimensions separately; do not describe them as matches.
+<!-- Agent note (deleted at RV-4): if status is REPRODUCED with no deviations, write "None — all directly evidenced comparison dimensions match within tolerance." List any `NOT DIRECTLY VERIFIED` dimensions separately; do not describe them as matches. -->
 
 [Description of any differences observed. Include: what differs, magnitude of difference, likely cause (e.g., floating-point ordering, data source update, timestamp difference, random seed), and whether the deviation is substantive or cosmetic.]
 
 #### Modifications Required
 
-> If no modifications were needed, write "None — original script executed successfully."
-> **If ANY modification was required, this must be prominently flagged.** Each `_repro_a`/`_repro_b` revision must begin from a clean, log-free source (or have any inherited log stripped and verified absent) before fixes and one execution. Never copy and rerun the just-failed, log-appended file unchanged. Modifications undermine reproduction fidelity.
+<!-- Agent note (deleted at RV-4): if no modifications were needed, write "None — original script executed successfully." If ANY modification was required, flag it prominently: modifications undermine reproduction fidelity. Each `_repro_a`/`_repro_b` revision must begin from a clean, log-free source (or have any inherited log stripped and verified absent) before fixes and one execution. Never copy and rerun the just-failed, log-appended file unchanged. -->
 
 - **Modification type:** [Infrastructure / Substantive / None]
 - **What was changed:** [exact description]
@@ -261,15 +274,17 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 #### Methodological Notes
 
-> Brief observations about the analytical approach in this script. Concerns with severity >= NOTABLE should also be added to the Methodological Concerns Log above.
+<!-- Agent note (deleted at RV-4): brief observations about the analytical approach in this script. Concerns with severity >= NOTABLE should also be added to the Methodological Concerns Log above. -->
 
 [Observations, or "No concerns noted."]
 
 ---
 
-## Report Verification (RV-3)
+## Report Verification
 
-> **Completed after all in-scope scripts are processed.** Cross-references specific claims, statistics, and figures from the original Report against the reproduced outputs; exact pre-RV-2 exclusions remain outside the denominator and are reported separately.
+This section checks specific claims, statistics and figures from the original Report against the reproduced outputs. Exclusions the researcher approved before re-running began stay outside the counts and are reported separately.
+
+<!-- Agent note (deleted at RV-4): completed during RV-3, after all in-scope scripts are processed. -->
 
 ### Quantitative Claims
 
@@ -285,7 +300,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Findings Verification
 
-> For each key finding, use MATCH only when direct reproduced evidence supports the same conclusion, DIVERGED when it conflicts, and NOT DIRECTLY VERIFIED when required evidence is missing or unsupported.
+A finding is MATCH only when direct reproduced evidence supports the same conclusion, DIVERGED when that evidence conflicts with it, and NOT DIRECTLY VERIFIED when the evidence it needs is missing or unsupported.
 
 | # | Finding | Report Section | Evidence Source | Assessment | Confidence | Notes |
 |---|---------|---------------|-----------------|------------|------------|-------|
@@ -298,9 +313,17 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 **Findings:** [N] in scope — MATCH [N], DIVERGED [N], NOT DIRECTLY VERIFIED [N]
 **Declared artifacts:** [N] in scope — MATCH [N], DIVERGED [N], NOT DIRECTLY VERIFIED [N]
 **Required dimensions:** [N] in scope — MATCH [N], DIVERGED [N], NOT DIRECTLY VERIFIED [N]
-**Scope-design exclusions:** [N] exact pre-RV-2 exclusions, listed separately
+**Scope-design exclusions:** [N] exact exclusions approved before re-running began, listed separately
 
 [Brief narrative: Are the Report's conclusions substantiated by the reproduction? Any caveats?]
+
+---
+
+## AI Use Disclosure
+
+<!-- Agent note (deleted at RV-4): written during RV-4 from `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification Mode (template paragraph and key points). Take the models, DAAF version, dates and provider route from the Reproduction Environment table below, and the verdict from the Executive Summary. -->
+
+[One paragraph following the reproducibility disclosure template: the models and how they were reached, the date(s) and DAAF version, what the AI did (decompiling the notebook, checking script paths, re-running [N] scripts, comparing outputs, reviewing methods and checking the Report's claims), the data strategy, what remained NOT DIRECTLY VERIFIED, and, as a `[RESEARCHER]` sentence the researcher confirms after reading this report, that they reviewed it and are responsible for the final verdict.]
 
 ---
 
@@ -309,6 +332,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 | Field | Value |
 |-------|-------|
 | **DAAF Version** | [git commit hash] |
+| **Provider Route** | [Anthropic subscription / Anthropic API key / OpenAI API via DAAF provider shim / ChatGPT subscription via DAAF provider shim / OpenRouter / AWS Bedrock / Google Vertex AI] |
 | **Session Model ID** | [Model driving the orchestrator/main session at reproduction start — record the runtime value, e.g., claude-opus-4-8[1m]] |
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier used during reproduction (re-execution, debugging, verification) — from agent frontmatter defaults plus any per-dispatch overrides. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record BOTH session and subagent models of the reproduction run; the original run's models are separately captured from its Report's AI Disclosure.] |
 | **Reproduction Date** | [YYYY-MM-DD] |
@@ -323,7 +347,9 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Environment Compatibility Assessment
 
-> **Populated during RV-1 with language-aware observed evidence.** Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines without snapshot evidence, and snapshot dates without either a matching current snapshot date or a quoted lookup, do not prove exact package versions; mark such original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. When the original Dockerfile declares `UV_EXCLUDE_NEWER`, its `==` pins plus that cutoff (and any `--exclude-newer-package` overrides) establish the full original Python set, subject to the yank/deletion and architecture caveats (reconstruct it read-only with `uv pip compile --exclude-newer`, run as a single Bash command with absolute `{PROJECT_DIR}` paths — not via `run_with_capture.sh` — and quote the command and its output; never install). A reconstructed version that differs from an observed one, or a package that fails to resolve, is NOT DIRECTLY VERIFIED, not a version difference. Pre-freeze originals leave transitive Python versions UNKNOWN. See the mode reference's RV-1 step 12. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, retain their appended logs, and never install packages at runtime.
+This compares the software environment of the original analysis with the one used for the reproduction. A version the evidence cannot establish is marked UNKNOWN or NOT DIRECTLY VERIFIED rather than guessed.
+
+<!-- Agent note (deleted at RV-4): populated during RV-1 with language-aware observed evidence. Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines without snapshot evidence, and snapshot dates without either a matching current snapshot date or a quoted lookup, do not prove exact package versions; mark such original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. When the original Dockerfile declares `UV_EXCLUDE_NEWER`, its `==` pins plus that cutoff (and any `--exclude-newer-package` overrides) establish the full original Python set, subject to the yank/deletion and architecture caveats (reconstruct it read-only with `uv pip compile --exclude-newer`, run as a single Bash command with absolute `{PROJECT_DIR}` paths — not via `run_with_capture.sh` — and quote the command and its output; never install). A reconstructed version that differs from an observed one, or a package that fails to resolve, is NOT DIRECTLY VERIFIED, not a version difference. Pre-freeze originals leave transitive Python versions UNKNOWN. See the mode reference's RV-1 step 12. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, retain their appended logs, and never install packages at runtime. -->
 
 **Original DAAF Version:** [commit hash from Report's AI Disclosure, e.g., `abc1234`]
 **Original DAAF Release:** [semver if identifiable, e.g., `v2.1.0`, or `—` if not mapped to a release]
@@ -371,7 +397,9 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Deviation Log
 
-> **Running log of ALL deviations**, consolidated from per-script sections for easy scanning. Each row is added as deviations are discovered during RV-2.
+A running log of all deviations, consolidated from the per-script sections for easy scanning.
+
+<!-- Agent note (deleted at RV-4): add each row as the deviation is discovered during RV-2. -->
 
 | # | Script | Deviation Type | Description | Substantive? | Likely Cause |
 |---|--------|---------------|-------------|--------------|--------------|
@@ -387,25 +415,27 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ## Files Created During Reproduction
 
-| File | Type | Stage |
-|------|------|-------|
-| `original_files/[report]` | Original Report (copied) | RV-1 |
-| `original_files/[notebook]` | Original Notebook (copied) | RV-1 |
-| `original_files/output/figures/` | Original figures (copied) | RV-1 |
-| `original_files/output/preliminary_notes/` | Original discovery findings (copied, if present) | RV-1 |
-| `original_files/scripts/[...]` | Decompiled scripts (from notebook) | RV-1 |
-| `original_files/Dockerfile.original` | Original Dockerfile (fetched from public repo at original commit) | RV-1 |
-| `scripts/repro/[...]` | Re-executed scripts (with new logs) | RV-2 |
-| `scripts/repro_checks/[...]` | Environment/evidence diagnostics (with appended logs, when needed) | RV-1/RV-2 |
-| `output/figures/[...]` | Reproduced figures (generated) | RV-2 |
-| `output/preliminary_notes/[date]_rv3_report-verification.md` | Lossless data-verifier return (persisted) | RV-3 |
-| `Reproduction_Report.md` | This document | RV-1 |
+| File | Type | Created during |
+|------|------|----------------|
+| `original_files/[report]` | Original Report (copied) | setup |
+| `original_files/[notebook]` | Original Notebook (copied) | setup |
+| `original_files/output/figures/` | Original figures (copied) | setup |
+| `original_files/output/preliminary_notes/` | Original discovery findings (copied, if present) | setup |
+| `original_files/scripts/[...]` | Decompiled scripts (from notebook) | setup |
+| `original_files/Dockerfile.original` | Original Dockerfile (fetched from public repo at original commit) | setup |
+| `scripts/repro/[...]` | Re-executed scripts (with new logs) | re-running the scripts |
+| `scripts/repro_checks/[...]` | Environment/evidence diagnostics (with appended logs, when needed) | setup / re-running the scripts |
+| `output/figures/[...]` | Reproduced figures (generated) | re-running the scripts |
+| `output/preliminary_notes/[date]_rv3_report-verification.md` | Full record of the report-claim verification | checking the report's claims |
+| `Reproduction_Report.md` | This document | setup |
 
 ---
 
 ## Session Continuity
 
-> The Reproduction Report is the **sole session state document** for Reproducibility Verification mode (no separate STATE.md). This section MUST be updated after every script re-execution, at every stage transition, and before any session break.
+This report is also the saved progress of the reproduction: a new session resumes from the position recorded here.
+
+<!-- Agent note (deleted at RV-4): the Reproduction Report is the sole session state document for Reproducibility Verification mode (no separate STATE.md). Update this section after every script re-execution, at every stage transition, and before any session break. Current Stage keeps its RV-1..RV-4 values: session recovery keys resume actions on them. -->
 
 ### Current Position
 
@@ -426,17 +456,17 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Runtime Notes
 
-> Observations, decisions, or issues encountered during reproduction that affect session continuity.
+Observations, decisions, or issues encountered during reproduction that affect session continuity.
 
-| # | Stage | Note |
-|---|-------|------|
-| 1 | [RV-N] | [observation or decision] |
+| # | When | Note |
+|---|------|------|
+| 1 | [the activity, e.g. "re-running the scripts"] | [observation or decision] |
 
 ### Restart Prompt
 
 > Copy this prompt after `/clear` to resume with fresh context.
 
-Resume the reproduction of [Original Project Title]. Reproduction Report: `[exact path]`. Currently at [stage] — last completed [description], next step is [description].
+Resume the reproduction of [Original Project Title]. Reproduction Report: `[exact path]`. Currently [where we are, in plain words, e.g. "re-running the scripts: 12 of 30 done"]; last completed [description], next step is [description].
 ````
 
 ---
@@ -446,6 +476,10 @@ Resume the reproduction of [Original Project Title]. Reproduction Report: `[exac
 ### When to Create
 
 Create `Reproduction_Report.md` during **RV-1 (Intake & Setup)** after copying original artifacts and running the decompiler.
+
+### Agent Notes
+
+The report is both the working record and the deliverable the researcher reads. Per-section instructions for the agents filling it are HTML comments that open with `<!-- Agent note (deleted at RV-4):`, each on one line. They stay in the working file while the reproduction runs (Markdown viewers hide them; agents editing the file see them at the point of use), and the RV-4 report-writer deletes every one of them as its last step, so the delivered report carries none. If work resumes on a section after RV-4, its note is still in this template. Text outside those comments is written for the researcher (`agent_reference/DOCUMENTATION_STANDARDS.md` § S3 Plain for Users), except the parsed fields kept as they are: the Scope Decisions **Status** values ("Awaiting PSU-RV1" / "Confirmed at PSU-RV1 on YYYY-MM-DD") and the Current Position **Current Stage** values (RV-1 to RV-4), which session recovery reads.
 
 ### Update Cadence
 
@@ -464,6 +498,8 @@ This report must be updated **after every single script re-execution** during RV
 6. Write the Executive Summary
 7. Write the Methodological Concerns Synthesis
 8. Write the Report Verification Summary narrative
+9. Write the AI Use Disclosure from `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification Mode
+10. Delete every agent-note comment (§ Agent Notes) as the last edit
 
 ### Comparison Tolerances
 

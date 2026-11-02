@@ -4,6 +4,8 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 
 > **Comprehensive checklist:** The full registration-point checklist for modes (items M1-M21 plus lettered sub-items such as M1a and M7a, mandatory and conditional) is in `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 3. The abbreviated checklist below covers the essential steps; use the comprehensive checklist for production-quality mode additions.
 
+> **Writing standard:** `agent_reference/DOCUMENTATION_STANDARDS.md`. A mode file is agent-facing, so internal terms are fine in its workflow and dispatch sections. Everything the orchestrator shows the user (the User Orientation points, the confirmation and checkpoint templates, the `user_reference/02_understanding_daaf.md` subsection) follows § S3 Plain for Users: no stage, gate or checkpoint codes.
+
 ## Adding a New Mode: Abbreviated Checklist
 
 ### Mandatory (every new mode)
@@ -55,7 +57,7 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 
 The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
-- [What the mode does, in plain language]
+- [What the mode does, in plain language, with no internal codes (`DOCUMENTATION_STANDARDS.md` § S3 Plain for Users)]
 - [What the user will receive]
 - [How many checkpoints / what level of user interaction to expect]
 - [Key constraint or characteristic (e.g., "read-only", "new version created")]
@@ -133,7 +135,7 @@ When creating a new mode, explicitly document the following:
 - **Orchestrator Skill Loading** — if the orchestrator loads skills directly (exception to standard pattern)
 - **Workspace Setup** — if the mode creates or uses a workspace folder
 - **Session Notes and Continuity** — if the mode uses SESSION_NOTES.md or a custom state mechanism
-- **User Treatment** — if the mode has specific tone/treatment guidance (e.g., "treat as advanced")
+- **User Treatment** — if the mode has specific tone/treatment guidance (e.g., "treat as advanced"); a technical user still gets plain wording without internal codes (`DOCUMENTATION_STANDARDS.md` § S3 Plain for Users)
 - **Session Wrap-Up** — if the mode has a specific wrap-up protocol
 
 ---

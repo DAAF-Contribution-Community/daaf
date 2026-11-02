@@ -4,6 +4,7 @@
 > All agents in `.claude/agents/` MUST follow this structure. Sections marked REQUIRED cannot be omitted.
 > Sections marked CONDITIONAL are required only for agents matching the stated criteria.
 > Target length: **400-700 lines** (never exceed 1000).
+> Writing standard: `agent_reference/DOCUMENTATION_STANDARDS.md`. An agent file is agent-facing; the `description` is written for the orchestrator, and any message template a user will read follows § S3 Plain for Users.
 
 ---
 
@@ -22,9 +23,19 @@ tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # REQUIRED explicit allowl
 # NEVER omit this field: omission inherits ALL tools — including Agent/Task, which
 # lets the agent spawn nested subagents. NEVER include Agent or Task in the list:
 # all dispatch authority belongs to the orchestrator (see BOUNDARIES.md § Process
-# Violations; enforced in depth by block-nested-dispatch.sh).
+# Violations). Enforced in three layers: (1) the harness spawn-depth limit
+# (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1, observed on 2.1.261/2.1.281 to withhold
+# Agent/Task from every subagent); (2) this explicit list, the layer you control,
+# which still holds if that limit is lifted; (3) the block-nested-dispatch.sh backstop.
 permissionMode: default                          # Or: plan (read-only agents)
+# Read-only is enforced by the tools list (no Write/Edit), not by `plan`: Claude Code
+# ignores permissionMode when the parent runs in auto (DAAF's normal mode),
+# bypassPermissions or acceptEdits mode. With Bash in tools, register
+# enforce-file-first.sh under hooks (checklist item A13), read-only agents included.
 model: sonnet            # DAAF two-tier routing: opus | sonnet (see "Model Field" below)
+# NEVER set `omitClaudeMd` (Claude Code 2.1.271+): it detaches the agent from
+# CLAUDE.md, DAAF's constitution for subagents (execution philosophy, file-first
+# protocol, IAT, safety boundaries, context thresholds). Checklist item A1d.
 # ── Optional fields ──
 # maxTurns: 50
 # skills: skill-a          # Skill to preload at startup (full content injected)
@@ -51,7 +62,7 @@ The `model:` field is **expected on every DAAF agent** — it sets the model tie
 **DAAF policy — two tiers only:** assign `opus` or `sonnet`. Haiku is excluded: "turn count beats token price" — in DAAF experience, the cheapest models take more turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor. Choose the tier by the agent's core workload:
 
 - **`opus`** — high-judgment, adversarial, synthesis, or primary data-production roles (pipeline execution — fetching/cleaning/transforming from a plan, dataset profiling, plan design, plan/data verification, code review, hypothesis-driven debugging, cross-file framework consistency, stakeholder report synthesis).
-- **`sonnet`** — well-specified, skill-guided, or mechanical roles (structured source lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration).
+- **`sonnet`** — well-specified, skill-guided, or mechanical roles (structured source lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad exploration and information gathering).
 
 **`inherit` is reserved** for the rare agent that must deliberately track the session model rather than pin a tier.
 

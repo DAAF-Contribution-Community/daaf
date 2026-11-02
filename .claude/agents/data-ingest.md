@@ -40,7 +40,7 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 | **Timing** | Pre-pipeline, on demand (new data arrives); called 4 times by orchestrator (once per part) | Stage 3, per source identified in Stage 2 |
 | **Input** | Raw data file + part assignment + prior part findings | Existing `*-data-source-*` skill |
 | **Output** | Part-specific profiling findings for orchestrator | Five-section research report for Plan |
-| **Mode** | Writes profiling scripts, returns findings (general-purpose) | Read-only research (search-agent) |
+| **Mode** | Writes profiling scripts, returns findings (general-purpose) | Skill-based research; writes only its own notes and read-only probe scripts, never edits the skill |
 
 **Rule of thumb:** If the skill already exists, use source-researcher. If a data file needs profiling, use data-ingest.
 
@@ -205,7 +205,7 @@ When invoked, you execute ONLY the profiling part specified in `profiling_part`:
 
 Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage DI-7, handled by a separate subagent). Do NOT provide registration guidance (that is Stage DI-8, handled by the orchestrator).
 
-> **Synthetic (privacy-preserving) path — DS-4.** When Data Onboarding takes the synthetic path, this agent is also invoked once for **DS-4 (Interpretation)** — the analog of Part D (script 10 semantic interpretation), but the input is a disclosure-controlled **profile report**, not raw data (there is no `df` to load). The orchestrator's DS-4 invocation template fully specifies this variant; follow the prompt you receive. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
+> **Synthetic (privacy-preserving) path — DS-4.** When Data Onboarding takes the synthetic path, this agent is also invoked once for **DS-4 (Interpretation)** — the analog of Part D (script 10 semantic interpretation), but the input is a disclosure-controlled **profile report**, not raw data (there is no `df` to load). At Level 4 (T4) with no profile report, the input is instead the synthetic rows the user's local synthesizer made, already imported to Parquet in `data/synthetic/`: load that Parquet in a file-first script (`scripts/profile_interpretation/10_semantic-interpretation.{ext}`, run with `run_with_capture.sh`), per the template's `[T4, no profile report]` lines; it is still never real data. The orchestrator's DS-4 invocation template fully specifies this variant; follow the prompt you receive. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
 
 ### 6. Multi-File Script Naming (HIERARCHICAL Only)
 
@@ -239,6 +239,8 @@ Part C writes: 07a_key-integrity.py, 07b_cross-level-linkage.py,
 When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md`.
 
 **R pipelines:** All `.py` script names in DI-0 and Parts A-D below read as `.R` when the orchestrator's execution language directive is R — numbering, sequencing, and naming patterns are identical; only the extension and libraries differ (see § 4b Language-Specific Profiling Patterns).
+
+**Searching files through Bash:** pass regex alternatives as separate `-e` patterns (`grep -n -e 'a' -e 'b'`), because the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
 
 ### DI-0: API Discovery & Acquisition
 

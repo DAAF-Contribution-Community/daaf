@@ -138,7 +138,7 @@ Before executing any user request, classify it into one of ten engagement modes.
 
 ### Pre-Check: Session Recovery
 
-Before classifying, check: **Is the user asking to resume a previous session?** If yes, read `{SKILL_REFS}/session-recovery.md`, then read the project's `STATE.md` to establish position and resume from the current stage.
+Before classifying, check: **Is the user asking to resume a previous session?** If yes, read `{SKILL_REFS}/session-recovery.md`, then read the project's recovery record to establish position and resume from the current stage: `STATE.md` in most modes, `Reproduction_Report.md` for Reproducibility Verification, `SESSION_NOTES.md` for Framework Development and Ad Hoc Collaboration (`session-recovery.md` says which, and how to tell the modes apart).
 
 ### Mode Decision Framework
 
@@ -207,15 +207,24 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 
 ### Mode Confirmation Gate (MANDATORY)
 
-**This is a HARD GATE.** Before executing ANY mode, you must confirm with the user and receive explicit approval. No exceptions, no shortcuts — not even for seemingly simple requests.
+**This is a HARD GATE.** Before executing ANY mode, you must confirm with the user and receive explicit approval — even for seemingly simple requests, because a wrong mode costs far more than one short exchange. There are exactly two exceptions:
+- **Session recovery:** the Pre-Check above routes a resume request to `session-recovery.md`; the mode was established in the original session.
+- **User Support update-conflict flow, updater waiting:** the session opens with the prompt the updater printed after the user chose option 1 ("Launch Claude Code to help resolve the conflicts"), so the user has already asked for this help. A session the user started themselves to get help with update conflicts is confirmed as usual (`user-support-mode.md` § Update Conflict Resolution Walkthrough).
 
-1. Present your mode classification with reasoning
-2. Include a "What to Expect" preview (see mode-specific points below)
-3. List deliverables, checkpoints, and estimated interactions
-4. End with an explicit question asking the user to confirm or adjust
-5. **STOP. Do not proceed until the user responds with confirmation.**
+The mode confirmation answers **how we will work**. **What exactly we will do** is settled later, in the mode's Scope Check (§ Scope Check below), once the materials the user pointed to have been read. Nothing has been read at confirmation time, so a scope proposed there would be a guess, and a guess presented for approval anchors the user on it. Process-level does not mean thin, though: the preview should give the user a real feel for what the mode would do, so that confirming or declining is an informed choice.
+
+1. Present your mode classification with reasoning, naming the mode
+2. Restate the user's goal in one line — an understanding check in their terms, not a scope proposal
+3. Give a process-level "What to Expect" preview: the arc of the mode, its checkpoints and what each one decides, and the kinds of output it produces
+4. "What I'll read first": name every material the user referenced (files, documents, prior projects, URLs, papers, data), and say where scope gets confirmed (the mode's Scope Check) — or, for a mode without one, that the work adapts after reading
+5. End with an explicit question asking the user to confirm or adjust
+6. **STOP. Do not proceed until the user responds with confirmation.**
+
+**Never in a mode confirmation:** scope estimates or summaries — source names, years, geography, record or file counts, estimated interactions, or "what will change" stated as a plan. Mode-intrinsic **defaults** (e.g., Reproducibility Verification's two choices) may be previewed, framed as defaults that are decided later.
 
 For ambiguous requests, ask clarifying questions before classifying.
+
+**If the user adjusts at confirmation:** a reply that changes the **mode** means re-classify and re-confirm. A reply that only adjusts **scope** ("yes, but just the 2015 data") is recorded and carried into the mode's Scope Check; do not re-confirm the mode for it.
 
 #### Turn Boundary Rule
 
@@ -224,14 +233,18 @@ Your mode confirmation message MUST be the ONLY content in that response turn. S
 - Do NOT dispatch any subagents (no `Agent` tool calls)
 - Do NOT begin any stage of work
 - Do NOT read workflow phase files or agent references
+- Do NOT read the materials the user referenced — name them; they are read after confirmation, before the Scope Check (§ Scope Check > Read First). A wrong mode would waste the read, a data file's rows wait for the mode's own data steps (in Data Onboarding, for its sensitivity question too), and the confirmation stays cheap
 
 The confirmation message is a STOPPING POINT. Your next action depends entirely on the user's response. Reference files are loaded *after* the user confirms, in a subsequent turn.
 
 #### Confirmation Self-Check
 
 Before sending your confirmation response, verify:
-- [ ] Mode classification stated with reasoning
-- [ ] "What to Expect" preview included (see key points below)
+- [ ] Mode classification stated with reasoning, naming the mode
+- [ ] User's goal restated in one line
+- [ ] Process-level "What to Expect" preview included (arc, checkpoints, kinds of output)
+- [ ] Every material the user referenced is named (or none was referenced)
+- [ ] No scope estimates or summaries
 - [ ] Message ends with an explicit question to the user
 - [ ] No reference files loaded in this turn
 - [ ] No subagents dispatched in this turn
@@ -239,13 +252,13 @@ Before sending your confirmation response, verify:
 
 #### Confirmation Templates by Mode
 
-Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
+Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.** Name the mode in the classification sentence (the smoke test and DAAFBench look for the mode name and a closing question). Include an `[If materials: …]` clause only when the user referenced something, and name each material in it. Where a template has no `[Your goal in one line]` slot, the classification sentence carries the restatement.
 
 **Data Onboarding:**
-> [Classification reasoning]. I'll read the data onboarding mode workflow reference, then profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
+> [Why this is **Data Onboarding**]. [Your goal in one line]. I'll read the data onboarding workflow, set up a project, and profile your data in stages — structure, statistics, relationships and interpretation — then turn what we learn into a reusable data source skill, with reproducible profiling scripts. Before any data enters the container I'll ask whether it's sensitive; if it is, we switch to a privacy-preserving path where only a summary profile you generate locally crosses over. [If the data comes from an API: Before profiling, an acquisition step writes a fetch script for your approval and then downloads the data.] [If materials: Once you've told me whether the data is sensitive, I'll read [the documentation you pointed to] before the setup scope check.] You'll review at a setup scope check and again after profiling, before I write the skill: two checkpoints, then you review the finished skill. **Shall I proceed?**
 
 **Data Lookup:**
-> [Classification reasoning]. I'll read the data lookup mode workflow reference, then [what you'll look up and where]. **Sound good?**
+> [Why this is a **Data Lookup**]. I'll read the data lookup workflow, find the most relevant source reference for your question, and give you a focused answer with its source. [If materials: I'll read [X] first.] If it turns out to need broader exploration, I'll check with you before widening it. **Sound good?**
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
 
@@ -253,25 +266,101 @@ Even for simple lookups, always confirm — the user may want broader context th
 > [Why this is a **Literature Review**]. [Your goal in one line]. I'll read the literature review workflow, set up a project folder, and ask how deep you'd like to go: a quick scan of abstracts, a standard review where I read the key papers in full (recommended for most questions), or a formal systematic review that you lead. Then I'll come back with a scope check: the question as I understand it, where I'll search, what counts as in or out, and the expected reading and cost, before any full search starts. Along the way you'll check each reference once before the final version and approve the final write-up; in a standard or formal review you'll also agree which papers get read in full and see what each round found. Every reference is looked up in a database, every quote and number is checked against its page, and results from different studies are never averaged into one number. [If materials: I'll read [X] first.] **Shall I proceed?**
 
 **Data Discovery:**
-> [Classification reasoning]. I'll read the data discovery mode workflow reference, then do a read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
+> [Why this is **Data Discovery**]. [Your goal in one line]. I'll read the data discovery workflow, then do a read-only exploration — no analysis code and no dataset downloads (web pages I consult are saved for provenance) — and come back with findings: what data exists, how well it fits your question, and the main caveats, with the option to move into a full analysis. [If materials: I'll read [X] first and tell you briefly how it shapes what I explore.] **Shall I proceed?**
 
 **Ad Hoc Collaboration:**
-> [Classification reasoning]. I'll read the ad hoc collaboration mode workflow reference, then work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
+> [Why this is **Ad Hoc Collaboration**]. I'll read the ad hoc collaboration workflow, then work with you as a thought partner — reviewing code, debugging, exploring data sources, brainstorming approaches, writing analysis code, whatever you need. You drive and can change topics freely; there are no formal checkpoints. [If materials: I'll start by reading [X], then tell you what I see and what I plan before anything multi-step.] If we produce files, I'll save them to a workspace and suggest a name once we know what we're making. **Sound good, or would you rather approach this differently?**
 
 **Full Pipeline:**
-> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll read the full pipeline mode workflow reference, then present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
+> [Why this is a **Full Pipeline** analysis]. [Your goal in one line]. This is DAAF's most comprehensive mode — a full research pipeline in 5 phases (discovery, planning, data acquisition, analysis, synthesis) with 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. You get a research plan, audited scripts, validated datasets, a notebook walkthrough, figures, and a stakeholder report. Once you confirm, I'll read the full pipeline workflow [and the materials you referenced: X], then present a pre-flight scope check — data sources, years, geography, and anything your materials change — for your approval before any exploration starts. **Shall I proceed?**
 
 **Revision and Extension:**
-> [Classification reasoning]. [What will change]. New version — original untouched. I'll read the revision and extension mode workflow reference, then classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
+> [Why this is **Revision and Extension**]. [What you asked to change, in one line — your words]. The original stays untouched; the work goes into a new version. I'll read the revision workflow and the existing analysis [plus X], then come back with a scope check — what kind of change this is, which steps need re-running, and what can be reused — before re-running anything with the same quality checks as the original. You'll get a summary when it's done. **Shall I proceed?**
 
 **Reproducibility Verification:**
-> [Classification reasoning]. I'll read the reproducibility verification workflow and identify the original Report and delivered notebook (Marimo or Quarto)s. I'll manage a copied folder and organize the workspace, then compare direct log, artifact, figure, and claim evidence. You'll get a Reproduction Report with FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED logs for every main claim surfaced. Two decisions: Would you like to (1) re-fetch data using the existing fetch scripts (default) or use frozen raw data (Stage 5 is explicitly excluded, raw hashes are verified, and acquisition/mirrors are out of scope), and (2) light or full methodological review (default: light)? I'll confirm both again after inventory, along with any exact exclusions before re-execution. **Shall I proceed with these defaults?**
+> [Why this is **Reproducibility Verification**]. I'll read the reproducibility verification workflow, locate the original report and delivered notebook (Marimo or Quarto), copy them into a separate reproduction workspace, re-run the analysis, and compare logs, artifacts, figures and claims. You'll get a Reproduction Report that checks every main claim against the re-run results and gives the analysis an overall verdict: FULLY REPRODUCED, PARTIALLY REPRODUCED or NOT REPRODUCED. Two choices — previewed now, decided after I've inventoried the project: (1) re-fetch data with the original fetch scripts (default) or use the frozen raw data (acquisition then excluded, raw hashes verified); (2) light (default) or full methodological review. [If materials: I'll also read [X] before the inventory checkpoint.] **Shall I proceed?**
 
 **Framework Development:**
-> [Classification reasoning]. I'll read the framework development mode workflow reference, then start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
+> [Why this is **Framework Development**]. [Your goal in one line]. I'll read the framework development workflow, then map the current state of the components involved [and read X you pointed me to] — what exists, how it connects, and what a change would affect — and give you a scope check based on that before I change anything. Then I'll author the changes following DAAF's templates, wire them in with the integration checklist, and run a multi-angle review. Checkpoints: the scope check, a design review for complex work, and your final approval after the review. **Shall I proceed?**
 
 **User Support:**
-> [Classification reasoning]. I'll read the user support mode workflow reference and load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
+> [Why this is **User Support**]. I'll read the user support mode workflow reference and load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed, and if you point me to something specific, I'll read it first. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
+
+### Scope Check
+
+The mode confirmation settles how we will work; the Scope Check settles what exactly we will do. It comes after the materials the user pointed to have been read, so the scope the user approves is grounded in those materials rather than guessed from the request. "Scope Check" is also the user-facing name; use it as-is.
+
+#### Read First
+
+Before proposing scope, read what the user referenced:
+- **Local documents and code:** read in full, with generous reads (CLAUDE.md § Context-Efficient Reading).
+- **PDFs:** always through **one `search-agent` digest dispatch**: the specialist loads `pdf-reading`, runs `pdf_ingest.sh` into the staging `papers/` folder, and writes the digest record to staging (below; in a mode that does not stage, both go into the task's folder). You do not load `pdf-reading` yourself: outside Ad Hoc Collaboration and Framework Development you may not load skills, and one rule for every mode is simpler. A PDF outside `/daaf` is first copied, by you (one `cp` per call, before the dispatch), to `{scratchpad}/scope_staging/user_pdfs/` (or the task folder's `user_pdfs/`), because `pdf_ingest` refuses sources outside `/daaf`. The dispatch tells the specialist to cite each staged artifact by its path relative to the staging root (e.g. `papers/{key}/pages/p012.txt`, `web_fetches/{file}.md`; in a mode that does not stage, relative to the task folder) and each material by title or URL, never by an absolute staged path: the digest graduates into the project, and those relative paths then resolve under `{PROJECT_DIR}` (or under the dated subfolder, when graduation needs one). Name the digest `{date}_{slug}_materials-digest.md`, where `{slug}` is a short kebab-case tag for the task (e.g. `ipeds-table2-replication`), so two digests written on the same day into one folder never collide.
+- **Web pages:** `web_fetch.sh` per the `web-retrieval` skill, never the built-in WebFetch, with the staging `web_fetches/` folder as DEST_DIR (in a mode that does not stage, the task folder's `web_fetches/`).
+- **Large prior projects or many files:** the same single `search-agent` digest dispatch (one dispatch covers every material, PDFs included), so your own context is not swamped before the first checkpoint.
+- **Data files** (CSV, Parquet, Excel, database extracts and the like): describe them only from what the user said and their listing (name, size, type); their rows never enter your context before the Scope Check. The mode's normal data steps examine their contents after confirmation. In Data Onboarding they also wait for the sensitivity question, because opening them would bring possibly sensitive data into the container before the user has said whether it may enter.
+- **Documentation in Data Onboarding** (codebooks, provider pages) is read only after the sensitivity question has been answered, then before PSU-DI1; its fetches, PDF ingests and digest go into the project folder DI-2 has already created. Documentation the user flags as sensitive waits, and on the synthetic (sensitive) path you ask before reading any local documentation, as `data-onboarding-mode.md` § PSU Templates > Scoping Read Before PSU-DI1 describes.
+- **Nothing referenced:** the Scope Check is grounded in the request alone, and its estimates are labelled preliminary.
+
+**Staging.** One rule decides where materials go that are read where no project may exist yet to hold work: before a mode's Scope Check (Ad Hoc Collaboration: before its first artifact creates the workspace), or in a mode that never creates a project (Data Lookup, User Support, Data Discovery), where it covers every fetch, PDF ingest and digest, Data Discovery's Stage 2 exploration fetches included. It is evaluated when each material is read. If a folder for this task already exists at that moment (an existing project, a reproduction folder, a workspace), they go straight into it, additively (its `web_fetches/`, `papers/` and notes folder, usually `output/preliminary_notes/`), never touching the original's deliverables. Otherwise no folder exists to hold them, and they are staged in the session scratchpad, in a `scope_staging/` folder: `{scratchpad}/scope_staging/`, where `{scratchpad}` is the scratchpad directory listed in your environment (under `/daaf/claude-code-tmp/`). Pass the absolute path explicitly to any subagent. Staged there:
+- `web_fetch.sh` artifacts → `{scratchpad}/scope_staging/web_fetches/`
+- `pdf_ingest.sh` output → `{scratchpad}/scope_staging/papers/`
+- a copy of a PDF from outside `/daaf` → `{scratchpad}/scope_staging/user_pdfs/`
+- a materials digest record → `{scratchpad}/scope_staging/{date}_{slug}_materials-digest.md`
+
+Which modes stage depends on when each creates its folder (each mode's `## Scope Check` gives the detail):
+- **Stage, then graduate on confirmation:** Full Pipeline (its project folder is created when the pre-flight is confirmed), Framework Development (its workspace is created at its first milestone; a material read after Phase 1 has created it goes straight in) and Ad Hoc Collaboration (its workspace is created at the first artifact).
+- **No staging, the folder exists:** Revision and Extension (its existing project folder; the reads only add files, and the delivered original stays untouched), Reproducibility Verification (RV-1 creates the reproduction folder before PSU-RV1), Data Onboarding (DI-2 creates the project before PSU-DI1) and Literature Review (LR-0 creates the project before CP-1, the review plan) write read-first artifacts straight into the task's folder.
+- **Stage, never graduate unless the user escalates:** Data Lookup, User Support and Data Discovery, which stage every fetch, PDF ingest and digest they make, not only read-first ones (Data Discovery's Stage 2 exploration fetches included).
+
+Why the scratchpad: it sits inside the backup volume, yet Claude Code deletes it when it deletes the session's transcript (verified against the Claude Code `.claude` directory docs on 2026-11-02), which suits material whose project may never exist (a declined scope or a wrong mode leaves nothing in `research/`). `web_fetch.sh` and `pdf_ingest.sh` accept it as a destination; they refuse only paths outside `/daaf` and under `/tmp`, `/var/tmp`, `/dev/shm`, `/host_data`, `.claude/` or `.git/`. Nothing durable cites a staged path (no STATE.md, SESSION_NOTES.md, plan or note). A dispatch prompt is transient, so it may pass staged absolute paths for the subagent to read (Data Discovery's Stage 2 and 3 dispatches do), but the record the subagent writes or returns names materials by title or URL, or by a path relative to the staging root. The Scope Check message itself may mention what was read (titles, URLs), not staged paths.
+
+**Graduation on confirmation.** When the user confirms the Scope Check in a mode that creates a project or workspace, move the staged artifacts into it (one `mv` per call) before anything cites them: `web_fetches/` → `{PROJECT_DIR}/web_fetches/`; `papers/` → `{PROJECT_DIR}/papers/` (and `user_pdfs/` → `{PROJECT_DIR}/user_pdfs/`); the digest → `{PROJECT_DIR}/output/preliminary_notes/` (Framework Development workspace: `preliminary_notes/`; Ad Hoc Collaboration workspace, which has no notes folder: its root, beside SESSION_NOTES.md). Move each folder whole, so its `MANIFEST.jsonl` stays beside its artifacts. If `{PROJECT_DIR}/web_fetches/`, `papers/` or `user_pdfs/` already exists (the notes folder existing does not count), merge nothing and split nothing: move the whole staging tree as one unit (one `mv`) to a dated subfolder of the project, `{PROJECT_DIR}/{date}_scope_staging/`, digest included, so its layout stays intact and the digest's staging-relative paths resolve under that subfolder. Record the moves as one dated old → new line in STATE.md or SESSION_NOTES.md (Full Pipeline: in its pre-flight record, `output/preliminary_notes/{date}_preflight_scope-check.md`), following `SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check step 3 (MANIFEST rows written before the move are historical records — never rewrite them). A `web_fetch` row names its artifacts by basename, so it still resolves after the move.
+
+Then **re-ingest each staged paper whose source PDF moved with it** (a `user_pdfs/` copy, or a PDF saved in staging `web_fetches/`), one call per paper: `bash /daaf/scripts/pdf_ingest.sh {new source path} {graduated papers folder} --paper-key {key} --reingest` (add the original `--source` if it was not the default). A `pdf_ingest` record keeps the absolute path of the source it read, and `lit_verify` re-reads that source to check a card's quotes, so without this step it reports SOURCE_MISSING. `--reingest` is required: the bytes are unchanged, and a same-source re-run without it writes nothing and exits 0 (`pdf_ingest.py` "ALREADY INGESTED … nothing written"). With it, a new versioned set (`_a`, …) is written beside the first and becomes the current ingest. A paper whose source was already elsewhere under `/daaf` did not move and needs nothing.
+
+Ad Hoc Collaboration has no confirmation step: its staged items graduate when it creates its workspace, at the first artifact.
+
+**Modes that never create a project** (Data Lookup, User Support, and Data Discovery unless it escalates) leave staged artifacts where they are; answers cite the URL or document title, never the staged path. If the session escalates to a mode that creates a project, they graduate when that mode's Scope Check is confirmed.
+
+**Fallback:** if the scratchpad path starts with `/tmp/` (`CLAUDE_CODE_TMPDIR` not in effect), staging is impossible (DAAF blocks `/tmp` writes): tell the user, and in a project-creating mode create the project or workspace folder first and fetch into it directly; in a no-project mode, read only what needs no file (local files, pasted text) and ask before anything else.
+
+#### Tiers
+
+| Tier | Mode | Where the Scope Check happens |
+|------|------|-------------------------------|
+| Hard | Full Pipeline | Pre-Flight Checklist (`full-pipeline-mode.md`) |
+| Hard | Framework Development | Checkpoint 1, the PSU-FD1 Scope Check |
+| Hard | Revision and Extension | Revision Scope Check, at the step that confirms the revision type |
+| Hard | Reproducibility Verification | PSU-RV1, the post-inventory checkpoint |
+| Hard | Data Onboarding | PSU-DI1 Setup Confirmation (synthetic path: PSU-DS1) |
+| Hard | Literature Review | CP-1, the review plan checkpoint (quick scan: its short form) |
+| Soft | Ad Hoc Collaboration | Before each new multi-step or artifact-producing task |
+| Soft | Data Discovery | Before dispatching exploration (Stage 2), when the user referenced materials |
+| None | Data Lookup | — |
+| None | User Support | — |
+
+- **Hard (blocking):** embed the standard block below in the checkpoint's own template, keeping the checkpoint's mode-specific fields, and wait for the user's approval.
+- **Soft (non-blocking):** once per new multi-step task, not on every turn (Data Discovery: only when the user referenced materials; see its row), say in a line or two: "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." (With no materials, just the plan.) Then start in the same turn. It must never become a gate (Ad Hoc Collaboration forbids checkpoint gates).
+- **None:** read the referenced materials, then adapt. If reading shows the request needs more than the mode offers, use the Mode Escalation Paths (and Data Lookup's existing rules against loading multiple skills or expanding without confirmation).
+
+Each mode file's `## Scope Check` section states its tier, where the check happens, what is read first, and any mode-specific carve-out.
+
+#### Standard Block (Hard Tier)
+
+```
+**Scope Check**
+**What I read:** [each material, one line on what in it shapes the scope] (or "Nothing beyond your request — the estimates below are preliminary")
+**Proposed scope:** [the mode-specific scope fields]
+**What changed from your original request:** [differences the materials introduced, or "Nothing — your request and the materials agree"]
+**Decisions for you:** [each independent decision on its own line, with its default]
+**[closing question]**
+```
+
+"What changed from your original request" is the most important line: it is where the user sees that a document reshaped the work. Scope adjustments the user made at mode confirmation belong in "Proposed scope" too.
+
+#### Session Recovery
+
+Skip the Scope Check when the mode's record shows a confirmed scope (STATE.md, SESSION_NOTES.md, or for Reproducibility Verification the status line of the Reproduction Report's Scope Decisions; for Full Pipeline the project folder's `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the pre-flight is confirmed, and from Stage 4 also STATE.md; a folder without that file, after an interrupted confirmation or under the `/tmp` fallback, is not confirmed); re-present it only if it is recorded as awaiting confirmation or was never recorded. Materials staged before an interruption may still be in the earlier session's scratchpad: re-read or re-fetch them as needed rather than citing that path. `session-recovery.md` § Step 5c lists where each mode keeps that record.
 
 ### Mode Escalation Paths
 
@@ -286,7 +375,8 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Full Pipeline (Phase 1) | Data Onboarding | Required data source has no existing skill |
 | Full Pipeline (complete) | Revision and Extension | User requests changes to a just-completed analysis |
 | Revision and Extension | Full Pipeline | Revision scope expands beyond targeted modification |
-| Data Onboarding (complete) | Revision and Extension | User wants to modify the skill just created |
+| Data Onboarding (complete) | Framework Development | User wants to modify or refine the skill just created beyond what Onboarding produced |
+| Revision and Extension | Data Onboarding | Revision requires a data source with no existing skill |
 | Full Pipeline (complete) | Reproducibility Verification | User wants to verify their analysis reproduces |
 | Reproducibility Verification | Revision and Extension | Divergence found, user wants to fix original |
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
@@ -294,6 +384,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Ad Hoc Collaboration | Data Discovery | User wants systematic data exploration |
 | Ad Hoc Collaboration | Data Onboarding | User has data that needs profiling and a new skill — including sensitive/proprietary/PII data, which routes to the synthetic (privacy-preserving) path at the DI-1 sensitivity gate |
 | Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
+| Ad Hoc Collaboration | Reproducibility Verification | User wants to verify an existing analysis reproduces |
 | Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | User realizes they just want to talk through the approach, not run the full pipeline |
 | Full Pipeline (complete) | Ad Hoc Collaboration | User wants to discuss results or plan next steps informally |
@@ -303,7 +394,6 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Framework Development | Ad Hoc Collaboration | User realizes they need analysis help, not framework changes |
 | Framework Development | Revision and Extension | User wants to review or revise an analysis that used the framework |
 | Framework Development | Data Discovery | Framework change requires testing with a specific data source |
-| Data Onboarding (complete) | Framework Development | User wants to refine the skill just created beyond what Onboarding produced |
 | Full Pipeline (complete) | Framework Development | User identifies framework improvements based on analysis experience; System Update Action Plan in LEARNINGS.md has actionable items — proactively suggest "incorporate learnings" |
 | Data Onboarding (complete) | Framework Development | System Update Action Plan in LEARNINGS.md has actionable items (e.g., skill template gaps discovered during profiling) |
 | Data Discovery | Literature Review | User wants to know what published research has found ("what's known about …") before choosing data |
@@ -329,30 +419,37 @@ Await explicit user confirmation before proceeding.
 
 ### Plain-Language Rule
 
-All user-facing messages (mode confirmations, checkpoints, status updates, error explanations) MUST use plain language. Internal terminology is for agent-facing instructions only and must NEVER appear in messages to the user.
+All user-facing text DAAF produces MUST use plain language: messages (mode confirmations, checkpoints, status updates, error explanations), files users read or edit, the output of templates users read or paste (reports, plans, restart prompts), and runtime messages. Internal terminology is for agent-facing instructions only and must NEVER appear in user-facing text. Write around an internal code rather than naming it and adding a gloss. The table below is DAAF's single glossary of internal terms and their user-facing language; `agent_reference/DOCUMENTATION_STANDARDS.md` § S3 Plain for Users applies the same rule to shipped files.
 
 | Internal Term | User-Facing Language |
 |---|---|
-| PSU (Phase Status Update) | "phase checkpoint" or "checkpoint" |
+| PSU (Phase Status Update), incl. the mode forms PSU-DI1, PSU-DS1, PSU-RV1 (any number) | "phase checkpoint" or "checkpoint" |
 | Stage gate | "quality check" or "verification step" |
 | QA / QA aggregation | "quality review" or "quality review summary" |
 | Composite execution pattern | *(never expose — internal only)* |
 | Subagent | "specialist" or omit entirely |
 | Code-reviewer | "quality reviewer" |
-| CP1 / CP2 / CP3 | "automated validation" |
+| CP1 / CP2 / CP3 / CP4 | "automated validation" |
+| CPP1-CPP4 / CPS-INTAKE / CPS-GEN | "automated validation" |
+| QAP1-QAP4 / QAS-A / QAS-B / QAS-C | "quality review" |
 | BLOCKER | "issue that needs to be resolved before continuing" |
 | WARNING | "note for your awareness" |
 | Stage N | "step" or describe the activity (e.g., "data cleaning" not "Stage 6") |
+| Phase N | Describe the activity (e.g., "planning" or "the review" not "Phase 2"); a checkpoint header names the activity: `**Checkpoint: {Activity} Complete**` (e.g., `**Checkpoint: Discovery Complete**`), never "Phase N of 5" |
+| DI-N / DS-N / RV-N (mode step codes) | Describe the activity (e.g., "profiling your data" not "DI-3") |
+| PSU-FD1 / PSU-FD2 | "scope check" / "review" |
 | Gate GN | *(never expose — internal only)* |
+| GFD-N / GDI-N / GDS-N | *(never expose — internal only)* |
+| Scope Check tier (Hard / Soft / None) | *(never expose — internal only)*; the step itself is the "scope check" |
 | Confidence level | Keep as-is (already intuitive) |
 | STATE.md | "session state" or "saved progress" |
-| LEARNINGS.md | *(never reference directly — internal artifact)* |
+| LEARNINGS.md | Name it as the file the user sees in their project folder, explained where they meet it (e.g., "the lessons file, `LEARNINGS.md`, where I note what this project taught us: data quirks, decisions, and ideas for improving DAAF") |
 | Transformation Sequence | "analysis steps" or "the planned sequence of steps" |
 | LR-0 … LR-8, LR-7Q, LR-8Q (Literature Review stage codes) | Describe the activity (e.g., "searching", "choosing papers", "reading the key papers", "writing up"); full list in `literature-review-mode.md` § Plain-Language Vocabulary |
 | CP-1 / CP-K / CP-S / CP-A / CP-R / CP-G / CP-F (Literature Review checkpoints, with a hyphen; not CP1-CP4) | "scope check" / "key-paper list" / "full-text decisions" / "checklist review" / "round check-in" / "reference check" / "final review" |
 | Literature Review status and verdict codes (page-check verdicts, `verify` verdicts, citation statuses such as `pending_adjudication`, reading-audit outcomes, review levels), its agent names, and claim, finding and edge ids or `.lr-*` markers | The wording in `literature-review-mode.md` § Plain-Language Vocabulary (e.g., "matches the database record", "matches the record; not yet confirmed", "accepted by you", "the AI reader"); ids and markers never appear in user-facing prose |
 
-**Exceptions:** If the user themselves uses internal terminology (e.g., a returning power user says "what's the QA status?"), mirror their language. The plain-language rule applies to orchestrator-initiated communication, not to matching user vocabulary.
+**Exceptions:** If the user themselves uses internal terminology (e.g., a returning power user says "what's the QA status?"), mirror their language. The plain-language rule applies to orchestrator-initiated communication, not to matching user vocabulary. A code the user actually sees (a folder name such as `scripts/stage5_fetch/`, a file name, a validation banner in script output) is named as it appears and explained in plain words where the user meets it, e.g. "the data-fetching scripts, in `scripts/stage5_fetch/`".
 
 ### Context-Sensitive Help
 
@@ -366,7 +463,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 | "Can I change X?" / "Is it too late to...?" | Explain what's modifiable at current stage | `user_reference/02_understanding_daaf.md` |
 | "I don't understand" / confusion signals | Re-explain in simpler terms; offer to elaborate | `user_reference/02_understanding_daaf.md` |
 | "Why are you doing X?" | Explain purpose of current step in overall analysis | `user_reference/02_understanding_daaf.md` |
-| "How long will this take?" | Describe remaining phases and checkpoints (no time estimates — per CLAUDE.md) | — |
+| "How long will this take?" | Describe remaining phases and checkpoints; give no time estimates | — |
 | "What are my options?" | Present available actions at current workflow point | — |
 | "Any tips?" / "How do I get the best results?" | Summarize prompting and review guidance | `user_reference/03_best_practices.md` |
 | Setup or installation questions | Troubleshoot or walk through steps | `user_reference/01_installation_and_quickstart.md` |
@@ -383,7 +480,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 
 ### Turn-End Briefing
 
-Do not assume the user has been watching the work unfold. Tool calls, subagent dispatches, file writes, and intermediate results all scroll past in the transcript, but the user is a collaborator who may well have stepped away — attending to their own work while DAAF runs — and comes back to a wall of activity they did not read. So whenever a turn returns control to the user after substantive work, close it with a briefing that catches them up on everything relevant since their last message, taken altogether — not a report on the most recent step alone. Write it the way you would brief a colleague who left the room: in plain language with internal shorthand expanded, and oriented toward what the work means and what to do about it rather than which commands ran.
+Do not assume the user has been watching the work unfold. Tool calls, subagent dispatches, file writes, and intermediate results all scroll past in the transcript, but the user is a collaborator who may well have stepped away — attending to their own work while DAAF runs — and comes back to a wall of activity they did not read. So whenever a turn returns control to the user after substantive work, close it with a briefing that catches them up on everything relevant since their last message, taken altogether — not a report on the most recent step alone. Write it the way you would brief a colleague who left the room: in plain language that writes around internal shorthand, and oriented toward what the work means and what to do about it rather than which commands ran.
 
 **Attention is the scarce resource.** The discipline that keeps a briefing short is selectivity about what earns a place in it, not the compression of full sentences into terse fragments. Every claim on the user's attention — every sentence, every bullet — has to carry enough value to justify the read. Depth therefore scales with substance: a quick lookup warrants a sentence or two, while a large multi-specialist round with several findings and decisions genuinely deserves proportionally more room. There is deliberately no fixed length or item budget here; the test is always whether an item is worth the user's attention, never whether it fits a quota.
 
@@ -399,7 +496,7 @@ Do not assume the user has been watching the work unfold. Tool calls, subagent d
 
 - Re-narrating the sequence of tool calls or subagent dispatches as though the process were the point.
 - Dumping logs, full file contents, or raw data samples instead of referencing paths.
-- Leaving internal codenames, stage numbers, or agent names unexplained — expand them per the Plain-Language Rule table above.
+- Naming internal codenames, stage numbers, or agent names — write around them per the Plain-Language Rule table above, and explain only a code the user actually sees (a folder or file name, or a validation banner in script output) where they meet it.
 - Presenting inference as observed fact. The evidence grading from CLAUDE.md and the claim-adjudication discipline from Subagent Return Processing both stay in force: a specialist's finding you have not independently verified is relayed with its provenance marked, and completion counts come from tool output, not memory.
 - Over-structuring a small answer — headers, tables, and bulleted scaffolding wrapped around what is really a two-sentence update read as mechanical and spend attention without adding value.
 - Burying an action the user must take at the bottom of a long recap where it is easy to miss.
@@ -412,7 +509,7 @@ This standard is model-agnostic by design. The same structural discipline — le
 
 ## What to Load Next
 
-> **GATE:** This section applies ONLY after the user has explicitly confirmed the engagement mode in their response. Do NOT load any reference files until confirmation is received. If the user's response adjusts the mode or scope, re-classify and re-confirm before loading.
+> **GATE:** This section applies ONLY after the user has explicitly confirmed the engagement mode in their response. Do NOT load any reference files until confirmation is received. If the user's response changes the mode, re-classify and re-confirm before loading. If it only adjusts scope, record the adjustment and carry it into the mode's Scope Check (§ Scope Check); the mode does not need re-confirming.
 
 **Path convention:** **`{SKILL_REFS}`** = `{BASE_DIR}/.claude/skills/daaf-orchestrator/references`. Resolve `{BASE_DIR}` from your working directory (the project root where `CLAUDE.md` resides).
 
@@ -468,7 +565,9 @@ Mode Confirmed
     ├─ Full Pipeline Mode
     │   └─ Read: {SKILL_REFS}/full-pipeline-mode.md (contains pre-flight checklist,
     │          │   all PSU templates, invocation templates, QA protocols, quality framework)
-    │          ├─ ★ PRESENT Pre-Flight Checklist to user (STOP — wait for confirmation)
+    │          ├─ Read the materials the user referenced (§ Scope Check > Read First)
+    │          ├─ ★ PRESENT Pre-Flight Checklist with its Scope Check to user (STOP — wait for confirmation)
+    │          ├─ On confirmation: create the project folder, move staged materials in, record the pre-flight (full-pipeline-mode.md § On Confirmation (Gate G1))
     │          ├─ After pre-flight confirmed, load progressively per phase:
     │          │   ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
     │          │   ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
@@ -497,6 +596,7 @@ Mode Confirmed
     ├─ Framework Development Mode
     │   └─ Read: {SKILL_REFS}/framework-development-mode.md
     │          ├─ Integration checklist: Read {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
+    │          ├─ Before editing shipped text directly: Read {BASE_DIR}/agent_reference/DOCUMENTATION_STANDARDS.md
     │          ├─ Load skill: skill-authoring (orchestrator loads directly — exception to standard pattern)
     │          └─ Load skill: agent-authoring (orchestrator loads directly — exception to standard pattern)
     │
@@ -580,9 +680,10 @@ agent following `QA_CHECKPOINTS.md`.
 
 The same applies to **claude.ai-synced account skills and plugins**. When the
 user signs in with a claude.ai account, Claude Code syncs that account's skills
-and plugins. On 2.1.281, synced account skills appear in your skill listing
+and plugins. Synced account skills appear in your skill listing
 namespaced as `anthropic-skills:<name>` (e.g. `anthropic-skills:docx`,
-`anthropic-skills:pdf`); the user's `/skills` UI shows them by short name.
+`anthropic-skills:pdf`); the user's `/skills` UI shows them by short name
+(observed 2026-11-02, Claude Code 2.1.281).
 Synced plugins can register namespaced skills and agents, hooks, and MCP
 servers outside DAAF's audited set. A repository cannot turn this sync off,
 so DAAF coexists with it rather than disabling it; users who want a DAAF-only
@@ -647,9 +748,11 @@ dispatches without re-confirming with the user each time.
 
 ### Subagent Type Selection
 
-DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagent, set `subagent_type` to the agent's `name` field from its frontmatter (e.g., `subagent_type: "research-executor"`). Claude Code automatically loads the agent's protocol file and applies its `tools` and `permissionMode` settings.
+DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagent, set `subagent_type` to the agent's `name` field from its frontmatter (e.g., `subagent_type: "research-executor"`). Claude Code automatically loads the agent's protocol file and applies its `tools` list; it applies `permissionMode` only when the parent session is in default or dontAsk mode: under auto, bypassPermissions or acceptEdits the subagent runs in the parent's mode, and under plan mode it stays in plan mode (verified against the Claude Code sub-agents docs on 2026-11-02). In DAAF, read-only therefore means the `tools` list has no Write or Edit tool; for an agent that keeps Bash, the `enforce-file-first.sh` hook blocks direct Python and R, but a shell command can still write, so its boundary text forbids it.
 
 **Named Agents (preferred for all pipeline operations):**
+
+"read-only" below means no Write or Edit tool; `plan` takes effect only outside auto, bypassPermissions and acceptEdits parent modes (see above).
 
 | Agent Name | Permission Mode | Use For |
 |------------|----------------|---------|
@@ -657,7 +760,7 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | `code-reviewer` | `default` (read/write) | QA review of executed scripts (Stages 5-8 QA, RV-2) |
 | `data-planner` | `default` (read/write) | Research plan creation (Stage 4) |
 | `plan-checker` | `plan` (read-only) | Plan verification (Stage 4.5) |
-| `source-researcher` | `plan` (read-only) | Source deep-dive (Stage 3) |
+| `source-researcher` | `default` (writes its own notes only) | Source deep-dive (Stage 3, Data Discovery, Data Lookup); writes its notes to a dispatch-named path, may run read-only probe scripts file-first, never changes existing files |
 | `research-synthesizer` | `default` (read/write) | Multi-source synthesis (Stage 3.5) |
 | `debugger` | `default` (read/write) | Error diagnosis (any stage, RV-2 escalation) |
 | `notebook-assembler` | `default` (read/write) | Notebook compilation (Stage 9) |
@@ -670,7 +773,7 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 | `literature-synthesizer` | `default` (writes its own deliverables and inputs only) | Literature Review quick-scan memo, round syntheses and final synthesis (LR-6, LR-7, LR-7Q); never runs `lit_verify report` on its own deliverable |
 | `citation-adjudicator` | `plan` (read-only: Read only, no Bash) | Literature Review citation second check, one bundle per dispatch; dispatched only once an evaluated identity exists (`literature-review-mode.md` § The Citation Second Check) |
 | `framework-engineer` | `default` (read/write) | Framework artifact authoring and integration (Framework Development Mode) |
-| `search-agent` | `plan` (read-only) | Broad-purpose read-only exploration — codebase, documentation, web, data (any mode/stage) |
+| `search-agent` | `default` (writes its own records only) | Broad-purpose search and information gathering — codebase, documentation, web, data (any mode/stage); writes the detailed record to a dispatch-named path, never changes existing files |
 
 See `.claude/agents/README.md` for the complete agent index with key inputs and outputs.
 
@@ -678,12 +781,12 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 
 | Type | Use For | Capabilities |
 |------|---------|--------------|
-| `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
+| `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most exploration and lookup tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For exploration, lookup, and review tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (Explore starts without CLAUDE.md and cannot write files, so it neither follows DAAF's conventions nor saves a record of what it found; Claude Code subagents docs, verified 2026-11-02) and will be rejected, wasting time and context on failed launches.
 
-**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced in layers. First, the harness: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` in settings.json `env` makes Claude Code withhold the Agent/Task tool from every subagent (observed behavior on 2.1.261 and 2.1.281; the Claude Code changelog says only that the setting disables nesting). Second, the named agents omit `Agent`/`Task` from their `tools:` lists. Third, the backstop: the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch originating inside a subagent, covering the generic built-in types too, should the spawn-depth limit ever be lifted or regress.
+**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced in layers. First, the harness: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` in settings.json `env` makes Claude Code withhold the Agent/Task tool from every subagent (observed 2026-11-02, Claude Code 2.1.281; the Claude Code changelog says only that the setting disables nesting). Second, the named agents omit `Agent`/`Task` from their `tools:` lists. Third, the backstop: the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch originating inside a subagent, covering the generic built-in types too, should the spawn-depth limit ever be lifted or regress.
 
 ### Model Selection for Subagent Dispatch
 
@@ -694,7 +797,7 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 | Tier | Agents | Why |
 |------|--------|-----|
 | `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest, paper-reader, literature-synthesizer, citation-adjudicator | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis, page-checked paper reading, literature synthesis and certainty wording, citation-identity judgment |
-| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent, literature-searcher | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration, executing an approved literature search protocol |
+| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent, literature-searcher | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad exploration and information gathering, executing an approved literature search protocol |
 
 **Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.
 
@@ -714,7 +817,7 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 
 **Ceiling rule.** Never dispatch a subagent on a *higher* tier than the current session model. A user who chose a cheaper session model did so deliberately (cost control); silently upgrading subagents defeats that choice. The orchestrator cannot reliably determine its own session model from context, so the `enforce-model-ceiling.sh` PreToolUse hook enforces this deterministically: if a dispatch would exceed the session tier, the hook denies it and its message names the session model and the tier alias to use (e.g. `model: sonnet`). **Trust and follow the hook** — re-dispatch at the tier it states. (The hook is a fail-open cost guard, not a safety boundary: if it cannot detect the session model it allows the dispatch.)
 
-**Alternative providers.** Users on OpenRouter, the provider shim, or a cloud platform set all four tier aliases host-side in `environment_settings.txt`. `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` carry DAAF's two-tier routing (their models, same semantics); the OPUS remap should also set the session model, because settings.json ships the soft default `ANTHROPIC_DEFAULT_MODEL=opus` (inferred from Claude Code's alias resolution, not tested on every route — the user can confirm with `/status`). `ANTHROPIC_DEFAULT_HAIKU_MODEL` (Claude Code's housekeeping calls → fast model) and `ANTHROPIC_DEFAULT_FABLE_MODEL` (→ strong model) keep Claude Code from requesting a model the route does not serve; no DAAF agent uses either tier. "One model for everything" means all four aliases set to the same model — `CLAUDE_CODE_SUBAGENT_MODEL` no longer flattens DAAF's agents, because each agent's `model:` frontmatter outranks it (Claude Code ≥ 2.1.251). When the opus/sonnet aliases are remapped, the ceiling hook stands down (it cannot rank custom models). When they are not and the session runs a non-Claude model, the hook denies every Claude-tier dispatch; re-dispatching at another tier cannot help, so do not retry — relay the hook's remap guidance to the user. OpenAI GPT models are supported this way through OpenRouter or DAAF's provider shim (recommended: Sol for FABLE/OPUS and Luna for SONNET/HAIKU — provider-prefixed `openai/gpt-6-sol` / `openai/gpt-6-luna` on OpenRouter, bare `gpt-6-sol[1m]` / `gpt-6-luna[1m]` on the shim; Astra, `openai/gpt-6-astra` or `gpt-6-astra[1m]`, is a premium strong tier; GPT-6.1 Sol, `openai/gpt-6.1-sol` or `gpt-6.1-sol[1m]`, is a newer strong-tier option read like `gpt-6-sol`).
+**Alternative providers.** Users on OpenRouter, the provider shim, or a cloud platform set all four tier aliases host-side in `environment_settings.txt`. `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` carry DAAF's two-tier routing (their models, same semantics); the OPUS remap should also set the session model, because settings.json ships the soft default `ANTHROPIC_DEFAULT_MODEL=opus` (inferred from Claude Code's alias resolution, not tested on every route — the user can confirm with `/status`). `ANTHROPIC_DEFAULT_HAIKU_MODEL` (Claude Code's housekeeping calls → fast model) and `ANTHROPIC_DEFAULT_FABLE_MODEL` (→ strong model) keep Claude Code from requesting a model the route does not serve; no DAAF agent uses either tier. "One model for everything" means all four aliases set to the same model — `CLAUDE_CODE_SUBAGENT_MODEL` does not flatten DAAF's agents, because each agent's `model:` frontmatter outranks it; `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` does (verified against the Claude Code environment-variables docs on 2026-11-01). When the opus/sonnet aliases are remapped, the ceiling hook stands down (it cannot rank custom models). When they are not and the session runs a non-Claude model, the hook denies every Claude-tier dispatch; re-dispatching at another tier cannot help, so do not retry — relay the hook's remap guidance to the user. OpenAI GPT models are supported this way through OpenRouter or DAAF's provider shim (recommended: Sol for FABLE/OPUS and Luna for SONNET/HAIKU — provider-prefixed `openai/gpt-6-sol` / `openai/gpt-6-luna` on OpenRouter, bare `gpt-6-sol[1m]` / `gpt-6-luna[1m]` on the shim; Astra, `openai/gpt-6-astra` or `gpt-6-astra[1m]`, is a premium strong tier; GPT-6.1 Sol, `openai/gpt-6.1-sol` or `gpt-6.1-sol[1m]`, is a further strong-tier option read like `gpt-6-sol`).
 
 **Reading PDFs on GPT routes.** Literature Review's paper-reader keeps the `opus` tier on GPT routes: the recommended sonnet mapping, Luna, is not on the `pdf-reading` skill's vision-validated list, so on that tier PDFs are read as text only, never as page images. The list names the exact model IDs and routes it covers (`pdf-reading/references/vision-validation.md`); a reader whose model and route are not on it reads text only whatever its tier.
 
@@ -750,7 +853,7 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 
 ### Preliminary Notes Persistence
 
-Discovery and profiling agents produce rich, structured findings that downstream agents need at full fidelity. The orchestrator persists these as "preliminary notes" — lossless markdown files written to `output/preliminary_notes/` in the project directory. Downstream agents reference these files by path to supplement the orchestrator's compressed inline summaries. The orchestrator retains its own compressed summaries for coordination efficiency (gate decisions, STATE.md tracking, user-facing checkpoints).
+Discovery and profiling agents produce rich, structured findings that downstream agents need at full fidelity. These are persisted as "preliminary notes" (by the agent itself when it is write-capable and the dispatch names the path, as search-agent does at Stage 2 and source-researcher at Stage 3 per `WORKFLOW_PHASE1_DISCOVERY.md`; otherwise by the orchestrator) — lossless markdown files written to `output/preliminary_notes/` in the project directory. Downstream agents reference these files by path to supplement the orchestrator's compressed inline summaries. The orchestrator retains its own compressed summaries for coordination efficiency (gate decisions, STATE.md tracking, user-facing checkpoints).
 
 ### Subagent Return Processing
 
@@ -760,6 +863,8 @@ When a subagent returns findings:
    a. Create file at the designated path (see table)
    b. Prepend the provenance header (see Provenance Header Template below)
    c. Confirm file was written successfully — this is a **gate condition**: do not proceed until the file exists on disk and contains the complete agent return
+
+   **Carve-out: the agent wrote the record itself.** When a write-capable agent reports writing its record at the dispatch-named path (and returns a summary), do not write the summary over it. Instead apply the gate in 2c to the agent's file: confirm it exists at the named path and is complete (every section the format it was given requires: for search-agent at Stage 2, sections 1-7 of the dispatch's OUTPUT FORMAT in `WORKFLOW_PHASE1_DISCOVERY.md`; for source-researcher, all five of its Output Format). The provenance header is omitted in this case: the orchestrator never edits the agent's file, and it records the agent, the stage and the path in STATE.md instead. If the file is missing or incomplete, re-dispatch, or persist an inline full return per 2a-2c.
 3. Extract: Status, key findings (3-5 bullets), file locations, confidence level, issues requiring escalation
 4. Discard from working memory: Verbose explanations, intermediate steps, full code blocks, raw data samples
 5. Store summarized key findings + **preliminary notes file path** in working memory
@@ -772,6 +877,8 @@ When a subagent returns findings:
 
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
 
+**Files subagents write (CLAUDE.md § Project Conventions > Subagent File Output):** when a dispatch asks a write-capable agent to persist a detailed report, name a compliant target path (a date or stage/sequence prefix, never a basename starting with `report`, `summary`, `findings` or `analysis`), because Claude Code rejects that Write for subagents. search-agent and source-researcher are write-capable for their own records: a dispatch may name a compliant path for the detailed record (e.g. a review file, or the Stage 2 and Stage 3 preliminary notes), and the agent returns a summary as well (step 2's carve-out applies); when a lossless record is wanted and the dispatch named no path, persist its return per steps 2a-2c. literature-searcher, paper-reader and literature-synthesizer are write-capable for their own named outputs only (JSONL inputs and the scoping record; the evidence card and chunk notes; the deliverables and their inputs), at the paths `literature-review-mode.md` § Dispatch Templates gives. Agents without the Write tool (plan-checker, data-verifier, integration-checker, citation-adjudicator) are never asked to write deliverable or report files: they return text, and when a lossless record is wanted the orchestrator persists it per steps 2a-2c. The citation-adjudicator's return is the exception to 2a-2c: only the lines inside its `jsonl` fence are persisted, verbatim and with no provenance header, to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`, because `lit_corpus adjudications ingest` parses that file. A subagent that hits the rejection recovers in order: Edit if the file exists and the dispatch asks for a change; else a minimally changed compliant name (date or sequence prefix), stated in its return; else the full content inline under a labeled section naming the intended path. Persist such inline content in full and unmodified at a compliant rename of the intended path, recorded in the provenance header (e.g. `<!-- Intended path: {path}; renamed for the Claude Code Write-tool name check -->`). Keep the exact matching name only when a codified downstream path requires it, and note in that path's defining document that subagents can then only Edit that file.
+
 **Claim adjudication (applies across extraction and relay, steps 3-5):** For load-bearing claims in a return — especially negative capability claims ("X is unavailable/impossible/unsupported") and completion counts — verify the stated evidence is present (a quoted probe or command output). If it is absent, treat the claim as unverified inference: verify it directly, re-dispatch with an explicit evidence requirement, or carry it forward explicitly labeled as unverified. When relaying an unverified subagent claim to the user, mark its provenance (e.g., "the specialist reports, though I have not verified...") rather than passing it on with orchestrator authority attached.
 
 ### Parallel Dispatch Guideline
@@ -782,11 +889,11 @@ By default, keep at most **5 subagents in flight at once**, in every mode. Paral
 
 **The user can override it.** It is a default, not a hard rule. When a larger batch would clearly help (six independent source deep-dives, say, where a 5 + 1 split costs a whole extra round), say what it gains and costs and let the user decide. Go above 5 only with the user's explicit approval, at the size and for the span they approved (one wave, one stage, or the rest of the session; an approval does not carry over a session restart). Record it where the mode keeps its decisions (STATE.md or SESSION_NOTES.md); in a mode that keeps neither, the user's reply in the conversation is the record. The override does not touch plan structure: plans keep waves to at most 5 tasks, and a 6+-task wave stays a plan-checker blocker (`agent_reference/SCOPE_POLICY.md`).
 
-**Nothing in DAAF enforces the number.** No hook counts dispatches; the limit holds because the orchestrator follows it and plans are checked against it. Claude Code has its own, higher ceiling: the Agent tool refuses to start another subagent once 20 are running in a session (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, which DAAF leaves at its default of 20; Claude Code 2.1.217 or later, per the Claude Code environment-variables docs, checked 2026-11-01), so in an approved batch above 20 the extra dispatches cannot start.
+**Nothing in DAAF enforces the number.** No hook counts dispatches; the limit holds because the orchestrator follows it and plans are checked against it. Claude Code has its own, higher ceiling: the Agent tool refuses to start another subagent once 20 are running in a session (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, which DAAF leaves at its default of 20; Claude Code 2.1.217 or later, verified against the Claude Code environment-variables docs on 2026-11-01), so in an approved batch above 20 the extra dispatches cannot start.
 
 ### Wave Barrier Discipline (Async Dispatch)
 
-How subagent results arrive depends on the Claude Code version and settings. With DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code version (2.1.281, observed 2026-09-24) run in the foreground and return inline in the dispatching turn. Without that setting, or on other versions, they run in the background (Claude Code's default since 2.1.198) and results can arrive as later async completion notifications, one at a time. The Agent tool's own description may still say subagents run in the background; that is harness boilerplate, and the observed behavior under DAAF's settings differs. The wave barrier applies either way. Inline dispatch enforces it structurally, because the orchestrator *cannot* act on partial wave results that have not returned; async dispatch does not, and there the orchestrator *can* act mid-wave, which is exactly the failure mode this norm prevents. Because the delivery mode can change with a version or setting, the norm is binding regardless of which one is in effect. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
+How subagent results arrive depends on the Claude Code version and settings. With DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code version (2.1.281, observed 2026-09-24) run in the foreground and return inline in the dispatching turn. Without that setting, or on other versions, they run in the background (Claude Code's default since 2.1.198, verified against the Claude Code changelog on 2026-11-02) and results can arrive as later async completion notifications, one at a time. The Agent tool's own description may still say subagents run in the background; that is harness boilerplate, and the observed behavior under DAAF's settings differs. The wave barrier applies either way. Inline dispatch enforces it structurally, because the orchestrator *cannot* act on partial wave results that have not returned; async dispatch does not, and there the orchestrator *can* act mid-wave, which is exactly the failure mode this norm prevents. Because the delivery mode can change with a version or setting, the norm is binding regardless of which one is in effect. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
 
 - **Synthesize once, over the complete wave — never incrementally per return.** Holding all wave results together before deciding is what lets you genuinely reincorporate a later return rather than anchoring on the first one.
 - **Interim narration is fine; acting on partial results is not.** Telling the user "two of three specialists have reported back" is good communication; making the next gate decision before the third returns is not.
@@ -796,15 +903,17 @@ This norm restates as an explicit discipline a guarantee that inline dispatch pr
 
 ### Context Recovery
 
-Follow the context utilization thresholds defined in `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve". The orchestrator-specific relief mechanism is session restart via STATE.md (see `{SKILL_REFS}/session-recovery.md`).
+Follow the context utilization thresholds defined in `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve". The orchestrator-specific relief mechanism is session restart via the mode's recovery record (see `{SKILL_REFS}/session-recovery.md`, which names it for each mode).
 
-**Emergency Context Reset Template:**
+**Emergency Context Reset Template** (user-facing; first update the mode's recovery record, and the restart prompt in it where the record has one):
 ```
-**CONTEXT QUALITY CRITICAL**
+**Time for a fresh start**
 
-I'm experiencing context degradation that may affect output quality.
-Current state captured in STATE.md.
+I'm close to the limit of my working memory for this session, and the quality of
+my work could start to slip, so I've saved our progress.
 
-**To resume:** Copy the restart prompt from STATE.md, run `/clear`, then paste.
-I'll use Session Recovery (see session-recovery.md) to resume with fresh context.
+**To continue:** copy the restart prompt from {where the prompt is}, type `/clear`,
+then paste the prompt. I'll pick up exactly where we left off.
 ```
+
+Fill `{where the prompt is}` from the mode's recovery record: "your project's saved-progress file, `STATE.md`" in the modes that keep STATE.md; "the Session Continuity section of your `Reproduction_Report.md`" in Reproducibility Verification. Framework Development and Ad Hoc Collaboration keep SESSION_NOTES.md, which holds no restart prompt: replace the **To continue** line with "**To continue:** type `/clear`, then ask me to pick up where we left off on {topic}. I'll read our session notes, `{workspace}/SESSION_NOTES.md`, and continue from there."

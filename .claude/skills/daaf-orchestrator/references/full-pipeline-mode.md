@@ -6,84 +6,138 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 - **`{BASE_DIR}`** = project root (where `CLAUDE.md` resides)
 - **`{SKILL_REFS}`** = `{BASE_DIR}/.claude/skills/daaf-orchestrator/references`
 
-> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from Plan.md's Domain Configuration section and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in Plan.md's Domain Configuration.
+> **Domain Extensibility:** This workflow is domain-agnostic. Skill names referenced below (e.g., `education-data-explorer`, `education-data-query`, `education-data-context`) are the demonstration domain defaults. The orchestrator resolves actual skill names from the confirmed pre-flight scope during Stages 2-3 (before a Plan exists) and from Plan.md's Domain Configuration section afterwards, and provides them in Agent prompts. New domains can be added by authoring domain-specific Skills and registering them in Plan.md's Domain Configuration.
 
 > **Invocation Pattern Authority:** Two layers:
 > 1. **`WORKFLOW_PHASE*.md`** — stage-specific invocation templates with full context fields, thoroughness directives, gate criteria, verification checklists, and PSU content. **Start here** when constructing a subagent prompt.
-> 2. **This file (`full-pipeline-mode.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, QA enforcement, and prompt size targets.
+> 2. **This file (`full-pipeline-mode.md`)** — cross-phase templates (code-reviewer invocation, revision requests), generic prompt structure, context inlining protocol, and QA enforcement.
 >
 > **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
-> **Parallel Dispatch Guideline:** Follow the default limit in `SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline": at most **5 subagents in flight at once** unless the user explicitly approves a larger batch. In this pipeline it governs wave-based task dispatch, Stage 3 source-researcher dispatch, code-reviewer invocations, and any other parallel invocation: when more than 5 independent tasks are ready, sub-batch into groups of ≤5. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. Under DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code 2.1.281 run in the foreground and return inline (observed 2026-09-24); without that setting, or on other versions, completion can arrive via async task notifications that land one at a time. Either way, wait for every subagent in a sub-batch to return before dispatching the next, and for the whole set before acting on the results, treating mid-wave notifications as status-only (no gate decisions, plan changes, or synthesis until the whole wave is in). See "Wave Barrier Discipline" below and the master statement in `SKILL.md` § Subagent Coordination.
+> **Parallel Dispatch Guideline:** Follow the default limit in `SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline": at most **5 subagents in flight at once** unless the user explicitly approves a larger batch. In this pipeline it governs wave-based task dispatch, Stage 3 source-researcher dispatch, code-reviewer invocations, and any other parallel invocation: when more than 5 independent tasks are ready, sub-batch into groups of ≤5. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Wait for every subagent in a sub-batch to return before dispatching the next, and for the whole set before acting on the results, treating mid-wave notifications as status-only (no gate decisions, plan changes, or synthesis until the whole wave is in). See "Wave Barrier Discipline" below.
+
+---
+
+## Scope Check
+
+**Tier:** Hard (blocking). **Where:** the Pre-Flight Checklist below is Full Pipeline's Scope Check; it embeds the standard block from `SKILL.md` § Scope Check and keeps its own deliverables and proposed-scope fields. **Read first:** everything the user referenced (papers, prior analyses, documents, URLs, data descriptions), in the turn after the mode is confirmed and before the pre-flight is presented, following `SKILL.md` § Scope Check > Read First (the rules for staging, PDFs and data files). No project folder exists yet, so fetches, PDF ingests and any digest are staged; they move into the project folder when the user confirms the pre-flight (§ Pre-Flight Checklist > On Confirmation (Gate G1)). **Nothing referenced:** the pre-flight's estimates are labelled preliminary. **On resume:** see "Session recovery" under the Pre-Flight Checklist.
 
 ---
 
 ## Pre-Flight Checklist
 
-> **Template note:** This section serves as both the **User Orientation** and scope confirmation for Full Pipeline mode, consolidated into a single pre-flight message. Other modes define these as a separate `## User Orientation` section per `MODE_TEMPLATE.md`.
+> **Template note:** This section is Full Pipeline's **Scope Check** (hard tier; `SKILL.md` § Scope Check) and also holds the mode's user orientation, consolidated into a single pre-flight message. Other modes define `## User Orientation` and `## Scope Check` as separate sections per `MODE_TEMPLATE.md`. The orientation overview follows the same on-request rule as every mode's User Orientation, so by default the pre-flight carries only the scope check.
 
-After mode confirmation (Gate G1) and before beginning Phase 1 work, present the pre-flight checklist to the user. This is a **single combined message** that orients the user to the Full Pipeline workflow and confirms the deliverables and scope.
+After mode confirmation, read what the user referenced, then present the pre-flight checklist before beginning Phase 1 work. The user's confirmation of the pre-flight is **Gate G1**: the pre-flight Scope Check is confirmed (which includes mode confirmation). The mode confirmation previewed the process; the pre-flight confirms the deliverables and a scope grounded in those materials, so a document that reshapes the question does so before any discovery work runs on a guess.
 
-**Orientation overview** — expand naturally on these points:
+**Read the referenced materials first,** following `SKILL.md` § Scope Check > Read First, the single home of the staging, PDF and data-file rules: local documents and code in full; web pages with `web_fetch.sh` (`web-retrieval` skill); every referenced PDF, and any large or many materials, through **one** `search-agent` digest dispatch, then wait for it to return; a referenced data file only from what the user said and its listing. Do not create the project folder in this turn: it is created when the user confirms the pre-flight (§ On Confirmation (Gate G1) below). Until then the fetches, PDF ingests and the digest record are staged in the session scratchpad's `scope_staging/` folder, and nothing durable cites a staged path. Keep the list of materials for the pre-flight's "What I read" line.
+
+**Orientation overview** — The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 - 5 phases: Discovery → Planning → Data Acquisition → Analysis → Synthesis
 - Checkpoint after each of the first 4 phases (data sources? plan? data quality? results?)
 - Planning checkpoint is the most important review — approves methodology before code runs
 - Nothing moves forward without user go-ahead
 - Session progress is saved if conversation gets long
 
-**Scope confirmation** — then present:
+**Scope Check** — present:
 
 ```
-**Full Pipeline Analysis: Pre-Flight Check**
+**Full Pipeline Analysis: Pre-Flight Scope Check**
+
+**What I read:** [each material you pointed to, one line on what in it shapes the scope] (or "Nothing beyond your request — the estimates below are preliminary")
 
 This analysis will create:
 - [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
 - [ ] STATE.md session state file (for progress tracking and session recovery)
-- [ ] Comprehensive analytic scripts (.py for Python, .R for R) covering data fetch, clean, join, transformation, analysis, and QA for all of the above
+- [ ] Comprehensive analytic scripts (.py for Python, .R for R) covering data fetch, clean, join, transformation and analysis, plus the quality review of each script
 - [ ] Validated datasets (raw + processed)
 - [ ] Marimo notebook (Python) or Quarto notebook (R) "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
 - [ ] Illustrative key data visualizations
 - [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
-- [ ] LEARNINGS.md lessons learned
+- [ ] LEARNINGS.md, notes on lessons learned that can help improve DAAF for future projects
 
-Estimated scope:
-- Data sources: [identified sources]
+**Proposed scope**[ (preliminary) — when nothing beyond your request was read]:
+- Research question: [one line]
+- Data sources: [candidate sources]
 - Years: [year range]
 - Approximate records: [estimate]
 - Geographic scope: [geography]
 
+**What changed from your original request:** [differences the materials introduced — e.g., "the paper you sent defines the outcome as 4-year completion, not enrollment" — or "Nothing — your request and the materials agree"]
+
+**Decisions for you:** [each independent decision on its own line, with its default — or "None"]
+
 **Please confirm whether you'd like me to begin with this approach, or let me know if you have any changes you'd like to make.**
 ```
 
-**When to abbreviate:** If the user has indicated familiarity or this is a session recovery, present just the scope confirmation (deliverables + estimated scope) without the orientation overview.
+Scope adjustments the user made at mode confirmation ("yes, but just 2015-2020") go into "Proposed scope" (`SKILL.md` § Mode Confirmation Gate).
+
+**Session recovery:** the record of a confirmed pre-flight is the project folder's `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the user confirms (§ On Confirmation (Gate G1), step 3). When it exists, do not re-present the pre-flight: with a STATE.md (created at Stage 4), resume at its recorded position (`session-recovery.md`); without one, read the record for the confirmed scope and materials and resume Phase 1 at the first stage whose notes are missing. No project folder, or a folder without that record (a confirmation interrupted before step 3, or the `/tmp` fallback in `SKILL.md` § Scope Check > Read First, where the folder is created before the pre-flight), means the pre-flight was not confirmed: re-present it, without the orientation overview, reusing anything already moved into the folder. The earlier session's staged materials may survive in its scratchpad, but nothing durable recorded them, so re-read or re-fetch them as needed.
 
 **For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
 
 **User may:**
-- Confirm → Proceed to Phase 1 (Stage 2: Data Exploration)
+- Confirm → § On Confirmation (Gate G1), then Phase 1 (Stage 2: Data Exploration)
 - Request scope adjustment → Clarify and reconfirm
 - Decline → Switch to Data Discovery or Data Lookup mode
 
 #### Pre-Flight Turn Boundary Rule
 
-Your pre-flight message MUST be the ONLY content in that response turn. Specifically, in the same turn as the pre-flight message:
+The pre-flight comes in the turn after the user confirms the mode. Before you present it, that turn may:
+- read this mode file (`full-pipeline-mode.md`)
+- read the local materials the user referenced (`SKILL.md` § Scope Check > Read First)
+- stage `web_fetch.sh` fetches of the web pages they referenced in the scratchpad's `scope_staging/` folder
+- copy a referenced PDF that sits outside `/daaf` into `scope_staging/user_pdfs/` for the digest (one `cp` per call)
+- dispatch **one** `search-agent` to digest the materials (always for a PDF; also when they are large or many), writing to the staging folder and citing staged artifacts by paths relative to the staging root (`SKILL.md` § Scope Check > Read First), and wait for it to return
+
+Until the user confirms the pre-flight:
+- Do NOT create the project folder (§ On Confirmation (Gate G1) creates it; the one exception is the `/tmp` fallback in `SKILL.md` § Scope Check > Read First)
 - Do NOT load phase-specific workflow files (no `Read` of `WORKFLOW_PHASE1_DISCOVERY.md`, etc.)
-- Do NOT dispatch any subagents (no `Agent` tool calls)
+- Do NOT dispatch any other subagent (no Stage 2 or Stage 3 dispatches)
 - Do NOT begin Stage 2 exploration work
+- Do NOT download datasets or write analysis scripts
 - Do NOT read any other reference files
 
-The pre-flight message is a STOPPING POINT. You MUST wait for user confirmation before proceeding. Phase-specific workflow files are loaded *after* the user confirms the pre-flight, in a subsequent turn.
+Why the reads are allowed: the scope the user approves has to rest on what they pointed to. Why the rest is not: discovery stays behind the user's approval, so a wrong scope costs one read rather than a discovery wave, and a declined scope leaves no project folder behind.
+
+The pre-flight message ends the turn: nothing follows it in that response. It is a STOPPING POINT; wait for user confirmation before proceeding. Phase-specific workflow files are loaded *after* the user confirms the pre-flight, in a subsequent turn.
 
 #### Pre-Flight Self-Check
 
 Before sending your pre-flight response, verify:
-- [ ] Orientation overview included (unless user indicated familiarity)
+- [ ] The materials the user referenced were read (or digested by one search-agent), or none were referenced
+- [ ] "What I read" line present (or "Nothing beyond your request — the estimates below are preliminary")
 - [ ] Deliverables list presented
-- [ ] Estimated scope filled in with preliminary details from the user's request
+- [ ] Proposed scope filled in, marked preliminary when nothing beyond the request was read
+- [ ] "What changed from your original request" line present
+- [ ] "Decisions for you" listed, each with its default (or "None")
+- [ ] Orientation overview omitted, unless the user signaled they are new to DAAF or asked for more detail
 - [ ] Message ends with an explicit question to the user
-- [ ] No phase workflow files loaded in this turn
-- [ ] No subagents dispatched in this turn
-- [ ] No other tool calls in this turn
+- [ ] No phase workflow files loaded, no Stage 2 or Stage 3 work begun, no datasets downloaded
+- [ ] At most one subagent dispatched (the materials digest)
+- [ ] No project folder created; fetches, PDF ingests and any digest are in the staging folder, and the message names materials by title or URL, never by staged path
+- [ ] Nothing follows the pre-flight message in this turn
+
+#### On Confirmation (Gate G1)
+
+When the user confirms the pre-flight, Gate G1 is met. In the next turn, before loading `WORKFLOW_PHASE1_DISCOVERY.md` or dispatching Stage 2:
+
+1. **Create the project folder** `research/YYYY-MM-DD_[Title]/` with this layout (one `mkdir -p` per call). Phase 1 writes its notes into it, and Stage 4 reuses it:
+   ```
+   research/YYYY-MM-DD_[Title]/
+   ├── data/
+   │   ├── raw/
+   │   └── processed/
+   └── output/
+       ├── analysis/
+       ├── figures/
+       └── preliminary_notes/
+   ```
+2. **Move the staged materials in** (one `mv` per call, whole folders, before anything cites them; `SKILL.md` § Scope Check > Read First > "Graduation on confirmation"): `{scratchpad}/scope_staging/web_fetches/` → `{PROJECT_DIR}/web_fetches/`; `papers/` → `{PROJECT_DIR}/papers/` (and `user_pdfs/` → `{PROJECT_DIR}/user_pdfs/`); the digest `{date}_{slug}_materials-digest.md` → `{PROJECT_DIR}/output/preliminary_notes/`. Manifest rows written before the move (e.g. `web_fetches/MANIFEST.jsonl`) are historical records: never rewrite them (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check, step 3). Then re-ingest each staged paper whose source PDF moved with it, with `--reingest`, as that section's graduation step describes.
+3. **Record the confirmed pre-flight** at `{PROJECT_DIR}/output/preliminary_notes/{date}_preflight_scope-check.md`: the Scope Check as the user confirmed it (with their adjustments and answers to the decisions), the materials list with their paths in the project, and one dated old → new line listing the moves (or "nothing was staged"). STATE.md does not exist until Stage 4; when it is created, this record is copied into its Pre-Flight Scope Check section (`agent_reference/STATE_TEMPLATE.md`).
+4. **Hand it on:** the materials' project paths fill the Stage 2 and Stage 3 `USER-REFERENCED MATERIALS:` fields, and the confirmed scope and materials fill the Stage 4 data-planner's `CONFIRMED PRE-FLIGHT SCOPE:` and `USER-REFERENCED MATERIALS:` fields (`agent_reference/WORKFLOW_PHASE2_PLANNING.md`).
+
+Why the folder waits for this moment: before it, the user has approved nothing that warrants a project, and a scope they decline leaves nothing in `research/`. It also means the pre-flight record in the folder marks a confirmed pre-flight, which session recovery relies on.
 
 ---
 
@@ -97,7 +151,7 @@ Before sending your pre-flight response, verify:
 > |--------|----------------------|---------------|
 > | **Plan Creation** | `EnterPlanMode` tool | Stage 4 + `data-planner` agent + `PLAN_TEMPLATE.md` |
 > | **Validation** | User clicks "approve" | Stage 4.5 + `plan-checker` agent (automated) |
-> | **Gate** | `ExitPlanMode` | Gate G4.5 (plan-checker PASSED) |
+> | **Gate** | `ExitPlanMode` | Gate G4.5 (plan-checker PASSED + user confirmed PSU2) |
 >
 > **Why this matters:** The built-in Plan Mode has different semantics and will bypass the plan-checker validation gate (G4.5). Always use the custom workflow defined in this file.
 
@@ -105,22 +159,22 @@ Before sending your pre-flight response, verify:
 
 ## Stage Overview
 
-| Stage | Phase | Name | Primary Skill/Agent | Subagent |
+| Stage | Phase | Name | Primary Skill/Agent | Dispatched agent (`subagent_type`) |
 |-------|-------|------|---------------------|----------|
 | 1 | 1 | Initial Intake | — | Orchestrator |
 | 2 | 1 | Data Exploration | Domain explorer skill (e.g., `education-data-explorer`) | search-agent |
-| 3 | 1 | Source Deep-Dive | `*-data-source-*` | Plan |
-| **3.5** | 1 | Findings Synthesis | `research-synthesizer` agent | general-purpose |
-| 4 | 2 | Plan Creation | `data-planner` agent | Orchestrator (invokes data-planner) |
-| **4.5** | 2 | Plan Validation | `plan-checker` agent | Plan |
-| 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
-| 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
-| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` (Python) or `tidyverse` (R) | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`/`tidyverse`, modeling library (Python: `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`/`igraph`; R: `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels`/`igraph-r` per Plan), `plotnine`/`plotly` (Python) or `ggplot2`/`plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if spatial, `igraph` (Python) or `igraph-r` (R) if network | general-purpose |
-| 9 | 4 | Notebook Assembly | `marimo` (Python) or `quarto` (R) | general-purpose |
+| 3 | 1 | Source Deep-Dive | `*-data-source-*` | source-researcher |
+| **3.5** | 1 | Findings Synthesis | `research-synthesizer` agent | research-synthesizer |
+| 4 | 2 | Plan Creation | `data-planner` agent | data-planner |
+| **4.5** | 2 | Plan Validation | `plan-checker` agent | plan-checker |
+| 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | research-executor, then code-reviewer per script |
+| 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | research-executor, then code-reviewer per script |
+| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` (Python) or `tidyverse` (R) | research-executor, then code-reviewer per script |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`/`tidyverse`, modeling library (Python: `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`/`igraph`; R: `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels`/`igraph-r` per Plan), `plotnine`/`plotly` (Python) or `ggplot2`/`plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if spatial, `igraph` (Python) or `igraph-r` (R) if network | research-executor, then code-reviewer per script |
+| 9 | 4 | Notebook Assembly | `marimo` (Python) or `quarto` (R) | notebook-assembler, then integration-checker |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
-| 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
-| 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
+| 11 | 5 | Report Generation | `report-writer` agent | report-writer, then integration-checker |
+| 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | integration-checker (full scope), then data-verifier |
 
 > Quick reference for prompt construction. See "Core Workflow Overview" below for execution details and gate criteria.
 
@@ -137,15 +191,17 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  Stage 1: Initial Intake                                                    │
 │      ├─ Classify engagement mode                                            │
 │      ├─ Ask clarifying questions (if needed)                                │
-│      ├─ Output: Research question + scope confirmed                         │
-│      └─ Gate G1: Mode classified, scope confirmed                           │
+│      └─ Output: Research question + mode confirmed                          │
 │                          ↓                                                  │
 │  ┌─ PRE-FLIGHT CHECKLIST (see § Pre-Flight Checklist above) ────────────┐   │
-│  │  □ Present orientation overview + deliverables list                   │   │
-│  │  □ Confirm estimated scope (sources, years, records, geography)      │   │
+│  │  □ Read the materials the user referenced (staged; one digest)       │   │
+│  │  □ Scope Check: what I read, deliverables, scope, what changed       │   │
+│  │  □ Estimates preliminary when nothing beyond the request was read    │   │
 │  │  □ User confirms or adjusts before proceeding                        │   │
 │  │  ★ STOP — Pre-Flight Turn Boundary Rule applies                      │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
+│      Gate G1: pre-flight Scope Check confirmed (includes mode confirmation) │
+│      On confirmation: create project folder, move staged materials in       │
 │                          ↓                                                  │
 │  Stage 2: Data Exploration ←── domain explorer skill                        │
 │      ├─ Identify candidate datasets and variables                          │
@@ -175,18 +231,19 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  Stage 4: Plan Document Creation                                            │
 │      ├─ Synthesize Phase 1 findings                                         │
 │      ├─ Document methodology decisions                                      │
-│      ├─ Create project folder + Plan.md + Plan_Tasks.md                     │
+│      ├─ Create Plan.md + Plan_Tasks.md (project folder exists since G1)     │
 │      ├─ **CRITICAL:** Complete Transformation Sequence table                │
 │      ├─ Create STATE.md with Plan Validation section (initially NOT_RUN)    │
 │      ├─ Create LEARNINGS.md skeleton (project metadata + empty sections)    │
 │      ├─ **WARNING:** DO NOT use Claude Code's EnterPlanMode tool here!      │
 │      │   Use data-planner agent + PLAN_TEMPLATE.md instead.                 │
-│      ├─ Report to user: "Plan documents created, invoking plan-checker..."   │
+│      ├─ Tell the user: "The plan is drafted; a specialist is now checking   │
+│      │   it for gaps before you review it."                                 │
 │      └─ Gate G4: Plan.md + Plan_Tasks.md + STATE.md + LEARNINGS.md created  │
 │                          ↓                                                  │
 │  Stage 4.5: Plan Validation ←── plan-checker agent                          │
 │      ├─ Automated 6-dimension plan validation                               │
-│      └─ Gate G4.5: plan-checker PASSED or PASSED_WITH_WARNINGS              │
+│      └─ Gate G4.5: plan-checker passes, then user confirms PSU2             │
 │                                                                             │
 │  **Transformation Sequence:** This table (in Plan.md) with task blocks     │
 │  (in Plan_Tasks.md) serves as the contract between orchestrator and        │
@@ -218,7 +275,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │                                                                             │
 │  Stage 5: Data Retrieval ←── domain query skill                             │
 │      ├─ Download from configured mirrors (per mirrors.yaml)                 │
-│      ├─ Auto-validate: shape, types, missingness (CP1)                      │
+│      ├─ Auto-validate: shape, columns, years, missingness (CP1)             │
 │      ├─ STOP if: unexpected empty results, data access errors               │
 │      ├─ [Per-script QA loop — see Composite Execution Pattern below]        │
 │      └─ Gate G5: CP1 PASSED, QA1 PASSED/WARNING, data in data/raw/         │
@@ -226,7 +283,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  Stage 6: Context Application ←── domain context skill                      │
 │      ├─ Assess missingness and coded value presence                         │
 │      ├─ Calculate suppression rates (CP2)                                   │
-│      ├─ STOP if: >50% suppression, invalid analysis type                    │
+│      ├─ STOP if: >50% suppression (CP2), Plan governance rule broken        │
 │      ├─ [Per-script QA loop — see Composite Execution Pattern below]        │
 │      └─ Gate G6: CP2 PASSED, QA2 PASSED/WARNING, data in processed/        │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -256,7 +313,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      │   ├─ Load viz skill: plotnine/plotly (Python) or ggplot2/plotly-r (R),│
 │      │   │   or geopandas (Python) / sf-terra (R) for maps                  │
 │      │   └─ [Per-script QA loop (QA4b) — see Composite Execution Pattern]   │
-│      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
+│      └─ Gate G8: Analyses + viz complete, CP4 PASSED per script,            │
+│         all QA4a AND QA4b PASSED/WARNING                                    │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
 │      ├─ LITERALLY COPY scripts into canonical three-cell                    │
@@ -268,7 +326,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
 │      └─ Gate G9: `marimo check` gate + `marimo export html` + 6c            │
 │         fidelity check (Python) or `quarto render` (R) passes; all          │
-│         scripts represented                                                 │
+│         scripts represented; integration-checker (Stage 9 scope)            │
+│         CONNECTED or WARNING-only                                           │
 │                          ↓                                                  │
 │  Stage 10: QA Aggregation                                                   │
 │      ├─ **Aggregate QA findings from Stages 5-8 (WARNINGs reviewed)**       │
@@ -295,6 +354,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ Follow Section-Source Mapping for each REPORT_TEMPLATE.md section   │
 │      ├─ Cross-check Research Outcomes against Key Findings                  │
 │      └─ Gate G11: Report complete with all sections + figure references     │
+│         + integration-checker (Stage 11 scope) CONNECTED or WARNING-only    │
 │                          ↓                                                  │
 │  Stage 12: Final Review                                                     │
 │      ├─ Verify alignment with original request                              │
@@ -304,6 +364,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      ├─ **Consolidate LEARNINGS.md (review incremental entries, fill gaps)**│
 │      ├─ **Generate System Update Action Plan section in LEARNINGS.md**      │
 │      └─ Gate G12: Final review passed, all commitments fulfilled            │
+│         + integration-checker (full scope, before data-verifier)            │
+│         CONNECTED or WARNING-only                                           │
 │                          ↓                                                  │
 │  DELIVERY: Summary to user with file paths                                  │
 │      + Learnings summary (key insights + action plan item count)            │
@@ -317,13 +379,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 ## Stage 5-8 Per-Script Execution & QA Loop
 
-**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py` for Stages 5-7; **Stage 8 uses the split-QA suffix** `scripts/cr/stage8_{step}_cra{1..5}.py` (QA4a, statistical validity) and `scripts/cr/stage8_{step}_crb{1..5}.py` (QA4b, visualization quality), per `agent_reference/QA_CHECKPOINTS.md`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before any script that depends on it begins. Same-wave scripts run in parallel (at most 5 in flight), each with its own review (§ Wave-Based Parallel Execution). This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py` for Stages 5-7; **Stage 8 uses the split-QA suffix** `scripts/cr/stage8_{step}_cra{1..5}.py` (QA4a, statistical validity) and `scripts/cr/stage8_{step}_crb{1..5}.py` (QA4b, visualization quality), per `agent_reference/QA_CHECKPOINTS.md`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
 - Each subagent call captures pre-state, executes ONE script, validates post-state
 - QA must run immediately after each script so findings can inform whether to proceed, revise, or stop
-- Batching QA to stage end means errors in script 1 propagate silently through scripts 2, 3, 4 — compounding data corruption
+- Batching QA to stage end means errors in script 1 propagate silently through every script that builds on it — compounding data corruption
 - The Transformation Sequence table (Plan.md) and task blocks (Plan_Tasks.md) are the contract for these invocations
 
 **See:** the appropriate `agent_reference/WORKFLOW_PHASE*.md` file for detailed per-script execution guidance.
@@ -361,9 +423,16 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │  STEP 3: EVALUATE QA severity                                               │
 │      ├─ PASSED → Log to STATE.md, proceed to next task                      │
 │      ├─ WARNING → Log to STATE.md (for Stage 10 review), proceed            │
-│      └─ BLOCKER → Go to STEP 4                                              │
+│      ├─ CODE-REVIEWER STOP, Issue Category `Methodology Conflict`           │
+│      │   (Plan.md's method looks wrong for the data, or Plan.md does not    │
+│      │   settle the choice) → escalate to the user immediately (RULE 4;     │
+│      │   no revision)                                                       │
+│      ├─ CODE-REVIEWER STOP, any other Issue Category → route by category    │
+│      │   (§ Gate Status Translation)                                        │
+│      └─ Any other BLOCKER (the fix restores what Plan.md specifies, or      │
+│          corrects a defect without changing the method) → Go to STEP 4      │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 4: REVISION FLOW (if BLOCKER)                                         │
+│  STEP 4: REVISION FLOW (BLOCKER that is not a Methodology Conflict)         │
 │      ├─ Invoke research-executor to create revised script (_a.py/_a.R)      │
 │      ├─ Re-invoke code-reviewer on revised script                           │
 │      ├─ If still BLOCKER → Create _b.py/_b.R revision, re-invoke reviewer   │
@@ -375,7 +444,7 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │      │   (BLOCKERs Resolved, WARNINGs Logged — don't defer to Stage 10)    │
 │      ├─ If analysis addresses a Plan.md hypothesis, update Hypothesis       │
 │      │   Assessment Progress                                                │
-│      └─ Proceed to next task in wave                                        │
+│      └─ Task complete; the next wave waits for every task in this wave      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 0 (before each cycle): READ STATE.md                                  │
 │      ├─ Verify current position and prior task statuses                     │
@@ -384,74 +453,9 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**CRITICAL:** Steps 0-5 form an atomic unit. Step 0 runs before each new task cycle. NEVER proceed to the next task without completing all steps. NEVER batch multiple executor calls without intermediate QA.
+**CRITICAL:** Steps 0-5 form an atomic unit for each task. Step 0 runs before each new task cycle. Same-wave tasks run their loops in parallel, at most 5 in flight (§ Wave-Based Parallel Execution). NEVER start a task until every task it depends on has completed all steps. NEVER review several scripts in one code-reviewer call, and never defer reviews to the end of a stage.
 
----
-
-## Code Preview Protocol
-
-**When delegating complex transformations to subagents, use iterative code preview:**
-
-### For Complex Transformations (joins, aggregations, multi-step operations)
-
-**Step 1: Request Code Generation (without execution)**
-
-Invoke a subagent to generate the transformation code but explicitly instruct it not to execute:
-
-```python
-Agent({
-    description: "Generate transformation code",
-    prompt: """Generate code for: {transformation_description}
-
-**DO NOT execute the code yet.** Return only:
-1. Proposed code with comments
-2. Expected outcome (shape, key changes)
-3. Validation approach
-
-Format:
-# Proposed code here
-
-Expected: {outcome}
-Validation: {approach}
-""",
-    subagent_type: "research-executor"
-})
-```
-
-**Step 2: Review Code**
-- Orchestrator reviews proposed approach
-- Checks for alignment with Plan.md
-- Verifies validation approach is adequate
-
-**Step 3: Execute with Validation**
-
-Invoke a subagent to execute the approved code with full validation:
-
-```python
-Agent({
-    description: "Execute validated transformation",
-    prompt: """Execute the following approved code:
-
-{approved_code}
-
-Use the Iteration Protocol:
-1. Capture pre-state
-2. Execute transformation
-3. Validate results
-4. Report PASS/FAIL status
-""",
-    subagent_type: "research-executor"
-})
-```
-
-### Exception: Direct Execution Allowed
-
-These operations may be executed without preview:
-- Data loading (read_csv, read_parquet)
-- Basic inspection (shape, head, describe, sample)
-- Column selection
-
-**All other transformations require the preview-execute pattern.**
+How a BLOCKER is classed: A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). Any other BLOCKER (a bug, a stub, a validation gap) corrects a defect without changing the method and also goes through revision; a code-reviewer STOP of another Issue Category routes as § Gate Status Translation says. A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately. It skips revision because fixing it means changing the method, which only the user can approve (RULE 4; `agent_reference/ERROR_RECOVERY.md` § QA BLOCKER Recovery).
 
 ---
 
@@ -481,37 +485,36 @@ These operations may be executed without preview:
 |-------|------------------|---------------|-------------------|
 | 2 | `data-scientist`, domain explorer skill | search-agent | Subagent invokes skill |
 | 3 | `data-scientist`, domain source skill(s) | source-researcher | Subagent invokes skill(s) |
-| 3.5 | `data-scientist` | general-purpose | `research-synthesizer` agent |
-| 4 | `data-scientist` | general-purpose | `data-planner` agent |
-| 4.5 | `data-scientist` | Plan | `plan-checker` agent |
-| 5 | `data-scientist`, domain query skill | general-purpose | Subagent invokes skill |
-| **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
-| 6 | `data-scientist`, domain context skill | general-purpose | Subagent invokes skill |
-| **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
-| 7 | `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas`/`sf-terra` (if spatial data) | general-purpose | Subagent invokes skills |
-| **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra` / `igraph-r`), `great-tables` (Python) or `gt` (R) (if formatted tables needed) | general-purpose | Subagent invokes skills |
-| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `igraph` (Python) or `igraph-r` (R) if network visualization, `great-tables` (Python) or `gt` (R) (if formatted summary tables needed) | general-purpose | Subagent invokes skills |
-| **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
-| 9 | `marimo` (Python) or `quarto` (R) | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
+| 3.5 | `data-scientist` | research-synthesizer | `research-synthesizer` agent |
+| 4 | `data-scientist` | data-planner | `data-planner` agent |
+| 4.5 | `data-scientist` | plan-checker | `plan-checker` agent |
+| 5 | `data-scientist`, domain query skill | research-executor | Subagent invokes skill |
+| **5-QA** | `data-scientist` | code-reviewer | `code-reviewer` agent (after each Stage 5 script) |
+| 6 | `data-scientist`, domain context skill | research-executor | Subagent invokes skill |
+| **6-QA** | `data-scientist` | code-reviewer | `code-reviewer` agent (after each Stage 6 script) |
+| 7 | `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas`/`sf-terra` (if spatial data) | research-executor | Subagent invokes skills |
+| **7-QA** | `data-scientist` | code-reviewer | `code-reviewer` agent (after each Stage 7 script) |
+| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra` / `igraph-r`), `great-tables` (Python) or `gt` (R) (if formatted tables needed) | research-executor | Subagent invokes skills |
+| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `igraph` (Python) or `igraph-r` (R) if network visualization, `great-tables` (Python) or `gt` (R) (if formatted summary tables needed) | research-executor | Subagent invokes skills |
+| **8-QA** | `data-scientist` | code-reviewer | `code-reviewer` agent (after each Stage 8 script) |
+| 9 | `marimo` (Python) or `quarto` (R) | notebook-assembler | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
-| 11 | `data-scientist`, `science-communication` (if non-technical audience) | general-purpose | `report-writer` agent |
-| 12 | `data-scientist` | Plan | `data-verifier` agent |
+| 11 | `data-scientist`, `science-communication` (if non-technical audience) | report-writer | `report-writer` agent |
+| 12 | `data-scientist` | data-verifier | `data-verifier` agent |
 
 **Notes:**
-- Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the Session Model ID, the Subagent Model Tiers in effect, and the session start date — see the authoritative creation checklist under **Creation Trigger** in the STATE.md section below. These feed into the AI Use Disclosure section of the final report.
+- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the Session Model ID, the Subagent Model Tiers in effect, the Provider Route and Model Settings, and the session start date; also copy in the confirmed pre-flight scope and materials — see the authoritative creation checklist under **Creation Trigger** in the STATE.md section below. These feed into the AI Use Disclosure section of the final report.
 - **Stage 9 R/Quarto authority:** `.claude/skills/quarto/references/daaf-notebook.md` is the canonical DAAF assembly contract. It governs DAAF archive-shaped Quarto notebooks and their Reproducibility Verification anchors, not arbitrary Quarto documents. `quarto render` validates assembly and explicitly enabled previews; it does not re-run archived Stage 5-8 analysis scripts.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
-**Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
+**Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the input for Stages 5-8, plus the Stage 9 row of § Final Review Log > Integration Checks for any WARNING carried from Stage 9 (add it to the WARNING summary). For each script: (1) Check its QA Status: `PASSED`, `WARNING` and `REVISED` mean it was reviewed; a `NOT_RUN` or `PENDING` row is a missing review, so STOP and run code-reviewer for that script before aggregating (G10 requires a code-reviewer review of every Stage 5-8 script), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
 - **QA substages** (5-QA through 8-QA) run code-reviewer after each script execution in the parent stage.
-- The `search-agent` type is read-only and cannot write files.
+- The `search-agent` type writes only its own records (a report at a dispatch-named path, fetch artifacts) and never data files or existing project files; Stage 2 exploration findings are written by the agent at the dispatch-named preliminary notes path, and the orchestrator confirms that file without overwriting it (SKILL.md § Subagent Return Processing, step 2 carve-out), persisting the notes itself only when they came back inline.
 - All Stages 5-8 scripts must follow IAT documentation standards (`agent_reference/INLINE_AUDIT_TRAIL.md`).
 
-**Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
+**Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator: from the confirmed pre-flight scope at Stages 2-3 (before a Plan exists), and from the active domain configuration in Plan.md at Stages 5-6.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `igraph`, `great-tables`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `igraph-r`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
+**Skill loading mechanism:** Every agent this pipeline dispatches except search-agent preloads `data-scientist` via its frontmatter `skills:` field (full content injected at startup). search-agent has no `skills:` field, so its prompt includes `Call the skill tool with name 'data-scientist'` when the task needs it; Stage 2 does (`agent_reference/WORKFLOW_PHASE1_DISCOVERY.md`). Otherwise the orchestrator's Agent prompts include `Call the skill tool` instructions only for skills the agent does not preload (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `igraph`, `great-tables`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `igraph-r`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 (`search-agent`) and Stage 3 (`source-researcher`) also need explicit skill tool calls for their domain skills (explorer, source).
 
 **Cross-language annotation preference:** When the user's primary analysis language background differs from the execution language and cross-language code annotations are enabled in CLAUDE.md User Preferences, add the appropriate translation directive to all Stage 5-8 agent prompts. Select the directive based on execution language and background (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table): Python execution with R/Stata background loads `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background loads `python-r-translation`/`stata-r-translation`. This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
 
@@ -647,7 +650,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Visualization skill specified (Python: `plotnine` for static, `plotly` for interactive, `geopandas` for maps, `igraph` for network diagrams; R: `ggplot2` for static, `plotly-r` for interactive, `sf-terra` for maps, `igraph-r`/ggraph for network diagrams)
 - [ ] Script follows IAT documentation standards
 
-**Revision Request Checklist (when re-invoking research-executor after QA BLOCKER):**
+**Revision Request Checklist (when re-invoking research-executor after a QA BLOCKER that is not a `Methodology Conflict` STOP):**
 - [ ] Original script path specified (absolute)
 - [ ] Current final version path specified (absolute)
 - [ ] QA report with BLOCKER details inlined
@@ -673,7 +676,7 @@ Report to the user **adaptively** at these trigger points:
 
 **Report Format:**
 ```
-**Progress Update: [Phase/Stage]**
+**Progress Update: [the activity, in plain words — e.g., cleaning the data]**
 - Completed: [What was done]
 - Key Findings: [Notable insights or issues]
 - Next Steps: [What happens next]
@@ -708,12 +711,12 @@ Report to the user **adaptively** at these trigger points:
 
 #### PSU Template and Content Requirements
 
-Every Phase Status Update MUST follow this format. Remember: all user-facing text must use **plain language** per the User-Facing Communication Standards in SKILL.md. Never use internal terms (PSU, QA, CP, gate, stage N) in the output — use the plain-language equivalents.
+Every Phase Status Update MUST follow this format, written in **plain language** per the Plain-Language Rule table in `SKILL.md` § User-Facing Communication Standards, the single glossary of internal terms and their user-facing wording. The header names the work just finished: Discovery (PSU1), Planning (PSU2), Data Preparation (PSU3), Analysis (PSU4).
 
 ```
-**Checkpoint: Phase [N] of 5 Complete — [Phase Name in Plain Language]**
+**Checkpoint: {Activity} Complete**
 
-[Progress indicator — e.g., "Phase 2 of 5 complete" with visual]
+[Progress bar showing how much of the analysis is done, with no phase numbers]
 ━━━━━━━━━━━━░░░░░░░░░░░░░░░░░░ (or similar proportional marker)
 
 **Why this checkpoint:** [1 sentence — see checkpoint purpose text below]
@@ -833,7 +836,7 @@ Runtime risks discovered during execution are tracked in STATE.md's **Runtime Ri
 | Stage 3 discovers source-specific limitations | Data Quality | When caveats affect analysis validity or completeness |
 | Stage 5 fetch returns unexpected shape | Data Availability | When row count deviates significantly from expected |
 | Stage 6 suppression rate is 30-50% | Data Quality | Even if below STOP threshold (50%), document the risk |
-| Stage 6 data lag detected (CP1 Check 6) | Data Quality | When latest year available is older than requested |
+| Stage 5 data lag detected (CP1 year-freshness check) | Data Quality | When latest year available is older than requested |
 | Stage 7 transformation has unexpected row loss | Methodological | When row count drops >20% unexpectedly |
 | Stage 7 join cardinality violation | Methodological | When actual cardinality differs from expected |
 | Any stage encounters data definition changes | Data Quality | When variable definitions changed between years |
@@ -869,13 +872,14 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 ```
 
 **Execution Rules:**
-- Same-wave tasks dispatch simultaneously as multiple Agent tool calls in a **single response message**. DAAF's `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` keeps dispatches in the foreground on the pinned Claude Code 2.1.281 (observed 2026-09-24); either foreground or background delivery is acceptable, and a background subagent's permission prompts surface in the main session (Claude Code 2.1.186 or later). Wait for every task in the wave to return before proceeding.
+- Same-wave tasks dispatch simultaneously as multiple Agent tool calls in a **single response message**. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Wait for every task in the wave to return before proceeding.
+- **Stages 5-8:** each same-wave task runs its own Composite Execution Pattern loop. Dispatch the wave's research-executor calls together; once all have returned, dispatch one code-reviewer per script together (at most 5 in flight each time). Every task in the wave has its review recorded in STATE.md, and any BLOCKER handled, before the next wave begins, because the next wave holds the tasks that depend on it.
 - If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. This is the default parallel dispatch limit (`SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline"); dispatch more than 5 at once only with the user's explicit approval.
 - Each subagent starts with a fresh context window (no accumulated degradation)
 - Later waves wait for ALL prior waves to complete
 - Dependencies in `depends_on` must be satisfied
 
-**Wave Barrier Discipline (async dispatch).** Under DAAF's shipped settings a wave's results return inline in the dispatching turn; without `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, or on other Claude Code versions, its completion notifications can arrive one at a time. The barrier applies either way. Treat every mid-wave notification as **status-only**: do not make gate decisions, revise the plan, finalize STATE.md conclusions, present a PSU/checkpoint, or begin QA aggregation or synthesis until EVERY task in the wave has returned. Synthesize once, over the complete wave — never incrementally per return, so a later return can genuinely change the decision rather than being anchored out by the first. An early return under context pressure, or a failed/BLOCKED task, still counts as that task's completion — handle its redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction. Narrating progress to the user ("two of three fetches are back") is fine; acting on partial results is not. This is the pipeline application of the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+**Wave Barrier Discipline (async dispatch).** See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. The barrier applies however they arrive. Treat every mid-wave notification as **status-only**: do not make gate decisions, revise the plan, finalize STATE.md conclusions, present a PSU/checkpoint, or begin QA aggregation or synthesis until EVERY task in the wave has returned. Synthesize once, over the complete wave — never incrementally per return, so a later return can genuinely change the decision rather than being anchored out by the first. An early return under context pressure, or a failed/BLOCKED task, still counts as that task's completion — handle its redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction. Narrating progress to the user ("two of three fetches are back") is fine; acting on partial results is not. This is the pipeline application of the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 
@@ -907,24 +911,24 @@ Each stage has explicit input/output contracts and gate criteria:
 
 | Stage | Input From | Output To | Gate Criteria |
 |-------|------------|-----------|---------------|
-| 1 | User request | Stage 2 | G1: Mode classified, scope confirmed |
-| 2 | Stage 1 (mode + scope) | Stage 3 | G2: ≥1 dataset identified, key variables flagged |
+| 1 | User request + the materials the user referenced | Stage 2 | G1: Pre-flight Scope Check confirmed (includes mode confirmation) |
+| 2 | Stage 1 + pre-flight (mode, confirmed scope, user-referenced materials) | Stage 3 | G2: ≥1 dataset identified, key variables flagged |
 | 3 | Stage 2 datasets | Stage 3.5 | G3: All flagged variables investigated, coded values documented, suppression patterns identified |
 | 3.5 | Stages 2, 3 | PSU1 to user, then Stage 4 | G3.5: Synthesis complete, conflicts resolved, user confirmed PSU1 |
-| 4 | Phase 1 findings | Stage 4.5 | G4: Plan.md + Plan_Tasks.md created, STATE.md created, LEARNINGS.md skeleton created |
+| 4 | Phase 1 findings + confirmed pre-flight scope and user-referenced materials | Stage 4.5 | G4: Plan.md + Plan_Tasks.md created, STATE.md created, LEARNINGS.md skeleton created |
 | 4.5 | Stage 4 (Plan) | PSU2 to user, then Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS, user confirmed PSU2 |
 | 5 | Plan.md + Plan_Tasks.md (query spec) | Stage 6 | G5: CP1 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA1 ∈ {PASSED, WARNING}, data saved to data/raw/ |
 | 6 | Stage 5 (raw data) | PSU3 to user, then Stage 7 | G6: CP2 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA2 ∈ {PASSED, WARNING}, suppression <50%, data saved to data/processed/, user confirmed PSU3 |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) per script, code-reviewer separately invoked per script immediately after completion, all QA3 ∈ {PASSED, WARNING}, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
-| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, all QA4a and QA4b ∈ {PASSED, WARNING} |
-| 9 | Stages 7, 8 | Stage 10 | G9: Python passes the `marimo check --select MB` structural gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check (all four conditions: clean decompile, bundle count and decompiled paths equal to the final-version inventory, only expected numstat lines), or R `quarto render` validates assembly and enabled previews; all scripts represented with code + execution logs; Quarto render does not re-run archived Stage 5-8 analysis scripts |
+| 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: CP4 PASSED per script, statistical results saved to output/analysis/, visualizations saved to output/figures/, code-reviewer separately invoked per 8.1 script (QA4a, plus QA4b when the analysis script also draws figures) and per 8.2 script (QA4b) immediately after each completes, all QA4a and QA4b ∈ {PASSED, WARNING} |
+| 9 | Stages 7, 8 | Stage 10 | G9: Python passes the `marimo check --select MB` structural gate, the `marimo export html` execution check and the Step 6c verbatim fidelity check (all four conditions: clean decompile, bundle count and decompiled paths equal to the final-version inventory, only expected numstat lines), or R `quarto render` validates assembly and enabled previews; all scripts represented with code + execution logs; Quarto render does not re-run archived Stage 5-8 analysis scripts; integration-checker (Stage 9 scope) CONNECTED or WARNING-only |
 | 10 | Stage 9 (notebook) | PSU4 to user, then Stage 11 | G10: QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, user confirmed PSU4 |
-| 11 | Stages 9, 10, Plan.md + Plan_Tasks.md, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
-| 12 | All prior stages | Delivery | G12: Final Review PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
+| 11 | Stages 9, 10, Plan.md + Plan_Tasks.md, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified, integration-checker (Stage 11 scope) CONNECTED or WARNING-only |
+| 12 | All prior stages | Delivery | G12: integration-checker (full scope) CONNECTED or WARNING-only before data-verifier, Final Review PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
 
 **QA Gate Notes:**
 - **PASSED or WARNING:** QA may log WARNINGs that don't block execution (documented for Stage 10 aggregation)
-- **QA BLOCKER:** If QA returns BLOCKER, revision is required before handoff (max 2 attempts, then escalate)
+- **QA BLOCKER:** A methodology BLOCKER (a code-reviewer STOP with Issue Category `Methodology Conflict`) escalates to the user immediately (RULE 4); any other BLOCKER requires revision before handoff (max 2 attempts, then escalate)
 - **QA findings aggregated:** Stage 10 consolidates all WARNINGs from Stages 5-8 for final review
 
 ### Subagent Output Verification Protocol
@@ -936,11 +940,11 @@ Each stage has explicit input/output contracts and gate criteria:
 | Check | What to Verify | Action if Failed |
 |-------|----------------|------------------|
 | **Size** | Output is under 2000 words | Extract only structured summary fields; discard verbose sections, raw logs, and data samples before integrating into context. If chronic, re-invoke with emphasis on the 2000-word hard cap. |
-| **Completeness** | All required output sections present | Re-invoke with clarification |
-| **Format** | Output matches specified OUTPUT FORMAT | Re-invoke with format emphasis |
+| **Completeness** | All required output sections present (for an agent-written notes file, checked on the file, not on the summary it returns) | Re-invoke with clarification |
+| **Format** | Output matches specified OUTPUT FORMAT (agent-written notes file: checked on the file) | Re-invoke with format emphasis |
 | **Confidence** | No LOW confidence items without resolution | Request resolution or escalate |
 | **Substantive** | Real findings, not template placeholders | Re-invoke with thoroughness emphasis |
-| **Persistence** | Preliminary notes file written to disk (notes-producing agents only: search-agent Stage 2, source-researcher Stage 3, research-synthesizer Stage 3.5) | Retry write; if retry fails, stop and report to user |
+| **Persistence** | Preliminary notes file on disk (notes-producing agents only: search-agent Stage 2 and source-researcher Stage 3, written by the agent at the dispatch-named path, confirmed but never overwritten by the orchestrator, and written by the orchestrator only if they came back inline; research-synthesizer Stage 3.5, written by the orchestrator) | Retry write; if retry fails, stop and report to user |
 
 **Verification Procedure:**
 
@@ -1047,7 +1051,7 @@ Status: Skill loaded successfully, proceeding to route the question to mirror da
 
 ### Subagent Type Selection
 
-See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by type (`search-agent` = read-only; `general-purpose` = full capabilities including file writes).
+See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by type (`search-agent` and `source-researcher` = search and information gathering, write only their own records; `Plan` and the agents without Write or Edit tools (plan-checker, data-verifier, integration-checker) = read-only; `general-purpose` = full capabilities including file writes).
 
 ## Standard Agent Prompt Structure
 
@@ -1071,7 +1075,8 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 ## SKILL LOADING
 [Only include skill tool calls for skills NOT preloaded via agent frontmatter.
-Named agents already have `data-scientist` injected at startup — do not re-load it.
+Agents whose frontmatter lists `data-scientist` already have it — do not re-load it;
+search-agent does not preload it.
 Call the skill tool only for additional skills — route by execution language
 (per CLAUDE.md User Preferences):
   Python: polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy,
@@ -1229,22 +1234,9 @@ Before sending any task to a subagent, verify it passes this test:
 - [ ] **Concrete Actions:** Steps specific enough to execute without interpretation
 - [ ] **Verifiable Completion:** "done" condition is objectively measurable
 - [ ] **No Hidden Dependencies:** All prerequisites explicitly stated
-- [ ] **Size Appropriate:** Context within limits for subagent type
+- [ ] **Size Appropriate:** One focused task; if its context runs consistently large, split it into smaller tasks
 
 If any checkbox is unchecked → Add specificity until all pass.
-
----
-
-## Prompt Size Targets by Subagent Type
-
-| Subagent Type | Target Prompt Size | Typical Context from Plan.md + Plan_Tasks.md |
-|---------------|-------------------|--------------------------|
-| Plan | ~500 words | ~200 words |
-| general-purpose | ~1000 words | ~500 words |
-
-These are efficiency TARGETS for typical tasks, not hard ceilings that override the Context Completeness Checklist (above). If a task's checklist requires more context to meet all REQUIRED items, provide it — completeness beats brevity. An incomplete prompt wastes MORE tokens (subagent confusion, re-invocation, wasted output) than a thorough one.
-
-**If context needs consistently exceed these targets:** Consider whether the task should be broken into smaller subtasks with more focused scope.
 
 ---
 
@@ -1322,9 +1314,9 @@ Call the skill tool with name '[skill-name]'.
 
 ### Size Limits for Inlined Content
 
-See "Prompt Size Targets by Subagent Type" above for size targets. The same targets apply to inlined content, but the Context Completeness Checklist always takes priority over brevity.
+There is no fixed word target: the Context Completeness Checklist (above) decides what goes in, and completeness beats brevity. An incomplete prompt costs more (a confused subagent, a re-dispatch, wasted output) than a thorough one.
 
-**If context needs consistently exceed targets:** Consider breaking the task into smaller subtasks, each with more focused scope.
+**If context needs consistently run large:** Consider breaking the task into smaller subtasks, each with more focused scope.
 
 ---
 
@@ -1333,28 +1325,30 @@ See "Prompt Size Targets by Subagent Type" above for size targets. The same targ
 ### code-reviewer (QA Agent)
 
 **Purpose:** Secondary QA review of executed scripts
-**Stage:** 5-QA, 6-QA, 7-QA, 8-QA (after each script execution; Stage 8 uses QA4a for analysis, QA4b for visualization)
-**Subagent:** general-purpose
+**Stage:** 5-QA, 6-QA, 7-QA, 8-QA (after each script execution; Stage 8 uses QA4a for analysis, QA4b for visualization, and both for an analysis script that also draws figures)
+**Subagent:** `code-reviewer`
 
-**Invocation Timing:** After research-executor completes each script (after CP validation passes).
+**Invocation Timing:** After research-executor completes each script (after CP validation passes); for a wave, once every research-executor in it has returned (§ Wave-Based Parallel Execution).
 
 ```python
 Agent({
     description: "QA Review: Stage {N} Step {step} - {task_name}",
     prompt: """**BASE_DIR:** {BASE_DIR}
+**PROJECT_DIR:** {PROJECT_DIR}
 All relative paths in referenced files resolve from BASE_DIR.
 
 **SCRIPT TO REVIEW:**
-Path: scripts/stage{N}_{type}/{step}_{task-name}.py (or .R for R)
+Path: {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py (or .R for R)
 
 **PLAN LOCATIONS:**
 Plan.md: {plan_path}
 Plan_Tasks.md: {plan_tasks_path}
 
-**OUTPUT FILES:**
+**OUTPUT FILES (absolute paths):**
 {list_of_output_files}
 
 **CONTEXT:**
+- Checkpoint: {QA1 | QA2 | QA3 | QA4a | QA4b}
 - Stage: {N}
 - Step: {step}
 - Wave: {wave}
@@ -1392,8 +1386,8 @@ Addressed when: {verification_condition}
 **TASK:**
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
-3. Create iterative QA scripts at: scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
-   [For Stage 8, use the split-QA suffix instead: scripts/cr/stage8_{step}_cra1.py for QA4a (statistical validity) / scripts/cr/stage8_{step}_crb1.py for QA4b (visualization quality)]
+3. Create iterative QA scripts at: {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
+   [For Stage 8, use the split-QA suffix instead: {PROJECT_DIR}/scripts/cr/stage8_{step}_cra1.py for QA4a (statistical validity) / {PROJECT_DIR}/scripts/cr/stage8_{step}_crb1.py for QA4b (visualization quality)]
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
 
@@ -1415,18 +1409,19 @@ Return findings using the Code Reviewer Output Format
 
 ### Revision Request (After QA BLOCKER)
 
-When code-reviewer returns BLOCKER, orchestrator sends revision request to research-executor:
+When code-reviewer returns a BLOCKER whose fix brings the code back to what Plan.md specifies, or corrects a defect (a bug, a stub, a validation gap) without changing the method, orchestrator sends revision request to research-executor. A `Stub Detection` or `Validation Gap` STOP comes here too; other STOP categories route as § Gate Status Translation says. A methodology BLOCKER (a code-reviewer STOP with Issue Category `Methodology Conflict`) is not revised: STOP and escalate to the user (§ Stage 5-8 Composite Execution Pattern).
 
 ```python
 Agent({
     description: "Revision: Stage {N} Step {step} - {task_name}",
     prompt: """**BASE_DIR:** {BASE_DIR}
+**PROJECT_DIR:** {PROJECT_DIR} (absolute project path; build every data and output path in the script from it)
 All relative paths in referenced files resolve from BASE_DIR.
 
 **REVISION REQUEST**
 
-**Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py (or .R)
-**Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py (or .R)
+**Original Script:** {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}.py (or .R)
+**Current Final Version:** {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py (or .R)
 
 **METHODOLOGY CONTEXT (from Plan.md):**
 {relevant methodology decisions, coded values, research outcomes for this task}
@@ -1483,24 +1478,7 @@ Please retry the task with this correction.
 
 ### Escalation Pattern
 
-After 2 failed attempts:
-
-```python
-# Return to orchestrator with escalation
-"""
-**ESCALATION: Stage [N] Failed**
-
-**Error:** {error_description}
-
-**Attempts Made:**
-1. {attempt_1_description}
-2. {attempt_2_description}
-
-**Recommendation:** {suggested_resolution}
-
-Awaiting user guidance.
-"""
-```
+After 2 failed attempts, stop and tell the user, using `agent_reference/ERROR_RECOVERY.md` § Escalation Format > Standard Escalation Message: what happened, what was tried, the options with their pros and cons, and a recommendation. Write it in plain language per the Plain-Language Rule table in `SKILL.md` § User-Facing Communication Standards: describe the step by its activity (e.g., "cleaning the enrollment data"), not its stage number.
 
 ---
 
@@ -1515,8 +1493,9 @@ Awaiting user guidance.
 | Candidate datasets identified | Stage 2 output | YES — canonical dataset identifiers (e.g., mirror paths for education data) |
 | Variables flagged for deep-dive | Stage 2 output | YES — with reasons for flagging |
 | Research question | Stage 1 | YES — verbatim |
-| Years needed | Stage 1/2 | YES — exact range |
-| Geographic scope | Stage 1 | YES — states or national |
+| Years needed | Pre-flight Scope Check / Stage 2 | YES — exact range |
+| Geographic scope | Pre-flight Scope Check | YES — states or national |
+| User-referenced materials | Pre-flight Scope Check | YES — paths (and any digest path) bearing on this source, or "none" |
 
 ### Stage 3 → Stage 4 Context
 
@@ -1527,6 +1506,8 @@ Awaiting user guidance.
 | Suppression patterns | Stage 3 output | YES — typical rates |
 | Cross-state comparability | Stage 3 output | YES — assessment |
 | Confidence levels | Stage 3 output | YES — LOW items especially |
+| Confirmed pre-flight scope | Pre-flight Scope Check (`output/preliminary_notes/{date}_preflight_scope-check.md`) | YES — `CONFIRMED PRE-FLIGHT SCOPE:` field: scope as confirmed, what changed, decisions with the user's answers |
+| User-referenced materials | Pre-flight Scope Check | YES — `USER-REFERENCED MATERIALS:` field: paths in the project folder (and the digest path), or "none" |
 
 ### Stage 4 → Stage 5 Context
 
@@ -1635,7 +1616,7 @@ Capturing these lessons prevents repeated mistakes and accelerates future analys
 
 ### Learning Signal Format
 
-Agents (research-executor, code-reviewer, debugger) include a lightweight Learning Signal field in their output:
+Every agent this pipeline dispatches includes a lightweight Learning Signal field in its output:
 
 ```
 **Learning Signal:** [Category: Access|Data|Method|Perf|Process] — [One-line insight] | or "None"
@@ -1708,7 +1689,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 **Application Rules:**
 - When skill docs contradict observed data → trust the data, flag the discrepancy
 - When codebook contradicts observed data → trust the data, but investigate (codebook may describe a different year)
-- When skill docs contradict codebook → trust the codebook, update skill docs
+- When skill docs contradict codebook → trust the codebook, and record the discrepancy as a Learning Signal (Data) so the Stage 12 System Update Action Plan in LEARNINGS.md carries the skill fix to a Framework Development session; Full Pipeline does not edit skills
 - For education domain: Codebook URLs are cataloged in `datasets-reference.md` (codebook column); use `get_codebook_url()` in `fetch-patterns.md` to construct download URLs. Other domains will use analogous structures in their domain query skill.
 - See also: `.claude/agents/data-ingest.md` Data Primacy table for the same hierarchy applied during data onboarding
 
@@ -1716,8 +1697,8 @@ When interpreting data values and resolving discrepancies between sources, apply
 
 | Checkpoint | When | Validates | STOP Condition |
 |------------|------|-----------|----------------|
-| **CP1** | After data fetch | Shape, types, missingness, expected rows | Empty data, >90% missing critical fields |
-| **CP2** | After cleaning | Coded values handled, suppression rate | >50% suppression, invalid analysis type |
+| **CP1** | After data fetch | Shape, expected rows, required columns, year coverage, missingness, data lag, flagged years | Empty data, a required column absent, >90% missing in a required column |
+| **CP2** | After cleaning | Row loss, suppression rate, coded values handled | Suppression above the Plan threshold (50% default), >90% row loss |
 | **CP3** | After transformation | Row counts, join validation, no data loss | >90% row loss, unexpected NAs |
 | **CP4** | After analysis & visualization (Stage 8) | Analysis outputs valid, critical nulls, figures, correct data source | Non-finite estimates, missing or empty figures, script reading `data/raw/` |
 
@@ -1745,12 +1726,12 @@ In addition to CP checkpoints (embedded in code), **QA checkpoints** provide ind
 | **QA2** | After clean (6) | Coded value handling, filtering logic, methodology | Cleaning logic invalid |
 | **QA3** | After transform (7) | Join cardinality, aggregation logic, derived columns | Transformation produces wrong results |
 | **QA4a** | After analysis (8.1) | Statistical validity, assumption checks, result interpretation | Analysis methodology invalid or results unreliable |
-| **QA4b** | After viz (8.2) | Figure existence, data source accuracy, labeling, visual inspection via **Read tool** | Visualization misleading or incorrect |
+| **QA4b** | After viz (8.2), and after an 8.1 analysis script that also draws figures | Figure existence, data source accuracy, labeling, visual inspection via **Read tool** | Visualization misleading or incorrect |
 
-**Key Difference:** CP checkpoints catch **operational failures** (empty data, wrong types). QA checkpoints catch **logical errors** (wrong methodology, misinterpretation).
+**Key Difference:** CP checkpoints catch **operational failures** (empty data, missing required columns, excess missingness or row loss). QA checkpoints catch **logical errors** (wrong methodology, misinterpretation).
 
 **Severity Levels:**
-- **BLOCKER:** Revision required (max 2 attempts, then escalate)
+- **BLOCKER:** Revision required (max 2 attempts, then escalate); a methodology BLOCKER (a code-reviewer STOP with Issue Category `Methodology Conflict`) escalates to the user immediately, with no revision (RULE 4)
 - **WARNING:** Log for Stage 10 aggregation, proceed
 - **INFO:** Log only, proceed
 
@@ -1762,7 +1743,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 
 | Gate | Transition | Requires | Enforcement |
 |------|------------|----------|-------------|
-| G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
+| G1 | 1 → 2 | Pre-flight Scope Check confirmed (includes mode confirmation) | Cannot invoke Stage 2 subagent |
 | G2 | 2 → 3 | ≥1 dataset identified, key variables flagged | Cannot invoke source deep-dive |
 | G3 | 3 → 3.5 | All flagged variables investigated, coded values documented, suppression patterns identified | Cannot invoke research-synthesizer |
 | G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved, **User confirmed PSU1** | Cannot create Plan documents without user PSU1 confirmation |
@@ -1771,34 +1752,34 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G5 | 5 → 6 | CP1 PASSED per script, data saved to data/raw/, code-reviewer separately invoked per script immediately after completion, every QA1 ∈ {PASSED, WARNING} | Cannot proceed to cleaning |
 | G6 | 6 → 7 | CP2 PASSED per script, suppression <50%, data saved to data/processed/, code-reviewer separately invoked per script immediately after completion, every QA2 ∈ {PASSED, WARNING}, **User confirmed PSU3** | Cannot proceed to transformation without user PSU3 confirmation |
 | G7 | 7 → 8 | All transformations CP3 PASSED per script, code-reviewer separately invoked per script immediately after completion, every QA3 ∈ {PASSED, WARNING} | Cannot proceed to analysis and visualization |
-| G8 | 8 → 9 | Analyses and visualizations complete, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, every QA4a and QA4b ∈ {PASSED, WARNING} | Cannot assemble notebook |
-| G9 | 9 → 10 | Python: the `marimo check --select MB` structural gate passes, `marimo export html` exits 0, and the Step 6c verbatim fidelity check passes all four conditions, each with quoted evidence: clean decompile, bundle count and decompiled paths equal to the Step 1 final-version inventory, every numstat line an ` => dev/null}` line or the single `MANIFEST.md` line (notebook-assembler Step 6). R: `quarto render` validates assembly and explicitly enabled previews without re-running archived Stage 5-8 scripts. All scripts are represented with code + execution logs | Cannot run QA aggregation |
+| G8 | 8 → 9 | Analyses and visualizations complete, CP4 PASSED per script, code-reviewer separately invoked per 8.1 script (QA4a, plus QA4b when the analysis script also draws figures) and per 8.2 script (QA4b) immediately after each completes, every QA4a and QA4b ∈ {PASSED, WARNING} | Cannot assemble notebook |
+| G9 | 9 → 10 | Python: the `marimo check --select MB` structural gate passes, `marimo export html` exits 0, and the Step 6c verbatim fidelity check passes all four conditions, each with quoted evidence: clean decompile, bundle count and decompiled paths equal to the Step 1 final-version inventory, every numstat line an ` => dev/null}` line or the single `MANIFEST.md` line (notebook-assembler Step 6). R: `quarto render` validates assembly and explicitly enabled previews without re-running archived Stage 5-8 scripts. All scripts are represented with code + execution logs. integration-checker (Stage 9 scope) returned CONNECTED or WARNING-only | Cannot run QA aggregation |
 | G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, **User confirmed PSU4** | Cannot generate report without user PSU4 confirmation |
-| G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
-| G12 | 12 → Delivery | Final Review verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
+| G11 | 11 → 12 | Report complete with all sections and figure references; integration-checker (Stage 11 scope) returned CONNECTED or WARNING-only | Cannot run final review |
+| G12 | 12 → Delivery | integration-checker (full scope) returned CONNECTED or WARNING-only before data-verifier ran, Final Review verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
 
 **Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all four files: Plan.md, Plan_Tasks.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`). If any are missing, create before proceeding. After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
 
-**Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan documents (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
+**Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS, and the user MUST confirm PSU2. If ISSUES_FOUND, revise Plan documents (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
 
 **Plan-revision STATE.md synchronization (blocking, within G4.5):** After ANY accepted plan revision (data-planner returns REVISION_COMPLETE and plan-checker subsequently passes), and BEFORE proceeding to Stage 5, the orchestrator MUST resynchronize STATE.md to the revised Plan_Tasks.md — STATE.md's Transformation Progress table, Current Position paths, and Next Actions were first populated at Stage 4 from the *original* Plan_Tasks.md and go stale when a revision changes task count, task names, script paths, or wave structure. The orchestrator MUST: (1) read the revised Plan_Tasks.md frontmatter (`total_tasks`, `total_waves`, `version`) and full Task Index; (2) rebuild the Transformation Progress table from the revised Task Index (carry a completed row over ONLY when the task still exists with an identical script path — otherwise re-derive its status honestly); (3) update the Plan.md / Plan_Tasks.md paths, Current Stage, and Next Actions; (4) validate mechanically — Transformation Progress row count == `total_tasks`, every script path appears in both the table and the revised Task Index (and vice versa), and no STATE.md content references a superseded plan-version filename. If any check fails, STOP — fix STATE.md and re-validate before any further dispatch. This is a blocking condition inside Gate G4.5, not a new gate. See the STATE.md Update Gates table row "Plan revised (accepted revision)" for field-level detail.
 
 **CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan.md summary, and the exact filepath to Plan.md for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
 
-**Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before the next script in the same stage begins. "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Running all scripts in a stage and then invoking code-reviewer once (or once per script after-the-fact) does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before the next script runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, BOTH QA4a (statistical analysis) and QA4b (visualization) must be independently and separately invoked per script. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
+**Gate G5-G8 Enforcement (Per-Script QA Invocation):** Gates G5-G8 require POSITIVE confirmation that code-reviewer was **separately invoked to review each individual script immediately after that script completed execution** — not batched at stage end. "Immediately" means: before any script that depends on it begins, so before the next wave starts (same-wave scripts run in parallel, each reviewed on its own; § Wave-Based Parallel Execution). "Separately" means: one code-reviewer invocation per script, not one invocation reviewing multiple scripts. Starting a later-wave script before every script it depends on has its own recorded review, or reviewing several scripts in one code-reviewer call, does **NOT** satisfy these gates — the QA must be interleaved with execution so that each script's QA findings can inform whether to proceed, revise, or stop before any script that builds on it runs. If code-reviewer was never invoked for a given script, that script's QA status is NOT_RUN and the gate is NOT satisfied. For Gate G8, QA4a (statistical analysis) and QA4b (visualization) are independent, separate invocations: each 8.1 analysis script gets QA4a, plus QA4b when it also draws figures, and each 8.2 visualization script gets QA4b. See the **Stage 5-8 Composite Execution Pattern** for the complete flow.
 
 ### Per-Script QA Enforcement Protocol
 
 **To prevent batching, the orchestrator MUST maintain a QA invocation discipline throughout Stages 5-8.**
 
-**Rule: One script in, one QA out, before the next script begins.**
+**Rule: One script in, one QA out, before any script that depends on it begins.** Same-wave scripts run in parallel (at most 5 in flight), each with its own review; the next wave starts only when every script in the current wave has its review recorded.
 
 Concretely:
-1. **Before invoking research-executor for script N+1**, verify that script N has a completed code-reviewer QA entry in STATE.md (with QA status ∈ {PASSED, WARNING} or BLOCKER resolved via revision). If script N's QA entry is missing or incomplete, STOP and invoke code-reviewer for script N first.
-2. **STATE.md Transformation Progress table** must have one row per script, and each row must include: script path, CP status, QA status, and QA script path. A row with QA status = `NOT_RUN` blocks the next script invocation.
-3. **Self-check before every research-executor call**: *"What was the last script I executed? Did I invoke code-reviewer separately for it? Is its QA status recorded in STATE.md? If any answer is no → invoke code-reviewer NOW, do not invoke research-executor."*
+1. **Before dispatching research-executor for a task**, verify that every task it depends on (every task in earlier waves) has a completed code-reviewer QA entry in STATE.md (with QA status ∈ {PASSED, WARNING} or BLOCKER resolved via revision). If any of those entries is missing or incomplete, STOP and invoke code-reviewer for that script first.
+2. **STATE.md Transformation Progress table** must have one row per script, and each row must include: script path, CP status, QA status, and QA script path. A row with QA status = `NOT_RUN` blocks the next wave.
+3. **Self-check before every research-executor dispatch**: *"Which earlier scripts does this task depend on? Did I invoke code-reviewer separately for each? Is each QA status recorded in STATE.md? If any answer is no → invoke code-reviewer NOW, do not invoke research-executor."*
 
-**Why this matters:** Batching QA to the end of a stage means errors in script 1 propagate silently through scripts 2, 3, and 4 — producing compounding data corruption that is far harder to diagnose and fix. Per-script QA catches errors at the source, before they cascade.
+**Why this matters:** Batching QA to the end of a stage means errors in script 1 propagate silently through every script that builds on it — producing compounding data corruption that is far harder to diagnose and fix. Per-script QA catches errors at the source, before they cascade.
 
 ### Gate Status Translation
 
@@ -1809,15 +1790,19 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | **research-executor** | PASSED | Proceed to QA |
 | | WARNING | Proceed to QA (log warning) |
 | | FAILED | Attempt versioned fix or STOP |
-| **code-reviewer** | PASSED (severity: None/INFO) | QA = PASSED |
-| | ISSUES_FOUND (severity: WARNING) | QA = WARNING |
-| | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
+| **code-reviewer** (read the `QA{n} RESULT:` line; `Status` says only whether the review itself ran to completion) | `QA{n} RESULT: PASSED` | QA = PASSED |
+| | `QA{n} RESULT: WARNING` | QA = WARNING |
+| | `QA{n} RESULT: BLOCKER` whose fix would change Plan.md's method, make a methodology choice Plan.md does not settle, or restore a Plan.md choice that itself looks wrong for the data (the reviewer should have raised a STOP) | Treat as `Methodology Conflict`: STOP, escalate to user immediately (RULE 4) |
+| | `QA{n} RESULT: BLOCKER`, any other (the fix brings the code back to what Plan.md specifies, and Plan.md's choice does not itself look wrong for the data; or it corrects a defect such as a bug, a stub or a validation gap without changing the method) | QA = BLOCKER (revision flow, max 2) |
+| | `CODE-REVIEWER STOP`, Issue Category `Methodology Conflict` | STOP, escalate to user immediately (RULE 4) |
+| | `CODE-REVIEWER STOP`, any other Issue Category | Route by category: `Data Corruption` → debugger (code-reviewer recommends it); `Stub Detection` or `Validation Gap` → revision flow, max 2; `Missing Output` → confirm with research-executor that the script ran and saved its outputs, then re-dispatch the review |
+| | Neither a `QA{n} RESULT:` line nor a `CODE-REVIEWER STOP` block (the review did not finish) | Re-dispatch the review; the script's QA Status stays `PENDING` |
 | **data-planner** | COMPLETE | Proceed to Stage 4.5 |
 | | CONTINUATION | Read partial Plan.md on disk, invoke fresh data-planner in continuation mode |
 | | REVISION_COMPLETE | Re-invoke plan-checker; after it passes, resynchronize STATE.md to the revised Plan_Tasks.md (rebuild Transformation Progress + Current Position + Next Actions + plan paths) and run the parity validation before Stage 5 (see Gate G4.5 Enforcement) |
 | | BLOCKED | Escalate to user |
-| **plan-checker** | PASSED | G4.5 = SATISFIED |
-| | PASSED_WITH_WARNINGS | G4.5 = SATISFIED (log warnings) |
+| **plan-checker** | PASSED | Plan-checker condition met; G4.5 = SATISFIED once the user confirms PSU2 |
+| | PASSED_WITH_WARNINGS | Plan-checker condition met (log warnings); G4.5 = SATISFIED once the user confirms PSU2 |
 | | ISSUES_FOUND | G4.5 = NOT SATISFIED (revision needed) |
 | **data-verifier** | PASSED | G12 = SATISFIED |
 | | ISSUES_FOUND (severity: WARNING) | Log, proceed with caveats |
@@ -1837,9 +1822,10 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | **debugger** | RESOLVED (Bug fix) | Apply fix, re-run task via research-executor |
 | | RESOLVED (Data quality) | Document limitation, adjust scope |
 | | RESOLVED (Transient) | Retry operation |
+| | RESOLVED (Methodology) | STOP, escalate to user (RULE 4) |
 | | UNRESOLVED | Escalate to user with hypothesis log |
 | | PARTIAL | Escalate with findings; user decides |
-| **integration-checker** | CONNECTED | Gate satisfied (G9, G11, or G12 depending on stage) |
+| **integration-checker** | CONNECTED | Wiring checkbox satisfied (G9, G11, or G12 depending on stage; templates in WORKFLOW_PHASE4 § Stage 9 and WORKFLOW_PHASE5 § Stages 11-12) |
 | | ISSUES FOUND (severity: WARNING) | Log; proceed with caveats |
 | | ISSUES FOUND (severity: BLOCKER) | Gate NOT SATISFIED; revision needed |
 | **data-ingest** | COMPLETE | Present integration guidance; offer skill registration |
@@ -1853,15 +1839,18 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | Stage N starts | Current Stage → N |
 | Plan revised (accepted revision — data-planner REVISION_COMPLETE and plan-checker passed; also applies to Revision and Extension mode new-version creation) | Rebuild Transformation Progress table from the revised Plan_Tasks.md Task Index (carry a completed row over ONLY when the task still exists with an identical script path; otherwise re-derive status honestly) + Current Position (Plan.md / Plan_Tasks.md paths, Current Stage) + Next Actions. Then validate: row count == Plan_Tasks `total_tasks`; every script path present in both the table and the Task Index; no reference to a superseded plan-version filename. Blocking within Gate G4.5 — STOP and fix if any check fails |
 | Checkpoint passes | Checkpoint Status table |
-| QA completes | QA Status section |
+| QA completes | Transformation Progress (the script's QA Status column) + Checkpoint Status > Secondary Validation (QA1-QA4b) |
 | Blocker encountered | Blockers section + Next Actions |
 | Key decision made | Key Decisions Made table |
 | Risk identified during execution | Runtime Risks table |
 | QA finding recorded | QA Findings Summary (incremental — append per code-reviewer return) |
 | Analysis result addresses hypothesis | Hypothesis Assessment Progress table |
+| notebook-assembler Stage 9 return | Final Review Log > Stage 9 Check Evidence (results quoted from the return, with run timestamps) |
+| integration-checker return (Stages 9, 11, 12) | Final Review Log > Integration Checks (one row per return; Stage 12 also persisted in full at `output/preliminary_notes/{date}_stage12_integration-check.md`) |
 | Final review completed | Final Review Log |
-| Context Utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | Context Snapshot section |
-| Phase boundary reached | Phase Status Update section + User confirmation status |
+| Context Utilization reaches ELEVATED (See CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile) | Context Snapshot section |
+| User checkpoint (PSU) presented | Current Position > Status → Awaiting Confirmation + Next Actions > Pending User Input (names the checkpoint). PSU1 is presented before STATE.md exists, so it has no row here |
+| Phase boundary reached (PSU confirmed) | Current Position > Status → In Progress + Key Decisions Made (one row per checkpoint: the user's answer and any changes they asked for) + Current Position (Current Phase). PSU1 is confirmed before STATE.md exists: add its row when STATE.md is created at Stage 4 |
 | Phase completes | Session History (if multi-session) |
 
 ### Automatic STOP Conditions
@@ -1875,13 +1864,14 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 | Domain governance rule violation (e.g., cross-state assessment comparison in education) | Stage 6 | BLOCK with explanation (never valid) |
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
-| **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
+| **QA methodology conflict** (code-reviewer STOP, Issue Category `Methodology Conflict`) | 5-QA to 8-QA | STOP, escalate immediately |
 | Python `marimo check` gate or `marimo export html` failure, or R `quarto render` assembly/enabled-preview error, after 2 fix attempts | Stage 9 | STOP, report format-specific error details; do not treat either check as archived analysis re-execution |
 | Stage 9 display input (Parquet or figure, Marimo or Quarto) is missing and its file name appears in the project's `*_Plan.md`, `*_Plan_Tasks.md` or `STATE.md` (a declared Stage 5-8 output) | Stage 9 | STOP, report as an upstream failure; never drop the display to hide it |
 | Marimo execution log cannot be archived verbatim (contains both `'''` and `"""`; 6a MB001 inside a log accordion whose delimiter is already the one notebook-assembler's Grep rule picks; a log character the bundle or decompiler cannot carry, such as a NUL byte, invalid UTF-8 or a carriage return inside a line; or the 6c fidelity check fails: a script missing, an earlier or renamed version archived, or an archived script differing from its original) | Stage 9 | STOP, report script path and the offending line, missing or extra paths, or differing lines; never edit archived code or log text |
 | Data unavailable in configured data source | Stage 2-3 | STOP, escalate immediately |
+| LOW confidence finding unresolved | Any | Cannot proceed |
 
-**STOP/Escalation Format:** See `agent_reference/ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
+**STOP/Escalation Format:** See `agent_reference/ERROR_RECOVERY.md` § Escalation Format for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
 
 ### Verification Checklists by Stage
 
@@ -1909,7 +1899,7 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 - Complete Final Review (Final Review) before delivery
 - Generate all three deliverables (Plan.md + Plan_Tasks.md, Marimo/Quarto Notebook, Report)
 - Follow the Inline Audit Trail (IAT) protocol for all scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
-- Include validation assertions in notebooks
+- Include validation assertions in every script (the notebook archives them verbatim)
 - Update STATE.md with all runtime decisions, deviations, and findings
 - Surface online verification as an option at Phase 1 (Discovery) when skill-sourced data source details may have changed, at Phase 2 (Planning) when methodology choices draw on general knowledge beyond loaded skills, and at checkpoints when presenting findings that rest on skill-derived assumptions
 
@@ -1922,7 +1912,7 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 **QA-Specific Boundaries (Stages 5-8):**
 - Invoke code-reviewer after EVERY script execution
 - Create QA scripts in `scripts/cr/` for every reviewed script
-- Address BLOCKER issues via revision before proceeding
+- Address BLOCKER issues via revision before proceeding; escalate a methodology BLOCKER to the user immediately instead
 - Never skip QA for "simple" scripts
 - Never modify scripts after QA review (create new version instead)
 - Never allow code-reviewer to directly modify execution scripts
@@ -1970,12 +1960,15 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 
 **Creation Trigger:**
 - **Create:** At Stage 4 (Plan creation) — IMMEDIATELY after Plan.md file is written
-- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
+- **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Gate G4.5 is satisfied: Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS and the user confirmed PSU2 (see § Stage Gates).
 - **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
+- **Pre-Flight Scope Check (required at creation):** copy the confirmed scope, the materials list with their project paths, and the dated old → new move line from `output/preliminary_notes/{date}_preflight_scope-check.md` (§ Pre-Flight Checklist > On Confirmation (Gate G1)) into STATE.md's Pre-Flight Scope Check section.
 - **Session Metadata (required at creation):** Populate the Session Metadata section immediately when creating STATE.md:
   - **DAAF Version (at setup):** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result. This is captured once at project setup and is NOT refreshed to current HEAD on later sessions — a session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD
   - **Session Model ID:** Record the model identifier actually in use for the session (e.g., "claude-opus-4-8[1m]")
   - **Subagent Model Tiers:** Record the specialist model tiers/IDs in use — agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides applied; resolved IDs where known, tier alias + session date otherwise (see STATE_TEMPLATE.md)
+  - **Provider Route:** Record how this installation reaches its models, using one of the values STATE_TEMPLATE.md lists. The report's AI Use Disclosure takes the provider and access method from this field. To find the route, see `AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route. If the route is still not evident, leave the field empty rather than guess: the disclosure then asks the researcher to state it
+  - **Model Settings:** Record the reasoning-effort settings for that route as STATE_TEMPLATE.md describes (the same section of `AI_DISCLOSURE_REFERENCE.md` says where each route sets them); the disclosure's Parameters line reads this field
   - **Session Date(s):** Record today's date; update if the project spans multiple sessions
   - **Session Transcript(s):** Leave as the default value — project-local logs are collected at completion
 

@@ -12,9 +12,9 @@ Runs **only if the user accepts the Pre-Authoring Research Offer** presented aft
 
 **Why this exists.** Profiling establishes *what the data looks like*; it cannot establish the collection methodology, population coverage rationale, valid/invalid analytical patterns, or documented limitations that make a data source skill genuinely useful. Those live in the source's official documentation and the research/practitioner literature. Grounding the skill in real sources beats ungrounded inference (see `CLAUDE.md` § "Skill information awareness"). The research runs to completion and its findings are persisted **before** the DI-7 skill-authoring subagent is dispatched, so DI-7 can consume them as an input.
 
-**Executor.** Dispatch a `search-agent` (read-only, web-capable via WebSearch plus the DAAF fetch protocol — `web-retrieval` skill, DAAF-aware). Keeping the research in its own dispatch keeps it separate, auditable, and complete before authoring begins. Do NOT fold the research into the DI-7 authoring subagent — the separation is what makes the research trail reviewable and lets profiling (observed) be reconciled against literature (reported) as an explicit input.
+**Executor.** Dispatch a `search-agent` (web-capable via WebSearch plus the DAAF fetch protocol — `web-retrieval` skill, DAAF-aware). Keeping the research in its own dispatch keeps it separate, auditable, and complete before authoring begins. Do NOT fold the research into the DI-7 authoring subagent — the separation is what makes the research trail reviewable and lets profiling (observed) be reconciled against literature (reported) as an explicit input.
 
-> **Async dispatch note.** The pre-authoring research is a single `search-agent` dispatch, not a wave. Under async dispatch it returns via a completion notification; do not persist its notes, dispatch DI-7, or advance until that return has arrived and been written to disk. See `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Async dispatch note.** The pre-authoring research is a single `search-agent` dispatch, not a wave. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Do not persist its notes, dispatch DI-7, or advance until that return has arrived and been written to disk.
 
 **Model tier.** Mechanical documentation lookup stays `sonnet` (search-agent's default). If the accepted scope is **Deep** — interpretive synthesis across methodology literature and practitioner guides rather than straight documentation retrieval — add an explicit `model: opus` override on the dispatch, per the orchestrator SKILL.md Model Selection doctrine ("a search-agent dispatch is review-role or interpretive-synthesis work … rather than mechanical lookup"). Focused/documentation-only research stays `sonnet`.
 
@@ -101,7 +101,7 @@ exclusions"}
 ### Learning Signal
 **Learning Signal:** [Category] — [One-line insight] | "None"
 
-After completing the skill's Required Actions, return findings using the format above.""",
+After loading the skill and researching, return the findings in the format above.""",
     subagent_type: "search-agent"
     # For Deep scope only, add:  model: "opus"
 })
@@ -125,7 +125,7 @@ Prepend the standard provenance header (per orchestrator SKILL.md § Subagent Re
 
 Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
 
-> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). Under async dispatch, it returns via a completion notification rather than a synchronous tool return. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
+> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
 
 **Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
 
@@ -138,6 +138,14 @@ All relative paths in referenced files resolve from BASE_DIR.
 Call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name 'skill-authoring'.
 Read `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` for the canonical 12-section order.
+Write the skill to `agent_reference/DOCUMENTATION_STANDARDS.md` as agent-facing text. As
+sources, cite only files inside the skill folder (its `references/` and bundled `scripts/`),
+other shipped DAAF files, or public URLs, never this onboarding project's notes, STATE.md or
+execution logs under `research/`: state a profiling finding in a sentence instead (§ S4
+Self-Contained). The Data Access section still says where the data files live. Give a fact
+taken from the provider's documentation or API a stamp in the form "verified against <source>
+on YYYY-MM-DD" (§ Dated Stamps). The data's own history across years is in scope; a change story about the
+skill is not (§ S5 Current State).
 
 **PROJECT DIRECTORY:** {project_dir}
 
@@ -154,7 +162,11 @@ methodology papers).
 These are the source of methodological context, study design information, population coverage,
 and analytical limitations that cannot be derived from profiling scripts alone. Reference
 files must synthesize both profiling-derived observations AND documentation-derived context.
-If a documentation website URL is in STATE.md, fetch key pages for methodology context.
+If a documentation website URL is in STATE.md, read the pages already saved under
+`{project_dir}/web_fetches/` (the scoping read before setup confirmation fetches provider pages
+there with `web_fetch.sh`). If a key page is missing, list its URL in your return for the
+orchestrator to fetch: web retrieval runs only in the contexts the `web-retrieval` skill
+permits, and the built-in WebFetch is blocked.
 
 **PROFILING PRELIMINARY NOTES:** Consolidated profiling findings from each phase are at:
 - {project_dir}/output/preliminary_notes/{date}_partA_structural-discovery.md
@@ -293,8 +305,8 @@ Density targets for reference files:
     data could be confused with more recent or more frequent data, flag this prominently.
   * **Valid and Invalid Analyses:** Structured tables showing what analyses are appropriate
     vs. problematic, with reasoning. Use concrete examples with real place names, variable
-    names, or values where possible (following the OI Neighborhoods analytical-context.md
-    pattern):
+    names, or values where possible (following the Valid and Invalid Comparisons tables in
+    `education-data-source-ipeds/references/graduation-rates.md`):
     ### Valid Analyses
     | Analysis | Why Valid |
     |----------|----------|
@@ -338,7 +350,10 @@ Part 2 — CPP-SKILL Validation:
 7. Run CPP-SKILL validation. The code is canonical in `agent_reference/VALIDATION_CHECKPOINTS.md`
    § Profiling Validation Checkpoints > CPP-SKILL: Post-Authoring Validation — copy that block
    verbatim into a Python script and execute it via `run_with_capture.sh`. It is Python-only:
-   the artifact under test is markdown, so there is no R variant even on R projects.
+   the artifact under test is markdown, so there is no R variant even on R projects. To re-run
+   it after revising the skill, make a new version of the script with
+   `bash {BASE_DIR}/scripts/create_script_revision.sh <latest version> <next version>` (`_a`,
+   then `_b`): `run_with_capture.sh` refuses a script that already carries an execution log.
 
 **Config stanza — assign these in the CPP-SKILL script's `# --- Config ---` region before
 the block** (the canonical stanza and the `not_applicable` key list live at
@@ -453,7 +468,7 @@ After DI-7 completes and the skill passes CPP-SKILL compliance, the orchestrator
 
    > "I've made two rounds of revisions. For the more substantial changes you're describing, Framework Development mode would give us more flexibility to restructure the skill. Want me to switch?"
 
-3. **After each iteration:** Re-run CPP-SKILL validation on the revised skill. Update STATE.md Skill Authoring Status.
+3. **After each iteration:** Re-run CPP-SKILL validation on the revised skill, as a new version of the CPP-SKILL script made with `bash {BASE_DIR}/scripts/create_script_revision.sh <latest version> <next version>` (`run_with_capture.sh` refuses a script that already carries an execution log). Update STATE.md Skill Authoring Status.
 
 ### Skill Maturity Framing
 

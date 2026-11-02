@@ -191,6 +191,8 @@ Content here.
 
 - Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
 - Before authoring, consider a scoped online survey of the skill's domain (best practices, alternative implementations, practitioner guides) — external grounding beats ungrounded inference. When working with a user, offer this rather than silently skipping it (formalized in Framework Development mode as the Pre-Authoring Research Offer: `.claude/skills/daaf-orchestrator/references/framework-development-mode.md` § Pre-Authoring Research Offer)
+- Write to `agent_reference/DOCUMENTATION_STANDARDS.md` for the skill's audience: skill text is agent-facing, so precise internal terms are fine; any text the skill gives an agent to show a user follows § S3 Plain for Users
+- Write the description for its primary reader, the orchestrator (and any agent deciding whether to load the skill): optimize it for routing, and add user-friendly wording only where it also helps that reader
 - Include "what it does" AND "when to use it" in description
 - Write a complete, information-rich frontmatter description (up to the 1,024-char validation limit) — this is the ONLY text agents see when deciding whether to load a skill, so it should carry the full triggering context, not a compressed teaser
 - Practice budget-aware economy: 40+ DAAF skills share an aggregate skill-listing budget (~1% of the context window). When the listing overflows, descriptions for the least-invoked skills are dropped first — so spend characters where they earn triggering accuracy, not on exhaustive feature lists
@@ -219,7 +221,7 @@ Content here.
 - Don't start/end name with hyphens
 - Don't use heavy-handed ALWAYS/NEVER/MUST in all caps — explain reasoning instead
 - Don't offer too many options — provide a default with an escape hatch
-- Don't include time-sensitive information (use "Old patterns" `<details>` sections if needed)
+- Don't narrate history: describe how things work in this release, give reasons in the present tense, and leave change stories to CHANGELOG.md. A data-source skill keeps the data's own history (schema changes across years), and a short fenced "recognizing older forms" note is allowed only where agents will meet legacy material in a user's files (`agent_reference/DOCUMENTATION_STANDARDS.md` § S5 Current State; see `./references/structure.md` § Current State, Not History)
 - Don't use Windows-style backslash paths (always forward slashes)
 
 ### Skill Registration

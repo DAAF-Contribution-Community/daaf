@@ -4,16 +4,28 @@ Flexible, user-driven collaboration for skilled researchers who want a rigorous 
 
 ## User Orientation
 
-After mode confirmation, briefly orient the user:
+The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
 - This is a flexible working session -- bring whatever you need help with
 - I can review code, debug scripts, investigate data sources, write analysis code, brainstorm approaches, explain packages, and more
-- A workspace will be created automatically if we produce anything (scripts, data, figures) and to track session notes
+- If you point me to files or documents, I read them first and, before anything multi-step, tell you what I see and what I plan
+- A workspace is created the first time we produce something -- a script, data, a figure, or session notes once there is a decision or result worth recording -- and I'll suggest its name then
 - You're in control -- change topics freely, ask follow-ups, or escalate to a full analysis pipeline at any time
 
-**When to skip:** User has indicated familiarity, is a returning user, or immediately dives into a specific task.
-
 **For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+---
+
+## Scope Check
+
+- **Tier:** Soft. A statement of what you see and what you plan, never a gate: this mode imposes no checkpoints (§ Boundaries > Never Do).
+- **When:** before each new multi-step or artifact-producing task: once per task, not on every turn. A question answered in conversation gets no check.
+- **Read first:** the files, documents, URLs or prior projects the user pointed to, wherever they live (§ Working with User-Provided Files), before saying anything about the plan. The read-first rule in `SKILL.md` § Scope Check > Read First covers PDFs (one `search-agent` digest), web pages and large projects. A data file is described from its listing only; its rows are examined by the dispatched agent's scripts, not read into the conversation.
+- **Where reads land:** until the workspace exists, fetches, PDF ingests and a digest are staged in the session scratchpad (`SKILL.md` § Scope Check > Read First); they graduate into the workspace when the first artifact creates it (§ Workspace Setup). Once the workspace exists, fetch into its `web_fetches/` directly.
+- **What to say:** "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." (With no materials, just the plan.) Then start in the same turn; the user can redirect at any point. When this action will create the workspace, name its proposed topic label here (§ Workspace Setup).
+- **When to ask instead:** if the materials or the request leave two readings that would lead to different work, ask that one question and wait. That is a clarifying question, not a checkpoint.
+
+Why: a plan stated after reading costs one sentence and lets the user catch a wrong interpretation before effort is spent, without turning a flexible session into a gated one. The tier table is in `SKILL.md` § Scope Check.
 
 ---
 
@@ -44,7 +56,7 @@ Unlike pipeline modes, Ad Hoc Collaboration has no fixed stage progression. The 
 
 There are no mandatory checkpoints, gates, or phase transitions. The user drives the conversation. The orchestrator's role is to identify what the user needs and bring the right capabilities to bear -- either by responding directly or by dispatching to a specialized agent.
 
-**Intent confirmation for multi-step tasks:** When the orchestrator infers a multi-step task from a loose conversational request (e.g., the user says "can you take a look at my enrollment analysis?" and the orchestrator prepares to dispatch research-executor), confirm the user's intent before executing. A brief "I'm going to write a script that [does X] -- does that match what you had in mind?" prevents wasted effort when the interpretation is wrong.
+**Intent check for multi-step tasks:** When the orchestrator infers a multi-step task from a loose conversational request (e.g., the user says "can you take a look at my enrollment analysis?" and the orchestrator prepares to dispatch research-executor), give the soft Scope Check before executing (§ Scope Check): read whatever the user referenced first, then a brief "Here's what I see in [your analysis]; here's my plan: a script that [does X]. I'm starting on it now — stop me if anything looks off." Then start in the same turn. This catches a wrong interpretation early without becoming a checkpoint, and it comes once for each new multi-step task, not on every turn.
 
 ---
 
@@ -52,23 +64,29 @@ There are no mandatory checkpoints, gates, or phase transitions. The user drives
 
 Workspace creation is **deferred until the first artifact-producing action.** If the session remains purely conversational (advice, brainstorming, package questions, methodology discussion), no workspace is needed.
 
-When an artifact-producing action is triggered (dispatching a coding agent, saving a file, running a script), the orchestrator creates:
+When an artifact-producing action is triggered (dispatching a coding agent, saving a file — including SESSION_NOTES.md at the first milestone, § Session Notes and Continuity — running a script), the orchestrator creates:
 
 ```
 research/YYYY-MM-DD_AdHoc_{Topic}/
 ├── scripts/
 │   ├── adhoc/                     # For research-executor tasks
 │   ├── debug/                     # For debugger agent
-│   └── cr/                        # For code-reviewer agent
+│   ├── cr/                        # For code-reviewer agent
+│   └── scratch/                   # Working files, never relied on (created on first use)
 ├── data/
 │   ├── raw/
 │   └── processed/
-└── output/
-    ├── analysis/
-    └── figures/
+├── output/
+│   ├── analysis/
+│   └── figures/
+├── web_fetches/                   # web_fetch.sh DEST_DIR (created on first use)
+├── papers/                        # pdf_ingest.sh output, e.g. staged papers moved in (created on first use)
+├── user_pdfs/                     # copies of user PDFs from outside /daaf (created on first use)
+├── logs/                          # collect_session_logs.sh output (created at wrap-up)
+└── lit_search/                    # scholar_search.sh DEST_DIR (created on first use)
 ```
 
-**Topic naming:** Auto-generate a short topic label from the user's request context. Confirm with the user during mode confirmation (e.g., "If we produce anything, I'll save it to a workspace called 'Geospatial_Join_Debug' -- does that work?"). If the user's initial request has no clear topic (e.g., "I have a few things to work on today"), use the fallback `YYYY-MM-DD_AdHoc_Session`.
+**Topic naming:** Propose a short topic label when the workspace is created, not at mode confirmation. By then you have read what the user pointed to and know what is being made, so the label reflects the work rather than a guess from the opening request, and a purely conversational session never needs one. Name it in the soft Scope Check when one precedes the action, otherwise in the message that creates the workspace (e.g., "I'm saving this to a workspace called 'Geospatial_Join_Debug' -- tell me if you'd prefer another name"); do not wait for an answer. If the work has no clear topic (e.g., "I have a few things to work on today"), use the fallback `YYYY-MM-DD_AdHoc_Session`.
 
 **No STATE.md. No Plan.md.** These can be created later if the session evolves to need them (e.g., the user asks for a formal plan, or decides to escalate to Full Pipeline).
 
@@ -85,6 +103,8 @@ mkdir -p {PROJECT_DIR}/data/processed
 mkdir -p {PROJECT_DIR}/output/analysis
 mkdir -p {PROJECT_DIR}/output/figures
 ```
+
+**Staged materials graduate now.** If read-first materials were staged before the workspace existed (§ Scope Check), move them in right after the setup commands and before anything cites them: `web_fetches/`, `papers/` and `user_pdfs/` to the same-named workspace folders, the digest to the workspace root beside SESSION_NOTES.md (the layout has no notes folder), one `mv` per call; then re-ingest any paper whose source PDF moved, with `--reingest`. Record the moves as one dated old → new line in SESSION_NOTES.md, creating it if needed (`SKILL.md` § Scope Check > Read First > "Graduation on confirmation").
 
 ---
 
@@ -182,7 +202,7 @@ Skills are a solid starting point for framework conventions and domain knowledge
 - *"I can look up the latest documentation for this to make sure we're working with current information."*
 - *"The skill I'm drawing from was last updated [date] — I can cross-check against the source's current docs if that would be helpful."*
 
-**When dispatching to agents:** Agents with web tools (search-agent, data-ingest) can verify directly. For agents without web tools (research-executor, code-reviewer, debugger), unexpected errors or results that may stem from skill drift should be flagged in return output so the orchestrator can dispatch verification via search-agent or verify directly.
+**When dispatching to agents:** Agents with web access (search-agent, data-ingest, debugger) can verify directly. For agents without it (research-executor, code-reviewer), unexpected errors or results that may stem from skill drift should be flagged in return output so the orchestrator can dispatch verification via search-agent or verify directly.
 
 ---
 
@@ -307,6 +327,7 @@ In pipeline modes, agent output is a concise signal to the orchestrator (2000-wo
 Users in Ad Hoc Collaboration frequently reference their own files -- scripts they've written, data files they're working with, plans they've drafted. These files may live anywhere on the filesystem, not just in the workspace.
 
 - **Read files wherever they are.** The orchestrator and agents have filesystem read access. Do not copy user files into the workspace unless there's a reason to (e.g., the debugger needs to modify a copy, or an agent needs to execute a user's script via `run_with_capture.sh`).
+- **Read before planning.** When the user points to a file or document, read it before proposing what to do with it, and pass its path to any agent you dispatch (§ Scope Check).
 - **Write outputs to the workspace.** Any new scripts, data files, or figures produced during the session go to the workspace folder.
 - **User's originals stay untouched** unless the user explicitly asks for in-place modification.
 
@@ -323,7 +344,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - A task plan or advisory outline is produced
 - A key decision is made (e.g., "we'll use CCD instead of IPEDS for this")
 - A deliverable is completed (script executed, code review returned, debugging resolved)
-- Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds)
+- Context utilization reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -369,7 +390,7 @@ Update after each of these events (not every turn -- only at milestones):
 | Key analytical decision made | Key Decisions |
 | Deliverable completed (script executed, review done) | Accomplishments |
 | User changes topic substantially | In Progress (update current focus) |
-| Context reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | All sections (full checkpoint) |
+| Context reaches ELEVATED (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 
@@ -391,7 +412,7 @@ When a user resumes an ad hoc session ("let's pick up where we left off on X"), 
 - **Dispatch generously to subagents.** Each subagent gets a fresh context window. For tasks that involve code execution, deep research, or formal review, dispatching preserves orchestrator context for the ongoing conversation.
 - **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure. This budget does not waive the load-before-advising norm: once the budget is exhausted, dispatch a subagent (which loads the routed skill in its own fresh context) rather than answering tool-specific questions from memory.
 - **Parallel dispatch limit.** Parallel dispatches follow the default of at most 5 subagents in flight (`SKILL.md` § Subagent Coordination > "Parallel Dispatch Guideline"), more only with the user's explicit approval.
-- **Wave barrier discipline (async dispatch).** Subagents run in the background by default and return via completion notifications that may arrive one at a time. When a single turn dispatches more than one agent — e.g., the parallel `source-researcher` + `research-synthesizer` pattern in the Dispatch Table — treat those mid-wave completion notifications as status-only: do not relay results to the user, synthesize, or take the next action until EVERY dispatched agent has returned. Synthesize once over the complete set (a failed or early-returning agent still counts as a completion). Narrating "one of two is back" is fine; acting on it is not. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+- **Wave barrier discipline (async dispatch).** See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive. The barrier applies however they arrive. When a single turn dispatches more than one agent — e.g., the parallel `source-researcher` + `research-synthesizer` pattern in the Dispatch Table — treat those mid-wave completion notifications as status-only: do not relay results to the user, synthesize, or take the next action until EVERY dispatched agent has returned. Synthesize once over the complete set (a failed or early-returning agent still counts as a completion). Narrating "one of two is back" is fine; acting on it is not.
 
 ---
 
@@ -441,7 +462,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 ### Never Do
 
 - Require Plan.md for agent dispatch
-- Impose checkpoint gates or mandatory phase reviews
+- Impose checkpoint gates or mandatory phase reviews (the soft Scope Check states a plan and proceeds; it does not wait for approval)
 - Limit the conversation to a single topic
 - Create STATE.md unless escalating to a pipeline mode
 - Refuse a task because it doesn't fit a predefined category
@@ -476,12 +497,13 @@ All escalations require explicit user confirmation. Frame escalations as opportu
 
 There is no mandatory wrap-up protocol. The session ends when the user is done. However, if the session produced artifacts:
 
-1. Collect session logs into the project workspace:
+1. Run the Scratch Graduation Check (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check): any scratch file that the notes or results cite moves to its named home first
+2. Collect session logs into the project workspace:
    ```bash
    bash {BASE_DIR}/scripts/collect_session_logs.sh {PROJECT_DIR}
    ```
-2. Update SESSION_NOTES.md with a final summary
-3. Offer a brief summary to the user:
+3. Update SESSION_NOTES.md with a final summary
+4. Offer a brief summary to the user, naming any files graduated out of scratch:
 
 > "Here's what we produced today in `research/YYYY-MM-DD_AdHoc_{Topic}/`:
 > - [List of scripts, data files, figures]

@@ -394,7 +394,10 @@ Skills are for AI execution, not human documentation.
 - [ ] Code blocks have language specified
 - [ ] Tables used for quick lookups
 - [ ] Consistent terminology throughout (one term per concept)
-- [ ] No time-sensitive information (or in collapsible "old patterns" sections)
+- [ ] Describes the current release: no change stories about DAAF; only the data's own history or a short fenced "recognizing older forms" note (`agent_reference/DOCUMENTATION_STANDARDS.md` § S5 Current State)
+- [ ] Cites only files that ship and public URLs: no `research/` workspace, scratch or maintainer-local paths (§ S4 Self-Contained)
+- [ ] Dated stamps only on facts that change outside DAAF (Claude Code versions, models, vendor APIs); none on DAAF's own behavior (§ Dated Stamps)
+- [ ] Triage lint run and each hit in the skill's files reviewed: `bash /daaf/tests/lint/docs-triage.sh --untracked` (§ The Triage Lint)
 - [ ] Explains "why" behind instructions, not just "what"
 
 ### Resources (if applicable)

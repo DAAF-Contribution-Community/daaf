@@ -3,27 +3,7 @@
 **Date:** YYYY-MM-DD
 **Version:** [Original | Revision suffix]
 
-## Source Mapping Guide
-
-> **For the report-writer agent:** This guide maps each report section below to its primary pipeline artifact source. When populating each section, consult the primary source first, then secondary sources for additional detail.
-
-| Report Section | Primary Source | Secondary Sources |
-|---|---|---|
-| Executive Summary | Plan.md § Research Outcomes + Stage 7-8 execution logs | LEARNINGS.md |
-| Research Question | Plan.md § Research Question (verbatim) | Plan.md § Context |
-| Data & Methods: Data Sources | Plan.md § Data Sources table | Stage 5 execution logs |
-| Data & Methods: Key Variables | Plan.md § Key Variables | — |
-| Data & Methods: Methodology | Plan.md § Methodology Specification | Plan.md § Key Decisions |
-| Data & Methods: Data Cleaning | Stage 6 execution logs | STATE.md checkpoints |
-| Data Sources, Methodology | `output/preliminary_notes/` | Discovery-phase agent findings (source caveats, coded values, limitations) |
-| Quality Assurance | STATE.md QA Findings Summary | Stage 10 QA execution logs |
-| Key Findings | Stage 7-8 outputs + figures | Plan.md § Research Outcomes + Plan.md § Hypotheses (if any) |
-| Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
-| Limitations | Plan.md § Risk Register (planning risks) + STATE.md Runtime Risks + STATE.md Blockers | LEARNINGS.md + source caveats |
-| References | STATE.md > Citations Accumulated | Plan.md § Data Citations + CITATION_REFERENCE.md (verification) |
-| AI Use Disclosure | STATE.md (session metadata: session model + subagent model tiers) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | DAAF commit hash from orchestrator |
-| Technical Notes | Project file paths | — |
-| Appendix | Additional figures + extended methodology from Plan.md | — |
+<!-- Agent note (delete before delivery): each HTML comment in this template that opens with "Agent note" is an instruction for the report-writer, not report text. Delete them all, and remove each `[AUTO]` tag, before delivering the report. Keep each `[RESEARCHER]` tag and its prompt: the researcher completes those fields. The sources for each section are mapped in `.claude/agents/report-writer.md` § Core Behaviors > 2. Section-Source Mapping Discipline; discovery-phase source caveats are also in `output/preliminary_notes/`. -->
 
 ---
 
@@ -74,22 +54,25 @@
 
 ## Quality Assurance
 
-All analysis code underwent secondary QA review during execution:
+The analysis scripts carry built-in automated validation checks. In addition, a separate AI quality reviewer inspected every script after it ran, before anything that builds on it started:
 
-| Checkpoint | Stage | What Was Validated | Status |
-|------------|-------|-------------------|--------|
-| QA1 | Data Fetch | Schema correctness, year coverage, ID uniqueness | PASSED |
-| QA2 | Data Cleaning | Coded value handling, suppression calculation | PASSED |
-| QA3 | Transformation | Join cardinality, row preservation, derived columns | PASSED |
-| QA4a | Statistical Analysis | Statistical validity, assumption checks, sample sizes | PASSED |
-| QA4b | Visualization | Figure accuracy, data source alignment | PASSED |
+<!-- Agent note (delete before delivery): fill Result from STATE.md § Checkpoint Status > Secondary Validation (QA1-QA4b) and § QA Findings Summary, never from this template. Rows map QA1 = data download, QA2 = data cleaning, QA3 = joining and transforming, QA4a = statistical analysis, QA4b = figures. Result PASSED → "Passed"; WARNING → "Passed with notes" (a warning, or a check that could not be verified); a stage with a row under BLOCKERs Resolved → add "issue found and fixed"; PENDING or no row → "Not run". Never write a bare "Passed" for a stage with warnings, unverified checks or a resolved blocker. -->
 
-**QA Notes:**
-- [Any resolved BLOCKERs: "A join cardinality issue was identified and corrected during Stage 7"]
-- [Any logged WARNINGs: "Minor: Suppression rate approaches 30% in small school subset"]
-- [Or: "No significant QA issues identified during execution"]
+| Step reviewed | What the quality reviewer checked | Result |
+|---------------|-----------------------------------|--------|
+| Data download | Schema correctness, year coverage, ID uniqueness | [Result] |
+| Data cleaning | Coded value handling, suppression calculation | [Result] |
+| Joining and transforming | Join matching (no unexpected duplicated or lost records), row preservation, derived columns | [Result] |
+| Statistical analysis | Statistical validity, assumption checks, sample sizes | [Result] |
+| Figures | Figure accuracy, match between each figure and its data | [Result] |
 
-**QA Scripts:** `scripts/cr/` contains all QA inspection scripts for reproducibility.
+**Review notes:**
+- [Each issue found and fixed: "A join matching issue was found and corrected while the data sources were being joined"]
+- [Each note on record: "Minor: the suppression rate approaches 30% in the small-school subset"]
+- [Each check that could not be run, from STATE.md § QA Findings Summary > Checks Not Verified or Skipped: what was not checked and why]
+- [Or: "The quality review raised no issues"]
+
+**Review scripts:** the quality reviewer's inspection scripts, each with its execution log, are in `scripts/cr/`.
 
 ---
 
@@ -173,7 +156,7 @@ This analysis has the following limitations that should be considered when inter
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
 > *Cited because: [rationale from STATE.md]*
 
-> [AUTO — report-writer: The DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number and year if `CITATION.cff` at the repository root specifies different values.]
+<!-- Agent note (delete before delivery): the DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number and year if `CITATION.cff` at the repository root specifies different values. -->
 
 ### Reporting Standards
 
@@ -194,21 +177,23 @@ This analysis has the following limitations that should be considered when inter
 
 ### Role of AI in This Analysis (GUIDE-LLM A.1-A.2)
 
-- **Purpose:** `[AUTO]` [Derived from Plan.md — e.g., "AI was used for data acquisition, cleaning script generation, transformation logic, statistical analysis code, and visualization generation. All code was reviewed through automated QA checkpoints and human oversight gates."]
-- **Human oversight model:** `[AUTO]` Human-in-the-loop. The researcher reviewed and approved methodology (Checkpoint 2), data quality (Checkpoint 3), and analytical results (Checkpoint 4) before each phase advanced.
+- **Purpose:** `[AUTO]` [Derived from Plan.md — e.g., "AI was used for data acquisition, cleaning script generation, transformation logic, statistical analysis code, and visualization generation. All code was checked by automated validation and an AI quality reviewer, and the researcher reviewed the work at each checkpoint."]
+- **Human oversight model:** `[AUTO]` Human-in-the-loop. The researcher approved the analysis scope before any data exploration began, then reviewed the data sources found, approved the analysis plan, checked the prepared data's quality, and confirmed the results before the report was written.
 
 ### Model & Configuration (GUIDE-LLM B.1-B.5)
 
-| Item | Value | Source |
-|------|-------|--------|
-| Model (session) | `[AUTO]` [Session model name and ID in use at session start, from STATE.md Session Metadata — e.g., Claude Opus 4.8 (claude-opus-4-8[1m])] | STATE.md Session Metadata |
-| Specialist models | `[AUTO]` [Distinct subagent-tier model IDs actually dispatched, from STATE.md Subagent Model Tiers — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record resolved IDs where known, or the tier alias + session date otherwise. See AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] | STATE.md Session Metadata |
-| Provider | `[AUTO]` Anthropic [or the remapped provider(s) if alias env-var overrides were used] | — |
-| Access method | `[AUTO]` Claude Code CLI (local execution via API) | — |
-| Date of use | `[AUTO]` [Session date(s)] | STATE.md |
-| Parameters | `[AUTO]` Default API parameters; no user-configured overrides | — |
-| Customization | `[AUTO]` DAAF framework: domain-specific skills, agent definitions, and system instructions (see Technical Notes for repository link) | — |
-| Session state | `[AUTO]` Stateful within sessions; STATE.md tracks cross-session continuity | — |
+<!-- Agent note (delete before delivery): model IDs, dates, the provider route and the parameters come from STATE.md § Session Metadata (Session Model ID, Subagent Model Tiers, Session Date(s), Provider Route, Model Settings). Model Settings depends on the route (`agent_reference/AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route): `effortLevel` reaches the model on Anthropic routes, while on the provider-shim routes the shim sets the reasoning effort and response verbosity. If Model Settings is empty or reads "[Not recorded]", write "[Not recorded: the researcher should state the model settings used, such as reasoning effort]" in the Parameters row. Add any model setting the researcher changed during the work if STATE.md § Key Decisions Made records one. If Provider Route is empty, write "[Not recorded: the researcher should state how DAAF connected to its models]" in the Provider and Access method rows rather than guessing. -->
+
+| Item | Value |
+|------|-------|
+| Model (session) | `[AUTO]` [Session model name and ID in use at session start — e.g., Claude Opus 4.8 (claude-opus-4-8[1m])] |
+| Specialist models | `[AUTO]` [Distinct subagent-tier model IDs actually dispatched — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record resolved IDs where known, or the tier alias + session date otherwise. See AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
+| Provider | `[AUTO]` [The company that served the models, from the provider route: Anthropic (Anthropic subscription or API key); OpenAI (OpenAI API or ChatGPT subscription through DAAF's provider shim); OpenRouter, naming each model's maker too; Amazon Web Services (AWS Bedrock); Google Cloud (Vertex AI)] |
+| Access method | `[AUTO]` Claude Code command-line tool, run locally in DAAF's container and connected through [the provider route, e.g. "an Anthropic subscription" or "the OpenAI API via DAAF's provider shim"]. Claude Code works agentically: one task involves many separate model calls, some made by specialist AI agents. |
+| Date of use | `[AUTO]` [Session date(s)] |
+| Parameters | `[AUTO]` Claude Code's defaults, except [the recorded model settings, in plain words — e.g. "reasoning effort set to high (DAAF's `effortLevel` setting)" or "reasoning effort and response verbosity set by DAAF's provider shim: reasoning effort high, response verbosity medium"]. DAAF sets no temperature, output-length or random-seed values. |
+| Customization | `[AUTO]` DAAF framework: domain-specific skills, agent definitions, and system instructions (see References > Software & Tools for the repository link) |
+| Session state | `[AUTO]` Stateful within sessions; STATE.md tracks cross-session continuity |
 
 ### Prompts & Instructions (GUIDE-LLM C.1-C.2)
 
@@ -223,8 +208,8 @@ This analysis has the following limitations that should be considered when inter
 
 ### Validation of AI Outputs (GUIDE-LLM E.1-E.2)
 
-- **Automated code review:** `[AUTO]` All scripts underwent automated QA review by a separate AI instance (see Quality Assurance section above)
-- **Human validation:** `[AUTO]` [Derived from STATE.md checkpoint statuses — e.g., "Researcher approved methodology at Checkpoint 2, verified data quality at Checkpoint 3, and validated analytical results at Checkpoint 4"]
+- **Automated code review:** `[AUTO]` All scripts were reviewed by a separate AI quality reviewer (see the Quality Assurance section above)
+- **Human validation:** `[AUTO]` [What the researcher approved or changed at each checkpoint, in plain words, from STATE.md § Pre-Flight Scope Check and the user-checkpoint rows in § Key Decisions Made — e.g., "At the planning checkpoint the researcher approved the plan and asked to add 2019 data." Never cite automated validation results here: they are machine checks, reported in the Quality Assurance section.]
 - **Post-processing:** `[RESEARCHER]` [Researcher documents any manual edits made to AI-generated outputs after delivery. Default if none: "No manual post-processing was applied to AI-generated outputs."]
 
 ### Reproducibility (GUIDE-LLM F.1)

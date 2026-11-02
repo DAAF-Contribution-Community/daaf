@@ -239,9 +239,9 @@ Everything a script prints is appended permanently to the script file as its exe
 - in R, a bare top-level credential lookup, which auto-prints its value;
 - a shell-out that dumps the environment.
 
-Matching is case-insensitive and errs toward refusing. Reading a credential into a variable, passing it in a request, checking presence (`"X_API_KEY" in os.environ`), copying the environment for a subprocess, and the env-scrubbing idiom that builds a child environment with the keys removed are all allowed. The script header lists these deliberate non-matches and the accepted residuals, such as a two-step leak through an intermediate variable, which would need data-flow analysis.
+Matching is case-insensitive and errs toward refusing. Reading a credential into a variable, passing it in a request, checking presence (`"X_API_KEY" in os.environ`), copying the environment for a subprocess, and the env-scrubbing idiom that builds a child environment with the keys removed are all allowed. The secret scan's section comments in the script list these deliberate non-matches and the accepted residuals, such as a two-step leak through an intermediate variable, which would need data-flow analysis.
 
-A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. All three scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. The command-line counterpart is `bash-safety.sh` §9, which applies the same accidental-dump posture to interactive shell commands (whole-environment dumps to a terminal or file, credential-named `echo`/`printf`, `/proc/<pid>/environ` reads, interpreter one-liners), backed by the `settings.json` environment-disclosure deny rules; see `BOUNDARIES.md` § Defense-in-Depth Architecture. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (83 cases, covering all three scans).
+A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. All three scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. The command-line counterpart is `bash-safety.sh` §9, which applies the same accidental-dump posture to interactive shell commands (whole-environment dumps to a terminal or file, credential-named `echo`/`printf`, `/proc/<pid>/environ` reads, interpreter one-liners), backed by the `settings.json` environment-disclosure deny rules; see `BOUNDARIES.md` § Defense-in-Depth Architecture. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (88 cases, covering all three scans).
 
 ### Researcher-Decision Command Scan
 
@@ -292,11 +292,11 @@ After this progression:
 
 ### QA-Triggered Revisions
 
-If code-reviewer returns a BLOCKER after the script's primary checkpoint passed, the revision continues from the current suffix:
+A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately. When code-reviewer returns a revision BLOCKER after the script's primary checkpoint passed, the revision continues from the current suffix:
 
 ```
-01_join-data.py       # v1: CP3 PASSED, but QA finds wrong join type --> BLOCKER
-01_join-data_a.py     # v2: Fixed join type, CP3 PASSED, QA PASSED
+01_join-data.py       # v1: CP3 PASSED, but QA finds a LEFT join where the Plan says INNER --> BLOCKER
+01_join-data_a.py     # v2: Join changed to INNER per the Plan, CP3 PASSED, QA PASSED
 ```
 
 Maximum 2 revision attempts per QA BLOCKER. If still failing after 2 revisions, escalate to the user.
@@ -413,12 +413,12 @@ Each folder numbers its scripts `{NN}` in order of creation; the scripts follow 
 
 ### Scratch Graduation Check
 
-The canonical procedure, run in every mode that creates a project or session workspace: before the mode's final deliverable or verification gate (Framework Development: before its Phase 4 review), or at wrap-up when there is none; a later run covers only citations added since. Running it before the final deliverable or gate means graduation never rewrites citations in an artifact that has already been verified. Each mode's report, synthesis, gate or wrap-up step points here. It exists because the damage from scratch drift is lost citations: `research/` is excluded from git, so a scratch file that a note cites and that is later cleaned up is gone unless a volume backup kept it.
+The canonical procedure, run in every mode that creates a project or session workspace: before the mode's final deliverable or verification gate (Framework Development: before its Phase 4 review), or at wrap-up when there is none; a later run covers only citations added since. Running it before the final deliverable or gate means graduation never rewrites citations in an artifact that has already been verified. Each mode's report, synthesis, gate or wrap-up step points here. It exists because the damage from scratch drift is lost citations. DAAF does not commit project files by default (CLAUDE.md § User Preferences, "Git commit management" is `disabled`), and the shipped `.gitignore` does not ignore project folders under `research/`, so whether a project reaches git is the user's choice. A scratch file that a note cites and that is later cleaned up is gone unless a commit or a volume backup kept it.
 
 1. **Find the cited scratch paths.** Grep the citing files, not the scratch folder: the project's notes (`SESSION_NOTES.md`, `STATE.md`, `LEARNINGS.md`, preliminary notes, reports, plans) and any framework file this session changed, for `scripts/scratch/` and a root-level `scratch/` path (older workspaces have `{PROJECT_DIR}/scratch/`), and for `scope_staging/` and `claude-code-tmp/` (a scratchpad-staged path, orchestrator `SKILL.md` § Scope Check > Read First). Quote the grep command. Each path found is a cited scratch file, whichever session created it; a hit inside a dated move record (old → new) is history, not a citation. A staged path that is not history means a graduation was missed or a record cites the scratchpad: if the staged item still exists, graduate it per that section (its `mv`, then any `--reingest`) and cite the new path; if it is gone, cite the material by title or URL instead. A scratch file nothing cites stays where it is: scratch is never relied on, so it needs no action.
 2. **Move each cited file to its named home** with `mv` (one command per call), creating the folder first. Named homes are the project's purpose folders: `scripts/<stage>/` for a script whose output is reported, `scripts/probes/` for a cited probe in a research project, `data/` or `output/` for data and figures, `output/preliminary_notes/` (or `preliminary_notes/` in a Framework Development workspace) for notes, `web_fetches/` for fetch artifacts, `lit_search/` for `scholar_search.sh` artifacts, and `probes/` in a Framework Development workspace for a cited probe and its output. Move a script unchanged: it keeps its execution log, and renaming it to the stage pattern is optional and the only change allowed. Keep the subpath under the new folder when it carries meaning.
-3. **Update every live citation** to the new path: notes, `STATE.md`/`SESSION_NOTES.md` entries, and framework files. Do not rewrite historical records (execution logs appended to scripts, earlier review records, engineer returns, session logs); add one dated line to `SESSION_NOTES.md` or `STATE.md` listing each move as old path → new path, so a reader of an old record can follow it. In Full Pipeline before Stage 4, when neither file exists yet, the line goes in the pre-flight record, `output/preliminary_notes/{date}_preflight_scope-check.md` (STATE.md copies it at creation).
-4. **Check a framework citation's class.** A shipped framework file never cites scratch. A file users need moves to a tracked home in the repository; maintainer-only material is cited by its research workspace path with a note that it is maintainer-only and not shipped.
+3. **Update every live citation** to the new path: notes and `STATE.md`/`SESSION_NOTES.md` entries (a framework file follows step 4 instead). Do not rewrite historical records (execution logs appended to scripts, earlier review records, engineer returns, session logs); add one dated line to `SESSION_NOTES.md` or `STATE.md` listing each move as old path → new path, so a reader of an old record can follow it. In Full Pipeline before Stage 4, when neither file exists yet, the line goes in the pre-flight record, `output/preliminary_notes/{date}_preflight_scope-check.md` (STATE.md copies it at creation).
+4. **Framework files.** A framework file never cites scratch or the session's project or workspace folder: move a file it needs to a tracked home in the repository, or state what the file shows in a sentence. For files that ship with DAAF this is `agent_reference/DOCUMENTATION_STANDARDS.md` § S4 Self-Contained.
 5. **Tell the user** what was graduated (old → new), or that nothing was cited. Quote an `ls` of each new location.
 
 A recursive shell `grep -r` over `/daaf` passes `--exclude-dir=claude-code-tmp`: Claude Code's temp root, the top-level `/daaf/claude-code-tmp/`, keeps the verbatim output of earlier Bash commands under `tasks/*.output`, so it returns stale duplicate hits (observed 2026-10-23 in the temp root's old `/tmp` location). The built-in Grep tool respects `.gitignore`, which lists `/claude-code-tmp/`, so it should not be affected (inference, not tested).
@@ -531,6 +531,7 @@ All executed scripts are archived in the `scripts/` folder with stage-based orga
 **Stage 8 QA Split:** Stage 8 uses separate QA prefixes for analysis (QA4a) and visualization (QA4b):
 - QA4a for `01_regression-poverty.py`/`.R` (Stage 8.1 analysis) → `stage8_01_cra1.py`/`.R`
 - QA4b for `02_enrollment-plot.py`/`.R` (Stage 8.2 viz) → `stage8_02_crb1.py`/`.R`
+- An 8.1 analysis script that also draws figures gets both: QA4a → `stage8_01_cra1.py`/`.R`, and QA4b for its figures → `stage8_01_crb1.py`/`.R`
 
 **QA scripts are created by code-reviewer** and saved in `scripts/cr/`.
 
@@ -1125,7 +1126,7 @@ print("=" * 60)
 ```python
 #!/usr/bin/env python3
 """
-Stage 6.1: Clean CCD data — filter coded missing values, calculate suppression rate.
+Stage 6.1: Clean CCD data — set coded missing values to null (rows kept), calculate suppression rate.
 
 Task: clean-ccd
 Wave: 2, Step: 1, Stage: 6
@@ -1229,6 +1230,9 @@ present_numeric = [c for c in NUMERIC_COLS if c in df.columns]
 # CP2.1: No coded values remain
 # ASSUMES: an empty coded-value vocabulary proves nothing about the data — it is
 #   NOT VERIFIED, not a pass. Same for having no numeric columns to scan.
+# REASONING: remaining codes are a WARNING, the level the CP2 template sets
+#   (VALIDATION_CHECKPOINTS.md § CP2); QA2 reviews them as a BLOCKER in
+#   analysis columns (QA_CHECKPOINTS.md § QA2).
 if len(CODED_MISSING) == 0:
     print("  [NOT VERIFIED] Coded values: CODED_MISSING is empty — no vocabulary to test against")
     cp2["not_verified"] += 1
@@ -1246,29 +1250,38 @@ else:
               f"{len(present_numeric)} numeric columns ({df.height:,} rows)")
         cp2["passed"] += 1
     else:
-        print(f"  [FAIL] Coded values: {coded_remaining:,} cells still hold "
+        print(f"  [WARNING] Coded values: {coded_remaining:,} cells still hold "
               f"{sorted(CODED_MISSING.keys())} across {len(present_numeric)} numeric columns")
-        cp2["failed"] += 1
+        cp2["warning"] += 1
 
-# CP2.2: Suppression rate < 50%
-# REASONING: The 50% threshold is from BOUNDARIES.md STOP conditions. Above 50%
-# suppression, the remaining data is too sparse to support reliable analysis.
-# ASSUMES: zero cells means the rate is undefined, not 0.0% — do not pass on it.
-total_cells = df.height * len(present_numeric)
-if total_cells == 0:
-    print("  [NOT VERIFIED] Suppression rate: 0 numeric cells (no rows or no numeric columns) — rate undefined")
+# CP2.2: Suppression rate per column, from the raw values (before nulling)
+# REASONING: the rate is the share of a column's raw values equal to the
+#   suppression code, denominator = raw rows (VALIDATION_CHECKPOINTS.md § CP2,
+#   "Metric definition"). Nulls counted after cleaning would also count -1, -2
+#   and native nulls. Above the threshold (50% for education, the BOUNDARIES.md
+#   STOP condition) the column is too sparse for reliable analysis; above 20%
+#   it is notable (the CP2 WARNING band).
+# ASSUMES: coded_counts (Pre-state) holds the raw count of each code per column.
+#   No raw rows or no numeric columns means the rate is undefined, not 0.0%.
+SUPPRESSION_CODE = -3        # From Plan domain config
+SUPPRESSION_THRESHOLD = 0.5  # From Plan domain config
+if pre_rows == 0 or len(present_numeric) == 0:
+    print("  [NOT VERIFIED] Suppression rate: no raw rows or no numeric columns — rate undefined")
     cp2["not_verified"] += 1
 else:
-    null_cells = sum(df[col].null_count() for col in present_numeric)
-    suppression_rate = null_cells / total_cells
-    if suppression_rate < 0.50:
-        print(f"  [PASS] Suppression rate: {suppression_rate:.1%} "
-              f"({null_cells:,}/{total_cells:,} numeric cells null, threshold 50%)")
-        cp2["passed"] += 1
-    else:
-        print(f"  [FAIL] Suppression rate: {suppression_rate:.1%} "
-              f"({null_cells:,}/{total_cells:,} numeric cells null, threshold 50%)")
-        cp2["failed"] += 1
+    for col in present_numeric:
+        n_supp = coded_counts.get((col, SUPPRESSION_CODE), 0)
+        supp_rate = n_supp / pre_rows
+        detail = f"{col}: {supp_rate:.1%} ({n_supp:,}/{pre_rows:,} raw values = {SUPPRESSION_CODE})"
+        if supp_rate > SUPPRESSION_THRESHOLD:
+            print(f"  [FAIL] Suppression rate {detail}, threshold {SUPPRESSION_THRESHOLD:.0%}")
+            cp2["failed"] += 1
+        elif supp_rate > 0.20:
+            print(f"  [WARNING] Suppression rate {detail} is notable")
+            cp2["warning"] += 1
+        else:
+            print(f"  [PASS] Suppression rate {detail}, threshold {SUPPRESSION_THRESHOLD:.0%}")
+            cp2["passed"] += 1
 
 # CP2.3: Row count preserved (cleaning shouldn't drop rows)
 if post_rows == pre_rows:
@@ -2462,6 +2475,8 @@ INPUT_PATH <- file.path(PROJECT_DIR, "data/raw/2026-01-24_ccd_directory.parquet"
 OUTPUT_PATH <- file.path(PROJECT_DIR, "data/processed/2026-01-24_ccd_clean.parquet")
 
 CODED_MISSING <- c(-1, -2, -3)
+SUPPRESSION_CODE <- -3        # From Plan domain config
+SUPPRESSION_THRESHOLD <- 0.5  # From Plan domain config
 
 # --- Load ---
 cat("==============================================================\n")
@@ -2474,6 +2489,11 @@ cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
 # --- Pre-state ---
 pre_rows <- nrow(df)
 cat("Pre-state:", pre_rows, "rows\n")
+
+# INTENT: count each numeric column's raw suppression codes BEFORE nulling,
+#   for the CP2.2 suppression rate (cleaning turns them into NA).
+numeric_raw <- names(df)[sapply(df, is.numeric)]
+supp_raw <- sapply(numeric_raw, \(col) sum(df[[col]] == SUPPRESSION_CODE, na.rm = TRUE))
 
 # --- Transform ---
 # INTENT: Replace Portal missing codes with NA
@@ -2502,6 +2522,9 @@ numeric_cols <- names(clean)[sapply(clean, is.numeric)]
 # ASSUMES: an empty vocabulary or no numeric columns proves nothing — that is
 #   NOT VERIFIED, not a pass. R also errors on sum() over an empty %in% vocabulary,
 #   so guard length() > 0 before the scan.
+# REASONING: remaining codes are a WARNING, the level the CP2 template sets
+#   (VALIDATION_CHECKPOINTS.md § CP2); QA2 reviews them as a BLOCKER in
+#   analysis columns (QA_CHECKPOINTS.md § QA2).
 if (length(CODED_MISSING) == 0) {
   cat("  [NOT VERIFIED] 2.1 coded values: CODED_MISSING is empty — no vocabulary to test against\n")
   cp2["not_verified"] <- cp2["not_verified"] + 1L
@@ -2519,31 +2542,39 @@ if (length(CODED_MISSING) == 0) {
                 format(nrow(clean), big.mark = ",")))
     cp2["passed"] <- cp2["passed"] + 1L
   } else {
-    cat(sprintf("  [FAIL] 2.1 coded values: %d cells still hold (%s) across %d numeric columns\n",
+    cat(sprintf("  [WARNING] 2.1 coded values: %d cells still hold (%s) across %d numeric columns\n",
                 coded_remaining, paste(CODED_MISSING, collapse = ", "), length(numeric_cols)))
-    cp2["failed"] <- cp2["failed"] + 1L
+    cp2["warning"] <- cp2["warning"] + 1L
   }
 }
 
-# CP2.2: Suppression rate < 50%
-# ASSUMES: zero cells means the rate is undefined, not 0.0%.
-total_cells <- nrow(clean) * length(numeric_cols)
-if (total_cells == 0) {
-  cat("  [NOT VERIFIED] 2.2 suppression rate: 0 numeric cells (no rows or no numeric columns) — rate undefined\n")
+# CP2.2: Suppression rate per column, from the raw values (before nulling)
+# REASONING: the rate is the share of a column's raw values equal to the
+#   suppression code, denominator = raw rows (VALIDATION_CHECKPOINTS.md § CP2,
+#   "Metric definition"). NAs counted after cleaning would also count -1, -2
+#   and native NAs. FAIL above the threshold, WARNING above 20% (the CP2 bands).
+# ASSUMES: no raw rows or no numeric columns means the rate is undefined, not 0.0%.
+if (pre_rows == 0 || length(numeric_raw) == 0) {
+  cat("  [NOT VERIFIED] 2.2 suppression rate: no raw rows or no numeric columns — rate undefined\n")
   cp2["not_verified"] <- cp2["not_verified"] + 1L
 } else {
-  null_cells <- sum(sapply(numeric_cols, \(col) sum(is.na(clean[[col]]))))
-  suppression_rate <- null_cells / total_cells
-  if (suppression_rate < 0.50) {
-    cat(sprintf("  [PASS] 2.2 suppression rate: %.1f%% (%s/%s numeric cells NA, threshold 50%%)\n",
-                suppression_rate * 100, format(null_cells, big.mark = ","),
-                format(total_cells, big.mark = ",")))
-    cp2["passed"] <- cp2["passed"] + 1L
-  } else {
-    cat(sprintf("  [FAIL] 2.2 suppression rate: %.1f%% (%s/%s numeric cells NA, threshold 50%%)\n",
-                suppression_rate * 100, format(null_cells, big.mark = ","),
-                format(total_cells, big.mark = ",")))
-    cp2["failed"] <- cp2["failed"] + 1L
+  for (col in numeric_raw) {
+    supp_rate <- supp_raw[[col]] / pre_rows
+    detail <- sprintf("%s: %.1f%% (%s/%s raw values = %s)", col, supp_rate * 100,
+                      format(supp_raw[[col]], big.mark = ","),
+                      format(pre_rows, big.mark = ","), as.character(SUPPRESSION_CODE))
+    if (supp_rate > SUPPRESSION_THRESHOLD) {
+      cat(sprintf("  [FAIL] 2.2 suppression rate %s, threshold %.0f%%\n",
+                  detail, SUPPRESSION_THRESHOLD * 100))
+      cp2["failed"] <- cp2["failed"] + 1L
+    } else if (supp_rate > 0.20) {
+      cat(sprintf("  [WARNING] 2.2 suppression rate %s is notable\n", detail))
+      cp2["warning"] <- cp2["warning"] + 1L
+    } else {
+      cat(sprintf("  [PASS] 2.2 suppression rate %s, threshold %.0f%%\n",
+                  detail, SUPPRESSION_THRESHOLD * 100))
+      cp2["passed"] <- cp2["passed"] + 1L
+    }
   }
 }
 

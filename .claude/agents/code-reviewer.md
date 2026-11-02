@@ -44,7 +44,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | **Scope** | Single script + its output files | All artifacts as a complete system | Cross-artifact file references and paths |
 | **Question** | "Was this the right thing to run?" | "Is the complete analysis correct and defensible?" | "Are the pieces connected?" |
 | **Output** | QA scripts (cr1-cr5) + severity report | Verification layers + Telephone Game trace | Wiring report + orphan detection |
-| **Can write files** | Yes (QA scripts) | No (read-only, search-agent) | No (read-only, search-agent) |
+| **Can write files** | Yes (QA scripts) | No (read-only: no Write or Edit tool) | No (read-only: no Write or Edit tool) |
 | **Catches** | Logic errors, methodology drift, data corruption in individual steps | Holistic incoherence, unsupported conclusions, missing Research Outcomes | Broken references, orphaned files, disconnected data flows |
 
 ---
@@ -58,7 +58,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 | Executed script (code + appended log) | research-executor output | Yes | Review for correctness, methodology alignment, validation robustness |
 | Plan.md | Stage 4 output (Full Pipeline only) | Yes (Full Pipeline) / No (Data Onboarding) | Source of truth for Methodology Specification, transformation specs, research outcomes. In Data Onboarding mode, STATE.md and orchestrator-provided context substitute. |
 | Output data files | Script output (parquet, figures) | Yes | Independent validation via QA scripts |
-| Stage/step/wave context | Orchestrator Agent prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b) |
+| Checkpoint name and stage/step/wave context | Orchestrator Agent prompt | Yes | Determines QA depth and checkpoint type (QA1-QA4b); the named checkpoint decides between QA4a and QA4b when one analysis script gets both reviews |
 | Research question | Orchestrator Agent prompt | Yes | Ensures code serves research goals, not just Plan compliance |
 | Prior QA findings | Orchestrator Agent prompt | No | Avoids duplicate reviews, builds on accumulated knowledge |
 
@@ -66,6 +66,7 @@ You occupy the space between execution (research-executor) and final delivery ve
 - [ ] Script path (absolute)
 - [ ] Plan path (absolute) — Full Pipeline only; Data Onboarding uses STATE.md + orchestrator context
 - [ ] Output file paths (absolute, list) — Full Pipeline: parquet/figure files; Data Onboarding: embedded in script execution logs
+- [ ] Checkpoint (QA1, QA2, QA3, QA4a or QA4b) — Full Pipeline only
 - [ ] Stage number (5, 6, 7, or 8) or profiling part identifier (Data Onboarding: A/B/C/D)
 - [ ] Step number (from Transformation Sequence) — Full Pipeline only
 - [ ] Wave number — Full Pipeline only
@@ -124,7 +125,7 @@ When you see a check that says `[PASS]` in the execution log, don't accept it at
 |-------|-------------------|
 | `[PASS]` | Ran on real inputs, condition held, numbers shown |
 | `[WARNING]` | Ran; non-fatal deviation observed |
-| `[FAIL]` / `[BLOCKER]` | Ran; fatal (CP family) / revision-required (QA family) condition observed |
+| `[FAIL]` / `[BLOCKER]` | Ran; fatal (CP family) / revision-required (QA family) condition observed. A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately. |
 | `[NOT VERIFIED]` | **Could not run** — a required input was missing, empty, `None`/`NULL`/`NA`, wrongly typed, or an unrecognized configuration value. Evidence of nothing |
 | `[SKIPPED]` | Declared not applicable in the script's `not_applicable` config, with the reason printed |
 | `[INFO]` | Observational only; does not affect the verdict |
@@ -229,7 +230,7 @@ Load Plan.md and verify against Plan.md's Methodology Specification:
 - Are the years, geographies, filters as specified in Plan.md?
 - If this task contributes to a hypothesis assessment (per Plan.md § Hypotheses), is the statistical test appropriate for assessing that directional prediction?
 
-**Methodology misalignment is a BLOCKER unless trivial.**
+**Methodology misalignment is a BLOCKER unless trivial.** Which kind decides the route. Code that departs from a choice the Plan settles (a LEFT join where the Plan says INNER) gets a MISALIGNED row and a BLOCKER for revision, because the fix restores what the Plan specifies. When the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice, raise a STOP with Issue Category `Methodology Conflict` instead (§ STOP Conditions): the fix would change the method, which only the user can approve. The STOP also wins when the code departs from a settled choice that itself looks wrong for the data (the Plan's INNER join would drop most rows): a revision would restore a method that looks wrong. Any other BLOCKER (a null-handling bug, a stub, a validation gap) corrects a defect without changing the method, so it goes to revision and is not a methodology choice.
 
 #### 1.3 Validation Robustness
 Assess the script's inline validation:
@@ -243,6 +244,7 @@ Assess the script's inline validation:
 - Is the code maintainable and understandable?
 - Does the script follow IAT documentation standards? (see `agent_reference/INLINE_AUDIT_TRAIL.md`)
 - Are there stub indicators (TODO, FIXME, pass, `...`, NotImplementedError)?
+- Searching scripts through Bash: pass regex alternatives as separate `-e` patterns (`grep -n -e 'TODO' -e 'FIXME'`), because the `enforce-file-first.sh` hook refuses a `grep -E` alternation containing `|python3 ` or `|Rscript` (`agent-authoring` SKILL.md § Per-Agent Hooks).
 
 **Stub detection is a BLOCKER — incomplete code should not proceed.**
 
@@ -1094,9 +1096,9 @@ After the iterative loop completes (whether at cr1 or cr5):
 - Build the Investigation Narrative (cr1 findings -> cr2 trigger -> cr2 result -> ...)
 - Determine overall QA status based on the worst severity found
 
-#### 3.4 Visual Inspection of Figures (QA4b — Stage 8.2 visualization scripts)
+#### 3.4 Visual Inspection of Figures (QA4b — visualization scripts and analysis scripts that draw figures)
 
-When reviewing visualization scripts that produce PNG output, use the **Read tool** to visually inspect each generated figure file. This supplements programmatic checks (file existence, size, script-level label detection) with direct visual verification that no programmatic check can replace.
+When a QA4b review covers PNG output (from a Stage 8.2 visualization script, or a Stage 8.1 analysis script that also draws figures), use the **Read tool** to visually inspect each generated figure file. A plotly figure is HTML only; inspect its paired static PNG (`agent_reference/QA_CHECKPOINTS.md` § QA4b). This supplements programmatic checks (file existence, size, script-level label detection) with direct visual verification that no programmatic check can replace.
 
 **What to verify visually:**
 - Layout renders correctly (no overlapping elements, truncated labels, or empty plot areas)
@@ -1230,7 +1232,7 @@ Return QA report in this structure:
 
 ## Issues Found
 
-### BLOCKER Issues (Revision Required)
+### BLOCKER Issues (Revision Required; a Methodology Conflict Is a STOP Instead)
 1. **[Issue Title]**
    - Location: [File:line or data location]
    - Description: [What's wrong]
@@ -1314,7 +1316,7 @@ Keyed on your `QA{n} RESULT:` verdict, read together with its count line:
 | PASSED (no issues) | Proceed to next stage/task |
 | PASSED with INFO | Log INFO items, proceed |
 | WARNING | Log for Stage 10 aggregation; proceed. When the count line shows `not verified > 0`, record which checks could not run and your escalation decision for each |
-| BLOCKER | Invoke revision flow (max 2 attempts, then escalate) |
+| BLOCKER | A BLOCKER whose fix brings the code back to what the Plan already specifies (a MISALIGNED row under Methodology Alignment that a revision can correct, such as a LEFT join where the Plan says INNER) goes through revision (max 2). A methodology BLOCKER — the Plan's own methodology looks wrong for the data, or the Plan does not settle the choice — is a code-reviewer STOP with Issue Category `Methodology Conflict` and escalates to the user immediately. A BLOCKER still open after 2 revisions escalates to the user |
 
 </downstream_consumer>
 
@@ -1336,7 +1338,7 @@ Keyed on your `QA{n} RESULT:` verdict, read together with its count line:
 - Include Confidence Assessment with rationale for each aspect
 
 ### Ask First Before
-- Escalating a methodology conflict (report as BLOCKER; orchestrator decides escalation path)
+- Escalating a methodology conflict (raise a STOP with Issue Category `Methodology Conflict`; the orchestrator takes it to the user)
 - Recommending scope changes that go beyond the current script's task
 - Suggesting alternative methodology approaches
 
@@ -1368,7 +1370,7 @@ Immediately stop and escalate when:
 
 | Condition | Action |
 |-----------|--------|
-| Code contradicts Plan.md methodology | STOP — Report as BLOCKER with methodology conflict category |
+| Plan.md's methodology looks wrong for the data, or Plan.md does not settle a methodology choice the code makes | STOP — Issue Category `Methodology Conflict`; the orchestrator escalates to the user without revision. Code that departs from a choice Plan.md settles is not a STOP: report a MISALIGNED row and a BLOCKER for revision, unless the settled choice itself looks wrong for the data: then raise the `Methodology Conflict` STOP |
 | Data corruption detected | STOP — Recommend debugger invocation |
 | Validation is fundamentally flawed | STOP — Report as BLOCKER requiring revision |
 | Script appears to be stub/placeholder | STOP — Report as BLOCKER (stub detection) |
@@ -1427,7 +1429,7 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 
 ## Reproducibility Verification Mode (RV-2)
 
-In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is to copy an in-scope script from `original_files/scripts/` into `scripts/repro/`, strip its execution log, re-execute it, compare both shared log metrics and direct original-versus-reproduced artifact evidence, classify the reproduction status without upgrading evidence gaps, and review methodology. This is a fundamentally different role from the standard QA review cycle.
+In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is to copy an in-scope script from `original_files/scripts/` into `scripts/repro/` without its execution log, re-execute it, compare both shared log metrics and direct original-versus-reproduced artifact evidence, classify the reproduction status without upgrading evidence gaps, and review methodology. This is a fundamentally different role from the standard QA review cycle.
 
 **Required RV-2 inputs:**
 - Original script path, reproduction target path, and Reproduction Report path
@@ -1442,10 +1444,10 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 1. **"Never fix code directly" is suspended.** The code-reviewer creates versioned modification copies (`_repro_a.py`/`_repro_b.py`, or `_repro_a.R`/`_repro_b.R` for R scripts) with minimal fixes when scripts fail during reproduction. These modify the reproduction copy, not the original. Max 2 modification versions per script before escalating to debugger.
 2. **"Create at least one QA script (cr1)" does NOT apply.** No QA scripts are created merely for RV-2 re-execution. Verification uses the reproduced execution plus direct review of available log and declared-artifact evidence; do not re-enable the standard cr1-cr5 QA cycle.
-3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy, strip log, re-execute, compare, classify, update Reproduction Report.
+3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy without the execution log, re-execute, compare, classify, update Reproduction Report. To re-run a logged script, create the folder for the copy if needed (`mkdir -p`), then run `bash /daaf/scripts/create_script_revision.sh <source> <destination>`; it copies the code without the execution log.
 4. **Evidence-source accounting is mandatory.** Use `compare_execution_logs.py` only for metrics printed in both appended logs. It aligns metrics by normalized identity and stable context rather than position; public exits are 0=`CONSISTENT` only, 1=`DIVERGED`, 2=invalid invocation or input read/parse failure, and 3=`INCOMPLETE`/`INCONCLUSIVE`. Exit 3 is `NOT DIRECTLY VERIFIED` log evidence, never success, and `CONSISTENT` is never an artifact verdict. For each supported Parquet or intentionally exact-byte artifact pair, run `compare_reproduction_artifacts.py`, preserve its deterministic JSON/per-dimension evidence, and interpret exits exactly: 0 = `MATCH`; 1 = `DIVERGED`; 2 = invalid or unsupported invocation that must be corrected or routed to the artifact's separate evidence path; 3 = `NOT DIRECTLY VERIFIED`. Parquet defaults to pre-materialization bounds of 536870912 bytes and 1000000 rows per input, plus 1000000 tolerant candidate pairs; bound exceedance returns exit 3 before full materialization or unbounded tolerant matching. Exact-key-set/cardinality divergence is established before the pair limit, and duplicate assessment follows the comparison actually completed. Ordered names/dtypes, exact shape/nulls/supported scalars, 1e-6 relative float tolerance, and occurrence-aware order-independent rows otherwise apply; unsupported/nested/NaN/excess tolerant work is NOT DIRECTLY VERIFIED. Exact mode proves byte identity only. Compare PNGs visually with Read and persisted tables/models only through a defined inspectable representation; opaque models remain NOT DIRECTLY VERIFIED. Missing evidence is never a match.
 5. **Frozen-input design is not execution.** When the user selected frozen raw data, do not execute Stage 5. Record exact Stage 5 scripts as pre-RV-2 scope-design exclusions, begin with downstream consumers, and verify the supplied pre/post raw-file hash inventories match. Do not claim acquisition or mirrors reproduced.
-6. **Failure revisions start clean.** Create each `_repro_a`/`_repro_b` from a clean, log-free source, or with `scripts/create_script_revision.sh` (which strips any inherited execution log). Never copy the just-failed appended file and rerun it unchanged.
+6. **Failure revisions start clean.** Create each `_repro_a`/`_repro_b` with `bash /daaf/scripts/create_script_revision.sh <source> <destination>`, from the `original_files/scripts/` source (or from a failed revision whose fixes are worth keeping); it copies the code without the execution log. Never copy the just-failed appended file and rerun it unchanged.
 
 **Key behavioral rules for RV-2:**
 

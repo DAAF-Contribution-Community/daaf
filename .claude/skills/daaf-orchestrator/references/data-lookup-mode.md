@@ -4,9 +4,25 @@ Data Lookup mode is for specific lookup questions — coded values, variable def
 
 ## User Orientation
 
-Give the user a clear sense for how you'll operate -- what you'll look into, what you'll be looking for, what info you'll be paying attention to, and so on.
+The mode confirmation already gave the user this preview, so do not repeat it after confirmation. Present these points only when the user signals they are new to DAAF or asks for more detail.
 
-For unfamiliar users, add something like: *"If it turns out your question touches on something broader, I'll let you know and we can explore further."*
+- A quick, focused answer to one specific question -- a coded value, a variable definition, a source detail
+- I find the most relevant source reference, read what it says about your question, and answer from it, naming the source and any caveats that matter
+- If you pointed me to something (a codebook page, a file, a link), I read it first
+- If it turns out your question touches on something broader, I'll let you know and we can explore further
+
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+
+---
+
+## Scope Check
+
+- **Tier:** None. A lookup is one focused answer, so there is no scope step: read, then answer.
+- **Read first:** anything the user referenced (a codebook page, a file, a URL), before choosing the skill or answering. A web page goes through `web_fetch.sh` (the `web-retrieval` skill). A PDF goes to one `search-agent` digest, which can be the Simple Lookup dispatch itself (§ Invocation Template: Simple Lookup). A data file is described from what the user said and its listing (name, size, type) only; its rows are not read. Pass what you read to the lookup subagent in its `USER-REFERENCED MATERIALS` line.
+- **Where reads land:** this mode never creates a project, so fetch artifacts, PDF ingests and any digest stay in the session's staging folder, `{scratchpad}/scope_staging/` (`SKILL.md` § Scope Check > Read First). The answer cites the URL or document title, never the staged path. If the session escalates to a mode that creates a project, they graduate there.
+- **If reading widens the question:** the existing rules still hold. Do not run more than one skill or expand into exploration without asking (§ Boundaries); propose Data Discovery instead (§ Escalation Triggers).
+
+The read-first rule and the tier table are in `SKILL.md` § Scope Check.
 
 ---
 
@@ -15,9 +31,11 @@ For unfamiliar users, add something like: *"If it turns out your question touche
 ```
 Stage 1: Classify as Data Lookup → Confirm with user
     ↓
+Read anything the user referenced (§ Scope Check)
+    ↓
 Identify the single most relevant skill for the question
     ↓
-Invoke skill via subagent (search-agent, read-only)
+Invoke skill via subagent (search-agent; lookup only)
     ↓
 Return direct, focused answer to user
 ```
@@ -25,7 +43,7 @@ Return direct, focused answer to user
 ## Subagent Invocation
 
 - Invoke **one** subagent with the relevant skill (e.g., `education-data-source-ccd` for a CCD variable question)
-- Use `search-agent` subagent type (read-only)
+- Use the `search-agent` subagent type (`source-researcher` for a Deep Lookup, § Agent Selection); per this mode's scope the dispatch asks for an answer only (no code execution, no data downloads, and no files written outside the staging folder: only a referenced PDF's ingest or a fetch lands there, § Scope Check)
 - **Always load `data-scientist`** in addition to the domain skill — it provides methodological rigor for interpreting results
 - The subagent loads the skills, finds the answer, and returns it
 - If the skill doesn't contain the answer, report that clearly rather than guessing
@@ -34,17 +52,17 @@ Review the skill inventory in the system message to identify the correct skill f
 
 ### Agent Selection
 
-Match agent protocol weight to question complexity:
+Match the agent to question complexity:
 
-| Question Type | Agent Protocol | Domain Skill | Example |
-|--------------|----------------|--------------|---------|
-| Simple fact, definition, year coverage | None (skill-only) | Source or explorer | "What years does CCD cover?" |
-| Coded values, suppression patterns, caveats | `source-researcher` | Source (`*-data-source-*`) | "What are the suppression rules for CRDC discipline data?" |
-| What data exists (narrow, single-source) | None (skill-only) | Explorer | "Does CCD include charter school flags?" |
+| Question Type | Agent | Domain Skill | Example |
+|--------------|-------|--------------|---------|
+| Simple fact, definition, year coverage | `search-agent` (Simple Lookup) | Source or explorer | "What years does CCD cover?" |
+| Coded values, suppression patterns, caveats | `source-researcher` (Deep Lookup) | Source (`*-data-source-*`) | "What are the suppression rules for CRDC discipline data?" |
+| What data exists (narrow, single-source) | `search-agent` (Simple Lookup) | Explorer | "Does CCD include charter school flags?" |
 
 > **Note:** Broad landscape questions ("What data exists about school poverty?") are better served by Data Discovery Mode. The Explorer row above is for narrow, source-specific existence checks where the user already knows which domain to look in.
 
-**Default:** No agent protocol (skill-only). Use `source-researcher` when the question requires structured investigation of caveats, coded values, or suppression patterns — the cases where its 5-section output contract adds value.
+**Default:** `search-agent` with the skill (the Simple Lookup template). Use `source-researcher` when the question requires structured investigation of caveats, coded values, or suppression patterns — the cases where its 5-section output contract adds value.
 
 ### Invocation Template: Simple Lookup (Default)
 
@@ -65,6 +83,18 @@ from base knowledge. Flag reduced confidence due to the missing skill.
 
 ## QUESTION
 {user's specific question}
+
+USER-REFERENCED MATERIALS: {absolute paths of anything the user pointed to,
+with one line on what each holds, or "none"}
+
+[If a referenced PDF must be read: Load the pdf-reading skill and ingest the
+PDF with pdf_ingest.sh into {scratchpad}/scope_staging/papers/ (absolute path),
+the staging folder CLAUDE.md § Project Conventions > Scratch Files allows. Write
+nothing else, and cite the paper by title, not by that path.]
+
+If you fetch a web page, the web_fetch.sh DEST_DIR is
+{scratchpad}/scope_staging/web_fetches/ (absolute path), never another folder;
+cite the page by URL, not by its staged path.
 
 ## RESPONSE FORMAT
 **Hard cap: 750 words.** Answer directly and concisely.
@@ -102,12 +132,19 @@ in your agent protocol).
 **Question:** {user's specific question}
 **Source:** {source_name}
 **Variables of interest:** {variables, if applicable}
+**USER-REFERENCED MATERIALS:** {absolute paths of anything the user pointed to,
+with one line on what each holds, or "none"}
 
 ## TASK
 Answer the user's specific question using the source-researcher protocol.
 Focus your investigation on the sections most relevant to the question —
 you do not need to produce a complete 5-section report if the question
 only touches one area (e.g., coded values only → focus on VARIABLES section).
+
+## SCOPE (Data Lookup mode)
+Answer from the skill, its references and any user-referenced materials
+listed above only: no probe scripts, no data downloads, no files written.
+Return the answer as text.
 
 ## RESPONSE FORMAT
 **Hard cap: 750 words.** Return only the sections relevant to the question.

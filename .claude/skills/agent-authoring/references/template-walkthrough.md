@@ -5,6 +5,12 @@
 > to write, and which existing agent exemplifies best practice.
 >
 > **Read alongside:** `agent_reference/AGENT_TEMPLATE.md` (the canonical blueprint)
+>
+> **Writing standard:** `agent_reference/DOCUMENTATION_STANDARDS.md` governs the
+> prose in every section. Agent files are agent-facing (§ Audiences): internal
+> terms are fine, present tense only (§ S5 Current State), and any user-facing
+> message template follows § S3 Plain for Users. When an exemplar named below
+> departs from the standard, follow the standard rather than the exemplar.
 
 ---
 

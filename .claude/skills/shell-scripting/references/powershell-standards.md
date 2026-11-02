@@ -342,6 +342,8 @@ Write-Host "[3/3] Finalizing..." -ForegroundColor Cyan
 Write-Host "Done." -ForegroundColor Green
 ```
 
+**Comment content.** A comment states a block's purpose and reason, with no line-by-line restatement and no change history: the rule in `bash-standards.md` § Comment Content applies unchanged (`agent_reference/DOCUMENTATION_STANDARDS.md` § S6 Comments Earn Their Place).
+
 ---
 
 ## Compliance Checklist

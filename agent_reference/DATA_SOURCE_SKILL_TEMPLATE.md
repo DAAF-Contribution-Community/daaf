@@ -4,6 +4,8 @@ This document defines the **canonical structure** for all `*-data-source-*` skil
 
 **Audience:** Skill authors and agents performing skill maintenance.
 
+**Writing standard:** `agent_reference/DOCUMENTATION_STANDARDS.md`. A data source skill describes the data and how to use it in this release. The data's own history (schema changes, methodology breaks) is in scope (§ S5 Current State exempts it); the skill's own change history goes to CHANGELOG.md.
+
 ---
 
 ## How to Use This Template
@@ -847,7 +849,7 @@ Reference files are loaded on-demand (Level 3 progressive disclosure), meaning t
 - Full coded value enumeration tables
 - Methodology explanations and limitations for specific analytical domains
 - Worked examples showing valid vs. invalid analysis patterns
-- Historical context (schema changes across years, policy transitions)
+- Historical context of the data (schema changes across years, policy transitions), which `DOCUMENTATION_STANDARDS.md` § S5 Current State exempts
 - Cross-source comparison guidance for related datasets
 - Study/survey design context that researchers need for proper interpretation
 
@@ -875,7 +877,7 @@ When a data source shares join keys with other DAAF data source skills (e.g., co
 
 ### Temporal and Historical Documentation
 
-All data source skills should document temporal scope in `analytical-context.md` or a dedicated `temporal-coverage.md`/`historical-changes.md` file:
+This section covers the data's own history, which the present-tense rule exempts (`DOCUMENTATION_STANDARDS.md` § S5 Current State); a change story about the skill or about DAAF does not belong here. All data source skills should document temporal scope in `analytical-context.md` or a dedicated `temporal-coverage.md`/`historical-changes.md` file:
 - **Cross-sectional data:** What historical moment does this represent? What cohorts or time periods? What is NOT covered temporally?
 - **Longitudinal data:** Are there schema changes, methodology breaks, or coverage gaps across years? Document explicit "DO NOT compare across this boundary" guidance with the year and nature of the break (following the education skills' `historical-changes.md` pattern).
 - **All sources:** What temporal resolution is available (annual, biennial, one-time)? If the data could be confused with more recent or more frequent data, flag this prominently.

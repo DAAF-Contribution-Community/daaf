@@ -21,20 +21,22 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | Field | Value |
 |-------|-------|
 | **Project** | [Full title, e.g., "County Presidential Election Returns Onboarding"] |
-| **Current Phase** | [DI-0/DI-1/DI-2/DI-3]: [Phase Name] |
-| **Current Stage** | [DI-0 through DI-8]: [Stage Name] |
+| **Current Phase** | [DO-0/DO-1/DO-2/DO-3]: [Phase Name] (DO-1 Intake & Setup; DO-0 API Discovery & Acquisition, only when access is by API; DO-2 Profiling & Reconciliation, which on the synthetic path holds DS-1 to DS-5; DO-3 Skill Authoring & Delivery — `data-onboarding-mode.md` § Data Onboarding Mode Workflow) |
+| **Current Stage** | [DI-0 through DI-8, or DS-1 through DS-5 on the synthetic path]: [Stage Name] |
 | **Status** | [In Progress / Awaiting Confirmation / Blocked / Complete] (Awaiting Confirmation: a checkpoint such as PSU-DI1 was presented and the user has not yet confirmed it) |
 
 ---
 
 ## Session Metadata
 
-> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md.
+> Captured at project setup for AI use disclosure (see `agent_reference/AI_DISCLOSURE_REFERENCE.md`). The orchestrator populates these fields when creating STATE.md; Provider Route and Model Settings are found as `AI_DISCLOSURE_REFERENCE.md` § Determining the Provider Route says.
 
 | Field | Value |
 |-------|-------|
 | **DAAF Version (at setup)** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup. Recorded once at setup; NOT refreshed to current HEAD on later sessions. A session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD] |
 | **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
+| **Provider Route** | [Anthropic subscription / Anthropic API key / OpenAI API via DAAF provider shim / ChatGPT subscription via DAAF provider shim / OpenRouter / AWS Bedrock / Google Vertex AI] |
+| **Model Settings** | [Settings that reach the model on this route, recorded with it: Anthropic routes, "reasoning effort [`effortLevel` value]"; provider-shim routes, the shim's reasoning effort per model tier and its response verbosity; other routes, "[Not recorded]". The AI disclosure's Parameters line reads this field] |
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
 | **Session Date(s)** | [Date(s) of profiling sessions — e.g., "2026-03-23"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
@@ -88,6 +90,7 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 | **Source Provider** | [e.g., "MIT Election Data and Science Lab (MEDSL)"] |
 | **Origin URL** | [URL where data was obtained, or "User-provided file"] |
 | **Target Skill Name** | [e.g., "election-data-source-countypres"] |
+| **Sensitivity Gate** | [1 Not sensitive / 2 Sensitive, protections confirmed: [the user's confirmation, in their words] / 3 Sensitive, unsure or unprotected → synthetic path (Synthetic Path Tracking below)] — the DI-1 answer, `data-onboarding-mode.md` § Sensitivity Gate |
 | **Access Method** | [Local File / API] |
 | **File Structure** | [SINGLE / HORIZONTAL / HIERARCHICAL] |
 | **Skill Structure** | [Unified / Per-Entity] |
@@ -156,7 +159,7 @@ States
 
 | Field | Value |
 |-------|-------|
-| **Sensitivity Gate Outcome** | [Synthetic path chosen — reason: sensitive/PII/proprietary/enclave/"can't leave environment" / Conventional (this section omitted)] |
+| **Sensitivity Gate Outcome** | [Outcome 3, synthetic path — reason: unsure / unprotected (the user's words); data type: [e.g., student records]] |
 | **Disclosure Tier** | [T1 Schema / T2 Marginals (default) / T3 Relationships / T4 Local high-fidelity synthesis — confirmed at PSU-DS1; DS-3 copies the level number into CPS-INTAKE's `tier` — at T4, DS-3 copies the **T4 Companion Profile Tier** below instead, because CPS-INTAKE accepts only 1–3] |
 | **Suppression Threshold** | [default 5 / user-set value — small cells below this are suppressed; the value the researcher approved at PSU-DS1. DS-3 copies it into CPS-INTAKE's `expected_threshold`. A returned report must declare a threshold ≥ this value. Never lower it to match a report] |
 | **Relationship Spec (T3 only)** | [correlation matrices / named outcome~predictor summaries / cross-tabs requested — or "N/A (< T3)"] |
@@ -164,26 +167,26 @@ States
 | **Wait-State Status** | [DS-1 in prep / Awaiting user local run (DS-2) / Report received (DS-3) / Past intake] |
 | **Report Path** | [path to returned JSON profile report once imported, e.g., `data/profile_report/[filename].json`; or PENDING] |
 | **Generation Seed** | [seed recorded for reproducibility once DS-5 runs (T4: the seed from the user's generation log); or PENDING] |
-| **T4 Local-Synthesis Variant?** | [No / Yes — user ran `synthesize_local_template.*` locally; only synthetic rows crossed the boundary] |
+| **T4 Local-Synthesis Variant?** | [No / Yes — user ran `synthesize_local_template.*` locally; only the synthetic rows and the aggregate-only generation log crossed the boundary] |
 | **T4 Companion Profile Tier** | [N/A (tier < 4, or no companion profile report) / T1 / T2 / T3 — the tier the researcher approved for the companion profiler run at T4. DS-3 copies this level number, not 4, into CPS-INTAKE's `tier` (CPS-INTAKE accepts only 1–3). A companion report whose `settings.tier` exceeds it fails CPS-INTAKE. Never raise it to match a report] |
 | **T4 Missing-Seed Exception** | [N/A (seed recorded, or tier < 4) / Authorized by the researcher on [date] — [their words, or a pointer to them]; artifact labeled "non-reproducible T4 synthetic artifact". Written before the DS-5 import script runs: CPS-GEN's `seed_exception` points here, and an authorization not recorded here does not exist. Never set by the orchestrator on its own initiative] |
-| **Synthetic Data Directory** | `data/synthetic/` (generated parquet; populated at DS-5) |
+| **Synthetic Data Directory** | `data/synthetic/` (generated parquet; populated at DS-5, or at T4 with no profile report by the import that runs before DS-4) |
 
 ### Synthetic QA Status (QAS-A/B/C, CPS-INTAKE, CPS-GEN)
 
-*The synthetic-path QA model replaces the standard recompute-against-source QA (impossible here — the real data never enters the container) with three review checkpoints (QAS-A/B/C) and two script-halting validators (CPS-INTAKE at DS-3, CPS-GEN at DS-5). Check definitions: `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) and `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. Record the verdict **and** the counts on every row — a verdict without counts cannot later be distinguished from a verdict over checks that never ran. `PENDING` is the pre-run value. The single exception is the CPS-GEN row's `EXEMPT (T4, no profile report)`, which records its reason in place of counts (see the note below the table).*
+*The synthetic-path QA model replaces the standard recompute-against-source QA (impossible here — the real data never enters the container) with three review checkpoints (QAS-A/B/C) and two script-halting validators (CPS-INTAKE at DS-3, CPS-GEN at DS-5). Check definitions: `agent_reference/QA_CHECKPOINTS.md` § Synthetic-Path QA Checkpoints (QAS-A, QAS-B, QAS-C) and `agent_reference/VALIDATION_CHECKPOINTS.md` § Synthetic-Path Validation Checkpoints. Record the verdict **and** the counts on every row — a verdict without counts cannot later be distinguished from a verdict over checks that never ran. `PENDING` is the pre-run value. The one exception is `EXEMPT (T4, no profile report)` on the CPS-INTAKE, QAS-B and CPS-GEN rows, which records its reason in place of counts (see the note below the table).*
 
 | Check | What It Verifies | Stage | Status | Counts |
 |-------|------------------|-------|--------|--------|
 | **QAS-A** | Disclosure-safety review of the OUTBOUND profiling script (does it emit anything the chosen tier forbids?) — highest-stakes; a leak is irreversible once the report is shared | DS-1 (before user runs it) | [PENDING/PASSED/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
-| **CPS-INTAKE** | In-script intake validation of the RETURNED report (parses, required keys, monotone percentiles, counts ≤ row count, missingness in [0,1], well-formed correlations, no released count below threshold, embedded validation complete, no raw-value-shaped fields, identifier columns value-free, cross-tab schema/suppression) | DS-3 (script) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] passed / [n] warnings / [n] failed / [n] not verified / [n] skipped |
-| **QAS-B** | Independent review of the RETURNED report and of the CPS-INTAKE script — re-derives the report's own numbers rather than trusting its embedded `all_passed` | DS-3 (review) | [PENDING/PASSED/WARNING/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
+| **CPS-INTAKE** | In-script intake validation of the RETURNED report (parses, required keys, monotone percentiles, counts ≤ row count, missingness in [0,1], well-formed correlations, no released count below threshold, embedded validation complete, no raw-value-shaped fields, identifier columns value-free, cross-tab schema/suppression) | DS-3 (script) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)] | [n] passed / [n] warnings / [n] failed / [n] not verified / [n] skipped — or, when EXEMPT, the reason |
+| **QAS-B** | Independent review of the RETURNED report and of the CPS-INTAKE script — re-derives the report's own numbers rather than trusting its embedded `all_passed` | DS-3 (review) | [PENDING/PASSED/WARNING/BLOCKER/EXEMPT (T4, no profile report)] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info — or, when EXEMPT, the reason |
 | **CPS-GEN** | In-script validation of GENERATED data against the profile (row count, column set/dtypes, marginals & correlations within tolerance, suppressed categories absent, synthetic levels within released levels, identifier columns value-free, missingness within tolerance, seed recorded) | DS-5 (script) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED/EXEMPT (T4, no profile report)] | [n] passed / [n] warnings / [n] failed / [n] not verified / [n] skipped — or, when EXEMPT, the reason |
 | **QAS-C** | Independent synthetic-vs-profile review of the generated data and of the CPS-GEN script | DS-5 (review) | [PENDING/PASSED/WARNING/BLOCKER] | [n] passed / [n] warnings / [n] blockers / [n] not verified / [n] skipped / [n] info |
 
 > **QAS-A is a BLOCKER gate, never a WARNING** — do not hand the profiling script to the user until disclosure-safety review passes, and any NOT VERIFIED item in QAS-A is a BLOCKER (an emission path that could not be traced is an unproven-safe path).
 
-> **`EXEMPT (T4, no profile report)` is legal only on the CPS-GEN row, only at tier 4, and only when no profile report crossed the boundary** — CPS-GEN then has nothing to compare against and is not run, and QAS-C validates against the user's declared metadata instead. Record the reason in the Counts cell. GDS-5 accepts it under no other condition: a report present means CPS-GEN runs, and running the block with `report_path` unset is not an exemption (its NOT VERIFIED lines force FAILED). A CPS-GEN `PASSED WITH WARNINGS` whose warning is `seed_recorded` is the T4 missing-seed exception — it must match an authorization in Synthetic Path Tracking > T4 Missing-Seed Exception. See `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant.
+> **`EXEMPT (T4, no profile report)` is legal only on the CPS-INTAKE, QAS-B and CPS-GEN rows, only at tier 4, and only when no profile report crossed the boundary** — DS-3 then has no report to validate, so CPS-INTAKE and QAS-B are not run; CPS-GEN has nothing to compare against and is not run, and QAS-C validates against the user's declared metadata instead. Record the reason in the Counts cell. GDS-3 and GDS-5 accept it under no other condition: a report present means DS-3 and CPS-GEN run, and running the CPS-GEN block with `report_path` unset is not an exemption (its NOT VERIFIED lines force FAILED). A CPS-GEN `PASSED WITH WARNINGS` whose warning is `seed_recorded` is the T4 missing-seed exception — it must match an authorization in Synthetic Path Tracking > T4 Missing-Seed Exception. See `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant.
 
 ---
 
@@ -240,6 +243,9 @@ States
 **Multi-file expansion (HIERARCHICAL only):** For HIERARCHICAL file structures, expand the table with per-file rows using the suffix convention. For example, with 2 files (schools + districts):
 - Row `01a` for `01a_load-and-format.py` (schools), row `01b` for `01b_load-and-format.py` (districts)
 - Similarly for scripts 02, 03, 04, 07, 09, 10
+- Script `07b` appears once (cross-file, not per-file)
+- Conditional scripts (05, 06, 08) appear per-file only if applicable to that specific file
+- Script 11 appears once (cross-file documentation reconciliation)
 
 ---
 
@@ -252,34 +258,33 @@ States
 > findings. Gate conditions prevent the next part from proceeding until the
 > current part's notes file exists on disk.
 
-| Part | Agent | File Path | Status |
-|------|-------|-----------|--------|
+| Part / Stage | Agent | File Path | Status |
+|--------------|-------|-----------|--------|
 | A | data-ingest | `output/preliminary_notes/{date}_partA_structural-discovery.md` | [PENDING/WRITTEN] |
 | B | data-ingest | `output/preliminary_notes/{date}_partB_statistical-deep-dive.md` | [PENDING/WRITTEN] |
 | C | data-ingest | `output/preliminary_notes/{date}_partC_relational-analysis.md` | [PENDING/WRITTEN] |
 | D | data-ingest | `output/preliminary_notes/{date}_partD_interpretation-reconciliation.md` | [PENDING/WRITTEN] |
+| DS-4 (synthetic path) | data-ingest | `output/preliminary_notes/{date}_ds4_interpretation.md` | [PENDING/WRITTEN] |
+| Pre-authoring research (if accepted) | search-agent | `output/preliminary_notes/{date}_preDI7_research_{source}.md` | [PENDING/WRITTEN] |
 
 **Status Values:**
 - **PENDING** — Agent not yet dispatched or return not yet persisted
 - **WRITTEN** — File exists on disk with full lossless agent return
 
-**Note:** All four rows must show WRITTEN before DI-7 skill authoring can proceed.
-- Script `07b` appears once (cross-file, not per-file)
-- Conditional scripts (05, 06, 08) appear per-file only if applicable to that specific file
-- Script 11 appears once (cross-file documentation reconciliation)
+**Note:** Keep only the rows for the path taken: Parts A-D on the standard path, DS-4 on the synthetic path (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § DS-4: Interpretation), and the pre-authoring research row only when the user accepted that offer (`WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional)). Every kept row must show WRITTEN before DI-7 skill authoring can proceed.
 
 ---
 
 ## Interpretation Tracking
 
-*Tracks preliminary interpretations from Part D and user decisions at PSU-DI2.*
+*Tracks preliminary interpretations from Part D (synthetic path: DS-4) and user decisions at PSU-DI2 (synthetic path: PSU-DS2).*
 
 | Column/Feature | Preliminary Interpretation | User Decision | Final Interpretation | Notes |
 |----------------|---------------------------|---------------|---------------------|-------|
-| [column name] | [PRELIMINARY: interpretation from script 10] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation or "—" if rejected] | [user feedback] |
-| [pattern/anomaly] | [PRELIMINARY: interpretation from script 10] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation] | [user feedback] |
+| [column name] | [PRELIMINARY: interpretation from script 10, or from DS-4] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation or "—" if rejected] | [user feedback] |
+| [pattern/anomaly] | [PRELIMINARY: interpretation from script 10, or from DS-4] | [CONFIRMED/REJECTED/MODIFIED] | [final interpretation] | [user feedback] |
 
-**Populated:** Part D (script 10 output) → PSU-DI2 (user review) → Stage DI-7 (skill authoring uses Final Interpretation column)
+**Populated:** Part D (script 10 output) or DS-4 → PSU-DI2 or PSU-DS2 (user review) → Stage DI-7 (skill authoring uses Final Interpretation column)
 
 ---
 
@@ -302,7 +307,7 @@ States
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
 | [Topic] | [What was decided] | [Why] | [DI-N] |
-| Pre-Authoring Research offer | [Skipped / Accepted — Focused / Accepted — Deep] | [brief rationale / focus areas] | Post-PSU-DI2 |
+| Pre-Authoring Research offer | [Skipped / Accepted — Focused / Accepted — Deep] | [brief rationale / focus areas] | Post-PSU-DI2 (synthetic path: post-PSU-DS2) |
 
 ---
 
@@ -314,15 +319,15 @@ States
 | [None or description] | [DI-N] | [effect] | [what's needed] |
 
 ### QA Blockers (Pending Resolution)
-| Script | Part | Issue | Revision Attempts | Status |
-|--------|------|-------|-------------------|--------|
-| [None or script.py] | [A/B/C/D] | [QA finding] | [0/1/2] | [Pending/Resolved/Escalated] |
+| Script | Part / DS Stage | Issue | Revision Attempts | Status |
+|--------|-----------------|-------|-------------------|--------|
+| [None or script.py] | [A/B/C/D, or DS-1/DS-3/DS-5 on the synthetic path] | [QA finding] | [0/1/2] | [Pending/Resolved/Escalated] |
 
 ---
 
 ## Error Budget Consumed
 
-### Per-Part (Current Part)
+### Per-Part (Current Part, or Current DS Stage on the Synthetic Path)
 | Resource | Used | Limit | Remaining |
 |----------|------|-------|-----------|
 | Code Attempts | [X] | 2 | [Y] |
@@ -336,6 +341,8 @@ States
 | B (Statistical) | [N] | [N] | [N] | [N] |
 | C (Relational) | [N] | [N] | [N] | [N] |
 | D (Interpretation) | [N] | [N] | [N] | [N] |
+
+*On the synthetic path, replace the Part rows with one row per reviewed DS stage: DS-1 (QAS-A), DS-3 (CPS-INTAKE, QAS-B), DS-5 (CPS-GEN, QAS-C).*
 
 ### Session Total
 | Resource | Used | Limit | Remaining |
@@ -471,7 +478,7 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 | Field | Value |
 |-------|-------|
-| **Phase** | [A/B/C/D or DI-1/DI-2/DI-7/DI-8] |
+| **Stage / Part** | [DI-N, DS-N, or Part A-D] |
 | **Script/Task** | [script name or task description] |
 | **Timestamp** | [ISO 8601] |
 | **Files Modified** | [list] |
@@ -480,7 +487,7 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 | Field | Value |
 |-------|-------|
-| **Stage** | [DI-N] |
+| **Stage** | [DI-N or DS-N] |
 | **Task** | [description] |
 | **Blocked By** | [None | task-name | user-decision | error] |
 | **Ready to Execute** | [Yes | No - reason] |
@@ -501,9 +508,11 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 ### User Restart Prompt
 
-**To resume in a new session, run `/clear` to reset context, then paste this into the chat:**
+**To pick up where we left off, run `/clear` to start a fresh session, then paste this into the chat:**
 
-> Resume the [Source Name] data onboarding. State: `[exact STATE.md path]`. Currently at Stage [DI-N] ([Stage Name]) — next step is [task description].
+> Resume my data onboarding for "[Source Name]". Saved progress: `[exact STATE.md path]`. We were [the activity in plain words, e.g., "profiling how the columns relate to each other", or on the private-data path "waiting for you to run the profiling script on your computer"]. Next: [the next step in plain words, e.g., "check the report your script produced, then describe what each column means"].
+
+**Orchestrator:** keep this prompt in plain words (no stage, phase or checkpoint codes, no agent or status names); the path stays. Update it whenever hitting the HIGH or CRITICAL utilization gates (see CLAUDE.md § Context & Session Health > Context Quality Curve for the trigger points of each threshold profile; on the synthetic path, from ELEVATED, and when the handoff for the user's local run is issued: `WORKFLOW_PHASE_DO_SYNTHETIC.md` § STATE.md Update Points (Synthetic Path)), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
 ### Resumption Instructions (Agent Reference)
 
@@ -511,15 +520,15 @@ Skills are automatically discoverable via YAML frontmatter once placed in `.clau
 
 1. **Read this STATE.md first** — primary recovery document
 2. **Review User Request and Data Source Info** for original scope and provenance
-3. **Check Profiling Progress table** for current part and script status
-4. **Check Interpretation Tracking** if past Part D (user decisions must be preserved)
-5. **Current Phase:** [DI-N] — [Phase Name]
+3. **Check Profiling Progress table** for current part and script status (synthetic path: Synthetic Path Tracking and Synthetic QA Status)
+4. **Check Interpretation Tracking** if past Part D or DS-4 (user decisions must be preserved)
+5. **Current Phase:** [DO-N] — [Phase Name]; **Current Stage:** [DI-N or DS-N] — [Stage Name]
 6. **Next Task:** `[task or script description]`
 
 **Quick Resume Checklist:**
 - [ ] STATE.md read and understood (position, checkpoints, blockers)
 - [ ] Profiling Progress table reviewed (which scripts done/pending/skipped)
-- [ ] Interpretation Tracking reviewed (if past PSU-DI2)
+- [ ] Interpretation Tracking reviewed (if past PSU-DI2 or PSU-DS2)
 - [ ] User Request and Data Source Info reviewed
 - [ ] Open blockers identified
 - [ ] Next action ready for execution
@@ -541,7 +550,8 @@ Update STATE.md after:
 - Each profiling script executes (update Profiling Progress row)
 - Each part QA completes (update Checkpoint Status + QA Findings)
 - PSU-DI1 presented (update Current Position)
-- PSU-DI2 user response received (populate Interpretation Tracking)
+- PSU-DI2 (synthetic path: PSU-DS2) user response received (populate Interpretation Tracking)
+- Synthetic path: at each point in `WORKFLOW_PHASE_DO_SYNTHETIC.md` § STATE.md Update Points (Synthetic Path)
 - Skill authoring completes (update Skill Authoring Status)
 - Key decisions are made
 - Blockers are encountered
@@ -555,7 +565,7 @@ For quick updates during execution:
 
 ```markdown
 **Last Updated:** [timestamp]
-**Current Stage:** [DI-N]
+**Current Stage:** [DI-N or DS-N]
 **Last Script:** [script name] - [DONE/FAILED]
 **Next Action:** [description]
 ```
@@ -566,7 +576,7 @@ Use full template update:
 - At end of each profiling part (A, B, C, D)
 - When blockers encountered
 - Before session breaks
-- After PSU-DI2 user review
+- After PSU-DI2 (synthetic path: PSU-DS2) user review
 
 ---
 
@@ -576,10 +586,10 @@ STATE.md is the primary input for session recovery:
 
 1. **Recovery starts** with reading STATE.md
 2. **Profiling Progress** shows exactly which scripts completed
-3. **Interpretation Tracking** preserves user decisions from PSU-DI2
+3. **Interpretation Tracking** preserves user decisions from PSU-DI2 (synthetic path: PSU-DS2)
 4. **Next actions** provide immediate guidance
 5. **Skill Authoring Status** shows whether skill creation has begun
 
-**Reading verdicts on recovery.** A resuming session reads the Checkpoint Status tables as verdict *plus counts*, never verdict alone. A part recorded `PASSED` with a nonzero NOT VERIFIED count is a contradiction — the recorded verdict is stale or was written before this contract; re-read the part's execution log for the `CPP{n} VALIDATION:` / `QAP{n} RESULT:` line and its count line, and treat the log as authoritative. Before advancing past a gate, confirm the "Checks Not Verified or Skipped" table has an entry for every unverified or skipped check the counts imply; if the counts and that table disagree, the part's QA is unresolved and must be re-reviewed rather than assumed clean.
+**Reading verdicts on recovery.** A resuming session reads the Checkpoint Status tables as verdict *plus counts*, never verdict alone. A part recorded `PASSED` with a nonzero NOT VERIFIED count is a contradiction: treat the recorded verdict as stale; re-read the part's execution log for the `CPP{n} VALIDATION:` / `QAP{n} RESULT:` line and its count line, and treat the log as authoritative. Before advancing past a gate, confirm the "Checks Not Verified or Skipped" table has an entry for every unverified or skipped check the counts imply; if the counts and that table disagree, the part's QA is unresolved and must be re-reviewed rather than assumed clean.
 
 See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for the complete recovery procedure.

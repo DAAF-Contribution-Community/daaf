@@ -99,7 +99,7 @@ No validator detects these: not the profiler's embedded validation, not CPS-INTA
 
 ## T4 — Local high-fidelity synthesis
 
-A different mechanism, not just more statistics. At T1-T3 the profile crosses the boundary and DAAF generates synthetic data *from the profile*. At T4 the **user runs a data-fitted synthesizer locally**, inside their own environment, on the real data — and only the resulting **synthetic rows** cross the boundary.
+A different mechanism, not just more statistics. At T1-T3 the profile crosses the boundary and DAAF generates synthetic data *from the profile*. At T4 the **user runs a data-fitted synthesizer locally**, inside their own environment, on the real data — and only the resulting **synthetic rows** and a short generation log cross the boundary.
 
 **What the user runs:** `synthpop` (R, CART synthesis — the flagship: agency-grade, light dependencies, handles missingness patterns) or SDV `GaussianCopulaSynthesizer` (Python). Templates: `assets/synthesize_local_template.R` / `.py`. Detail in `local-synthesis-t4.md`.
 

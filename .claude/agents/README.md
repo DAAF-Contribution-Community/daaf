@@ -10,7 +10,7 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 All code-producing agents support both Python and R. The execution language is determined by the user's `Primary execution language` preference in CLAUDE.md and propagated by the orchestrator to each agent's prompt; the separate `Primary analysis language background` preference drives cross-language annotation direction, not which language the pipeline runs in. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
 
-Read-only agents (search-agent, plan-checker, data-verifier, integration-checker; citation-adjudicator holds Read alone) and planning/synthesis agents (source-researcher, literature-searcher, paper-reader, research-synthesizer, literature-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
+Read-only agents (plan-checker, data-verifier, integration-checker; no Write or Edit tool, and Bash only for read-only inspection; citation-adjudicator holds Read alone), the search and information-gathering agents (search-agent, source-researcher, literature-searcher, paper-reader; they write only their own records and probes), and planning/synthesis agents (research-synthesizer, literature-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
 
 | Agent | Python Support | R Support |
 |-------|---------------|-----------|
@@ -57,10 +57,10 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 |-------|---------|---------------|----------|-------|------------|-------------|
 | **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8, DS-1/DS-3/DS-5 (synthetic path), Ad Hoc | `opus` | Task spec XML, Plan.md (or orchestrator context in Ad Hoc), skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
 | **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path; also re-derives the CPS-INTAKE / CPS-GEN script verdicts), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output files; RV-2: original/reproduction paths, declared artifacts, path-audit MATCH, data strategy/scope exclusions, preliminary notes, and frozen-hash context | QA scripts + severity report; RV-2: per-script status with separate log metrics and direct-artifact evidence, helper JSON/dimensions, deviations, and evidence gaps |
-| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
-| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
+| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, confirmed pre-flight scope and user-referenced materials (Full Pipeline), Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
+| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications, confirmed pre-flight scope and user-referenced materials (Full Pipeline) | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
 | **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3, LR-8 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present; LR-8: final literature synthesis, its report check, the orchestrator's claim sample, reader table and reference glance record | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions; LR-8: per-claim CONFIRMED/DISPUTED/NOT DIRECTLY VERIFIED rows with the page text that settles each |
-| **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
+| **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3, Data Discovery, Data Lookup | `sonnet` | Source name, variables of interest, research question, years, geographic scope, optional notes path | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls), written to the dispatch-named notes path (Stage 3) and summarized as text |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
 | **notebook-assembler** | Compile scripts into notebook via VERBATIM copy — Marimo (Python) or Quarto (R) — NO dashboards, NO widgets, NO new code | `notebook-assembler` | 9 | `sonnet` | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` (Python) or Quarto `.qmd` (R) notebook with script walkthroughs and data inspection cells |
@@ -68,7 +68,7 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6, DS-4 synthetic path) | `opus` | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
 | **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Standard pipeline artifacts; RV-4: complete Reproduction Report plus persisted full-fidelity RV-3 findings | Report.md; RV-4 synthesis with derived gap/exclusion counts and canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict |
-| **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
+| **search-agent** | Broad-purpose search and information gathering across codebases, documentation, and web sources; writes its own records, never changes existing files | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints, optional output path | Flexible findings report with source citations and confidence assessment, returned as text and, when the dispatch names a path, written there (also review records, evidence cards, fetch artifacts) |
 | **literature-searcher** | Run a Literature Review's approved search protocol: searches, citation snowballing, screening decisions, reference and retraction checks, open-access retrieval and PDF ingest, all through DAAF's CLIs | `literature-searcher` | Literature Review Mode (LR-1, LR-2/3, LR-3b, LR-4, LR-4') | `sonnet` (`opus` for formal-level screening and every second-screener or resolution pass) | Task, level, round, approved `Protocol_v{N}.md`, seeds, paper keys, destinations, spend approval | MANIFEST-recorded searches, corpus, screening and search-log table versions, attached reference checks, `papers/{key}/` ingests, the scoping record; counts returned as text |
 | **paper-reader** | Read one ingested paper in full and write its page-checked evidence card, revising until `lit_verify card` accepts each quote and number on its cited page | `paper-reader` | Literature Review Mode (LR-5, standard and formal levels) | `opus` | Paper key, ingest manifest, page range (or chunk), review question, level, references to trace, route line, image cap, PDF page-image preference | `evidence_card{S}.md` (schema `lit-verify-card-v3`) and its `card_check{S}.json`, or chunk notes for a long paper |
 | **literature-synthesizer** | Write a Literature Review's deliverables from page-checked claims and the review's tables, recording findings and gaps through `lit_corpus` and wording each one no surer than its certainty | `literature-synthesizer` | Literature Review Mode (LR-6, LR-7, LR-7Q) | `opus` | Protocol, question, level, round, deliverable kind (draft or final) and version, approved key papers, reader table, researcher decisions and ratings | Quick-scan memo, round syntheses with gap register and follow-up plan, final synthesis (versioned, in `output/`); findings, gaps, paper notes and abstract claims recorded through `lit_corpus` |
@@ -88,8 +88,8 @@ When adding a new agent, ensure it doesn't overlap with these frequently confuse
 | **notebook-assembler** vs **integration-checker** | Assembler *builds* the notebook (verbatim script compilation); checker *verifies* wiring between components |
 | **report-writer** vs **research-synthesizer** | Writer synthesizes *post-execution* artifacts into a stakeholder report (Stage 11); synthesizer combines *pre-execution* research findings into planning guidance (Stage 3.5) |
 | **framework-engineer** vs **data-ingest** | Engineer creates/modifies *framework* artifacts (skills, agents, modes, config); ingest *profiles data* to produce findings for skill authoring |
-| **search-agent** vs **source-researcher** | Search-agent explores *broadly* across any information space with flexible output; source-researcher examines a *single known data source* in depth using an existing DAAF skill, producing a fixed five-section deliverable |
-| **search-agent** vs **plan-checker** | Search-agent *gathers information* before or during work (exploration); plan-checker *validates* an existing plan against six dimensions (verification) |
+| **search-agent** vs **source-researcher** | Search-agent explores *broadly* across any information space with flexible output, has web access, and may write its own records; source-researcher examines a *single known data source* in depth using an existing DAAF skill, producing a fixed five-section deliverable it writes to a dispatch-named path; both write only their own records |
+| **search-agent** vs **plan-checker** | Search-agent *gathers information* before or during work (exploration) and may write its own records; plan-checker *validates* an existing plan against six dimensions (verification) and stays read-only. Neither fixes what it reviews |
 | **literature-synthesizer** vs **research-synthesizer** | Literature-synthesizer states what *published studies* show, at a recorded certainty, from page-checked claims, for a researcher (Literature Review mode); research-synthesizer resolves conflicts among *data-source* findings so data-planner can plan an analysis (Stage 3.5) |
 | **paper-reader** vs **source-researcher** | Reader turns one *research paper's* pages into an evidence card checked quote by quote against its cited pages; source-researcher examines one *data source* through its DAAF skill and writes five-section source notes |
 | **literature-searcher** vs **search-agent** | Searcher executes one *approved review protocol* and leaves a screening ledger that counts, reporting and the report gate read; search-agent explores *ad hoc* and returns findings nothing else is bound by. A grey-literature lookup or a missing-PDF hunt outside the protocol goes to search-agent |
@@ -221,14 +221,18 @@ This diagram shows how agents interact throughout the pipeline:
                     |  PHASE 5: SYNTHESIS & DELIVERY  |
                     +----------------+----------------+
                                      |
+                                     v
                     +----------------+----------------+
-                    v                                 v
-         +---------------------+            +--------------------+
-         | integration-checker |            |   data-verifier    |
-         |   [Stage 9,11,12]   |            |     [Stage 12]     |
-         +----------+----------+            +--------------------+
-                    |                                 |
+                    |       integration-checker       |
+                    | [Stage 12; also after 9 and 11] |
                     +----------------+----------------+
+                                     |
+                                     v
+                    +----------------+----------------+
+                    |          data-verifier          |
+                    |           [Stage 12]            |
+                    +----------------+----------------+
+                                     |
                                      v
                                  DELIVERY
 ```
@@ -256,7 +260,8 @@ Shows which agents produce output consumed by other agents:
 | **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
 | **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + analysis results + figures | After Stage 8 completes |
 | **notebook-assembler** | integration-checker | Marimo `.py` or Quarto `.qmd` notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
-| **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
+| **integration-checker** | data-verifier | Stage 12 wiring status (CONNECTED / ISSUES FOUND) with issue, reference and orphan tables, via the orchestrator-persisted `{date}_stage12_integration-check.md` notes | Stage 12 |
+| **integration-checker** | Orchestrator | Integration check report (CONNECTED / ISSUES FOUND with severity) for the G9, G11 and G12 wiring checkboxes | After notebook-assembler (Stage 9), after report-writer (Stage 11), before data-verifier (Stage 12) |
 | **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
 | **report-writer** | data-verifier | Report.md (stakeholder report) | Before Stage 12 verification |
@@ -269,12 +274,12 @@ Shows which agents produce output consumed by other agents:
 | **debugger** (RV-2) | Orchestrator | Root cause analysis + minimal fix for reproduction failure | RV-2 (on error) |
 | **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
 | **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
-| **framework-engineer** | Review subagents (Plan) | Created/modified files for multi-angle review | Framework Development Mode Phase 4 |
+| **framework-engineer** | Review subagents (search-agent) | Created/modified files for multi-angle review | Framework Development Mode Phase 4 |
 | **Orchestrator** | search-agent | Search prompts with scope constraints and output expectations | Any mode/stage |
 | **search-agent** | data-planner | Stage 2 exploration findings (data landscape, variables, endpoints) | Full Pipeline Stage 2 |
 | **search-agent** | research-synthesizer | Exploration baseline findings across sources | Full Pipeline Stage 3.5 |
 | **search-agent** | framework-engineer | Scoping findings (current state, affected files, patterns) | Framework Development Mode |
-| **search-agent** | Orchestrator | Flexible findings report with confidence assessment | Any mode/stage |
+| **search-agent** | Orchestrator | Flexible findings report with confidence assessment; when the dispatch names a path, the detailed record on disk (e.g. `reviews/NN_{angle}_review.md`) plus a text summary | Any mode/stage |
 | **Orchestrator** | literature-searcher | Task, level, round, the approved `Protocol_v{N}.md`, seeds, paper keys, destinations, spend approval | Literature Review Mode (LR-1, LR-2/3, LR-3b, LR-4, LR-4') |
 | **literature-searcher** | paper-reader | `papers/{key}/` ingests (the `pdf_ingest` manifest and page files each reader starts from) | Literature Review Mode, LR-4 -> LR-5 |
 | **literature-searcher** | literature-synthesizer | Corpus, screening and search-log tables with the attached reference and retraction checks | Literature Review Mode, LR-6, LR-7, LR-7Q |
@@ -289,7 +294,7 @@ Shows which agents produce output consumed by other agents:
 | **Orchestrator** | citation-adjudicator | The rendered `data/adjudication_bundles/{batch_id}_prompt.txt`, verbatim, nothing added | Literature Review Mode, citation second check (only once an evaluated identity exists) |
 | **citation-adjudicator** | Orchestrator | One JSONL block, persisted verbatim to `data/adjudication_raw/{batch_id}.jsonl` for `lit_corpus adjudications ingest` | After every adjudicator dispatch |
 
-**Preliminary Notes Persistence:** Discovery and profiling agents' full returns are persisted to `output/preliminary_notes/` as lossless markdown files by the orchestrator. Downstream agents reference these files by path for full-fidelity access, while the orchestrator retains compressed summaries for its own coordination. This applies to search-agent (Stage 2), source-researcher (Stage 3), research-synthesizer (Stage 3.5), and data-ingest (DI-3 through DI-6) returns. See orchestrator SKILL.md for the complete protocol.
+**Preliminary Notes Persistence:** The full findings of discovery and profiling agents, and of the Stage 12 integration check, are persisted to `output/preliminary_notes/` as lossless markdown files. Downstream agents reference these files by path for full-fidelity access, while the orchestrator retains compressed summaries for its own coordination. The orchestrator writes them for research-synthesizer (Stage 3.5) and data-ingest (DI-3 through DI-6) returns, and for the Stage 12 integration-checker return; search-agent (Stage 2) and source-researcher (Stage 3) write their own notes at the path the dispatch names, and the orchestrator persists one only if it came back inline. See orchestrator SKILL.md for the complete protocol.
 
 ---
 
@@ -410,6 +415,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Blocking issue identification
 - Non-blocking (identifies issues but doesn't fix)
 - Methodology precision enforcement
+- Read-only: no Write or Edit tool; Bash only for read-only inspection (`grep`, `find`, `ls`), under `enforce-file-first.sh`, because native Claude Code builds have no Glob or Grep tool
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -425,6 +431,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Confidence assessment per section
 - Pitfall identification with mitigation
 - Truth Hierarchy application for discrepancies
+- Writes its notes to the dispatch-named path (Stage 3 preliminary notes) and returns a summary; may run read-only probe scripts under `{PROJECT_DIR}/scripts/scratch/` file-first (`enforce-file-first.sh` registered in frontmatter), moving a probe its notes cite to `scripts/probes/` first; never edits the skill it investigates or any file it did not create
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -542,11 +549,17 @@ code-reviewer returns QA report
 
 **Revision flow (when BLOCKER):**
 ```
-code-reviewer returns BLOCKER
+code-reviewer returns BLOCKER or STOP
          |
-    [Is methodology issue?]
+    [STOP, Issue Category `Methodology Conflict`?]
+    (the Plan's method looks wrong for the data, or the Plan does not settle the choice)
      +- YES -> ESCALATE to user immediately
-     +- NO -> research-executor creates revision (_a.py)
+     +- STOP, another Issue Category -> route by category
+     |     (full-pipeline-mode.md § Gate Status Translation; Stub Detection
+     |     and Validation Gap come back here for revision)
+     +- NO, a BLOCKER (its fix restores what the Plan specifies, or corrects
+           a defect without changing the method)
+           -> research-executor creates revision (_a.py)
                  |
          code-reviewer re-reviews
                  |
@@ -558,7 +571,7 @@ code-reviewer returns BLOCKER
                 +- YES -> ESCALATE to user
 ```
 
-**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer re-executes each in-scope script and compares shared log metrics with direct original-versus-reproduced artifact evidence; logs alone never establish artifact equality. It requires prior path-audit MATCH, executes Stage 5 in re-fetch mode, excludes rather than executes Stage 5 under the pre-approved frozen-input design, verifies frozen raw hashes afterward, preserves artifact-helper JSON for supported Parquet/exact evidence, and creates failure revisions from clean log-free sources.
+**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer re-executes each in-scope script and compares shared log metrics with direct original-versus-reproduced artifact evidence; logs alone never establish artifact equality. It requires prior path-audit MATCH, executes Stage 5 in re-fetch mode, excludes rather than executes Stage 5 under the pre-approved frozen-input design, verifies frozen raw hashes afterward, preserves artifact-helper JSON for supported Parquet/exact evidence, and makes every reproduction copy and failure revision with `create_script_revision.sh`, which strips the execution log.
 
 **Ad Hoc Collaboration:** In Ad Hoc mode, code-reviewer can review user-provided scripts that may lack execution logs or Plan.md context. Methodology alignment is evaluated against the user's stated intent rather than a formal Plan. See `ad-hoc-collaboration-mode.md`.
 
@@ -613,12 +626,13 @@ code-reviewer returns BLOCKER
 - Breadth-first exploration (scan broadly, then drill into best candidates)
 - Evidence-based findings with mandatory source citations (file:line or URL)
 - Flexible output format adapted to the task (inventories, direct answers, surveys)
-- Web-capable research via WebSearch (discovery) plus the DAAF fetch protocol (`web-retrieval` skill's `web_fetch.sh`; the built-in WebFetch is blocked) — unique among read-only agents
+- Web-capable research via WebSearch (discovery) plus the DAAF fetch protocol (`web-retrieval` skill's `web_fetch.sh`; the built-in WebFetch is blocked), which the other information-gathering agent (source-researcher) and the verification agents lack
 - Skill-aware domain knowledge (loads relevant DAAF skills for authoritative context)
+- Writes its own records (a review or research notes at a dispatch-named, compliant path; evidence cards; fetch artifacts) and returns a text summary; may Edit only files it created in the same dispatch, never fixes what it reviews, and runs any Python/R probe file-first (`enforce-file-first.sh` registered in frontmatter)
 
 **Key distinction from source-researcher:** The source-researcher examines a single known data source in depth using an existing DAAF skill, producing a fixed five-section deliverable. The search-agent explores broadly across any information space with flexible output. If you already know which data source skill to investigate, use source-researcher.
 
-**Key distinction from plan-checker and data-verifier:** Those agents perform verification of completed work. The search-agent gathers information before or during work -- it explores, it does not verify.
+**Key distinction from plan-checker and data-verifier:** Those agents perform verification of completed work and stay read-only. The search-agent gathers information before or during work -- it explores, it does not verify.
 
 **Invocation template:** See the search-agent definition file for invocation patterns used across multiple modes and stages.
 
@@ -711,8 +725,9 @@ code-reviewer returns BLOCKER
 name: agent-name-here
 description: >
   [Third person. What it does AND when to use it.]
-tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
-permissionMode: default                          # Or: plan (read-only agents)
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist; never omit it, never list Agent/Task. No Write/Edit = read-only.
+permissionMode: default                          # Or: plan (read-only agents; ignored when the parent runs in auto, bypassPermissions or acceptEdits mode)
+# With Bash in tools, also register enforce-file-first.sh under hooks (see the agent-authoring skill, Per-Agent Hooks)
 model: sonnet                                    # Or: opus (high-judgment roles). See Agent Index prose above.
 ---
 ```
@@ -740,9 +755,8 @@ After writing the agent file, update these registries at minimum:
 
 - [ ] `.claude/agents/README.md` — Agent Index + "When to Use" section + Coordination Matrix
 - [ ] `.claude/agents/README.md` — Agent catalog table (canonical Specialized Agents registry) + `full-pipeline-mode.md` > Skill-to-Stage Mapping (if stage-specific)
-- [ ] `README.md` — Agent Ecosystem table + update agent count
 
-For the **complete 29-item integration checklist** (including conditional workflow and narrative updates), invoke the `agent-authoring` skill and read `references/integration-checklist.md`.
+For the **complete 31-item integration checklist** (including conditional workflow and narrative updates), invoke the `agent-authoring` skill and read `references/integration-checklist.md`.
 
 **Naming convention:** `lowercase-hyphenated.md`
 

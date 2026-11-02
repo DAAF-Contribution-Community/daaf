@@ -383,6 +383,27 @@ echo "[3/3] Finalizing..."
 echo "Done."
 ```
 
+### Comment Content
+
+A comment says what a block is for and why it is done this way. It does not restate each line, and it does not narrate the script's history: what the script used to do and which change fixed it belong in CHANGELOG.md and the commit log. A note about a past bug stays only while the constraint it guards still holds, and it is written as that constraint. The same rule applies to PowerShell scripts (`agent_reference/DOCUMENTATION_STANDARDS.md` § S6 Comments Earn Their Place).
+
+```bash
+# Good: what the block is for and why
+# Point mktemp at an in-project directory: a bare `mktemp -d` lands in /tmp,
+# outside the backup and audit boundary.
+SCRATCH_DIR=$(mktemp -d -p "$PROJECT_DIR/scripts/scratch")
+
+# Good: a past bug kept as the constraint it guards
+# Bash 3.2 has no negative subscripts; index from the array length.
+newest=${backup_dirs[${#backup_dirs[@]}-1]}
+
+# Bad: restates the line
+# Make a temp dir with mktemp in the scratch folder
+
+# Bad: a change story in place of the constraint
+# Was plain mktemp -d until a user lost files in /tmp; fixed in a later release
+```
+
 ### Progress Indicators
 
 Use numbered steps for multi-step scripts so the user can track progress:
@@ -467,3 +488,4 @@ Use this checklist when writing or reviewing any Bash script:
 | 13 | Host scripts (`scripts/host/*.sh`) avoid Bash-4.x-only constructs and BSD-incompatible flags | See "Host-Script Portability" above; enforced by `check-daaf-conventions.sh` + `bats-bash32` CI job |
 | 14 | In-container commands are part of the Dockerfile's installed set | No probing with un-installed binaries (e.g. `ss`); validate, don't suppress |
 | 15 | Host scripts (`scripts/host/*.sh`) never pipe a live producer into `grep -q` (SIGPIPE/pipefail inversion) | Sanctioned idiom is capture-then-grep the value first; enforced by `check-daaf-conventions.sh` section 9 |
+| 16 | Comments state a block's purpose and reason; no line-by-line restatement, no change history | See "Comment Content" above |
