@@ -72,6 +72,13 @@
 #   guard (§9) uses its own narrower rule (the last `_`-segment of an
 #   uppercase name).
 #
+# TEST FIXTURES: for an Edit, Write or MultiEdit whose file_path is under a
+#   tests/ folder, the key-shape families are skipped. Claude Code's result
+#   for those tools carries the whole edited file, and DAAF's test suites
+#   hold credential-shaped fixtures on purpose, so every edit of such a file
+#   would otherwise warn. The value-based check still runs: a live credential
+#   value written into a test file is a real leak.
+#
 # OUTPUT: when anything matches, the hook prints one JSON object,
 #   {"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":…}},
 #   whose additionalContext lists the matched families and variable NAMES and
@@ -128,6 +135,23 @@ fi
 
 WARNINGS=""
 
+# Test-file edits skip the key-shape families (see TEST FIXTURES in the
+# header): an Edit or Write result carries the whole file, and DAAF's test
+# suites hold credential-shaped fixtures on purpose. The value-based check
+# below still runs for them.
+SHAPE_SCAN=1
+TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || TOOL_NAME=""
+EDIT_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || EDIT_PATH=""
+case "$TOOL_NAME" in
+    Edit|Write|MultiEdit)
+        case "$EDIT_PATH" in
+            tests/*|*/tests/*) SHAPE_SCAN=0 ;;
+        esac
+        ;;
+esac
+
+if [[ "$SHAPE_SCAN" -eq 1 ]]; then
+
 # AWS Access Key ID (always starts with AKIA, 20 chars)
 if printf '%s\n' "$RESPONSE" | grep -qE 'AKIA[0-9A-Z]{16}'; then
     WARNINGS="${WARNINGS}  - AWS Access Key ID detected (AKIA...)\n"
@@ -162,6 +186,8 @@ fi
 if printf '%s\n' "$RESPONSE" | grep -qE 'Bearer\s+[A-Za-z0-9_\-\.]{50,}'; then
     WARNINGS="${WARNINGS}  - Long Bearer token detected\n"
 fi
+
+fi  # SHAPE_SCAN
 
 # Value-based detection (see VALUE-BASED DETECTION in the header). Nothing in
 # this block writes to stdout except the WARNINGS entry for a matching NAME.

@@ -108,6 +108,35 @@ _assert_context_json() {
 # DETECT: each documented credential family
 # =========================================================================
 
+_scan_edit() {
+    run env ${3:-} bash "$OUTPUT_SCANNER_SH" < <(jq -nc --arg r "$1" --arg p "$2" '{
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Edit",
+        "tool_input": {"file_path": $p},
+        "tool_response": {"filePath": $p, "originalFile": $r}
+    }')
+}
+
+@test "test-file edit: key-shape fixtures in a tests/ file do not warn" {
+    _scan_edit "aws_key = AKIA""IOSFODNN7EXAMPLE and more text" "/daaf/tests/bash/some_suite.bats"
+    assert_success
+    [ -z "$output" ]
+}
+
+@test "test-file edit: the same key shape outside tests/ still warns" {
+    _scan_edit "aws_key = AKIA""IOSFODNN7EXAMPLE and more text" "/daaf/scripts/some_script.sh"
+    assert_success
+    _assert_context_json
+    assert_output --partial "AWS Access Key ID detected"
+}
+
+@test "test-file edit: a live credential value written into a tests/ file still warns" {
+    _scan_edit "token = abcdefgh12345678xyz" "/daaf/tests/bash/some_suite.bats" "DAAFTEST_API_KEY=abcdefgh12345678xyz"
+    assert_success
+    _assert_context_json
+    assert_output --partial "value of DAAFTEST_API_KEY appears in this tool output"
+}
+
 @test "detects an AWS Access Key ID (AKIA + 16 uppercase/digits)" {
     _scan "aws_key = AKIA""IOSFODNN7EXAMPLE and more text"
     assert_success
