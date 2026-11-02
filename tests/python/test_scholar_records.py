@@ -7,8 +7,8 @@ in these tests and in fixtures/scholar_search/s2_citation_contexts.json is
 SYNTHETIC (10.5555/ DOIs, W900000000xx ids, invented titles, authors and
 sentences): the repository is published (user decision 2026-10-12).
 
-Covers (S4 design 2026-10-30 § 7.5 and v2 § 8.1, maintainer-only workspace
-research/2026-10-02_FrameworkDev_ScholarlySearch/):
+Covers (the records file and citation-context contract in the scholarly-search
+skill: SKILL.md's "Records file" paragraph and references/semantic-scholar.md):
   - <base>.records.json (scholar-records-v1) for find and every open list
     command, its sha256/size/schema in the MANIFEST row, its raw_sha256 equal to
     the row's, every fused group kept beyond --limit (user decision,
@@ -211,7 +211,7 @@ class Base(unittest.TestCase):
 # --- The records file ---------------------------------------------------------
 class RecordsFileTests(Base):
     def test_tool_version(self):
-        self.assertEqual(scholar_search.TOOL_VERSION, "1.9.0-daaf")   # 1.9.0: verify rules 2026-11-01a/b/c (no records change)
+        self.assertEqual(scholar_search.TOOL_VERSION, "1.10.0-daaf")   # 1.9.0: verify rules; 1.10.0: digest wording (no records change)
         self.assertEqual(scholar_search.RECORDS_SCHEMA, "scholar-records-v1")
 
     def test_find_writes_a_hashed_records_file_naming_the_raw_log(self):

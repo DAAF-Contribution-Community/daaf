@@ -3,11 +3,8 @@
 # lit_corpus.py - DAAF Literature Review corpus CLI: versioned tables for the
 #                 corpus, screening, claims, paper notes, findings, gaps and
 #                 citation edges, BibTeX/RIS export and the review manifest,
-#                 with a provenance record per run (added 2026-10-31, Lit
-#                 Review S4, dispatch D3; design 2026-10-31_S4_Design_v2 §5,
-#                 §8.2 and 2026-10-30_S4_Design §5, both in the
-#                 maintainer-only workspace
-#                 research/2026-10-02_FrameworkDev_ScholarlySearch/)
+#                 with a provenance record per run. The full CLI contract is
+#                 the literature-review skill's references/lit-corpus.md.
 # =============================================================================
 #
 # lit_corpus turns what the other Literature Review tools recorded into the
@@ -149,7 +146,11 @@
 #   the plain-language list output/reference_glance_v{N}.md the researcher
 #   reads before replying: the deliverable's references (--deliverable), the
 #   papers named (--keys), or both (the deliverable's first, then each named
-#   paper it does not cite), else every included paper.
+#   paper it does not cite), else every included paper. A MISMATCH or EXISTS
+#   reference shows the record found for its identifier, its title labelled
+#   "Does not match:" or "Not compared:"; glance-sheet re-derives that record
+#   for display and stores it nowhere (an override_mismatch, a separate
+#   decision, binds a MISMATCH reference to that same record).
 #
 # --- Licences ---------------------------------------------------------------
 #   A search row whose license_class is "restricted" or that names
@@ -292,12 +293,20 @@ sc = _load_common()
 # The evaluated list is matched on the whole identity (model ID, template sha256, rubric version, agent file sha256;
 # pack records the agent file's sha256 in the bundle and its log), and an override_mismatch binds to the record the
 # re-grade compared (ledger override_record_json), so the overridden reference is exported and citable.
-# 1.5.0 (the user's decision that `--keys` adds to a deliverable's references): `adjudications glance-sheet` with
-# both --deliverable and --keys lists the deliverable's references, then each named paper it does not cite, on one
-# sheet; the sheet says which were added by name, and the MANIFEST row records keys_from_deliverable and keys_added.
-# Either flag alone lists what it did in 1.4.0, except that `--keys` alone lists a repeated key once and a `--keys`
-# naming no key is refused (exit 11). Contract 0.4.0 (no output schema change).
-TOOL_VERSION = "1.5.0-daaf"
+# 1.5.0 (2026-11-02, the user's decision that `--keys` adds to a deliverable's references): `adjudications
+# glance-sheet` with both --deliverable and --keys lists the deliverable's references, then each named paper it does
+# not cite, on one sheet; the sheet says which were added by name, and the MANIFEST row records keys_from_deliverable
+# and keys_added. Either flag alone lists what it did in 1.4.0, except that `--keys` alone lists a repeated key once
+# and a `--keys` naming no key is refused (exit 11). Contract 0.4.0 (no output schema change).
+# 1.6.0 (2026-11-02, the user's decision that the reference check sheet shows the record a non-matching reference was
+# compared with): `adjudications glance-sheet` fills the record columns of a MISMATCH or EXISTS reference with the
+# record verify_regrade re-derives from the hash-checked raw log, its title prefixed "Does not match:" or "Not
+# compared:"; a NOT FOUND reference shows no record. A sentence per label above the table says what that record is,
+# and for "Does not match:" that a reference kept anyway (override_mismatch) is cited from it. The opening sentence
+# reads "the database record found for it, where one was found". This command writes the record to no table;
+# export-bib lists it only once an override_mismatch binds it (1.4.0). Rule versions unchanged (glance-words-v1
+# covers the "Where it stands" words, which did not change). Contract 0.4.0 (no output schema change).
+TOOL_VERSION = "1.6.0-daaf"
 # Output contract semver (pre-1.0; additive changes bump the minor version).
 # 0.1.0 (S4 D3): the first contract. 0.2.0 (S4 review-fix E, 2026-10-31,
 # additive): claims from a paper's stored abstract (claim_id {paper_key}-aNN,
@@ -3249,6 +3258,24 @@ GLANCE_STATUS_WORDS = {
 GLANCE_VERDICT_WORDS = {"WEAK": "partly matches; please decide", "MISMATCH": "does not match the record",
                         "EXISTS": "the identifier exists, but its title was not compared",
                         "NOT FOUND": "no record found"}
+# INTENT (1.6.0): the label that opens the "Title on record" cell when the record shown is one the check did not
+#   match (display only), and the sentence above the table that says what such a record is. Only MISMATCH and EXISTS
+#   references show one.
+# REASONING: a NOT FOUND reference shows no record, because a record beside "no record found" would contradict the
+#   verdict. The "Does not match" note names neither the title nor the authors as the cause: verify gives MISMATCH
+#   for a different title or for a cited author missing from the record (the title can then be identical), and
+#   verify_regrade keeps the lower verdict. It says what keeping the reference does: an override_mismatch binds
+#   exactly this record, and export-bib then lists it (its title on record, not the title as cited). An EXISTS
+#   reference cannot be kept by a reply (record-human refuses it), so its record is shown only for comparison.
+GLANCE_UNMATCHED_LABELS = {"MISMATCH": "Does not match", "EXISTS": "Not compared"}
+GLANCE_UNMATCHED_NOTES = {
+    "Does not match": "A title on record that starts with \"Does not match:\" comes from the database record with the "
+                      "same identifier (DOI or database ID) as that reference. The automatic check found that this "
+                      "record does not match the citation: its title or its authors differ. If you keep that "
+                      "reference anyway, it is cited from this record, with the title on record.",
+    "Not compared": "A title on record that starts with \"Not compared:\" comes from the database record with the same "
+                    "identifier (DOI or database ID) as that reference; the check did not compare that title with the "
+                    "title as cited. It is shown only so you can compare."}
 
 
 def glance_cell(text, limit=300):
@@ -3312,10 +3339,11 @@ def cmd_adj_glance(ctx, a, state):
     md = ["| # | Reference | Title as cited | Title on record | Authors as cited | Authors on record | Year (cited / "
           "on record) | Where published | Where it stands |",
           "|---|---|---|---|---|---|---|---|---|"]
-    confirmable = []
+    confirmable, unmatched_labels = [], []
     for n, key in enumerate(keys, 1):
         r = corpus[key]
         rec = jload(r.get("verify_record_json"), {}) or {}
+        label = None
         e = entries.get(r.get("verify_row_sha256") or "")
         cited = {"title_raw": r.get("title"), "year": r.get("year")}
         if e is not None:
@@ -3323,12 +3351,26 @@ def cmd_adj_glance(ctx, a, state):
             if raw:
                 got = cited_from_log(json.loads(raw.decode("utf-8")))
                 cited = {"title_raw": got["title_raw"] or r.get("title"), "year": got["year"] or r.get("year")}
+                # INTENT (1.6.0): a MISMATCH or EXISTS reference stores no record (verify_record_json is kept only for
+                #   CONFIDENT / WEAK or a bound override, so a non-matching record reaches the .bib only through an
+                #   override). The sheet still shows the record found for its identifier, labelled, so the researcher
+                #   can see what was found. A bound override (rec set) is shown unlabelled: it is the reference's record.
+                # REASONING: verify_regrade is the same choice attach verify and an override binding make (the record
+                #   whose DOI or OpenAlex key is the paper's, from the hash-checked raw log); this command uses that
+                #   record for the sheet only and writes it to no table.
+                if not rec and r.get("verify_verdict") in GLANCE_UNMATCHED_LABELS:
+                    shown = verify_regrade(raw, r, e["row"].get("verdict"), openalex_aliases(state["aliases"], key))[1]
+                    if shown:
+                        rec = shown
+                        label = GLANCE_UNMATCHED_LABELS[r["verify_verdict"]]
+                        unmatched_labels.append(label)
         kind = str(rec.get("type") or "").replace("-", " ")
         where = ", ".join(x for x in (rec.get("venue"), kind) if x)
         words = glance_words(r, r.get("verify_verdict"), (e or {"row": {}})["row"].get("verdict"),
                              cur.get(r.get("verify_row_sha256") or ""))
+        title_on_record = (f"{label}: " if label else "") + glance_cell(rec.get("title"))
         md.append(f"| {n} | {glance_cell(r['citekey'], 80)} | {glance_cell(cited['title_raw'])} | "
-                  f"{glance_cell(rec.get('title'))} | {glance_cell('; '.join(jload(r.get('authors_json'), []) or []))}"
+                  f"{title_on_record} | {glance_cell('; '.join(jload(r.get('authors_json'), []) or []))}"
                   f" | {glance_cell('; '.join(rec.get('authors') or []))} | {cited['year'] or '?'} / "
                   f"{rec.get('year') or '?'} | {glance_cell(where, 160)} | {words} |")
         if r.get("verify_verdict") in VERIFY_RANK and read_status(r.get("citation_status")) not in CITABLE_FINAL + (
@@ -3357,9 +3399,20 @@ def cmd_adj_glance(ctx, a, state):
         if not nd:
             ctx["out"].append(f"lit_corpus: WARNING: {rel_deliverable} cites none of the corpus's papers; the sheet "
                               "lists the --keys papers only")
+    # INTENT (1.6.0): each label on the sheet is explained before the table, one sentence per label, so a record the
+    #   check did not match is never read as the reference's confirmed record, and the researcher deciding whether to
+    #   keep a "Does not match" reference knows it would be cited from that record.
+    unmatched_note = []
+    for lab in ("Does not match", "Not compared"):
+        if lab in unmatched_labels:
+            unmatched_note += [GLANCE_UNMATCHED_NOTES[lab], ""]
+    # REASONING (1.6.0): "found for it, where one was found" holds for every row: a matched or bound record, a labelled
+    #   record found for the identifier, or "(none recorded)" when no record was found.
     md = ["# Reference check: please look over each reference", "",
-          "Each row puts the title as cited next to the title in the database record DAAF matched it to. " + ask, ""
-          ] + source + ["The titles, names and places below are copied exactly as the records give them.", ""] + md
+          "Each row puts the title as cited next to the title of the database record found for it, where one was "
+          "found. " + ask, ""
+          ] + source + ["The titles, names and places below are copied exactly as the records give them.", ""
+                        ] + unmatched_note + md
     rel, _ = write_output(ctx, "", "reference_glance", ".md", "\n".join(md) + "\n")
     rows_rel, _ = write_output(ctx, "", "reference_glance", "_rows.txt",
                                "# verify rows a reply can confirm (record-human --rows)\n" + "\n".join(confirmable)
@@ -3950,10 +4003,26 @@ def run_selftest(scratch, row):
         write_new(mrows, (msha + "\n").encode("utf-8"))
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             codes = [run(["attach", "verify", pd, demo_jsonl(pd, "verify_mismatch.jsonl", [
-                         {"row_sha256": msha, "paper_key": p4["key"]}])]),
-                     run(["adjudications", "record-human", pd, "--rows", mrows, "--decision", "override_mismatch",
-                          "--user-words", "Keep it; the index renamed it.", "--rationale", "invented"]),
-                     run(["export-bib", pd])]
+                         {"row_sha256": msha, "paper_key": p4["key"]}])])]
+            # 1.6.0: before the override, the sheet shows the record the MISMATCH check compared, labelled; the
+            #   corpus stores no record for the paper (display only)
+            gcode3 = run(["adjudications", "glance-sheet", pd, "--keys", p4["key"]])
+        sheets = sorted((n for n in os.listdir(os.path.join(pd, "output"))
+                         if re.match(r"^reference_glance_v\d+\.md$", n)),
+                        key=lambda n: int(n[len("reference_glance_v"):-3]))
+        glance3 = open(os.path.join(pd, "output", sheets[-1]), encoding="utf-8").read() if sheets else ""
+        stored = next((r.get("verify_record_json") for r in load_table(dict(ctx, cache={}), "corpus")[0]
+                       if r["paper_key"] == p4["key"]), "missing")
+        codes3 = [c for c in CITATION_STATUSES + ADJ_VERDICTS + ("CONFIDENT", "WEAK", "MISMATCH") if c in glance3]
+        selftest_expect(results, "glance sheet shows a non-matching record, labelled, never stored",
+                        codes == [0] and gcode3 == 0 and stored is None and not codes3 and
+                        "| Does not match: Coastal Dentistry Outcomes" in glance3 and
+                        "If you keep that reference anyway, it is cited from this record" in glance3,
+                        {"exit": [codes, gcode3], "stored": stored, "codes": codes3})
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            codes += [run(["adjudications", "record-human", pd, "--rows", mrows, "--decision", "override_mismatch",
+                           "--user-words", "Keep it; the index renamed it.", "--rationale", "invented"]),
+                      run(["export-bib", pd])]
         bibs = sorted((n for n in os.listdir(os.path.join(pd, "output")) if re.match(r"^references_v\d+\.bib$", n)),
                       key=lambda n: int(n[len("references_v"):-4]))
         last = open(os.path.join(pd, "output", bibs[-1]), encoding="utf-8").read() if bibs else ""

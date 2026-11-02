@@ -590,8 +590,8 @@
 #   identifying rule and the quote-number rule; claim_quote items carry
 #   `claim_type`. A paper_note is structure only (exit 8 rules above).
 #
-# --- report (1.10.0, S4 D4; design 2026-10-31_S4_Design_v2 §6.2, in the
-#     maintainer-only workspace research/2026-10-02_FrameworkDev_ScholarlySearch/)
+# --- report (1.10.0; the CLI contract is the literature-review skill's
+#     references/lit-verify-report.md)
 #   Checks one deliverable of a Literature Review project (PROJECT_DIR, the
 #   folder lit_corpus works in) against the review's tables. The rules live in
 #   the stdlib module lit_report_rules.py (citation and span parsing, sentence
@@ -1029,9 +1029,7 @@ if __name__ == "__main__":
 # `ocr_layer_suspected` flag). vision-list-2026-10-19 and -10-28 are kept, so
 # a card read under either keeps its meaning. A data change, as part 4: no
 # status, rule version, card or result schema changes; selftest unchanged.
-# 1.9.0 (S4 D3, 2026-10-31, user decisions user decisions of 2026-10-30 and 2026-10-31; design
-# 2026-10-31_S4_Design_v2 §6.1, maintainer-only workspace
-# research/2026-10-02_FrameworkDev_ScholarlySearch/): card schema
+# 1.9.0 (2026-10-31, user decisions of 2026-10-30 and 2026-10-31): card schema
 # lit-verify-card-v3 (typed claims:
 # claim_type, limitation_kind, appraisal {guide, item, answer}, citation_use
 # {cites_key, relation}, quant, page_label; an optional paper_note block),
@@ -1045,9 +1043,7 @@ if __name__ == "__main__":
 # paper L (a printed footer label) and eight cases (53 expectations). No
 # appraisal question tables, answer scales or computed ratings (user decision 2026-10-31: the
 # formal level is researcher-led). Exit meanings unchanged.
-# 1.10.0 (S4 D4, 2026-10-31, user decisions user decisions of 2026-10-30 and 2026-10-31,
-# user decisions of 2026-10-30; design 2026-10-31_S4_Design_v2 §6.2, §8.4, maintainer-only
-# workspace research/2026-10-02_FrameworkDev_ScholarlySearch/): the `report`
+# 1.10.0 (2026-10-31, user decisions of 2026-10-30 and 2026-10-31): the `report`
 # subcommand. Rules in the new stdlib module lit_report_rules.py
 # (REPORT_RULES_VERSION, CITATION_PARSE_VERSION, SENTENCE_SPLIT_VERSION,
 # REPORT_LINT_VERSION; the embedded certainty phrase table, a lockstep copy of

@@ -373,7 +373,15 @@ from scholar_backends._common import (  # noqa: E402
 # taken before consecutive words written together, and keeps the shorter
 # list of missing words, so a title whose consecutive words spell another of
 # its words ("A Cross Sectional … across") passes against itself.
-TOOL_VERSION = "1.9.0-daaf"
+# 1.10.0 (2026-11-02, user decision of 2026-11-02 to state the citation second
+# check's current state): the CONFIDENT digest's organization sentence reads
+# "Until a second check confirms the reference (in a Literature Review, the
+# citation second check; elsewhere, a person): if the cited author is an
+# organization cited by less than its full listed name ("&" company names
+# included), treat it as WEAK.", the wording of the scholarly-search skill's
+# CONFIDENT row. Same rule; no row field, stdout line, verdict or exit code
+# changes.
+TOOL_VERSION = "1.10.0-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -1658,10 +1666,8 @@ def context_short(ctx):
 # §§ RECORDS_SIDECAR (1.7.0)
 # INTENT: <base>.records.json, schema scholar-records-v1: the fused result of
 #   an open list command as data, so lit_corpus never parses the untrusted
-#   Markdown digest and fusion stays in one place (fuse()). Design: S4 design
-#   2026-10-30 § 7 and v2 § 8.1 (maintainer-only workspace
-#   research/2026-10-02_FrameworkDev_ScholarlySearch/; user decisions
-#   2026-10-30 and 2026-10-31): every fused group, also those beyond --limit,
+#   Markdown digest and fusion stays in one place (fuse()). User decisions
+#   2026-10-30 and 2026-10-31: every fused group, also those beyond --limit,
 #   with `limit` recorded and a per-group `shown`.
 # REASONING: strings are the adapters' record() values. Every string passes
 #   scrub_injection (counted in the row's records_redaction_count), then the
@@ -2018,7 +2024,8 @@ def cmd_verify(http, a, notes):
     #   Cycle 6 (user decision 2026-10-06): this is the RULE layer; it owns identity
     #   and steps aside (WEAK) on semantic questions such as whether an
     #   organization's acronym or variant name is the listed body, which the
-    #   forthcoming citation adjudicator (then a human) resolves. Cycle 7 adds
+    #   citation second check resolves (a person, and the citation adjudicator
+    #   once a model passes its evaluation). Cycle 7 adds
     #   the person-path step-asides (given names, organization-shaped names,
     #   abbreviations) and the listed-side-only national prefix.
     notes["verify_cutoffs"] = verify_cutoffs()
@@ -2231,9 +2238,10 @@ def cmd_verify(http, a, notes):
               f"{best['via']} ({best['note']}).", ""]
     if verdict == "CONFIDENT":
         lines += ["CONFIDENT = the cited title, and every --author / --year given, match this record. Cite the "
-                  "DOI shown below (the record verify resolved), not a DOI recalled from elsewhere. Until the "
-                  "citation adjudicator ships, treat it as WEAK if the cited author is an organization named by "
-                  "less than its full listed name (including an '&' company name).", ""]
+                  "DOI shown below (the record verify resolved), not a DOI recalled from elsewhere. Until a second "
+                  "check confirms the reference (in a Literature Review, the citation second check; elsewhere, a "
+                  "person): if the cited author is an organization cited by less than its full listed name (\"&\" "
+                  "company names included), treat it as WEAK.", ""]
     if verdict == "WEAK":
         if best["ratio"] is not None and best["ratio"] < VERIFY_CONFIDENT_MIN:
             weak_why.insert(0, f"the title similarity {best['ratio']:.2f} is below {VERIFY_CONFIDENT_MIN:.2f}")

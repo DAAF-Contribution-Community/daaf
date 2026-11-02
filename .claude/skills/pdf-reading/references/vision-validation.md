@@ -8,9 +8,8 @@ rules, candidates and history.
 
 Labels: **[obs]** observed by a command or code read in a DAAF session,
 **[doc]** quoted from vendor documentation fetched into a DAAF workspace,
-**[inf]** inference. Sources (maintainer-only, not shipped): spec `research/2026-10-02_FrameworkDev_ScholarlySearch/2026-10-02_LitReview_Spec.md`
-§7.3; preliminary notes 08 (§ 4) and 10 (§ 4) there; and the shim session's
-memo `research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/REPLY_2026-10-13_ImageFidelity.md`.
+**[inf]** inference. The development notes behind these labels do not ship
+with DAAF, so this page states each finding it relies on where it is used.
 
 **Contents:** Why vision is gated · Modes · Gating (Option C) · Routes ·
 Cost · The validation probe · Promotion and demotion · Candidates · List

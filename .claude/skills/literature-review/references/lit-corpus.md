@@ -8,7 +8,7 @@ writes as JSONL. It computes what an agent must never type: paper keys and
 citekeys, the descriptive summary of three or more estimates, the sign test,
 the evidence of absence behind a gap. Source of truth: the header,
 `EXIT_CODES`, `SCHEMAS`, `RULE_VERSIONS` and `build_parser()` of
-`scripts/lit_corpus.py` (`TOOL_VERSION = "1.5.0-daaf"`;
+`scripts/lit_corpus.py` (`TOOL_VERSION = "1.6.0-daaf"`;
 `CONTRACT_VERSION = "0.4.0"`). If this page and the code disagree, the code
 wins: report the drift. `lit_verify report` (`lit-verify-report.md`) reads
 these tables to check a deliverable.
@@ -114,7 +114,7 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `adjudications ingest` | Binds the adjudicator's return to the audited pack, writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
 | `adjudications record-human` | Records a person's reply for one or more verify rows | `--rows FILE` (one verify row sha256 per line, `#` comments), `--decision`, `--user-words`, `--rationale` (required except with `defer`) |
 | `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--deliverable` (its `@citekey`s), `--keys`, both (one list: the deliverable's references, then each named paper it does not cite), or every included paper |
-| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (30 expectations) | — |
+| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (31 expectations) | — |
 
 ## Tables
 
@@ -360,16 +360,40 @@ shown or the user typed the command with `!` (both run with the same
 environment), so `human_binding_basis` says the binding was not detected and
 `user_typed` is never written.
 
-**`glance-sheet`** (`glance-words-v1`) writes `output/reference_glance_v{N}.md`
+**`glance-sheet`** writes `output/reference_glance_v{N}.md`
 for the researcher: a table of number, reference (citekey), title as cited,
 title on record, authors as cited and on record, year cited and on record,
 where published (venue and record type in words), and where it stands in
-plain words ("matches the record; not yet confirmed", "partly matches; please
+plain words (the rule version `glance-words-v1` covers only this column's
+words: "matches the record; not yet confirmed", "partly matches; please
 decide", "does not match the record", "no record found", "the identifier
 exists, but its title was not compared", "you confirmed it", "accepted by you
 despite the automatic reference check", "confirmed by DAAF's second check (an
 AI judgment)"), plus "this paper was retracted" where it was. No status or
-verdict code appears. The sheet asks for a reply only when a listed reference
+verdict code appears. A MISMATCH or EXISTS reference stores no record (no
+`verify_record_json`) until a decision binds one, but its record columns show
+the record found for its identifier, re-derived from the hash-checked raw
+response by `verify_regrade` (the same choice `attach verify` and an
+`override_mismatch` make). Its title on record opens with "Does not match:"
+(MISMATCH) or "Not compared:" (EXISTS), and a short note per label above the
+table says what that record is. For "Does not match:" the note says the check
+found that the record does not match the citation, "its title or its authors
+differ" (a MISMATCH can come from the cited author alone, with the titles
+identical), and that a reference the researcher keeps anyway is cited from
+this record: an
+`override_mismatch` binds exactly this record, and `export-bib` then lists it
+with its title on record (§ `record-human`). For "Not compared:" it says the
+record is shown only for comparison (an EXISTS row cannot be recorded).
+`glance-sheet` itself writes the record to no table. A NOT FOUND reference
+shows no record, and neither does a response that holds no record of the
+paper: the title on record, authors on record and where-published cells read
+"(none recorded)", and the year on record reads `?`. A reference already kept
+with `override_mismatch` shows its bound record unlabelled. The sheet's
+opening sentence puts the title as cited next to "the database record found
+for it, where one was found". The rest of the sheet's wording (that sentence,
+the labels and the notes explaining them) is versioned by `TOOL_VERSION`,
+which every MANIFEST row records. The
+sheet asks for a reply only when a listed reference
 can still be confirmed; otherwise it says nothing needs a reply (or, when a
 listed record does not match, how to keep one). The `record-human` MANIFEST
 row also holds `user_words_sha256`, the sha256 of the words it recorded. It
@@ -513,9 +537,9 @@ file.
 
 ## Tests and fixtures
 
-`tests/python/test_lit_corpus.py` (70 tests; the parquet and
+`tests/python/test_lit_corpus.py` (76 tests; the parquet and
 round-trip tests need polars or pyarrow, and rapidfuzz for the selftest and
-the second-check command tests, and are skipped without them, as on the bare CI runner) and `lit_corpus.sh selftest` (30 expectations). The P3 contract
+the second-check command tests, and are skipped without them, as on the bare CI runner) and `lit_corpus.sh selftest` (31 expectations). The P3 contract
 bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.4.0:
 four invented papers with checked v3 cards, findings F01 and F02, two gaps
 (G02 left unclassified), one citation link, the second check of the four

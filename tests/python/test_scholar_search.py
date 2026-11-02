@@ -2756,18 +2756,19 @@ class VerifyCycle9Tests(Base):
                 self.assertEqual(self.gate(route, "Abib", ["Joe Ħabib"], title=self.T, year=2019)[:2],
                                  (11, "MISMATCH"))
 
-    # --- FIX-NOW (f): the CONFIDENT digest carries the interim caveat -------------
-    def test_confident_digest_carries_the_interim_caveat(self):
+    # --- FIX-NOW (f): the CONFIDENT digest carries the organization-author rule ---
+    def test_confident_digest_carries_the_organization_author_rule(self):
         code, verdict, _ = self.gate("openalex", "Aliyev", ["İlham Əliyev"], title=self.T, year=2019)
         self.assertEqual((code, verdict), (0, "CONFIDENT"))
         md = " ".join((self.dest / self.manifest()[-1]["extract_artifact"]).read_text().split())
-        self.assertIn("Until the citation adjudicator ships, treat it as WEAK if the cited author is an "
-                      "organization named by less than its full listed name", md)
+        self.assertIn("Until a second check confirms the reference (in a Literature Review, the citation second "
+                      "check; elsewhere, a person): if the cited author is an organization cited by less than its "
+                      "full listed name (\"&\" company names included), treat it as WEAK.", md)
         # A WEAK digest does not carry it (and, per W-B, never says CONFIDENT).
         code, verdict, _ = self.gate("openalex", "John Q. R. Smith", ["John Q. S. Smith"], title=self.T, year=2019)
         md = (self.dest / self.manifest()[-1]["extract_artifact"]).read_text()
         self.assertEqual(verdict, "WEAK")
-        self.assertNotIn("adjudicator ships", md)
+        self.assertNotIn("second check confirms", md)
         self.assertNotIn("CONFIDENT", md)
 
 
@@ -2860,7 +2861,7 @@ class VerifyHeldoutFixTests(Base):
         # (VerifyIdenticalTitleFixTests).
         self.assertEqual(scholar_search.VERIFY_RULES_VERSION, "2026-11-01d")
         self.assertEqual(scholar_search.VERIFY_RULES_UPDATED, "2026-11-01")
-        self.assertEqual(scholar_search.TOOL_VERSION, "1.9.0-daaf")
+        self.assertEqual(scholar_search.TOOL_VERSION, "1.10.0-daaf")
         cut = scholar_search.verify_cutoffs()
         self.assertEqual((cut["title_word_guard"], cut["mark_guard"], cut["review_guard"]),
                          ("content-words-v4", "marks-v2", "book-review-v2"))

@@ -32,7 +32,7 @@ and points to the workflow for adding a new scholarly source. Ported from the
 user's own tool (2026-09-27) and adapted to DAAF on 2026-10-02.
 
 **Who may run this:** the orchestrator, search-agent, and the
-literature-searcher agent (forthcoming, Literature Review mode). Audited
+literature-searcher agent (Literature Review mode). Audited
 scripts executed via `run_with_capture.sh` (e.g., a script that checks a
 reference list) may also call `verify` and `retractions`
 through `subprocess`, one call at a time, so each call still leaves its own
@@ -44,7 +44,7 @@ titles) to stdout. A usage error
 (exit 1) or a refused DEST (exit 2) writes no row, so a batch script must
 confirm exactly one new row whose `query` matches the identifier before reading
 a verdict, and must treat anything else as blocked. The
-paper-reader agent (forthcoming) never fetches: it reads artifacts already on
+paper-reader agent (Literature Review mode) never fetches: it reads artifacts already on
 disk and hands any retrieval need back to the orchestrator, so every network
 call stays with an agent whose job is retrieval and every call leaves a
 MANIFEST row.
@@ -302,8 +302,9 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   (APA: Psychological or Psychiatric Association), and a contained name
   can be a different one ("Ohio Department of Education"). String rules
   cannot settle that safely, so the rule layer steps aside (user
-  decision D-16) and leaves it to the forthcoming citation adjudicator
-  and, until it exists, a human. A parenthetical never stands in for a
+  decision D-16) and leaves it to the citation second check: a
+  person, and the citation adjudicator once a model passes its
+  evaluation. A parenthetical never stands in for a
   person's name: "Smith (APA)" is checked as Smith. A cited author with
   fewer than two words before a comma ("Board", "Board, Jane") is read
   as a person, but a listed two-word name holding an organization word
@@ -334,15 +335,19 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   the "&" co-author split ("Johnson & Johnson" on "Mary
   Johnson": "&" ends the first cited author, so only "Johnson" is
   checked), like "Smith & Jones". User decision D-17 makes the citation
-  adjudicator's second check on **every** CONFIDENT mandatory, so once
-  the adjudicator ships, CONFIDENT will mean "rule-passed, then
-  model-confirmed", and these residuals are reviewed there. **Until then,
-  if the cited author is an organization cited by less than its full
-  listed name, treat CONFIDENT as WEAK** (a human check, the WEAK
-  workflow below). That includes a company cited with "&" ("Johnson &
-  Johnson", "Ernst & Young"), because only the part before the "&" is
-  checked. Organizations cited by their full listed name, and person
-  authors, are unaffected (the hand-off's interim policy). Any listed author
+  second check on **every** CONFIDENT mandatory: in a
+  Literature Review each CONFIDENT reference is held for that check, and
+  these residuals are reviewed there. The citation adjudicator
+  (`.claude/agents/citation-adjudicator.md`) runs only for a model that has
+  passed its evaluation, and no model has, so the researcher's reference
+  check confirms each reference (`literature-review` skill,
+  `references/lit-corpus.md` § Citation second check). **Until the second
+  check confirms a reference, if the cited author is an organization cited
+  by less than its full listed name, treat CONFIDENT as WEAK** (a human
+  check, the WEAK workflow below). That includes a company cited with "&"
+  ("Johnson & Johnson", "Ernst & Young"), because only the part before the
+  "&" is checked. Organizations cited by their full listed name, and person
+  authors, are unaffected. Any listed author
   counts, so a different paper by the same author still passes: the title
   check catches that. Add
   `--first-author` when the citation names the first author ("Fryer
@@ -358,7 +363,7 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
 
 | Verdict | Meaning | Do |
 |---------|---------|----|
-| `CONFIDENT` | The title check passed: full-title similarity ≥ 0.95, same numbers, words and marks, the record is not a review of the work, and every given `--author` / `--year` check passed. Only the one `--author` given is checked, never the co-authors | Cite the DOI that `verify` returned (shown in the digest), not one recalled from elsewhere. Until the citation adjudicator ships: if the cited author is an organization cited by less than its full listed name ("&" company names included), treat it as WEAK |
+| `CONFIDENT` | The title check passed: full-title similarity ≥ 0.95, same numbers, words and marks, the record is not a review of the work, and every given `--author` / `--year` check passed. Only the one `--author` given is checked, never the co-authors | Cite the DOI that `verify` returned (shown in the digest), not one recalled from elsewhere. Until a second check confirms the reference (in a Literature Review, the citation second check; elsewhere, a person): if the cited author is an organization cited by less than its full listed name ("&" company names included), treat it as WEAK |
 | `WEAK` | A candidate exists, but some check fell short: title similarity below 0.95 (on `title:"…"`: 0.70–0.95), either title under 3 letters, different numbers, words, symbols or accents, a record that is (or may be) a review of the work, a year gap over ±1, or an author check not checked / ambiguous | Do not cite yet: follow the WEAK workflow below |
 | `MISMATCH` (exit 11) | A different work: with `--title` on an ID, even the main titles (before a colon) score < 0.45; or the `--author` surname is not part of any listed author (with `--first-author`: of the first author). On `title:"…"`: the best candidate is by other authors | Treat the citation as wrong or fabricated (on `title:"…"`, possibly a garbled real title that found the wrong paper; on either path, when the digest says the title matches, misattributed authors or a same-titled other work); find the real source or drop it |
 | `NOT FOUND` (exit 11) | No backend that answered has the ID, or on `title:"…"` the best candidate scored below 0.70 | Treat as unverified; the digest lists the nearest works (not matches) and names any backend that did not answer — retry later if one did not |
@@ -387,8 +392,14 @@ exact name match` (reason prefix `… (adjudicate)`). That is the rule layer
 stepping aside on a semantic question, not a sign of a bad citation. The
 title, year and identifier checks still ran. Resolve it by judging
 whether the cited form names the listed body (`work <ID>` shows the full
-author list). Record who decided and why: the forthcoming citation
-adjudicator once it exists, the user until then. If the title or year is
+author list). Who decides: in a Literature Review, the researcher at the
+reference check (the citation second check; the citation adjudicator decides
+only for a model that has passed its evaluation, and no model has); elsewhere,
+a person: the user. Record who decided and why: in a Literature Review, the
+orchestrator records the researcher's reply with
+`lit_corpus adjudications record-human`; elsewhere, write the decision, the
+person who made it and their reason in the notes or report that cite the
+reference. If the title or year is
 also short of CONFIDENT, run the steps above as well.
 
 **Person WEAKs with differing given names are expected too.** When the
@@ -535,6 +546,7 @@ matrix is in `references/licensing.md`; `backends` prints attribution lines.
 | `references/elicit.md` | Before any Elicit report; spend, polling, crash recovery (`elicit-resume`), ToS, exit mapping |
 | `references/licensing.md` | Storage, redistribution and attribution per backend |
 | `references/api-notes.md` | Dated measurement log; read when a backend behaves unexpectedly, and before relying on `verify` (its "How far to trust the `verify` gate" summary) |
+| `references/citation-adjudication.md` | Maintaining, reviewing or evaluating the citation second check: its rubric and the fixed prompt the citation-adjudicator agent receives (any change to that prompt block makes a new, unevaluated identity) |
 | `references/adding-a-backend.md` | The user is asking to add a new scholarly source |
 | `references/_BACKEND_TEMPLATE.md` | Scaffolding a new adapter, reference file and test |
 

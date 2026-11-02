@@ -143,8 +143,8 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 # evidence: api-notes.md § "Measured behavior: verify cycle 6 (2026-10-06)"):
 #   The decision splits the citation gate into a rule layer (this code: identity —
 #   the record exists, exact or near-exact title, numbers, year, surname,
-#   retraction — certain or it steps aside to WEAK), a forthcoming model
-#   "citation adjudicator" for the WEAK band (semantic equivalence), and a
+#   retraction — certain or it steps aside to WEAK), a model "citation
+#   adjudicator" for the WEAK band (semantic equivalence), and a
 #   human for what the adjudicator marks uncertain. Heuristic patching of
 #   semantic matching stops with this cycle.
 #   VERIFY_AUTHOR_RULE "contiguous-surname-v6" (organization part
@@ -506,7 +506,8 @@ nations""".split())
 # Banks is a common surname ("James A. Banks"), and a listed name with an
 # ORG_WORDS word is read as an organization (is_org_name).
 # Cycle 6 (step-aside decision): the name_part of an organization match that is not an exact
-# whole-name match — the rows the forthcoming citation adjudicator selects.
+# whole-name match — WEAK rows that `lit_corpus adjudications pack` selects for the citation second check
+# (selector org_not_exact).
 ORG_NOT_EXACT = "organization: not an exact name match"
 # A leading "The" is dropped from BOTH organization names before the exact
 # comparison ("The World Bank" = "World Bank"). Cycle 7 (M1): a leading
@@ -1913,7 +1914,8 @@ def author_match(cited, authors, first_only=False):
     #     "ambiguous" with name_part ORG_NOT_EXACT, never a pass, whatever the
     #     form ("ACR (Full)" N1, "ACR, Full" N5, "Full [ACR]", substrings N4).
     #     It is a semantic question (is this the same body?), routed to the
-    #     forthcoming citation adjudicator and, until it exists, a human.
+    #     citation second check: a person, and the citation adjudicator once
+    #     a model passes its evaluation.
     #   - no relation at all: "not checked" (cycle-3 I-D), not a fail: a cited
     #     organization may be the sponsor or publisher the record does not
     #     list, and the labeled set and existing tests pin "not checked".

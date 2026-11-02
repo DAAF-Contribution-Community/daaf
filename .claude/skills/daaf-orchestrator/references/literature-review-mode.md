@@ -196,7 +196,7 @@ When the protocol's stopping rule is met, the follow-up plan recommends (3); the
 Every final deliverable's references reach the researcher, at every level, as one list and one reply.
 
 1. **Sheet:** `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications glance-sheet {PROJECT_DIR} --deliverable {deliverable path} [--keys K1,...]`. `--deliverable` names the draft the final will rest on; `--keys` names, by paper key, papers the final will cite beyond it. The extra keys are added to the draft's references, so one sheet and one reply cover both. It writes `output/reference_glance_v{N}.md` and `output/reference_glance_v{N}_rows.txt`.
-2. **Show it** at CP-G (quick scan: CP-F): inline the table when it has 30 rows or fewer, else give the path and inline only the rows that need attention (partly matches, does not match, retracted).
+2. **Show it** at CP-G (quick scan: CP-F): inline the table when it has 30 rows or fewer, else give the path and inline only the rows that need attention (partly matches, does not match, retracted). When a title on record starts with "Does not match:" or "Not compared:", copy the sheet's note about that label (all of its sentences), word for word, above the table: it says what that record is and, for "Does not match:", that a reference kept anyway is cited from that record.
 3. **Rows files** from the reply. Copy lines verbatim from `reference_glance_v{N}_rows.txt` into one file per decision, `{PROJECT_DIR}/lit_inputs/glance_v{N}_{decision}_{seq}.txt` (for "all look right": the whole rows file can be passed as is). Never type a row hash.
 4. **Record**, one Bash call per decision, with the user's words copied verbatim from their message (never a paraphrase, never a subagent's text):
 
@@ -680,6 +680,7 @@ For each paper read this round: the checklist used, the result it judges, and my
 DAAF's automatic reference check looked up every reference in a database. That check can be fooled by a one-word change in a title, so you look over each reference once, comparing the title as cited with the title on record, before it goes into the final version.
 
 **The list to check:** `[path to the list to check]`, [n] references, numbered: for each, the title as cited and the title on record, the authors, the year, where it was published, and where it stands.
+[when a title on record starts with "Does not match:" or "Not compared:": the list's note about that label, all of its sentences, word for word]
 [the table, when it has 30 rows or fewer; else the rows that need attention]
 
 **Needs your attention:** [references the list shows as only partly matching, or not matching, the record; retracted papers]
@@ -730,7 +731,7 @@ DAAF's automatic reference check looked up every reference in a database. That c
 
 **Bottom line:** [what the abstracts report, in one or two sentences; abstracts only]
 **The memo:** [path] — what studies report, where to start reading, gaps that seem open
-**Your reference check:** DAAF's automatic reference check looked up every reference in a database. That check can be fooled by a one-word change in a title, so please look over the list to check once, comparing each title as cited with the title on record: [path to the list to check], [n] references, numbered, each with the title as cited and on record and where it stands. [the table when it has 30 rows or fewer]
+**Your reference check:** DAAF's automatic reference check looked up every reference in a database. That check can be fooled by a one-word change in a title, so please look over the list to check once, comparing each title as cited with the title on record: [path to the list to check], [n] references, numbered, each with the title as cited and on record and where it stands. [when a title on record starts with "Does not match:" or "Not compared:": the list's note about that label, all of its sentences, word for word] [the table when it has 30 rows or fewer]
 **Needs your attention:** [as at the reference check]
 **How to reply:** one reply covers the list, for example "all look right", or "all except 4 and 9: 4 is a different paper, 9 I'll check later". A reference you say is a different paper, or want to check later, is left out of the final memo. To keep a reference whose record does not match, say so and give your reason; it stays in, labelled as accepted by you. I record your reply in your own words.
 

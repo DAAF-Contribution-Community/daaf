@@ -43,7 +43,7 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.5.0-daaf", "0.4.0"))
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.6.0-daaf", "0.4.0"))
         # The certainty phrase table and its lockstep copy carry the contract version (0.4.0 from S5 W1-c).
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
@@ -183,7 +183,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 30/30", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0: 1
+            self.assertIn("SELFTEST PASS: 31/31", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0, 1.6.0: 1
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -1318,6 +1318,148 @@ class SecondCheckCommandTests(unittest.TestCase):
                 code, out, text, _, row = self.glance(*flags)
                 self.assertEqual((code, text), (11, ""), out)
                 self.assertIn("--keys names no paper key", out)
+
+    # 1.6.0: a MISMATCH or EXISTS reference shows the record found for its identifier, labelled; display only. A NOT
+    #   FOUND reference shows no record; a reference kept with override_mismatch shows its bound record unlabelled.
+    NOTE = "A title on record that starts with "
+    NOTE_MISMATCH = ("A title on record that starts with \"Does not match:\" comes from the database record with the same "
+                     "identifier (DOI or database ID) as that reference. The automatic check found that this record "
+                     "does not match the citation: its title or its authors differ. If you keep that reference anyway, "
+                     "it is cited from this record, with the title on record.")
+    NOTE_EXISTS = ("A title on record that starts with \"Not compared:\" comes from the database record with the same "
+                   "identifier (DOI or database ID) as that reference; the check did not compare that title with the "
+                   "title as cited. It is shown only so you can compare.")
+    LEAD = ("Each row puts the title as cited next to the title of the database record found for it, where one was "
+            "found. ")
+
+    def sheet_row(self, text, citekey):
+        # the cells of the sheet's table row for one citekey: [number, citekey, title as cited, title on record,
+        #   authors as cited, authors on record, years, where published, where it stands]
+        return next(line.split(" | ") for line in text.splitlines()
+                    if re.match(r"^\| \d+ \| ", line) and line.split(" | ")[1] == citekey)
+
+    def test_glance_sheet_shows_a_non_matching_record_labelled_never_stored(self):
+        p2 = lc.DEMO_PAPERS[1]
+        miss = dict(lc.demo_work_json(p2), display_name="A Completely Different Invented Dentistry Study")
+        shas = self.attach((1, {"work": miss}))
+        self.assertEqual((self.paper(self.P2)["verify_verdict"], self.paper(self.P2)["verify_record_json"]),
+                         ("MISMATCH", None))
+        code, out, text, rows, _ = self.glance("--keys", self.P2)
+        self.assertEqual(code, 0, out)
+        cells = self.sheet_row(text, self.paper(self.P2)["citekey"])
+        self.assertEqual(cells[3], "Does not match: A Completely Different Invented Dentistry Study")
+        self.assertEqual(cells[5], "; ".join(p2["authors"]))
+        self.assertTrue(cells[6].endswith(f" / {p2['year']}"), cells[6])
+        self.assertEqual(cells[7], "Journal of Invented Studies, article")
+        self.assertEqual(cells[8], "does not match the record |")
+        self.assertIn(self.NOTE_MISMATCH, text)
+        self.assertNotIn(self.NOTE_EXISTS, text)                  # one sentence per label shown
+        self.assertIn(self.LEAD, text)
+        for code_word in lc.CITATION_STATUSES + lc.ADJ_VERDICTS + ("CONFIDENT", "WEAK", "MISMATCH"):
+            self.assertNotIn(code_word, text)
+        self.assertNotIn(shas[self.P2], rows)                     # still not confirmable by a reply
+        # display only: the corpus stores no record, and the .bib lists neither the paper nor the record
+        self.assertIsNone(self.paper(self.P2)["verify_record_json"])
+        code, out = self.run_lc("export-bib", self.pd)
+        self.assertEqual(code, 0, out)
+        bib = self.latest("references_v*.bib").read_text()
+        self.assertNotIn(self.P2, bib)
+        self.assertNotIn("Dentistry", bib)
+        self.assertEqual(bib.count("daaf_citation_status = {human_confirmed}"), 3)   # the other three papers
+
+    def test_glance_sheet_author_mismatch_note_does_not_claim_the_titles_differ(self):
+        # review cycle 2 N1: verify gives MISMATCH when the cited --author is on no listed author, with the title
+        #   matching; lit_corpus keeps that verdict. The sheet shows the same title on both sides, so the note above
+        #   the table must not say the titles differ.
+        p2 = lc.DEMO_PAPERS[1]
+        sha = lc.demo_search_row(str(self.pd), "verify", "verify", p2["doi"], [], sidecar=False,
+                                 raw_requests=[{"backend": "openalex", "endpoint": "https://api.openalex.org/works/doi:"
+                                                + p2["doi"], "response": lc.demo_work_json(p2)}],
+                                 raw_params={"title": p2["title"], "author": "Zzyzxson"},
+                                 row_extra={"verdict": "MISMATCH", "verify_cutoffs": {
+                                     "rules_version": lc.sc.VERIFY_RULES_VERSION,
+                                     "confident_min": lc.sc.VERIFY_CONFIDENT_MIN},
+                                     "title_similarity": 1.0, "title_similarity_subtitle_aware": 1.0})
+        code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": sha, "paper_key": self.P2}]))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.paper(self.P2)["verify_verdict"], "MISMATCH")
+        code, out, text, _, _ = self.glance("--keys", self.P2)
+        self.assertEqual(code, 0, out)
+        cells = self.sheet_row(text, self.paper(self.P2)["citekey"])
+        self.assertEqual((cells[2], cells[3]), (p2["title"], f"Does not match: {p2['title']}"))
+        for claim in ("title does not match the title as cited", "titles differ", "title differs"):
+            self.assertNotIn(claim, text)
+        self.assertIn(self.NOTE_MISMATCH, text)
+
+    def test_glance_sheet_exists_record_labelled_not_found_shows_none(self):
+        # EXISTS: the record found for the identifier, labelled "Not compared:". NOT FOUND: no record, although the
+        #   check's saved response holds one of the paper (a record beside "no record found" would contradict it).
+        p3, p4 = lc.DEMO_PAPERS[2], lc.DEMO_PAPERS[3]
+        ex = lc.demo_verify_row(str(self.pd), p3, verdict="EXISTS")
+        nf = lc.demo_verify_row(str(self.pd), p4, verdict="NOT FOUND")
+        code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": ex, "paper_key": self.P3},
+                                                                          {"row_sha256": nf, "paper_key": p4["key"]}]))
+        self.assertEqual(code, 0, out)
+        self.assertEqual([(self.paper(k)["verify_verdict"], self.paper(k)["verify_record_json"])
+                          for k in (self.P3, p4["key"])], [("EXISTS", None), ("NOT FOUND", None)])
+        code, out, text, _, _ = self.glance("--keys", f"{self.P3},{p4['key']}")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.sheet_row(text, self.paper(self.P3)["citekey"])[3], f"Not compared: {p3['title']}")
+        nf_cells = self.sheet_row(text, self.paper(p4["key"])["citekey"])
+        self.assertEqual((nf_cells[3], nf_cells[5], nf_cells[7], nf_cells[8]),
+                         ("(none recorded)", "(none recorded)", "(none recorded)", "no record found |"))
+        self.assertIn(self.NOTE_EXISTS, text)
+        self.assertNotIn(self.NOTE_MISMATCH, text)
+        self.assertIn(self.LEAD, text)
+        self.assertEqual([self.paper(k)["verify_record_json"] for k in (self.P3, p4["key"])], [None, None])
+
+    def test_glance_sheet_after_an_override_shows_the_bound_record_unlabelled(self):
+        # quality review W5: a reference kept with override_mismatch stores its record (verify_record_json), so the
+        #   sheet shows that record as the reference's own: no "Does not match:" label and no sentence about it. Kills
+        #   the mutation that drops the `not rec and` guard.
+        miss = dict(lc.demo_work_json(lc.DEMO_PAPERS[2]), display_name="A Completely Different Invented Dentistry Study")
+        m = self.attach((2, {"work": miss}))[self.P3]
+        code, out = self.human([m], "override_mismatch", "Keep it; the index renamed it.", "Same DOI, renamed.")
+        self.assertEqual(code, 0, out)
+        row = self.paper(self.P3)
+        self.assertEqual((row["verify_verdict"], row["citation_status"]), ("MISMATCH", "human_overridden"))
+        rec = lc.jload(row["verify_record_json"])
+        code, out, text, _, _ = self.glance("--keys", self.P3)
+        self.assertEqual(code, 0, out)
+        cells = self.sheet_row(text, row["citekey"])
+        self.assertEqual(cells[3], lc.glance_cell(rec["title"]))
+        self.assertEqual(cells[3], "A Completely Different Invented Dentistry Study")
+        self.assertTrue(cells[8].startswith("accepted by you despite the automatic reference check"), cells[8])
+        self.assertNotIn(self.NOTE, text)
+        for label in ("Does not match:", "Not compared:"):
+            self.assertNotIn(label, text)
+
+    def test_glance_sheet_without_a_record_still_shows_none_recorded(self):
+        # the check's saved response holds another paper's record only: no record of this paper to show
+        other = lc.demo_verify_row(str(self.pd), lc.DEMO_PAPERS[1], work=lc.demo_work_json(lc.DEMO_PAPERS[0]))
+        code, out = self.run_lc("attach", "verify", self.pd, self.jsonl([{"row_sha256": other, "paper_key": self.P2}]))
+        self.assertEqual(code, 0, out)
+        code, out, text, _, _ = self.glance("--keys", self.P2)
+        self.assertEqual(code, 0, out)
+        cells = self.sheet_row(text, self.paper(self.P2)["citekey"])
+        self.assertEqual((cells[3], cells[5], cells[7]), ("(none recorded)",) * 3)
+        self.assertNotIn(self.NOTE, text)
+
+    def test_glance_sheet_confident_and_weak_rows_unchanged(self):
+        self.attach((0, {}), (1, {"verdict": "WEAK", "extra": {"title_similarity": 0.9}}))
+        code, out, text, _, _ = self.glance("--keys", f"{self.P1},{self.P2}")
+        self.assertEqual(code, 0, out)
+        for key, verdict in ((self.P1, "CONFIDENT"), (self.P2, "WEAK")):
+            with self.subTest(verdict=verdict):
+                row = self.paper(key)
+                rec = lc.jload(row["verify_record_json"])
+                self.assertEqual(row["verify_verdict"], verdict)
+                cells = self.sheet_row(text, row["citekey"])
+                self.assertEqual((cells[3], cells[5]), (lc.glance_cell(rec["title"]),
+                                                        lc.glance_cell("; ".join(rec["authors"]))))
+        self.assertNotIn(self.NOTE, text)
+        for label in ("Does not match:", "Not compared:"):
+            self.assertNotIn(label, text)
 
 
 class PackLogParseTests(unittest.TestCase):

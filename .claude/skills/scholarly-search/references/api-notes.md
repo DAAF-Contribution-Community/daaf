@@ -193,9 +193,9 @@ under rules `2026-11-01a`. What that implies for use:
     and the "counts as one name" rule applies only when the *cited* name
     is hyphenated (cycle 9's P-1; 3 held-out cases).
   - *Organizations named by part of their name* ("Canada" on "Statistics
-    Canada", "&" companies): the documented residuals, with the interim
-    rule (SKILL.md § Verify before citing: treat as WEAK; 5 held-out
-    cases).
+    Canada", "&" companies): the documented residuals, with the rule
+    that holds until the citation second check confirms the reference
+    (SKILL.md § Verify before citing: treat as WEAK; 5 held-out cases).
   - *Spelled-out numbers.* The numeral guard counts a spelled-out number
     only right after a part word ("Part Two" = "Part 2"). Elsewhere
     ("Two-Year Effects" vs "Three-Year Effects") only the word check sees
