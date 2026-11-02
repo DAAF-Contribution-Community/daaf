@@ -38,11 +38,9 @@ rate-limit headers. The tool gates the lane at 0.1 s.
 ## Measured behavior
 
 **2026-10-02, live** — `oa --all-legs` on three DOIs,
-`DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live`; raw artifact
-`research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s1/2026-10-02T190851Z_scholar_oa_10-1371-journal-pmed-0020124-10-1093-qje-qjv036-10_1ff906cd.json`,
-MANIFEST.jsonl line 15. The unit-test fixtures
+`DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live`. The unit-test fixtures
 `tests/python/fixtures/scholar_search/unpaywall_{record,closed,404}.json`
-are trimmed from it (they replaced the earlier doc-derived shape).
+are trimmed from that run's raw response, which is not in this repository.
 
 | DOI | HTTP | Observed |
 |-----|------|----------|

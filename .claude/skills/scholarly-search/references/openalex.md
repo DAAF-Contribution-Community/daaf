@@ -4,8 +4,7 @@ The backbone backend: authoritative metadata, the citation graph, semantic and
 keyword search, cached GROBID full text, OA locations (the same data Unpaywall
 serves since late 2025) and an `is_retracted` flag. Adapter:
 `scripts/scholar_backends/openalex.py`. Docs: https://help.openalex.org
-(`llms.txt` index); pages fetched 2026-10-02 are in the S1 workspace
-`research/2026-10-02_FrameworkDev_ScholarlySearch/web_fetches/apis/`.
+(`llms.txt` index), fetched 2026-10-02.
 
 ## Auth
 

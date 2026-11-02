@@ -6,8 +6,7 @@
 #
 # Imported by scripts/scholar_search.py (and, through it, the adapter modules
 # in scripts/scholar_backends/). Ported from the user's own retrieval toolkit
-# (research/2026-10-02_FrameworkDev_ScholarlySearch/additional_scripts/) and
-# adapted to DAAF:
+# (not part of DAAF) and adapted to DAAF:
 #
 #   - destination guard: realpath must sit under the DAAF checkout root
 #     (ALLOWED_ROOT: /daaf in the container, derived from this module's own
@@ -25,9 +24,9 @@
 #     exclusive-create artifact writes, SHA-256
 #
 # The Firecrawl client and host-classification helpers in the user's original
-# module are deliberately NOT ported (user decision D-3: Firecrawl deferred).
+# module are deliberately NOT ported (user decision: Firecrawl deferred).
 # scripts/web_fetch.py keeps its own inline copies of these helpers and is not
-# refactored to import this module (user decision D-9).
+# refactored to import this module (user decision).
 #
 # This module is part of a STANDALONE argparse CLI (scholar_search.py), the
 # documented exception to DAAF's no-function-definitions rule (CLAUDE.md §
@@ -67,7 +66,7 @@ LINE_WRAP = 2000
 # Injection-shaped patterns scrubbed from every agent-facing text. The first
 # five are web_fetch.py's set (the two tag patterns widened here, see below;
 # web_fetch.py keeps its own five-pattern copy and does not import this module,
-# D-9; S3-B2 mirrored the widened tag pair into it, and
+# see above; S3-B2 mirrored the widened tag pair into it, and
 # tests/python/test_web_fetch_scrub.py keeps the two pairs identical); the
 # rest close two gaps the user's toolkit found: a forged fence marker would
 # let a hostile abstract "close" the UNTRUSTED block early, and a line

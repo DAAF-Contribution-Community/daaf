@@ -2,8 +2,8 @@
 
 Passage search inside open-access papers, extra recall in `find`, and boolean
 bulk retrieval. Adapter: `scripts/scholar_backends/semantic_scholar.py`.
-Docs: https://api.semanticscholar.org/api-docs/ (OpenAPI spec fetched
-2026-10-02 into the S1 workspace `web_fetches/apis/`).
+Docs: https://api.semanticscholar.org/api-docs/ (OpenAPI spec
+https://api.semanticscholar.org/graph/v1/swagger.json, fetched 2026-10-02).
 
 ## Auth
 

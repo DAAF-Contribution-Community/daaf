@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # =============================================================================
-# lit_report_rules.py - the pure rules behind `lit_verify report` (added
-#                       2026-10-31, Lit Review S4, dispatch D4; design
-#                       2026-10-31_S4_Design_v2 §6.2 and 2026-10-30_S4_Design
-#                       §6.2, both in the maintainer-only workspace
-#                       research/2026-10-02_FrameworkDev_ScholarlySearch/)
+# lit_report_rules.py - the pure rules behind `lit_verify report`
 # =============================================================================
 #
 # Stdlib only, no I/O, no network (like pdf_text_common.py): the Pandoc-style
@@ -51,7 +47,7 @@
 #   .claude/skills/literature-review/references/certainty-language.yaml (the
 #   published copy other workflows read). The gate reads only this embedded
 #   copy, so editing the YAML cannot loosen the lint (user decision of October 2026 spirit), and the
-#   module stays stdlib (PyYAML is not on the CI runner). A test asserts the
+#   module stays stdlib (no PyYAML dependency in the gate). A test asserts the
 #   two are equal (skipped without PyYAML). Change both together and bump
 #   table_version.
 #

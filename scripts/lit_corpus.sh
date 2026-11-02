@@ -3,8 +3,6 @@
 # lit_corpus.sh - thin wrapper for DAAF's Literature Review corpus CLI
 #                 (versioned tables, BibTeX/RIS export, review manifest,
 #                 the citation second check)
-#                 (added 2026-10-31, Lit Review S4, dispatch D3; second check
-#                 added 2026-11-01, 1.4.0)
 # =============================================================================
 #
 # Framework-level tool behind the Literature Review mode: the orchestrator
@@ -66,7 +64,7 @@
 #   10  required dependency (polars or pyarrow) or required input missing (no
 #       corpus; a search without a records file: re-run that search; no
 #       prompt template, pack log, bundle or adjudicator return)
-#       (these texts follow EXIT_CODES in lit_corpus.py)
+#       (these texts follow the exit code table in lit_corpus.py's header)
 #   11  input rejected by validation, no version written (reasons in the
 #       MANIFEST row); selftest: an expectation did not hold
 #   12  internal error

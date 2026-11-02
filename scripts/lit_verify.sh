@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 # =============================================================================
 # lit_verify.sh - thin wrapper for DAAF's deterministic evidence-card gate
-#                 (no LLM, offline) (added 2026-10-15, Lit Review S3, FE-3)
+#                 (no LLM, offline)
 # =============================================================================
 #
 # Framework-level tool behind the PDF layer of the Literature Review mode.
 # `card` checks every coverage anchor, claim quote and claim number of a
 # paper-reader's evidence card against the unaltered page text pdf_ingest
-# stored (anchor/pNNN.txt; from 1.4.0 also an arXiv HTML ingest's section
-# units, anchor/uNNN.txt, cited by section label with card schema v2; from
-# 1.9.0 card schema v3 adds typed claims, gate-checked quant fields and a
-# printed page label), writes card_check{S}.json into PAPER_DIR and one
-# MANIFEST.jsonl row into the papers dir. `report` (1.10.0) checks a
-# Literature Review deliverable against the review's tables (citations,
-# finding and claim markers, synthesis guardrails, certainty wording) and
-# writes {stem}.report_check.json plus a MANIFEST row beside it. `audit`
-# (1.15.0) is the orchestrator's vision audit of one checked card: which
-# model really read it (one --agent-id per reader dispatch; only the
-# context-reporter hook's own cache confirms it), the install route recorded by `route`, the readings a person
-# must check, and where the PDF came from; it writes vision_audit{S}.json
-# into PAPER_DIR and a MANIFEST row. `route` (1.15.0) detects the install
-# route from the environment, prints the `ROUTE:` line a paper-reader
-# dispatch copies, and records the environment keys it read by presence
-# only. `settle` (1.15.0) lists the readings an audit asks a person to
-# compare with the PDF (`--list`, which also writes settle_items{S}.txt) and
-# records the researcher's reply on a batch of them, their words verbatim on
-# the command line (audit_settlement{S}_{n}.json plus a MANIFEST row); the
-# report gate reads these records. `selftest` plants known fabrications in
-# cards on a synthetic ingest, and violations in memos over a synthetic
-# review, checks route, audit and settle, and asserts every verdict. This
-# wrapper is a thin passthrough to lit_verify.py so agents invoke one stable
-# command with one Bash call (DAAF's one-command-per-call rule).
+# stored (anchor/pNNN.txt, or an arXiv HTML ingest's section units
+# anchor/uNNN.txt, cited by section label; card schema v3 also carries typed
+# claims, gate-checked quant fields and a printed page label), writes
+# card_check{S}.json into PAPER_DIR and one MANIFEST.jsonl row into the
+# papers dir. `report` checks a Literature Review deliverable against the
+# review's tables (citations, finding and claim markers, synthesis
+# guardrails, certainty wording) and writes {stem}.report_check.json plus a
+# MANIFEST row beside it. `audit` is the orchestrator's vision audit of one
+# checked card: which model really read it (one --agent-id per reader
+# dispatch; only the context-reporter hook's own cache confirms it), the
+# install route recorded by `route`, the readings a person must check, and
+# where the PDF came from; it writes vision_audit{S}.json into PAPER_DIR and
+# a MANIFEST row. `route` detects the install route from the environment,
+# prints the `ROUTE:` line a paper-reader dispatch copies, and records the
+# environment keys it read by presence only. `settle` lists the readings an
+# audit asks a person to compare with the PDF (`--list`, which also writes
+# settle_items{S}.txt) and records the researcher's reply on a batch of
+# them, their words verbatim on the command line (audit_settlement{S}_{n}.json
+# plus a MANIFEST row); the report gate reads these records. `selftest`
+# plants known fabrications in cards on a synthetic ingest, and violations in
+# memos over a synthetic review, checks route, audit and settle, and asserts
+# every verdict. This wrapper is a thin passthrough to lit_verify.py so
+# agents invoke one stable command with one Bash call (DAAF's
+# one-command-per-call rule).
 #
 # This is a standalone framework CLI tool, NOT a pipeline analysis script, so
 # it runs python3 directly rather than through run_with_capture.sh: the audit

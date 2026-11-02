@@ -102,5 +102,5 @@
    "raw_author_name": "John P. A. Ioannidis"
   }
  ],
- "_fixture_source": "LIVE-WIRE capture (trimmed): scholar_search `oa --all-legs`, 2026-10-02, DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live; raw artifact research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s1/2026-10-02T190851Z_scholar_oa_10-1371-journal-pmed-0020124-10-1093-qje-qjv036-10_1ff906cd.json; MANIFEST.jsonl line 15 (timestamp 2026-10-02T19:08:51Z). Request email param logged as [SCHOLARLY_CONTACT_EMAIL]; the response does not echo it. oa_locations trimmed to 3 of 6; raw_affiliation_strings dropped."
+ "_fixture_source": "LIVE-WIRE capture (trimmed): scholar_search `oa --all-legs`, 2026-10-02, DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live, MANIFEST timestamp 2026-10-02T19:08:51Z; the untrimmed response is not in this repository. Request email param logged as [SCHOLARLY_CONTACT_EMAIL]; the response does not echo it. oa_locations trimmed to 3 of 6; raw_affiliation_strings dropped."
 }

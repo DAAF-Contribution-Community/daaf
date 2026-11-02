@@ -7,9 +7,8 @@
 # exception). Builds requests through the core's Http object, maps native
 # JSON, parses nothing billable. Never writes files; never handles provenance.
 #
-# Documented behavior (docs.scite.ai, fetched 2026-10-11 into the S1
-# workspace web_fetches/s2_research/; earlier copies 2026-10-02 in
-# web_fetches/apis/):
+# Documented behavior (https://docs.scite.ai/, fetched 2026-10-11; first
+# fetched 2026-10-02):
 #   - "Papers and Tallies are public and don't require an API key. All other
 #     Scite endpoints require an API key" (authentication.md). Keys: Bearer
 #     header, self-service keys need a Pro plan ("for evaluation").
@@ -30,8 +29,7 @@
 #     notices. No attribution clause. -> LICENSE_CLASS "restricted".
 #   - REST says `contradicting`; Scite's product pages and MCP say
 #     `contrasting`. This adapter keeps the REST word.
-# MEASURED (2026-10-11, live CLI runs into research/2026-10-02_FrameworkDev_
-# ScholarlySearch/smoke_s2/scite/, MANIFEST rows 1-6; references/scite.md):
+# MEASURED (2026-10-11, six live CLI runs; references/scite.md):
 #   - Keyless: RateLimit-Limit 60, X-RateLimit-Limit-Minute 60, one bucket
 #     shared by /papers and /tallies (Remaining fell 59 -> 55 across both).
 #     Keyed Search: RateLimit-Limit 13 (X-RateLimit-Limit-Second 13) and
@@ -56,7 +54,7 @@ NAME = "scite"
 LABEL = "Scite"
 KEY_ENV = "SCITE_API_KEY"
 REQUIRED_KEY = False          # papers/tallies are keyless; only scite-search needs the key (exit 10 there)
-LICENSE_CLASS = "restricted"  # Scite Terms of Use §8(b); user decision D-4 (2026-10-11)
+LICENSE_CLASS = "restricted"  # Scite Terms of Use §8(b); user decision 2026-10-11
 RATE_LIMIT = {"scite": 1.1}   # one keyless bucket of 60/min shared by /papers and /tallies (measured)
 RATE_LIMIT_NOTE = "keyless 60/min, one bucket for /papers + /tallies (measured 2026-10-11); gated 1.1 s"
 CAPABILITIES = frozenset({"retraction", "stance"})   # Search stays its own subcommand, never in `find`
@@ -174,8 +172,8 @@ def tallies(http, dois):
     # Keyless batch POST /tallies: a READ sent as POST, so it is declared
     # idempotent (retried on 429/5xx like a GET). Returns {doi: tally} keyed
     # by normalized DOI; a DOI Scite does not know is absent.
-    # REASONING (measured 2026-10-11, smoke_s2/scite/): the body is a BARE
-    #   JSON array of DOIs. The guide's {"dois": [...]} form got HTTP 400
+    # REASONING (measured 2026-10-11, live keyless calls): the
+    #   body is a BARE JSON array of DOIs. The guide's {"dois": [...]} form got HTTP 400
     #   {"message":"Invalid request."} keyless; the bare array got 200
     #   {"tallies": {doi: tally}}.
     _, parsed = http.post(NAME, f"{API}/tallies", list(dois), None, {}, idempotent=True)

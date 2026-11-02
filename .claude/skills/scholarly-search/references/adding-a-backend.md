@@ -5,8 +5,7 @@ example PubMed/Europe PMC, CORE, SSRN/RePEc, IEEE, or an institutional
 discovery API — without touching the core of `scholar_search`. This is a
 sub-flow of Framework Development mode (work type "New Scholarly Search
 Backend"), triggered by requests such as "add a new scholarly source", "add
-PubMed as a backend", or "can the lit search use CORE?". Design source:
-Literature Review spec v0.2 §5.5. The registration points are itemized in
+PubMed as a backend", or "can the lit search use CORE?". The registration points are itemized in
 `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 8 (SB1–SB17, and
 SBM1–SBM7 for changes to an existing backend); this file is the procedure.
 
@@ -39,7 +38,8 @@ elicit) are themselves adapters.
    storing or sharing → `restricted`, which routes artifacts to
    `lit_search/restricted/`).
 2. **Docs research.** A search-agent fetches the API docs **and** the terms
-   with `web_fetch.sh` into the Framework Development workspace, so every
+   with `web_fetch.sh` into the Framework Development workspace's
+   `web_fetches/` (its DEST_DIR, never scratch), so every
    claim in the new reference file traces to a stored page.
 3. **Scaffold from `_BACKEND_TEMPLATE.md`:**
    - `scripts/scholar_backends/<name>.py` (adapter),
@@ -73,8 +73,9 @@ elicit) are themselves adapters.
    If the adapter's records key their native ID under something other than
    `NAME` in the `ids` map, declare `ID_KEY` so rendered ID lines get its
    label.
-4. **Live smoke** with the cheapest possible call, through the CLI, into a
-   scratch project, with `DAAF_FETCH_CONTEXT` set. Capture the real response
+4. **Live smoke** with the cheapest possible call, through the CLI, into the
+   Framework Development workspace's `lit_search/` (DEST_DIR; never scratch,
+   because the captured fixture is relied on), with `DAAF_FETCH_CONTEXT` set. Capture the real response
    as the test fixture (trim it; add `_fixture_source`). Fixtures must be
    live-wire evidence, not doc-derived shapes — doc-only fixtures gave false
    coverage in the provider-shim precedent (FRAMEWORK_INTEGRATION_CHECKLIST

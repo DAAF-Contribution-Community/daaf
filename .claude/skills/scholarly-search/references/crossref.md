@@ -3,9 +3,12 @@
 Keyless DOI metadata: the `verify` fallback and the main source of
 retraction, correction and expression-of-concern notices (Retraction Watch
 data, acquired by Crossref in 2023). Adapter:
-`scripts/scholar_backends/crossref.py`. Docs fetched 2026-10-02 (S1 workspace
-`web_fetches/apis/`): REST API overview, access and authentication,
-Retraction Watch.
+`scripts/scholar_backends/crossref.py`. Docs fetched 2026-10-02: REST API overview
+(https://www.crossref.org/documentation/retrieve-metadata/rest-api/), access and
+authentication
+(https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/),
+Retraction Watch
+(https://www.crossref.org/documentation/retrieve-metadata/retraction-watch/).
 
 ## Auth
 

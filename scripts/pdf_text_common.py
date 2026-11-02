@@ -13,9 +13,8 @@
 # ingest_manifest.json). The ladder and number rules below carry their own
 # version constants (see "Versions").
 #
-# Source of the rules: research/2026-10-02_FrameworkDev_ScholarlySearch/
-# preliminary_notes/08_research_s3_pdf_refresh.md § 5 (UCD probe: which code
-# points NFKC folds and which it leaves alone).
+# The rules rest on a probe of the Unicode Character Database: which code
+# points NFKC folds and which it leaves alone.
 #
 #   NORMALIZE (apply identically to page text and to a quote):
 #     1. CRLF -> LF, then NFKC
@@ -53,14 +52,14 @@
 #                         and their constants (lit_verify only)
 #   NUMBER_RULES_VERSION  number normalization, comparison and locality,
 #                         including the unique-row rule (lit_verify)
-#   COLUMN_CHECK_VERSION  (2026-10-23, FE-5g, D-23) the column-not-checked
+#   COLUMN_CHECK_VERSION  (2026-10-23, FE-5g) the column-not-checked
 #                         LABEL on cleared numbers (§ COLUMN_CHECK); it
 #                         changes no number status, so it is versioned apart
 #                         from NUMBER_RULES_VERSION
 #   lit_verify records all of these in every card_check JSON. OVERLAP_VERSION
 #   (the overlap_score diagnostic) is recorded by pdf_ingest.
 #
-# --- Quote match ladder (added 2026-10-15, FE-3; note 08 §5) ----------------
+# --- Quote match ladder (added 2026-10-15, FE-3) ----------------------------
 #   Evaluated in this order for a quote cited to page P (or the declared
 #   range P..P+1 when page_end is given); the first hit wins:
 #   REDACTED_SPAN  the quote holds a scrub/redaction token or fence text: it
@@ -132,7 +131,7 @@
 #   printed: one inside the span, one just before its first char, and one the
 #   line-break rejoin deleted (`dashed`, e.g. "of –\n0.30").
 #
-# --- Number rules (added 2026-10-15, FE-3; note 08 §5) ----------------------
+# --- Number rules (added 2026-10-15, FE-3) ----------------------------------
 #   U+2212, U+2013, U+FE63, U+FF0D directly before a digit -> "-"; then NFKC
 #   (fullwidth digits). "-" is a SIGN only at the start or after whitespace
 #   or one of ( [ { = < > : ; , / ~ (so "2019-2020" is two positive numbers);
@@ -146,17 +145,17 @@
 #   compare_number(): same Decimal value AND same digit string -> "exact";
 #   same value, different digit string (0.5 vs 0.50) -> "precision" (a
 #   warning for a human, never a pass); otherwise no match.
-#   numbers-v2 (2026-10-19, FE-5, D-21 N1): LOCALITY. An exact page token
+#   numbers-v2 (2026-10-19, FE-5): LOCALITY. An exact page token
 #   must also overlap the claim quote's matched span (+- NUMBER_NEAR_CHARS,
 #   chosen 0: inside the quote); quote_spans() / number_near_spans() below.
 #   The caller grades a page-level hit that is not local as a review item.
-#   numbers-v3 (2026-10-22, FE-5c, D-22): a second locality path, the
+#   numbers-v3 (2026-10-22, FE-5c): a second locality path, the
 #   UNIQUE-ROW rule (quote_row(), number_in_row(); § ROW_RULE below): the
 #   quote's leading label identifies exactly one lane B row on the page and
 #   that row prints the value. An ambiguous label falls back to in-quote.
-#   overlap_score() is the order-free character overlap (D-21 N4), a
+#   overlap_score() is the order-free character overlap, a
 #   diagnostic pdf_ingest records beside `agreement` (OVERLAP_VERSION).
-#   column-check-v1 (2026-10-23, FE-5g, D-23): column_values() (§ COLUMN_CHECK
+#   column-check-v1 (2026-10-23, FE-5g): column_values() (§ COLUMN_CHECK
 #   at the end) counts the comparable values a cleared number's clearing
 #   text prints; lit_verify labels the number "column-not-checked" when there
 #   are two or more. A label only: no number status changes.
@@ -363,8 +362,8 @@ def normalize_map(text):
 
 
 # §§ MATCH_LADDER (MATCH_LADDER_VERSION; added 2026-10-15, FE-3)
-# PROVISIONAL: note 08 §5 synthesis. The S3 bake-off on real papers
-#   calibrates them; uniqueness is the real test, and the length floor keeps
+# PROVISIONAL: set from the design research before any real paper was
+#   read; the S3 bake-off on real papers calibrates them; uniqueness is the real test, and the length floor keeps
 #   short common phrases ("citation quality") from passing by luck.
 MIN_QUOTE_CHARS = 40
 MIN_QUOTE_WORDS = 6
@@ -607,9 +606,9 @@ SIGN_CONTEXT = "([{=<>:;,/~"
 SIGN_AMBIGUOUS_AFTER = ")]}"
 LINE_BREAK_CHARS = "\n\f"
 # INTENT (numbers-v6, NB2): footnote / sub-label letters read as a mark after
-#   a number ("−0.164a", "2017a", "(7b)"). Narrow on purpose: the S3-C1b
-#   corpus scan (WS script 109: 196 number+letter shapes in 848 bake-off
-#   pages) found a/b/c as table notes, equation labels and citation years,
+#   a number ("−0.164a", "2017a", "(7b)"). Narrow on purpose: a corpus scan
+#   (2026-10-27: 196 number+letter shapes in 848 bake-off pages) found a/b/c
+#   as table notes, equation labels and citation years,
 #   and x, k, y, p, z, t, r, q mostly as math variables; "s" is a plural
 #   ("1990s") and m/k multipliers ("5m", "5k"), so they stay non-numbers.
 # REASONING: a mark letter changes no digit, so reading "1.20b" as 1.20 only
@@ -781,7 +780,7 @@ def compare_number(claim, candidates):
     return ("precision", precision) if precision else (None, None)
 
 
-# §§ NUMBER_LOCALITY (numbers-v2; added 2026-10-19, FE-5, user decision D-21 N1)
+# §§ NUMBER_LOCALITY (numbers-v2; added 2026-10-19, FE-5, user decision)
 # A claimed number printed somewhere on the cited page is not enough: a page
 # token printing it must overlap the place where the claim's quote matched,
 # widened by NUMBER_NEAR_CHARS normalized chars on each side. With the
@@ -789,8 +788,8 @@ def compare_number(claim, candidates):
 # in NORMALIZE(page text) coordinates; a skeleton match is mapped back
 # through skeleton_index(). Page tokens are used (not the quote's own text),
 # so a sign or digit the skeleton tier ignores cannot slip through.
-# REASONING (FE-5 script 69, B and C table pages, 453 claims, and 119 prose
-#   numbers from A, B, F): share of claims graded ok, genuine / last digit
+# REASONING (measured 2026-10-19 on the bake-off: B and C table pages, 453
+#   claims, and 119 prose numbers from A, B, F): share of claims graded ok, genuine / last digit
 #   changed / sign flipped:
 #     page-level (numbers-v1)    1.000 / 0.110 / 0.009
 #     inside the quote (0)       0.305 / 0.013 / 0.000   <- chosen
@@ -798,10 +797,10 @@ def compare_number(claim, candidates):
 #     +-160 chars                0.470 / 0.035 / 0.000
 #     lane B row, >= 6 letters   1.000 / 0.053 / 0.000   (not adopted)
 #   Prose numbers: 1.000 genuine and 0.000 fabricated under every rule. The
-#   rule with the fewest fabricated passes was chosen (user decision D-21:
-#   gate integrity first); a genuine table number outside its quote goes to
+#   rule with the fewest fabricated passes was chosen (user decision
+#   2026-10-19: gate integrity first); a genuine table number outside its quote goes to
 #   human review (NUMBER_NOT_NEAR_QUOTE), not to FAIL.
-#   Correction (FE-5c scripts 75/76): script 69 quoted from the FIRST
+#   Correction (2026-10-22): that measurement quoted from the FIRST
 #   occurrence of a row label, which on report-style pages is often another
 #   row (a label such as "Full Sample" recurs in several panels), so its
 #   genuine rates understate in-quote. With each quote taken from the
@@ -810,20 +809,20 @@ def compare_number(claim, candidates):
 #   in-quote OR unique row (numbers-v3, shipped in 1.3.0) 0.996 / 0.018 / 0.000; on
 #   the 31 column-major rows 0.645 -> 0.935 genuine, 0.000 last digit.
 NUMBER_NEAR_CHARS = 0
-# Measurement only (script 69): the loose lane B row rule (B6: any lane B line
+# Measurement only (2026-10-19): the loose lane B row rule (B6: any lane B line
 #   sharing >= 6 letters with the quote) was measured and NOT adopted;
 #   lane_b_row_hit() and row_label_skeleton() are kept so that measurement can
 #   be re-run. The gate never calls them. numbers-v3 uses quote_row() below.
 LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
-# numbers-v3 (2026-10-22, FE-5c, user decision D-22): the UNIQUE-ROW rule. A
+# numbers-v3 (2026-10-22, FE-5c, user decision): the UNIQUE-ROW rule. A
 #   number also clears when the claim's quote identifies exactly one lane B
 #   row on the page and that row prints the value (quote_row(),
 #   number_in_row()). A row label shorter than this many letters never
 #   identifies a row (single letters are footnote marks and panel labels).
 # numbers-v4 (2026-10-23, S3-A, review finding B3): the row path accepted any
 #   lane B line with letters before a number, on any page, so a PROSE quote
-#   "identified" a prose line and cleared its numbers (s3q r05: 62
-#   identifying prose windows in 4 papers; r07 P1). Four guards, all required:
+#   "identified" a prose line and cleared its numbers (a review probe found
+#   62 identifying prose windows in 4 papers). Four guards, all required:
 #     label  >= ROW_LABEL_MIN_CHARS letters (3; 2 let "of", "in" be labels)
 #     tail   cell-like: letters <= ROW_TAIL_LETTER_SHARE_MAX of the tail's
 #            non-space chars (a prose line's tail is mostly letters)
@@ -836,8 +835,10 @@ LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
 #     cell   (numbers-v5) the identified label stands as a cell on the anchor
 #            line where the quote matched (row_label_is_cell())
 #   The page, start and cell guards are applied by the caller (lit_verify).
-# REASONING: measured in S3-A script 93 (genuine / fabricated rates before
-#   and after, over every page with lane B): see the dispatch report.
+# REASONING: measured 2026-10-23 over every bake-off page with lane B (4,458
+#   claims), before -> after the four guards: genuine ok 0.958 -> 0.953,
+#   last digit changed 0.058 -> 0.054, sign flipped 0.001 -> 0.001; remote
+#   prose windows clearing a row value 69 -> 6.
 ROW_LABEL_MIN_CHARS = 3
 ROW_TAIL_LETTER_SHARE_MAX = 0.25
 ROW_PAGE_FLAGS = ("table", "numeric")
@@ -1159,7 +1160,7 @@ def lane_b_row_hit(claim, quote, lane_b_text, min_shared):
     return None
 
 
-# §§ ROW_RULE (numbers-v3; added 2026-10-22, FE-5c, user decision D-22)
+# §§ ROW_RULE (numbers-v3; added 2026-10-22, FE-5c, user decision)
 # pdftotext serializes most tables column-major, so a quote holding a row
 # label rarely reaches the cell; lane B (pypdfium2) keeps each row on one line.
 # The row rule uses lane B only as LOCALITY evidence for a value the anchor
@@ -1281,7 +1282,7 @@ def number_in_row(claim, row):
 def overlap_score(a, b):
     # Order-free character overlap of two texts on SKELETON (Dice on the
     # character multisets): 1.0 when both hold the same characters in any
-    # order. A DIAGNOSTIC only (D-21 N4): no flag or verdict uses it.
+    # order. A DIAGNOSTIC only: no flag or verdict uses it.
     sa, sb = skeleton(a), skeleton(b)
     if not sa and not sb:
         return None
@@ -1294,7 +1295,7 @@ def overlap_score(a, b):
     return round(2.0 * common / (len(sa) + len(sb)), 4)
 
 
-# §§ COLUMN_CHECK (COLUMN_CHECK_VERSION; added 2026-10-23, FE-5g, user decision D-23)
+# §§ COLUMN_CHECK (COLUMN_CHECK_VERSION; added 2026-10-23, FE-5g, user decision)
 # A LABEL, not a number rule: it changes no number status. When a number
 # clears (in-quote or row), the gate knows WHERE the value is printed but not
 # WHICH of several cells the claim means. In "Overage 0.58 0.57 0.59 0.56"
@@ -1323,9 +1324,9 @@ def overlap_score(a, b):
 #                  however often it is printed (a row "0.57 0.57" with nothing
 #                  else comparable makes the claim true in either column)
 # REASONING: residual (a) measured at 1.8% of last-digit fabrications on PDF
-#   true-row quotes (FE-5c s76) and ~9% on whole-row arXiv HTML quotes
-#   (FE-5f s86); D-23 asked for a visible label so such numbers can go to a
-#   human later, not a verdict change now.
+#   true-row quotes (2026-10-22) and ~9% on whole-row arXiv HTML quotes
+#   (2026-10-22); the user asked (2026-10-23) for a visible label so such
+#   numbers can go to a human later, not a verdict change now.
 COLUMN_CHECK_VERSION = "column-check-v1"
 COLUMN_YEAR_MIN = 1900
 COLUMN_YEAR_MAX = 2099

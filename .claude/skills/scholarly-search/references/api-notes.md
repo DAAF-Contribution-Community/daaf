@@ -7,127 +7,12 @@ MANIFEST row), then update this log, the per-backend reference, and the
 constant or comment in the adapter it points to. Truth hierarchy: live
 measurement > vendor docs > this skill.
 
-Evidence locations:
-- 2026-10-02 (S1 port): `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s1/`
-  (MANIFEST.jsonl + raw `.json` per call, `DAAF_FETCH_CONTEXT=FrameworkDev_S1_smoke`);
-  vendor docs in `…/web_fetches/apis/`.
-- 2026-09-27 (the user's original tool, imported): the user's project
-  `content_strategy/2026-09-27_academic_search_tooling/` (not in this
-  repository); copied notes are in `…/scholarly-search/references/api-notes.md`
-  of the S1 workspace.
-- 2026-10-02 (verify calibration): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_calibration`; 8 `find` rows +
-  107 `verify` rows), scripts `…/scripts/01_extract_calibration_candidates.py`,
-  `02_run_verify_calibration.py`, `calibrate_verify_cutoffs.py` (execution logs
-  appended); labeled set `tests/python/fixtures/scholar_search/verify_calibration_set.json`.
-- 2026-10-03 (verify R1–R4): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_r1r4/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_r1r4`; 106 `verify` rows), scripts
-  `…/scripts/03_add_claimed_year_to_fixture.py`, `04_run_verify_r1r4.py`,
-  `calibrate_verify_r1r4.py` (execution logs appended); derived tables
-  `calibration_verify_r1r4/derived/r1r4_items.parquet` and `r1r4_title_path.parquet`.
-- 2026-10-03 (verify cycle 2): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle2/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle2`; 110 `verify` rows),
-  scripts `…/scripts/06_run_verify_cycle2.py`, `calibrate_verify_cycle2.py`
-  and its revision `calibrate_verify_cycle2_a.py` (the first labeled every
-  numeral difference a guard firing; use `_a`); derived tables
-  `calibration_verify_cycle2/derived/cycle2_items.parquet` and `cycle2_title_path.parquet`.
-- 2026-10-03 (verify cycle 3): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle3/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle3`; 106 `verify` rows), scripts
-  `…/scripts/08_run_verify_cycle3.py`, `calibrate_verify_cycle3.py`; probe
-  `…/scratch/probe_cycle3_meaning_marks.py` (execution logs appended); derived tables
-  `calibration_verify_cycle3/derived/cycle3_items.parquet` and `cycle3_title_path.parquet`.
-- 2026-10-05 (verify cycle 4): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle4/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle4`; 106 `verify` rows), scripts
-  `…/scripts/10_run_verify_cycle4.py`, `calibrate_verify_cycle4.py`,
-  `11_check_contact_email_leak_cycle4.py` (execution logs appended); derived tables
-  `calibration_verify_cycle4/derived/cycle4_items.parquet`, `cycle4_title_path.parquet`
-  and `cycle4_cross_pairs_new_rule_passes.parquet`. Despite its name, that
-  last table holds **all 197** cross-pair passes, every one labeled `v3`
-  (none came from a cycle-4 fold or acronym); its `rule` column is the
-  script's v3 / v4-fold / v4-acronym split.
-- 2026-10-06 (verify cycle 5): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle5/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle5`; 106 live `verify` rows), scripts
-  `…/scripts/12_run_verify_cycle5.py`, `calibrate_verify_cycle5.py`,
-  `13_check_contact_email_leak_cycle5.py` (execution logs appended); derived tables
-  `calibration_verify_cycle5/derived/cycle5_items.parquet`, `cycle5_title_path.parquet`,
-  `cycle5_cross_pair_passes.parquet` (all passes, each with the `name_part` /
-  fold that produced it), `cycle5_acronym_probes.parquet` and
-  `cycle5_gate_matrix.parquet`; the gate matrix's MOCKED-HTTP artifacts (no
-  network) are in `calibration_verify_cycle5/gate_matrix_mocked/`.
-- 2026-10-06 (verify cycle 6, user decision D-16): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle6/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle6`; 106 live `verify` rows), scripts
-  `…/scripts/14_run_verify_cycle6.py`, `calibrate_verify_cycle6.py`,
-  `15_check_contact_email_leak_cycle6.py`, probe `…/scratch/c6_probe_author_rules.py`
-  (execution logs appended); derived tables `calibration_verify_cycle6/derived/cycle6_items.parquet`,
-  `cycle6_title_path.parquet`, `cycle6_cross_pair_passes.parquet`, `cycle6_acronym_probes.parquet`
-  and `cycle6_gate_matrix.parquet` (540 cells); MOCKED-HTTP gate-matrix artifacts in
-  `calibration_verify_cycle6/gate_matrix_mocked/`.
-- 2026-10-06 (verify cycle 7, fix round K): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle7/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle7`; 106 live `verify` rows), scripts
-  `…/scripts/16_run_verify_cycle7.py`, `calibrate_verify_cycle7.py`,
-  `17_check_contact_email_leak_cycle7.py`, probes `…/scratch/c7_probe_rules.py` and
-  `c7_probe_record_author_shapes.py` (execution logs appended); derived tables
-  `calibration_verify_cycle7/derived/cycle7_items.parquet`, `cycle7_title_path.parquet`,
-  `cycle7_cross_pair_passes.parquet` and `cycle7_gate_matrix.parquet` (828 cells);
-  MOCKED-HTTP gate-matrix artifacts in `calibration_verify_cycle7/gate_matrix_mocked/`.
-- 2026-10-06 (verify cycle 8, fix round L, user decision D-17): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle8/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle8`; 106 live `verify` rows), scripts
-  `…/scripts/19_run_verify_cycle8.py`, `calibrate_verify_cycle8.py`,
-  `20_check_contact_email_leak_cycle8.py` (execution logs appended); derived tables
-  `calibration_verify_cycle8/derived/cycle8_items.parquet`, `cycle8_title_path.parquet`,
-  `cycle8_cross_pair_passes.parquet` and `cycle8_gate_matrix.parquet` (996 cells);
-  MOCKED-HTTP gate-matrix artifacts in `calibration_verify_cycle8/gate_matrix_mocked/`.
-- 2026-10-06 (verify cycle 8b, transliteration add-on): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle8b/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle8b`; 106 live `verify` rows), scripts
-  `…/scripts/21_run_verify_cycle8b.py`, `calibrate_verify_cycle8b.py`,
-  `22_check_contact_email_leak_cycle8b.py`, probes `…/scratch/probe_nonfolding_letters.py`
-  (orchestrator) and `probe_translit_8b.py` (execution logs appended); derived tables
-  `calibration_verify_cycle8b/derived/cycle8b_items.parquet`, `cycle8b_title_path.parquet`,
-  `cycle8b_cross_pair_passes.parquet` and `cycle8b_gate_matrix.parquet` (1,122 cells);
-  MOCKED-HTTP gate-matrix artifacts in `calibration_verify_cycle8b/gate_matrix_mocked/`.
-- 2026-10-06 (verify cycle 9, the final S1 patch): `research/2026-10-02_FrameworkDev_ScholarlySearch/calibration_verify_cycle9/`
-  (`DAAF_FETCH_CONTEXT=FrameworkDev_S1_verify_cycle9`; 106 live `verify` rows), scripts
-  `…/scripts/23_run_verify_cycle9.py`, `calibrate_verify_cycle9.py`,
-  `24_check_contact_email_leak_cycle9.py`, design probe `…/scratch/probe_translit_v2_design.py`,
-  and the review-8 reviewer's scripts re-run unchanged as `…/review_scratch/c8_r01_pure_probes_a.py`
-  and `c8_r02_gate_matrix_a.py` (mocked output in `review_scratch/c8_quality/gm_out_a/`; execution
-  logs appended); derived tables `calibration_verify_cycle9/derived/cycle9_items.parquet`,
-  `cycle9_title_path.parquet`, `cycle9_cross_pair_passes.parquet` and `cycle9_mutations.parquet`.
-- 2026-10-11 (S2, Scite adapter, tool 1.2.0): `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s2/scite/`
-  (`DAAF_FETCH_CONTEXT="FrameworkDev S2 Scite live trial"`; 6 MANIFEST rows, Scite raw
-  responses under `restricted/`); vendor docs in `…/web_fetches/s2_research/`.
-- 2026-10-11 (S2, Elicit adapter, tool 1.3.0 → 1.3.1): `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s2/elicit/`
-  (`DAAF_FETCH_CONTEXT="FrameworkDev S2 Elicit live trial"`, then "… (re-attach after crash)" and
-  "… (step 5: usage after report)"; 7 MANIFEST rows (6 from the 2026-10-11 trial plus the
-  2026-10-12T15:44:52Z usage re-read), raw responses under `restricted/`); read-only
-  state check `…/scripts/25_check_elicit_crash_recovery_state.py` (execution log appended).
-- 2026-10-12 (S2 fix rounds S-D to S-F, tools 1.4.0–1.5.1): openapi status-code read
-  `…/scripts/26_check_elicit_openapi_status_codes.py`; unit-suite runs
-  `…/scripts/28_run_scholar_search_suite_se_c.py` (245 tests) and
-  `…/scripts/31_run_scholar_search_suite_sf_b.py` (248 tests) (execution logs appended).
-- 2026-10-30 (OpenAlex per-second gate, tool 1.6.0): a different maintainer-only workspace,
-  `research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments/`: live lookups
-  `lit_search/2026-10-30_openalex_gate/` (MANIFEST.jsonl, 8 rows, `DAAF_FETCH_CONTEXT="FrameworkDev
-  2026-10-30 OpenAlex gate SBM2 (free single-work lookups)"`), probe
-  `scripts/2026-10-30_openalex_gate_sbm2_live_lookups.py` and suite run
-  `scripts/2026-10-30_openalex_gate_run_scholar_suites.py` (execution logs appended); docs as
-  fetched 2026-10-28 under `output/preliminary_notes/web_fetches/batch8_R5B/`, and the
-  authentication and searching pages re-fetched 2026-10-30 under
-  `web_fetches/2026-10-30_openalex_docs/`; the review probes behind the one-step booking fix
-  under `probes/2026-10-30_phase4_openalex_quality_review/`,
-  `probes/2026-10-30_phase4_openalex_consistency_review/` and
-  `probes/2026-10-30_openalex_gate_cycle2/`.
-- 2026-10-31 (OpenAlex rate tier setting, live boolean lane and commas, tool 1.6.1): the same
-  workspace; 12 user-approved paid calls in `lit_search/2026-10-31_openalex_live/`
-  (MANIFEST.jsonl, `DAAF_FETCH_CONTEXT="FrameworkDev 2026-10-31 OpenAlex 1.6.1 …"`), driven by
-  `scripts/2026-10-31_openalex_tier_live_paid_calls.py` and
-  `scripts/2026-10-31_openalex_tier_live_comma_colon_probe.py`; suite run
-  `scripts/2026-10-31_openalex_tier_run_scholar_suites_b.py` (the final run of the build), and
-  after the Phase 4 fix cycle `scripts/2026-10-31_oa161_cycle2_run_suites_a.py` (suites plus
-  a mutation check; execution logs appended); the filtering page fetched 2026-10-31 under
-  `web_fetches/2026-10-31_openalex_docs/`; the review probes under
-  `probes/2026-10-31_phase4_openalex161_quality_review/` and
-  `probes/2026-10-31_phase4_openalex_161_consistency_review/`.
+The raw responses, run and probe scripts, derived tables and review probes
+behind these entries are the maintainer's development records and are not
+in this repository, so each entry states its method and its result itself.
+The labeled set of the `verify` calibration ships as
+`tests/python/fixtures/scholar_search/verify_calibration_set.json`. To check
+an entry, re-measure it through the CLI as described above.
 
 ## How far to trust the `verify` gate (standing summary, rules `2026-11-01d`)
 
@@ -643,13 +528,12 @@ mark, the series-name NOT FOUND, and the word-check set-asides.
 `refs` take an opt-in `--s2-context` (one Semantic Scholar `/citations` or
 `/references` call, one retry, then the OpenAlex list stands).
 
-**How.** Live calls through the CLI into `…/smoke_s4_d2/lit_search/`
-(`DAAF_FETCH_CONTEXT=FrameworkDev_S4_D2_smoke`), run by
-`…/scripts/154_s4_d2_verification.py` (execution log appended): `refs
-10.1257/aer.104.9.2593 --s2-context` and a default `find --limit 5`. Free
-calls only (OpenAlex $0.0021). Earlier that day, a probe
-(`…/preliminary_notes/16_s2_citation_contexts_probe.md`) got three 429s in a
-row on `/citations` and contexts on 2 of 10 `/references` rows.
+**How.** Live calls through the CLI
+(`DAAF_FETCH_CONTEXT=FrameworkDev_S4_D2_smoke`), run from a captured
+script: `refs 10.1257/aer.104.9.2593 --s2-context` and a default `find
+--limit 5`. Free calls only (OpenAlex $0.0021). Earlier that day, a probe
+got three 429s in a row on `/citations` and contexts on 2 of 10
+`/references` rows.
 
 **Measured.**
 - `/paper/DOI:10.1257/aer.104.9.2593/references` with `limit=33` answered
@@ -668,11 +552,9 @@ row on `/citations` and contexts on 2 of 10 `/references` rows.
   tries were all 429) and a limit above 33. Both were measured on 2026-11-01
   (next paragraph).
 
-**Coverage versus OpenAlex (2026-11-01, observed).** Probe
-`…/probes/17_s2_context_coverage_probe.py` (execution log appended), record
-`…/preliminary_notes/17_s2_context_coverage_probe.md`, runs in
-`…/lit_search/s4_coverage/` (`DAAF_FETCH_CONTEXT=FrameworkDev_S4_C2CW3_coverage`;
-10 CLI runs on tool 1.7.0, free calls only, OpenAlex $0.0012). Papers: Freeman
+**Coverage versus OpenAlex (2026-11-01, observed).** A captured probe
+script (`DAAF_FETCH_CONTEXT=FrameworkDev_S4_C2CW3_coverage`; 10 CLI runs on
+tool 1.7.0, free calls only, OpenAlex $0.0012). Papers: Freeman
 et al. 2014 *PNAS*, Kraft 2020 *Educational Researcher*, Chetty, Friedman &
 Rockoff 2014 *AER*.
 - `refs --limit 300`: S2 returned the reference list for 1 of 3 papers. For
@@ -707,7 +589,7 @@ counts the dropped rows. The digest header opens with "contexts found for N
 of M listed paper(s)", and each influential flag is labelled as S2's own
 (not a quality signal). Docs and `--help` no longer say `cites` adds
 intents. Unit tests use synthetic fixtures. Live smoke on 1.8.0 (before a
-final digest-wording change), `…/lit_search/s4_f3_smoke/`
+final digest-wording change)
 (`DAAF_FETCH_CONTEXT=FrameworkDev_S4_F3_smoke`, OpenAlex $0.0002): `refs
 10.1257/aer.104.9.2593 --s2-context` gave `ok`, 33 rows, 20 matched, 4
 papers with a context, `context_unmatched_with_text` 4; `cites` on the same
@@ -880,8 +762,7 @@ three processes started together:
   between the search and the report is unknown. A usage bracket read right
   after a call can show nothing yet.
 - **Tool 1.4.0 (fix round S-D, mocked tests only, no live paid call).** The
-  quality review's probes (`review_scratch/s2q_r01_spend_probes.py`, log
-  lines A1–A6, B, C, E) showed accepted-but-odd creates (non-JSON, no or
+  quality review's spend probes (cases A1–A6, B, C, E) showed accepted-but-odd creates (non-JSON, no or
   non-UUID sessionId, 201, empty, oversize) left no uncertain marker, a
   same-origin 307 loop re-POSTed the create 6 times with an empty
   `requests` list, a process killed during the create left no row, and an
@@ -892,10 +773,10 @@ three processes started together:
   statuses polled to the cap (exit 13); 2 consecutive poll network/timeout
   errors tolerated; the duplicate guard ignores punctuation; `elicit-search`
   is sent once (it may draw quota). openapi.json declares only 202 for the
-  create (research script 26, 2026-10-12). Details: `elicit.md`.
+  create (read 2026-10-12). Details: `elicit.md`.
 - **Tool 1.5.0 (fix round S-E, 2026-10-12, mocked tests only, no live or
-  paid call).** Review cycle 2's probes (`review_scratch/s2q_r01_spend_probes_a.py`
-  cases N1 and N5, `s2q_r07_redirect_busy_c2.py`) showed that a 301/302/303
+  paid call).** Review cycle 2's spend and redirect probes
+  (cases N1 and N5) showed that a 301/302/303
   on the create POST was followed as a GET, and a 404/401/403/400 or 429 on
   that GET was read as "not started", so a re-run created a second paid
   report; the 429 was also logged as the POST's status with no redirect
@@ -914,11 +795,11 @@ three processes started together:
   sends one Elicit search (names are de-duplicated). Intended trade: the
   cycle-1 probe F case (a 303 to a completed report) is now an uncertain
   create with a recovery ID, not a followed redirect. Unit suite: 245 tests,
-  OK (6 expected failures), session scripts 28_b and 28_c. Details: `elicit.md` §
+  OK (6 expected failures). Details: `elicit.md` §
   "Closing an uncertain create".
 - **Tool 1.5.1 (fix round S-F, 2026-10-12, user-authorized 4th round; mocked
   tests only, no live or paid call).** Review cycle 3's close-path probe
-  (`review_scratch/s2q_r08_close_path_c3.py`) found three ways to close an
+  found three ways to close an
   uncertain create without evidence that its report exists: S3, `elicit-resume
   SID --for-question Q` on a session the MANIFEST tied to another question
   closed Q's create while SID kept counting for the other question (a plain Q
@@ -930,18 +811,16 @@ three processes started together:
   the call's own outcome `uncertain`/`accepted` or an orphaned checkpoint
   (`elicit_supersession_effective` in the row); a status of `unknown` (or
   none) closes nothing (`elicit_close_skipped`). Re-run of the reviewer's
-  probes as revision copies (`s2q_r08_close_path_c3_a.py`,
-  `s2q_r01_spend_probes_c.py`): S3, S5 (both) and S11 now `exit=2 creates=0`
+  probes: S3, S5 (both) and S11 now `exit=2 creates=0`
   on the plain re-run; every other case unchanged. Also: the S1 fixtures
   `s2_search.json`, `s2_snippets.json` and `eric_search.json` are now
   synthetic (live S1 shapes, invented values; user decision 2026-10-12;
-  session scripts 32_a, 33_b: shapes identical, no old or live content value
-  left). Unit suite: 248 tests, OK (6 expected failures), session script
-  31_a.
+  checked: shapes identical, no old or live content value left). Unit
+  suite: 248 tests, OK (6 expected failures).
 
 ## Measured behavior: Elicit (2026-10-11)
 
-**How.** Live calls through the real CLI into `smoke_s2/elicit/`, using the
+**How.** Live calls through the real CLI into a maintainer workspace, using the
 user-approved budget of exactly **one** paid report. Rows 1–4 used tool
 1.3.0. The host crashed while row 4's process was polling, so rows 5–6 used
 1.3.1 (built after the crash) and **re-attached** to the same session; no
@@ -992,14 +871,14 @@ Elicit output in the repository (see `elicit.md` § Storage).
   1.3.1 adds both: `elicit-resume` records `elicit_session_history` /
   `elicit_orphaned_checkpoints`, and `elicit-report` refuses (exit 2, no
   request) when DEST_DIR's MANIFEST shows unfinished work for the same
-  question, unless `--new-session`. The read-only check (script 25) confirms
-  that the live session is now closed and that its checkpoint is recorded as
+  question, unless `--new-session`. A read-only check confirmed that the
+  live session is now closed and that its checkpoint is recorded as
   orphaned.
 
 ## Measured behavior: Scite (2026-10-11)
 
-**How.** Six live calls through the real CLI (tool 1.2.0) into
-`smoke_s2/scite/`, MANIFEST rows 1–6 in order; the fixtures
+**How.** Six live calls through the real CLI (tool 1.2.0), MANIFEST rows
+1–6 in order; the fixtures
 `tests/python/fixtures/scholar_search/scite_*.json` keep their shapes with
 invented values (synthetic since tool 1.4.0, 2026-10-12). Scite-derived
 evidence stays private in `restricted/`; no Scite content is in the
@@ -1036,16 +915,17 @@ repository (see `scite.md` § Storage).
 ## Measured behavior: verify cycle 9 / final S1 patch (2026-10-06)
 
 **Why.** Review cycle 8, the last review round, found one literal BLOCKER
-under the D-17 closing rule and one FIX-NOW item (reviewer logs
-`review_scratch/c8_r01_pure_probes.py`, `c8_r02_gate_matrix.py`,
-`c8_r03_mutants_and_fix_sketch.py`). The user approved fixing both with
+under the closing rule the user set on 2026-10-06 (a wrong citation
+reaching CONFIDENT outside the documented residuals) and one FIX-NOW item
+(the reviewer's pure probes, gate matrix, and mutants with fix sketches).
+The user approved fixing both with
 the reviewer's tested sketches, verified by re-running the reviewer's own
-scripts, with no further review round (Checkpoint 2g).
+scripts, with no further review round (user decision, 2026-10-06).
 - **B-1:** the N-2 check compared only the *second* given position.
   "John Q. R. Smith" on "John Q. S. Smith" graded CONFIDENT on all six
-  routes (`c8_r02` log).
-- **F-1:** `translit-v1` still deleted 216 Latin code points (`c8_r01`
-  log). "Aliyev" on "İlham Əliyev" and "Habib" on "Joe Ħabib" were false
+  routes (the reviewer's mocked gate matrix).
+- **F-1:** `translit-v1` still deleted 216 Latin code points (the
+  reviewer's pure probes). "Aliyev" on "İlham Əliyev" and "Habib" on "Joe Ħabib" were false
   MISMATCHes (exit 11). "Liyev" on "Əliyev" passed, which is a deleted-letter
   collision.
 
@@ -1073,8 +953,8 @@ unchanged).**
      "BARRED O", partner of Ɵ; Ɋ, partner of ɋ. Function:
      `name_derived_transliteration`. Unicode names are immutable, and the
      blocks are fixed in `TRANSLIT_NAME_RANGES`, so the table does not
-     drift with a newer Python. The design probe found 85 of the 216 to be
-     `… WITH …` letters (`probe_translit_v2_design.py` log);
+     drift with a newer Python. A design probe found 85 of the 216 to be
+     `… WITH …` letters;
   2. the `translit-v1` letters, unchanged (ø→o, æ→ae, đ→d, þ→th, …);
   3. the reviewer's letters whose name carries no base letter: ə→a,
      ɛ→e, ɔ→o, ʒ→z, both cases. Ǯ/ǯ (ezh with caron) follow, because NFKD
@@ -1088,8 +968,7 @@ unchanged).**
   ɹ ʃ ʊ ʌ ʍ ʎ …), small capitals (ɢ ɪ ɴ ʀ ʁ ʏ ʙ ʛ ʜ ʟ), clicks and glottal
   stops (ǀ ǁ ǂ ǃ ʘ ʔ ʕ ʖ Ɂ ɂ ʡ ʢ), tone letters (Ƅ ƅ Ƨ ƨ Ƽ ƽ), historic
   letters (ƿ Ƿ Ȝ ȝ Ƕ ƕ Ȣ ȣ Ỻ ỻ Ỽ ỽ ẜ ẝ ẟ), digraphs (ȸ ȹ ʣ ʤ ʥ ʦ ʧ ʨ ʩ ʪ ʫ),
-  and Ǝ/ǝ, Ɣ, Ɩ, Ɯ, Ʃ, Ʊ, Ʌ, Ʉ/ʉ, ƛ, ƍ, Ƹ ƹ ƺ, ƻ, ƾ, ȷ, ɟ, ʄ. The full list
-  is in the `c8_r01_pure_probes_a.py` log :113. Of these, Ǝ/ǝ (Pan-Nigerian
+  and Ǝ/ǝ, Ɣ, Ɩ, Ɯ, Ʃ, Ʊ, Ʌ, Ʉ/ʉ, ƛ, ƍ, Ƹ ƹ ƺ, ƻ, ƾ, ȷ, ɟ, ʄ. Of these, Ǝ/ǝ (Pan-Nigerian
   orthographies) and Ɣ/ɣ (Ewe and other West African orthographies) are
   the most likely to appear in an author name. They are left out because
   their romanization is not settled (ǝ as a or e; ɣ as g, gh or x). This is
@@ -1102,46 +981,45 @@ unchanged).**
   step-aside. The `--help` text, the SKILL.md and the code comments now
   give "Djordjevic" as the transliteration example.
 - **CONFIDENT digest (review-8 FIX-NOW).** The CONFIDENT line of the
-  digest now carries the hand-off's interim caveat in one sentence: until
+  digest now carries the interim caveat in one sentence: until
   the adjudicator ships, treat CONFIDENT as WEAK when the cited author is
   an organization named by less than its full listed name, "&" company
   names included. The word CONFIDENT still appears only on a CONFIDENT
   verdict. The W-B tests pass, and 0 live runs had a stray CONFIDENT.
 
 **Measured.**
-- **The reviewer's scripts, re-run unchanged against `-06f`**
-  (`create_script_revision.sh` copies; r02's only edit is its output
-  folder, so that its `rmtree` cannot delete the reviewer's c8 artifacts):
-  - `c8_r02_gate_matrix_a.py` (100 mocked runs, 6 routes). The list
+- **The reviewer's scripts, re-run unchanged against `-06f`** (the gate
+  matrix's only edit is its output folder, so that its cleanup cannot
+  delete the reviewer's artifacts):
+  - The mocked gate matrix (100 mocked runs, 6 routes). The list
     `non-genuine CONFIDENT` is `[("hyphen half 'Paul Sartre'",
-    'design')]` (log :175). That cell is P-1, a design matter deferred to
-    pre-S5. B-1 "N-2 gap: 3rd given differs" is WEAK on all six routes
-    (log :155). The collision "Liyev" is MISMATCH (:158). "Aliyev" and
-    "Habib" are CONFIDENT (:159, :160). `genuine MISMATCH: []` (:176).
+    'design')]`. That cell is P-1, a design matter deferred to
+    pre-S5. B-1 "N-2 gap: 3rd given differs" is WEAK on all six routes.
+    The collision "Liyev" is MISMATCH. "Aliyev" and
+    "Habib" are CONFIDENT. `genuine MISMATCH: []`.
     EXISTS, NOT FOUND and fabricated titles never reach CONFIDENT (the
     script's own assertion passed).
-  - `c8_r01_pure_probes_a.py`. Still-deleted letters: **216 → 118**
-    (log :113). `genuine-labeled probes that FAIL: []` (:193). `wrong-labeled
-    probes that PASS: [('RAND Corp.', ['R. Corp'])]` (:191). That probe is
+  - The pure probes. Still-deleted letters: **216 → 118**.
+    `genuine-labeled probes that FAIL: []`. `wrong-labeled
+    probes that PASS: [('RAND Corp.', ['R. Corp'])]`. That probe is
     unchanged from cycle 8: "RAND" is compatible with the initial "R." under
     rule 1, which is the "J. Smith" = "John Smith" design. The
     design-labeled passes are unchanged. Among them is P-1, "Paul Sartre"
     on "Jean-Paul Sartre".
-- **Live labeled runs** (`calibrate_verify_cycle9.py` log): no verdict,
-  author status, numeral check or exit note changed on the 106 runs
-  (log :336–:367).
+- **Live labeled runs** (106 runs): no verdict, author status, numeral
+  check or exit note changed.
   - DOI path, match 9/35/0 and mismatch 0/20/20 (C/W/M), the same as
     cycle 8b. Genuine-as-MISMATCH is 0, and mismatch-as-CONFIDENT with
-    `--year` is 0 (log :318). On the title alone it is X40 (:319).
+    `--year` is 0. On the title alone it is X40.
   - `title:` path: match 3/7/1/0 and mismatch 0/5/1/5 (C/W/M/NF).
   - No labeled cited author holds a translit-v2 letter or carries three or
-    more given words (log :369–:370). The live set therefore does not
+    more given words. The live set therefore does not
     exercise either change; the reviewer's scripts and the unit tests do.
   - OpenAlex spend: $0.0270.
 - **Cross-pairing:** 197 passes over 6,972 pairs, with none gained and
-  none lost (log :373, :375). One live record name holds a translit-v2
-  letter: "Saša Đurić", whose đ was already in v1 (:376).
-- **Mutations** (in-process, production files untouched; log :378–:387).
+  none lost. One live record name holds a translit-v2
+  letter: "Saša Đurić", whose đ was already in v1.
+- **Mutations** (in-process, production files untouched).
   The baseline is 183 tests with 0 failures. Every mutant fails tests:
   - F1 reverted to the cycle-8 second-position check: 7 failures and 1
     error;
@@ -1174,15 +1052,15 @@ Re-run MISMATCH rows of that second kind as well: they were false blocks
 
 ## Measured behavior: verify cycle 8 (2026-10-06)
 
-**This is the final rule-layer round (user decision D-17).** D-17 makes the
+**This is the final rule-layer round (user decision, 2026-10-06).** That decision makes the
 citation adjudicator's second check on **every** CONFIDENT mandatory. The
 rule layer's remaining false passes therefore become documented residuals
 that the model reviews, not blockers for another heuristic round. Once the
 adjudicator ships, CONFIDENT will mean "rule-passed, then model-confirmed".
 
 **Question.** Review cycle 7 found three defects in rules `2026-10-06c`
-(reviewer logs `review_scratch/c7_quality_r01_*`, `c7_quality_r02_*`,
-`c7_quality_r03_*`):
+(the quality reviewer's pure probes, gate matrix, and mutants with a fix
+sketch):
 - **N-1 (false block):** "RAND Corp." on "RAND Corporation" and "Brookings
   Inst." on "Brookings Institution" were MISMATCH on all six routes. A
   final period was read as reference-list punctuation.
@@ -1197,7 +1075,7 @@ adjudicator ships, CONFIDENT will mean "rule-passed, then model-confirmed".
 
 **Change (rules `2026-10-06d`, author rule `contiguous-surname-v8`; org
 rule `org-conservative-v2` unchanged).** All four are step-asides built
-from the reviewer's tested sketch (`c7_quality_r03`), with no word lists.
+from the reviewer's tested sketch, with no word lists.
 - **N-1.** A cited name of two or more words whose last word is two or
   more letters plus "." is *ambiguous* (`organization: not an exact name
   match`) when that stem is a proper prefix of a word in a listed name.
@@ -1218,36 +1096,32 @@ from the reviewer's tested sketch (`c7_quality_r03`), with no word lists.
   "Jean-Paul Smith" on "Jean Smith" a new CONFIDENT. Code:
   `cited_given_hyphenated`.
 
-**Measured** (`calibrate_verify_cycle8.py` log).
+**Measured.**
 - **Live labeled runs:** no verdict, author status, numeral check or exit
-  note changed on the 106 runs (log :799 to :831). DOI path: match 9/35/0,
+  note changed on the 106 runs. DOI path: match 9/35/0,
   mismatch 0/20/20, the same as cycle 7. Genuine-as-MISMATCH is 0 and
-  mismatch-as-CONFIDENT (with `--year`) is 0 (log :781). No genuine item
-  lost CONFIDENT (log :831). The live author statuses are rebuilt offline
-  from the digests' author lists (log :762).
+  mismatch-as-CONFIDENT (with `--year`) is 0. No genuine item
+  lost CONFIDENT. The live author statuses are rebuilt offline
+  from the digests' author lists.
 - **Cross-pairing:** 197 passes over 6,972 pairs, none gained and none
-  lost (log :835, :837).
+  lost.
 - **Gate matrix:** 996 mocked cells on six routes: cycle 7's flag sets plus
-  28 new ones (log :839). The new ones cover N-1, N-1 negatives, N-2, N-3,
-  hyphenated names, controls and residuals. Results (assertion log :896):
-  - the N-1 cells are WEAK with exit 0 (log :893);
-  - the N-1 negatives are MISMATCH (log :894);
+  28 new ones. The new ones cover N-1, N-1 negatives, N-2, N-3,
+  hyphenated names, controls and residuals. Results (every assertion held):
+  - the N-1 cells are WEAK with exit 0;
+  - the N-1 negatives are MISMATCH;
   - every N-2 / N-3 / hyphen cell is WEAK with `surname; given name
-    differs` (log :895);
+    differs`;
   - none of the 432 organization-related or name-incompatible cells reaches
-    CONFIDENT: 394 WEAK, 30 MISMATCH, 8 NOT FOUND (log :890);
-  - the six residual cells are CONFIDENT on every route, as pinned (log
-    :891);
-  - the full CONFIDENT list is at log :889.
-- **Mutations:** each reverted cycle-8 change fails tests (log :899 to
-  :902):
+    CONFIDENT: 394 WEAK, 30 MISMATCH, 8 NOT FOUND;
+  - the six residual cells are CONFIDENT on every route, as pinned.
+- **Mutations:** each reverted cycle-8 change fails tests:
   - N-1: 1 failure;
   - N-2: 21;
   - N-3: 9;
   - hyphen rule: 1.
 
-  The cycle-7 mutants still fail: H1 66, prefix 25, L1 2, "&" 3, MUT-2 2
-  (log :903 to :907).
+  The cycle-7 mutants still fail: H1 66, prefix 25, L1 2, "&" 3, MUT-2 2.
 
 **Costs, stated.** Each step-aside moves a pass to WEAK (none to MISMATCH):
 - a cited given name against a surname-only listing ("Jane Smith" or "J.
@@ -1257,11 +1131,11 @@ from the reviewer's tested sketch (`c7_quality_r03`), with no word lists.
 - a hyphenated given name listed only in part ("J.-P. Smith" on "Jean
   Smith").
 
-**Documented D-16 residuals (accepted; pinned in
+**Documented step-aside residuals (accepted; pinned in
 `VerifyCycle8Tests.test_documented_d16_residuals_*`).** Each is shaped
 exactly like a genuine person citation, so no word-list-free rule separates
 it. Each still grades CONFIDENT on every route, and the mandatory
-adjudicator CONFIDENT check (D-17) reviews it:
+adjudicator CONFIDENT check reviews it:
 - **A bare or partial organization name that is the record's last
   word(s):** "Canada" on Statistics Canada; "Research" and "Policy
   Research" on Mathematica Policy Research. This is the shape of "Smith"
@@ -1281,7 +1155,7 @@ code; not run). This is a WEAK, not a pass, so it was left alone.
 ### Add-on 8b: transliteration (2026-10-06)
 
 **Reported by a DAAF development session**, then confirmed by the
-orchestrator's probe (`scratch/probe_nonfolding_letters.py`, log).
+orchestrator's probe.
 
 **Question.** The ASCII fold deleted Latin letters that have no Unicode
 decomposition. "Sørensen" became `srensen`, "Łukasz" `ukasz`, "Ærø" `r`,
@@ -1298,46 +1172,46 @@ have passed on "Anne Sørensen".
   `norm_title` (fusion keys) and `org_initials`. It maps ø→o, ł→l, æ→ae,
   œ→oe, đ/ð→d, þ→th, ı→i, ŋ→ng, ĸ→k, ß→ss. `norm_title` and
   `org_initials` used to delete ß as well. A character table is
-  normalization, not a word list (D-16). `verify_title_norm` is unchanged
-  because it never deleted these letters: it keeps every script (probe
-  `probe_translit_8b.py`: "ærø" stays "ærø").
+  normalization, not a word list. `verify_title_norm` is unchanged
+  because it never deleted these letters: it keeps every script (probed:
+  "ærø" stays "ærø").
 - **Step-aside.** When the surname matches no one, it is retried with each
   table letter, on either side, replaced by an alternative spelling
   (`TRANSLIT_ALTERNATIVES`: ø o/oe, æ ae/a/e, œ oe/o/e, đ d/dj, ð d/dh/th,
   þ th/t, ŋ ng/n, ĸ k/q). A hit is *ambiguous* (`name_part` `surname;
   alternative transliteration`, fold `translit-alt`), never a pass. Code:
   `translit_alternative_hit`.
-- **Narrowing, stated.** The dispatch asked for *ambiguous* whenever a
-  name holds a table letter and the comparison fails. This would also
-  have stepped aside "Nielsen" on "Anne Sørensen", which the dispatch
-  requires to stay a fail. So the step-aside fires only when an
+- **Narrowing, stated.** The fix as first specified asked for *ambiguous*
+  whenever a name holds a table letter and the comparison fails. This would
+  also have stepped aside "Nielsen" on "Anne Sørensen", which must stay a
+  fail. So the step-aside fires only when an
   alternative spelling actually matches.
 - "Soerensen" on "Sørensen" was already *ambiguous* through the cycle-5
   dropped-umlaut fold (r + oe + two letters). It stays *ambiguous*, with
   `name_part` `surname`.
 
-**Measured** (`calibrate_verify_cycle8b.py` log).
+**Measured.**
 - **Live labeled runs:** no verdict, author status, numeral check or exit
-  note changed on the 106 runs (log :875 to :908). DOI path: match
+  note changed on the 106 runs. DOI path: match
   9/35/0, mismatch 0/20/20, the same as cycle 8. Genuine-as-MISMATCH is 0
-  and mismatch-as-CONFIDENT (with `--year`) is 0 (log :858). No cited
-  author in the labeled set holds a table letter (log :911), so the live
+  and mismatch-as-CONFIDENT (with `--year`) is 0. No cited
+  author in the labeled set holds a table letter, so the live
   set does not exercise the change. The gate matrix does.
 - **Cross-pairing:** 197 passes over 6,972 pairs, none gained and none
-  lost (log :914, :916). Two live record names hold a table letter:
+  lost. Two live record names hold a table letter:
   "Saša Đurić" and "Gilbert Ramı́rez", whose dotless ı carries a combining
-  accent (log :917).
+  accent.
 - **Gate matrix:** 1,122 mocked cells on six routes: cycle 8's flag sets
-  and assertions, plus 21 new ones (log :919). Every cycle-8 assertion
-  still holds (log :969). Results:
+  and assertions, plus 21 new ones. Every cycle-8 assertion
+  still holds. Results:
   - native and ASCII spellings ("Sorensen", "Dordevic", "Aero", "Lukasz
-    Nowak", "Thorsson") are CONFIDENT (log :970);
+    Nowak", "Thorsson") are CONFIDENT;
   - alternative transliterations ("Soerensen", "Djordjevic", "Aeroe",
-    "Torsson") are WEAK with exit 0 on every route (log :971);
+    "Torsson") are WEAK with exit 0 on every route;
   - a different surname ("Nielsen", "Petrovic") and the old deleted-letter
-    collisions ("Srensen", "Orevic", "Rr") are MISMATCH (log :972);
-  - the bare "R" is *not checked*: no surname can be read (log :973).
-- **Mutations** (log :977, :978). Reverting the table fails 36 tests, and
+    collisions ("Srensen", "Orevic", "Rr") are MISMATCH;
+  - the bare "R" is *not checked*: no surname can be read.
+- **Mutations.** Reverting the table fails 36 tests, and
   reverting the step-aside fails 13. The cycle-7 and cycle-8 mutants still
   fail.
 
@@ -1351,7 +1225,7 @@ above.)*
 ## Measured behavior: verify cycle 7 (2026-10-06)
 
 **Question.** Review cycle 6 found two classification holes in rules
-`2026-10-06b` (reviewer logs `review_scratch/c6_r01_*`, `c6_r02_*`):
+`2026-10-06b` (the reviewers' pure probes and CLI gate matrix):
 - **H1:** an organization whose name holds no organization word was read as
   a person and passed on its last word. "Health Canada" on Statistics
   Canada, "New America" on Teach For America and "Westat Policy Research"
@@ -1362,7 +1236,8 @@ above.)*
 - also M2 (a test gap: a mutant passing partial names survived), L1 ("Am.
   Psychiatric Assn." was a false MISMATCH) and L2 ("&" vs "and").
 
-Under D-16 each fix had to be a **step-aside**, not a new word list.
+Under the step-aside decision (user, 2026-10-06) each fix had to be a
+**step-aside**, not a new word list.
 
 **Change (rules `2026-10-06c`, author rule `contiguous-surname-v7`, org
 rule `org-conservative-v2`).**
@@ -1396,21 +1271,21 @@ rule `org-conservative-v2`).**
   Organisation/Organization stay unmatched for the adjudicator (*not
   checked*, pinned in `test_l2_ampersand_and_spelling_variants`).
 
-**Measured** (`calibrate_verify_cycle7.py` log).
+**Measured.**
 - **Live labeled runs:** no verdict, author status, numeral check or exit
-  note changed on the 106 runs (log :720 to :726). DOI path: match 9/35/0,
+  note changed on the 106 runs. DOI path: match 9/35/0,
   mismatch 0/20/20. Genuine-as-MISMATCH is 0; mismatch-as-CONFIDENT (with
-  `--year`) is 0 (log :670). No genuine item lost CONFIDENT. Every cited
+  `--year`) is 0. No genuine item lost CONFIDENT. Every cited
   author in the set is a bare surname, so rule 1 never fires on it.
 - **Cross-pairing:** 197 passes over 6,972 pairs, none gained and none
-  lost (log :726).
+  lost.
 - **Gate matrix:** 828 mocked cells on six routes: cycle 6's 91 flag sets
   plus 48 new ones (H1, M1, L1, L2, given names). CONFIDENT appears only
   on the cells allowed it, and none of the 372 organization-related or
   name-incompatible cells reaches it: 334 WEAK, 30 MISMATCH, 8 NOT FOUND
-  (log :799, assertion :802). The H1 and M1 cells are WEAK (log :737,
-  :743, :748, :753), and both L1 cells are WEAK with exit 0 (log :801).
-- **Mutations:** each reverted change fails tests (log :805 to :809):
+  (the matrix's assertion held). The H1 and M1 cells are WEAK, and both
+  L1 cells are WEAK with exit 0.
+- **Mutations:** each reverted change fails tests:
   - H1: 32 failures;
   - asymmetric prefix: 25;
   - L1: 3;
@@ -1434,7 +1309,7 @@ rule `org-conservative-v2`).**
 organization name, or everything but the first word of a longer one with
 no connective, is shaped exactly like "Smith" on "John Smith" or "García
 Márquez" on "Gabriel García Márquez". So these still pass, CONFIDENT on
-all six routes (log :800):
+all six routes:
 - "Canada" on Statistics Canada;
 - "Policy Research" and "Research" on Mathematica Policy Research.
 
@@ -1465,7 +1340,8 @@ cycle running, each found by adversarial review after the previous patch:
 - **N5:** "APA, American Psychiatric Association" was a false MISMATCH.
 
 The user asked why brittle string checks were doing semantic work and
-decided on a new architecture (**D-16**, 2026-10-06):
+decided on a new architecture (user decision, 2026-10-06; "the step-aside
+decision" elsewhere in this log):
 - the `verify` rule layer owns *identity* (the record exists, exact or
   near-exact title, numbers, year, surname, retraction) and is either
   certain or steps aside to WEAK;
@@ -1505,7 +1381,8 @@ citations, and what does it cost?
   (`test_id_author_edge_cases`: "Institute of Education Sciences (IES)" vs
   NCES, "National Academy of Sciences" vs IES); a cited organization may
   be a sponsor or publisher the record does not list (X02); and a *fail*
-  would add MISMATCH risk on genuine citations, against D-16.
+  would add MISMATCH risk on genuine citations, against the step-aside
+  decision.
 - **Rule 1, person reading inside an organization.** A cited name read as a
   person ("Bank", "Association (APA)") that is found only **inside** a
   listed organization's name is the same *ambiguous* outcome. A listed
@@ -1551,9 +1428,9 @@ citations, and what does it cost?
   non-exact negatives, unrelated *not checked*, a person found inside an
   organization, and a 4-route CLI gate), N2, N3, N5 and the help text.
 
-**Method.** Script 14 made the same 106 live calls with the same flags as
+**Method.** A run script made the same 106 live calls with the same flags as
 cycle 5, and asserted that each new MANIFEST row's `query` is the call's
-identifier. `calibrate_verify_cycle6.py`:
+identifier. The analysis script:
 - rebuilds every DOI-path verdict, similarity and author status offline
   (0 differences);
 - compares them with the cycle-5 live runs;
@@ -1626,8 +1503,7 @@ OpenAlex spend: $0.0270 (106 rows).
 - Organization names that differ only in spelling ("Organization" vs
   "Organisation") get no exact match, so they are at best *not checked*
   (WEAK). This followed from the rule's construction; review cycle 6
-  then observed it (`review_scratch/c6_r01_pure_probes.py` log: *not
-  checked*), and cycle 7 pins it in a test (below).
+  then observed it (its pure probes: *not checked*), and cycle 7 pins it in a test (below).
 
 **Limits.** In-sample n = 84, with three organization-author items.
 Organization matching is now deliberately conservative rather than
@@ -1643,8 +1519,7 @@ validation.
 introduced (M1): a parenthetical acronym overrode a wrong cited name.
 `--author "American Psychological Association (APA)"` and `--author "Smith
 (APA)"` graded CONFIDENT on an "American Psychiatric Association" record on
-all six CLI routes (reviewer log `review_scratch/c4_r02_cli_gate_matrix.py`,
-24 CONFIDENT cells in that matrix). It also found two-letter acronym
+all six CLI routes (the reviewer's CLI gate matrix: 24 CONFIDENT cells). It also found two-letter acronym
 collisions that passed (L2), ten common acronyms hard-blocked as MISMATCH
 (M2), and three smaller gaps (L1, L3). A user-authorized fifth round
 (rules `2026-10-06a`, author rule `contiguous-surname-v5`, `numerals-v4`;
@@ -1690,9 +1565,9 @@ what moved on the labeled set?
   ("&amp;amp;#64;"). It only matches text that reconstructs the configured
   address, so prose is untouched. This is unit-tested with a fake address.
 
-**Method.** Script 12 ran the same 106 live calls with the same flags as
+**Method.** A run script made the same 106 live calls with the same flags as
 cycle 4. It also asserts each new MANIFEST row's `query` equals the call's
-identifier. `calibrate_verify_cycle5.py`:
+identifier. The analysis script:
 - rebuilds every DOI-path verdict, similarity and author status offline (0
   differences);
 - compares them with the cycle-4 live runs;
@@ -1733,7 +1608,7 @@ OpenAlex spend: $0.0270 (106 rows).
   - Still *pass*: the bare 3+ letter acronyms "APA" (American Psychiatric
     Association) and "AERA" (Association for Education Research in
     Africa). That is the documented limit of reading bare acronyms; the
-    title check still applies. *(Cycle 6, D-16: both are now *ambiguous*;
+    title check still applies. *(Cycle 6, the step-aside decision: both are now *ambiguous*;
     no bare acronym passes on an organization's full name.)*
 
 **Costs, stated.**
@@ -1818,9 +1693,9 @@ new author rules let wrong authors pass?
   double-escaped `&amp;#64;`, and `[at]` / `(at)` with optional spaces.
   This is unit-tested with a fake address.
 
-**Method.** Script 10 ran every item with `verify <DOI> --title --author
+**Method.** A run script ran every item with `verify <DOI> --title --author
 --year`, and the 22 `title:` items with `--author --year`, the same flags as
-cycle 3. `calibrate_verify_cycle4.py`:
+cycle 3. The analysis script:
 - joins each run to its own MANIFEST row;
 - rebuilds all 84 DOI-path verdicts, similarities **and author statuses**
   offline from the production functions and the digest's author list (0
@@ -1899,10 +1774,10 @@ same flags as cycle 2, what moved?
   `&#x40;` and `&commat;` (I-E). A `title:` NOT FOUND names, on stdout, any
   backend that did not answer (I-F).
 
-**Method.** Script 08 ran every item with `verify <DOI> --title --author
+**Method.** A run script ran every item with `verify <DOI> --title --author
 --year` and the 22 `title:` items with `--author --year`, the same flags
 as cycle 2. The 4 EXISTS probes were not repeated; the EXISTS routes are
-unit-tested. The analysis (`calibrate_verify_cycle3.py`):
+unit-tested. The analysis:
 - joins each run to its own MANIFEST row;
 - rebuilds all 84 DOI-path verdicts and similarities offline from the
   production functions (0 differences);
@@ -1955,8 +1830,8 @@ reviewer's probes, pinned in `test_wd_measured_extent_of_the_known_limits`):**
 - Each is pinned as an expected failure, so a future content-token guard
   flips it.
 
-**Meaning-bearing marks (I-A): documented, not changed.** Probe
-`probe_cycle3_meaning_marks.py` kept Unicode Sm symbols, a leading minus
+**Meaning-bearing marks (I-A): documented, not changed.** A probe
+kept Unicode Sm symbols, a leading minus
 and a percent sign in the verify normalization. `<` vs `>` then scores
 0.980 (was 1.000) and "-10%" vs "10%" 0.979 (was 1.000): both still
 CONFIDENT. So the change alone would not fix the verdict. It needs the
@@ -2006,9 +1881,9 @@ every verify row's `verify_cutoffs`, failure rows included):
 - Rows also carry `retracted` / `retracted_by` (W5) and, when a backend
   failed, `unanswered_backends` (I4).
 
-**Method.** Script 06 ran every item `verify <DOI> --title --author --year`,
+**Method.** A run script ran every item `verify <DOI> --title --author --year`,
 the 22 `title:` items with `--author --year`, and 4 EXISTS probes. The
-analysis (`calibrate_verify_cycle2_a.py`) joins each run to its own MANIFEST
+analysis joins each run to its own MANIFEST
 row, rebuilds all 84 DOI-path verdicts and similarities offline from the
 production functions (0 differences), and compares with the R1–R4 live runs.
 OpenAlex spend: $0.0270 (110 rows).
@@ -2064,7 +1939,7 @@ M01 with `--author` → EXISTS. X13 with `--author Steenbergen-Hu` → MISMATCH
 **Not fixed (known limit, deferred by decision D2):** a one-word swap
 still clears 0.95, and not only in long titles. Measured: 165-char shared
 prefix, "Boston" vs "Tulsa" = 0.975 untruncated
-(`scratch/probe_cycle2_scorer_design.py`); "Reading" vs "Math" in a
+(a scorer-design probe); "Reading" vs "Math" in a
 136-char title = 0.965 (orchestrator adjudication, pre-cycle-2 scorer;
 inference: unchanged, as that title is ASCII and under 160 characters).
 A unit test records the first as an expected failure, to flip when a
@@ -2113,11 +1988,11 @@ below-floor NOT FOUND, `nearest_candidate`):
   CONFIDENT into WEAK, never MISMATCH. On `title:"…"`, the year also breaks
   exact similarity ties between candidates (before citation count).
 
-**Method.** Script 03 added `claimed_year` and `record_year` to all 84 fixture
+**Method.** A fixture script added `claimed_year` and `record_year` to all 84 fixture
 items from the OpenAlex sourcing records. The claimed year is the year of the
 work the claimed title comes from (version pairs, other papers, X40's 2013
 original review); otherwise the record's own year, which is also what
-fabricated items get, the worst case for the year check. Script 04 ran every item
+fabricated items get, the worst case for the year check. A run script ran every item
 through the CLI (`verify <DOI> --title --author --year`; the 22 `title:` items
 with `--year`). The analysis joins each run to its own MANIFEST row and
 digest and checks four things:
@@ -2125,10 +2000,10 @@ digest and checks four things:
 - the subtitle-aware scores equal the 2026-10-02 `alt_subtitle` values;
 - record years equal the fixture's;
 - every live verdict is rebuilt offline from the row's own measurements.
-The 0 differences on each check are in the script log. "Before" is the
+Each check found 0 differences. "Before" is the
 production grading of 2026-10-02 (0.95 / 0.45, full-title score,
-last-token-anywhere author rule, no year), reconstructed by
-`calibrate_verify_cutoffs.py`. OpenAlex spend: $0.0270 (106 rows; DOI
+last-token-anywhere author rule, no year), reconstructed offline.
+OpenAlex spend: $0.0270 (106 rows; DOI
 lookups free, title searches and NOT FOUND semantic searches $0.001 each).
 
 **Confusion tables, DOI path** (rows = truth, C / W / M; same items):
@@ -2220,8 +2095,8 @@ neighborhood effects, school physical-activity trials, replication in
 psychology, class size / school spending, attention / residual networks)
 returned 373 OpenAlex works. From them, 84 labeled triples (DOI, claimed
 title, claimed author) were authored. Every DOI, record title and
-"real" claimed title traces to a sourcing record (`02_run…` asserts this
-before any call). Each item ran through the live CLI: `verify <DOI> DEST
+"real" claimed title traces to a sourcing record (the run script asserts
+this before any call). Each item ran through the live CLI: `verify <DOI> DEST
 --title … --author …`, and 22 of them also ran as `verify title:"…"`. The
 analysis joins the labels to each run's own MANIFEST row and digest. It
 reproduces every live verdict at 0.90 / 0.60 and every `title_similarity`
@@ -2370,8 +2245,8 @@ implemented 2026-10-03, see "Measured behavior: verify R1–R4" above).**
    last token anywhere. Optionally add `--first-author` for a strict check.
 4. A `--year` cross-check: the only signal that separates
    identical-title versions (the Cochrane update case).
-5. Re-run the calibration (`02_run…` + `calibrate_verify_cutoffs.py`) after any
-   scorer or `norm_title` change. The regression test
+5. Re-run the calibration (the labeled set through the live CLI, then the
+   offline re-grading) after any scorer or `norm_title` change. The regression test
    `VerifyCalibrationTests` pins the confusion table.
 
 ## 2026-10-02 (later) — Unpaywall, live via the CLI
@@ -2379,8 +2254,8 @@ implemented 2026-10-03, see "Measured behavior: verify R1–R4" above).**
 First live Unpaywall calls, after the user set `SCHOLARLY_CONTACT_EMAIL`.
 Probe: `oa 10.1371/journal.pmed.0020124 10.1093/qje/qjv036
 10.48550/arXiv.2205.01833 --all-legs`
-(`DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live`; `smoke_s1/`
-MANIFEST.jsonl line 15, timestamp 2026-10-02T19:08:51Z). OpenAlex spend $0
+(`DAAF_FETCH_CONTEXT=FrameworkDev_S1_unpaywall_live`; MANIFEST line 15,
+timestamp 2026-10-02T19:08:51Z). OpenAlex spend $0
 (single lookups).
 
 | # | Question | Finding |
@@ -2453,9 +2328,9 @@ keyless behavior (a key is configured here).
 - **Abstract coverage:** ~75% in Education (subfield 3304), 2015–2025.
 - **`group_by=has_abstract`** returned a false 0.
 - **`find` dissertations:** in a test, 9 of the top 20 results were theses →
-  excluded by default. This is the user's own note (their original SKILL.md,
-  copied as `…/scholarly-search/SKILL.md` of the S1 workspace), unverified
-  here: the query and raw results stayed in the user's project.
+  excluded by default. This is the user's own note (from the SKILL.md of
+  their original tool, which is not part of DAAF), unverified here: the
+  query and raw results stayed in the user's project.
 
 ### Semantic Scholar
 - `x-api-key`; invalid key → 403, valid → 200/429.
@@ -2463,7 +2338,7 @@ keyless behavior (a key is configured here).
   individual key "automatically gives a user a 1 request per second rate
   across all endpoints" (re-fetched 2026-10-28). The Ai2 key email's "1
   request per second, cumulative across all endpoints" is quoted from the
-  user's 2026-09-27 notes; the email is not in the workspace. Shared gate: five concurrent calls sent 11 requests in 15 s, all
+  user's 2026-09-27 notes; the email itself was not available to check. Shared gate: five concurrent calls sent 11 requests in 15 s, all
   succeeded.
 - Throttling: ~30% of rapid first attempts refused (backoff recovered 10/10);
   later 5 of 6 searches 5 s apart refused; `/paper/search` with `abstract` at
@@ -2484,5 +2359,5 @@ keyless behavior (a key is configured here).
 
 ### Not a backend
 The user's original toolkit also wrapped Firecrawl web search; DAAF defers it
-(decision D-3, no `FIRECRAWL_API_KEY`). Grey literature uses WebSearch +
+(user decision, no `FIRECRAWL_API_KEY`). Grey literature uses WebSearch +
 `web_fetch.sh` instead.

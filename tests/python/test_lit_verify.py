@@ -7,8 +7,8 @@ are SYNTHETIC hand-written cards for the synthetic pdf_ingest fixture PDFs
 ingest are built in code. No third-party document text is committed
 (FRAMEWORK_INTEGRATION_CHECKLIST.md FC11).
 
-Dependency guards (FC10): the CI unit job runs on a runner whose venv holds
-only httpx, so nothing third-party is imported at module level. The pure
+Dependency guards (FC10): the bare CI unit job pins only a few libraries and
+has no PDF tools, so nothing third-party is imported at module level. The pure
 tests (exit tables, card parsing, number rules, the exact ladder tiers and the
 whole gate on in-memory ingests) run everywhere; tests that need rapidfuzz
 (the NEAR tier, the CLI), a parquet library (synthetic ingests on disk) or
@@ -4512,7 +4512,7 @@ class ReportRulesTests(unittest.TestCase):
         import hashlib
         self.assertEqual(hashlib.sha256(canon.encode("utf-8")).hexdigest(), lrr.CERTAINTY_LANGUAGE_SHA256)
 
-    @unittest.skipUnless(HAVE_YAML, "needs PyYAML (in the DAAF image, not on the CI runner)")
+    @unittest.skipUnless(HAVE_YAML, "needs PyYAML (in the DAAF image and the CI unit venv)")
     def test_phrase_table_lockstep_with_yaml(self):
         import yaml
         published = yaml.safe_load((_REPO_ROOT / lv.REPORT_YAML_PATH).read_text())

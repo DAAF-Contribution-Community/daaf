@@ -5,8 +5,9 @@
 # Part of the scholar_search STANDALONE argparse CLI (CLAUDE.md § Code Style
 # exception). Never writes files; never handles provenance.
 #
-# Documented behavior (fetched 2026-10-02, web_fetches/apis/ in the S1
-# workspace):
+# Documented behavior (fetched 2026-10-02 from
+# https://www.crossref.org/documentation/retrieve-metadata/: rest-api/,
+# rest-api/access-and-authentication/ and retraction-watch/):
 #   - No signup. Pools: public 5 req/s, 1 concurrent; polite (mailto param or
 #     User-Agent) 10 req/s, 3 concurrent; Plus 150 req/s. 429 on excess; 403
 #     on a manual block. Headers x-rate-limit-limit / x-rate-limit-interval /

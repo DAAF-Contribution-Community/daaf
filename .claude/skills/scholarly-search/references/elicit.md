@@ -11,9 +11,7 @@ review, longitudinal), the journal's SJR quartile, and a best full-text link.
 artifact live in the core (`scripts/scholar_search.py` § ELICIT). Docs: the
 v2 reference https://docs.elicit.com/ and the OpenAPI spec
 https://docs.elicit.com/openapi.json (the only source for the report bounds),
-fetched 2026-10-11 into `web_fetches/s2_research/` of the S1 workspace
-`research/2026-10-02_FrameworkDev_ScholarlySearch/`, with the research digest
-in `preliminary_notes/07_research_s2_elicit_scite.md`. API Terms: "Last
+fetched 2026-10-11. API Terms (https://elicit.com/operations/api-terms): "Last
 updated: July 15, 2026".
 
 ## Auth
@@ -304,8 +302,8 @@ as `pausedForInsufficientQuota`, which never resumes by itself.
 ## Measured behavior
 
 Full table: `api-notes.md` § "Measured behavior: Elicit (2026-10-11)".
-Evidence: `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s2/elicit/`
-(MANIFEST rows 1–6, raw responses under `restricted/`).
+Six live calls through the CLI on 2026-10-11 (MANIFEST rows 1–6), plus the
+usage re-read of 2026-10-12.
 - **Usage** (2026-10-11, rows 1, 3, 6): 200, `percentUsed` integer **0**
   each time (before the search, after it, and after the report);
   `hasUsageRemaining: true`; period 2026-10-09T11:00Z → 2026-11-09T11:00Z;
@@ -359,7 +357,7 @@ Evidence: `research/2026-10-02_FrameworkDev_ScholarlySearch/smoke_s2/elicit/`
 
 ## Storage and ToS
 
-`LICENSE_CLASS = "restricted"` (spec D-4; user decision 2026-10-11): every
+`LICENSE_CLASS = "restricted"` (user decision 2026-10-11): every
 `elicit-*` artifact is in `lit_search/restricted/`, and the MANIFEST row in
 `lit_search/` records counts, statuses, the sessionId and the export links'
 presence and expiry. It never records content or a link. Quoted from

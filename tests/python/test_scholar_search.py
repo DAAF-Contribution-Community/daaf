@@ -3,8 +3,8 @@
 Standard-library unittest + unittest.mock ONLY — no third-party test deps, no
 network. Every HTTP call goes to a FakeClient injected in place of
 httpx.Client. Adapter mapper fixtures under fixtures/scholar_search/ are
-trimmed LIVE-WIRE captures from the 2026-10-02 S1 smoke runs (each file's
-`_fixture_source` names the run; the Unpaywall fixtures, unpaywall_*.json,
+trimmed LIVE-WIRE captures from the 2026-10-02 live smoke runs of the CLI
+(each file's `_fixture_source` names the run; the Unpaywall fixtures, unpaywall_*.json,
 replaced the earlier doc-derived shape on 2026-10-02 and name their MANIFEST
 row), except s2_search.json, s2_snippets.json and eric_search.json, which are
 SYNTHETIC since 1.5.1 (2026-10-12, user decision: Semantic Scholar passages and
@@ -14,8 +14,8 @@ values (10.5555/ DOIs, fake paperIds/corpusIds, ERIC IDs EJ000001/EJ000002,
 invented titles, authors, abstracts and passage text). The S2 fixtures
 (scite_*.json, elicit_*.json) are SYNTHETIC (1.4.0,
 2026-10-12, user decision: the repository will be published): they keep the
-exact shapes of the 2026-10-11 smoke_s2/ live responses (keys, types, nesting,
-status vocabularies, header names) with invented values (DOIs under
+exact shapes of the 2026-10-11 live Scite and Elicit responses (keys, types,
+nesting, status vocabularies, header names) with invented values (DOIs under
 10.5555/, fake UUIDs, invented titles, counts and report text, no presigned
 URLs); each `_fixture_source` names the MANIFEST row the shape came from.
 Scratch destinations live under scripts/scratch/ (NEVER /tmp) and are
@@ -1354,7 +1354,7 @@ class VerifyCycle3Tests(Base):
     only on a CONFIDENT verdict, W-C/I-D author rule v3, W-D measured known
     limits, I-B MISMATCH wording, I-C author tie-break, I-E entity scrub, I-F
     EXISTS routes and the title: path I4 (no network). The probe pairs are the
-    cycle-2 quality reviewer's (review_scratch/r01_pure_probes.py)."""
+    cycle-2 quality reviewer's (its probe scripts are not in this repository)."""
 
     @classmethod
     def setUpClass(cls):
@@ -1634,9 +1634,9 @@ class VerifyCycle4Tests(Base):
     """Review-fix cycle 4 (user-authorized extra round, 2026-10-05): author rule
     v4, numerals-v3, author-before-year tie-break, scrub residuals, ID-path
     MISMATCH wording, --author help (no network). Repro pairs are the cycle-3
-    reviewers' (review_scratch/c3_r06_pure_probes.py, c3_r07_cli_gate_matrix.py,
-    c3_final_r06_author_mixed_script.py); each fix has negative cases that
-    keep genuine mismatches failing."""
+    reviewers' (their pure probes, CLI gate matrix and mixed-script author
+    probe, not in this repository); each fix has negative cases that keep
+    genuine mismatches failing."""
 
     def verify_doi(self, record_title, extra, year=2015, authors=("C. Kirabo Jackson",)):
         work = work_json(record_title, year, list(authors))
@@ -1697,7 +1697,7 @@ class VerifyCycle4Tests(Base):
 
     # --- 3: organization acronyms -------------------------------------------
     def test_3_org_acronym_equals_record_org_initials(self):
-        # Cycle 6 (D-16) CHANGED these from "pass" to "ambiguous" (ORG_NOT_EXACT): reading an acronym is a
+        # Cycle 6 (step-aside decision) CHANGED these from "pass" to "ambiguous" (ORG_NOT_EXACT): reading an acronym is a
         # semantic judgment for the citation adjudicator; the rule layer passes exact org names only.
         for cited, authors in (("OECD", ["Organisation for Economic Co-operation and Development"]),
                                ("OECD (2019)", ["Organisation for Economic Co-operation and Development"]),
@@ -1838,7 +1838,7 @@ class VerifyCycle4Tests(Base):
 
     # --- 10: ORG_WORDS surnames ---------------------------------------------
     def test_10_org_word_surnames_read_as_persons(self):
-        # Cycle 6 (D-16) CHANGED "Board" / "Board, Jane" vs "Jane Board" from "pass" to "ambiguous": a
+        # Cycle 6 (step-aside decision) CHANGED "Board" / "Board, Jane" vs "Jane Board" from "pass" to "ambiguous": a
         # listed two-word name with an ORG_WORDS word reads as an organization, whose name a cited
         # surname must equal whole (the accepted cost; "J. Board" has one lead word, a person).
         self.assertEqual(self.status("Board", ["Jane Board"]), "ambiguous")
@@ -1864,8 +1864,8 @@ class VerifyCycle5Tests(Base):
     regression: a parenthetical acronym rescued a wrong cited name and graded
     CONFIDENT), L2 (two-letter acronyms), M2 (genuine acronyms hard-blocked),
     L1 (Mac given name), L3 (scrub, Year/Cohort, dropped umlaut). Repro cases
-    are the cycle-4 reviewers' (review_scratch/c4_r01_pure_probes.py,
-    c4_r02_cli_gate_matrix.py, c4_r03_suite_and_mutants.py); no network."""
+    are the cycle-4 reviewers' (their pure probes, CLI gate matrix and suite
+    mutants, not in this repository); no network."""
 
     def status(self, cited, authors, first_only=False):
         return scholar_search.author_match(cited, authors, first_only=first_only)["status"]
@@ -1934,7 +1934,7 @@ class VerifyCycle5Tests(Base):
                                  ("pass", "organization", corroborates))
         # A person found by surname keeps passing beside a parenthetical.
         self.assertEqual(self.status("Jackson (NBER)", ["C. Kirabo Jackson"]), "pass")
-        # Cycle 6 (D-16) closed the cycle-5 documented limit (a bare acronym shared by two
+        # Cycle 6 (step-aside decision) closed the cycle-5 documented limit (a bare acronym shared by two
         # organizations passed for either): a bare acronym is now "ambiguous", never a pass.
         self.assertEqual(self.status("APA", ["American Psychiatric Association"]), "ambiguous")
 
@@ -1948,7 +1948,7 @@ class VerifyCycle5Tests(Base):
                     self.assertIn(verdict, ("WEAK", "MISMATCH"))
                     self.assertNotEqual(ac.get("status"), "pass")
         # Positive control: the genuine full name, and the matched name with its acronym, stay CONFIDENT;
-        # the bare acronym "APA" is WEAK since cycle 6 (D-16: not an exact organization name).
+        # the bare acronym "APA" is WEAK since cycle 6 (not an exact organization name).
         for cited in ("American Psychiatric Association", "American Psychiatric Association (APA)"):
             for route in CYCLE5_ROUTES:
                 with self.subTest(genuine=cited, route=route):
@@ -1990,7 +1990,7 @@ class VerifyCycle5Tests(Base):
     def test_m2_genuine_acronyms_never_fail(self):
         got = {c: self.status(c, [a]) for c, a in self.M2_PROBES}
         self.assertNotIn("fail", got.values(), got)
-        # Cycle 6 (D-16): read acronyms are "ambiguous" (were "pass" under cycle 5).
+        # Cycle 6 (step-aside decision): read acronyms are "ambiguous" (were "pass" under cycle 5).
         # WWC joins them: "clearinghouse" is an ORG_WORDS word since cycle 6 (N2).
         for c in ("NIH", "NASEM", "GAO", "BLS", "EPA", "USDA", "WWC"):
             self.assertEqual(got[c], "ambiguous", c)
@@ -2069,14 +2069,14 @@ PSY = ["American Psychiatric Association"]
 
 
 class VerifyCycle6Tests(Base):
-    """Review-fix cycle 6 (user decision D-16, 2026-10-06): the rule layer is
+    """Review-fix cycle 6 (user decision 2026-10-06): the rule layer is
     certain or steps aside. Rule 1 (org-conservative-v1): an organization
     author passes only on an EXACT whole-name match; acronyms, parenthetical
     or comma forms matched only through the acronym, containment and partial
     names are "ambiguous" (ORG_NOT_EXACT, for the forthcoming citation
     adjudicator). N2 ORG_WORDS, N3 umlaut fold, N5 comma form. Repro cases are
-    the cycle-5 reviewers' (review_scratch/c5_r01_pure_probes.py,
-    c5_r02_cli_gate_matrix.py, c5_r03_suite_and_mutants.py); no network."""
+    the cycle-5 reviewers' (their pure probes, CLI gate matrix and suite
+    mutants, not in this repository); no network."""
 
     # The mocked one-run helpers of VerifyCycle5Tests (no test methods inherited).
     status = VerifyCycle5Tests.status
@@ -2257,17 +2257,17 @@ class VerifyCycle6Tests(Base):
 
 
 class VerifyCycle7Tests(Base):
-    """Review-fix cycle 7 (fix round K, user-approved 2026-10-06; D-16: step
-    aside, never a new word list). H1: an organization whose name holds no
+    """Review-fix cycle 7 (fix round K, user-approved 2026-10-06; the
+    step-aside decision: step aside, never a new word list). H1: an organization whose name holds no
     ORG_WORDS word passed on its last word on all six routes ("Health Canada"
     on Statistics Canada, "New America" on Teach For America, "Westat Policy
     Research" on Mathematica Policy Research); a person-path pass now needs
     compatible given names (rule 1) and steps aside for organization-shaped
     names (rules 2, 3). M1: the national prefix is set aside on the listed
     side only. L1: abbreviated organization names never fail. L2: "&" = "and".
-    Repro cases are the cycle-6 reviewers' (review_scratch/c6_r01_pure_probes.py,
-    c6_r02_cli_gate_matrix.py, c6_r03_suite_mutants_fix.py,
-    c6_r04_fix_sketch_v2.py, c6_consistency_probes.py); no network."""
+    Repro cases are the cycle-6 reviewers' (their pure probes, CLI gate
+    matrix, suite mutants, fix sketch and consistency probes, not in this
+    repository); no network."""
 
     status = VerifyCycle5Tests.status
     gate = VerifyCycle5Tests.gate
@@ -2354,7 +2354,7 @@ class VerifyCycle7Tests(Base):
         self.assertEqual(self.status("America", ["Teach For America"]), "ambiguous")
         self.assertEqual(self.status("Canada", ["Environment and Climate Change Canada"]), "ambiguous")
         self.assertEqual(self.status("Nickow", ["Andre Joshua Nickow"]), "pass")
-        # Documented residual (D-16 cost, not a word list): a bare last word of a two-word organization
+        # Documented residual (step-aside cost, not a word list): a bare last word of a two-word organization
         # name, or all but the first word of a 3-word one, is shaped exactly like "Smith" on "John Smith"
         # or "García Márquez" on "Gabriel García Márquez", so it still passes. Pinned so a change is seen.
         self.assertEqual(self.status("Canada", ["Statistics Canada"]), "pass")
@@ -2416,17 +2416,16 @@ class VerifyCycle7Tests(Base):
 
 class VerifyCycle8Tests(Base):
     """Review-fix cycle 8 (fix round L, the FINAL rule-layer round, user
-    decision D-17, 2026-10-06). D-16: step aside, never a new word list; D-17:
-    the citation adjudicator's second check on every CONFIDENT is mandatory,
+    decision 2026-10-06). The step-aside decision: step aside, never a new
+    word list; the final-round decision: the citation adjudicator's second check on every CONFIDENT is mandatory,
     so the remaining rule-layer false passes are documented residuals, pinned
     here at their current verdict. N-1: a final abbreviated word ("RAND
     Corp.") was a false MISMATCH. N-2: only the first given word was compared
     ("John Q. Smith" on "John A. Smith" passed). N-3: cited given words with
     nothing to compare them with ("Health Canada" on "Canada") passed. INFO: a
     hyphenated given name was read as an organization shape (rule 2). Repro
-    cases are the cycle-7 reviewers' (review_scratch/c7_quality_r01_pure_probes.py,
-    c7_quality_r02_gate_matrix.py, c7_quality_r03_mutants_and_fix_sketch.py);
-    no network."""
+    cases are the cycle-7 reviewers' (their pure probes, gate matrix, mutants
+    and fix sketch, not in this repository); no network."""
 
     status = VerifyCycle5Tests.status
     gate = VerifyCycle5Tests.gate
@@ -2507,7 +2506,7 @@ class VerifyCycle8Tests(Base):
                 res = scholar_search.author_match(cited, authors)
                 self.assertEqual((res["status"], res["name_part"]), ("ambiguous", scholar_search_common.ORG_NOT_EXACT))
 
-    # --- Documented D-16 residuals (accepted; pinned so a change is noticed) -----
+    # --- Documented step-aside residuals (accepted; pinned so a change is noticed)
     RESIDUAL_PASSES = (
         # a bare or partial organization name that is the record's last word(s)
         ("Canada", ["Statistics Canada"]), ("Research", ["Mathematica Policy Research"]),
@@ -2519,14 +2518,14 @@ class VerifyCycle8Tests(Base):
         ("Johnson & Johnson", ["Mary Johnson"]), ("Ernst & Young", ["Jane Ernst"]))
 
     def test_documented_d16_residuals_still_pass(self):
-        # documented D-16 residual; the mandatory adjudicator CONFIDENT second check (D-17) covers it
+        # documented step-aside residual; the mandatory adjudicator CONFIDENT second check covers it
         for cited, authors in self.RESIDUAL_PASSES:
             with self.subTest(cited=cited, authors=authors):
                 res = scholar_search.author_match(cited, authors)
                 self.assertEqual((res["ok"], res["status"], res["name_part"]), (True, "pass", "surname"))
 
     def test_documented_d16_residuals_through_the_gate(self):
-        # documented D-16 residual; the mandatory adjudicator CONFIDENT second check (D-17) covers it
+        # documented step-aside residual; the mandatory adjudicator CONFIDENT second check covers it
         for cited, authors in (("Canada", ["Statistics Canada"]),
                                ("Mathematica Research", ["Mathematica Policy Research"]),
                                ("Johnson & Johnson", ["Mary Johnson"])):
@@ -2545,13 +2544,13 @@ class VerifyCycle8Tests(Base):
 
 class VerifyCycle8bTests(Base):
     """Cycle 8b, an add-on to fix round L (2026-10-06), from the Manuscript
-    Preparation session's report (orchestrator probe
-    scratch/probe_nonfolding_letters.py): the ASCII fold DELETED Latin
+    Preparation session's report, confirmed by an orchestrator probe that is
+    not in this repository: the ASCII fold DELETED Latin
     letters with no Unicode decomposition ("Sørensen" -> srensen, "Ærø" ->
     r), so an ASCII-transliterated citation ("Sorensen", "Djordjevic") was a
     false MISMATCH and deleted letters could collide. Fix: a character
     transliteration table on both sides (normalization, not a word list) and
-    a D-16 step-aside for alternative transliterations; no network."""
+    a step-aside for alternative transliterations; no network."""
 
     status = VerifyCycle5Tests.status
     gate = VerifyCycle5Tests.gate
@@ -2651,10 +2650,10 @@ class VerifyCycle8bTests(Base):
 
 
 class VerifyCycle9Tests(Base):
-    """Cycle 9, the final S1 patch (user approval at Checkpoint 2g,
-    2026-10-06), from review cycle 8 (review_scratch/c8_r01_pure_probes.py,
-    c8_r02_gate_matrix.py, c8_r03_mutants_and_fix_sketch.py; re-run as
-    c8_r01_pure_probes_a.py / c8_r02_gate_matrix_a.py). B-1 (sketch F1): N-2
+    """Cycle 9, the final S1 patch (user approval,
+    2026-10-06), from review cycle 8 (the reviewer's pure probes, gate matrix
+    and fix sketches, re-run after the fix; not in this repository). B-1
+    (sketch F1): N-2
     compared only the second given position, so "John Q. R. Smith" graded
     CONFIDENT on "John Q. S. Smith". F-1 (sketch F2): translit-v1 still
     deleted 216 Latin letters (ə, ħ, ɗ, …), so "Aliyev" on "İlham Əliyev" was
@@ -3462,22 +3461,17 @@ class VerifyCalibrationTests(unittest.TestCase):
     and the 2026-10-03 R1-R4 rules.
 
     The fixture's record_title is the title each DOI resolved to in its live
-    calibration run (research/2026-10-02_FrameworkDev_ScholarlySearch/
-    calibration_verify/, checked by scripts/calibrate_verify_cutoffs.py), so
-    scoring claimed vs record title here reproduces the live title_similarity.
-    claimed_year / record_year come from the same OpenAlex sourcing records
-    (scripts/03_add_claimed_year_to_fixture.py); the R1-R4 live re-run is
-    calibration_verify_r1r4/ (scripts/calibrate_verify_r1r4.py); the cycle-2
-    re-run (rules 2026-10-03b) is calibration_verify_cycle2/
-    (scripts/calibrate_verify_cycle2_a.py); the cycle-3 re-run (rules
-    2026-10-03c, numerals-v2, author rule v3) is calibration_verify_cycle3/
-    (scripts/calibrate_verify_cycle3.py), which changed no verdict, so the
-    pinned tables below hold for both. The cycle-4 re-run (rules 2026-10-05a,
-    numerals-v3, author rule v4) is calibration_verify_cycle4/
-    (scripts/calibrate_verify_cycle4.py); its title-only grading is the same,
-    so the tables below still hold. The cycle-5 re-run (rules 2026-10-06a,
-    numerals-v4, author rule v5) is calibration_verify_cycle5/
-    (scripts/calibrate_verify_cycle5.py).
+    calibration run, so scoring claimed vs record title here reproduces the
+    live title_similarity. claimed_year / record_year come from the same
+    OpenAlex sourcing records. The labeled set was re-run live under each
+    rule change: R1-R4, cycle 2 (rules 2026-10-03b), cycle 3 (rules
+    2026-10-03c, numerals-v2, author rule v3), which changed no verdict, so
+    the pinned tables below hold for both, cycle 4 (rules 2026-10-05a,
+    numerals-v3, author rule v4), whose title-only grading is the same, so
+    the tables still hold, and cycle 5 (rules 2026-10-06a, numerals-v4,
+    author rule v5). The scholarly-search skill's references/api-notes.md
+    records each run; the raw responses and calibration scripts are not in
+    this repository.
     """
 
     @classmethod
@@ -3528,8 +3522,8 @@ class VerifyCalibrationTests(unittest.TestCase):
 
     def test_calibrated_confusion_is_reproduced(self):
         # Cycle-2 title grading (R1 hybrid + B1 untruncated verify_title_norm + D2 numeral guard),
-        # title-separable items, reproduces api-notes.md § verify cycle 2 (calibrate_verify_cycle2_a.py
-        # log): match 9/35/0, mismatch 0/30/9 (R1-R4 was 12/32/0 and 0/29/10: M30 and M32 lost
+        # title-separable items, reproduces api-notes.md § verify cycle 2:
+        # match 9/35/0, mismatch 0/30/9 (R1-R4 was 12/32/0 and 0/29/10: M30 and M32 lost
         # CONFIDENT once the 160-char truncation stopped hiding the record's subtitle, M37 to the
         # numeral guard; X21 moved MISMATCH -> WEAK untruncated). With the cited year (R4), all 84
         # items: match 9/35/0, mismatch 0/31/9 (X40 -> WEAK). Rules 2026-11-01a: the word check moves
@@ -3795,7 +3789,7 @@ class SciteTests(Base):
         res = scite.retraction_check(http, RETRACTED_DOI)
         self.assertEqual(res["status"], "retracted")
         got = {n["native_status"]: n["status"] for n in res["notices"]}
-        # 1.4.0 (user decision, Checkpoint 2): a published comment is
+        # 1.4.0 (user decision, 2026-10-12): a published comment is
         # "commented", ranked with "none", never "updated".
         self.assertEqual(got, {"Retracted": "retracted", "Has correction": "corrected", "Has erratum": "corrected",
                                "Has expression of concern": "expression of concern", "Comment": "commented"})
@@ -3960,7 +3954,7 @@ class SciteTests(Base):
         self.assertIn("restricted_raw_artifact", md)
 
     def test_scite_only_comment_is_commented_and_never_raises_the_combined_status(self):
-        # 1.4.0 (user decision, Checkpoint 2): a paper whose only Scite notice
+        # 1.4.0 (user decision, 2026-10-12): a paper whose only Scite notice
         # is a published comment. OpenAlex/Crossref say none -> combined NONE
         # (it was UPDATED in 1.2.0-1.3.1); stdout shows scite=commented.
         commented = {"doi": CLEAN_DOI, "retracted": False, "title": "T",
@@ -4287,8 +4281,8 @@ class ElicitTests(Base):
         self.assertNotIn(SENTINEL_KEY, out + "".join(p.read_text() for p in self.dest.iterdir() if p.is_file()))
 
     # --- 1.3.1 (S2 recovery, 2026-10-11): shape fixtures + crash recovery ---
-    # The fixtures keep the shapes of the S2 live trial's responses
-    # (smoke_s2/elicit/), including the report whose polling process died
+    # The fixtures keep the shapes of the 2026-10-11 live Elicit trial's
+    # responses, including the report whose polling process died
     # after the `created` checkpoint and was re-attached with elicit-resume.
     # Since 1.4.0 their values are SYNTHETIC (fake sessionId, invented text).
     FIX_SID = "11111111-2222-4333-8444-555555555555"

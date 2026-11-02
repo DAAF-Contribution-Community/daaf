@@ -7,10 +7,8 @@ command **selected** — the row's `backends_selected` — decided before any
 request is sent, so a selected backend that then fails or is skipped still
 sets the class; the one exception is split storage, below), and artifacts from `restricted` backends are written to
 `lit_search/restricted/`, which is excluded from any shareable bundle and must
-be named in the AI/data disclosure. Sources: vendor docs and terms fetched
-2026-10-02 (S1 workspace `web_fetches/apis/`, summarized in
-`preliminary_notes/05_research_scholarly_apis.md` §4) and 2026-10-11
-(`web_fetches/s2_research/`, `preliminary_notes/07_research_s2_elicit_scite.md`).
+be named in the AI/data disclosure. Sources: vendor docs and terms pages fetched
+2026-10-02 and 2026-10-11 (each backend's reference file names its docs).
 
 **Split storage (`retractions`, tool 1.2.0).** `retractions` is the one
 command whose digest holds facts only (status, notice DOIs, dates). When it
@@ -30,7 +28,7 @@ goes to `restricted/` as usual; `--skip scite` keeps Scite out entirely.
 | `cc-by-nc` | Non-commercial with attribution | `lit_search/` | Research sharing with attribution; no commercial redistribution |
 | `restricted` | Vendor terms bar redistribution or derived datasets | `lit_search/restricted/` | **Never** shared or bundled |
 
-User-supplied PDFs are a separate, private class (`private`, spec §13) handled
+User-supplied PDFs are a separate, private class (`private`) handled
 by the PDF layer: see the `pdf-reading` skill § Privacy.
 
 ## Matrix
@@ -43,7 +41,7 @@ by the PDF layer: see the `pdf-reading` skill § Privacy.
 | Crossref | open | Yes — "use it for any purpose"; some abstracts copyrighted | n/a | Not required | Built (S1) |
 | Unpaywall | open | Yes (same data as OpenAlex) | Points to PDFs that keep their own license | Not required | Built (S1) |
 | arXiv (derived leg) | open | Metadata CC0 | Store and use "for research purposes"; no redistribution without the rights holder | — | Derived, no API call |
-| **Scite** | restricted | **Restricted** (decision D-4, "accepted for now"): Terms §8(b) bar storing, redistributing or making content (incl. Classifier Results = tallies) "or any dataset derived from it, available to any third party", keyless endpoints included. Keyless tallies and retraction notices on by default; `scite-search` behind `--ack-scite-license` (Pro key is "for evaluation"; research use of Search needs a separate license). `scite-tally`/`scite-search` artifacts all in `restricted/`; `retractions` splits (Scite raw in `restricted/`, facts-only digest open). The `tests/python/fixtures/scholar_search/scite_*.json` fixtures are synthetic (tool 1.4.0, 2026-10-12): live response shapes with invented values, no Scite content (see `scite.md`) | Not via Scite | No attribution clause; never remove author/licensor notices (§4(iii)) | Built (S2, 2026-10-11) |
+| **Scite** | restricted | **Restricted** (user decision 2026-10-11, "accepted for now"): Terms §8(b) bar storing, redistributing or making content (incl. Classifier Results = tallies) "or any dataset derived from it, available to any third party", keyless endpoints included. §8(c) also bars using that content "to train, fine-tune, evaluate or otherwise improve any machine learning or artificial intelligence model", and §4(v) allows Classifier Results only for "analyzing whether a scientific claim made in an Article has been supported or contradicted by subsequent Articles" (terms as fetched 2026-10-11; re-fetches on 2026-10-28 and 2026-10-30 answered HTTP 403, but a copy the user took from the live page on 2026-10-30 matches word for word). Keyless tallies and retraction notices on by default; `scite-search` behind `--ack-scite-license` (Pro key is "for evaluation"; research use of Search needs a separate license). `scite-tally`/`scite-search` artifacts all in `restricted/`; `retractions` splits (Scite raw in `restricted/`, facts-only digest open). The `tests/python/fixtures/scholar_search/scite_*.json` fixtures are synthetic (tool 1.4.0, 2026-10-12): live response shapes with invented values, no Scite content (see `scite.md`) | Not via Scite | No attribution clause; never remove author/licensor notices (§4(iii)) | Built (S2, 2026-10-11) |
 | **Elicit** | restricted | "You may store and reuse API Outputs" (§3.5), but "You may not aggregate search results to build or contribute to a standalone search index, database, or corpus" (§3.5), and "you will delete any cached API Outputs within 30 days" of termination (§12.3). No submitting personal data, "includes names" (§2); no use of outputs "to train, fine-tune, evaluate, or improve any machine learning model or AI system" (§3.2(b)); outputs are non-deterministic (§4.2). Every `elicit-*` artifact is in `restricted/` (report bodies as `restricted/<base>_report.md`; presigned export links never leave it); the MANIFEST row holds counts, statuses and the sessionId only. Opt-in to `find` only. The `tests/python/fixtures/scholar_search/elicit_*.json` fixtures are synthetic (tool 1.4.0, 2026-10-12): the trial's response shapes with invented values, no Elicit output (see `elicit.md`) | `fullTextUrl` carries no license: never treated as OA (`oa` decides) | **Disclose AI generation** wherever a report or summary is used (§3.4); no citation clause | Built (S2, 2026-10-11) |
 
 ## Redistribution rule for papers

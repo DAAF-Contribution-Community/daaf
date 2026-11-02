@@ -10,8 +10,9 @@
 # loop, the wall-clock cap and every artifact (scholar_search.py §§ ELICIT).
 #
 # Documented behavior (docs.elicit.com v2 reference + openapi.json, fetched
-# 2026-10-11 into the S1 workspace web_fetches/s2_research/; API terms
-# "Last updated: July 15, 2026"):
+# 2026-10-11 from https://docs.elicit.com/ and
+# https://docs.elicit.com/openapi.json; API terms
+# https://elicit.com/operations/api-terms, "Last updated: July 15, 2026"):
 #   - Base https://elicit.com/api/v2; "Authorization: Bearer elk_live_…";
 #     "API access requires a Pro plan or above." Keys: elicit.com/settings
 #     (v2 API reference, openapi.json fetched 2026-10-11 and 2026-10-28; the
@@ -52,8 +53,7 @@
 #     corpus reconstruction; §3.5 store/reuse outputs but no standalone index;
 #     §3.4 disclose AI generation; §4.2 non-deterministic; §12.3 delete cached
 #     outputs within 30 days of termination -> LICENSE_CLASS "restricted".
-# MEASURED (2026-10-11, live CLI runs into research/2026-10-02_FrameworkDev_
-# ScholarlySearch/smoke_s2/elicit/ rows 1-6; api-notes.md § "Measured
+# MEASURED (2026-10-11, six live CLI runs; api-notes.md § "Measured
 # behavior: Elicit (2026-10-11)", references/elicit.md § Measured behavior):
 #   - /usage 200; percentUsed is an integer and stayed 0 across a 1-result
 #     search and a 10/5 report on 2026-10-11 (last read 18:55:41Z), then read
@@ -81,7 +81,7 @@ NAME = "elicit"
 LABEL = "Elicit"
 KEY_ENV = "ELICIT_API_KEY"
 REQUIRED_KEY = True           # every v2 endpoint needs the Bearer key (missing -> exit 10)
-LICENSE_CLASS = "restricted"  # API Terms §12.3 (delete cached outputs within 30 days of termination); spec D-4
+LICENSE_CLASS = "restricted"  # API Terms §12.3 (delete cached outputs within 30 days of termination); user decision 2026-10-11
 RATE_LIMIT = {"elicit": 0.75}  # 80/min, under the 100/min per-IP limit; polling shares the lane
 RATE_LIMIT_NOTE = ("100 req/min per IP across ALL endpoints incl. polling; a 429 blocks the IP 5 min "
                    "(gated 0.75 s; a 429 pauses the lane 300 s, never retried)")
@@ -107,7 +107,7 @@ REPORT_EXTRACT_BOUNDS = (1, 80)    # openapi.json maxExtractPapers minimum/maxim
 # researchQuestion / query maxLength is 2000 (openapi.json); the core's
 # QUERY_MAX_LEN (1000) is stricter, so no separate Elicit cap is needed.
 # Create answers accepted as "created" (1.4.0): openapi.json declares only
-# 202 for POST /sessions/reports (research script 26, 2026-10-12); 201 Created
+# 202 for POST /sessions/reports (read 2026-10-12); 201 Created
 # means the same by HTTP semantics. Any other answer is an UNCERTAIN create
 # (the core records it and refuses a same-question re-run).
 CREATE_OK_STATUSES = (202, 201)

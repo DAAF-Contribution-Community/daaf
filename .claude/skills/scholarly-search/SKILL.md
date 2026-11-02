@@ -156,7 +156,8 @@ openalex,semantic_scholar`.
 Stdout is a triage list (title, year, authors, venue, citations, backends,
 IDs). Read the `.md` digest for abstracts, DOIs, merged versions and access
 links before judging relevance. Digests over ~8 KB: `Grep` them rather than
-reading whole, as with web-retrieval extracts.
+reading whole (the Grep tool where available, else `grep -n -C` via Bash), as
+with web-retrieval extracts.
 
 ## Literature-review workflow
 
@@ -276,7 +277,7 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   no organization word ("Health Canada", "New America") looks exactly like
   a person, and a different given name may be a nickname, a
   transliteration or another person. The rule layer cannot be sure, so it
-  steps aside (user decision D-16) rather than guess with name lists.
+  steps aside (user decision, 2026-10-06) rather than guess with name lists.
   **An organization passes only on its exact whole name** as
   listed, after case, punctuation, accents and a leading "The" are set
   aside, with "&" read as "and" ("Institute of Education Sciences"; "The
@@ -302,7 +303,7 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   (APA: Psychological or Psychiatric Association), and a contained name
   can be a different one ("Ohio Department of Education"). String rules
   cannot settle that safely, so the rule layer steps aside (user
-  decision D-16) and leaves it to the citation second check: a
+  decision, 2026-10-06) and leaves it to the citation second check: a
   person, and the citation adjudicator once a model passes its
   evaluation. A parenthetical never stands in for a
   person's name: "Smith (APA)" is checked as Smith. A cited author with
@@ -334,7 +335,7 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   "Public Policy Associates"), like "John Smith" on "John A. Smith"; and
   the "&" co-author split ("Johnson & Johnson" on "Mary
   Johnson": "&" ends the first cited author, so only "Johnson" is
-  checked), like "Smith & Jones". User decision D-17 makes the citation
+  checked), like "Smith & Jones". A user decision (2026-10-06) makes the citation
   second check on **every** CONFIDENT mandatory: in a
   Literature Review each CONFIDENT reference is held for that check, and
   these residuals are reviewed there. The citation adjudicator

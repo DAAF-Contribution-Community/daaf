@@ -7,9 +7,7 @@ concern, comments), which it gathers from Crossref, PubMed and its own notice
 detection. No other backend gives stance; for retractions it is a third,
 independent source beside OpenAlex and Crossref. Adapter:
 `scripts/scholar_backends/scite.py`. Docs: https://docs.scite.ai (fetched
-2026-10-02 into `web_fetches/apis/` and re-fetched 2026-10-11 into
-`web_fetches/s2_research/` of the S1 workspace
-`research/2026-10-02_FrameworkDev_ScholarlySearch/`; drift check: no change).
+2026-10-02 and re-fetched 2026-10-11; drift check: no change).
 
 ## Auth
 
@@ -94,7 +92,7 @@ Scite, any harder notice wins (`updated` > `commented`).
 
 ## Storage and ToS
 
-`LICENSE_CLASS = "restricted"` (user decision D-4, 2026-10-11, "accepted for
+`LICENSE_CLASS = "restricted"` (user decision, 2026-10-11, "accepted for
 now"). Every endpoint, keyless included, is "subject to the Scite Terms of
 Use" (OpenAPI header of the Papers/Tallies reference). Quoted from
 https://scite.ai/terms (fetched 2026-10-11). Re-fetches on 2026-10-28 and
@@ -164,8 +162,8 @@ or licensor notices (the `ATTRIBUTION` line says so). How the tool stores it:
   with invented values: DOIs under `10.5555/`, invented titles, authors and
   tallies. Until 2026-10-12 the `/papers` fixtures lacked 15 and 14 live key
   paths and `scite_search.json` 48; those keys were added with invented values
-  (S2 review cycle 2; paths listed and re-checked to zero missing by session
-  scripts 29 and 29_a, which print no live value). Each `_fixture_source`
+  (S2 review cycle 2; paths listed and re-checked to zero missing by a
+  script that prints no live value). Each `_fixture_source`
   names the MANIFEST row its shape came from. No Scite content (tally values,
   notice lists, search hits) is in the repository.
 - **Audited scripts** may call `retractions` (facts only) but never
