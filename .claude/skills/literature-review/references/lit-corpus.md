@@ -8,7 +8,7 @@ writes as JSONL. It computes what an agent must never type: paper keys and
 citekeys, the descriptive summary of three or more estimates, the sign test,
 the evidence of absence behind a gap. Source of truth: the header,
 `EXIT_CODES`, `SCHEMAS`, `RULE_VERSIONS` and `build_parser()` of
-`scripts/lit_corpus.py` (`TOOL_VERSION = "1.4.0-daaf"`, 2026-11-01;
+`scripts/lit_corpus.py` (`TOOL_VERSION = "1.5.0-daaf"`;
 `CONTRACT_VERSION = "0.4.0"`). If this page and the code disagree, the code
 wins: report the drift. `lit_verify report` (`lit-verify-report.md`) reads
 these tables to check a deliverable.
@@ -66,7 +66,7 @@ bash /daaf/scripts/lit_corpus.sh adjudications pack <PROJECT_DIR> --batch ID --m
 bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
 bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE
      --decision same_work|different_work|defer|override_mismatch --user-words "..." [--rationale "..."]
-bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--keys K1,... | --deliverable PATH]
+bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--deliverable PATH] [--keys K1,...]
 bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
 ```
 
@@ -113,8 +113,8 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `adjudications pack` | Selects the rows for the second check, writes the bundle and the rendered fixed prompt, prints the hashes and the adjudicator's identity (§ Citation second check) | `--batch`, `--model-id` (the exact model ID to be dispatched) |
 | `adjudications ingest` | Binds the adjudicator's return to the audited pack, writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
 | `adjudications record-human` | Records a person's reply for one or more verify rows | `--rows FILE` (one verify row sha256 per line, `#` comments), `--decision`, `--user-words`, `--rationale` (required except with `defer`) |
-| `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--keys`, `--deliverable` (its `@citekey`s), or every included paper |
-| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (29 expectations) | — |
+| `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--deliverable` (its `@citekey`s), `--keys`, both (one list: the deliverable's references, then each named paper it does not cite), or every included paper |
+| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (30 expectations) | — |
 
 ## Tables
 
@@ -378,6 +378,21 @@ also writes
 `# number citekey`) for every listed row a reply can confirm (CONFIDENT or
 WEAK, not yet final or rejected), ready for `record-human --rows`.
 
+Which references the sheet lists:
+
+| Flags | Listed, in this order |
+|-------|-----------------------|
+| `--deliverable PATH` | The corpus papers whose citekey the file cites as `@citekey`, in paper-key order; a citekey the corpus does not hold is skipped |
+| `--keys K1,...` | The papers named, in the order given; a paper named twice is listed once |
+| both | One list: the deliverable's references as above, then each paper named with `--keys` that the deliverable does not cite, in the order given. A paper named that the deliverable already cites, or named twice, is listed once, so the rows file never names a verify row twice (`record-human` refuses that). The sheet says which numbers the deliverable cites and which were added by name; when the deliverable cites none of the corpus's papers, the sheet says so and stdout carries a WARNING |
+| neither | Every included paper |
+
+A `--keys` key the corpus does not hold refuses the sheet (exit 11, the
+unknown keys in `refusals`), with or without `--deliverable`; so does a
+`--keys` that names no key, such as `--keys ""` or `--keys ","` (exit 11,
+"--keys names no paper key"). Run one sheet with both flags when a final deliverable will cite
+papers beyond its draft, so one reply covers every reference.
+
 ## Keys, citekeys, dedup
 
 - **Paper keys** (`paperkey-v1`), frozen at first assignment: `W<digits>`
@@ -473,7 +488,7 @@ Per-command extras on a successful row:
 | `adjudications pack` | `batch_id`, `bundle_sha256`, `prompt_sha256`, `row_sha256s`, `model_id`, `agent_name`, `prompt_version`, `rubric_version`, `template_sha256`, `agent_file_sha256`, `skipped` (`[{paper_key, reason}]`) |
 | `adjudications ingest` | `batch_id`, `batch_log_file`, `batch_log_sha256`, `model_id`, `template_sha256`, `rubric_version`, `agent_file_sha256`, `agent_file_sha256_at_ingest`, `model_evaluated`, `judged`, `unjudged` (row sha256s) |
 | `adjudications record-human` | `decision`, `rows` (each verify row sha256 the reply covers), `statuses` (`{paper_key: status}`); the user's words are in `parameters.user_words` |
-| `adjudications glance-sheet` | `keys`, `confirmable` |
+| `adjudications glance-sheet` | `keys` (the list, in sheet order), `confirmable`, `keys_from_deliverable` (the deliverable's references; null without `--deliverable`), `keys_added` (the `--keys` papers listed after the deliverable's, every `--keys` paper without `--deliverable`; null without `--keys`) |
 
 `screen sheet`, `notes record` and `gaps record` add none. An `ingest` row's
 `inputs` also list the pack log (with its sha256) and the audit log (with
@@ -498,9 +513,9 @@ file.
 
 ## Tests and fixtures
 
-`tests/python/test_lit_corpus.py` (67 tests; the parquet and
+`tests/python/test_lit_corpus.py` (70 tests; the parquet and
 round-trip tests need polars or pyarrow, and rapidfuzz for the selftest and
-the second-check command tests, and are skipped without them, as on the bare CI runner) and `lit_corpus.sh selftest` (29 expectations). The P3 contract
+the second-check command tests, and are skipped without them, as on the bare CI runner) and `lit_corpus.sh selftest` (30 expectations). The P3 contract
 bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.4.0:
 four invented papers with checked v3 cards, findings F01 and F02, two gaps
 (G02 left unclassified), one citation link, the second check of the four

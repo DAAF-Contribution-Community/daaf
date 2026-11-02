@@ -44,7 +44,8 @@
 #   bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
 #   bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE --decision D
 #        --user-words "..." [--rationale "..."]
-#   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--keys K1,... | --deliverable PATH]
+#   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--deliverable PATH] [--keys K1,...]
+#        (both together: the deliverable's references, then each named paper it does not cite, on one sheet)
 #   bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
 #
 # `adjudications pack` is run from a captured script

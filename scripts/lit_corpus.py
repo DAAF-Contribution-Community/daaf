@@ -45,7 +45,7 @@
 #   bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
 #   bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE
 #        --decision same_work|different_work|defer|override_mismatch --user-words "..." [--rationale "..."]
-#   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--keys K1,... | --deliverable PATH]
+#   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--deliverable PATH] [--keys K1,...]
 #   bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
 #
 # --- Project layout and guards -----------------------------------------------
@@ -147,7 +147,9 @@
 #   data/adjudication_raw/{batch}.jsonl; `record-human` records a person's
 #   reply (their words are a command-line argument); `glance-sheet` writes
 #   the plain-language list output/reference_glance_v{N}.md the researcher
-#   reads before replying.
+#   reads before replying: the deliverable's references (--deliverable), the
+#   papers named (--keys), or both (the deliverable's first, then each named
+#   paper it does not cite), else every included paper.
 #
 # --- Licences ---------------------------------------------------------------
 #   A search row whose license_class is "restricted" or that names
@@ -290,7 +292,12 @@ sc = _load_common()
 # The evaluated list is matched on the whole identity (model ID, template sha256, rubric version, agent file sha256;
 # pack records the agent file's sha256 in the bundle and its log), and an override_mismatch binds to the record the
 # re-grade compared (ledger override_record_json), so the overridden reference is exported and citable.
-TOOL_VERSION = "1.4.0-daaf"
+# 1.5.0 (the user's decision that `--keys` adds to a deliverable's references): `adjudications glance-sheet` with
+# both --deliverable and --keys lists the deliverable's references, then each named paper it does not cite, on one
+# sheet; the sheet says which were added by name, and the MANIFEST row records keys_from_deliverable and keys_added.
+# Either flag alone lists what it did in 1.4.0, except that `--keys` alone lists a repeated key once and a `--keys`
+# naming no key is refused (exit 11). Contract 0.4.0 (no output schema change).
+TOOL_VERSION = "1.5.0-daaf"
 # Output contract semver (pre-1.0; additive changes bump the minor version).
 # 0.1.0 (S4 D3): the first contract. 0.2.0 (S4 review-fix E, 2026-10-31,
 # additive): claims from a paper's stored abstract (claim_id {paper_key}-aNN,
@@ -3267,19 +3274,40 @@ def glance_words(row, verdict, row_verdict, led):
 def cmd_adj_glance(ctx, a, state):
     # `adjudications glance-sheet`: the plain-language reference list the researcher reads before replying, and a
     #   rows file (one verify row sha256 per line) that record-human takes for a reply covering the whole list.
+    #   The list is the deliverable's references (--deliverable), the papers named (--keys), both, or else every
+    #   included paper.
     corpus = state["corpus"]
-    if a.keys:
-        keys = [k.strip() for k in a.keys.split(",") if k.strip()]
-    elif a.deliverable:
-        _, data = read_input(ctx, a.deliverable, "deliverable")
+    from_deliverable = given = added = rel_deliverable = None
+    if a.deliverable:
+        real, data = read_input(ctx, a.deliverable, "deliverable")
+        rel_deliverable = os.path.relpath(real, ctx["pd"])
         cks = set(CITE_RE.findall(data.decode("utf-8", "replace")))
-        keys = sorted(k for k, r in corpus.items() if r["citekey"] in cks)
+        from_deliverable = sorted(k for k, r in corpus.items() if r["citekey"] in cks)
+    if a.keys is not None:
+        # INTENT: a --keys that names no key (an empty template slot, a bare ",") is refused, with or without
+        #   --deliverable, so it never silently becomes "every included paper" or a sheet saying papers were named.
+        given = [k.strip() for k in a.keys.split(",") if k.strip()]
+        if not given:
+            raise CorpusError(11, "--keys names no paper key")
+    if from_deliverable is not None and given is not None:
+        # INTENT: --keys adds to the deliverable's references, never replaces them, so one sheet and one reply cover
+        #   every reference the final will cite.
+        # REASONING: the deliverable's references lead in their own order (paper-key order); a named paper the
+        #   deliverable already cites, or one named twice, is listed once, so the rows file never names a verify row
+        #   twice (record-human refuses a row listed twice).
+        added = [k for k in dict.fromkeys(given) if k not in from_deliverable]
+        keys = from_deliverable + added
+    elif given is not None:
+        # REASONING: a paper named twice is listed once here too, so the rows file is usable whole in every mode.
+        keys = added = list(dict.fromkeys(given))
+    elif from_deliverable is not None:
+        keys = from_deliverable
     else:
         keys = sorted(included_keys(ctx) & set(corpus))
     unknown = [k for k in keys if k not in corpus]
     if not keys or unknown:
-        raise CorpusError(11, "glance-sheet needs references of the review (--keys, --deliverable, or included papers)",
-                          [f"unknown {k}" for k in unknown])
+        raise CorpusError(11, "glance-sheet needs references of the review (--deliverable, --keys, both, or included "
+                          "papers)", [f"unknown {k}" for k in unknown])
     entries, cur = search_rows(ctx), current_ledger(ctx)
     md = ["| # | Reference | Title as cited | Title on record | Authors as cited | Authors on record | Year (cited / "
           "on record) | Where published | Where it stands |",
@@ -3314,16 +3342,34 @@ def cmd_adj_glance(ctx, a, state):
            "3 is a different paper\". One reply can cover the whole list." if confirmable else
            "None of these references can be confirmed as they stand. To keep one whose record does not match, say so "
            "with your reason." if unmatched else "Every reference below is already decided; nothing needs a reply.")
+    # INTENT: with both --deliverable and --keys the sheet says which references the deliverable cites and which were
+    #   added by name, so the researcher (and the record) can tell the two apart.
+    source = []
+    if from_deliverable is not None and given is not None:
+        nd, na, d = len(from_deliverable), len(added), glance_cell(rel_deliverable, 160)
+        first = "Number 1 is the reference" if nd == 1 else f"Numbers 1 {'and' if nd == 2 else 'to'} {nd} are the " \
+            "references"
+        rest = f"number {nd + 1} was" if na == 1 else f"numbers {nd + 1} {'and' if na == 2 else 'to'} {nd + na} were"
+        named = "the paper added by name is" if len(dict.fromkeys(given)) == 1 else "every paper added by name is"
+        source = [(f"{first} cited in {d}; {rest} added by name." if nd and na else
+                   f"Every reference below is cited in {d}; {named} already cited there." if nd else
+                   f"None of the review's papers is cited in {d}; every reference below was added by name."), ""]
+        if not nd:
+            ctx["out"].append(f"lit_corpus: WARNING: {rel_deliverable} cites none of the corpus's papers; the sheet "
+                              "lists the --keys papers only")
     md = ["# Reference check: please look over each reference", "",
-          "Each row puts the title as cited next to the title in the database record DAAF matched it to. " + ask, "",
-          "The titles, names and places below are copied exactly as the records give them.", ""] + md
+          "Each row puts the title as cited next to the title in the database record DAAF matched it to. " + ask, ""
+          ] + source + ["The titles, names and places below are copied exactly as the records give them.", ""] + md
     rel, _ = write_output(ctx, "", "reference_glance", ".md", "\n".join(md) + "\n")
     rows_rel, _ = write_output(ctx, "", "reference_glance", "_rows.txt",
                                "# verify rows a reply can confirm (record-human --rows)\n" + "\n".join(confirmable)
                                + ("\n" if confirmable else ""))
-    ctx["row"].update(keys=keys, confirmable=len(confirmable))
+    ctx["row"].update(keys=keys, confirmable=len(confirmable), keys_from_deliverable=from_deliverable,
+                      keys_added=added)
     ctx["out"].append(f"lit_corpus: adjudications glance-sheet: {len(keys)} reference(s) -> {rel}; {len(confirmable)} "
                       f"a reply can confirm -> {rows_rel}")
+    if from_deliverable is not None and given is not None:
+        ctx["out"].append(f"  {len(from_deliverable)} cited in {rel_deliverable}, {len(added)} added by --keys")
     return 0
 
 
@@ -3845,6 +3891,18 @@ def run_selftest(scratch, row):
         codes = [c for c in CITATION_STATUSES + ADJ_VERDICTS + ("CONFIDENT", "WEAK", "MISMATCH") if c in glance]
         selftest_expect(results, "glance sheet in plain words, no internal codes",
                         not codes and "matches the record; not yet confirmed" in glance, codes or "plain")
+        # --deliverable plus --keys: the draft cites P1 and P2; P4 is added, P1 (already cited) is listed once
+        p1, p2, p4 = (DEMO_PAPERS[i]["key"] for i in (0, 1, 3))
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            gcode = run(["adjudications", "glance-sheet", pd, "--deliverable",
+                         os.path.join(pd, "output", "synthesis_draft.md"), "--keys", f"{p4},{p1}"])
+        grow = [r for _, r in manifest_rows(os.path.join(pd, "data", "MANIFEST.jsonl"))][-1]
+        glance2 = open(os.path.join(pd, "output", "reference_glance_v2.md"), encoding="utf-8").read() \
+            if gcode == 0 else ""
+        selftest_expect(results, "glance sheet: a deliverable plus added keys, no repeats",
+                        (grow.get("keys"), grow.get("keys_from_deliverable"), grow.get("keys_added")) ==
+                        ([p1, p2, p4], [p1, p2], [p4]) and "; number 3 was added by name." in glance2,
+                        {k: grow.get(k) for k in ("exit_code", "keys", "keys_from_deliverable", "keys_added")})
         paths = demo_adj_paths(pd)
         bundle = os.path.join(pd, "data", "adjudication_bundles", "b01.json")
         saved = open(bundle, "rb").read()

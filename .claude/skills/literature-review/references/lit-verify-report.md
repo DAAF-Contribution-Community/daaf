@@ -62,7 +62,7 @@ bash /daaf/scripts/lit_verify.sh report <PROJECT_DIR> <DELIVERABLE>
 | `--kind` | `synthesis` | `synthesis`: a round's draft. `final`: the deliverable the researcher receives; the cards behind its claims are checked again (user decision, 2026-10-30). `bibliography`: a reading list, where a paper known only by title and authors may be listed |
 | `--level` | none | The review level the researcher chose. Recorded in the result for the reader; **no check depends on it** (the checks follow the data: evidence grades decide the abstract rule, and the certainty checks run only on sentences marked as findings) |
 | `--data-version` | the latest | Pin a table version: `corpus=N`, `claims=N`, `findings=N`, `citation_edges=N`, `paper_aliases=N`, `citation_adjudications=N` (repeatable). A pinned version that does not exist: exit 10 |
-| `--recheck-cards` / `--no-recheck-cards` | on for `final`, else off | Run the card gate again, in-process, on every card behind a claim. Needs rapidfuzz (exit 10) and the paper's stored source file |
+| `--recheck-cards` / `--no-recheck-cards` | on for `final`, else off | Run the card gate again, in-process, on every card behind a claim. Needs rapidfuzz (missing: exit 10). Needs the paper's stored source file: a missing or changed source makes the re-check differ, so the report records `CARD_RECHECK_DIFFERS` and FAILs (exit 11) |
 | `--timeout` | 120 | Seconds per subprocess when cards are re-checked |
 
 One invocation per Bash call. The wrapper runs `python3` directly (a

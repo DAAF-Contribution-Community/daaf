@@ -49,8 +49,9 @@ researcher applies the skill directly.
 ## In short
 
 **What you can rely on, at every level.** Every search is saved with its exact
-query and results. Every cited reference has been matched to a database record,
-so it exists as cited. Anything taken only from an abstract says "per abstract".
+query and results. Every cited reference has been looked up in a database and
+checked against its record by the researcher (the reference check), so it exists
+as cited. Anything taken only from an abstract says "per abstract".
 Studies are never averaged or pooled into one number (a labelled median and
 range of the studies' own results may be shown). Words such as "probably"
 and "may" follow a fixed table, so a sentence never sounds surer than the
@@ -87,20 +88,20 @@ it as written; details and the type-by-level table are in
 
 > **How deep should this review go?** You can change your mind after any round (one cycle of searching, choosing and reading papers, after which DAAF reports back); DAAF keeps a record of every choice.
 >
-> **Quick scan.** DAAF searches the literature, reads titles and abstracts, and writes a short memo: what studies report, which papers look most useful, and where the gaps seem to be. Every reference is matched to a database record and you look over the reference list before the memo is final, and every statement drawn from an abstract says so.
+> **Quick scan.** DAAF searches the literature, reads titles and abstracts, and writes a short memo: what studies report, which papers look most useful, and where the gaps seem to be. Every reference is looked up in a database and you check each one before the memo is final, and every statement drawn from an abstract says so.
 > - *Good for:* getting your bearings, or finding pointers when you plan to read the papers yourself.
 > - *Trade-off:* abstracts can overstate results and leave out limitations, so the memo says what papers claim, not how well they show it.
-> - *Your time:* minutes: the question, any papers you already know should turn up, a read of the memo, and a look over the reference list (about a minute per 10 references).
+> - *Your time:* minutes: the question, any papers you already know should turn up, a read of the memo, and a check of each reference (about a minute per 10 references).
 >
 > **Standard review** *(recommended for most questions).* DAAF reads the key papers in full. Every quote and number it uses is checked against the page it came from. For each paper you get a short note: the study design, its main limitations (quoted, with page numbers) and how much weight it deserves, with the reasons. The synthesis states how sure we can be about each conclusion, and the wording follows that ("probably", "may", …).
 > - *Good for:* a reliable picture of what the evidence shows, for a paper's background, a grant, or a decision.
 > - *Trade-off:* the weight of each paper is a reasoned judgment, not a formal checklist score, and DAAF chooses the key papers with you rather than reading everything that exists.
-> - *Your time:* agreeing the list of key papers before they are read, a check-in after each round, checking the weights and how sure each conclusion is, and a look over the reference list before the final version (about a minute per 10 references).
+> - *Your time:* agreeing the list of key papers before they are read, a check-in after each round, checking the weights and how sure each conclusion is, and a check of each reference before the final version (about a minute per 10 references).
 >
 > **Formal / systematic review.** You lead a formal, publishable process: a plan written before any searching (the protocol), fixed rules for which studies count, a second person checking those choices, a published checklist for each kind of study, and a formal rating of how sure we can be about each conclusion. DAAF drafts each checklist answer with the passage that supports it, keeps every record and checks every quote and citation; you make every judgment call. (The checklists are the standard published ones, such as RoB 2 for randomized trials and ROBINS-I for other studies of a program or policy; the rating follows the GRADE method.)
 > - *Good for:* a publishable systematic review, or when you need a fully documented, defensible appraisal.
 > - *Trade-off:* much more of your time, and more reading and cost per paper.
-> - *Your time:* substantial: the protocol, every checklist judgment and rating, settling disagreements between the two people choosing studies, and a look over the reference list before the final version.
+> - *Your time:* substantial: the protocol, every checklist judgment and rating, settling disagreements between the two people choosing studies, and a check of each reference before the final version.
 >
 > **At every level:** searches are recorded, citations are checked, abstract-only evidence is labelled, results from different studies are never averaged into one number, and the wording never sounds surer than the evidence.
 

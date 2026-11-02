@@ -43,7 +43,7 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.4.0-daaf", "0.4.0"))
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.5.0-daaf", "0.4.0"))
         # The certainty phrase table and its lockstep copy carry the contract version (0.4.0 from S5 W1-c).
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
@@ -183,7 +183,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 29/29", out.getvalue())   # 1.4.0: 10 second-check cases added
+            self.assertIn("SELFTEST PASS: 30/30", out.getvalue())   # 1.4.0: 10 second-check cases; 1.5.0: 1
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -1209,6 +1209,115 @@ class SecondCheckCommandTests(unittest.TestCase):
         self.assertIn("None of these references can be confirmed as they stand. To keep one whose record does not "
                       "match, say so with your reason.", md.read_text())
         self.assertNotIn("Please read down the list", md.read_text())
+
+    # 1.5.0: --keys adds to --deliverable (one sheet, one reply); either flag alone lists what it did before.
+    def draft(self, *keys):
+        p = self.pd / "inputs" / f"draft_{uuid.uuid4().hex[:6]}.md"
+        p.write_text("An invented draft " + "; ".join(f"[@{self.paper(k)['citekey']}]" for k in keys) + ".\n")
+        return p
+
+    def glance(self, *flags):
+        # (exit code, stdout+stderr, sheet text, rows file text, the command's MANIFEST row)
+        before = set((self.pd / "output").glob("reference_glance_v*.md"))
+        code, out = self.run_lc("adjudications", "glance-sheet", self.pd, *flags)
+        new = set((self.pd / "output").glob("reference_glance_v*.md")) - before
+        md = next(iter(new)) if new else None
+        row = [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()][-1]
+        return (code, out, md.read_text() if md else "", md.with_name(md.stem + "_rows.txt").read_text() if md else "",
+                row)
+
+    def sheet_keys(self, text):
+        # citekeys of the sheet's table rows, in sheet order
+        return [line.split(" | ")[1] for line in text.splitlines() if re.match(r"^\| \d+ \| ", line)]
+
+    def test_glance_sheet_deliverable_plus_keys_is_one_list_in_order(self):
+        p4 = lc.DEMO_PAPERS[3]["key"]
+        shas = self.attach((0, {}), (1, {}), (2, {}), (3, {}))           # all four pending again: all confirmable
+        code, out, text, rows, row = self.glance("--deliverable", self.draft(self.P3, self.P2), "--keys",
+                                                 f"{p4},{self.P1}")
+        self.assertEqual(code, 0, out)
+        want = [self.P2, self.P3, p4, self.P1]                          # the deliverable's (key order), then added
+        self.assertEqual((row["keys"], row["keys_from_deliverable"], row["keys_added"]),
+                         (want, [self.P2, self.P3], [p4, self.P1]))
+        self.assertEqual(self.sheet_keys(text), [self.paper(k)["citekey"] for k in want])
+        self.assertIn("Numbers 1 and 2 are the references cited in inputs/draft_", text)
+        self.assertIn("; numbers 3 and 4 were added by name.", text)
+        # each rows-file line is that paper's verify row, then "# n citekey" for its number on the sheet
+        self.assertEqual([x for x in rows.splitlines() if not x.startswith("#")],
+                         [f"{shas[k]}  # {n} {self.paper(k)['citekey']}" for n, k in enumerate(want, 1)])
+        self.assertIn("2 cited in inputs/draft_", out)
+        # the combined rows file, passed whole, is what one reply confirms
+        rows_path = max((self.pd / "output").glob("reference_glance_v*_rows.txt"),
+                        key=lambda p: int(p.stem.rsplit("_v", 1)[1].split("_")[0]))
+        code, out = self.run_lc("adjudications", "record-human", self.pd, "--rows", rows_path, "--decision",
+                                "same_work", "--user-words", "All of them look right.", "--rationale", "Checked each.")
+        self.assertEqual(code, 0, out)
+        self.assertEqual({self.paper(k)["citation_status"] for k in want}, {"human_confirmed"})
+        # the other sentence forms: one cited reference, and ranges of three or more
+        p4 = lc.DEMO_PAPERS[3]["key"]
+        for cited, named, words in (
+                ((self.P1,), (self.P2, self.P3, p4),
+                 ("Number 1 is the reference cited in inputs/draft_", "; numbers 2 to 4 were added by name.")),
+                ((self.P1, self.P2, self.P3), (p4,),
+                 ("Numbers 1 to 3 are the references cited in inputs/draft_", "; number 4 was added by name.")),
+                ((self.P1, self.P2), (self.P1,),
+                 ("Every reference below is cited in inputs/draft_", "; the paper added by name is already cited "
+                                                                     "there.")),
+                ((self.P1, self.P2), (self.P2, self.P1),
+                 ("Every reference below is cited in inputs/draft_", "; every paper added by name is already cited "
+                                                                     "there."))):
+            with self.subTest(cited=cited, named=named):
+                code, out, text, _, _ = self.glance("--deliverable", self.draft(*cited), "--keys", ",".join(named))
+                self.assertEqual(code, 0, out)
+                for w in words:
+                    self.assertIn(w, text)
+
+    def test_glance_sheet_key_already_cited_is_listed_once(self):
+        shas = self.attach((0, {}), (1, {}))
+        code, out, text, rows, row = self.glance("--deliverable", self.draft(self.P1, self.P2), "--keys",
+                                                 f"{self.P2},{self.P1},{self.P2}")
+        self.assertEqual(code, 0, out)
+        self.assertEqual((row["keys"], row["keys_added"]), ([self.P1, self.P2], []))
+        self.assertEqual(self.sheet_keys(text), [self.paper(k)["citekey"] for k in (self.P1, self.P2)])
+        self.assertIn("; every paper added by name is already cited there.", text)
+        body = [x.split()[0] for x in rows.splitlines() if not x.startswith("#")]
+        self.assertEqual(body, [shas[self.P1], shas[self.P2]])              # record-human refuses a row listed twice
+        # a draft that cites none of the corpus's papers: every listed reference was added by name, with a WARNING
+        code, out, text, _, row = self.glance("--deliverable", self.draft(), "--keys", self.P3)
+        self.assertEqual((code, row["keys"], row["keys_from_deliverable"], row["keys_added"]),
+                         (0, [self.P3], [], [self.P3]), out)
+        self.assertIn("None of the review's papers is cited in inputs/draft_", text)
+        self.assertIn("; every reference below was added by name.", text)
+        self.assertIn("WARNING:", out)
+
+    def test_glance_sheet_either_flag_alone_unchanged(self):
+        draft = self.draft(self.P3, self.P1)
+        code, out, text, _, row = self.glance("--deliverable", draft)
+        self.assertEqual(code, 0, out)
+        self.assertEqual((row["keys"], row["keys_from_deliverable"], row["keys_added"]),
+                         ([self.P1, self.P3], [self.P1, self.P3], None))
+        code, out, text2, _, row = self.glance("--keys", f"{self.P3},{self.P1},{self.P3}")
+        self.assertEqual(code, 0, out)
+        self.assertEqual((row["keys"], row["keys_from_deliverable"], row["keys_added"]),
+                         ([self.P3, self.P1], None, [self.P3, self.P1]))   # the order given, a repeat listed once
+        self.assertEqual(self.sheet_keys(text2), [self.paper(k)["citekey"] for k in (self.P3, self.P1)])
+        for t in (text, text2):
+            self.assertNotIn("added by name", t)
+            self.assertNotIn("cited in", t)
+        # an unknown --keys key is refused with or without a deliverable, and nothing is written
+        for flags in (("--keys", f"{self.P1},W1"), ("--deliverable", draft, "--keys", "W1")):
+            with self.subTest(flags=flags):
+                code, out, text, _, row = self.glance(*flags)
+                self.assertEqual((code, text), (11, ""), out)
+                self.assertIn("unknown W1", out)
+                self.assertEqual(row["refusals"], ["unknown W1"])
+        # a --keys that names no key is refused with or without a deliverable (never "every included paper")
+        for flags in (("--keys", ","), ("--keys", ""), ("--deliverable", draft, "--keys", ","),
+                      ("--deliverable", draft, "--keys", "")):
+            with self.subTest(flags=flags):
+                code, out, text, _, row = self.glance(*flags)
+                self.assertEqual((code, text), (11, ""), out)
+                self.assertIn("--keys names no paper key", out)
 
 
 class PackLogParseTests(unittest.TestCase):

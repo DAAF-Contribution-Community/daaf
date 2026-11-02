@@ -1,6 +1,6 @@
 # Literature Review Mode
 
-Literature Review mode answers "what does the published research say about this question?" at one of three levels the researcher picks: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review the researcher leads. It produces a versioned deliverable (a memo or a synthesis) in which every search is recorded, every reference is matched to a database record and looked over by the researcher, every quote and number is checked on its page, and no sentence sounds surer than the evidence, inside a research project folder holding the full search, screening, reading and checking record.
+Literature Review mode answers "what does the published research say about this question?" at one of three levels the researcher picks: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review the researcher leads. It produces a versioned deliverable (a memo or a synthesis) in which every search is recorded, every reference is looked up in a database and checked by the researcher, every quote and number is checked on its page, and no sentence sounds surer than the evidence, inside a research project folder holding the full search, screening, reading and checking record.
 
 ## User Orientation
 
@@ -9,17 +9,23 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - You choose how deep the review goes: a quick scan (titles and abstracts, a short memo of pointers), a standard review (the key papers read in full, a note on each, how sure we can be about each conclusion) or a formal systematic review (you lead; DAAF drafts checklist answers with the passages behind them, you make every judgment)
 - Before any full search, a scope check: the question, where DAAF will search, what counts as in or out, and the expected reading and cost; the plan is saved and every change becomes a new version of it
 - Standard and formal reviews run in rounds: one cycle of searching, choosing papers and reading them, then a check-in where you choose another round, a change of plan, or the final write-up
-- Check-ins: quick scan, two (the plan; the memo with its reference list). Standard review: the plan, then per round the list of papers to read in full and the round check-in, then a reference check and the final review. Formal review: as standard, plus your full-text decisions and a checklist review each round
-- What is checked at every level: every search is saved with its exact wording; every reference is matched to a database record, and you look over the reference list before the final version; every quote and number is found on the page it came from; results from different studies are never averaged into one number
+- Check-ins: quick scan, two (the plan; the memo with its references). Standard review: the plan, then per round the list of papers to read in full and the round check-in, then a reference check and the final review. Formal review: the plan, then per round your full-text decisions (in place of the key-paper list), a checklist review and the round check-in, then the reference check and the final review
+- What is checked at every level: every search is saved with its exact wording; every reference is looked up in a database, and you check each one once before the final version (your reference check); every quote and number is found on the page it came from; results from different studies are never averaged into one number
 - You receive: the memo or the final review (each round's write-up and the final review also come as a web page to read in the browser), a checked reference list, a list of gaps, and a project folder with the whole record
 
-**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md`.
+**For more detail:** Consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` § Literature Review Mode.
 
 ---
 
 ## Scope Check
 
-**Tier:** Hard (blocking): a review commits real reading, usage and the researcher's time, so the plan is agreed before any full search. **Where:** CP-1, the review plan (§ Checkpoint Templates > CP-1), which embeds the standard block; a quick scan uses the short form of the same template. **Read first:** every material the user pointed to, after mode confirmation and LR-0, before CP-1 (`SKILL.md` § Scope Check > Read First), plus the scoping searches (LR-1, standard and formal levels), whose record grounds the volume and seed lines of the plan. **No staging, the folder exists:** LR-0 creates the project folder once the level and question are known, before CP-1, so fetches, PDF ingests and the materials digest go straight into it. A declined plan leaves a small folder in `research/`, as in Data Onboarding. **Mode-specific carve-out:** a material that is itself a paper the review may include (a PDF the user wants reviewed, a reading list's entries) is not ingested at scoping: it becomes a seed and enters the corpus in round 1 through the searcher (`add-record`, then `pdf_ingest` into `papers/`), so each paper has one key and one ingest. Only background materials (a proposal, a draft, a syllabus) go through the scoping digest, into `materials/`. **Rule and standard block:** `SKILL.md` § Scope Check. **On resume:** STATE.md's `Scope Check status` reads `awaiting confirmation` or `confirmed YYYY-MM-DD` with the `Protocol_v{N}.md` path; re-present CP-1 only when it reads `awaiting confirmation` or is absent (`session-recovery.md` § Step 5c).
+- **Tier:** Hard (blocking): a review commits real reading, usage and the researcher's time, so the plan is agreed before any full search.
+- **Where:** CP-1, the review plan (§ Checkpoint Templates > CP-1), which embeds the standard block; a quick scan uses the short form of the same template.
+- **Read first:** every material the user pointed to, after mode confirmation and LR-0, before CP-1 (`SKILL.md` § Scope Check > Read First), plus the scoping searches (LR-1, standard and formal levels), whose record grounds the volume and seed lines of the plan.
+- **No staging, the folder exists:** LR-0 creates the project folder once the level and question are known, before CP-1, so fetches, PDF ingests and the materials digest go straight into it. A declined plan leaves a small folder in `research/`, as in Data Onboarding.
+- **Mode-specific carve-out:** a material that is itself a paper the review may include (a PDF the user wants reviewed, a reading list's entries) is not ingested at scoping: it becomes a seed and enters the corpus in round 1 through the searcher (`add-record`, then `pdf_ingest` into `papers/`), so each paper has one key and one ingest. Only background materials (a proposal, a draft, a syllabus) go through the scoping digest, into `materials/`.
+- **Rule and standard block:** `SKILL.md` § Scope Check.
+- **On resume:** STATE.md's `Scope Check status` reads `awaiting confirmation` or `confirmed YYYY-MM-DD` with the `Protocol_v{N}.md` path; re-present CP-1 only when it reads `awaiting confirmation` or is absent (`session-recovery.md` § Step 5c).
 
 ---
 
@@ -94,7 +100,7 @@ Stage and checkpoint codes are agent-facing. The second column is what the user 
 | LR-3 Screen | the first pass on titles and abstracts | literature-searcher | `screen sheet`, `screen record` (`ta`) | every record has a decision | `screening_v*` |
 | LR-4' Check references | checking the references | literature-searcher | `verify`, `retractions` per includable paper; `attach verify`, `attach retractions` | every includable paper has an attached check | corpus `citation_status` |
 | LR-7Q Memo | writing up | literature-synthesizer (KIND draft) | `claims abstract`, `export-bib`, `counts`; writes `output/quick_scan_v{N}.md`. Orchestrator: `lit_verify report --level quick` | 0 FAIL | memo, `*.report_check.json` |
-| ★ CP-F | the memo and its reference list | orchestrator → user | `glance-sheet` before; `record-human` (user's words), `export-bib` after | the user's reply recorded; the approval counts only once LR-8Q passes on the memo the user saw | ledger, `reference_glance_v*` |
+| ★ CP-F | the memo and its references | orchestrator → user | `glance-sheet` before; `record-human` (user's words), `export-bib` after | the user's reply recorded; the approval counts only once LR-8Q passes on the memo the user saw | ledger, `reference_glance_v*` |
 | LR-8Q Final check | the final check | orchestrator | `lit_verify report --kind final --level quick` on the same memo; `lit_corpus manifest --round 1` | 0 FAIL on the memo the user approved. A FAIL, or a reply that changed a cited reference, means a KIND final version: check it, then show it at CP-F again before delivery (§ Checkpoint Templates, "After the reply (quick scan)") | `output/manifests/LIT_REVIEW_MANIFEST_v{N}.json` |
 
 ### Standard review
@@ -138,7 +144,7 @@ The standard flow with these changes (`formal-review.md`):
 
 1. **Level menu.** Read `{BASE_DIR}/.claude/skills/literature-review/SKILL.md` § The level menu and show it to the user as written (a targeted read of that section; the orchestrator does not load the skill). Default: standard review.
 2. **Intake questions** (`literature-review/references/review-types-and-levels.md` § Questions to ask, by level): the question; papers the user expects to find (seeds); materials; for standard and formal, the review type (default from the intent menu). A level change later is a new protocol version.
-3. **Create the project** `{BASE_DIR}/research/{YYYY-MM-DD}_LitReview_{Short_Topic}/`, one `mkdir -p` per call: the project root, `output/preliminary_notes/`, `lit_inputs/`, `scripts/`. Other folders are created by the tools on first use.
+3. **Create the project** `{BASE_DIR}/research/{YYYY-MM-DD}_LitReview_{Short_Topic}/`, one `mkdir -p` per call: the project root, `output/preliminary_notes/`, `lit_inputs/`, `scripts/`, `user_pdfs/` (`cp` does not create it, and the user may be told to add a PDF there at any check-in). Other folders are created by the tools on first use.
 4. **STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_LITREVIEW.md`: Project (title, level, review type, question, folder), `Scope Check status: awaiting confirmation`, Current Position LR-0.
 5. **LEARNINGS.md** skeleton (§ LEARNINGS.md).
 6. **Route record:** `bash {BASE_DIR}/scripts/lit_verify.sh route {PROJECT_DIR}`. Copy its first line (`ROUTE: <name>`) verbatim into STATE's Route record. Never type a route. Run it at every level (harmless at the quick level, and ready if the level rises); `lit_verify audit` counts only a route row recorded no later than the card check.
@@ -153,7 +159,7 @@ Shown at CP-1 and in each follow-up plan. Token figures are inference from the r
 
 | Line | Estimate |
 |---|---|
-| Searches | phrasings × databases, plus citation-following hops; OpenAlex within its free daily budget, each round reporting how much of it was used |
+| Searches | phrasings × databases, plus citation-following hops; OpenAlex within its free daily budget (the amounts: `scholarly-search` `references/openalex.md` § Cost and limits), each round reporting how much of it was used |
 | Screening | records per round from the scoping volume; the share likely to pass the first look |
 | Deep reads | n papers × (pages × 0.8-1k text tokens + cited flagged pages × ~4k image tokens), shown as a dispatch count, waves of ≤ 5, and a token range of the user's plan usage |
 | Reference check (the researcher's look over the list) | one list per final deliverable; about 1 minute per 10 references for the researcher |
@@ -180,16 +186,16 @@ When the protocol's stopping rule is met, the follow-up plan recommends (3); the
 
 ## The Citation Second Check
 
-**Gate (checked before any adjudication step).** The citation-adjudicator is dispatched only when the in-force entry of `ADJUDICATOR_EVALUATED_LISTS` holds a 4-tuple `(model_id, template_sha256, rubric_version, agent_file_sha256)` equal to the identity about to be dispatched (`lit-corpus.md` § Citation second check > Evaluated identities):
+**Gate (checked before any adjudication step).** The citation-adjudicator is dispatched only when the in-force entry of `ADJUDICATOR_EVALUATED_LISTS` holds a 4-tuple `(model_id, template_sha256, rubric_version, agent_file_sha256)` equal to the identity about to be dispatched (`literature-review/references/lit-corpus.md` § Citation second check > Evaluated identities):
 
 1. `grep -n -A6 "^ADJUDICATOR_EVALUATED_LISTS" {BASE_DIR}/scripts/lit_corpus.py` and `grep -n "^ADJUDICATOR_LIST_VERSION" {BASE_DIR}/scripts/lit_corpus.py`. An empty tuple for the in-force version (the shipped `adjudicator-list-none`) closes the gate.
-2. Only when the entry is non-empty: a captured script `scripts/lr_adjudication/{NN}_identity_check.py` prints the template body's sha256 (extracted per `citation-adjudication.md` § The extraction contract), the rubric version from its start marker and the sha256 of `.claude/agents/citation-adjudicator.md`; the gate opens only on an exact match with the model ID the `opus` tier resolves to in this session (STATE's Subagent Model Tiers row), because the Agent tool's `model` parameter takes a tier alias, not a model ID.
+2. Only when the entry is non-empty: a captured script `scripts/lr_adjudication/{NN}_identity_check.py` prints the template body's sha256 (extracted per `scholarly-search/references/citation-adjudication.md` § The extraction contract), the rubric version from its start marker and the sha256 of `.claude/agents/citation-adjudicator.md`; the gate opens only on an exact match with the model ID the `opus` tier resolves to in this session (STATE's Subagent Model Tiers row), because the Agent tool's `model` parameter takes a tier alias, not a model ID.
 
 ### While the gate is closed: the reference glance
 
 Every final deliverable's references reach the researcher, at every level, as one list and one reply.
 
-1. **Sheet:** `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications glance-sheet {PROJECT_DIR} --deliverable {deliverable path}` (the draft the final will rest on; add `--keys` for papers the final will cite beyond it). It writes `output/reference_glance_v{N}.md` and `output/reference_glance_v{N}_rows.txt`.
+1. **Sheet:** `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications glance-sheet {PROJECT_DIR} --deliverable {deliverable path} [--keys K1,...]`. `--deliverable` names the draft the final will rest on; `--keys` names, by paper key, papers the final will cite beyond it. The extra keys are added to the draft's references, so one sheet and one reply cover both. It writes `output/reference_glance_v{N}.md` and `output/reference_glance_v{N}_rows.txt`.
 2. **Show it** at CP-G (quick scan: CP-F): inline the table when it has 30 rows or fewer, else give the path and inline only the rows that need attention (partly matches, does not match, retracted).
 3. **Rows files** from the reply. Copy lines verbatim from `reference_glance_v{N}_rows.txt` into one file per decision, `{PROJECT_DIR}/lit_inputs/glance_v{N}_{decision}_{seq}.txt` (for "all look right": the whole rows file can be passed as is). Never type a row hash.
 4. **Record**, one Bash call per decision, with the user's words copied verbatim from their message (never a paraphrase, never a subagent's text):
@@ -198,7 +204,7 @@ Every final deliverable's references reach the researcher, at every level, as on
    bash {BASE_DIR}/scripts/lit_corpus.sh adjudications record-human {PROJECT_DIR} --rows {rows file} --decision same_work --user-words "{the user's words}" --rationale "The researcher compared each title as cited with the title on record in reference_glance_v{N}.md"
    ```
 
-   `different_work` for a reference the user says is a different work (→ `rejected`); `defer` (no rationale) for "I'll check later" (stays uncitable at final). Overrides: a reference whose check reads "does not match the record" that the user keeps is `--decision override_mismatch` with **its own rows file** and a `--rationale` stating the user's reason; the deliverable labels it "accepted by the researcher despite the automatic reference check". MISMATCH rows are not in the glance rows file: take their hashes from a captured script `scripts/lr_adjudication/{NN}_rows_{label}.py` that prints `paper_key`, `citekey`, `verify_verdict` and `verify_row_sha256` from the latest `data/corpus_v{N}.parquet`. EXISTS and NOT FOUND rows cannot be recorded (exit 11): the reference is checked again by the searcher, or left out.
+   `--rationale` is required for every decision except `defer`, `different_work` included. `different_work` for a reference the user says is a different work (→ `rejected`); `defer` (no rationale) for "I'll check later" (stays uncitable at final). A row whose check reads "does not match the record" (MISMATCH) takes only `override_mismatch` or `defer`. Overrides: a reference whose check reads "does not match the record" that the user keeps is `--decision override_mismatch` with **its own rows file** and a `--rationale` stating the user's reason; the deliverable labels it "accepted by the researcher despite the automatic reference check". MISMATCH rows are not in the glance rows file: take their hashes from a captured script `scripts/lr_adjudication/{NN}_rows_{label}.py` that prints `paper_key`, `citekey`, `verify_verdict` and `verify_row_sha256` from the latest `data/corpus_v{N}.parquet`. EXISTS and NOT FOUND rows cannot be recorded (exit 11): the reference is checked again by the searcher, or left out.
 5. **Export:** `bash {BASE_DIR}/scripts/lit_corpus.sh export-bib {PROJECT_DIR}`, so the reference list carries the statuses `report` reads.
 6. **STATE:** the glance version, the rows files, each `record-human` call and its decision, in the Adjudication and glance batches table.
 
@@ -209,7 +215,7 @@ Every final deliverable's references reach the researcher, at every level, as on
 **This subsection does not apply while the gate is closed.** With an open gate, only the rows the model leaves undecided reach the glance.
 
 1. **Pack** through a captured script, `{PROJECT_DIR}/scripts/lr_adjudication/{NN}_pack_batch_{batch_id}.py` (batch ids `b01`, `b02`, …): a flat script that runs `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications pack {PROJECT_DIR} --batch {batch_id} --model-id {exact model ID} --max-rows 30` with `subprocess.run`, its stdout reaching the script's stdout unchanged, and asserts exit 0. `--model-id` is the exact model ID the `opus` tier resolves to in this session (STATE's Subagent Model Tiers row, a trailing `[1m]` dropped). Execute it with `bash {BASE_DIR}/scripts/run_with_capture.sh {that path}`; the hashes land in its immutable log, which `ingest` reads.
-2. **Dispatch** (§ Dispatch Templates > citation-adjudicator): the prompt is the content of `data/adjudication_bundles/{batch_id}_prompt.txt`, verbatim, nothing added; `model: "opus"`, the tier alias whose resolved ID pack recorded (the Agent tool takes tier aliases, not model IDs). One bundle per dispatch. `ingest` records the model ID from the pack log and does not check which model actually ran; adding that check to `ingest` is part of preparing the adjudicator evaluation. Never dispatch when the `opus` tier resolves to a model other than the one packed.
+2. **Dispatch** (§ Dispatch Templates > citation-adjudicator): the prompt is the content of `data/adjudication_bundles/{batch_id}_prompt.txt`, verbatim, nothing added; `model: "opus"`, the tier alias whose resolved ID pack recorded (the Agent tool takes tier aliases, not model IDs). One bundle per dispatch. `ingest` records the model ID from the pack log and does not check which model actually ran. Never dispatch when the `opus` tier resolves to a model other than the one packed.
 3. **Persist** only the lines inside the return's `jsonl` fence to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`. NOT_JUDGED: persist nothing; re-dispatch the same prompt. If the return quotes an `adjudicator-read-scope.sh` refusal of the bundle path, do not re-dispatch: the same prompt carries the same path, which the hook refuses (a project outside `research/`, or a symlink on the path); report it to the user.
 4. **Ingest:** `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications ingest {PROJECT_DIR} --batch {batch_id} --agent-id {agent ID from the dispatch result}`.
 5. **Glance** the rows still undecided (unevaluated, `UNCERTAIN`, below the title floor, `org_unchecked`) as above; a user reversing a model's `DIFFERENT_WORK` is `same_work` with a rationale (→ `human_overridden`, "accepted by you" in messages to the user).
@@ -221,13 +227,13 @@ Never re-pack a packed batch that is not yet ingested (re-dispatch that bundle).
 ## Readings From Pictures of Pages: the Audit and the Person's Comparison
 
 1. **Audit** each reader's latest card, once, after the reader returns, in the session that dispatched the reader: `bash {BASE_DIR}/scripts/lit_verify.sh audit {PROJECT_DIR}/papers/{key} --card {card file name} --agent-id {agent ID} --project {PROJECT_DIR}`, with one `--agent-id` per reader dispatch that worked on the card, each copied from that dispatch's result (a chunked paper: one per chunk). Only the context-reporter hook's own record of a reader's model, kept for the current session, confirms the model. `--transcript {path}` (a reader's `agent-{ID}.jsonl`, located by a `find` probe) is read only when the hook has no record for that ID, and it never confirms the model: a model it shows that differs from the card's gives `mismatch`, and a matching one still sends every reading from a picture of a page to a person's page comparison (`person_must_check`). The record is exclusive-create: a second audit needs a new card version.
-2. **Outcome** (exit 0: `confirmed`, `confirmed_with_checks`; exit 11: `person_must_check`, `mismatch`, `chain_unconfirmed`). Record it in STATE's Reader table. `confirmed_with_checks`: show its `SHOULD LOOK:` lines at CP-R as numbers worth a look; nothing to record.
-3. **List what a person compares** (`person_must_check`, `mismatch`): `bash {BASE_DIR}/scripts/lit_verify.sh settle {PROJECT_DIR}/papers/{key} --audit vision_audit{S}.json --list`. It prints one plain reason per reading and writes `settle_items{S}.txt`, the item ids the reasons belong to. At CP-R (or CP-G when still open) show the user only the reason texts, numbered across the check-in (§ Checkpoint Templates > Building and recording the page comparisons); never an item id, a line tag or the command hint.
+2. **Outcome** (exit 0: `confirmed`, `confirmed_with_checks`; exit 11: `person_must_check`, `mismatch`, `chain_unconfirmed`). Record it in STATE's Reader table. `confirmed_with_checks`: show the reason text of its `SHOULD LOOK:` lines (never the tag) at CP-R as numbers worth a look, under the paper each belongs to; nothing to record.
+3. **List what a person compares** (`person_must_check`, `mismatch`): `bash {BASE_DIR}/scripts/lit_verify.sh settle {PROJECT_DIR}/papers/{key} --audit vision_audit{S}.json --list`. It prints one plain reason per reading and writes `settle_items{S}.txt`, the item ids the reasons belong to. At CP-R (or CP-G when still open) show the user the reason texts under the paper each belongs to (its short reference and PDF path), numbered across the check-in (§ Checkpoint Templates > Building and recording the page comparisons); never an item id, the `(optional)` prefix or the `next (for the agent)` line.
 4. **Record the reply**, one call per decision, the user's words verbatim: `bash {BASE_DIR}/scripts/lit_verify.sh settle {PROJECT_DIR}/papers/{key} --audit vision_audit{S}.json --items {items file} --decision matches|does_not_match --user-words "{the user's words}" [--rationale "{reason}"]`. The items file holds item ids, one per line, as `--list` wrote them: pass `settle_items{S}.txt` itself when the reply covers every item, else write `{PROJECT_DIR}/lit_inputs/settle_{key}{S}_{decision}_{seq}.txt` with the ids the reply covers, copied verbatim. The number the user replied with leads to its id through the mapping recorded in STATE's Reading Items for a Person when the comparisons were numbered (each number, its paper and the item id, copied from `--list`'s output and `settle_items{S}.txt`). `does_not_match` needs `--rationale` (which number, what the page prints). It writes `audit_settlement{S}_{n}.json` in PAPER_DIR and a MANIFEST row. Exit 0 recorded; 11 refused, nothing written (empty words, a missing rationale, an id twice or not this audit's); 9 the card or audit changed since the audit (a new card version and audit are needed); 8 an unreadable items file.
 5. **`does_not_match`:** dispatch the reader again for that paper (§ Dispatch Templates > paper-reader, with the correction line): a new card version that reads those numbers from the page text or drops them; then `card`, a new audit and, if needed, a new comparison.
 6. **`chain_unconfirmed`** is never settled by a comparison. It matters only when the card takes readings from pictures of pages: then the searcher fetches the paper again (`web_fetch.sh` into `web_fetches/`) or the user places their PDF in `user_pdfs/`, and it is ingested again and read again. A card that reads text only needs no re-fetch, because the final check gates only cards with picture readings; record the outcome in STATE and go on.
 
-A final deliverable cannot cite a paper whose card has readings from pictures of pages unless its audit confirmed them or every listed item is settled by a person's record (`lit-verify-report.md` § What is checked > Readings from pictures of pages). An audit confirms only when every reader's model came from the hook's own record; the final check counts any other confirming audit as not confirmed (`model_not_confirmed`, which no comparison settles; the report's reason gives the fix).
+A final deliverable cannot cite a paper whose card has readings from pictures of pages unless its audit confirmed them or every listed item is settled by a person's record (`literature-review/references/lit-verify-report.md` § What is checked > Readings from pictures of pages). An audit confirms only when every reader's model came from the hook's own record; the final check counts any other confirming audit as not confirmed (`model_not_confirmed`, which no comparison settles; the report's reason gives the fix).
 
 ---
 
@@ -248,11 +254,11 @@ A final deliverable cannot cite a paper whose card has readings from pictures of
 - **The orchestrator runs every gate it does not author:** `lit_verify report`, `audit`, `settle`, `adjudications pack`/`ingest`/`record-human`/`glance-sheet`, `lit_corpus manifest`. The synthesizer never runs `report` on its own deliverable.
 - **Agent IDs:** record every dispatch's agent ID in STATE (reader table, one row per chunk; adjudication batches): `audit` needs every reader dispatch's ID for a card, and `ingest` needs the adjudicator's.
 - **User preference "PDF page-image cross-checking"** (CLAUDE.md § User Preferences): copy its value into every paper-reader dispatch and the data-verifier dispatch. Under `all-pages` the searcher ingests with `--render all`; otherwise `--render flagged` (renders exist for a later validated reader or a person even under `off`).
-- **Window and image cap:** `WINDOW: 200k`, `IMAGE CAP: 8` by default. `WINDOW: 1M`, `IMAGE CAP: 30` only when the reader runs on a 1M-window model (the session's own model ID carries `[1m]` and the opus alias resolves to it); the 30 is an estimate to revisit after the first reviews.
-- **Language directives** do not apply: no agent in this mode writes analysis code.
+- **Window and image cap:** DAAF's rule: `WINDOW: 1M`, `IMAGE CAP: 30` only when the session's own model ID carries `[1m]` and STATE's Subagent Model Tiers row shows the `opus` tier resolving to that same model; otherwise `WINDOW: 200k`, `IMAGE CAP: 8`. The cap of 30 is an estimate, not a measured limit.
+- **Language directives** do not apply: no agent in this mode writes analysis code for the user's data.
 - **Subagent return processing** follows `SKILL.md` § Subagent Coordination > "Subagent Return Processing". Persist the searcher's and synthesizer's full returns to `output/preliminary_notes/{date}_{stage}_r{R}_{agent}.md`; a reader's card and `card_check` are its record (persist only an INCOMPLETE or BLOCKED return).
 
-> **Wave barrier discipline (async dispatch).** Under DAAF's shipped settings (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, observed on the pinned Claude Code 2.1.281) these subagents return inline in the dispatching turn; without that setting, or on other versions, they return via completion notifications that may arrive one at a time. The barrier applies either way. Treat mid-wave notifications as status-only: do not run the round synthesis, present CP-A or CP-R, or decide on re-dispatches until EVERY reader in the wave has returned and its card is audited. Synthesize once, over the complete wave: an early return (a chunk handoff, context pressure) or a failed reader still counts as that member's completion, handled in the whole-wave review. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+> **Wave barrier discipline (async dispatch).** The barrier applies however subagent results arrive. Treat mid-wave notifications as status-only: do not run the round synthesis, present CP-A or CP-R, or decide on re-dispatches until EVERY reader in the wave has returned and its card is audited. Synthesize once, over the complete wave: an early return (a chunk handoff, context pressure) or a failed reader still counts as that member's completion, handled in the whole-wave review. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 ### Reader dispatch cycle (per paper)
 
@@ -444,7 +450,7 @@ RETURN: deliverable path, findings and gaps recorded, references by status, held
 """)
 ```
 
-**Revision loop.** After `lit_verify report` exits 11 (FAIL), re-dispatch with the next VERSION and `REVISE FROM` the result file; at most 2 revisions per deliverable, then present the open items to the user and ask how to proceed. **`AWAITING_GLANCE`:** run the glance (or the audit, or `settle`) for the listed papers, record the reply, export, and re-dispatch with the same VERSION. Finding, claim and edge ids appear only in markers and in the Methods section's "Technical appendix"; the markers show as text in a plain Markdown preview, so the user reads a synthesis through its HTML copy (§ HTML Copies for Reading).
+**Revision loop.** After `lit_verify report` exits 11 (FAIL), re-dispatch with the next VERSION and `REVISE FROM` the result file (`CARD_RECHECK_DIFFERS` items, which the synthesizer cannot fix, are handled first: § Error Handling; the loop then covers the FAIL items that remain); at most 2 revisions per deliverable, then present the open items to the user and ask how to proceed. **`AWAITING_GLANCE`:** run the glance (or the audit, or `settle`) for the listed papers, record the reply, export, and re-dispatch with the same VERSION. Finding, claim and edge ids appear only in markers and in the Methods section's "Technical appendix"; the markers show as text in a plain Markdown preview, so the user reads a synthesis through its HTML copy (§ HTML Copies for Reading).
 
 ### citation-adjudicator (active only once an evaluated identity exists)
 
@@ -487,7 +493,7 @@ BASE_DIR: /daaf
 All relative paths in referenced files resolve from BASE_DIR.
 TASK: Read the user's background materials for a literature review's scope check and write one digest record.
 MATERIALS: {absolute paths and URLs}
-PDFs: load pdf-reading; ingest each with bash /daaf/scripts/pdf_ingest.sh {pdf} {PROJECT_DIR}/materials/papers/ --paper-key user_{8 hex}
+PDFs: load pdf-reading; ingest each with bash /daaf/scripts/pdf_ingest.sh {pdf} {PROJECT_DIR}/materials/papers/ --paper-key user_{the first 8 hex characters of the PDF's sha256}
 WEB PAGES: bash /daaf/scripts/web_fetch.sh URL {PROJECT_DIR}/web_fetches/
 WRITE YOUR RECORD TO: {PROJECT_DIR}/output/preliminary_notes/{date}_{slug}_materials-digest.md (cite artifacts by paths relative to PROJECT_DIR, materials by title or URL)
 FOCUS: what each material says about the question, its scope, sources, criteria and named papers
@@ -526,8 +532,8 @@ One command per Bash call; absolute paths. The orchestrator runs these itself (a
 | After each synthesizer return | `bash {BASE_DIR}/scripts/lit_verify.sh report {PROJECT_DIR} {deliverable} --level {quick\|standard\|formal}` | Drafts use the default kind, `synthesis` (the synthesizer's KIND `draft`) |
 | Before CP-R / CP-F, on a synthesis that passed its check | `quarto pandoc {PROJECT_DIR}/output/{deliverable}_v{N}.md --citeproc --bibliography {PROJECT_DIR}/output/references_v{M}.bib -s -o {PROJECT_DIR}/output/{deliverable}_v{N}.html` | The HTML copy the user reads (§ HTML Copies for Reading) |
 | Final deliverable | `bash {BASE_DIR}/scripts/lit_verify.sh report {PROJECT_DIR} {deliverable} --kind final --level {level}` | Re-checks the cards; needs each paper's stored source file |
-| Before CP-G / CP-F | `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications glance-sheet {PROJECT_DIR} --deliverable {path} [--keys K1,...]` | Writes the sheet and its rows file |
-| On the glance reply | `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications record-human {PROJECT_DIR} --rows {file} --decision same_work\|different_work\|defer\|override_mismatch --user-words "{verbatim}" [--rationale "{reason}"]` | One call per decision |
+| Before CP-G / CP-F | `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications glance-sheet {PROJECT_DIR} --deliverable {path} [--keys K1,...]` | Writes the sheet and its rows file; the extra keys are added to the draft's references |
+| On the glance reply | `bash {BASE_DIR}/scripts/lit_corpus.sh adjudications record-human {PROJECT_DIR} --rows {file} --decision same_work\|different_work\|defer\|override_mismatch --user-words "{verbatim}" --rationale "{reason}"` | One call per decision; `--rationale` with every decision except `defer` |
 | After record-human | `bash {BASE_DIR}/scripts/lit_corpus.sh export-bib {PROJECT_DIR}` | The list `report` reads |
 | Formal CP-S reply | `bash {BASE_DIR}/scripts/lit_corpus.sh screen record {PROJECT_DIR} {PROJECT_DIR}/lit_inputs/r{R}_screen_ft_researcher_{seq}.jsonl` | Lines `{paper_key, stage: "ft", pass: "researcher", decision, reason_code (exclude), rationale: "<the researcher's words>", screener: {"role": "researcher"}}` |
 | End of each round; final | `bash {BASE_DIR}/scripts/lit_corpus.sh manifest {PROJECT_DIR} --round {R} --protocol {PROJECT_DIR}/Protocol_v{N}.md` | Writes the versioned manifest and the pointer |
@@ -560,7 +566,7 @@ These are user-facing: plain language, no stage or checkpoint codes, no status o
 **Expected reading and cost (estimates):**
 - Searching: [n] searches per round on free databases, within OpenAlex's free daily allowance; each round reports how much of it was used
 - Reading in full: about [n] papers per round, up to 5 at a time; roughly [a–b] tokens of your plan's usage per round
-- Your reference check: before the final version, you look over the reference list once (about a minute per 10 references)
+- Your reference check: before the final version, you check each reference once, its title as cited against the title on record (about a minute per 10 references)
 - Paid searches: none unless you approve them
 **Decisions for you:**
 - [each independent decision on its own line, with its default: e.g. "Include working papers? (default: yes)", "Paid searches with Elicit? (default: no)", "A second look at which papers are kept? (default: no)"]
@@ -644,11 +650,14 @@ For each paper read this round: the checklist used, the result it judges, and my
 **Papers you named:** [found / kept / left out]
 **For a person to check:**
 **Page comparisons** (please reply for each number, e.g. "all match" or "1 and 3 match, 2 does not: the page says 83"):
+[the paper's short reference, e.g. Smith (2020), "Tutoring and reading outcomes"]; PDF: [path to the PDF]
 1. [the first reason, as listed: "The AI reader took the number … from a picture of PDF page …. Please compare … with PDF page …."]
 2. […]
+[the next paper's short reference]; PDF: [path to the PDF]
+3. […]
 - [items the page check listed for a person, in plain words]
-- [numbers read from charts that the paper's text does not confirm: worth a look]
-- [[n] references match the database record and are not yet confirmed; you look over the reference list before the final version]
+- [numbers worth a look, read from charts the paper's text does not confirm, under the paper each belongs to (its short reference; PDF: [path to the PDF])]
+- [[n] references match the database record and are not yet confirmed; you check them at your reference check before the final version]
 [Formal:] **Your certainty ratings:** for each conclusion, my draft notes on what holds the evidence up or down, and a proposed rating. Please give your rating, in your own words.
 
 **Your options:**
@@ -656,26 +665,27 @@ For each paper read this round: the checklist used, the result it judges, and my
 2. Change the plan: [what the results suggest changing]; the plan becomes a new version
 3. Write the final review: [what stopping now would leave open]
 **Recommendation:** [one option and why]
-**Files:** this round's write-up to read [path to the .html] (checked source: [path to the .md]); the follow-up plan [path]; the list of gaps [path]
+**Files:** this round's write-up to read [path to the .html] (the checked source, the same text with tags in braces that link each statement to its evidence: [path to the .md]); the follow-up plan [path]; the list of gaps [path]
 
 **Which would you like?**
 ```
 
-**Building and recording the page comparisons.** The page comparisons are the required readings `lit_verify settle --list` printed for each audit with exit 11 (§ Readings From Pictures of Pages, step 3). Show only the plain reason text of each, numbered 1, 2, 3 … across the whole check-in (all papers together); never an item id, a line tag or the command hint. Before presenting, record in STATE's Reading Items for a Person each number with its paper and item id, copied from `--list`'s output and `settle_items{S}.txt`. Split the reply by decision and paper, then record each part with `lit_verify settle --items … --decision matches|does_not_match --user-words "…"`, the user's whole reply as the words (step 4); record the round decision in STATE. Comparisons the user leaves open stay in Reading Items for a Person and are shown again at CP-G, numbered afresh.
+**Building and recording the page comparisons.** The page comparisons are the required readings `lit_verify settle --list` printed for each audit with exit 11 (§ Readings From Pictures of Pages, step 3). Group them by paper, under one plain line per paper: its short reference (first author, year and title, from the RECORD line of the paper's reader dispatch) and the path of its PDF (`source.path` in the ingest manifest the card's `card_check{S}.json` names as `ingest.manifest`), so the user knows which file to open. Under that line show the plain reason text of each comparison, numbered 1, 2, 3 … across the whole check-in, the numbering continuing from one paper to the next; never an item id, the `(optional)` prefix or the `next (for the agent)` line. Before presenting, record in STATE's Reading Items for a Person each number with its paper and item id, copied from `--list`'s output and `settle_items{S}.txt`. Split the reply by decision and paper, then record each part with `lit_verify settle --items … --decision matches|does_not_match --user-words "…"`, the user's whole reply as the words (step 4); record the round decision in STATE. Comparisons the user leaves open stay in Reading Items for a Person and are shown again at CP-G, numbered afresh.
 
 ### CP-G: the reference check (standard and formal, before the final write-up)
 
 ```
 **Before the final write-up: your reference check**
 
-DAAF's automatic reference check matched every reference to a database record. That check can be fooled by a one-word change in a title, so you look over each reference once, comparing the title as cited with the title on record, before it goes into the final version.
+DAAF's automatic reference check looked up every reference in a database. That check can be fooled by a one-word change in a title, so you look over each reference once, comparing the title as cited with the title on record, before it goes into the final version.
 
-**The list:** `[path to the reference list file]`, [n] references, numbered: for each, the title as cited and the title on record, the authors, the year, where it was published, and where it stands.
+**The list to check:** `[path to the list to check]`, [n] references, numbered: for each, the title as cited and the title on record, the authors, the year, where it was published, and where it stands.
 [the table, when it has 30 rows or fewer; else the rows that need attention]
 
 **Needs your attention:** [references the list shows as only partly matching, or not matching, the record; retracted papers]
 [**Left out because the record does not match:** [each such reference the write-up wanted to cite]; to keep one, say so and give your reason]
 [**Page comparisons still open** (please reply for each number, as at the round check-in):
+[the paper's short reference]; PDF: [path to the PDF]
 1. [the reason, as listed: "The AI reader took the number … from a picture of PDF page …. Please compare … with PDF page …."]]
 
 **How to reply:** one reply covers the whole list, for example "all look right", or "all except 4 and 9: 4 is a different paper, 9 I'll check later". A reference you say is a different paper, or want to check later, is left out of the final version. To keep a reference whose record does not match, say so and give your reason; it stays in, labelled as accepted by you. I record your reply in your own words.
@@ -695,8 +705,8 @@ DAAF's automatic reference check matched every reference to a database record. T
 **Bottom line:** [the main conclusions, each at its stated certainty]
 
 **What you can rely on:**
-- Every quote and number in the review was found on the page it came from
-- Every reference was matched to a database record by the automatic reference check, then confirmed: [n] by you[; [m] by DAAF's second check (an AI judgment)][; [k] accepted by you despite a mismatch, which the review says beside each]
+- [when the final check listed nothing for a person:] Every quote and number in the review was found on the page it came from [when it listed quotes or numbers for a person: Every other quote and number was found on the page it came from; the [n] listed under What to check need a person's look] [when it listed only wording for a person: Every quote and number in the review was found on the page it came from; [n] points of wording are listed under What to check]
+- Every reference was looked up in a database by the automatic reference check, then confirmed: [n] by you[; [m] by DAAF's second check (an AI judgment)][; [k] accepted by you despite a mismatch, which the review says beside each]
 - An independent re-read of [k] sampled quotes and numbers: [n] confirmed, [n] disputed [details]
 **What to check:** [open items: disputed claims and the conclusions they carry; anything a person should check]
 
@@ -716,11 +726,11 @@ DAAF's automatic reference check matched every reference to a database record. T
 ### CP-F: the memo and its references (quick scan)
 
 ```
-**Quick scan ready: the memo and its reference list**
+**Quick scan ready: the memo and its references**
 
 **Bottom line:** [what the abstracts report, in one or two sentences; abstracts only]
 **The memo:** [path] — what studies report, where to start reading, gaps that seem open
-**Your reference check:** DAAF's automatic reference check matched every reference to a database record. That check can be fooled by a one-word change in a title, so please look over the list once, comparing each title as cited with the title on record: [path to the reference list file], [n] references, numbered, each with the title as cited and on record and where it stands. [the table when it has 30 rows or fewer]
+**Your reference check:** DAAF's automatic reference check looked up every reference in a database. That check can be fooled by a one-word change in a title, so please look over the list to check once, comparing each title as cited with the title on record: [path to the list to check], [n] references, numbered, each with the title as cited and on record and where it stands. [the table when it has 30 rows or fewer]
 **Needs your attention:** [as at the reference check]
 **How to reply:** one reply covers the list, for example "all look right", or "all except 4 and 9: 4 is a different paper, 9 I'll check later". A reference you say is a different paper, or want to check later, is left out of the final memo. To keep a reference whose record does not match, say so and give your reason; it stays in, labelled as accepted by you. I record your reply in your own words.
 
@@ -749,18 +759,18 @@ User-facing words for this mode's internal terms. `SKILL.md` § Plain-Language R
 | anchor quote | never shown; if needed, "a quote that pins the page" |
 | vision, vision-validated, vision audit, transcript-confirmed | "numbers read from a picture of the page"; "a model tested on reading tables from page images"; "a check that the tested model did the reading"; "confirmed" |
 | `lit_verify settle`, matches / does_not_match | "your page comparison": "matches" / "does not match" |
-| `settle --list` item ids, line tags (`COMPARE`, `OPTIONAL`), the command hint | never shown; only the reason texts, numbered across the check-in |
+| `settle --list` item ids, the `MUST CHECK:` / `SHOULD LOOK:` tags of `audit` output, `settle --list`'s `(optional)` prefix and its `next (for the agent)` line | never shown; only the reason texts, under the paper each belongs to, numbered across the check-in |
 | `chain_unconfirmed` | "DAAF could not confirm where this PDF came from; it will be fetched again (or you can add your copy)" |
 | route | never shown; if vision is off: "on this setup DAAF reads the text of PDFs only" |
 | lane B, lane names, `rows` file | never shown |
 | `scholar_search verify`, the rule check, its match | "the automatic reference check" |
-| verify verdicts CONFIDENT / WEAK / MISMATCH / NOT FOUND / EXISTS | "matches the database record" / "partly matches; a person decides" / "does not match the record" / "no record found" / "the identifier exists, but its title was not compared" |
+| verify verdicts CONFIDENT / WEAK / MISMATCH / NOT FOUND / EXISTS | "matches the database record" / "partly matches; a person decides" (on the glance sheet: "partly matches; please decide") / "does not match the record" / "no record found" / "the identifier exists, but its title was not compared" |
 | `pending_adjudication` | "matches the record; not yet confirmed" (the glance sheet's words) |
-| `model_confirmed` / `model_adjudicated` | "confirmed by DAAF's second check (an AI judgment)" |
-| `human_confirmed` / `human_overridden` / `rejected`, in messages to the user | "you confirmed it" / "accepted by you" / "you marked it as a different work" |
+| `model_confirmed` / `model_adjudicated` | "confirmed by DAAF's second check (an AI judgment)" / "partly matches; confirmed by DAAF's second check (an AI judgment)" (the glance sheet's words) |
+| `human_confirmed` / `human_overridden` / `rejected`, in messages to the user | "you confirmed it" / "accepted by you" / "you marked it as a different work" (on the glance sheet: "accepted by you despite the automatic reference check" / "judged to be a different work; it will not be cited") |
 | the same, in deliverables (which the researcher may share) | "confirmed by the researcher" / "accepted by the researcher despite the automatic reference check" / not cited |
 | SAME_WORK / DIFFERENT_WORK / UNCERTAIN | "the same work" / "a different work" / "not sure" |
-| reference glance, glance sheet | "your reference check"; the sheet is "the reference list" |
+| reference glance, glance sheet | "your reference check"; the sheet is "the list to check" ("the reference list" is the `.bib` deliverable) |
 | citation-adjudicator, paper-reader, literature-searcher, literature-synthesizer, data-verifier | "DAAF's second check (an AI judgment)", "the AI reader", "the search specialist", "the writer", "an independent reviewer" (or omit) |
 | claim ids, finding ids, edge ids, `.lr-*` markers | never in user-facing prose; ids only in a technical appendix. The markers show as tags in braces in the `.md`, so the user reads the HTML copy, where they are hidden |
 | HTML copy (`{deliverable}_v{N}.html`) / the `.md` deliverable | "the review to read in your browser" / "the checked source" |
@@ -888,10 +898,11 @@ Mandatory. Create the skeleton at LR-0; append at each CP-R and consolidate at C
 | Reader BLOCKED (missing ingest, scan without validated vision) | Re-dispatch the searcher to ingest, or tell the user the pages cannot be covered |
 | Reader INCOMPLETE (FAIL after two revisions) | The paper supplies no findings; offer a re-read or leave it as context |
 | `audit` exit 9 (card changed after its check, or audited before) | Do not re-audit; a new card version is needed |
-| `report` exit 11 | Revision loop (≤ 2), then the user |
+| `report` exit 11 | Revision loop (≤ 2), then the user. When the FAIL items include `CARD_RECHECK_DIFFERS`, handle those first (the `report --kind final` row below; the same paper's `CLAIM_ROW_MISMATCH` items usually clear with them), run the final check again, then the revision loop for the FAIL items that remain |
 | Quick scan: `report --kind final` fails after the user's reply | A KIND final memo with `REVISE FROM`, checked, then shown at CP-F again; the earlier approval does not carry over |
 | `quarto pandoc` fails or warns about a citation | Give the user the `.md` with the one-line note on the tags in braces; record the problem in LEARNINGS.md |
-| `report --kind final` exit 10 (a stored source file missing) | Restore the source or ingest again; never skip the final check |
+| `report --kind final` exit 11 with `CARD_RECHECK_DIFFERS` (a card's re-check differs from its record, e.g. the paper's stored source file is missing or changed) | Do not run the revision loop: the synthesizer cannot restore a file. The item names the paper and what differs, not the cause: open the ingest manifest the paper's `card_check{S}.json` names (its `ingest.manifest`) and check that the file at `source.path` exists and hashes to that manifest's `source.sha256`. **Missing or changed:** put the original file back at that path, unchanged, and run the final check again; do not run `lit_verify card` again (a new card run leaves the paper's current claims bound to an older check, which fails until the claims are rebuilt, and any new check, even with the same result, leaves the audit of readings from pictures of pages behind: the audit names the card_check's sha256, and each check records its own time). **Cannot be restored:** the searcher ingests the paper again (a new fetch, or the user's PDF in `user_pdfs/`), the reader writes a new card version on that ingest (§ Dispatch Templates > paper-reader), then `card`, the audit when the card reads pictures of pages, and a KIND final synthesizer re-dispatch, whose `claims build` rebuilds the claims. **Intact, and the card still differs** (the gate now gives another result): run `lit_verify card` on the latest card again, then the KIND final re-dispatch; a card with readings from pictures of pages gets a new card version instead, then `card` and its audit (an audit is never repeated on one card version). Then the final check; never skip it |
+| `report` exit 10 | A missing corpus table, exported reference list, pinned table version or dependency (rapidfuzz for `--kind final`): supply the missing input (`export-bib` for the list; a missing dependency means the image needs a rebuild: tell the user) and run the check again |
 | `record-human` or `settle` exit 11 | Read the refusal; fix the rows or items file; never reword the user's words |
 | `ingest` refuses a batch (after evaluation) | Persist nothing more; keep the batch's rows on the glance |
 
@@ -942,7 +953,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. `age
 
 ## Orchestrator Skill Loading
 
-None. The agents preload their skills (`scholarly-search`, `literature-review`, `pdf-reading`). The orchestrator reads by path only the sections it shows or follows: `literature-review/SKILL.md` § The level menu (LR-0), `review-types-and-levels.md` § Questions to ask, by level, `formal-review.md` § The protocol (formal CP-1), and `lit-corpus.md` § Citation second check when a glance or settle refusal needs explaining. Two agent-reference files are read by path as well: `agent_reference/STATE_TEMPLATE_LITREVIEW.md` at LR-0 and on resume, and `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` when a handoff, the data-verifier spot-check or a consumer's question needs the review's output interface (statuses, files, markers, contract version).
+None. The agents preload their skills (`scholarly-search`, `literature-review`, `pdf-reading`). The orchestrator reads by path only the sections it shows or follows: `literature-review/SKILL.md` § The level menu (LR-0) and, in `literature-review/references/`, `review-types-and-levels.md` § Questions to ask, by level, `formal-review.md` § The protocol (formal CP-1), and `lit-corpus.md` § Citation second check when a glance or settle refusal needs explaining. Two agent-reference files are read by path as well: `agent_reference/STATE_TEMPLATE_LITREVIEW.md` at LR-0 and on resume, and `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` when a handoff, the data-verifier spot-check or a consumer's question needs the review's output interface (statuses, files, markers, contract version).
 
 ---
 
@@ -950,7 +961,7 @@ None. The agents preload their skills (`scholarly-search`, `literature-review`, 
 
 Process-only (`SKILL.md` § Mode Confirmation Gate): no counts, sources or years. The text for `SKILL.md` § Confirmation Templates by Mode:
 
-> [Why this is a **Literature Review**]. [Your goal in one line]. I'll read the literature review workflow, set up a project folder, and ask how deep you'd like to go: a quick scan of abstracts, a standard review where I read the key papers in full (recommended for most questions), or a formal systematic review that you lead. Then I'll come back with a scope check: the question as I understand it, where I'll search, what counts as in or out, and the expected reading and cost, before any full search starts. Along the way you'll look over the reference list before the final version and approve the final write-up; in a standard or formal review you'll also agree which papers get read in full and see what each round found. Every reference is matched to a database record, every quote and number is checked against its page, and results from different studies are never averaged into one number. [If materials: I'll read [X] first.] **Shall I proceed?**
+> [Why this is a **Literature Review**]. [Your goal in one line]. I'll read the literature review workflow, set up a project folder, and ask how deep you'd like to go: a quick scan of abstracts, a standard review where I read the key papers in full (recommended for most questions), or a formal systematic review that you lead. Then I'll come back with a scope check: the question as I understand it, where I'll search, what counts as in or out, and the expected reading and cost, before any full search starts. Along the way you'll check each reference once before the final version and approve the final write-up; in a standard or formal review you'll also agree which papers get read in full and see what each round found. Every reference is looked up in a database, every quote and number is checked against its page, and results from different studies are never averaged into one number. [If materials: I'll read [X] first.] **Shall I proceed?**
 
 ---
 

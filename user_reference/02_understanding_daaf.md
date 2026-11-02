@@ -197,7 +197,7 @@ Here's a few examples of the team members with the links to each of their actual
 | [**literature-searcher**](../.claude/agents/literature-searcher.md) | Search Specialist | In a literature review, runs the agreed search plan: searches the scholarly databases, follows citations forward and back, records why each paper is in or out, checks each reference against a database record and for retractions, and finds legal free copies of papers |
 | [**paper-reader**](../.claude/agents/paper-reader.md) | Reader | In a literature review, reads one paper in full and writes reading notes on it, with every quote and number checked against the page it came from |
 | [**literature-synthesizer**](../.claude/agents/literature-synthesizer.md) | Writer | In a literature review, turns the checked reading notes into the memo or the written review, wording each conclusion no more confidently than the evidence allows and never averaging results across studies |
-| [**citation-adjudicator**](../.claude/agents/citation-adjudicator.md) | Reference Checker | Judges whether a database record is the work a reference names: DAAF's second check (an AI judgment). It is used only for a model that has passed DAAF's test of this judgment, and no model has; without one, you do your reference check yourself, glancing at the reference list before a final write-up |
+| [**citation-adjudicator**](../.claude/agents/citation-adjudicator.md) | Reference Checker | Judges whether a database record is the work a reference names: DAAF's second check (an AI judgment). It is used only for a model that has passed DAAF's test of this judgment, and no model has; without one, you do your reference check yourself, glancing at the list to check before a final write-up |
 
 The point here is that we want to provide very different context to Claude when faced with different tasks. Trying to get Claude to do everything equally well is impossible given fixed context window limitations, and trying to do so will ultimately confuse it and cause the dreaded **context rot** we covered earlier. This means that we need to split responsibilities across "versions" of Claude provided very different instructions and behavioral protocols to get it to perform these tasks well in tandem, each working with a lean, focused context of its own.
 
@@ -326,12 +326,12 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 
 **What is checked, at every level:**
 - Every search is saved with its exact wording and results.
-- Every reference is matched to a database record and checked for retractions: the automatic reference check. A one-word change in a title can fool that match. DAAF has a second check for references (an AI judgment), but it is used only for a model that has passed DAAF's test of that judgment, and no model has. So before a final write-up you do your reference check: you glance at the reference list, each reference's title as cited next to the title on record, with one reply covering the whole list.
+- Every reference is looked up in a database and checked for retractions: the automatic reference check. A one-word change in a title can fool that match. DAAF has a second check for references (an AI judgment), but it is used only for a model that has passed DAAF's test of that judgment, and no model has. So before a final write-up you do your reference check: you glance at the list to check, each reference's title as cited next to the title on record, with one reply covering the whole list.
 - Every quote and number taken from a paper is checked against the page it came from. When a number was read from a picture of a page (a table, say), DAAF also checks that a model tested for that kind of reading did it, and lists anything you should compare by eye.
 - Results from different studies are never averaged into one number, and the wording never sounds surer than the evidence.
 
 **Check-ins:**
-- **Quick scan:** two -- the plan, then the memo with its reference list.
+- **Quick scan:** two -- the plan, then the memo and its references.
 - **Standard review:** the plan; in each round, the list of papers to read in full and the round check-in; then your reference check and the final review.
 - **Formal systematic review:** the plan; in each round, your full-text decisions, a checklist review and the round check-in; then your reference check and the final review.
 
@@ -554,7 +554,7 @@ affects student achievement? I'd expect the Tennessee STAR studies
 to show up.
 ```
 
-**What you're testing:** Does the search find the papers you expect? Do the memo's summaries match what the abstracts actually say? When you glance at the reference list, is every reference a real paper with the right title, authors and year? Once that holds up, try a standard review, where DAAF reads the key papers in full and you can check its quotes and numbers against the papers yourself.
+**What you're testing:** Does the search find the papers you expect? Do the memo's summaries match what the abstracts actually say? When you do your reference check, is every reference a real paper with the right title, authors and year? Once that holds up, try a standard review, where DAAF reads the key papers in full and you can check its quotes and numbers against the papers yourself.
 
 ### Level 3: Data Onboarding (Data Onboarding Mode)
 

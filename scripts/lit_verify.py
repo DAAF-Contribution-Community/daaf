@@ -641,8 +641,11 @@
 #              user decision, 2026-10-30) also runs the card gate again in-process on
 #              every card behind a claim and builds the claims from ITS result
 #              (CARD_RECHECK_DIFFERS when claim items, verdict or grade
-#              differ); it needs rapidfuzz (exit 10) and the paper's source
-#              file. A synthesis report without it trusts the hash-checked
+#              differ); it needs rapidfuzz (exit 10) and the paper's stored
+#              source file (missing or changed: the re-check differs, so
+#              CARD_RECHECK_DIFFERS and FAIL, exit 11; restoring the
+#              unchanged file clears it with no new card check). A synthesis
+#              report without it trusts the hash-checked
 #              stored card_check (design user decision 2026-10-30). --kind final with a table pinned
 #              older than its latest version: PINNED_OLDER_VERSION.
 #   Checks     lit_report_rules.py header: citations resolve to verified,
@@ -5082,8 +5085,14 @@ def report_view(lc, pd, tables, bib_keys, a, items, read_parquet, corpus_version
             if why:
                 rd["mismatches"] += 1
                 items.append(report_item("CARD_RECHECK_DIFFERS", f"Checking the evidence card of "
-                                         f"{citekey_of.get(key, key)} again gave {why}.", "Find out what changed (the "
-                                         "card, the paper or its stored text) and check the card again.",
+                                         f"{citekey_of.get(key, key)} again gave {why}.", "Check that the paper's stored "
+                                         "source file (source.path in the ingest manifest its card check names) exists "
+                                         "with its recorded sha256. If not, put the original file back unchanged and "
+                                         "check the deliverable again, with no new card check. If it cannot be "
+                                         "restored (ingest the paper again and write a new card version) or it is "
+                                         "intact, check the evidence card again (a new card version and its audit when "
+                                         "it takes readings from pictures of pages) and rebuild the claims table "
+                                         "(lit_corpus claims build).",
                                          citekeys=[citekey_of.get(key, key)]))
         fresh = {f["card_claim_id"]: f for f in lc.claim_rows_from_card(key, citekey_of.get(key), card, basis, refs)}
         for r in rows:

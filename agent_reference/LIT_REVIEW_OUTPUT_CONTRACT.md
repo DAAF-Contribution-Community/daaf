@@ -409,7 +409,7 @@ runs `lit_verify report` on it (the result sits beside it as `{stem}.report_chec
 | Standard and formal | `output/synthesis_round{R}_v{N}.html`, `output/lit_review_final_v{N}.html`: the HTML copy of a synthesis that passed its check, rendered by the orchestrator with Pandoc for the researcher to read | — (a derived copy; the `.md` is the checked source, and consumers read the `.md`) |
 | Standard and formal | `output/claim_spot_check_v{N}.md`: data-verifier's spot check of sampled claims against their pages before delivery, persisted by the orchestrator | — (a review record) |
 | Formal | `output/appraisal_log_v{N}.md`: the researcher's checklist judgments per paper, with their words, written by the orchestrator after each checklist review | — (a record) |
-| Every level | `output/reference_glance_v{N}.md` and `output/reference_glance_v{N}_rows.txt`: the reference list the researcher glances at before a final deliverable, and the verify rows a reply can confirm | — (input to the researcher's reply) |
+| Every level | `output/reference_glance_v{N}.md` and `output/reference_glance_v{N}_rows.txt`: the list to check that the researcher reads before a final deliverable (their reference check; "the reference list" is the `.bib`), and the verify rows a reply can confirm | — (input to the researcher's reply) |
 | On escalation | `output/LitReview_Handoff_v{N}.md`: the question, the final deliverable's path, the gaps marked answerable with data, the reference list and the manifest pointer, for Full Pipeline or Data Discovery | — |
 
 At every level the approved review plan is `Protocol_v{N}.md` in the project folder (a new

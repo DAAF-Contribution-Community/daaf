@@ -181,7 +181,8 @@ review is not using.
 > --decision matches|does_not_match --user-words "…"`, one call per decision, each writing
 > `audit_settlement{S}_{n}.json` beside the audit and a `papers/MANIFEST.jsonl` row of kind
 > `lit_verify_settle`. Item ids are copied from `settle_items{S}.txt`, never typed. The
-> researcher sees only the reasons, numbered across the check-in; record each number with its
+> researcher sees only the reasons, under the paper each belongs to (its short reference and PDF
+> path), numbered across the check-in; record each number with its
 > item id before presenting, so the reply's numbers lead back to the ids.
 
 | Paper key | Audit record | Item ids | Number shown (check-in) | Shown | Researcher's words | Decisions (`matches` / `does_not_match`) | Settlement record |

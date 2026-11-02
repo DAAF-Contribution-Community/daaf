@@ -143,7 +143,7 @@ A paid call is any call that can draw on a plan's usage or credits: `elicit-repo
 
 1. Write `{PROJECT_DIR}/scripts/lr_search/{NN}_index_r{R}_{step}.py`: a flat script (no functions; `# INTENT:` / `# REASONING:` comments) that (a) reads the latest `data/corpus_v{N}.parquet` and prints `paper_key`, `citekey`, `year`, `doi` and the full `title` per paper; (b) reads every `MANIFEST.jsonl` under `lit_search/` (and `web_fetches/` when a grey-literature row is needed) as bytes, splits on `\n`, and prints for each non-empty line its line number, `sha256` of the line bytes **without** the newline, `command`, the queried identifier and, on `verify` rows, the verdict.
 2. Run it with `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/lr_search/{NN}_index_r{R}_{step}.py`. Exit 74 means the log is incomplete: do not use its output.
-3. Copy keys and hashes from that log into your JSONL. A wrong hash is refused by `lit_corpus` (exit 10), never silently used. A failed index script is revised with `bash {BASE_DIR}/scripts/create_script_revision.sh`, never edited after its log is appended.
+3. Copy keys and hashes from that log into your JSONL. A wrong hash is refused by `lit_corpus`, never silently used: an `attach` line whose row is not a row of this project is rejected (exit 11, nothing written), or exit 8 when the hash is not 64 hex characters; an `ingest --rows` or `add-record --web-fetch-row` hash that is in no MANIFEST of the project stops the command (exit 10). A failed index script is revised with `bash {BASE_DIR}/scripts/create_script_revision.sh`, never edited after its log is appended.
 
 The index script prints no restricted content: it reads MANIFEST rows and the corpus, never `lit_search/restricted/`.
 

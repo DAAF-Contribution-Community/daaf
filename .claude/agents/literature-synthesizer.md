@@ -313,7 +313,7 @@ Counts (findings, citations, papers) come from tool output: the bib, `counts`, `
 | Orchestrator | Status, deliverable path, references by status, items for the researcher | Runs `lit_verify report` (`--level`, and `--kind final` on what the researcher receives); runs the reference glance; updates STATE.md's round table; shows the deliverable at the round check-in or final review |
 | Researcher (via the orchestrator) | The memo, round syntheses, follow-up plans, the final synthesis | Reads the findings, weights and certainty; chooses another round, a plan change or the final write-up; rates certainty at the formal level |
 | `lit_verify report` | The deliverable and the tables you recorded | Checks citations, markers, numbers and wording |
-| `lit_corpus adjudications glance-sheet` (orchestrator) | The deliverable's citekeys (`--deliverable`) | The reference list the researcher glances at before a final |
+| `lit_corpus adjudications glance-sheet` (orchestrator) | The deliverable's citekeys (`--deliverable`), plus any papers named with `--keys` that the final will cite beyond it | The list to check that the researcher reads before a final (their reference check) |
 | data-verifier (final spot-check) | The final synthesis and its claims | Re-reads sampled claims against their pages |
 
 **Severity-to-Action Mapping:**
