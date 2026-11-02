@@ -3,16 +3,18 @@
 How to write an evidence card that `scripts/lit_verify.sh card` can verify,
 what every check and status means, and how to fix a failing card. Source of
 truth: the header, `validate_card()`, `check_card()` and the selftest in
-`scripts/lit_verify.py` (`TOOL_VERSION = "1.14.0-daaf"`, 2026-11-01; card
+`scripts/lit_verify.py` (`TOOL_VERSION = "1.15.0-daaf"`, 2026-11-01; card
 schemas `lit-verify-card-v1`, `lit-verify-card-v2` and `lit-verify-card-v3`,
 result schema `lit-verify-card-check-v3`, re-derivation `rederive-v2`, quant
-fields `quant-v1`, page labels `page-label-v1`) and the ladder,
+fields `quant-v1`, page labels `page-label-v1`, figure pages `vision-figure-v1`) and the ladder,
 number and column-label rules in `scripts/pdf_text_common.py` (`ladder-v4`,
-`numbers-v6`, `column-check-v1`, `normalize-v1`). `lit_verify report`
-(1.10.0, S4; current 1.14.0), which checks a review deliverable against the claims built
-from these cards, is documented in the literature-review skill
-(`references/lit-verify-report.md`); the full card schema is formalized later in
-`LIT_REVIEW_OUTPUT_CONTRACT.md`. If this page and the code
+`numbers-v6`, `column-check-v1`, `normalize-v1`). `lit_verify report`, which
+checks a review deliverable against the claims built from these cards, is
+documented in the literature-review skill (`references/lit-verify-report.md`).
+The card schema lives on this page: the Literature Review output contract
+(`agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md`) covers what a review
+promises its consumers (the claims table built from the cards, the audit and
+settlement records) and points here for the card. If this page and the code
 disagree, the code wins.
 
 **Contents:** Syntax · Card anatomy · Front matter · The lit-verify block ·
@@ -30,6 +32,11 @@ grades · card_check JSON · MANIFEST row · Exit codes · Fixing a failing card
 bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S]
 bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 ```
+
+The orchestrator's `audit` and `route` subcommands, which check who read a
+card and on which install route, and `settle`, which records a person's
+comparison of the readings an audit lists with their PDF pages, are
+documented in `vision-validation.md` § Gating.
 
 - `PAPER_DIR` = `papers/{paper_key}/` written by `pdf_ingest`. It and its
   parent (the papers dir, where MANIFEST.jsonl lives) must pass the
@@ -74,8 +81,8 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 
 | Field | Value | Who sets it |
 |-------|-------|-------------|
-| `reader_model_source` | `self-report` | The reader. The orchestrator's audit result (`transcript-confirmed` or a mismatch) is recorded by the orchestrator outside the card, because editing a checked card breaks the SHA-256 its `card_check` records (`vision-validation.md` § Gating) |
-| `reader_route` | One of the route names in `vision-validation.md` § Routes, as given in the dispatch | The reader, copying the dispatch |
+| `reader_model_source` | `self-report` | The reader. The audit result (`transcript-confirmed`, `mismatch` or `unknown`) is recorded outside the card by `lit_verify audit`, in `vision_audit{S}.json`, because editing a checked card breaks the SHA-256 its `card_check` records (`vision-validation.md` § Gating) |
+| `reader_route` | One of the route names in `vision-validation.md` § Routes, copied from the dispatch's `ROUTE:` line (which the orchestrator copies from `lit_verify route`) | The reader, copying the dispatch. `lit_verify audit` compares it with the route `lit_verify route` recorded |
 | `vision` | `validated` or `unavailable` (the wording of CLAUDE.md § User Preferences, "PDF page-image cross-checking") | The reader, from the list check |
 
 `lit_verify` does **not** check any front-matter field.
@@ -141,6 +148,7 @@ and `references/formal-review.md`).
 | claim | `citation_use` | iff `citation_use` | `{cites_key, relation}`: `cites_key` a paper key or `"external:<doi or W-id>"`; `relation` one of `builds_on`, `uses_method`, `extends_result`, `contrasts`, `disputes`, `background`. The quote is the citing sentence |
 | claim | `quant` | no | `{estimate?, se?, ci_low?, ci_high?, n?, ci_level?, metric?}`, every value a non-empty string (numbers as printed, at most 40 characters; `metric` at most 80); another key → exit 8 |
 | claim | `page_label` | no, PDF only | The page number as **printed** on the cited page (`"7"`, `"iv"`, `"S3"`; pattern `^[A-Za-z0-9][A-Za-z0-9.\-]{0,11}$`). On an arXiv HTML card → exit 8 |
+| claim | `vision_reading` | no, PDF only (1.15.0) | How sure the reader is of the numbers it read from a page picture: `exact` (the default when absent), `estimated` (for example read off a chart's axis) or `uncertain`. Allowed only with `source` `vision` or `both` (else exit 8). It applies to every number of the claim, so numbers read with different confidence go in separate claims. The figure-page rule reads it (§ Vision consistency) |
 | block | `paper_note` | no | `{design, study_weight, weight_reason?, limitation_claim_ids, directness?}`: `design` one of the paper-notes design labels (`rct` … `other`); `study_weight` `substantial`, `moderate`, `limited` or `null` (a `weight_reason` is required with a weight); every id in `limitation_claim_ids` must be a claim of this card with `claim_type: limitation`; `directness` parts `population`, `intervention`, `comparator`, `outcome`, `setting`, `time`, each `direct`, `partly` or `indirect` |
 
 Typed claims are claims: every quote, whatever its type, goes through the
@@ -313,9 +321,14 @@ to trust from the source the ingest recorded, with `pdf_ingest`'s own code
   whose line, URL and timestamp
   match no dispatched fetch, any `web_fetch_row_conflict`, a `user_supplied`
   source the user did not supply, and `synthetic` or `unknown` on a real card
-  are reported, not trusted. *Inference:* this audit step is specified here
-  and is to be built into the Literature Review mode (S5); it has not been
-  exercised yet.
+  are reported, not trusted. `lit_verify audit` runs this check (step 6,
+  `vision-validation.md` § Gating): a `web_fetch` source must be the very
+  row (line, file name, hash, final URL) of a fetch under the project's
+  `web_fetches/`, a `user_supplied` source must sit under its `user_pdfs/`,
+  and the file must still hash to the recorded value; anything else is the
+  outcome `chain_unconfirmed`. A forger who can write the project's own
+  `web_fetches/` record still passes: the check narrows the residual, it
+  does not close it.
 - `card_check` records the outcome in `rederive` (§ card_check JSON) and the
   MANIFEST row a summary. On the nine bake-off cards every re-derivation
   matched, in 0.06–0.97 s under 1.7.0 (0.968 s for the 192-page report)
@@ -850,12 +863,13 @@ so it treats it as a possible scan."
   (`FLAGS_NOT_REDERIVED`) the conservative reading keeps a recorded OCR
   layer and counts an unconfirmed scan as truly scanned.
 - **Only the scan part of the list's scope.** A vision reading on a sparse
-  page (flagged `scanned`, little text, not mostly one image) or on a figure
-  or chart page (class `normal`) is outside the list too, but raises
-  nothing: it is still unvalidated, the reader labels and reports it, and
-  the orchestrator checks it by hand (`vision-validation.md` § Gating, step
-  5). Measured on the five bake-off PDFs (342 pages): 2 sparse pages, both
-  near-blank text pages; all 10 born-digital figure pages class `normal`.
+  page (flagged `scanned`, little text, not mostly one image) is outside the
+  list too, but raises nothing here: it is still unvalidated, the reader
+  labels and reports it, and `lit_verify audit` lists it for a person
+  (`vision-validation.md` § Gating, step 5). Figure and chart pages have
+  their own warning (below). Measured on the five bake-off PDFs (342 pages):
+  2 sparse pages, both near-blank text pages; all 10 born-digital figure
+  pages class `normal`.
 - **An ignored digest raises nothing.** A `vision_only` digest on a page
   with text in any lane is `VISION_ONLY_IGNORED` (an anchor must cover the
   page), so it gets no review item.
@@ -864,6 +878,38 @@ so it treats it as a possible scan."
   that card is FAIL, with the review item listed beside the fails. A
   revised card that keeps the vision reading gets the item again.
 - PDF only: arXiv HTML units have no page images.
+
+**A number read from a chart or figure that nothing in the paper confirms
+is a warning (1.15.0, by the user's decision, `vision-figure-v1`).** No model is
+validated on figure pages (the probe scored tables only). The gate raises
+`VISION_FIGURE_UNCORROBORATED` (kind `vision`, severity **warning**: no
+verdict or grade change) once per claim and cited page when all of these
+hold:
+
+- the claim's `source` is `vision` or `both`;
+- the cited page is a figure page of class `normal` (the `figure` flag, or
+  figure evidence the gate re-derives from the source: a figure caption or
+  a pictured image), and not a scan page (those get `VISION_ON_SCAN_PAGE`);
+- a number of the claim is **in doubt**: the claim's `vision_reading` is
+  `estimated` or `uncertain`, or the number is in no text lane of that page
+  (anchor, lane B or OCR text);
+- and **no page of the paper prints it** in its re-derived text (anchor or
+  lane B). A number the text states raises nothing: the text corroborates
+  the reading.
+
+The item lists the numbers in doubt (`numbers_in_doubt`, and the claim's
+`vision_reading`), and its reason is written for the researcher:
+
+> The AI reader took the number 42 from a picture of a chart or figure on
+> PDF page 3 (its position in the file; the printed page number may differ)
+> and marked the reading as an estimate. The paper's text does not print 42
+> anywhere, so nothing in the paper confirms it, and DAAF has not tested AI
+> reading of numbers from charts. If it matters to the review, please
+> compare 42 with the figure on PDF page 3.
+
+`lit_verify audit` lists these warnings under `should_look` (outcome
+`confirmed_with_checks` when nothing else is open). A vision claim on a
+figure page with no number raises nothing.
 
 ## arXiv HTML statuses (1.4.0)
 
@@ -920,8 +966,8 @@ another anchor covers is downgraded to `warning`.
 
 ## Status index
 
-What `lit_verify card` can write (`lit_verify` 1.9.0 or later), with the
-severity and the section that explains each: the 81 keys of `SEVERITY` in
+What `lit_verify card` can write (`lit_verify` 1.15.0 or later), with the
+severity and the section that explains each: the 82 keys of `SEVERITY` in
 `lit_verify.py` (one of them,
 `COLUMN_NOT_CHECKED`, is a label, never a status: last row), plus
 `COVERED_SPARSE`†. `COVERED_SPARSE` and `COVERED_DUPLICATE` take their
@@ -935,7 +981,7 @@ severity from the page (§ Coverage statuses).
 | partial | `PASS_OCR`, `VISION_ONLY`, `SCANNED_PAGE`, `PASS_OCR_LAYER`, `OCR_LAYER_PAPER` (§ Page classes, § Coverage statuses); `NUMBER_OCR_ONLY`, `NUMBER_OCR_VISION`, `NUMBER_VISION_ONLY`, `NUMBER_OCR_LAYER`, `NUMBER_OCR_LAYER_VISION` (§ Numbers); `PASS_CONVERSION_ERROR`, `NUMBER_CONVERSION_ERROR` (§ arXiv HTML statuses); `QUANT_NUMBER_PARTIAL` (§ Card schema v3) |
 | review | `NEAR`, `REDACTED_SPAN` (§ The match ladder); `QUOTE_NUMBERS_DIFFER` (§ The quote-number rule); `NEEDS_REVIEW` (coverage, § Coverage statuses); `NUMBER_PRECISION_DIFFERS`, `NUMBER_NOT_NEAR_QUOTE`, `NUMBER_SIGN_AMBIGUOUS` (§ Numbers); `VISION_ON_SCAN_PAGE` (§ Vision consistency); `QUANT_NUMBER_REVIEW`, `QUANT_CI_ORDER`, `QUANT_ESTIMATE_OUTSIDE_CI` (§ Card schema v3) |
 | fail | `WRONG_PAGE`, `NOT_FOUND` (§ The match ladder); `NON_IDENTIFYING` (§ Identifying quotes); `NOT_COVERED`, `MISSING_PAGE` (§ Coverage statuses); `NUMBER_MISSING`, `NUMBER_UNPARSEABLE` (§ Numbers); `VISION_UNAVAILABLE_CLAIM`, `VISION_NOT_ON_LIST` (§ Vision consistency); `ANCHOR_KIND_MISMATCH`, `SOURCE_VERSION_MISMATCH`, `SECTION_NOT_FOUND`, `MISSING_SECTION`, `WRONG_SECTION`, `SECTION_END_NOT_NEXT`, `TABLE_ROWS_HASH_MISMATCH`, `MIXED_ANCHOR_KINDS` (§ arXiv HTML statuses); `SOURCE_HASH_MISMATCH`, `PAPER_KEY_MISMATCH`, `ANCHOR_HASH_MISMATCH`, `PAGE_INDEX_HASH_MISMATCH`, `OCR_HASH_MISMATCH`, `LANE_B_HASH_MISMATCH`, `INGEST_MANIFEST_HASH_MISMATCH`, `NO_INGEST_ROW`, `PAGE_OUT_OF_RANGE` (§ Integrity and warning statuses); `ANCHOR_REDERIVE_MISMATCH`, `ROW_SOURCE_REDERIVE_MISMATCH`, `SOURCE_MISSING`, `SOURCE_FILE_HASH_MISMATCH`, `SOURCE_REDERIVE_ERROR`, `HEADER_FOOTER_REDERIVE_MISMATCH`, `FLAGS_REDERIVE_MISMATCH`, `OCR_ON_TEXT_PAGE` (§ Re-derivation); `QUANT_NUMBER_FAILED`, `QUANT_NOT_IN_NUMBERS`, `QUANT_N_NOT_INTEGER` (§ Card schema v3) |
-| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation); `PAGE_LABEL_UNCONFIRMED` (§ Card schema v3) |
+| warning | `INGEST_SUFFIX_DIFFERS`, `INCOMPLETE_INGEST_IGNORED`, `NORMALIZE_VERSION_DIFFERS`, `SPARSE_DECLARATION_MISMATCH`, `VISION_ONLY_IGNORED` (§ Integrity and warning statuses); `VISION_FIGURE_UNCORROBORATED` (§ Vision consistency); `HTML_EXTRACT_VERSION_DIFFERS` (§ arXiv HTML statuses); `EXTRACTOR_VERSION_DIFFERS`, `OCR_NOT_REDERIVED`, `ROW_SOURCE_NOT_REDERIVED`, `FLAGS_NOT_REDERIVED` (§ Re-derivation); `PAGE_LABEL_UNCONFIRMED` (§ Card schema v3) |
 | label | `COLUMN_NOT_CHECKED` (a number item's `column_severity` only, never its `severity`; § Numbers, the column label) |
 
 ## Verdicts and grades
@@ -1037,6 +1083,11 @@ prints a sign-shaped dash the matched span does not. No new status.
 (`vision-scope-v1`), so a result shows whether the rule ran (one made
 before it has no such key).
 
+**1.15.0 (result schema unchanged):** an item can carry the status
+`VISION_FIGURE_UNCORROBORATED` (kind `vision`, warning, with `page`,
+`claim_id`, `number`, `numbers_in_doubt` and `vision_reading`; § Vision
+consistency); `rule_versions` gains `vision_figure` (`vision-figure-v1`).
+
 ## MANIFEST row (papers dir, kind `lit_verify`)
 
 One row per attempt with a valid papers dir: `kind`, `tool_version`,
@@ -1056,13 +1107,14 @@ dir writes no row.
 
 | Exit | Meaning |
 |------|---------|
-| 0 | Verdict PASS, PARTIAL or NEEDS_REVIEW (in the card_check JSON); selftest: every expectation held |
-| 1 | Usage error (bad flags; PAPER_DIR not a directory; CARD_PATH not a file) |
-| 2 | Refused path (PAPER_DIR / papers dir / SCRATCH_DIR guard; CARD_PATH not directly inside PAPER_DIR; basename not a paper key; an ingest artifact path resolving outside PAPER_DIR; a secret value in an argument) |
+| 0 | Verdict PASS, PARTIAL or NEEDS_REVIEW (in the card_check JSON); `audit` outcome `confirmed` or `confirmed_with_checks`; `route` detected; `settle` items listed or settlement recorded; selftest: every expectation held |
+| 1 | Usage error (bad flags; PAPER_DIR or PROJECT_DIR not a directory; CARD_PATH, `--card` or `--audit` not a file; `settle` with `--list` and a decision flag, or with neither `--list` nor `--items` and `--decision`) |
+| 2 | Refused path (PAPER_DIR / papers dir / PROJECT_DIR / SCRATCH_DIR guard; CARD_PATH, `--card` or `--audit` not directly inside PAPER_DIR; `audit` PAPER_DIR not under PROJECT_DIR/papers/; `settle --items` outside the DAAF root; basename not a paper key; an ingest artifact path resolving outside PAPER_DIR; a secret value in an argument) |
 | 3 | Reserved by `run_with_capture.sh`, never used |
-| 8 | Card cannot be parsed (missing, duplicate or invalid lit-verify block; oversize or non-UTF-8 card; a v2 structural rule broken: `source_version` missing on HTML or present on PDF, a non-`text` source or vision declared available on HTML, a bad or repeated section label, `section_end` = `section`) |
-| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors; from 1.8.0 pdfimages, which re-derives page flags) |
-| 11 | FAIL as a recorded result (card_check written); selftest: an expectation did not hold |
+| 8 | Card cannot be parsed (missing, duplicate or invalid lit-verify block; oversize or non-UTF-8 card; a v2 structural rule broken: `source_version` missing on HTML or present on PDF, a non-`text` source or vision declared available on HTML, a bad or repeated section label, `section_end` = `section`; a v3 `vision_reading` on a claim that is not a PDF vision reading); `audit`: an agent ID outside the hook's id allowlist or given twice, or a `--transcript` that is not that agent's file; `settle`: not an audit record name, an unreadable record, or an items file that is oversize, not UTF-8, empty or holds a word that is not an item id |
+| 9 | `audit`: an input fails its hash check (no card_check recorded for the card, the card_check differs from its MANIFEST row, or the card from its card_check), or an audit record for the card already exists; `settle`: the audit record differs from its MANIFEST row, the card or card_check changed or was checked again since the audit, or an item id does not re-derive |
+| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors; from 1.8.0 pdfimages, which re-derives page flags); `route`: the route detector cannot be loaded |
+| 11 | FAIL as a recorded result (card_check written); `audit` outcome `person_must_check`, `mismatch` or `chain_unconfirmed` (record written); `settle` refused, nothing written (empty user words, `does_not_match` without a rationale, an item id twice, not this audit's, or the chain's); selftest: an expectation did not hold |
 | 12 | Internal error (no verdict; see the MANIFEST note) |
 
 ## Fixing a failing card
@@ -1150,15 +1202,27 @@ sign-flipped (FAIL via NUMBER_MISSING); (1.8.0 part 3, `ladder-v4`) a quote
 that adds a spaced dash before the positive `1.20b` (NEEDS_REVIEW via
 QUOTE_NUMBERS_DIFFER); (1.8.0 part 5) a listed reader's vision reading on a
 page with an existing OCR text layer (NEEDS_REVIEW via VISION_ON_SCAN_PAGE);
-plus one check that each card run wrote one MANIFEST
-row with a matching `card_check` hash: **53 card expectations**. From
-1.10.0 the same selftest adds 18 `report` expectations (a synthetic review
-built by `lit_corpus`, memos with planted violations; literature-review
-`references/lit-verify-report.md`), **71 in all**. It needs
+(1.15.0) on a figure page, a listed reader's number from a chart that the
+paper prints nowhere (PARTIAL plus the warning
+VISION_FIGURE_UNCORROBORATED) and one the paper prints on another page
+(PARTIAL, no warning); plus one check that each card run wrote one MANIFEST
+row with a matching `card_check` hash: **55 card expectations**. Twelve
+`route`, `audit` and `settle` expectations follow (the ROUTE line and a row
+with environment keys by presence only; a selftest card's synthetic source
+is `chain_unconfirmed`; a second audit of the same card is refused, exit 9;
+a glob character in the agent ID is refused, exit 8; a card edited after its
+check is refused, exit 9; a figure reading by a model DAAF cannot confirm is
+listed for a person; `settle --list` lists it and marks the chain not
+settleable; `settle` refuses empty user words, an id not of this audit, the
+chain's id and a `does_not_match` without a rationale, exit 11, and records
+a matching reply with its hash-bound row, exit 0). The same selftest adds 23
+`report` expectations (a synthetic review built by `lit_corpus`, memos with
+planted violations; literature-review `references/lit-verify-report.md`),
+**90 in all**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 71/71 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 90/90 expectations held; work dir removed`.
 
 ## Worked examples
 

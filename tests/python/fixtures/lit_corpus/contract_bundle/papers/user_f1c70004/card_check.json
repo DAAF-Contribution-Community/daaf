@@ -1,8 +1,8 @@
 {
   "kind": "lit_verify_card_check",
   "schema_version": "lit-verify-card-check-v3",
-  "tool_version": "1.13.0-daaf",
-  "checked_at": "2026-11-01T16:38:23Z",
+  "tool_version": "1.15.0-daaf",
+  "checked_at": "2026-11-01T22:55:45Z",
   "paper_key": "user_f1c70004",
   "anchor_kind": "pdf",
   "card": {
@@ -71,6 +71,7 @@
     "column_check": "column-check-v1",
     "rederive": "rederive-v2",
     "vision_scope": "vision-scope-v1",
+    "vision_figure": "vision-figure-v1",
     "quant": "quant-v1",
     "page_label": "page-label-v1"
   },

@@ -85,9 +85,11 @@ the mapping of the abstract's categories to these item numbers is DAAF's).
 
 1. The reader drafts an answer and a quote per item, with a reason for any `U`,
    `CT` or `NA`.
-2. Each answer is an appraisal claim (`formal-review.md` § Recording checklist
-   answers): guide `jbi-qual` or `casp-qual`, item = the item number, answer on
-   the tool's scale.
+2. Each answer backed by a quoted passage is an appraisal claim
+   (`formal-review.md` § Recording checklist answers): guide `jbi-qual` or
+   `casp-qual`, item = the item number, answer on the tool's scale. An answer
+   that rests on the paper's silence (a `U` or `CT` because nothing is
+   reported) goes in the card's Appraisal prose with its reason.
 3. The researcher reviews the drafts, states the methodological-limitations
    concern in words, and the record quotes them.
 

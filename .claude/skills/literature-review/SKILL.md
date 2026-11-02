@@ -41,8 +41,10 @@ certainty, synthesis guardrails, the gap register) and the phrase table
 (`pdf-reading`), study-design threats and causal verbs (`data-scientist`),
 exploratory versus pre-specified labels (`creative-verification`), and plain
 language for lay readers (`science-communication`). The Literature Review mode
-and its agents are planned (build session S5); until then, any agent doing
-review work for the researcher uses this skill directly.
+runs this method: its literature-searcher and literature-synthesizer agents
+preload this skill, and its paper-reader reads the paper-note and checklist
+files by path. Outside that mode, an agent doing review work for the
+researcher applies the skill directly.
 
 ## In short
 
@@ -85,38 +87,41 @@ it as written; details and the type-by-level table are in
 
 > **How deep should this review go?** You can change your mind after any round (one cycle of searching, choosing and reading papers, after which DAAF reports back); DAAF keeps a record of every choice.
 >
-> **Quick scan.** DAAF searches the literature, reads titles and abstracts, and writes a short memo: what studies report, which papers look most useful, and where the gaps seem to be. Every reference is checked to exist as cited, and every statement drawn from an abstract says so.
+> **Quick scan.** DAAF searches the literature, reads titles and abstracts, and writes a short memo: what studies report, which papers look most useful, and where the gaps seem to be. Every reference is matched to a database record and you look over the reference list before the memo is final, and every statement drawn from an abstract says so.
 > - *Good for:* getting your bearings, or finding pointers when you plan to read the papers yourself.
 > - *Trade-off:* abstracts can overstate results and leave out limitations, so the memo says what papers claim, not how well they show it.
-> - *Your time:* minutes: the question, any papers you already know should turn up, and a read of the memo.
+> - *Your time:* minutes: the question, any papers you already know should turn up, a read of the memo, and a look over the reference list (about a minute per 10 references).
 >
 > **Standard review** *(recommended for most questions).* DAAF reads the key papers in full. Every quote and number it uses is checked against the page it came from. For each paper you get a short note: the study design, its main limitations (quoted, with page numbers) and how much weight it deserves, with the reasons. The synthesis states how sure we can be about each conclusion, and the wording follows that ("probably", "may", …).
 > - *Good for:* a reliable picture of what the evidence shows, for a paper's background, a grant, or a decision.
 > - *Trade-off:* the weight of each paper is a reasoned judgment, not a formal checklist score, and DAAF chooses the key papers with you rather than reading everything that exists.
-> - *Your time:* agreeing the list of key papers before they are read, then checking the weights and how sure each conclusion is.
+> - *Your time:* agreeing the list of key papers before they are read, a check-in after each round, checking the weights and how sure each conclusion is, and a look over the reference list before the final version (about a minute per 10 references).
 >
 > **Formal / systematic review.** You lead a formal, publishable process: a plan written before any searching (the protocol), fixed rules for which studies count, a second person checking those choices, a published checklist for each kind of study, and a formal rating of how sure we can be about each conclusion. DAAF drafts each checklist answer with the passage that supports it, keeps every record and checks every quote and citation; you make every judgment call. (The checklists are the standard published ones, such as RoB 2 for randomized trials and ROBINS-I for other studies of a program or policy; the rating follows the GRADE method.)
 > - *Good for:* a publishable systematic review, or when you need a fully documented, defensible appraisal.
 > - *Trade-off:* much more of your time, and more reading and cost per paper.
-> - *Your time:* substantial: the protocol, every checklist judgment and rating, and settling disagreements between the two people choosing studies.
+> - *Your time:* substantial: the protocol, every checklist judgment and rating, settling disagreements between the two people choosing studies, and a look over the reference list before the final version.
 >
 > **At every level:** searches are recorded, citations are checked, abstract-only evidence is labelled, results from different studies are never averaged into one number, and the wording never sounds surer than the evidence.
 
-## What exists today and what is planned
+## The tools and agents behind the method
 
-The tools this method relies on are built; the Literature Review mode and its
-agents are still to come. Until they exist, the orchestrator or a dispatched
-agent runs the tools below directly and says so in the output.
+Every piece below is built. In the Literature Review mode the orchestrator
+dispatches the agents and runs every gate it does not author
+(`.claude/skills/daaf-orchestrator/references/literature-review-mode.md`);
+outside that mode, the orchestrator or a dispatched agent runs the tools
+directly and says so in the output.
 
-| Piece | Status | Until it exists |
-|-------|--------|-----------------|
-| `scholar_search.sh` (search, `verify`, `retractions`, `cites`, `refs`, `similar`, `oa`) | Built | — |
-| `pdf_ingest.sh` and `lit_verify.sh card` (page-checked quotes and numbers, card schemas v1, v2 and v3) | Built | — |
-| Card v3 fields: `claim_type` (incl. `limitation` with `limitation_kind`, `appraisal`, `citation_use`), gate-checked `quant` values, a `paper_note` block | Built (introduced in `lit_verify` 1.9.0, S4) | — |
-| `lit_corpus` (corpus, screening log, counts per round, claims, paper-notes and findings tables, descriptive summaries, sign tests, gap register, citation-edge table, BibTeX/RIS, review manifest) | Built (introduced 1.0.0, S4; `references/lit-corpus.md`) | — |
-| `lit_verify report` (checks a deliverable's citations, claim links and wording against the review's tables) | Built (introduced in `lit_verify` 1.10.0, S4; `references/lit-verify-report.md`) | — |
-| `scholar_search` records files and `cites`/`refs --s2-context` (Semantic Scholar citation sentences; intents on `refs` only) | Built (introduced in `scholar_search` 1.7.0, S4) | — |
-| Literature Review mode, paper-reader and synthesizer agents | Planned (S5) | The orchestrator or a dispatched agent applies this skill |
+| Piece | What it does |
+|-------|--------------|
+| `scholar_search.sh` (search, `verify`, `retractions`, `cites`, `refs`, `similar`, `oa`) | Searches and reference checks, each call recorded |
+| `pdf_ingest.sh` and `lit_verify.sh card` | Page-checked quotes and numbers; card schemas v1, v2 and v3 (v3: `claim_type`, incl. `limitation` with `limitation_kind`, `appraisal` and `citation_use`; gate-checked `quant` values; a `paper_note` block) |
+| `lit_corpus` | Corpus, screening log, counts per round, claims, paper-notes and findings tables, descriptive summaries, sign tests, gap register, citation-edge table, BibTeX/RIS, review manifest, and the second-check ledger with the reference glance (`references/lit-corpus.md`) |
+| `lit_verify report` | Checks a deliverable's citations, claim links and wording against the review's tables (`references/lit-verify-report.md`) |
+| `lit_verify route`, `audit` and `settle` | Record the install route; check who read a card's page pictures, on which route, and where the PDF came from; record a person's comparison of listed readings with the page (`pdf-reading` `references/vision-validation.md` § Gating) |
+| `scholar_search` records files and `cites`/`refs --s2-context` | Semantic Scholar citation sentences; intents on `refs` only |
+| Literature Review mode and its agents: literature-searcher, paper-reader, literature-synthesizer | The three levels with the researcher's check-ins; one reader per paper; deliverables written only from page-checked claims |
+| The citation second check | No adjudicator model has passed its evaluation, so the citation-adjudicator agent is not dispatched: the second check of every reference whose automatic check matched its record is the researcher's reference glance before any final deliverable (`references/lit-corpus.md` § Citation second check) |
 
 ## Scope
 

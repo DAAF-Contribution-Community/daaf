@@ -95,8 +95,10 @@ rescue a causal reading of a correlation.
 
 1. The reader drafts an answer and a quote per item; an `NA` or `U` carries a
    one-line reason.
-2. Each answer is an appraisal claim (`formal-review.md` § Recording checklist
-   answers).
+2. Each answer backed by a quoted passage is an appraisal claim
+   (`formal-review.md` § Recording checklist answers). An answer that rests on
+   the paper's silence (a `U` because nothing is reported) has no passage to
+   check: it goes in the card's Appraisal prose with its reason.
 3. The researcher reviews the answers, states the overall concern in their own
    words, and the record quotes them.
 4. In the synthesis, descriptive evidence supports descriptive findings; a

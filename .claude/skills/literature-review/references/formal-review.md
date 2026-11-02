@@ -117,10 +117,12 @@ one checklist per result the review uses.
 
 ## Recording checklist answers
 
-Each answer is a claim in the paper's card, so its quote gets the same page
-check as any other claim.
+Each answer backed by a passage is a claim in the paper's card, so its quote
+gets the same page check as any other claim. An answer that rests on the
+paper's silence (`NI`, "not reported") has no passage to check: it goes in the
+card's Appraisal prose with its one-line reason, not in a claim.
 
-**Card v3 (`lit_verify` 1.9.0, built):** `claim_type: appraisal` with an `appraisal` object
+**Card v3:** `claim_type: appraisal` with an `appraisal` object
 `{guide, item, answer}`. `guide` is one of `rob2`, `robins-i-v2`, `robins-e`,
 `wwc5`, `amstar2`, `jbi-qual`, `casp-qual`, `jbi-xs`, `axis`, `theory`, `other`;
 `item` and `answer` are short strings (at most 40 characters) in the tool's own
@@ -132,10 +134,17 @@ text starts with the guide, item and answer ("rob2 1.2 PY: …"); the quote is
 page-checked as usual. Write new cards as v3: `lit_corpus claims build` then
 lists the answers as `appraisal` rows of the claims table.
 
-**The researcher's judgments** (domain and overall) are recorded in the card's
-Appraisal prose section with the researcher's own words quoted and the date,
-and in the protocol's appraisal log. A judgment that differs from the tool's
-own rule is fine; record why.
+**The researcher's judgments** (each answer confirmed or changed, each domain
+and the overall judgment) are recorded in the review's appraisal log,
+`output/appraisal_log_v{N}.md`, which the orchestrator writes after each
+checklist review: per paper, the guide, the result judged and the judgments,
+with the researcher's own words quoted and the date. They never go into the
+card: a card that `lit_verify card` checked is never edited, and the reader's
+drafted answers stay as drafted. A weight the researcher confirms or changes
+is recorded with `lit_corpus notes record`, `decided_by.role: researcher` and
+their words in `decided_by.researcher_instruction`; a later `claims build`
+keeps that note rather than the reader's. A judgment that differs from the
+tool's own rule is fine; record why.
 
 ## The researcher's certainty rating
 

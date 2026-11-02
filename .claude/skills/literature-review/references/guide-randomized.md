@@ -120,12 +120,15 @@ gate checks them on the page.
 
 1. The reader drafts, per signalling question, an answer and a quote; an `NI`
    answer carries a one-line reason ("allocation concealment not described").
-2. Each answer is recorded as an appraisal claim: guide `rob2`, item = the
-   tool's question number as printed in the version used, answer = `Y`, `PY`,
-   `PN`, `N`, `NI` or `NA` (`formal-review.md` § Recording checklist answers).
+2. Each answer backed by a quoted passage is recorded as an appraisal claim:
+   guide `rob2`, item = the tool's question number as printed in the version
+   used, answer = `Y`, `PY`, `PN`, `N` or `NA`. An `NI` answer rests on the
+   paper's silence, so it has no passage to check: it goes in the card's
+   Appraisal prose with its reason, not in a claim (`formal-review.md`
+   § Recording checklist answers).
 3. The researcher reviews the drafts domain by domain, decides each domain
-   judgment and the overall judgment, and the record quotes their decision as
-   the researcher's.
+   judgment and the overall judgment, and the appraisal log quotes their
+   decision as the researcher's.
 4. In the synthesis, the overall judgment informs the risk-of-bias note of the
    finding's certainty (`certainty-of-evidence.md`), weighing each study by its
    size and influence, never by counting.

@@ -33,7 +33,7 @@ import subprocess
 import sys
 import unittest
 import uuid
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
@@ -182,7 +182,7 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.14.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.15.0-daaf")
         self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v2", dict))
         self.assertEqual(lv.VISION_SCOPE_VERSION, "vision-scope-v1")                 # 1.8.0 part 5
         self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
@@ -1686,7 +1686,7 @@ class VisionOnScanPageTests(unittest.TestCase):
 
     def test_severity_table_count(self):
         # every SEVERITY key is a status (one, COLUMN_NOT_CHECKED, a label); evidence-card.md § Status index counts them
-        self.assertEqual(len(lv.SEVERITY), 81)
+        self.assertEqual(len(lv.SEVERITY), 82)                     # 1.15.0: + VISION_FIGURE_UNCORROBORATED
         self.assertEqual(lv.VISION_SOURCES, ("vision", "both"))
         index = (_REPO_ROOT / ".claude" / "skills" / "pdf-reading" / "references" / "evidence-card.md").read_text()
         self.assertIn(f"the {len(lv.SEVERITY)} keys of `SEVERITY`", index)
@@ -2215,7 +2215,10 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 71/71", out)                                  # 1.10.0: + 18 report
+        self.assertIn("SELFTEST PASS: 90/90", out)            # 1.15.0: + 2 figure, 5 route/audit, 5 report, 7 settle
+        for case in ("settle --list: the reading listed, the chain not settleable", "settle: the source chain",
+                     "settle: the reading, matches"):                           # 1.15.0 (S5 settle)
+            self.assertIn(case, out)
         self.assertIn("report: claims table forged to verified", out)               # 1.10.0 (user decision, October 2026)
         self.assertIn("forged ingest set, consistent hashes and row", out)          # 1.7.0 (W1)
         self.assertIn("listed reader's vision reading on a scan page", out)         # 1.8.0 part 5
@@ -2922,6 +2925,763 @@ class CardV3StructureTests(unittest.TestCase):
         self.assertEqual(tuple(re.findall(r"`([a-z_]+)`", labels)), lv.DESIGN_LABELS)
 
 
+# --- 1.15.0: the figure-page warning; every word and number invented ------------------------------------
+class VisionFigureTests(unittest.TestCase):
+    FIG = ("Figure 3: Invented lantern hours by quay\nThe chart shows how long the invented lanterns burned on each "
+           "quay of the imaginary harbour, drawn by hand from the ledger.\n\f")
+    TEXT = ("The keepers wrote in the ledger that the amber lanterns on the north quay burned for 57 nights in a row "
+            "before the first one went out.\n\f")
+    LISTED = {"reader_model": "test", "vision_validated": True, "vision_list_version": "t"}
+    COV = [cov(1, "The chart shows how long the invented lanterns burned on each quay"),
+           cov(2, "The keepers wrote in the ledger that the amber lanterns on the north quay")]
+
+    def run_fig(self, numbers, reading=None, flags=("figure",), first=None):
+        ing = mk_ingest([{"anchor": first or self.FIG, "flags": list(flags),
+                          "evidence": {"figure": ["caption: Figure 3"]} if "figure" in flags else {}},
+                         {"anchor": self.TEXT}])
+        claim = {"claim_id": "G1", "page": 1, "quote": None, "numbers": list(numbers), "source": "vision",
+                 "claim_type": "finding"}
+        if reading:
+            claim["vision_reading"] = reading
+        return lv.check_card(mk_v3(self.COV, [claim], **self.LISTED), ing, None)
+
+    @staticmethod
+    def fig(r):
+        return [it for it in r["items"] if it["status"] == "VISION_FIGURE_UNCORROBORATED"]
+
+    def test_estimated_number_not_in_the_text_warns_only(self):
+        r = self.run_fig(["42"], "estimated")
+        items = self.fig(r)
+        self.assertEqual([(it["kind"], it["severity"], it["page"], it["claim_id"], it["numbers_in_doubt"])
+                          for it in items], [("vision", "warning", 1, "G1", ["42"])])
+        self.assertEqual(r["verdict"], "PARTIAL")                         # no verdict or grade change (warning)
+        self.assertEqual(r["evidence_grade_suggested"], "FULL_TEXT_PARTIAL")
+        self.assertTrue(any(s.startswith("VISION_FIGURE_UNCORROBORATED p1 claim G1") for s in r["warnings"]))
+        reason = items[0]["reason"]
+        self.assertIn("The AI reader took the number 42 from a picture of a chart or figure on PDF page 1", reason)
+        self.assertIn("marked the reading as an estimate", reason)
+        self.assertRegex(reason, r"please compare 42 with the figure on PDF page 1\.$")
+        for jargon in ("text layer", "lane", "anchor", "route", "vision", "digest", "page image"):
+            self.assertNotIn(jargon, reason.lower(), reason)
+        self.assertIn("as uncertain", self.fig(self.run_fig(["42"], "uncertain"))[0]["reason"])
+
+    def test_a_number_the_text_prints_raises_nothing(self):
+        self.assertEqual(self.fig(self.run_fig(["57"], "estimated")), [])           # printed on page 2
+        self.assertEqual(self.fig(self.run_fig(["3"], "estimated")), [])            # printed on page 1 ("Figure 3")
+
+    def test_exact_reading_doubt_comes_from_the_text_lanes(self):
+        self.assertEqual(self.fig(self.run_fig(["3"])), [])                          # exact, in a text lane: nothing
+        self.assertEqual([it["numbers_in_doubt"] for it in self.fig(self.run_fig(["42", "57"]))], [["42"]])
+
+    def test_only_figure_pages_of_class_normal(self):
+        self.assertEqual(self.fig(self.run_fig(["42"], "estimated", flags=())), [])  # not a figure page
+        scan = self.run_fig(["42"], "estimated", flags=("figure", "scanned"), first="\f")
+        self.assertEqual(self.fig(scan), [])                                         # a sparse or scanned page
+
+    def test_vision_reading_structure(self):
+        base = {"claim_id": "G1", "page": 1, "quote": None, "numbers": ["42"], "source": "vision",
+                "claim_type": "finding"}
+        lv.validate_card(mk_v3([], [dict(base, vision_reading="uncertain")]))
+        for bad, frag in ((dict(base, vision_reading="rough"), "vision_reading must be one of"),
+                          (dict(base, source="text", quote="q", vision_reading="exact"), "applies to PDF claims")):
+            with self.assertRaises(lv.LitVerifyError) as cm:
+                lv.validate_card(mk_v3([], [bad]))
+            self.assertEqual(cm.exception.code, 8)
+            self.assertIn(frag, cm.exception.note)
+        with self.assertRaises(lv.LitVerifyError):
+            lv.validate_card(dict(mk_card([], [base]), vision_reading="exact"))           # v1: unknown field
+        self.assertEqual((lv.VISION_FIGURE_VERSION, lv.VISION_READINGS),
+                         ("vision-figure-v1", ("exact", "estimated", "uncertain")))
+
+    def claim(self, numbers, reading="estimated", **over):
+        return dict({"claim_id": "G1", "page": 1, "quote": None, "numbers": list(numbers), "source": "vision",
+                     "claim_type": "finding", "vision_reading": reading}, **over)
+
+    def check(self, pages, claim):
+        return lv.check_card(mk_v3(self.COV, [claim], **self.LISTED), mk_ingest(pages), None)
+
+    def test_an_ocr_layer_figure_page_is_a_scan_item_not_a_figure_warning(self):
+        # a class-normal page with an OCR text layer is a scan (VISION_ON_SCAN_PAGE), not a figure warning
+        r = self.run_fig(["42"], "estimated", flags=("figure", "ocr_layer_suspected"))
+        self.assertEqual(self.fig(r), [])
+        self.assertIn("VISION_ON_SCAN_PAGE", statuses(r))
+
+    def test_the_readers_mark_is_doubt_even_when_a_lane_prints_the_number(self):
+        # 42 is in the cited page's OCR text only (no anchor or lane B prints it); "estimated" is doubt
+        pages = [{"anchor": self.FIG, "flags": ["figure"], "evidence": {"figure": ["caption: Figure 3"]},
+                  "ocr": "lanterns 42 nights"}, {"anchor": self.TEXT}]
+        self.assertEqual([it["numbers_in_doubt"] for it in self.fig(self.check(pages, self.claim(["42"])))], [["42"]])
+        self.assertEqual(self.fig(self.check(pages, self.claim(["42"], "exact"))), [])
+
+    def test_lane_b_text_corroborates(self):
+        # a number printed only in another page's lane B text is corroborated: nothing raised
+        pages = [{"anchor": self.FIG, "flags": ["figure"], "evidence": {"figure": ["caption: Figure 3"]}},
+                 {"anchor": self.TEXT, "lane_b": "The amber lanterns burned for 77 nights on the north quay."}]
+        self.assertEqual(self.fig(self.check(pages, self.claim(["77"]))), [])
+        self.assertEqual(len(self.fig(self.check(pages, self.claim(["78"])))), 1)
+
+    def test_both_source_claims_are_screened(self):
+        # a "both" claim's vision-read number is screened like a "vision" claim's
+        pages = [{"anchor": self.FIG, "flags": ["figure"], "evidence": {"figure": ["caption: Figure 3"]}},
+                 {"anchor": self.TEXT}]
+        claim = self.claim(["42"], source="both",
+                           quote="The chart shows how long the invented lanterns burned on each quay")
+        self.assertEqual([it["claim_id"] for it in self.fig(self.check(pages, claim))], ["G1"])
+
+    def test_figure_evidence_without_the_flag(self):
+        # figure evidence (a caption or pictured image) marks a figure page even with no figure flag
+        pages = [{"anchor": self.FIG, "flags": [], "evidence": {"figure": ["caption: Figure 3"]}}, {"anchor": self.TEXT}]
+        self.assertEqual(len(self.fig(self.check(pages, self.claim(["42"])))), 1)
+
+
+# --- 1.15.0 (S5): audit and route; every word invented; the hook cache lives in the scratch dir ---------------
+def hook_cache_seam(case):
+    # The test seam for the hook's cache: the module's default folder points at the case's scratch dir, the session is
+    #   "sess-0001", and DAAF_CONTEXT_REPORTER_CACHE_DIR is unset (a folder named there is never trusted).
+    ScratchCase.setUp(case)
+    case.cache = case.root / "hook_cache"
+    case.cache.mkdir()
+    case._cenv = mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "sess-0001"})
+    case._cenv.start()
+    os.environ.pop("DAAF_CONTEXT_REPORTER_CACHE_DIR", None)      # restored by the patch.dict on stop
+    case._cdir = mock.patch.object(lv, "HOOK_CACHE_DEFAULT_DIR", str(case.cache))
+    case._cdir.start()
+
+
+class AuditRouteTests(ScratchCase):
+    AGENT = "a1b2c3d4e5f6a7b8c"
+    URL = "https://example.org/invented.pdf"
+    VCLAIM = {"claim_id": "V1", "page": 1, "quote": None, "numbers": ["88"], "source": "vision"}
+
+    def setUp(self):
+        hook_cache_seam(self)
+
+    def tearDown(self):
+        self._cdir.stop()
+        self._cenv.stop()
+        super().tearDown()
+
+    def cache_model(self, model, agent=None, session="sess-0001"):
+        (self.cache / f"claude-subagent-model-{session}-{agent or self.AGENT}").write_text(model)
+
+    def project(self, key="user_00a0d170", claims=None, route_front="anthropic-subscription", kind="web_fetch",
+                items=(), pages=None, route="anthropic-subscription", route_ts="2026-01-01T00:00:00Z",
+                rule_versions=None, src_where=None):
+        # A review project holding one checked card: source file (+ its web_fetch row), card, card_check, card run
+        #   row and a route row. Returns PAPER_DIR.
+        kd = self.papers / key
+        kd.mkdir()
+        data = f"%PDF-1.7 invented audit source {key}".encode()
+        sha = lv.sha256_bytes(data)
+        folder = self.root / (src_where or ("web_fetches" if kind == "web_fetch" else "user_pdfs"))
+        folder.mkdir(exist_ok=True)
+        src = folder / f"{key}.pdf"
+        src.write_bytes(data)
+        if kind == "web_fetch":
+            with open(folder / "MANIFEST.jsonl", "a") as f:
+                f.write(json.dumps({"raw_artifact": src.name, "raw_sha256": sha, "final_url": self.URL}) + "\n")
+            line = len((folder / "MANIFEST.jsonl").read_text().splitlines())
+        block = {"schema_version": "lit-verify-card-v1", "paper_key": key, "source_pdf_sha256": sha,
+                 "reader_model": "claude-opus-5-5", "vision_mode": "auto", "vision_validated": True,
+                 "vision_list_version": "vision-list-2026-10-30",
+                 "coverage": [cov(1, "an invented sentence that covers the page")],
+                 "claims": [self.VCLAIM] if claims is None else claims}
+        text = (f"---\npaper_key: {key}\nreader_model_source: self-report\nreader_route: {route_front}\n"
+                "vision: validated\n---\n\n# card\n\n```lit-verify\n" + json.dumps(block) + "\n```\n")
+        (kd / "evidence_card.md").write_text(text)
+        rd = {"source_kind": kind, "source_path": str(src.resolve()), "source_sha256": sha,
+              "web_fetch_row": {"manifest_line": line, "final_url": self.URL} if kind == "web_fetch" else None}
+        cc = {"kind": "lit_verify_card_check", "paper_key": key, "checked_at": "2026-01-02T00:00:00Z",
+              "card": {"path": "evidence_card.md", "sha256": lv.sha256_bytes(text.encode())}, "verdict": "PARTIAL",
+              "rederive": rd, "items": list(items), "pages": pages or [{"page": 1, "class": "normal"}],
+              "rule_versions": rule_versions if rule_versions is not None else {"vision_figure": "vision-figure-v1"}}
+        cc_bytes = json.dumps(cc).encode()
+        (kd / "card_check.json").write_bytes(cc_bytes)
+        with open(self.papers / "MANIFEST.jsonl", "a") as f:
+            f.write(json.dumps({"kind": "lit_verify_route", "route": route, "exit_code": 0, "timestamp": route_ts})
+                    + "\n")
+            f.write(json.dumps({"kind": "lit_verify", "command": "card", "paper_key": key,
+                                "card": {"path": f"{key}/evidence_card.md"}, "exit_code": 0,
+                                "artifacts": {"card_check": {"name": "card_check.json",
+                                                             "sha256": lv.sha256_bytes(cc_bytes)}}}) + "\n")
+        return kd
+
+    def audit(self, kd, *extra, agent=None):
+        code, out, err = run_main(["audit", kd, "--card", "evidence_card.md", "--agent-id",
+                                   self.AGENT if agent is None else agent] + list(extra))
+        rec = Path(kd) / "vision_audit.json"
+        return code, (json.loads(rec.read_text()) if rec.exists() else None), out + err
+
+    def test_confirmed_via_the_hook_cache(self):
+        self.cache_model("claude-opus-5-5")
+        code, rec, out = self.audit(self.project())
+        self.assertEqual((code, rec["outcome"]), (0, "confirmed"), out)
+        self.assertEqual((rec["model"]["model_source"], rec["model"]["check"], rec["route"]["check"],
+                          rec["route"]["list_row"], rec["chain"]["check"]),
+                         ("hook_cache", "transcript-confirmed", "match", "listed", "confirmed"))
+        row = [r for r in rows_of(self.papers) if r.get("kind") == "lit_verify_audit"][-1]
+        self.assertEqual((row["outcome"], row["exit_code"], row["tool_version"]), ("confirmed", 0, "1.15.0-daaf"))
+        art = row["artifacts"]["vision_audit"]
+        self.assertEqual(art["sha256"], lv.sha256_bytes((self.papers / "user_00a0d170" / art["name"]).read_bytes()))
+        self.assertEqual(rec["card_sha256"], row["card"]["sha256"])
+        self.assertEqual(rec["card_check_sha256"], row["card_check"]["sha256"])
+        # a dotted provider spelling with [1m] is the same model (the hook's normalization)
+        self.cache_model("anthropic/claude-opus-5.5[1m]", agent="a00000000000000dd")
+        self.assertEqual(lv.norm_model("anthropic/claude-opus-5.5[1m]"), "anthropic/claude-opus-5-5")
+        self.assertEqual(lv.norm_model("claude-opus-5.5[1m]"), "claude-opus-5-5")
+
+    def test_transcript_fallback_and_no_model(self):
+        tr = self.root / f"agent-{self.AGENT}.jsonl"
+        tr.write_text(json.dumps({"message": {"model": "claude-opus-5-5"}}) + "\n"
+                      + json.dumps({"message": {"model": "<synthetic>"}}) + "\nnot json\n")
+        code, rec, out = self.audit(self.project(), "--transcript", tr)
+        # a transcript named on the command line is recorded, but only the hook's own record confirms a model
+        self.assertEqual((code, rec["outcome"], rec["model"]["model_source"], rec["model"]["check"]),
+                         (11, "person_must_check", "transcript", "source_not_confirmed"), out)
+        self.assertIn("did not come from the place DAAF itself keeps that record", rec["unvalidated"][0]["reason"])
+        code, rec, out = self.audit(self.project(key="user_00a0d171"))
+        self.assertEqual((code, rec["outcome"], rec["model"]["model_source"], rec["model"]["check"]),
+                         (11, "person_must_check", "none", "unknown"), out)
+        self.assertEqual(len(rec["unvalidated"]), 1)
+        self.assertIn("could not find its record of which AI model", rec["unvalidated"][0]["reason"])
+        wrong = self.root / "agent-someone-else.jsonl"
+        wrong.write_text(tr.read_text())
+        code, rec, _ = self.audit(self.project(key="user_00a0d172"), "--transcript", wrong)
+        self.assertEqual((code, rec), (8, None))
+
+    def test_a_cache_folder_named_in_the_environment_never_confirms(self):
+        # quality review W2 (probe 307 C1): a hand-written cache file in a folder named by DAAF_CONTEXT_REPORTER_CACHE_DIR
+        #   on the command line. The file is read and recorded, but the model counts as not confirmed.
+        forged = self.root / "elsewhere"
+        forged.mkdir()
+        (forged / f"claude-subagent-model-sess-0001-{self.AGENT}").write_text("claude-opus-5-5")
+        with mock.patch.dict(os.environ, {"DAAF_CONTEXT_REPORTER_CACHE_DIR": str(forged)}):
+            code, rec, out = self.audit(self.project())
+        self.assertEqual((code, rec["outcome"], rec["model"]["model_source"], rec["model"]["check"]),
+                         (11, "person_must_check", "hook_cache_env_dir", "source_not_confirmed"), out)
+        self.assertEqual((rec["model"]["detail"]["cache_dir_from_env"], rec["model"]["detail"]["trusted"]),
+                         (True, False))
+        self.assertEqual(len(rec["unvalidated"]), 1)
+        self.assertFalse(lv.audit_model_trusted(rec))
+        # the same file in the hook's own folder confirms (so the folder alone made the difference)
+        self.cache_model("claude-opus-5-5", agent="a00000000000000a1")
+        code, rec, out = self.audit(self.project(key="user_00a0d171"), agent="a00000000000000a1")
+        self.assertEqual((code, rec["outcome"], rec["model"]["detail"]["trusted"]), (0, "confirmed", True), out)
+        self.assertTrue(lv.audit_model_trusted(rec))
+        # the variable naming the hook's own folder is that folder
+        self.cache_model("claude-opus-5-5", agent="a00000000000000a2")
+        with mock.patch.dict(os.environ, {"DAAF_CONTEXT_REPORTER_CACHE_DIR": str(self.cache)}):
+            code, rec, out = self.audit(self.project(key="user_00a0d172"), agent="a00000000000000a2")
+        self.assertEqual((code, rec["outcome"]), (0, "confirmed"), out)
+
+    def test_the_session_id_restricts_the_cache_file(self):
+        # quality review W3: an agent ID of another session's reader (same agent ID, another session's cache file)
+        self.cache_model("claude-opus-5-5", session="sess-0002")
+        code, rec, out = self.audit(self.project())
+        self.assertEqual((code, rec["outcome"], rec["model"]["check"], rec["model"]["detail"]["session_scope"]),
+                         (11, "person_must_check", "unknown", "session"), out)
+        # without the session ID, any session's file matches (so the restriction alone stopped it)
+        with mock.patch.dict(os.environ, {}):
+            os.environ.pop("CLAUDE_CODE_SESSION_ID")
+            code, rec, out = self.audit(self.project(key="user_00a0d171"))
+        self.assertEqual((code, rec["outcome"], rec["model"]["detail"]["session_scope"]), (0, "confirmed", "any session"))
+        # a session ID that fails the allowlist matches nothing (it would go into the path)
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "../x"}):
+            code, rec, out = self.audit(self.project(key="user_00a0d172"))
+        self.assertEqual((code, rec["model"]["check"], rec["model"]["detail"]["session_scope"]),
+                         (11, "unknown", "refused"), out)
+
+    def test_every_chunk_reader_must_match_the_card(self):
+        # quality review W3: a chunked paper names one agent ID per chunk; every chunk's model must be the card's
+        self.cache_model("claude-opus-5-5", agent="a000000000000c001")
+        self.cache_model("claude-opus-5-5", agent="a000000000000c002")
+        self.cache_model("claude-sonnet-5", agent="a000000000000c003")
+        two = ["--agent-id", "a000000000000c002"]
+        code, rec, out = self.audit(self.project(), *two, agent="a000000000000c001")
+        self.assertEqual((code, rec["outcome"], rec["agent_ids"]), (0, "confirmed",
+                                                                    ["a000000000000c001", "a000000000000c002"]), out)
+        self.assertEqual([x["model_source"] for x in rec["model"]["agents"]], ["hook_cache", "hook_cache"])
+        code, rec, out = self.audit(self.project(key="user_00a0d171"), "--agent-id", "a000000000000c003",
+                                    agent="a000000000000c001")
+        self.assertEqual((code, rec["outcome"], rec["model"]["check"], rec["model"]["observed"]),
+                         (11, "mismatch", "mismatch", "claude-sonnet-5"), out)
+        code, rec, out = self.audit(self.project(key="user_00a0d172"), "--agent-id", "a000000000000c009",
+                                    agent="a000000000000c001")
+        self.assertEqual((code, rec["outcome"], rec["model"]["check"]), (11, "person_must_check", "unknown"), out)
+        kd = self.project(key="user_00a0d173")
+        self.assertEqual(self.audit(kd, *two, agent="a000000000000c002")[:2], (8, None))       # an ID given twice
+        tr = self.root / "agent-a000000000000c009.jsonl"
+        tr.write_text(json.dumps({"message": {"model": "claude-opus-5-5"}}) + "\n")
+        self.assertEqual(self.audit(kd, "--transcript", tr, agent="a000000000000c001")[:2], (8, None))
+
+    def test_model_and_route_mismatch(self):
+        self.cache_model("claude-sonnet-5")
+        code, rec, out = self.audit(self.project())
+        self.assertEqual((code, rec["outcome"], rec["model"]["check"]), (11, "mismatch", "mismatch"), out)
+        reason = rec["unvalidated"][0]["reason"]
+        self.assertIn("name claude-opus-5-5 as the AI reader, but DAAF's record of this reader shows claude-sonnet-5",
+                      reason)
+        self.assertRegex(reason, r"Please compare 88 with PDF page 1\.$")
+        self.cache_model("claude-opus-5-5", agent="a00000000000000aa")
+        code, rec, _ = self.audit(self.project(key="user_00a0d171", route_front="anthropic-api"),
+                                  agent="a00000000000000aa")
+        self.assertEqual((code, rec["outcome"], rec["route"]["check"]), (11, "mismatch", "mismatch"))
+        for word in ("route", "lane", "anchor"):
+            self.assertNotIn(word, rec["unvalidated"][0]["reason"].lower())
+        # a route recorded only AFTER the card check does not count: unknown, so a person checks (the earlier
+        #   projects' route rows in this papers dir are removed first)
+        (self.papers / "MANIFEST.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows_of(self.papers)
+                                                            if r.get("kind") != "lit_verify_route"))
+        self.cache_model("claude-opus-5-5", agent="a00000000000000ab")
+        code, rec, _ = self.audit(self.project(key="user_00a0d172", route_ts="2026-02-01T00:00:00Z"),
+                                  agent="a00000000000000ab")
+        self.assertEqual((code, rec["outcome"], rec["route"]["check"]), (11, "person_must_check", "unknown"))
+
+    def test_scan_sparse_and_figure_items(self):
+        self.cache_model("claude-opus-5-5")
+        scan = {"kind": "vision", "status": "VISION_ON_SCAN_PAGE", "page": 1, "claim_id": "V1",
+                "reason": "The AI reader took the number 88 from a picture of PDF page 1 ... Please compare 88."}
+        code, rec, out = self.audit(self.project(items=[scan]))
+        self.assertEqual((code, rec["outcome"], [x["why"] for x in rec["must_check"]]),
+                         (11, "person_must_check", ["scan"]), out)
+        self.assertIn("MUST CHECK: The AI reader took the number 88", out)
+        self.cache_model("claude-opus-5-5", agent="a00000000000000ac")
+        code, rec, _ = self.audit(self.project(key="user_00a0d171", pages=[{"page": 1, "class": "sparse"}]),
+                                  agent="a00000000000000ac")
+        self.assertEqual((code, rec["outcome"], [x["why"] for x in rec["must_check"]]),
+                         (11, "person_must_check", ["sparse"]))
+        fig = dict(scan, status="VISION_FIGURE_UNCORROBORATED")
+        self.cache_model("claude-opus-5-5", agent="a00000000000000ad")
+        code, rec, _ = self.audit(self.project(key="user_00a0d172", items=[fig]), agent="a00000000000000ad")
+        self.assertEqual((code, rec["outcome"], len(rec["should_look"])), (0, "confirmed_with_checks", 1))
+
+    def test_chain(self):
+        for i, (kind, where, want) in enumerate((("user_supplied", "user_pdfs", "confirmed"),
+                                                 ("user_supplied", "elsewhere", "chain_unconfirmed"),
+                                                 ("web_fetch", "other_fetches", "chain_unconfirmed"),
+                                                 ("synthetic", "user_pdfs", "chain_unconfirmed"))):
+            agent = f"a0000000000000c{i}"
+            self.cache_model("claude-opus-5-5", agent=agent)
+            code, rec, out = self.audit(self.project(key=f"user_00a0d17{i}", kind=kind, src_where=where), agent=agent)
+            self.assertEqual((rec["outcome"], code), (want, 0 if want == "confirmed" else 11), (kind, where, out))
+        # a forged web_fetch row: the card_check names a line the project's fetch record does not hold
+        self.cache_model("claude-opus-5-5", agent="a0000000000000c9")
+        kd = self.project(key="user_00a0d179")
+        with open(self.root / "web_fetches" / "MANIFEST.jsonl", "a") as f:
+            f.write("{}\n")
+        cc = json.loads((kd / "card_check.json").read_text())
+        rows = [r for r in rows_of(self.papers)]
+        cc["rederive"]["web_fetch_row"]["manifest_line"] += 1
+        (kd / "card_check.json").write_text(json.dumps(cc))
+        rows[-1]["artifacts"]["card_check"]["sha256"] = lv.sha256_bytes((kd / "card_check.json").read_bytes())
+        (self.papers / "MANIFEST.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+        code, rec, _ = self.audit(kd, agent="a0000000000000c9")
+        self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]), (11, "chain_unconfirmed", "web_fetch_row"))
+        self.assertIn("web_fetches", rec["summary"])
+
+    def test_hash_binding_exit_9(self):
+        self.cache_model("claude-opus-5-5")
+        kd = self.project()
+        with open(kd / "evidence_card.md", "a") as f:
+            f.write("\nedited after the check\n")
+        self.assertEqual(self.audit(kd)[:2], (9, None))
+        kd = self.project(key="user_00a0d171")
+        (kd / "card_check.json").write_text((kd / "card_check.json").read_text().replace("PARTIAL", "PASS"))
+        self.assertEqual(self.audit(kd)[:2], (9, None))
+        kd = self.papers / "user_00a0d172"
+        kd.mkdir()
+        (kd / "evidence_card.md").write_text("never checked")
+        self.assertEqual(self.audit(kd)[:2], (9, None))
+
+    def test_exclusive_create(self):
+        self.cache_model("claude-opus-5-5")
+        kd = self.project()
+        self.assertEqual(self.audit(kd)[0], 0)
+        before = (kd / "vision_audit.json").read_bytes()
+        self.cache_model("claude-sonnet-5", agent="a00000000000000ee")
+        code, _, out = self.audit(kd, agent="a00000000000000ee")
+        self.assertEqual(code, 9, out)
+        self.assertEqual((kd / "vision_audit.json").read_bytes(), before)
+        self.assertEqual(sorted(p.name for p in kd.glob("vision_audit*")), ["vision_audit.json"])
+
+    def test_agent_id_is_validated_before_the_glob(self):
+        # one cache file of ANOTHER agent with the model the card names: "*" would match it alone
+        self.cache_model("claude-opus-5-5", agent="a99999999999999ff")
+        kd = self.project()
+        for bad in ("*", "a*", "a?", "../x", ".a1", "a[0-9]", ""):
+            code, rec, _ = self.audit(kd, agent=bad)
+            self.assertEqual((code, rec), (8, None), bad)
+        self.assertEqual(lv.AGENT_ID_RE.pattern, r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")   # the hook's is_safe_id
+
+    def test_route_records_presence_only(self):
+        planted = "https://openrouter.ai/api/v1?token=PLANTED-VALUE-0f1e2d3c4b5a"
+        env = {"ANTHROPIC_BASE_URL": planted, "ANTHROPIC_API_KEY": SENTINEL_KEY, "DAAF_PROVIDER_SHIM": "",
+               "SHIM_BACKEND_MODE": ""}
+        with mock.patch.dict(os.environ, env):
+            code, out, err = run_main(["route", self.root])
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out.startswith("ROUTE: openrouter\n"), out)
+        self.assertIn("text-only here (vision unavailable)", out)
+        row = [r for r in rows_of(self.papers) if r.get("kind") == "lit_verify_route"][-1]
+        self.assertEqual(row["route"], "openrouter")
+        self.assertEqual(row["env_keys"], {"DAAF_PROVIDER_SHIM": "empty", "SHIM_BACKEND_MODE": "empty",
+                                           "ANTHROPIC_BASE_URL": "set"})
+        blob = out + err + (self.papers / "MANIFEST.jsonl").read_text()
+        for secret in (planted, "PLANTED-VALUE", SENTINEL_KEY, "openrouter.ai/api"):
+            self.assertNotIn(secret, blob)
+        with mock.patch.dict(os.environ, {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt"}):
+            code, out, _ = run_main(["route", self.root])
+        self.assertTrue(out.startswith("ROUTE: chatgpt-subscription\n"), out)
+        self.assertNotIn("chatgpt\n", (self.papers / "MANIFEST.jsonl").read_text().replace("chatgpt-subscription", ""))
+        mod, _ = lv.route_detector()
+        self.assertEqual(lv.ROUTE_NAMES, mod.ALL_ROUTES)
+        self.assertEqual(run_main(["route", self.root / "missing"])[0], 1)
+        self.assertEqual(run_main(["route", "/tmp"])[0], 2)
+
+    def rehash_card_check(self, kd, cc):
+        # rewrite card_check.json and the card run row's recorded hash, so only the planted change differs
+        (kd / "card_check.json").write_text(json.dumps(cc))
+        rows = rows_of(self.papers)
+        rows[-1]["artifacts"]["card_check"]["sha256"] = lv.sha256_bytes((kd / "card_check.json").read_bytes())
+        (self.papers / "MANIFEST.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+    def test_chain_source_changed_or_missing(self):
+        # the source file must still hash to the value the card check recorded
+        self.cache_model("claude-opus-5-5")
+        kd = self.project()
+        (self.root / "web_fetches" / "user_00a0d170.pdf").write_bytes(b"%PDF-1.7 replaced after the check")
+        code, rec, out = self.audit(kd)
+        self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]), (11, "chain_unconfirmed", "source_changed"),
+                         out)
+        self.cache_model("claude-opus-5-5", agent="a00000000000000f1")
+        kd = self.project(key="user_00a0d171", kind="user_supplied")
+        (self.root / "user_pdfs" / "user_00a0d171.pdf").write_bytes(b"%PDF-1.7 replaced after the check")
+        code, rec, out = self.audit(kd, agent="a00000000000000f1")
+        self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]), (11, "chain_unconfirmed", "source_changed"),
+                         out)
+        self.cache_model("claude-opus-5-5", agent="a00000000000000f2")
+        kd = self.project(key="user_00a0d172")
+        (self.root / "web_fetches" / "user_00a0d172.pdf").unlink()
+        code, rec, out = self.audit(kd, agent="a00000000000000f2")
+        self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]),
+                         (11, "chain_unconfirmed", "source_unreadable"), out)
+
+    def test_chain_row_fields_each_matter(self):
+        # the fetch row must name the same file, hash and final URL (the line number already matters: test_chain)
+        for i, (field, value) in enumerate((("raw_artifact", "other.pdf"), ("raw_sha256", "0" * 64),
+                                            ("final_url", "https://example.org/other.pdf"))):
+            agent, key = f"a0000000000000d{i}", f"user_00a0d18{i}"
+            self.cache_model("claude-opus-5-5", agent=agent)
+            kd = self.project(key=key)
+            mf = self.root / "web_fetches" / "MANIFEST.jsonl"
+            lines = mf.read_text().splitlines()
+            row = json.loads(lines[-1])
+            row[field] = value
+            lines[-1] = json.dumps(row)
+            mf.write_text("\n".join(lines) + "\n")
+            code, rec, out = self.audit(kd, agent=agent)
+            self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]),
+                             (11, "chain_unconfirmed", "web_fetch_row"), (field, out))
+
+    def test_chain_other_source_kinds_never_confirm(self):
+        # only web_fetch and user_supplied sources can be confirmed, even with a matching fetch row
+        for i, kind in enumerate(("web_fetch_row_conflict", "unknown", "synthetic")):
+            agent, key = f"a0000000000000e{i}", f"user_00a0d19{i}"
+            self.cache_model("claude-opus-5-5", agent=agent)
+            kd = self.project(key=key)                      # a genuine fetch row and file under web_fetches/
+            cc = json.loads((kd / "card_check.json").read_text())
+            cc["rederive"]["source_kind"] = kind
+            self.rehash_card_check(kd, cc)
+            code, rec, out = self.audit(kd, agent=agent)
+            self.assertEqual((code, rec["outcome"], rec["chain"]["basis"]), (11, "chain_unconfirmed", "other"),
+                             (kind, out))
+
+    def test_exclusive_create_holds_past_the_precheck(self):
+        # the record write itself is exclusive; a race past the lexists pre-check still cannot replace it
+        self.cache_model("claude-opus-5-5")
+        kd = self.project()
+        self.assertEqual(self.audit(kd)[0], 0)
+        before = (kd / "vision_audit.json").read_bytes()
+        real_lexists = os.path.lexists
+        with mock.patch.object(lv.os.path, "lexists",
+                               side_effect=lambda p: False if str(p).endswith("vision_audit.json") else real_lexists(p)):
+            code, _, out = self.audit(kd)
+        self.assertEqual(code, 9, out)
+        self.assertEqual((kd / "vision_audit.json").read_bytes(), before)
+
+
+# --- 1.15.0 (S5 settle): a person's record of the audit's listed readings; every word invented -----------------
+class SettleTests(ScratchCase):
+    # Each refusal and integrity test plants one problem; the defence it targets alone stops it (see the mutation
+    #   run of the build session). The project helpers are AuditRouteTests' own.
+    AGENT, URL, VCLAIM = AuditRouteTests.AGENT, AuditRouteTests.URL, AuditRouteTests.VCLAIM
+    V2 = {"claim_id": "V2", "page": 1, "quote": None, "numbers": ["0.41"], "source": "vision"}
+    WORDS = ("--user-words", "Both numbers match the page (synthetic test reply).")
+    cache_model = AuditRouteTests.cache_model
+    project = AuditRouteTests.project
+    audit = AuditRouteTests.audit
+    rehash_card_check = AuditRouteTests.rehash_card_check
+
+    def setUp(self):
+        hook_cache_seam(self)
+
+    def tearDown(self):
+        self._cdir.stop()
+        self._cenv.stop()
+        super().tearDown()
+
+    def must_project(self, key="user_00a0d170", **kw):
+        # person_must_check: no model on record for the reader (no cache file), two readings to compare
+        kd = self.project(key=key, claims=[self.VCLAIM, self.V2], **kw)
+        code, rec, out = self.audit(kd)
+        self.assertEqual((code, rec["outcome"], len(rec["unvalidated"])), (11, "person_must_check", 2), out)
+        return kd, rec
+
+    def settle(self, kd, *argv, audit="vision_audit.json"):
+        return run_main(["settle", kd, "--audit", audit, *argv])
+
+    def items(self, ids):
+        p = self.root / f"items_{uuid.uuid4().hex[:8]}.txt"
+        p.write_text("# chosen readings\n" + "".join(f"{i}  # test\n" for i in ids))
+        return p
+
+    def settlements(self, kd):
+        return sorted(p.name for p in Path(kd).glob("audit_settlement*.json"))
+
+    def settle_rows(self):
+        return [r for r in rows_of(self.papers) if r.get("kind") == "lit_verify_settle"]
+
+    def test_list_names_each_reading_with_a_stable_id(self):
+        kd, rec = self.must_project()
+        card_sha = rec["card_sha256"]
+        want = [lv.audit_item_id(card_sha, 1, "V1", ["88"], "unvalidated"),
+                lv.audit_item_id(card_sha, 1, "V2", ["0.41"], "unvalidated")]
+        self.assertEqual([(x["item_id"], x["numbers"]) for x in rec["unvalidated"]],
+                         [(want[0], ["88"]), (want[1], ["0.41"])])
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{16}", i) for i in want))
+        self.assertEqual(rec["chain"]["item_id"], lv.audit_item_id(card_sha, None, None, [], "chain"))
+        code, out, err = self.settle(kd, "--list")
+        self.assertEqual(code, 0, out + err)
+        # plain-language review W6: numbered plain lines the orchestrator shows as they are; the ids stay in the file
+        self.assertIn("\n  1. The AI reader took the number 88 from a picture of PDF page 1", out)
+        self.assertIn("\n  2. The AI reader took the number 0.41", out)
+        self.assertFalse([i for i in want if i in out])
+        self.assertIn("Please compare 88 with PDF page 1.", out)
+        self.assertIn("--user-words", out)
+        listed = (kd / "settle_items.txt").read_bytes()
+        ids = [ln.split("#", 1)[0].strip() for ln in listed.decode().splitlines() if ln.split("#", 1)[0].strip()]
+        self.assertEqual(ids, want)
+        row = self.settle_rows()[-1]
+        self.assertEqual((row["command"], row["exit_code"], row["items"], row["audit"]["outcome"]),
+                         ("settle", 0, want, "person_must_check"))
+        self.assertEqual(row["audit"]["sha256"], lv.sha256_bytes((kd / "vision_audit.json").read_bytes()))
+        self.assertEqual(row["artifacts"]["settle_items"]["sha256"], lv.sha256_bytes(listed))
+        # listing again gives the same file; no settle row borrows the card run's kind or command
+        self.assertEqual(self.settle(kd, "--list")[0], 0)
+        self.assertEqual((kd / "settle_items.txt").read_bytes(), listed)
+        self.assertFalse([r for r in rows_of(self.papers) if r.get("command") == "settle" and r.get("kind") !=
+                          "lit_verify_settle"])
+
+    def test_figure_items_are_optional(self):
+        self.cache_model("claude-opus-5-5")
+        fig = {"kind": "vision", "status": "VISION_FIGURE_UNCORROBORATED", "page": 1, "claim_id": "V1",
+               "reason": "The AI reader took the number 88 from a picture of a chart ... please compare 88."}
+        kd = self.project(items=[fig])
+        code, rec, _ = self.audit(kd)
+        self.assertEqual((code, rec["outcome"]), (0, "confirmed_with_checks"))
+        code, out, _ = self.settle(kd, "--list")
+        fid = rec["should_look"][0]["item_id"]
+        self.assertEqual(code, 0)
+        self.assertIn("\n  1. (optional) The AI reader took the number 88", out)
+        self.assertNotIn(fid, out)
+        text = (kd / "settle_items.txt").read_text()
+        self.assertIn(f"# {fid}  # 1: PDF page 1, 88 (optional)", text)          # commented out until chosen
+        self.assertFalse([ln for ln in text.splitlines() if ln.split("#", 1)[0].strip()])
+        code, out, err = self.settle(kd, "--items", self.items([fid]), "--decision", "matches", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (0, ["audit_settlement_1.json"]), out + err)
+
+    def test_one_reply_is_recorded_bound_to_the_audit(self):
+        kd, rec = self.must_project()
+        self.assertEqual(self.settle(kd, "--list")[0], 0)
+        code, out, err = self.settle(kd, "--items", kd / "settle_items.txt", "--decision", "matches", *self.WORDS)
+        self.assertEqual(code, 0, out + err)
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        blob = (kd / "audit_settlement_1.json").read_bytes()
+        s = json.loads(blob)
+        asha = lv.sha256_bytes((kd / "vision_audit.json").read_bytes())
+        self.assertEqual((s["kind"], s["schema_version"], s["audit_sha256"], s["card_sha256"], s["card_check_sha256"],
+                          s["decision"], s["human_instruction_verbatim"], s["human_binding"], s["human_rationale"]),
+                         ("lit_verify_audit_settlement", "lit-verify-audit-settlement-v1", asha, rec["card_sha256"],
+                          rec["card_check_sha256"], "matches", self.WORDS[1], "permission_prompt", None))
+        self.assertEqual([(x["item_id"], x["decision"]) for x in s["items"]], [(i, "matches") for i in ids])
+        row = self.settle_rows()[-1]
+        self.assertEqual((row["command"], row["decision"], row["items"], row["exit_code"]),
+                         ("settle", "matches", ids, 0))
+        self.assertEqual(row["artifacts"]["audit_settlement"]["sha256"], lv.sha256_bytes(blob))
+        # a later reply on one reading gets the next free number, and the latest record of a reading decides
+        code, out, err = self.settle(kd, "--items", self.items(ids[:1]), "--decision", "does_not_match", *self.WORDS,
+                                     "--rationale", "The page prints 86, not 88 (synthetic).")
+        self.assertEqual((code, self.settlements(kd)), (0, ["audit_settlement_1.json", "audit_settlement_2.json"]),
+                         out + err)
+        self.assertIn("write new reading notes without that number", out)
+        rec_now = json.loads((kd / "vision_audit.json").read_text())
+        st = lv.settlement_state(str(kd), "user_00a0d170", rec_now, asha, rows_of(self.papers))
+        self.assertEqual((st["latest"], st["used"], st["required"]),
+                         ({ids[0]: "does_not_match", ids[1]: "matches"}, 2, ids))
+
+    def test_refuses_an_unknown_item_id(self):
+        kd, _ = self.must_project()
+        code, out, err = self.settle(kd, "--items", self.items(["0123456789abcdef"]), "--decision", "matches",
+                                     *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (11, []), out + err)
+        self.assertIn("item 0123456789abcdef is not a reading listed by vision_audit.json", out)
+        self.assertEqual(self.settle_rows()[-1]["exit_code"], 11)
+
+    def test_refuses_an_item_of_another_card(self):
+        # two papers whose cards carry the same reading: the ids differ (the card sha256 is in the id), and one
+        #   paper's ids cannot settle the other's readings
+        kd1, rec1 = self.must_project()
+        kd2, rec2 = self.must_project(key="user_00a0d171")
+        ids1 = [x["item_id"] for x in rec1["unvalidated"]]
+        ids2 = [x["item_id"] for x in rec2["unvalidated"]]
+        self.assertFalse(set(ids1) & set(ids2))
+        code, out, err = self.settle(kd1, "--items", self.items(ids2), "--decision", "matches", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd1)), (11, []), out + err)
+        # another audit record in the same paper folder is named in the refusal (read only)
+        shutil.copyfile(kd2 / "vision_audit.json", kd1 / "vision_audit_b.json")
+        code, out, _ = self.settle(kd1, "--items", self.items(ids2[:1]), "--decision", "matches", *self.WORDS)
+        self.assertEqual(code, 11)
+        self.assertIn("it belongs to vision_audit_b.json", out)
+
+    def test_refuses_without_the_users_words(self):
+        kd, _ = self.must_project()
+        f = self.items([])
+        f.write_text(lv.audit_item_id(json.loads((kd / "vision_audit.json").read_text())["card_sha256"], 1, "V1",
+                                      ["88"], "unvalidated") + "\n")
+        for words in ([], ["--user-words", ""], ["--user-words", "   "]):
+            with self.subTest(words=words):
+                code, out, err = self.settle(kd, "--items", f, "--decision", "matches", *words)
+                self.assertEqual((code, self.settlements(kd)), (11, []), out + err)
+        self.assertIn("own words are required", err)
+
+    def test_does_not_match_needs_a_rationale(self):
+        kd, rec = self.must_project()
+        f = self.items([rec["unvalidated"][0]["item_id"]])
+        code, out, err = self.settle(kd, "--items", f, "--decision", "does_not_match", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (11, []), out + err)
+        self.assertIn("needs --rationale", err)
+        code, out, err = self.settle(kd, "--items", f, "--decision", "does_not_match", *self.WORDS, "--rationale",
+                                     "The page prints 86 (synthetic).")
+        self.assertEqual((code, self.settlements(kd)), (0, ["audit_settlement_1.json"]), out + err)
+
+    def test_refuses_a_listed_item_twice(self):
+        kd, rec = self.must_project()
+        i = rec["unvalidated"][0]["item_id"]
+        code, out, _ = self.settle(kd, "--items", self.items([i, i]), "--decision", "matches", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (11, []))
+        self.assertIn(f"item {i} is listed twice", out)
+
+    def test_the_source_chain_is_not_settleable(self):
+        # a reader DAAF cannot confirm, on a PDF that is not in user_pdfs: the reading may be settled, the chain not
+        self.cache_model("claude-sonnet-5")
+        kd = self.project(kind="user_supplied", src_where="elsewhere")
+        code, rec, _ = self.audit(kd)
+        self.assertEqual((code, rec["outcome"], len(rec["unvalidated"])), (11, "chain_unconfirmed", 1))
+        chain_id = rec["chain"]["item_id"]
+        code, out, _ = self.settle(kd, "--list")
+        self.assertEqual(code, 0)
+        self.assertIn("Not settled by a comparison:", out)
+        self.assertNotIn(chain_id, out)
+        self.assertIn("user_pdfs", out)
+        self.assertNotIn(chain_id, (kd / "settle_items.txt").read_text())
+        code, out, _ = self.settle(kd, "--items", self.items([chain_id]), "--decision", "matches", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (11, []))
+        self.assertIn("cannot settle", out)
+        code, out, err = self.settle(kd, "--items", kd / "settle_items.txt", "--decision", "matches", *self.WORDS)
+        self.assertEqual((code, self.settlements(kd)), (0, ["audit_settlement_1.json"]), out + err)
+        self.assertIn("STILL OPEN: where the PDF came from is not confirmed", out)
+
+    def test_integrity_exit_9(self):
+        def rewrite_rows(fn):
+            (self.papers / "MANIFEST.jsonl").write_text("".join(json.dumps(r) + "\n" for r in fn(rows_of(
+                self.papers))))
+
+        def run(kd):
+            code, out, err = self.settle(kd, "--items", kd / "settle_items.txt", "--decision", "matches",
+                                         *self.WORDS)
+            return code, self.settlements(kd), out + err
+        cases = {}
+        # (a) the audit record changed after the audit
+        kd, _ = self.must_project(key="user_00a0d170")
+        self.settle(kd, "--list")
+        os.chmod(kd / "vision_audit.json", 0o644)
+        with open(kd / "vision_audit.json", "a") as f:
+            f.write(" ")
+        cases["record changed"] = run(kd)
+        # (b) no audit run recorded for the record
+        kd, _ = self.must_project(key="user_00a0d171")
+        self.settle(kd, "--list")
+        rewrite_rows(lambda rows: [r for r in rows if not (r.get("kind") == "lit_verify_audit"
+                                                           and r.get("paper_key") == "user_00a0d171")])
+        cases["no audit row"] = run(kd)
+        # (c) the card changed since the audit
+        kd, _ = self.must_project(key="user_00a0d172")
+        self.settle(kd, "--list")
+        with open(kd / "evidence_card.md", "a") as f:
+            f.write("\nedited after the audit\n")
+        cases["card changed"] = run(kd)
+        # (d) the card was checked again after the audit (a newer card run names another card_check)
+        kd, _ = self.must_project(key="user_00a0d173")
+        self.settle(kd, "--list")
+        (kd / "card_check_1.json").write_text((kd / "card_check.json").read_text() + " ")
+        with open(self.papers / "MANIFEST.jsonl", "a") as f:
+            f.write(json.dumps({"kind": "lit_verify", "command": "card", "paper_key": "user_00a0d173",
+                                "card": {"path": "user_00a0d173/evidence_card.md"}, "exit_code": 0,
+                                "artifacts": {"card_check": {"name": "card_check_1.json", "sha256": lv.sha256_bytes(
+                                    (kd / "card_check_1.json").read_bytes())}}}) + "\n")
+        cases["checked again"] = run(kd)
+        # (e) a stored item id altered, the record and its row rewritten consistently
+        kd, rec = self.must_project(key="user_00a0d174")
+        self.settle(kd, "--list")
+        rec["unvalidated"][0]["item_id"] = rec["unvalidated"][1]["item_id"]
+        os.chmod(kd / "vision_audit.json", 0o644)
+        (kd / "vision_audit.json").write_text(json.dumps(rec))
+        new = lv.sha256_bytes((kd / "vision_audit.json").read_bytes())
+        rewrite_rows(lambda rows: [dict(r, artifacts={"vision_audit": dict(r["artifacts"]["vision_audit"], sha256=new)})
+                                   if r.get("kind") == "lit_verify_audit" and r.get("paper_key") == "user_00a0d174"
+                                   else r for r in rows])
+        cases["item id altered"] = run(kd)
+        # (f) a record whose outcome differs from its row's (record and row hash rewritten consistently)
+        kd, rec = self.must_project(key="user_00a0d175")
+        self.settle(kd, "--list")
+        rec["outcome"] = "mismatch"
+        os.chmod(kd / "vision_audit.json", 0o644)
+        (kd / "vision_audit.json").write_text(json.dumps(rec))
+        new = lv.sha256_bytes((kd / "vision_audit.json").read_bytes())
+        rewrite_rows(lambda rows: [dict(r, artifacts={"vision_audit": dict(r["artifacts"]["vision_audit"], sha256=new)})
+                                   if r.get("kind") == "lit_verify_audit" and r.get("paper_key") == "user_00a0d175"
+                                   else r for r in rows])
+        cases["record vs row"] = run(kd)
+        for name, (code, written, out) in cases.items():
+            with self.subTest(name):
+                self.assertEqual((code, written), (9, []), out)
+
+    def test_usage_and_input_errors(self):
+        kd, rec = self.must_project()
+        good = self.items([rec["unvalidated"][0]["item_id"]])
+        for argv, want in ((["--list", "--decision", "matches"], 1), ([], 1), (["--items", good], 1),
+                           (["--items", self.items(["not-an-id"]), "--decision", "matches", *self.WORDS], 8),
+                           (["--items", self.items([]), "--decision", "matches", *self.WORDS], 8),
+                           (["--items", "/tmp/items.txt", "--decision", "matches", *self.WORDS], 2)):
+            with self.subTest(argv=argv):
+                self.assertEqual(self.settle(kd, *argv)[0], want)
+        self.assertEqual(self.settle(kd, "--list", audit="card_check.json")[0], 8)
+        self.assertEqual(self.settle(kd, "--list", audit="missing.json")[0], 1)
+        kd2, _ = self.must_project(key="user_00a0d171")
+        self.assertEqual(self.settle(kd, "--list", audit=str(kd2 / "vision_audit.json"))[0], 2)
+        self.assertEqual(self.settlements(kd), [])
+
+
 # --- report (1.10.0, S4 D4): the pure rules on an in-memory view; every word invented ---------------
 import lit_report_rules as lrr  # noqa: E402  (stdlib)
 
@@ -2931,8 +3691,12 @@ BUNDLE = Path(__file__).resolve().parent / "fixtures" / "lit_corpus" / "contract
 
 def mk_view():
     def paper(key, grade="FULL_TEXT_VERIFIED", verdict="CONFIDENT", rs="none", **kw):
+        # report-rules-v6: a CONFIDENT paper is confirmed by the researcher's recorded reply unless a case says
+        #   otherwise; citation_status=None stands for a view without statuses (read as no second check yet)
+        st = "human_confirmed" if verdict == "CONFIDENT" else "unverified"
         return dict({"paper_key": key, "grade": grade, "verify_verdict": verdict, "verify_note": None,
-                     "accept_weak": False, "retraction_status": rs, "include_retracted": False, "in_bib": True}, **kw)
+                     "accept_weak": False, "retraction_status": rs, "include_retracted": False, "in_bib": True,
+                     "citation_status": st, "rejected_by": None, "vision_audit": None}, **kw)
 
     def claim(key, verification="verified", numbers=(), quote="q", status="current"):
         return {"paper_key": key, "citekey": None, "status": status, "superseded_by": None,
@@ -2950,7 +3714,29 @@ def mk_view():
                    "m": paper("pm", "METADATA_ONLY"), "r": paper("pr", rs="retracted"),
                    "rd": paper("prd", rs="retracted", include_retracted=True), "co": paper("pco", rs="corrected"),
                    "nr": paper("pnr", rs=None), "w": paper("pw", verdict="WEAK"),
-                   "wa": paper("pwa", verdict="WEAK", accept_weak=True), "u": paper("pu", verdict=None),
+                   "wa": paper("pwa", verdict="WEAK", accept_weak=True, citation_status="human_accepted_unbound"),
+                   "u": paper("pu", verdict=None),
+                   # report-rules-v6 (S5 W1-c): the second check and the audit of readings from page pictures
+                   "pe": paper("ppe", citation_status="pending_adjudication"),
+                   "lg": paper("plg", citation_status=None),                       # no status in the view: pending
+                   "rj": paper("prj", citation_status="rejected", in_bib=False),
+                   "rjr": paper("prjr", citation_status="rejected", rejected_by="researcher", in_bib=False),
+                   "mc": paper("pmc", citation_status="model_confirmed"),
+                   "ma": paper("pma", verdict="WEAK", citation_status="model_adjudicated"),
+                   "ho": paper("pho", citation_status="human_overridden"),
+                   "hw": paper("phw", verdict="WEAK", citation_status="human_confirmed"),
+                   "odd": paper("podd", citation_status="something_else"),
+                   "va": paper("pva", vision_audit={"state": "missing", "readings": 2,
+                                                    "why": "no audit record of these notes is on file"}),
+                   "vp": paper("pvp", vision_audit={"state": "not_confirmed", "outcome": "person_must_check",
+                                                    "readings": 2, "open": 2}),
+                   "vm": paper("pvm", vision_audit={"state": "not_confirmed", "outcome": "mismatch", "readings": 1,
+                                                    "open": 1}),
+                   "vc": paper("pvc", vision_audit={"state": "not_confirmed", "outcome": "chain_unconfirmed",
+                                                    "readings": 1, "open": 0}),
+                   # S5 settle: the researcher recorded that a listed reading does not match its page
+                   "vd": paper("pvd", vision_audit={"state": "does_not_match", "outcome": "person_must_check",
+                                                    "readings": 2, "open": 1}),
                    "x": paper("px", in_bib=False), "rn": paper("prn", retraction_not_latest=True),
                    # polish pass H: a second paper printing 0.15 (as b does); the final title rule's fix on an
                    #   unverified paper; a draft whose recorded title differs from the confirmed record's
@@ -3431,6 +4217,45 @@ class ReportRulesTests(unittest.TestCase):
         # W1 / I8: the final title rule's own fix, and its review item in a draft
         ("H W1 title differs in a draft", "Tutoring helps [@td].", "synthesis", "NEEDS_REVIEW",
          ("CITATION_TITLE_DIFFERS_DRAFT",), ("CITATION_UNVERIFIED",)),
+        # report-rules-v6 (S5 W1-c): the citation second check; each status alone sets the verdict
+        ("S5 pending second check in a draft", "Tutoring helps [@pe].", "synthesis", "NEEDS_REVIEW",
+         ("CITATION_PENDING_SECOND_CHECK_DRAFT",), ("CITATION_PENDING_SECOND_CHECK", "CITATION_OK")),
+        ("S5 pending second check in a final", "Tutoring helps [@pe].", "final", "FAIL",
+         ("CITATION_PENDING_SECOND_CHECK",), ("CITATION_PENDING_SECOND_CHECK_DRAFT",)),
+        ("S5 pending in a bibliography is a draft", "Tutoring helps [@pe].", "bibliography", "NEEDS_REVIEW",
+         ("CITATION_PENDING_SECOND_CHECK_DRAFT",), ()),
+        ("S5 no status in the view reads as pending", "Tutoring helps [@lg].", "final", "FAIL",
+         ("CITATION_PENDING_SECOND_CHECK",), ()),
+        ("S5 confirmed by the researcher in a final", "Tutoring helps [@a].", "final", "PASS", ("CITATION_OK",),
+         ("CITATION_PENDING_SECOND_CHECK",)),
+        ("S5 rejected (AI)", "Tutoring helps [@rj].", "synthesis", "FAIL", ("CITATION_REJECTED",),
+         ("CITEKEY_NOT_IN_BIB", "CITATION_UNVERIFIED")),
+        ("S5 rejected (researcher)", "Tutoring helps [@rjr].", "final", "FAIL", ("CITATION_REJECTED",),
+         ("CITEKEY_NOT_IN_BIB",)),
+        ("S5 AI-confirmed is citable at final, labelled", "Tutoring helps [@mc].", "final", "PASS",
+         ("CITATION_CONFIRMED_BY_AI_CHECK", "CITATION_OK"), ()),
+        ("S5 AI-adjudicated partial match is citable, labelled", "Tutoring helps [@ma].", "final", "PASS",
+         ("CITATION_CONFIRMED_BY_AI_CHECK",), ("CITATION_WEAK_UNDECIDED",)),
+        ("S5 accepted despite the check is citable, labelled", "Tutoring helps [@ho].", "final", "PASS",
+         ("CITATION_ACCEPTED_DESPITE_CHECK",), ()),
+        ("S5 partial match confirmed by the researcher", "Tutoring helps [@hw].", "final", "PASS", ("CITATION_OK",),
+         ("CITATION_WEAK_UNDECIDED",)),
+        ("S5 legacy accepted partial match fails at final", "Tutoring helps [@wa].", "final", "FAIL",
+         ("CITATION_PENDING_SECOND_CHECK",), ("CITATION_HUMAN_DECISION_UNBOUND",)),
+        ("S5 unknown status fails closed", "Tutoring helps [@odd].", "synthesis", "FAIL", ("CITATION_UNVERIFIED",),
+         ()),
+        ("S5 vision audit missing in a draft", "Tutoring helps [@va].", "synthesis", "NEEDS_REVIEW",
+         ("VISION_AUDIT_MISSING_DRAFT",), ("VISION_AUDIT_MISSING",)),
+        ("S5 vision audit missing in a final", "Tutoring helps [@va].", "final", "FAIL", ("VISION_AUDIT_MISSING",),
+         ("VISION_AUDIT_MISSING_DRAFT",)),
+        ("S5 vision audit not confirmed in a draft", "Tutoring helps [@vp].", "synthesis", "NEEDS_REVIEW",
+         ("VISION_AUDIT_NOT_CONFIRMED_DRAFT",), ()),
+        ("S5 vision audit not confirmed in a final", "Tutoring helps [@vp].", "final", "FAIL",
+         ("VISION_AUDIT_NOT_CONFIRMED",), ()),
+        ("S5 vision audit mismatch in a final", "Tutoring helps [@vm].", "final", "FAIL",
+         ("VISION_AUDIT_NOT_CONFIRMED",), ()),
+        ("S5 vision chain unconfirmed in a final", "Tutoring helps [@vc].", "final", "FAIL",
+         ("VISION_AUDIT_NOT_CONFIRMED",), ()),
     ]
 
     def test_reviewer_memo_has_no_false_fail(self):
@@ -3521,6 +4346,101 @@ class ReportRulesTests(unittest.TestCase):
                     n += 1
         self.assertGreaterEqual(n, 14)
 
+    def test_second_check_and_audit_reasons_are_plain(self):
+        # report-rules-v6: the reasons use plain words and name what to do; no status words
+        view = mk_view()
+
+        def one(text, kind, status):
+            items, _ = lrr.check_report(text, view, kind)
+            return next(i for i in items if i["status"] == status)
+        it = one("Tutoring helps [@pe].", "synthesis", "CITATION_PENDING_SECOND_CHECK_DRAFT")
+        # plain-language review W2: one vocabulary ("not yet confirmed"; "the automatic reference check")
+        self.assertIn("matches the database record, but it is not yet confirmed", it["reason"])
+        self.assertIn("The final check will fail this citation", it["reason"])
+        self.assertIn("adjudications glance-sheet", it["fix"])
+        self.assertIn("record-human", it["fix"])
+        self.assertIn("may cite only confirmed references", one("Tutoring helps [@pe].", "final",
+                                                                "CITATION_PENDING_SECOND_CHECK")["reason"])
+        for text in (it["reason"],) + tuple(lv.CITATION_STATUS_WORDS.values()) + tuple(
+                lv.report_lc().GLANCE_STATUS_WORDS.values()):
+            self.assertNotIn("waiting for a second check", text)
+            self.assertNotIn("still being tested", text)
+        self.assertIn("the researcher accepted it earlier", one("Tutoring helps [@wa].", "final",
+                                                                "CITATION_PENDING_SECOND_CHECK")["reason"])
+        self.assertIn("an AI judgment", one("Tutoring helps [@rj].", "final", "CITATION_REJECTED")["reason"])
+        self.assertIn("the researcher recorded", one("Tutoring helps [@rjr].", "final", "CITATION_REJECTED")["reason"])
+        self.assertIn("an AI judgment", one("Tutoring helps [@mc].", "final", "CITATION_CONFIRMED_BY_AI_CHECK")["fix"])
+        self.assertIn("despite the automatic check", one("Tutoring helps [@ho].", "final",
+                                                         "CITATION_ACCEPTED_DESPITE_CHECK")["fix"])
+        it = one("Tutoring helps [@va].", "final", "VISION_AUDIT_MISSING")
+        self.assertIn("2 reading(s) from pictures of PDF pages", it["reason"])
+        self.assertIn("no audit record of these notes is on file", it["reason"])
+        self.assertIn("lit_verify audit", it["fix"])
+        for key, frag in (("vp", "2 reading(s) taken from pictures of PDF pages need a person"),
+                          ("vm", "could not confirm that a tested AI model"),
+                          ("vc", "could not confirm where the PDF file came from")):
+            it = one(f"Tutoring helps [@{key}].", "final", "VISION_AUDIT_NOT_CONFIRMED")
+            self.assertIn(frag, it["reason"], key)
+            self.assertTrue(it["fix"].endswith(lrr.AUDIT_FIX_COMMON), key)
+        # S5 settle: the fixes name the researcher's recorded comparison first; the chain's says it cannot settle it
+        for key in ("vp", "vm"):
+            fix = one(f"Tutoring helps [@{key}].", "final", "VISION_AUDIT_NOT_CONFIRMED")["fix"]
+            self.assertLess(fix.index("lit_verify settle"), fix.index("rewritten without readings"), key)
+        self.assertIn("cannot settle this", one("Tutoring helps [@vc].", "final", "VISION_AUDIT_NOT_CONFIRMED")["fix"])
+        it = one("Tutoring helps [@vd].", "final", "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertIn("recorded that 1 of them do not match the page", it["reason"])
+        self.assertEqual(it["fix"], lrr.AUDIT_FIX_DOES_NOT_MATCH)
+        self.assertIn("write new reading notes without that number, or with the number as printed on the page, check "
+                      "them with lit_verify card and run lit_verify audit", it["fix"].lower())
+        self.assertEqual(one("Tutoring helps [@vd].", "synthesis", "VISION_AUDIT_NOT_CONFIRMED_DRAFT")["severity"],
+                         "review")
+        for text, kind in (("Tutoring helps [@pe].", "final"), ("Tutoring helps [@va].", "final"),
+                           ("Tutoring helps [@vp].", "final"), ("Tutoring helps [@rj].", "final"),
+                           ("Tutoring helps [@vd].", "final")):
+            items, _ = lrr.check_report(text, view, kind)
+            for i in items:
+                for word in ("pending_adjudication", "adjudicat", "vision", "SAME_WORK", "CONFIDENT", "audit outcome"):
+                    self.assertNotIn(word, i["reason"], (text, i["status"]))
+
+    def test_second_check_remedies_pass(self):
+        # S4's standard: the condition a fix names is cleared by the fix. The pure rules see the result of each
+        #   remedy as a new view state (the on-disk tests run the commands themselves).
+        view = mk_view()
+        for before, after, kind in (
+                ({"citation_status": "pending_adjudication"}, {"citation_status": "human_confirmed"}, "final"),
+                ({"citation_status": "human_accepted_unbound", "verify_verdict": "WEAK"},
+                 {"citation_status": "human_confirmed", "verify_verdict": "WEAK"}, "final"),
+                ({"citation_status": "unverified", "verify_verdict": "WEAK"},
+                 {"citation_status": "human_confirmed", "verify_verdict": "WEAK"}, "final"),
+                ({"vision_audit": {"state": "missing", "readings": 1}}, {"vision_audit": None}, "final"),
+                ({"vision_audit": {"state": "not_confirmed", "outcome": "mismatch", "open": 1}}, {"vision_audit": None},
+                 "final"),
+                ({"vision_audit": {"state": "does_not_match", "outcome": "person_must_check", "open": 1}},
+                 {"vision_audit": None}, "final")):
+            with self.subTest(before=before):
+                view["papers"]["z"] = dict(view["papers"]["a"], paper_key="pz", **before)
+                items, _ = lrr.check_report("Tutoring helps [@z].", view, kind)
+                self.assertEqual(lrr.verdict_of(items), "FAIL")
+                view["papers"]["z"] = dict(view["papers"]["a"], paper_key="pz", **after)
+                items, _ = lrr.check_report("Tutoring helps [@z].", view, kind)
+                self.assertEqual(lrr.verdict_of(items), "PASS", sorted({i["status"] for i in items}))
+
+    def test_second_check_vocabulary_lockstep_with_lit_corpus(self):
+        # report-rules-v6: this module's copies of lit_corpus's status tuples stay equal (it cannot import them)
+        lc = lv.report_lc()
+        self.assertEqual(lrr.SECOND_CHECK_CITABLE_FINAL, lc.CITABLE_FINAL)
+        self.assertEqual(lrr.SECOND_CHECK_DRAFT_REVIEW, lc.DRAFT_REVIEW_STATUSES)
+        self.assertEqual(lrr.SECOND_CHECK_LABELLED, lc.LABELLED_STATUSES)
+        self.assertEqual(set(lrr.SECOND_CHECK_AI_CHECKED), set(lc.LABELLED_STATUSES) - {"human_overridden"})
+        self.assertEqual(set(lv.CITATION_STATUS_WORDS), set(lc.CITATION_STATUSES))
+        self.assertEqual(set(lrr.AUDIT_CONFIRMED), {k for k, v in lv.AUDIT_EXIT.items() if v == 0})
+        # (plus the report's own state for a confirming record whose model did not come from the hook's own record)
+        self.assertEqual(set(lrr.AUDIT_OUTCOME_WORDS),
+                         {k for k, v in lv.AUDIT_EXIT.items() if v != 0} | {"model_not_confirmed"})
+        self.assertEqual(set(lrr.AUDIT_FIX_LEAD), set(lrr.AUDIT_OUTCOME_WORDS))
+        self.assertEqual(lrr.AUDIT_SETTLEABLE, lv.SETTLE_OUTCOMES)                   # S5 settle
+        self.assertNotIn("chain_unconfirmed", lrr.AUDIT_SETTLEABLE)
+
     def test_nonstandard_reason_names_the_other_level(self):
         text = ("[Tutoring probably improves reading scores; whether it lasts is uncertain]"
                 + fspan("F01", "pa-c01 pb-c01") + " [@a; @b].")
@@ -3561,13 +4481,20 @@ class ReportRulesTests(unittest.TestCase):
         self.assertEqual(set(lrr.REPORT_SEVERITY.values()), {"pass", "fail", "review", "warning"})
         self.assertEqual((lv.REPORT_CHECK_SCHEMA_VERSION, lv.REPORT_REDERIVE_VERSION, lrr.REPORT_RULES_VERSION,
                           lrr.CITATION_PARSE_VERSION, lrr.SENTENCE_SPLIT_VERSION, lrr.REPORT_LINT_VERSION),
-                         ("lit-verify-report-check-v1", "report-rederive-v5", "report-rules-v5", "citations-v2",
+                         ("lit-verify-report-check-v1", "report-rederive-v6", "report-rules-v6", "citations-v2",
                           "sentences-v1", "report-lint-v5"))
-        self.assertEqual(lv.TOOL_VERSION, "1.14.0-daaf")
-        self.assertEqual(lrr.CERTAINTY_LANGUAGE["table_version"], "2026-11-01b")
+        self.assertEqual(lv.TOOL_VERSION, "1.15.0-daaf")
+        self.assertEqual((lrr.CERTAINTY_LANGUAGE["table_version"], lrr.CERTAINTY_LANGUAGE["contract_version"]),
+                         ("2026-11-01c", "0.4.0"))
+        self.assertEqual(len(lrr.REPORT_SEVERITY), 82)                # report-rules-v6: + 10 (S5 W1-c)
+        self.assertIn("citation_adjudications", lv.REPORT_TABLES)
+        # a report item keeps 600 characters of its fix (report_body): every fixed remedy text fits whole
+        for fix in [lv.TABLE_REMEDY, lv.TITLE_REMEDY, lrr.SECOND_CHECK_FIX, lrr.AUDIT_FIX_DOES_NOT_MATCH] + [
+                (lead + " " + lrr.AUDIT_FIX_COMMON) for lead in lrr.AUDIT_FIX_LEAD.values()]:
+            self.assertLessEqual(len(fix), 600, fix[:60])
         # M-W16: a number's state is named in words in the quant reasons, never by its label code
         self.assertEqual(set(lv.NUMBER_LABEL_WORDS) - set(lv.NUMBER_LABELS.values()), set())
-        self.assertEqual(len(lv.SEVERITY), 81)                       # the card table is untouched
+        self.assertEqual(len(lv.SEVERITY), 82)                       # 1.15.0: + VISION_FIGURE_UNCORROBORATED
         self.assertFalse(set(lrr.REPORT_SEVERITY) & {"CRITICAL_RISK_CONTRIBUTOR", "ESCALATION_UNRESOLVED",
                                                      "APPRAISAL_REDERIVE_MISMATCH", "CERTAINTY_ARITHMETIC_MISMATCH"})
 
@@ -4031,9 +4958,9 @@ class ReportRecheckForgeryTests(ScratchCase):
 
 
 @unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
-class IdentityHistoryTests(ScratchCase):
-    # Round G1 (review cycle 3 B1, W1, W6, consistency W2): identity comes from the table history, never from a
-    #   corpus field; each forgery below would PASS if the one defence it targets were removed.
+class DemoReviewCase(ScratchCase):
+    # A fresh lit_corpus demo review per test (build_demo: four papers whose references the researcher confirmed in
+    #   one recorded reply) and the helpers the identity-history and second-check tests share. No tests of its own.
     GENUINE = ("[Small-group tutoring probably raises reading scores]"
                '{.lr-finding fid=F01 claims="user_f1c70001-c01 user_f1c70002-c01"} '
                "[@allen2019tutoring; @baker2020reading].\n")
@@ -4098,6 +5025,38 @@ class IdentityHistoryTests(ScratchCase):
             self.assertNotRegex(it["reason"] + " " + it["fix"], r"\b[A-Z]+_[A-Z_]{3,}\b|state: |\bdoi, |found_by|"
                                 r"add-record run|\{\.lr-|fid=")
         return code, {(it["status"], ck) for it in check["items"] for ck in it.get("citekeys") or [None]}, check
+
+    def forge(self, table, rows):
+        # A new version of `table` holding `rows`, with a consistent data MANIFEST row (as an agent that can write
+        #   files could make one).
+        cols = {"corpus": self.lc.corpus_columns(), "citation_adjudications": self.lc.ledger_columns()}[table]
+        n = max(int(p.stem.rsplit("_v", 1)[1]) for p in (self.pd / "data").glob(f"{table}_v*.parquet")) + 1
+        blob = self.lc.parquet_io()[1](rows, cols)
+        (self.pd / "data" / f"{table}_v{n}.parquet").write_bytes(blob)
+        ReportOnDiskTests.append_row(self.pd / "data" / "MANIFEST.jsonl", {
+            "kind": "lit_corpus", "command": "forged", "exit_code": 0, "artifacts": [
+                {"table": table, "name": f"{table}_v{n}.parquet", "path": f"data/{table}_v{n}.parquet",
+                 "sha256": lv.sha256_bytes(blob)}]})
+
+    def table(self, name):
+        latest = max((self.pd / "data").glob(f"{name}_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
+        return [dict(r) for r in self.lc.parquet_io()[0](latest.read_bytes())]
+
+    def reply(self, decision, keys, words="These look right (synthetic test reply)."):
+        # The researcher's recorded reply for the verify rows attached to `keys` (adjudications record-human), then
+        #   the reference list exported again (its entries carry the citation status).
+        shas = [r["verify_row_sha256"] for r in self.rows() if r["paper_key"] in keys]
+        rows_file = self.pd / "inputs" / f"reply_{uuid.uuid4().hex[:6]}.txt"
+        rows_file.write_text("".join(f"{s}  # reply\n" for s in shas))
+        code, out = self.run_lc("adjudications", "record-human", self.pd, "--rows", rows_file, "--decision", decision,
+                                "--user-words", words, "--rationale", "Synthetic test decision.")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+
+
+class IdentityHistoryTests(DemoReviewCase):
+    # Round G1 (review cycle 3 B1, W1, W6, consistency W2): identity comes from the table history, never from a
+    #   corpus field; each forgery below would PASS if the one defence it targets were removed.
 
     def test_found_by_swap_to_another_search_record_fails(self):
         # B1 (reviewer probe 01 I1; mutant m1's target): allen keeps its key, cards and claims but takes evans's search
@@ -4252,6 +5211,7 @@ class IdentityHistoryTests(ScratchCase):
         z = {"doi": "10.9999/fixture.0098", "title": mine, "authors": ["Mo Moss"], "year": 2021, "w": "W900000098"}
         key2, ck2 = self.add_and_screen(pdf, mine, "Mo Moss", "2021", z["doi"], "h_again")
         self.legit_cite(key2, z)
+        self.reply("same_work", {key2})            # S5 W1-c: a final deliverable cites only second-checked references
         code, got, _ = self.report(f"## Further reading\n\n- A mentoring pilot in rural schools [@{ck2}].\n",
                                    "--kind", "final")
         self.assertEqual(code, 0, sorted(got))
@@ -4272,6 +5232,10 @@ class IdentityHistoryTests(ScratchCase):
         code, got, _ = self.report(memo, "--kind", "final")
         self.assertEqual(code, 11)
         self.assertIn(("CITATION_WEAK_UNDECIDED", ck), got)
+        # S5 W1-c: the fix (the researcher's recorded reply on the reference) clears it
+        self.reply("same_work", {key})
+        code, got, _ = self.report(memo, "--kind", "final")
+        self.assertEqual(code, 0, sorted(got))
 
     def test_new_key_on_an_already_ingested_search_row_fails(self):
         # Polish pass H (round-G re-review W4, mutant R1; reviewer probe 02 A2b): a forged ingest version re-lists a
@@ -4315,21 +5279,27 @@ class IdentityHistoryTests(ScratchCase):
         # Consistency W2: the fix text of a changed table names two remedies; both are run here and pass.
         backup = self.root / "data_backup"
         shutil.copytree(self.pd / "data", backup)
-        self.write_version([dict(r, doi=self.lc.DEMO_PAPERS[1]["doi"]) if r["paper_key"] == self.a["key"] else r
+        # S5 W1-c: baker's status forged to an AI confirmation no second-check record gives (ADJUDICATION_ROW_MISMATCH)
+        b_key = self.lc.DEMO_PAPERS[1]["key"]
+        self.write_version([dict(r, doi=self.lc.DEMO_PAPERS[1]["doi"]) if r["paper_key"] == self.a["key"] else
+                            dict(r, citation_status="model_confirmed") if r["paper_key"] == b_key else r
                             for r in self.rows()], {})
         claims = max((self.pd / "data").glob("claims_v*.parquet"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))
         os.chmod(claims, 0o644)
         claims.write_bytes(claims.read_bytes() + b"\0")
         code, got, check = self.report(self.GENUINE)
         self.assertEqual(code, 11)
-        fixes = {it["fix"] for it in check["items"] if it["status"] in ("TABLE_HASH_MISMATCH", "PAPER_IDENTITY_MISMATCH")}
+        planted = ("TABLE_HASH_MISMATCH", "PAPER_IDENTITY_MISMATCH", "ADJUDICATION_ROW_MISMATCH")
+        self.assertEqual({s for s, _ in got} & set(planted), set(planted))
+        fixes = {it["fix"] for it in check["items"] if it["status"] in planted}
         self.assertEqual(fixes, {lv.TABLE_REMEDY})
-        # remedy 1: restore the data folder from the backup
+        # remedy 1: restore the data folder from the backup (the second-check record comes back with it)
         for p in (self.pd / "data").rglob("*"):
             os.chmod(p, 0o755 if p.is_dir() else 0o644)
         shutil.rmtree(self.pd / "data")
         shutil.copytree(backup, self.pd / "data")
-        self.assertEqual(self.report(self.GENUINE)[0], 0)
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual((code, check["verdict"]), (0, "PASS"))
         # remedy 2, followed as the text gives it (polish pass H, round-G re-review INFO): a new project folder with
         #   the saved searches, the papers and the input files; the lit_corpus commands that wrote a table re-run in
         #   the order data/MANIFEST.jsonl lists them (the copy made before the change), with the same input files;
@@ -4339,11 +5309,16 @@ class IdentityHistoryTests(ScratchCase):
         new.mkdir()
         for d in ("lit_search", "papers", "inputs"):
             shutil.copytree(self.pd / d, new / d)
-        old_pd, replayed = str(self.pd), []
+        old_pd, replayed, skipped = str(self.pd), [], []
         for line in (backup / "MANIFEST.jsonl").read_text().splitlines():
             row = json.loads(line) if line.strip() else {}
             if row.get("kind") != "lit_corpus" or row.get("exit_code") != 0 or \
                     not any(art.get("table") for art in row.get("artifacts") or []):
+                continue
+            if row["command"].startswith("adjudications "):
+                # S5 W1-c: the second check is not re-run from the record (an ingest needs the pack log, bundle and
+                #   dispatch; a reply is the researcher's to give); the remedy records the reply again below
+                skipped.append(row["command"])
                 continue
             prm = row.get("parameters") or {}
             argv = row["command"].split() + [str(new)] + ([prm["file"].replace(old_pd, str(new))] if prm.get("file")
@@ -4356,11 +5331,640 @@ class IdentityHistoryTests(ScratchCase):
             replayed.append(row["command"])
         self.assertEqual(self.run_lc("export-bib", new)[0], 0)
         self.assertEqual(replayed[:5], ["add-record"] * 4 + ["ingest"])          # the recorded order, not another
+        self.assertEqual(skipped, ["adjudications ingest", "adjudications record-human"])
         before = {r["paper_key"] for r in self.rows(max(backup.glob("corpus_v*.parquet"),
                                                          key=lambda p: int(p.stem.rsplit("_v", 1)[1])))}
         self.pd = new
         self.assertEqual({r["paper_key"] for r in self.rows()}, before)            # every paper keeps its key
-        self.assertEqual(self.report(self.GENUINE)[0], 0)
+        # without the second-check record the references wait for it: a review item in a draft, a failure at final
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual((code, check["verdict"]), (0, "NEEDS_REVIEW"))
+        self.assertIn(("CITATION_PENDING_SECOND_CHECK_DRAFT", "allen2019tutoring"), got)
+        self.assertEqual(self.report(self.GENUINE, "--kind", "final")[0], 11)
+        # ... and the remedy's last step: the researcher's reply recorded again, the reference list exported again
+        self.assertEqual(self.run_lc("adjudications", "glance-sheet", self.pd)[0], 0)
+        rows_file = max((self.pd / "output").glob("reference_glance_v*_rows.txt"))
+        self.assertEqual(self.run_lc("adjudications", "record-human", self.pd, "--rows", rows_file, "--decision",
+                                     "same_work", "--user-words", self.lc.DEMO_USER_WORDS, "--rationale",
+                                     "The researcher compared each title again.")[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), sorted(got))
+        code, got, check = self.report(self.GENUINE, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), sorted(got))
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class SecondCheckReportTests(DemoReviewCase):
+    # report-rules-v6 / report-rederive-v6 (S5 W1-c): the report re-derives each paper's citation
+    #   status from the second-check record and holds the audit of readings from pictures of pages; every word
+    #   invented. Each planted condition is the only failure or review item, and its fix is run and passes.
+    FURTHER = "## Further reading\n\n- A survey of adult reading clubs [@evans2018invented].\n"
+    DIAZ = ("[Teachers described scheduling as the main barrier to small groups (certainty not rated: qualitative "
+            'evidence)]{.lr-finding fid=F02 claims="user_f1c70004-c01"} [@diaz2022teachers].\n')
+
+    @staticmethod
+    def bad(check):
+        return sorted({it["status"] for it in check["items"] if it["severity"] in ("fail", "review")})
+
+    def add_evans(self):
+        # The fifth demo work, included at screening, its reference and retraction checks attached (CONFIDENT: it
+        #   waits for its second check), the reference list exported.
+        sp = self.pd / "inputs" / "w1c_screen.jsonl"
+        sp.write_text(json.dumps({"paper_key": self.evans["w"], "stage": "ta", "pass": "researcher",
+                                  "decision": "include", "screener": {"role": "researcher"}}) + "\n")
+        self.assertEqual(self.run_lc("screen", "record", self.pd, sp)[0], 0)
+        self.legit_cite(self.evans["w"], self.evans)
+        return next(r for r in self.rows() if r["paper_key"] == self.evans["w"])
+
+    def adjudicate(self, keys, verdict, batch):
+        # adjudications pack and ingest through lit_corpus's own fixture helpers (captured pack log, a synthetic
+        #   return, an audit log of the dispatch)
+        steps = []
+
+        def step(name, argv, **internal):
+            code, out = self.run_lc(*argv, **internal)
+            steps.append((name, code, out))
+            return code
+        self.lc.demo_adjudicate(step, steps, str(self.pd), batch, keys=keys, verdict=verdict)
+        self.assertEqual([(n, c) for n, c, _ in steps if c], [])
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+
+    def test_pending_is_review_in_a_draft_and_fails_at_final_until_the_reply(self):
+        self.assertEqual(self.add_evans()["citation_status"], "pending_adjudication")
+        code, _, check = self.report(self.FURTHER)
+        self.assertEqual((code, check["verdict"], self.bad(check)),
+                         (0, "NEEDS_REVIEW", ["CITATION_PENDING_SECOND_CHECK_DRAFT"]))
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"], self.bad(check)), (11, "FAIL", ["CITATION_PENDING_SECOND_CHECK"]))
+        # a table written before lit_corpus 1.4.0 says verified_rule: read as waiting for the second check
+        self.write_version([dict(r, citation_status="verified_rule") if r["paper_key"] == self.evans["w"] else r
+                            for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_PENDING_SECOND_CHECK"]))
+        # the fix: the researcher's recorded reply, the reference list exported again
+        self.reply("same_work", {self.evans["w"]})
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_rejected_reference_fails_until_a_new_check_is_confirmed(self):
+        self.add_evans()
+        self.reply("different_work", {self.evans["w"]})
+        code, got, check = self.report(self.FURTHER)
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_REJECTED"]))
+        self.assertIn("the researcher recorded", next(i["reason"] for i in check["items"]
+                                                      if i["status"] == "CITATION_REJECTED"))
+        # the fix's second route: the reference checked again (a new verify row) and the new check confirmed
+        self.legit_cite(self.evans["w"], self.evans)
+        self.reply("same_work", {self.evans["w"]})
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_a_reply_nobody_gave_fails(self):
+        # quality review W4 (probe 308_b E2): a script writes a ledger version holding the researcher's "same work" for
+        #   evans with invented words, a corpus version that agrees, and MANIFEST rows of its own; the reference list is
+        #   then exported by the real command. Every status re-derives, so only the writer binding stops it.
+        self.add_evans()
+        ev = next(r for r in self.rows() if r["paper_key"] == self.evans["w"])
+        led = self.table("citation_adjudications")
+        k = max(int(p.stem.rsplit("_v", 1)[1]) for p in (self.pd / "data").glob("citation_adjudications_v*.parquet"))
+        words, at = "All of them look right (invented; nobody said this).", "2026-11-01T09:00:00Z"
+        tmpl = next(r for r in led if r["human_decision"] == "same_work")
+        aid = ev["verify_row_sha256"][:8] + "-a01"
+        new = dict({c: None for c in self.lc.ledger_columns()}, **{c: tmpl[c] for c in (
+            "rules_version", "rules_version_stale", "retracted", "human_binding", "human_binding_basis")})
+        new.update(adjudication_id=aid, paper_key=ev["paper_key"], verify_row_sha256=ev["verify_row_sha256"],
+                   rule_verdict="CONFIDENT", human_decision="same_work", human_decider="researcher",
+                   human_decided_at=at, human_rationale="Invented.", human_instruction_verbatim=words,
+                   citation_status="human_confirmed", recorded_version=k + 1)
+        blob = self.lc.parquet_io()[1](led + [new], self.lc.ledger_columns())
+        name = f"citation_adjudications_v{k + 1}.parquet"
+        (self.pd / "data" / name).write_bytes(blob)
+        honest = {"kind": "lit_corpus", "command": "adjudications record-human", "exit_code": 0, "timestamp": at,
+                  "parameters": {"decision": "same_work", "user_words": words}, "decision": "same_work",
+                  "rows": [ev["verify_row_sha256"]], "statuses": {ev["paper_key"]: "human_confirmed"},
+                  "artifacts": [{"table": "citation_adjudications", "name": name, "path": f"data/{name}",
+                                 "sha256": lv.sha256_bytes(blob)}]}
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        before = mf.read_text()
+        self.write_version([dict(r, citation_status="human_confirmed", adjudication_ref=aid)
+                            if r["paper_key"] == ev["paper_key"] else r for r in self.rows()], {})
+        corpus_row = mf.read_text()[len(before):]
+        looks = {"a script's own row": {"command": "a script, not record-human"},
+                 "another verify row": {"rows": ["0" * 64]},
+                 "another decision in its parameters": {"parameters": {"decision": "defer", "user_words": words}},
+                 "other words": {"parameters": {"decision": "same_work", "user_words": "Something else."}},
+                 "another time": {"timestamp": "2026-11-02T00:00:00Z"},
+                 "another status": {"statuses": {ev["paper_key"]: "rejected"}}}
+        for label, change in looks.items():
+            with self.subTest(label):
+                mf.write_text(before + json.dumps(dict(honest, **change)) + "\n" + corpus_row)
+                self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+                code, _, check = self.report(self.FURTHER, "--kind", "final")
+                self.assertEqual(code, 11)
+                self.assertIn("ADJUDICATION_ROW_MISMATCH", self.bad(check))
+                it = next(i for i in check["items"] if i["status"] == "ADJUDICATION_ROW_MISMATCH")
+                self.assertIn("changed after DAAF wrote it (it was not written by DAAF's step that records the "
+                              "researcher's reply)", it["reason"])
+        # a row edited after its version was written: the ledger row is not the one first written there
+        mf.write_text(before + json.dumps(honest) + "\n" + corpus_row)
+        led2 = led + [dict(new, recorded_version=k)]
+        blob2 = self.lc.parquet_io()[1](led2, self.lc.ledger_columns())
+        (self.pd / "data" / name).write_bytes(blob2)
+        mf.write_text(mf.read_text().replace(lv.sha256_bytes(blob), lv.sha256_bytes(blob2)))
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertIn("ADJUDICATION_ROW_MISMATCH", self.bad(check))
+        self.assertIn("it is not the record as DAAF's corpus tool first wrote it", next(
+            i["reason"] for i in check["items"] if i["status"] == "ADJUDICATION_ROW_MISMATCH"))
+
+    def test_corpus_status_the_ledger_does_not_give_fails(self):
+        # allen's corpus row says an AI check confirmed it; its second-check record says the researcher did. The
+        #   reference list is exported again, so only the re-derivation stands between the forgery and a PASS.
+        self.write_version([dict(r, citation_status="model_confirmed") if r["paper_key"] == self.a["key"] else r
+                            for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        it = next(i for i in check["items"] if i["status"] == "ADJUDICATION_ROW_MISMATCH")
+        self.assertEqual((it["fix"], it["citekeys"]), (lv.TABLE_REMEDY, ["allen2019tutoring"]))
+        self.assertIn("confirmed by DAAF's second check (an AI judgment)", it["reason"])
+        self.assertIn("gives 'confirmed by the researcher'", it["reason"])
+
+    def test_ledger_row_whose_status_cannot_be_rederived_fails(self):
+        # the current ledger row of allen loses the researcher's decision but keeps its status; then (from the genuine
+        #   rows) only the row's own status changes, the fields and the corpus still saying "confirmed by the researcher"
+        led = self.table("citation_adjudications")
+        for change in ({"human_decision": None}, {"citation_status": "model_confirmed"}):
+            with self.subTest(change=change):
+                self.forge("citation_adjudications", [dict(r, **change) if r["paper_key"] == self.a["key"]
+                                                      and not r.get("superseded_by") else r for r in led])
+                code, got, check = self.report(self.GENUINE)
+                self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+                self.assertIn(("ADJUDICATION_ROW_MISMATCH", "allen2019tutoring"), got)
+
+    def test_corpus_reference_to_the_ledger_must_match(self):
+        # allen's corpus row names another paper's ledger row; then evans (no second check yet) names a row at all
+        rows = self.rows()
+        other = next(r["adjudication_ref"] for r in rows if r["paper_key"] == self.lc.DEMO_PAPERS[1]["key"])
+        self.write_version([dict(r, adjudication_ref=other) if r["paper_key"] == self.a["key"] else r for r in rows], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.GENUINE)
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        self.assertIn("does not match the review's record of it", next(
+            i["reason"] for i in check["items"] if i["status"] == "ADJUDICATION_ROW_MISMATCH"))
+        mine = next(r["adjudication_ref"] for r in rows if r["paper_key"] == self.a["key"])
+        self.write_version([dict(r, adjudication_ref=mine) if r["paper_key"] == self.a["key"] else r
+                            for r in self.rows()], {})
+        self.add_evans()
+        self.write_version([dict(r, adjudication_ref="deadbeef-a01") if r["paper_key"] == self.evans["w"] else r
+                            for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.FURTHER)
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        self.assertIn(("ADJUDICATION_ROW_MISMATCH", "evans2018invented"), got)
+
+    def test_forged_ai_confirmation_needs_an_evaluated_model(self):
+        # a ledger row and a corpus row saying an unevaluated model's SAME_WORK confirmed evans (consistent hash
+        #   records, the reference list exported again): the effective verdict is re-derived from the list version
+        #   the row names, so the forgery fails; on a list that names the model, the same rows pass, labelled
+        ev = self.add_evans()
+        sha = ev["verify_row_sha256"]
+        aid = f"{sha[:8]}-a01"
+        e = self.lc.demo_evaluated_entry()
+        row = dict({c: None for c in self.lc.ledger_columns()}, adjudication_id=aid, paper_key=self.evans["w"],
+                   verify_row_sha256=sha, rule_verdict="CONFIDENT", verdict="SAME_WORK", effective_verdict="SAME_WORK",
+                   title_floor_applied=False, model_id=e[0], template_sha256=e[1], rubric_version=e[2],
+                   agent_file_sha256=e[3], agent_file_sha256_at_ingest=e[3], selector_json="[]",
+                   evaluated_model_list_version="adjudicator-list-forged", citation_status="model_confirmed",
+                   recorded_version=1 + max(int(p.stem.rsplit("_v", 1)[1]) for p in (self.pd / "data").glob(
+                       "citation_adjudications_v*.parquet")),
+                   batch_id="bforged", batch_log_sha256="f" * 64, dispatch_id="aforged0000000001")
+        # the ledger version comes with a look-alike of ingest's own MANIFEST row, so only the evaluated identity is
+        #   tested here (the writer binding has its own test below and in test_a_reply_nobody_gave_fails)
+        self.forge("citation_adjudications", self.table("citation_adjudications") + [row])
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        lines = mf.read_text().splitlines()
+        lines[-1] = json.dumps(dict(json.loads(lines[-1]), command="adjudications ingest", batch_id="bforged",
+                                    batch_log_sha256="f" * 64, model_id=e[0],
+                                    parameters={"agent_id": "aforged0000000001"}))
+        mf.write_text("\n".join(lines) + "\n")
+        self.write_version([dict(r, citation_status="model_confirmed", adjudication_ref=aid)
+                            if r["paper_key"] == self.evans["w"] else r for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        # (a list version of its own: putting the model on the shipped version would also change the demo's rows).
+        #   The re-derivation matches the row's WHOLE identity: a list entry differing in one dimension, or a row whose
+        #   agent file changed before ingest, gives UNCERTAIN, so the stored AI confirmation cannot be re-derived.
+        for name, entry, at_ingest in (("model", ("another-model",) + e[1:], e[3]),
+                                       ("template", (e[0], "0" * 64) + e[2:], e[3]),
+                                       ("rubric", e[:2] + ("fixture-rubric-v2", e[3]), e[3]),
+                                       ("agent file", e[:3] + ("1" * 64,), e[3]),
+                                       ("agent file changed before ingest", e, "1" * 64)):
+            with self.subTest(name):
+                if at_ingest != e[3]:
+                    self.forge("citation_adjudications", [dict(r, agent_file_sha256_at_ingest=at_ingest)
+                                                          if r["adjudication_id"] == aid else r
+                                                          for r in self.table("citation_adjudications")])
+                with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-forged": (entry,)}):
+                    code, got, check = self.report(self.FURTHER, "--kind", "final")
+                self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        self.forge("citation_adjudications", [dict(r, agent_file_sha256_at_ingest=e[3]) if r["adjudication_id"] == aid
+                                              else r for r in self.table("citation_adjudications")])
+        with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-forged": (e,)}):
+            code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        self.assertIn(("CITATION_CONFIRMED_BY_AI_CHECK", "evans2018invented"), got)
+        # quality review W4: the same rows with a MANIFEST row that is not ingest's own (another command, another
+        #   batch, or no ingest run of the batch) are refused, even on a list that names the model
+        good = mf.read_text()
+        for label, change in (("another command", {"command": "forged"}), ("another batch", {"batch_id": "b2"}),
+                              ("another dispatch", {"parameters": {"agent_id": "aother"}})):
+            with self.subTest(label):
+                mf.write_text("".join(json.dumps(dict(r, **change) if r.get("batch_id") == "bforged" else r) + "\n"
+                                      for r in (json.loads(x) for x in good.splitlines() if x.strip())))
+                with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-forged": (e,)}):
+                    code, _, check = self.report(self.FURTHER, "--kind", "final")
+                self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+                self.assertIn("the AI second check", next(i["reason"] for i in check["items"]
+                                                           if i["status"] == "ADJUDICATION_ROW_MISMATCH"))
+        # an ingest run of the batch is on record, but the ledger version itself was written by another command
+        rows = [json.loads(x) for x in good.splitlines() if x.strip()]
+        ingest = next(r for r in rows if r.get("batch_id") == "bforged")
+        mf.write_text("".join(json.dumps(dict(r, command="forged") if r is ingest else r) + "\n" for r in rows)
+                      + json.dumps(dict(ingest, artifacts=[])) + "\n")
+        with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-forged": (e,)}):
+            code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+        self.assertIn("not written by DAAF's step that records the AI second check", next(
+            i["reason"] for i in check["items"] if i["status"] == "ADJUDICATION_ROW_MISMATCH"))
+        mf.write_text(good)
+
+    def test_ai_confirmed_reference_is_citable_and_labelled(self):
+        # an evaluated model (a test-only list version) confirms evans through pack and ingest
+        self.add_evans()
+        with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS,
+                             {"adjudicator-list-test": (self.lc.demo_evaluated_entry(),)}), \
+                mock.patch.object(self.lc, "ADJUDICATOR_LIST_VERSION", "adjudicator-list-test"):
+            self.adjudicate([self.evans["w"]], "SAME_WORK", "b02")
+            self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                             "model_confirmed")
+            code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        it = next(i for i in check["items"] if i["status"] == "CITATION_CONFIRMED_BY_AI_CHECK")
+        self.assertEqual(it["severity"], "warning")
+        # the shipped lists do not hold that list version: the same records cannot confirm it
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
+
+    def test_reply_against_a_different_work_verdict_is_labelled(self):
+        # the adjudicator (not on any evaluated list) says a different work; the researcher accepts the reference
+        self.add_evans()
+        self.adjudicate([self.evans["w"]], "DIFFERENT_WORK", "b02")
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_PENDING_SECOND_CHECK"]))   # counts as not sure
+        self.reply("same_work", {self.evans["w"]})
+        self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                         "human_overridden")
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        self.assertIn(("CITATION_ACCEPTED_DESPITE_CHECK", "evans2018invented"), got)
+
+    def add_evans_mismatch(self):
+        # evans included, its reference check a MISMATCH (the DOI's record carries another title), its retraction
+        #   check attached, the reference list exported
+        sp = self.pd / "inputs" / "w1f_screen.jsonl"
+        sp.write_text(json.dumps({"paper_key": self.evans["w"], "stage": "ta", "pass": "researcher",
+                                  "decision": "include", "screener": {"role": "researcher"}}) + "\n")
+        self.assertEqual(self.run_lc("screen", "record", self.pd, sp)[0], 0)
+        work = dict(self.lc.demo_work_json(self.evans), display_name="Coastal Dentistry Outcomes Measured Twice in Imaginary Clinics")
+        v = self.lc.demo_verify_row(str(self.pd), self.evans, work=work)
+        r = self.lc.demo_retractions_row(str(self.pd), [(self.evans["doi"], "none")])
+        for kind, sha in (("verify", v), ("retractions", r)):
+            mp = self.pd / "inputs" / f"w1f_{kind}_{sha[:6]}.jsonl"
+            mp.write_text(json.dumps({"row_sha256": sha, "paper_key": self.evans["w"]}) + "\n")
+            self.assertEqual(self.run_lc("attach", kind, self.pd, mp)[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        self.assertEqual(next(x for x in self.rows() if x["paper_key"] == self.evans["w"])["verify_verdict"], "MISMATCH")
+        return v, work
+
+    def test_overridden_mismatch_is_exported_and_citable_with_its_label(self):
+        # S5 W1 follow-up: the researcher's override of a MISMATCH binds to the record the check's saved response
+        #   re-derives; export-bib lists that record and the report passes, draft and final, with the label
+        v, work = self.add_evans_mismatch()
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_UNVERIFIED"]))
+        rows_file = self.pd / "inputs" / "w1f_override.txt"
+        rows_file.write_text(v + "  # evans\n")
+        code, out = self.run_lc("adjudications", "record-human", self.pd, "--rows", rows_file, "--decision",
+                                "override_mismatch", "--user-words", "Keep it; the index renamed the survey.",
+                                "--rationale", "The DOI is the cited survey (synthetic test).")
+        self.assertEqual(code, 0, out)
+        # before the reference list is exported again, the overridden reference is not in it
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITEKEY_NOT_IN_BIB"]))
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        bib = sorted((self.pd / "output").glob("references_v*.bib"), key=lambda p: int(p.stem.rsplit("_v", 1)[1]))[-1]
+        self.assertIn("evans2018invented", bib.read_text())
+        self.assertIn("Coastal Dentistry", bib.read_text())
+        for kind in ([], ["--kind", "final"]):
+            code, got, check = self.report(self.FURTHER, *kind)
+            self.assertEqual((code, check["verdict"]), (0, "PASS"), (kind, self.bad(check)))
+            it = next(i for i in check["items"] if i["status"] == "CITATION_ACCEPTED_DESPITE_CHECK")
+            self.assertEqual((it["severity"], it["citekeys"]), ("warning", ["evans2018invented"]))
+
+    def test_override_naming_another_record_fails(self):
+        # the ledger row of the override is forged to name another record (everything else consistent, the reference
+        #   list exported from the corpus): only the record binding stands between the forgery and a PASS
+        v, work = self.add_evans_mismatch()
+        rows_file = self.pd / "inputs" / "w1f_override.txt"
+        rows_file.write_text(v + "\n")
+        self.assertEqual(self.run_lc("adjudications", "record-human", self.pd, "--rows", rows_file, "--decision",
+                                     "override_mismatch", "--user-words", "Keep it.", "--rationale", "Synthetic.")[0], 0)
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        other = self.lc.canon(self.lc.openalex_meta(dict(work, display_name="Another Invented Record Altogether")))
+        self.forge("citation_adjudications", [dict(r, override_record_json=other) if r["verify_row_sha256"] == v and
+                                              not r.get("superseded_by") else r
+                                              for r in self.table("citation_adjudications")])
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        # (no override binds, so the exported entry is not one DAAF would export for a confirmed record either)
+        self.assertEqual((code, self.bad(check)),
+                         (11, ["ADJUDICATION_ROW_MISMATCH", "BIB_ENTRY_MISMATCH", "CITATION_UNVERIFIED"]))
+        self.assertIn(("ADJUDICATION_ROW_MISMATCH", "evans2018invented"), got)
+
+    def test_vision_audit_missing_then_not_confirmed_then_text_only_notes(self):
+        p = self.lc.DEMO_PAPERS[3]
+        kdir = self.pd / "papers" / p["key"]
+        original = (kdir / "evidence_card.md").read_text()
+        head, rest = original.split("```lit-verify\n", 1)
+        block = json.loads(rest.split("\n```", 1)[0])
+        block.update(reader_model="claude-opus-5-5", vision_mode="auto", vision_validated=True,
+                     vision_list_version=lv.VISION_LIST_VERSION,
+                     claims=[dict(c, source="both") if n == 0 else c for n, c in enumerate(block["claims"])])
+        (kdir / "evidence_card_a.md").write_text(head + "```lit-verify\n" + json.dumps(block, indent=2) + "\n```\n")
+        self.assertEqual(run_main(["card", kdir, kdir / "evidence_card_a.md"])[0], 0)
+        self.assertEqual(self.run_lc("claims", "build", self.pd)[0], 0)
+        code, _, check = self.report(self.DIAZ)
+        self.assertEqual((code, check["verdict"], self.bad(check)), (0, "NEEDS_REVIEW", ["VISION_AUDIT_MISSING_DRAFT"]))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_MISSING"]))
+        # a "confirmed" record whose MANIFEST row names this card but whose own content names another card counts
+        #   as none (its bytes match its row; the record's binding does not)
+        card_sha = lv.sha256_bytes((kdir / "evidence_card_a.md").read_bytes())
+        cc_sha = [r for r in rows_of(self.pd / "papers") if r.get("command") == "card"][-1]["artifacts"][
+            "card_check"]["sha256"]
+        other = json.dumps({"kind": "lit_verify_vision_audit", "paper_key": p["key"], "card_sha256": "0" * 64,
+                            "card_check_sha256": cc_sha, "outcome": "confirmed"}).encode()
+        (kdir / "vision_audit_a9.json").write_bytes(other)
+        ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", {
+            "kind": "lit_verify_audit", "command": "audit", "paper_key": p["key"], "card": {"sha256": card_sha},
+            "card_check": {"sha256": cc_sha}, "outcome": "confirmed", "exit_code": 0,
+            "artifacts": {"vision_audit": {"name": "vision_audit_a9.json", "sha256": lv.sha256_bytes(other)}}})
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_MISSING"]))
+        self.assertIn("does not match the audit's own record of the run", next(
+            i["reason"] for i in check["items"] if i["status"] == "VISION_AUDIT_MISSING"))
+        # the fix of a missing audit: the audit (the synthetic source's chain cannot be confirmed, so it lists items)
+        cache = self.root / "hook_cache"
+        cache.mkdir()
+        with mock.patch.dict(os.environ, {"DAAF_CONTEXT_REPORTER_CACHE_DIR": str(cache)}):
+            code, out, err = run_main(["audit", kdir, "--card", "evidence_card_a.md", "--agent-id", "a0000000000000f1"])
+        self.assertEqual(code, 11, out + err)
+        rec_path = kdir / "vision_audit_a.json"
+        self.assertEqual(json.loads(rec_path.read_text())["outcome"], "chain_unconfirmed")
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertIn("could not confirm where the PDF file came from", it["reason"])
+        self.assertEqual(self.bad(self.report(self.DIAZ)[2]), ["VISION_AUDIT_NOT_CONFIRMED_DRAFT"])
+        # an audit record changed after the audit counts as none
+        good = rec_path.read_bytes()
+        os.chmod(rec_path, 0o644)
+        rec_path.write_bytes(good.replace(b'"outcome": "chain_unconfirmed"', b'"outcome": "confirmed"', 1))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_MISSING"]))
+        self.assertIn("has changed since the audit wrote it", next(i["reason"] for i in check["items"]
+                                                                   if i["status"] == "VISION_AUDIT_MISSING"))
+        rec_path.write_bytes(good)
+        # a second, consistent "confirmed" record of the same card does not hide the real one
+        row = [r for r in rows_of(self.pd / "papers") if r.get("kind") == "lit_verify_audit"][-1]
+        fake = good.replace(b'"outcome": "chain_unconfirmed"', b'"outcome": "confirmed"', 1)
+        (kdir / "vision_audit_a2.json").write_bytes(fake)
+        ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", dict(
+            row, outcome="confirmed", exit_code=0, artifacts={"vision_audit": {
+                "name": "vision_audit_a2.json", "bytes": len(fake), "sha256": lv.sha256_bytes(fake)}}))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        # the fix of an unconfirmed audit: notes without readings from pictures of pages, checked; claims rebuilt
+        (kdir / "evidence_card_b.md").write_text(original)
+        self.assertEqual(run_main(["card", kdir, kdir / "evidence_card_b.md"])[0], 0)
+        self.assertEqual(self.run_lc("claims", "build", self.pd)[0], 0)
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class SettleReportTests(DemoReviewCase):
+    # S5 settle: the report reads the researcher's records of the audit's listed readings. Demo paper 4 gets a card
+    #   revision whose first two claims were read from the text AND a picture of the page; its audit runs with the
+    #   source chain confirmed (a test seam: the demo's synthetic source is no fetch, and the chain has its own tests)
+    #   unless a test needs it unconfirmed. Every word invented.
+    DIAZ = SecondCheckReportTests.DIAZ
+    bad = staticmethod(SecondCheckReportTests.bad)
+    WORDS = ("--user-words", "They match the page (synthetic test reply).")
+    CHAIN_OK = {"source_kind": "web_fetch", "check": "confirmed", "basis": "web_fetches row", "web_fetch_row": None}
+
+    def vision_audit(self, model=None, chain_ok=True, want_code=11, route_front=None):
+        p = self.lc.DEMO_PAPERS[3]
+        kdir = self.pd / "papers" / p["key"]
+        head, rest = (kdir / "evidence_card.md").read_text().split("```lit-verify\n", 1)
+        if route_front:
+            self.assertTrue(head.startswith("---\n"))
+            head = head.replace("---\n", f"---\nreader_route: {route_front}\n", 1)
+        block = json.loads(rest.split("\n```", 1)[0])
+        block.update(reader_model="claude-opus-5-5", vision_mode="auto", vision_validated=True,
+                     vision_list_version=lv.VISION_LIST_VERSION,
+                     claims=[dict(c, source="both") if n < 2 else c for n, c in enumerate(block["claims"])])
+        (kdir / "evidence_card_a.md").write_text(head + "```lit-verify\n" + json.dumps(block, indent=2) + "\n```\n")
+        self.assertEqual(run_main(["card", kdir, kdir / "evidence_card_a.md"])[0], 0)
+        self.assertEqual(self.run_lc("claims", "build", self.pd)[0], 0)
+        cache = self.root / "hook_cache"
+        cache.mkdir(exist_ok=True)
+        if model:
+            (cache / "claude-subagent-model-sess-a0000000000000f1").write_text(model)
+        seam = mock.patch.object(lv, "chain_check", return_value=dict(self.CHAIN_OK)) if chain_ok else nullcontext()
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "sess"}), \
+                mock.patch.object(lv, "HOOK_CACHE_DEFAULT_DIR", str(cache)), seam:
+            code, out, err = run_main(["audit", kdir, "--card", "evidence_card_a.md", "--agent-id", "a0000000000000f1"])
+        self.assertEqual(code, want_code, out + err)
+        return kdir, json.loads((kdir / "vision_audit_a.json").read_text())
+
+    def settle(self, kdir, ids, decision="matches", *extra):
+        f = self.pd / "inputs" / f"settle_{uuid.uuid4().hex[:6]}.txt"
+        f.write_text("".join(f"{i}\n" for i in ids))
+        code, out, err = run_main(["settle", kdir, "--audit", "vision_audit_a.json", "--items", f, "--decision",
+                                   decision, *self.WORDS, *extra])
+        self.assertEqual(code, 0, out + err)
+
+    def test_settled_readings_pass_draft_and_final(self):
+        kdir, rec = self.vision_audit()
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        self.assertEqual((rec["outcome"], len(ids)), ("person_must_check", 2))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertTrue(it["fix"].startswith(lrr.AUDIT_FIX_LEAD["person_must_check"]))
+        self.assertIn("lit_verify settle --list", it["fix"])
+        # the reply covering one reading: one still open
+        self.settle(kdir, ids[:1])
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        self.assertIn("1 reading(s) taken from pictures of PDF pages need a person", next(
+            i["reason"] for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED"))
+        self.assertEqual(self.bad(self.report(self.DIAZ)[2]), ["VISION_AUDIT_NOT_CONFIRMED_DRAFT"])
+        # the reply covering the rest (the --list file): draft and final pass, with no extra label
+        self.assertEqual(run_main(["settle", kdir, "--audit", "vision_audit_a.json", "--list"])[0], 0)
+        self.settle(kdir, [ln.split("#")[0].strip() for ln in (kdir / "settle_items_a.txt").read_text().splitlines()
+                           if ln.split("#")[0].strip()])
+        for kind in ([], ["--kind", "final"]):
+            code, _, check = self.report(self.DIAZ, *kind)
+            self.assertEqual((code, check["verdict"]), (0, "PASS"), (kind, self.bad(check)))
+            self.assertFalse([i for i in check["items"] if i["status"].startswith("VISION_AUDIT")])
+
+    def test_does_not_match_fails_until_a_later_reply(self):
+        kdir, rec = self.vision_audit()
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        self.settle(kdir, ids)
+        self.settle(kdir, ids[1:], "does_not_match", "--rationale", "The page prints another number (synthetic).")
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertEqual(it["fix"], lrr.AUDIT_FIX_DOES_NOT_MATCH)
+        self.assertIn("recorded that 1 of them do not match the page", it["reason"])
+        self.assertEqual(self.bad(self.report(self.DIAZ)[2]), ["VISION_AUDIT_NOT_CONFIRMED_DRAFT"])
+        # the researcher's later reply on that reading decides
+        self.settle(kdir, ids[1:])
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_mismatch_outcome_is_settled_reading_by_reading(self):
+        kdir, rec = self.vision_audit(model="claude-sonnet-5")
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        self.assertEqual((rec["outcome"], len(ids)), ("mismatch", 2))
+        for n, i in enumerate(ids, 1):
+            code, _, check = self.report(self.DIAZ, "--kind", "final")
+            self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]), n)
+            self.settle(kdir, [i])
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_an_unconfirmed_source_is_never_settled(self):
+        kdir, rec = self.vision_audit(model="claude-sonnet-5", chain_ok=False)
+        self.assertEqual(rec["outcome"], "chain_unconfirmed")
+        self.settle(kdir, [x["item_id"] for x in rec["unvalidated"]])
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertIn("could not confirm where the PDF file came from", it["reason"])
+        self.assertIn("Comparing readings with the page cannot settle this", it["fix"])
+
+    def test_forged_settlements_count_as_none(self):
+        # Each forgery is a settlement record "matches" for both readings with a consistent MANIFEST row, except for
+        #   the one binding it breaks; the citation stays unsettled.
+        kdir, rec = self.vision_audit()
+        key = rec["paper_key"]
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        asha = lv.sha256_bytes((kdir / "vision_audit_a.json").read_bytes())
+        words, at = "They match the page (synthetic forged reply).", "2026-11-01T00:00:00Z"
+        base = {"kind": "lit_verify_audit_settlement", "paper_key": key, "audit_sha256": asha,
+                "card_sha256": rec["card_sha256"], "card_check_sha256": rec["card_check_sha256"],
+                "decision": "matches", "items": [{"item_id": i, "decision": "matches"} for i in ids],
+                "settled_at": at, "human_instruction_verbatim": words}
+        wsha = lv.sha256_bytes(words.encode())
+        forgeries = {"record bound to another audit": (dict(base, audit_sha256="0" * 64), {}),
+                     "row bound to another audit": (base, {"audit": {"sha256": "0" * 64}}),
+                     "record of another card": (dict(base, card_sha256="1" * 64), {}),
+                     "readings that are not this audit's": (dict(base, items=[{"item_id": "0123456789abcdef",
+                                                                               "decision": "matches"}] + base["items"]),
+                                                            {"items": ["0123456789abcdef"] + ids}),
+                     "row listing other readings than its record": (base, {"items": ids[:1]}),
+                     "record edited after its row": (base, {"edit": True}),
+                     # quality review W4: a look-alike row must reproduce settle's own row, field by field
+                     "row of another command": (base, {"command": "a script, not settle"}),
+                     "row of a failed run": (base, {"exit_code": 11}),
+                     "row whose parameters name another decision": (base, {"parameters": {"decision": "does_not_match"}}),
+                     "row of another time than its record": (base, {"timestamp": "2026-11-02T00:00:00Z"}),
+                     "row without the hash of the person's words": (base, {"user_words_sha256": None}),
+                     "record without the person's words": (dict(base, human_instruction_verbatim=" "),
+                                                           {"user_words_sha256": lv.sha256_bytes(b" ")})}
+        for n, (name, (s, over)) in enumerate(forgeries.items()):
+            with self.subTest(name):
+                blob = json.dumps(s).encode()
+                fname = f"audit_settlement_a_9{n:02d}.json"
+                (kdir / fname).write_bytes(blob + (b" " if over.get("edit") else b""))
+                row = {"kind": "lit_verify_settle", "command": "settle", "paper_key": key, "exit_code": 0,
+                       "audit": {"name": "vision_audit_a.json", "sha256": asha}, "decision": "matches",
+                       "parameters": {"decision": "matches"}, "timestamp": at, "user_words_sha256": wsha,
+                       "items": over.get("items", ids),
+                       "artifacts": {"audit_settlement": {"name": fname, "sha256": lv.sha256_bytes(blob)}}}
+                row.update({k: v for k, v in over.items() if k not in ("items", "edit")})
+                ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", row)
+                code, _, check = self.report(self.DIAZ, "--kind", "final")
+                self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        # the same record with settle's whole row settles it (so each forgery above failed on its binding alone; this
+        #   is also the residual: a script that reproduces settle's row exactly is not told apart)
+        blob = json.dumps(base).encode()
+        (kdir / "audit_settlement_a_99.json").write_bytes(blob)
+        ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", {
+            "kind": "lit_verify_settle", "command": "settle", "paper_key": key, "exit_code": 0,
+            "audit": {"name": "vision_audit_a.json", "sha256": asha}, "decision": "matches", "items": ids,
+            "parameters": {"decision": "matches"}, "timestamp": at, "user_words_sha256": wsha,
+            "artifacts": {"audit_settlement": {"name": "audit_settlement_a_99.json", "sha256": lv.sha256_bytes(blob)}}})
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_a_confirmed_audit_counts_only_with_the_hooks_own_record(self):
+        # quality review W2, report side: a confirming audit record whose reader model did not come from the hook's own
+        #   record in its default folder is treated as not confirmed (the audit never writes one; a script could).
+        ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", {
+            "kind": "lit_verify_route", "command": "route", "route": "anthropic-subscription", "exit_code": 0,
+            "timestamp": "2020-01-01T00:00:00Z"})
+        kdir, rec = self.vision_audit(model="claude-opus-5-5", want_code=0, route_front="anthropic-subscription")
+        self.assertEqual((rec["outcome"], lv.audit_model_trusted(rec)), ("confirmed", True))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        row = [r for r in rows_of(self.pd / "papers") if r.get("kind") == "lit_verify_audit"][-1]
+        for n, change in enumerate(({"model_source": "hook_cache_env_dir"}, {"trusted": False},
+                                    {"model_source": "transcript"})):
+            with self.subTest(change):
+                fake = json.loads(json.dumps(rec))
+                agent = fake["model"]["agents"][0]
+                agent.update({k: v for k, v in change.items() if k != "trusted"})
+                agent["detail"].update({k: v for k, v in change.items() if k == "trusted"})
+                blob = json.dumps(fake).encode()
+                (kdir / f"vision_audit_a9{n}.json").write_bytes(blob)
+                ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", dict(row, artifacts={
+                    "vision_audit": {"name": f"vision_audit_a9{n}.json", "sha256": lv.sha256_bytes(blob)}}))
+                code, _, check = self.report(self.DIAZ, "--kind", "final")
+                self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+                it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+                self.assertIn("did not come from the place DAAF itself keeps that record", it["reason"])
+                self.assertTrue(it["fix"].startswith(lrr.AUDIT_FIX_LEAD["model_not_confirmed"]))
+                (kdir / f"vision_audit_a9{n}.json").unlink()
+        # quality review W4: an audit row the audit did not write (another command, or an exit its outcome does not give)
+        #   is no record at all
+        mf = self.pd / "papers" / "MANIFEST.jsonl"
+        good = mf.read_text()
+        for change in ({"command": "a script"}, {"exit_code": 11}):
+            with self.subTest(change):
+                mf.write_text("".join(json.dumps(dict(r, **change) if r.get("kind") == "lit_verify_audit" else r)
+                                      + "\n" for r in (json.loads(x) for x in good.splitlines() if x.strip())))
+                code, _, check = self.report(self.DIAZ, "--kind", "final")
+                self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_MISSING"]))
+        mf.write_text(good)
+        self.assertEqual(self.report(self.DIAZ, "--kind", "final")[0], 0)
 
 
 class VerifyAliasTests(unittest.TestCase):

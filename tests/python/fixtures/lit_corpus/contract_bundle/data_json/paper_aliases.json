@@ -61,43 +61,43 @@
    "alias_value": "W900000001",
    "first_seen_version": 5,
    "paper_key": "user_f1c70001",
-   "source": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675"
+   "source": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4"
   },
   {
    "alias_kind": "openalex",
    "alias_value": "W900000011",
    "first_seen_version": 5,
    "paper_key": "user_f1c70001",
-   "source": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675"
+   "source": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4"
   },
   {
    "alias_kind": "openalex",
    "alias_value": "W900000005",
    "first_seen_version": 5,
    "paper_key": "W900000005",
-   "source": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675"
+   "source": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4"
   },
   {
    "alias_kind": "doi",
    "alias_value": "10.9999/fixture.0005",
    "first_seen_version": 5,
    "paper_key": "W900000005",
-   "source": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675"
+   "source": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4"
   },
   {
    "alias_kind": "citekey_history",
    "alias_value": "evans2018invented",
    "first_seen_version": 5,
    "paper_key": "W900000005",
-   "source": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675"
+   "source": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4"
   },
   {
    "alias_kind": "openalex",
    "alias_value": "W900000004",
    "first_seen_version": 5,
    "paper_key": "user_f1c70004",
-   "source": "fd34c1a39504edff50f4867701286d034013064633accc2795375a7ce733efff"
+   "source": "774b0def19f47da5c481483f7a0295bd0e3b62da5fd0b3396c62554c5e7e6337"
   }
  ],
- "source": "data/paper_aliases_v7.parquet"
+ "source": "data/paper_aliases_v9.parquet"
 }

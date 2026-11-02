@@ -1,7 +1,7 @@
 {
  "rows": [
   {
-   "card_check_sha256": "ecd38386bd91c826400b4ba63201423b4defad3a6f77870a0318d74b958ce5a9",
+   "card_check_sha256": "2259a28b1c81586ca7c119633ec018682324b818bbf181d3845a091b50194e4f",
    "card_sha256": "d926ef73f9ed9b1901438b7046f9a6f5bb5d49e56a008b8ac7d8d32bcdb0840d",
    "checklist_guides_used_json": "[]",
    "citekey": "fixture-allen2019tutoring",
@@ -23,7 +23,7 @@
    "weight_reason": "Randomized with low, balanced attrition; the single district [C3] limits directness, not the estimate."
   },
   {
-   "card_check_sha256": "e1e630db949a3f7e698337847635d0f01552423ace2a30d1a5fb89d0b2c273d8",
+   "card_check_sha256": "fbb3bce08d07f15c5fc4fda172c9b13d0ad2d818bfc584498fd9a74f428ef2f3",
    "card_sha256": "fafb7ed2f1551fad0e3d929ba7fe9206c9a7109ac8fbe5a489b09f726905c638",
    "checklist_guides_used_json": "[\"robins-i-v2\"]",
    "citekey": "fixture-baker2020reading",
@@ -45,7 +45,7 @@
    "weight_reason": "Credible event study, but voluntary adoption and a two-point pre-period [D2] leave room for differential trends."
   },
   {
-   "card_check_sha256": "18fc9127087132fd2ced44b5eb64ca4bc8f7febcafb426d66a772d33782004cf",
+   "card_check_sha256": "10781cc2206bea2eef03f6a8c19d5539ea686808db2052193a1b25c1e88d2cb2",
    "card_sha256": "163a0967eaf7904a5877b16088c30d3f55203cfaffeef3696d72985bf739a74e",
    "checklist_guides_used_json": "[]",
    "citekey": "fixture-chen2021library",
@@ -67,7 +67,7 @@
    "weight_reason": "One cross-sectional survey; self-selection of families [S2] could explain the difference."
   },
   {
-   "card_check_sha256": "4ae2ac80c498b12e81ad94b219ff503191dda1068fb70550e6ed3cd25becf248",
+   "card_check_sha256": "4c1f1127a48e047551589c58864ecbbbfa99e1b7a85f8a1b7952ea498b96fded",
    "card_sha256": "58e61bd7d10b8cced4d94d8c1de4283925db73bc9695aeb98505e4f1a057bf79",
    "checklist_guides_used_json": "[]",
    "citekey": "fixture-diaz2022teachers",

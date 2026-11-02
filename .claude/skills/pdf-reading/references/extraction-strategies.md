@@ -3,12 +3,9 @@
 How to read each kind of page so the evidence card stays anchorable, how to
 use the secondary readings (lane B, OCR, renders) without letting them
 overwrite the anchor, and how to judge and log reading quality. Adapted from
-the user's source skill (maintainer-only copies, not shipped:
-`research/2026-10-02_FrameworkDev_ScholarlySearch/pdf-reading/references/extraction-strategies.md`
-and `quality-rubrics.md`; preliminary note 10 § 1 there): PyMuPDF, Gemini,
-LlamaParse and in-skill subagent dispatch are dropped; the "authority
-hierarchy" that let vision replace text is rewritten as the reconciliation
-rule below.
+a user-supplied PDF-reading skill, without its PyMuPDF, Gemini and LlamaParse
+lanes or its in-skill subagent dispatch; where that skill let vision replace
+text, DAAF applies the reconciliation rule below.
 
 **Contents:** The reconciliation rule · Page types · Vision prompts ·
 Figure descriptions · Reading-quality rubric · Re-read triggers ·
@@ -88,10 +85,11 @@ Spot-check scoring (per page, rendered page against the anchor):
 | Tables | Every row and column, labels right | Structure right, a cell or alignment wrong | Rows or columns missing, structure broken |
 | Numbers | Every claimed number found as printed | Precision or formatting differences only | A changed digit or sign |
 
-There is no "skip review" option: the source skill's `review: false` for
-batches conflicts with DAAF's rigor rules and was dropped. Every card goes
-through `lit_verify card`; the Literature Review mode adds a claim spot-check
-audit on a sample.
+There is no "skip review" option: a batch setting that skips the check would
+conflict with DAAF's rigor rules. Every card goes through `lit_verify card`;
+before a final review, the Literature Review mode adds an independent re-read
+of a seeded sample of the quoted claims against their pages (its final
+checks, `literature-review-mode.md` § Dispatch Templates > data-verifier).
 
 ## Re-read triggers
 

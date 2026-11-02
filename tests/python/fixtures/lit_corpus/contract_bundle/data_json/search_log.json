@@ -13,9 +13,9 @@
    "query": "small-group tutoring reading",
    "result_count": 2,
    "round": 1,
-   "row_sha256": "9da1b6ed1c8c451bb57ec6b2b51c18206dd180b924afb5c1e9848b92ba79edfb",
+   "row_sha256": "3ce4ff91b147d7c1deeaca5afe69a9be982fcd9eafaf4ef6ef7ff6db20f10e78",
    "seed_json": null,
-   "sidecar_sha256": "0c20339dba0885064a910636f7be190b52836d66773299c26e1be3dcc2945675",
+   "sidecar_sha256": "560c787b76c8460c9d74b07de20d7e8ab5d1f32a6e3524b90269207b275949c4",
    "timestamp": "2026-10-31T00:00:00Z"
   },
   {
@@ -31,9 +31,9 @@
    "query": "tutoring rural boarding schools",
    "result_count": 0,
    "round": 1,
-   "row_sha256": "10eb0f1fe921794b16a062b55d222b6adc1707cc9e283f27e000d4ca10b5bf7d",
+   "row_sha256": "890e0956fceea08268b60363d296384e2e18f50e87f86f8efba4ba70d1010dcf",
    "seed_json": null,
-   "sidecar_sha256": "cf9a2b0d1072f73f2fb47829af865040fb9284e1143f04173be6516b6b3a1708",
+   "sidecar_sha256": "bea224af4cb478c8fddef490c9e1d2312bccdb5b00b88f84f98cae8715e9e44f",
    "timestamp": "2026-10-31T00:00:00Z"
   },
   {
@@ -49,9 +49,9 @@
    "query": "adult reading clubs",
    "result_count": 1,
    "round": 1,
-   "row_sha256": "8f6d71d81217bfc9897cd80f492e734483d6d6e5c3cac5793262bb3e97dab74d",
+   "row_sha256": "023814f0898248a4e385dcdc86cbfe766265c9c8db4ac0171eb9e3936328d3ab",
    "seed_json": null,
-   "sidecar_sha256": "1c24a27177cb76f2410fb2920b0330308fb8d71bbfbd40c6d6795e63a3cb6b82",
+   "sidecar_sha256": "22ffbbf1993b68a75a418b476651b083a33700fa0053e186c36aa44f6fa9420e",
    "timestamp": "2026-10-31T00:00:00Z"
   },
   {
@@ -67,9 +67,9 @@
    "query": "10.9999/fixture.0001",
    "result_count": 1,
    "round": 1,
-   "row_sha256": "6089f7e9d56c06fb681d1fcf8fe125f7f2ffb3b3537c34aa5bb1236ce9464ef1",
+   "row_sha256": "0a075335c5b75ef668a7c421901b1d8c1da3721a9102e3e32c5b9a78e65439c5",
    "seed_json": "{\"ids\":{\"doi\":[\"10.9999/fixture.0001\"]}}",
-   "sidecar_sha256": "fd34c1a39504edff50f4867701286d034013064633accc2795375a7ce733efff",
+   "sidecar_sha256": "774b0def19f47da5c481483f7a0295bd0e3b62da5fd0b3396c62554c5e7e6337",
    "timestamp": "2026-10-31T00:00:00Z"
   }
  ],

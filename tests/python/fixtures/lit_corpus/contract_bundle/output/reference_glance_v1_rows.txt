@@ -1,0 +1,5 @@
+# verify rows a reply can confirm (record-human --rows)
+863c8ab91b44885f4b4ed7779503b7a797141ea56ecd861a98c770591f52c24e  # 1 fixture-allen2019tutoring
+81a6971cb9269479c37da1e19ff2b8f4666051e4977bc9244ca7e5afbed8d6f3  # 2 fixture-baker2020reading
+96966ce54848769d3cfa70929233c33c15e521082f89efbea9007f8fc5c98b07  # 3 fixture-chen2021library
+ecfb1bda4357a6e3cd594d31487980f59f4894153f29631cd41f3d080b0b76d1  # 4 fixture-diaz2022teachers

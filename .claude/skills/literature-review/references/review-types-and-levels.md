@@ -226,9 +226,10 @@ There is no validated tool "to inform when to stop searching" (Sutton et al.
 | Rapid-review shortcut table | Each shortcut taken, declared | Rapid reviews |
 | AI disclosure (RAISE) | What was AI-judged and what was mechanically verified; authors "remain ultimately responsible" | Every level |
 
-PRISMA 2020 flow-diagram counts are not produced by a tool yet (planned later
-for the formal level); at the formal level, build the counts by hand from the
-screening log and say so.
+No DAAF tool produces PRISMA 2020 flow-diagram counts (the researcher chose
+to keep the formal level researcher-led: `formal-review.md` § What is
+deferred, and why); at the formal level, build the counts by hand from the
+screening log and the per-round counts (`lit_corpus counts`) and say so.
 
 ## Changing level or re-steering
 

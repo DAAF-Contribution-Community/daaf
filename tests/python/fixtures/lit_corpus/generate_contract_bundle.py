@@ -5,8 +5,14 @@ project built by the real tools: four synthetic paper ingests with v3 evidence c
 scholar_search rows with records files, and every lit_corpus table, export and manifest. Every parquet table is also
 written as canonical JSON (data_json/), so a reader without polars or pyarrow can see the rows.
 
+Since lit_corpus 1.4.0 the bundle also carries the citation second check: an adjudication batch (b01) packed from
+the four CONFIDENT references, a synthetic captured pack log (scripts/lr_adjudication/), a synthetic adjudicator
+return from a model on no evaluated list (so it counts as UNCERTAIN), the ledger (citation_adjudications_v*), the
+reference glance sheet, and the researcher's one reply recorded with record-human (every reference human_confirmed).
+
 Fixture-only overrides (never available from the CLI): the paper keys user_f1c70001..4 (a user PDF key is normally
-the first 8 hex of the PDF's sha256) and the "fixture-" citekey prefix the manuscript side asked for.
+the first 8 hex of the PDF's sha256), the "fixture-" citekey prefix the manuscript side asked for, and the paths of a
+synthetic adjudication prompt template and a synthetic audit log (inputs/).
 
 Run file-first (needs rapidfuzz and polars): a captured script calls this file with the destination's parent
 removed or empty; it refuses to write into a non-empty bundle directory.

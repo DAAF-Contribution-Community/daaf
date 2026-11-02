@@ -43,8 +43,10 @@ and testability.
 ## How DAAF and the researcher use it
 
 1. The reader drafts an answer and a quote per criterion.
-2. Each answer is an appraisal claim (`formal-review.md` § Recording checklist
-   answers): guide `theory`, item `TH1` to `TH5`.
+2. Each answer backed by a quoted passage is an appraisal claim
+   (`formal-review.md` § Recording checklist answers): guide `theory`, item
+   `TH1` to `TH5`. A criterion the paper never addresses goes in the card's
+   Appraisal prose with its reason.
 3. The researcher reviews the profile and adds their own reading; the record
    quotes them. No overall rating is given.
 

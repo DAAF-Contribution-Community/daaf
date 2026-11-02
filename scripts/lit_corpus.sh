@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
 # lit_corpus.sh - thin wrapper for DAAF's Literature Review corpus CLI
-#                 (versioned tables, BibTeX/RIS export, review manifest)
-#                 (added 2026-10-31, Lit Review S4, dispatch D3)
+#                 (versioned tables, BibTeX/RIS export, review manifest,
+#                 the citation second check)
+#                 (added 2026-10-31, Lit Review S4, dispatch D3; second check
+#                 added 2026-11-01, 1.4.0)
 # =============================================================================
 #
-# Framework-level tool behind the Literature Review mode. It builds the
+# Framework-level tool behind the Literature Review mode: the orchestrator
+# and the mode's search and synthesis agents run it. It builds the
 # review's versioned tables (corpus, screening, claims, paper notes, findings,
-# gap register, citation edges) from scholar_search's records files, the
-# lit_verify card checks and the screening, findings and gap records an agent
-# or the researcher writes as JSONL; it computes paper keys, citekeys, the
-# descriptive summary and the sign test, and exports verified references as
-# BibTeX and RIS. This wrapper is a thin passthrough to lit_corpus.py so agents
+# gap register, citation edges, the adjudication ledger) from scholar_search's
+# records files, the lit_verify card checks and the screening, findings and
+# gap records an agent or the researcher writes as JSONL; it computes paper
+# keys, citekeys, the descriptive summary and the sign test, runs the citation
+# second check (pack, ingest, a person's recorded reply, the reference glance
+# sheet), and exports references as BibTeX and RIS. This wrapper is a thin
+# passthrough to lit_corpus.py so agents
 # invoke one stable command with one Bash call (DAAF's one-command-per-call
 # rule).
 #
@@ -35,7 +40,16 @@
 #   bash /daaf/scripts/lit_corpus.sh edges ingest <PROJECT_DIR> [--manifest PATH ...]
 #   bash /daaf/scripts/lit_corpus.sh export-bib|export-ris <PROJECT_DIR>
 #   bash /daaf/scripts/lit_corpus.sh manifest <PROJECT_DIR> --round R [--protocol PATH]
+#   bash /daaf/scripts/lit_corpus.sh adjudications pack <PROJECT_DIR> --batch ID --model-id MODEL [--keys K1,...]
+#   bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
+#   bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE --decision D
+#        --user-words "..." [--rationale "..."]
+#   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--keys K1,... | --deliverable PATH]
 #   bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
+#
+# `adjudications pack` is run from a captured script
+# (scripts/lr_adjudication/NN_pack_batch_{ID}.py via run_with_capture.sh):
+# `ingest` reads the hashes pack printed from that script's execution log.
 #
 # Exit codes are passed through from lit_corpus.py:
 #   0   written (also with counted skips); key and selftest success
@@ -44,11 +58,13 @@
 #       PROJECT_DIR, a secret value, a named restricted-licence search row)
 #   -   (3 is reserved by run_with_capture.sh; never used)
 #   8   input cannot be parsed (JSONL, MANIFEST line, records file, raw
-#       log, card, card_check) or is larger than 50 MiB
+#       log, card, card_check, prompt template block, bundle) or is larger
+#       than 50 MiB
 #   9   integrity mismatch, nothing written (bytes differ from their recorded
-#       sha256)
+#       sha256, e.g. a bundle edited after its pack)
 #   10  required dependency (polars or pyarrow) or required input missing (no
-#       corpus; a search without a records file: re-run that search)
+#       corpus; a search without a records file: re-run that search; no
+#       prompt template, pack log, bundle or adjudicator return)
 #       (these texts follow EXIT_CODES in lit_corpus.py)
 #   11  input rejected by validation, no version written (reasons in the
 #       MANIFEST row); selftest: an expectation did not hold

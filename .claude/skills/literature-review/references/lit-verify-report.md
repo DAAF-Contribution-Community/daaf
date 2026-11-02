@@ -6,9 +6,9 @@ citation, every marked finding and claim, and the wording of every sentence
 that states what the evidence shows. It calls no model and no network. Source
 of truth: the `report` section of the header, `EXIT_CODES`, `build_parser()`
 and the `§§ REPORT` functions of `scripts/lit_verify.py`
-(`TOOL_VERSION = "1.14.0-daaf"`, `REPORT_REDERIVE_VERSION = "report-rederive-v5"`,
+(`TOOL_VERSION = "1.15.0-daaf"`, `REPORT_REDERIVE_VERSION = "report-rederive-v6"`,
 result schema `lit-verify-report-check-v1`), and the header of
-`scripts/lit_report_rules.py` (`REPORT_RULES_VERSION = "report-rules-v5"`,
+`scripts/lit_report_rules.py` (`REPORT_RULES_VERSION = "report-rules-v6"`,
 `CITATION_PARSE_VERSION = "citations-v2"`, `SENTENCE_SPLIT_VERSION =
 "sentences-v1"`, `REPORT_LINT_VERSION = "report-lint-v5"`). If this page and
 the code disagree, the code wins: report the drift. The card gate itself
@@ -17,14 +17,20 @@ the code disagree, the code wins: report the drift. The card gate itself
 `lit_corpus` (`lit-corpus.md`).
 
 **Contents:** In short · Syntax · What a deliverable must look like ·
-What is checked · What is re-derived · Exempt sections · Result file ·
-MANIFEST row · Stdout · Exit codes · Status index · Known limits
+What is checked · Settling the readings an audit lists · What is
+re-derived · Exempt sections · Result file · MANIFEST row · Stdout · Exit
+codes · Status index · Known limits
 
 ## In short
 
 - **What you can rely on when it says PASS:** every citation names a paper
   of this review whose reference was confirmed to exist as cited, that is in
-  the exported reference list and that was checked for retraction; every
+  the exported reference list and that was checked for retraction; in a
+  final deliverable, every reference also passed its second check (a
+  person's recorded reply, or an evaluated AI check, labelled), and every
+  paper whose reading notes take readings from pictures of pages has an
+  audit that confirmed them, or the researcher's recorded comparison of
+  every reading the audit listed with its PDF page; every
   marked claim was found on its page in the paper; abstract-only papers are
   labelled; no sentence combines results into one number or counts
   significant studies; a direction count or a median of estimates is exactly
@@ -55,7 +61,7 @@ bash /daaf/scripts/lit_verify.sh report <PROJECT_DIR> <DELIVERABLE>
 | `DELIVERABLE` | — | The Markdown file to check. Must be a file (else exit 1) that resolves inside `PROJECT_DIR/output/` (else exit 2, no row); UTF-8 and at most 5 MiB (`REPORT_MAX_BYTES`; else exit 8) |
 | `--kind` | `synthesis` | `synthesis`: a round's draft. `final`: the deliverable the researcher receives; the cards behind its claims are checked again (user decision, 2026-10-30). `bibliography`: a reading list, where a paper known only by title and authors may be listed |
 | `--level` | none | The review level the researcher chose. Recorded in the result for the reader; **no check depends on it** (the checks follow the data: evidence grades decide the abstract rule, and the certainty checks run only on sentences marked as findings) |
-| `--data-version` | the latest | Pin a table version: `corpus=N`, `claims=N`, `findings=N`, `citation_edges=N`, `paper_aliases=N` (repeatable). A pinned version that does not exist: exit 10 |
+| `--data-version` | the latest | Pin a table version: `corpus=N`, `claims=N`, `findings=N`, `citation_edges=N`, `paper_aliases=N`, `citation_adjudications=N` (repeatable). A pinned version that does not exist: exit 10 |
 | `--recheck-cards` / `--no-recheck-cards` | on for `final`, else off | Run the card gate again, in-process, on every card behind a claim. Needs rapidfuzz (exit 10) and the paper's stored source file |
 | `--timeout` | 120 | Seconds per subprocess when cards are re-checked |
 
@@ -98,11 +104,9 @@ report fails the citation as unverified, with that reason and its own fix:
 running the reference check again cannot help (it confirms the same record),
 so restore `data/` from a backup made before the paper was added and add it
 again with its own DOI and title, or start the tables again in a new project
-folder (1.14.0). A partial match nobody accepted fails
-(`CITATION_WEAK_UNDECIDED`) and one the researcher accepted goes to review
-until S5 binds the decision to the record (`CITATION_HUMAN_DECISION_UNBOUND`,
-user decision, 2026-10-30). It must be in the exported reference list
-(`CITEKEY_NOT_IN_BIB`). A retracted paper, or one under an expression of
+folder (1.14.0). It must be in the exported reference list
+(`CITEKEY_NOT_IN_BIB`; not raised for a rejected reference, which has its
+own status). A retracted paper, or one under an expression of
 concern, fails unless the researcher decided to keep it and the sentence says
 so (`RETRACTED_CITED`, `RETRACTED_UNLABELED`, `RETRACTED_CITED_DECIDED`); no
 retraction check on record goes to review (`RETRACTION_NOT_CHECKED`). The
@@ -139,6 +143,69 @@ holds the abstract-only citation, or when its clause cites nothing and the
 next citation after it is abstract-only. A paper that was also read in full
 needs the label too when every claim marked for it in the sentence was
 quoted from its abstract (`ABSTRACT_ONLY_UNLABELED`).
+
+**The citation second check.** Each
+cited paper's citation status is the one `report` re-derives from the
+second-check record (§ What is re-derived); the statuses are
+`lit-corpus.md` § Citation second check. What each one does to a citation:
+
+| Citation status | Draft (`synthesis`, `bibliography`) | `--kind final` |
+|-----------------|-------------------------------------|----------------|
+| `pending_adjudication` (also an older table's `verified_rule`, and a view with no status on a confirmed check) | review: `CITATION_PENDING_SECOND_CHECK_DRAFT` | fail: `CITATION_PENDING_SECOND_CHECK` |
+| `human_confirmed` | citable | citable |
+| `model_confirmed`, `model_adjudicated` | citable, warning `CITATION_CONFIRMED_BY_AI_CHECK` | the same |
+| `human_overridden` | citable, warning `CITATION_ACCEPTED_DESPITE_CHECK` | the same |
+| `rejected` | fail: `CITATION_REJECTED` | the same |
+| `human_accepted_unbound` (legacy `accept_weak`) | review: `CITATION_HUMAN_DECISION_UNBOUND` | fail: `CITATION_PENDING_SECOND_CHECK` |
+| `unverified` on a partial match (also a confirmed check the final title rule lowers to a partial match) | fail: `CITATION_WEAK_UNDECIDED` | the same |
+| a status outside the vocabulary | fail: `CITATION_UNVERIFIED` | the same |
+
+The two label statuses are warnings: they never change the verdict, and their
+fix asks the deliverable to say how the reference was checked ("confirmed by
+DAAF's second check, an AI judgment"; "accepted by the researcher despite the
+automatic check"). The fix of every waiting or undecided reference is the
+researcher's recorded reply: `lit_corpus adjudications glance-sheet`, the
+researcher's reply recorded in their own words with `adjudications
+record-human`, the reference list exported again (its entries carry the
+status), then the deliverable checked again. A rejected reference is dropped,
+or its paper's right record is found, checked again with `verify` and `attach
+verify`, and that new check confirmed. A reference the researcher accepted on
+a MISMATCH row (`override_mismatch`) is `human_overridden` while the override
+names the record the check's saved response re-derives: it is citable with
+the `CITATION_ACCEPTED_DESPITE_CHECK` label, and its reference-list entry
+must be that record's (§ What is re-derived). The final title rule is not
+applied to it: the researcher accepted the titles as they differ.
+
+**Readings from pictures of pages.** When the paper's latest
+checked card takes any reading from a picture of a page (a claim with source
+`vision` or `both`, or a `vision_only` digest), the citation needs an audit
+record of that card (`lit_verify audit`, `vision_audit{S}.json`; pdf-reading
+`references/evidence-card.md`) whose outcome confirms it (`confirmed` or
+`confirmed_with_checks`). No such record: `VISION_AUDIT_MISSING_DRAFT`
+(review) in a draft, `VISION_AUDIT_MISSING` (fail) at `--kind final`; its fix
+is to run the audit. A record whose outcome is `person_must_check`, `mismatch`
+or `chain_unconfirmed`: `VISION_AUDIT_NOT_CONFIRMED_DRAFT` (review) or
+`VISION_AUDIT_NOT_CONFIRMED` (fail), unless the researcher's records settle
+it. For `person_must_check` and `mismatch` the first fix is the researcher's
+comparison of each listed reading with its PDF page, recorded with
+`lit_verify settle` (§ Settling the readings an audit lists): once every
+listed reading's latest record says it matches, the citation passes, draft
+and final, with no extra label (a person's check is the check the audit
+asked for, as a reference the researcher confirmed carries none). A reading
+the researcher recorded as not matching keeps the status, with the reason
+that the notes carry a wrong reading and the fix: write new reading notes
+without that number, or with the number as printed on the page, check them
+with `lit_verify card` and run `lit_verify audit`, then rebuild the claims
+(`lit_corpus claims build`) and check the deliverable again. A
+`chain_unconfirmed` outcome is never settled this way: comparing readings
+with the page cannot show where the PDF came from, so its fix is a PDF
+fetched with `web_fetch.sh` or placed in `user_pdfs/`, read and audited again.
+Otherwise the citation clears with reading notes without readings from
+pictures of pages (read from the page text, or with those claims dropped),
+checked again with `lit_verify card`, the claims rebuilt with `lit_corpus
+claims build`; a card with no such readings needs no audit. For `mismatch` a
+new reading by a reader whose model the audit confirms also clears it. Cards
+without readings from pictures of pages are not held to an audit.
 
 **Markers.** Every finding id must be a recorded, current finding with a
 written reason for its certainty and a record of who decided it
@@ -274,6 +341,44 @@ reader quoted from the citing paper as `disputes` or `contrasts`
 two papers, it goes to review (`EDGE_RELATION_UNSUPPORTED`). Semantic
 Scholar's citation intents never support it: none of them means disagreement.
 
+## Settling the readings an audit lists
+
+When a paper's audit asks a person to compare readings with the PDF
+(outcome `person_must_check` or `mismatch`), the orchestrator settles them
+with the researcher in one exchange. The full command contract is in the
+pdf-reading skill, `references/vision-validation.md` § Gating ("After the
+audit: settling listed readings").
+
+1. **List.** `bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit
+   vision_audit{S}.json --list` prints one numbered plain line per reading
+   ("1. The AI reader took the number 88 from a picture of PDF page 2 …
+   Please compare 88 with PDF page 2."), the optional chart readings marked
+   `(optional)`, and no item id; it writes `PAPER_DIR/settle_items{S}.txt`
+   (the ids, one per line, each with its number as a comment).
+2. **Ask.** Show the researcher the numbered lines as they are, beside their
+   PDF pages, and ask whether each number matches the page. One reply can
+   cover the whole list ("all of them match", or "1 and 3 match, 2 says 86,
+   not 88").
+3. **Record.** Record the reply with the researcher's words verbatim:
+   `bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit
+   vision_audit{S}.json --items <FILE> --decision matches|does_not_match
+   --user-words "<their words>" [--rationale "<which number, what the page
+   prints>"]`. Readings that match go in one call, readings that do not in
+   another (`does_not_match` needs `--rationale`). Each call writes
+   `audit_settlement{S}_{n}.json` beside the audit record and a row of kind
+   `lit_verify_settle` in `papers/MANIFEST.jsonl`.
+4. **Check again.** Run `lit_verify report` on the deliverable.
+
+The latest record of a reading decides, so a later reply corrects an
+earlier one. The words are a command-line argument, so a permission rule
+that asks before `lit_verify.sh settle` runs (applied by the user) shows
+them to the researcher in the prompt; the record says
+`human_binding: permission_prompt`, which the tool expects but cannot
+detect (§ Known limits). The source-chain check of a `chain_unconfirmed`
+audit is listed as not settleable: `settle` refuses its id. Reading notes
+whose readings are settled are still the AI reader's notes; nothing about
+the readings changes, only the record that a person compared them.
+
 ## What is re-derived
 
 The tables are written by an agent-facing CLI, so every field that can clear
@@ -289,6 +394,9 @@ fails closed (user decision, October 2026):
 | A paper's evidence grade | its latest card_check (`evidence_grade_suggested`; a FAIL or NEEDS_REVIEW card counts as read but unconfirmed); no card run: abstract-only when the corpus holds an abstract, else title-only | `CLAIM_SOURCE_MISMATCH` |
 | The reference check verdict | re-graded (`verify-regrade-v2`) from the record in the named verify row's own saved response (its DOI or W-id must be this paper's; a paper with neither is matched by its OpenAlex alias) against the title, year and author the citation was checked with; the row's verdict is only a ceiling. 1.13.0, `--kind final`: the review's own title must also match the confirmed record's title by the same title rule (a mismatch makes the citation unverified, with the title rule's own reason and fix; a partial match lowers the verdict to a partial match). 1.14.0: in a draft a mismatch is a review item; the reference-list entry is compared with the record the reference check confirmed, whatever the title rule decided | the citation counts as unverified (`CITATION_UNVERIFIED`); in a draft, `CITATION_TITLE_DIFFERS_DRAFT` |
 | The retraction status | re-derived (`retraction-rederive-v3`, 1.13.0) as the MOST SEVERE status found by any retractions check in `lit_search/` whose own saved response answers the paper's DOI (OpenAlex `is_retracted`, Crossref notices; a row's status can only make its check more severe); the newest check (latest row timestamp, then the later position in the MANIFESTs) is the one the review's record must name | no response for the DOI: `RETRACTION_NOT_CHECKED`; the review's record names another check: `RETRACTION_CHECK_NOT_LATEST` (final) or `RETRACTION_CHECK_NOT_LATEST_DRAFT` |
+| A paper's citation status | the current row of the second-check ledger (`citation_adjudications`, hash-checked like every table; `lit_corpus`'s own `current_ledger`) bound to the paper's verify row, when it names this paper and the verdict re-graded above: its status recomputed with `lit_corpus`'s `adjudication_status()`, the model's verdict counting only when the row's whole identity (model ID, `template_sha256`, `rubric_version`, `agent_file_sha256`, and an agent file unchanged at ingest) is an entry of the evaluated list version the row names, matched with `lit_corpus`'s `evaluated_identity()` (else not sure), and the title floor applied when the row or the rule says so. An `override_mismatch` row counts only while its `override_record_json` is the record the re-grade compares (the reference-list entry is then compared with that record). No bound row: a confirmed check waits for its second check, a partial match the researcher accepted with the legacy decision is that, anything else is unverified. The corpus status (an older `verified_rule` read as waiting), the row's own status and effective verdict, and the corpus's reference to the row must all agree. The bound ledger row must also be written by `lit_corpus`'s own step: it must stand, as first written, in the ledger version it names (`recorded_version`), and that version's first MANIFEST row must be `adjudications record-human` for a person's decision (exit 0, naming this verify row, the decision in its row and parameters, the person's words verbatim, the row's time and its status) or `adjudications ingest` for a model judgment (its batch); model fields need an `ingest` run of their batch, log hash, model ID and dispatch ID | `ADJUDICATION_ROW_MISMATCH` (its fix is the table remedy; the citation counts as unverified) |
+| A card's audit (cards with readings from pictures of pages) | the papers MANIFEST rows of kind `lit_verify_audit` and command `audit`, whose exit code is the one their outcome gives, that name the paper's latest card and card_check (both sha256); the record's bytes must hash to its row, and the record must name the same card, card_check, paper and outcome. A confirming outcome counts only when every reader's model came from the hook's own record (`model.agents`: each `model_source` `hook_cache`, `trusted`, check `transcript-confirmed`). Any such record that does not confirm the card, and is not settled, decides | no trusted record: `VISION_AUDIT_MISSING` / `_DRAFT`; an outcome that does not confirm it, or a confirming one resting on another model source: `VISION_AUDIT_NOT_CONFIRMED` / `_DRAFT` |
+| The researcher's comparison of an audit's listed readings (`person_must_check` and `mismatch` only) | the papers MANIFEST rows of kind `lit_verify_settle` of the paper that name the audit record's sha256, in file order; each must be `settle`'s own row (command `settle`, exit 0, the decision in its parameters, the record's `settled_at` as its time, and `user_words_sha256` = the sha256 of the record's non-empty words); each settlement file's bytes must hash to its row, and the file must name the same paper, audit, card, card_check (all sha256) and decision as its row and the audit, its readings must be the audit's own (item ids re-derived from the audit's items) and equal the row's list. The latest valid record of each reading decides; every `must_check` and `unvalidated` reading must be "matches" | a record that fails any of these counts as none; a reading not matched: `VISION_AUDIT_NOT_CONFIRMED` / `_DRAFT` |
 | A claim quoted from an abstract (`lit_corpus claims abstract`) | 1.12.0: rebuilt with `lit_corpus`'s own `abstract_claim_row` from the corpus table's stored abstract, and the rebuilt row is used: its claim type must be an abstract one, its quote at least 20 characters of the abstract, and it carries no card claim, estimate, metric or cited paper | `CLAIM_ROW_MISMATCH` |
 | Numbers that may clear a sentence | only a claim whose quote passed and whose numbers did not fail; a labelled value only when its own check cleared it | a marked claim with a failed number: `CLAIM_NOT_VERIFIED`; with a labelled number needing review: `CLAIM_NUMBER_NEEDS_REVIEW` |
 | A finding's record | the rules `findings record` applies, re-run on the re-derived claims | `FINDING_RULE_FAILED` |
@@ -394,7 +502,7 @@ all subcommands, is in the tool's header, `EXIT_CODES` and `lit_verify.sh`.
 
 ## Status index
 
-Every status, its severity and what it means; the 72 keys of `REPORT_SEVERITY`
+Every status, its severity and what it means; the 82 keys of `REPORT_SEVERITY`
 (a test keeps this table equal to the code). The verdict is FAIL if any item
 fails, else NEEDS_REVIEW if any item needs review, else PASS; warnings and
 passes never change it.
@@ -405,8 +513,8 @@ passes never change it.
 | `CITEKEY_UNKNOWN` | fail | No paper of the review has that key |
 | `CITEKEY_NOT_IN_BIB` | fail | The paper is in the corpus but not in the exported reference list |
 | `CITATION_UNVERIFIED` | fail | No confirmed reference check (none, a non-matching one, or one whose saved response is another paper); in a final report also a recorded title that is not the title of the record its DOI leads to |
-| `CITATION_WEAK_UNDECIDED` | fail | Partial match, no researcher decision |
-| `CITATION_HUMAN_DECISION_UNBOUND` | review | Partial match the researcher accepted; binding arrives in S5 (user decision, 2026-10-30) |
+| `CITATION_WEAK_UNDECIDED` | fail | Partial match no person confirmed (also a confirmed check the final title rule lowers to a partial match) |
+| `CITATION_HUMAN_DECISION_UNBOUND` | review | In a draft: a partial match the researcher accepted with the legacy decision, not tied to the reference record; a final report fails it as `CITATION_PENDING_SECOND_CHECK` |
 | `RETRACTED_CITED` | fail | Retracted or under an expression of concern, no researcher decision to keep it |
 | `RETRACTED_UNLABELED` | fail | Kept by the researcher, but the sentence does not say so |
 | `RETRACTED_CITED_DECIDED` | warning | Kept by the researcher and labelled in the sentence |
@@ -473,9 +581,35 @@ passes never change it.
 | `PAPER_IDENTITY_MISMATCH` | fail | A paper's DOI, title or abstract differs from the record that created it (found in the table history), or the paper first appears in a step that did not add it |
 | `BIB_ENTRY_MISMATCH` | fail | The reference list holds an entry that is not `export-bib`'s rendering, a duplicate entry or field, or an entry for no paper |
 | `CITATION_TITLE_DIFFERS_DRAFT` | review | In a draft (`synthesis` or `bibliography`): the title recorded for the paper is not the title of the record its DOI leads to; the final check will fail the citation |
+| `CITATION_PENDING_SECOND_CHECK_DRAFT` | review | In a draft: the reference matches the database record but waits for its second check |
+| `CITATION_PENDING_SECOND_CHECK` | fail | A final report cites a reference still waiting for its second check (or a legacy accepted partial match) |
+| `CITATION_REJECTED` | fail | The second check (the researcher's recorded reply, or an evaluated AI check) found the record is a different work |
+| `ADJUDICATION_ROW_MISMATCH` | fail | A paper's citation status, its second-check row's status or effective verdict, or the reference between them cannot be re-derived from the second-check record |
+| `CITATION_CONFIRMED_BY_AI_CHECK` | warning | Citable; the reference was confirmed by DAAF's second check, an AI judgment: say so |
+| `CITATION_ACCEPTED_DESPITE_CHECK` | warning | Citable; the researcher accepted the reference although the automatic check disagreed: say so |
+| `VISION_AUDIT_MISSING_DRAFT` | review | In a draft: the paper's latest card takes readings from pictures of pages and no trusted audit record of it exists |
+| `VISION_AUDIT_MISSING` | fail | The same in a final report |
+| `VISION_AUDIT_NOT_CONFIRMED_DRAFT` | review | In a draft: the card's audit lists readings a person must check, or a model or setup it could not confirm, and the researcher's records do not settle every listed reading as matching (or record one that does not match); or it could not confirm the source |
+| `VISION_AUDIT_NOT_CONFIRMED` | fail | The same in a final report; its fix names `lit_verify settle` first (a recorded "does not match" has its own fix: new notes, checked and audited) |
 
 ## Known limits
 
+- **A person's comparison is bound to the reply, not proven.** `settle`
+  records the researcher's words verbatim and marks the binding
+  `permission_prompt`: a permission rule that asks before `lit_verify.sh
+  settle` runs shows those words to the researcher, but the tool cannot see
+  whether a prompt was shown or the command was typed with `!`. Until the
+  user applies that rule, the record shows only that the orchestrator ran the
+  command with those words. A source DAAF could not confirm
+  (`chain_unconfirmed`) is never settled by a comparison.
+- **A trusted audit, settlement or second-check record is one its MANIFEST
+  row vouches for.** `report` does not re-run the audit (it needs the hook
+  cache) or the second check (a person's reply is theirs to give). Each
+  record must match the row its own command writes, field by field, so a
+  forgery needs a record and a full copy of that row. A script that writes
+  both, or that runs `record-human` or `settle` itself, is not told apart:
+  the user's permission rules that ask before those commands run are the
+  other layer, and they do not see inside a script.
 - **Pandoc parity is by design, not by test run.** The citation parser is a
   stdlib regex built from a `quarto pandoc` 3.10 probe (bracketed groups,
   prefixes, locators, suppressed author, in-text keys, trailing punctuation

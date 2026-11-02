@@ -63,8 +63,9 @@ validated reader or a human can use the same images.
 ## Gating (Option C, user-agreed)
 
 A script cannot tell which subagent model runs it: no agent-ID environment
-variable was observed [obs]. So the check is done by the
-reader and audited by the orchestrator.
+variable was observed [obs]. So the reader checks itself, and the
+orchestrator audits the result with `lit_verify audit`, which takes the
+model from records the reader does not write.
 
 **Reader, before any vision use:**
 1. Take your exact model ID from your system prompt ("The exact model ID is
@@ -72,44 +73,135 @@ reader and audited by the orchestrator.
    strips `[1m]` before sending, and `.message.model` carries the bare name
    [obs by the GPT-shim maintainer session, 2026-10-13; "the shim session"
    below].
-2. Take the route from the dispatch (the orchestrator knows the install
-   route; the five names are below). A reader that is not told its route
-   treats vision as unavailable.
+2. Take the route from the dispatch's `ROUTE:` line, exactly as written. The
+   orchestrator copies that line from `lit_verify route` output and never
+   types a route (§ Routes, "Where the route comes from"). A dispatch without
+   a `ROUTE:` line means vision is unavailable.
 3. Look for an exact (model ID, route) row in SKILL.md's list. No row → text
    only.
 4. Record in the card. Block: `reader_model` (the bare ID), `vision_mode`,
    `vision_validated` (true only on a row match), `vision_list_version`.
-   Front matter: `reader_model_source: self-report`, `reader_route`,
-   `vision: validated|unavailable`.
+   Front matter: `reader_model_source: self-report`, `reader_route` (the
+   route from the `ROUTE:` line), `vision: validated|unavailable`.
 
-**Orchestrator, after the reader returns:**
-1. Read the transcript-derived model: the `context-reporter` hook cache
-   `/tmp/claude-subagent-model-<session>-<agent_id>` (reading `/tmp` caches is
-   permitted; never write there) or `.message.model` in the subagent's
-   transcript.
-2. Compare it with the card's `reader_model`. Match →
-   `transcript-confirmed`; otherwise a mismatch: treat every vision-derived
-   item as unvalidated (re-read text-only or downgrade the claims) and tell
-   the user.
-3. Record the result outside the card (session state or the review's
-   evidence ledger), keyed by the card's SHA-256. Editing the card would
-   break the hash its `card_check` JSON records. Record the results of
-   steps 4 and 5 the same way.
-4. Check the card's `reader_route` (front matter) against the install route
-   you put in the dispatch. `lit_verify` never reads the route. A mismatch,
-   or a route the row does not list: treat every vision-derived item as
-   unvalidated and tell the user.
-5. Settle each `VISION_ON_SCAN_PAGE` item in the `card_check` (from
-   `lit_verify` 1.8.0 part 5; it lists them under `review_items`). The gate
-   raises one for every `vision`/`both` claim, and every `vision_only`
-   digest it uses, on a page it re-derives from the source as truly scanned
-   or as carrying an OCR text layer, so the list is complete for scan and
-   OCR-layer pages. Then check by hand what the gate does not flag: vision
-   readings on pages with `pages[].class: "sparse"` and on figure or chart
-   pages (`figure` flag, class `normal`), which are also outside the list's
-   scope. No model is validated on any of these pages, so treat each as an
-   unvalidated reading: have a person check it against the page, re-read it
-   text-only, or downgrade the claim, and tell the user.
+**Orchestrator, before the first reader dispatch:** run `lit_verify route`
+(§ Routes) and copy its `ROUTE:` line into every paper-reader dispatch.
+
+**Orchestrator, after the reader returns** and `lit_verify card` has checked
+its latest card, run the audit on that card:
+
+```
+bash /daaf/scripts/lit_verify.sh audit <PAPER_DIR> --card <CARD> --agent-id <ID> [--agent-id <ID> ...]
+     [--transcript PATH ...] [--project PROJECT_DIR]
+```
+
+`<ID>` is the reader's agent ID, taken from the orchestrator's dispatch
+result. Give one `--agent-id` for every reader dispatch that wrote the card:
+a paper read in chunks gives one per chunk, and every chunk's reader must
+show the card's model. A wrong ID is the case this check cannot see: an ID
+of another reader of the same session that ran the same model confirms the
+card, so copy each ID from its own dispatch result. `--transcript` names a
+reader's own transcript (`agent-<ID>.jsonl`), read when the hook's cache has
+no single match. `PROJECT_DIR` defaults to the folder above `papers/`;
+`PAPER_DIR` must be `papers/<paper key>/` directly under it. The steps carry
+the numbers of the `lit_verify.py` header; the record (step 3) is written
+last:
+
+| Step | What `lit_verify audit` does |
+|------|------------------------------|
+| Inputs | The card (directly inside `PAPER_DIR`) and the `card_check` of the card's latest recorded `lit_verify card` run, bound both ways: the `card_check` bytes must hash to the value its MANIFEST row recorded, and the card bytes to the value the `card_check` recorded. No recorded run, or either mismatch (for example a card edited after its check), is exit 9 |
+| 1 Model | For each agent ID: reads the `context-reporter` hook's cache file `claude-subagent-model-<session>-<ID>` (read only; exactly one file must match). `<session>` is `$CLAUDE_CODE_SESSION_ID`, which Claude Code sets in every Bash call, so only the current session's file matches (unset: any session's). Otherwise the last non-synthetic `.message.model` of that agent's `--transcript`. Only a file in the hook's default folder (`/tmp`) is the hook's own record. A folder named in `DAAF_CONTEXT_REPORTER_CACHE_DIR` is read and recorded, but the tool cannot tell a value set for the hook from one set on its own command line. Each agent ID must pass the hook's ID allowlist (letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 128 characters) before it enters the file pattern; an ID given twice, or a `--transcript` not named `agent-<ID>.jsonl` for a given ID, is exit 8. Recorded per agent (`model.agents`) as `model_source`: `hook_cache`, `hook_cache_env_dir`, `transcript` or `none` |
+| 2 Match | Compares the block's `reader_model` with every agent's model, `[1m]` dropped and a dotted Claude ID (`claude-opus-5.5`) hyphenated as the hook does: `mismatch` (any differs), `unknown` (any not found), `source_not_confirmed` (all equal, but one came from a transcript or from a folder named in the environment), or `transcript-confirmed` (all equal and all from the hook's own record). `source_not_confirmed` lists every vision reading for a person, as `unknown` does |
+| 4 Route | Compares the front matter's `reader_route` with the latest successful `lit_verify route` row in `papers/MANIFEST.jsonl` recorded no later than the card check (`checked_at`): `match`, `mismatch`, or `unknown` (no such row, or the card names no route). A route recorded after the check does not count. Then looks up the (model, route) row in the card's `vision_list_version`: `listed`, `not_listed`, `unknown` (no recorded route) or `not_applicable` (the card has no vision reading) |
+| 5 Pages | `must_check`: every `VISION_ON_SCAN_PAGE` item of the `card_check`, plus every vision reading (a `vision`/`both` claim or a `vision_only` digest) on a page of class `sparse`. `should_look`: every `VISION_FIGURE_UNCORROBORATED` warning, plus one item when the `card_check` has no `rule_versions.vision_figure` (checked before the figure rule existed: check the card again so chart readings are screened) |
+| 6 Chain | The whole-chain check (`evidence-card.md` § Re-derivation): the source file must still hash to the value the card check recorded; a `web_fetch` source must be the very row (line, file name, hash, final URL) of a fetch under `PROJECT_DIR/web_fetches/`; a `user_supplied` source must sit under `PROJECT_DIR/user_pdfs/`; any other source kind is unconfirmed |
+| 3 Record | Writes `PAPER_DIR/vision_audit{S}.json` (`{S}` = the card's suffix, schema `lit-verify-vision-audit-v1`, rules `vision-audit-v1`), keyed by `card_sha256` and `card_check_sha256`, by exclusive create: an existing record is exit 9, so a second audit needs a new card revision. Appends a MANIFEST row (kind `lit_verify_audit`) to `papers/MANIFEST.jsonl`. The card is never edited: that would break the hash its `card_check` records |
+
+| Outcome | Exit | When (checked in this order) | Orchestrator |
+|---------|------|------------------------------|--------------|
+| `chain_unconfirmed` | 11 | Step 6 did not confirm the source | Confirm the file is the paper expected before relying on the card; tell the user. A person's comparison of the readings does not settle this: fetch the paper with `web_fetch.sh` or put the user's PDF in `user_pdfs/`, then check and audit again |
+| `mismatch` | 11 | The model does not match (even on a card with no vision reading), or a card with vision readings has a route mismatch or no list row | Every vision-derived item (the record's `unvalidated` list) is unvalidated: show them to the user with `lit_verify settle --list` and record the user's comparison with `lit_verify settle` (below), or re-read them text-only or downgrade the claims |
+| `person_must_check` | 11 | The card has vision readings and the model is `unknown` or `source_not_confirmed`, or the route is `unknown` (every reading lands in `unvalidated`), or `must_check` lists items | Show the listed readings to the user with `lit_verify settle --list` and record the user's comparison with `lit_verify settle` (below), or re-read them text-only or downgrade the claims |
+| `confirmed_with_checks` | 0 | Confirmed, with `should_look` items only | Show the user the listed items: numbers read from charts that the paper's text does not confirm |
+| `confirmed` | 0 | Source confirmed; no vision reading, or model, route and list row confirmed with nothing listed | Nothing more |
+
+No model is validated on scan, sparse or figure pages (§ The validation
+probe), so every listed reading is an unvalidated reading. The record's
+`summary` and each item's `reason`, and the `MUST CHECK:` and `SHOULD LOOK:`
+lines the command prints, are written for the researcher and can be shown as
+they are. A vision reading on a sparse page, for example:
+
+> The AI reader took the number 88 from a picture of PDF page 2 (its
+> position in the file; the printed page number may differ). This page has
+> very little text, so nothing on it confirms the reading, and DAAF has
+> tested AI reading of page pictures only on pages with tables and full
+> text. Please compare 88 with PDF page 2.
+
+Exit codes 1 (usage), 2 (refused path) and 12 (internal error) are as for
+`card`: `evidence-card.md` § Exit codes.
+
+**After the audit: settling listed readings.** For `person_must_check` and
+`mismatch`, the readings the audit lists are shown to the user, and the
+user's comparison of each with its PDF page is recorded. The literature
+review report gate reads that record (literature-review
+`references/lit-verify-report.md` § Settling the readings an audit lists).
+
+```
+bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit vision_audit{S}.json --list
+bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit vision_audit{S}.json --items FILE
+     --decision matches|does_not_match --user-words "..." [--rationale "..."]
+```
+
+- **Inputs, checked before anything else (exit 9).** The audit record
+  directly inside `PAPER_DIR` (its name must be `vision_audit{S}.json`: else
+  exit 8) must hash to its `lit_verify_audit` MANIFEST row and name the same
+  card, `card_check`, paper and outcome as that row; the card and its
+  `card_check` must still hash to the values the record holds, and the card's
+  latest card run must still be the audited check (a card checked again needs
+  a new revision and its own audit). Each item's stored id must re-derive.
+- **Item ids.** Every `must_check`, `should_look` and `unvalidated` item of
+  the record carries its `numbers` and an `item_id`: the first 16 hex
+  characters of the SHA-256 of the canonical JSON `["audit-item-id-v1",
+  card_sha256, page, claim_id, numbers, why]`. The same reading of the same
+  card always has the same id, and an id from another card's audit never
+  matches. The chain carries an id too (`why` `chain`, no page or claim).
+- **`--list`** prints one numbered plain line per reading, for the
+  researcher as it stands: the `must_check` and `unvalidated` readings to
+  compare first (`1. The AI reader took the number 88 ...`), then the
+  `should_look` figure readings marked `(optional)`, and for
+  `chain_unconfirmed` a `Not settled by a comparison:` line. It prints no
+  item id. It writes `PAPER_DIR/settle_items{S}.txt`: the ids to compare,
+  one per line, each with its number as a comment (`<id>  # 1: PDF page 2,
+  88`), ready for `--items`; the optional readings follow as comment lines,
+  to be uncommented when chosen. A reply such as "1 and 3 match, 2 does not"
+  becomes one `settle` call per decision, each with an items file holding
+  the ids of those numbers. Also a MANIFEST row.
+- **The decision** records ONE reply of the user for a batch of items: one
+  call per decision. `--user-words` is the user's reply verbatim; as a
+  command-line argument it appears in the permission prompt when the user has
+  added an ask rule for `lit_verify.sh settle` (as for `lit_corpus.sh
+  adjudications record-human`). `does_not_match` needs `--rationale` (which
+  number, and what the page prints). The record is
+  `PAPER_DIR/audit_settlement{S}_{n}.json` (exclusive create, `n` the next
+  free number; schema `lit-verify-audit-settlement-v1`, rules
+  `audit-settle-v1`): the audit, card and `card_check` SHA-256, the decision,
+  the user's words and rationale, `settled_at`, `human_binding:
+  permission_prompt` (expected, not detected: a `!`-typed run looks the same)
+  and each item (id, group, page, claim, numbers, decision, reason). A
+  MANIFEST row of kind `lit_verify_settle` (command `settle`) records it.
+  The latest record of an item decides.
+- **Refused, nothing written (exit 11):** empty `--user-words`;
+  `does_not_match` without `--rationale`; an id listed twice; an id that is
+  not an item of this audit (another audit's or another card's included);
+  the chain's id ("fetch again, or put the user's PDF in `user_pdfs/` and
+  check again"). An items file that is over 64 KiB, not UTF-8, names no item
+  or has a first word that is not an id: exit 8.
+
+A settled audit changes nothing in the card or the audit record: the
+readings stay the AI reader's, with a record that the user compared them.
+After a `does_not_match`, write new reading notes without that number, or
+with the number as printed on the page, check them with `lit_verify card`
+and run `lit_verify audit`.
 
 **Shim caveat.** Over the GPT provider shim, `.message.model` is the requested
 model name echoed back by the shim, not the upstream's own report of which
@@ -124,24 +216,29 @@ true for a `reader_model` that is not on the card's `vision_list_version`
 entry fails as `VISION_NOT_ON_LIST`, as does an unknown list version, and
 vision then counts as unavailable for that card. It reads only the block,
 never the front matter, so it checks the model ID, not the route; identity
-and route stay with the orchestrator audit above. Of the list's page scope
+and route stay with `lit_verify audit` (above). Of the list's page scope
 (§ The validation probe) it checks the scan part, from 1.8.0 part 5: it
 re-derives the page flags from the source, and a vision reading on a page
 that comes out truly scanned (`pages[].class: "scanned"`) or with an OCR
 text layer (`pages[].ocr_layer: true`) is `VISION_ON_SCAN_PAGE`, a review
-item, so the card is NEEDS_REVIEW rather than PARTIAL. It does not flag
-vision readings on sparse pages or on figure and chart pages, which are
-outside the scope too (step 5 above checks them by hand). It applies
-whatever the reader's list status; a forged flag in the card or the
-manifest cannot hide a scan, except in one documented residual (a scan or
-OCR layer whose only image evidence is a pdfplumber image box, removed from
-a forged manifest in a document where pdfimages lists images; 0 such pages
-in the five bake-off PDFs), and a page whose type could not be re-derived
-counts as a scan (`evidence-card.md` § Vision consistency). On such a page
-the reader writes `?` for digits it cannot read, labels the reading as an
-unvalidated reading of a scan, logs every disagreement and reports it; the
-orchestrator settles the review items (step 5 above). The
-embedded copy is `VISION_LIST_VERSION` and `VISION_VALIDATED_LISTS` in
+item, so the card is NEEDS_REVIEW rather than PARTIAL. A vision reading on
+a sparse page raises no item in the card gate; the audit lists it under
+`must_check` (step 5). On a figure or chart page (class `normal`), a
+vision-read number in doubt that no page of the paper prints is the warning
+`VISION_FIGURE_UNCORROBORATED` (no verdict or grade change;
+`evidence-card.md` § Vision consistency), which the audit lists under
+`should_look`. The scan rule applies whatever the reader's list status; a
+forged flag in the card or the manifest cannot hide a scan, except in one
+documented residual (a scan or OCR layer whose only image evidence is a
+pdfplumber image box, removed from a forged manifest in a document where
+pdfimages lists images; 0 such pages in the five bake-off PDFs), and a page
+whose type could not be re-derived counts as a scan (`evidence-card.md`
+§ Vision consistency). On such a page the reader writes `?` for digits it
+cannot read, labels the reading as an unvalidated reading of a scan, logs
+every disagreement and reports it; the audit lists the review items under
+`must_check` (step 5) and a person settles them (`lit_verify settle`,
+above). The embedded copy is
+`VISION_LIST_VERSION` and `VISION_VALIDATED_LISTS` in
 `scripts/lit_verify.py` (since 1.8.0 part 6: three versions,
 `vision-list-2026-10-19` with no rows and `vision-list-2026-10-28` with ten
 rows, five model IDs on the two Anthropic routes, both kept so older cards
@@ -157,6 +254,49 @@ The five install routes (names as in the `daaf-deploy-smoke-testing` skill):
 `openai-api` (GPT shim), `openrouter`. A list row names one route; a model
 validated on one route is not validated on another, because image handling
 differs by route [inf].
+
+**Where the route comes from.** The orchestrator runs
+
+```
+bash /daaf/scripts/lit_verify.sh route <PROJECT_DIR>
+```
+
+and copies the first line it prints, `ROUTE: <name>`, verbatim into every
+paper-reader dispatch; nobody types a route. The subcommand imports
+`detect_route()` from `scripts/deploy_smoke/route_detection.py` (the route
+detector of the `daaf-deploy-smoke-testing` skill, a pure environment check)
+and prints the route's basis, its limits and the list rows for that route.
+It appends a row (kind `lit_verify_route`) to `PROJECT_DIR/papers/MANIFEST.jsonl`
+with the route, its basis, the detector file's SHA-256, the list version and
+its row count for the route, and the environment keys the detector consulted,
+recorded by presence only (`set`, `empty` or `unset`), never by value. Run it
+before the first reader dispatch: `lit_verify audit` counts only a route row
+recorded no later than the card check.
+
+| Route | Basis printed |
+|-------|---------------|
+| `chatgpt-subscription` | The provider shim controls select the ChatGPT-subscription lane |
+| `openai-api` | The provider shim controls select the OpenAI API lane |
+| `openrouter` | `ANTHROPIC_BASE_URL` points at OpenRouter |
+| `anthropic-api` | No provider shim and no OpenRouter base URL; `ANTHROPIC_API_KEY` is set (non-empty) |
+| `anthropic-subscription` | No provider shim, no OpenRouter base URL and no non-empty `ANTHROPIC_API_KEY` |
+
+Limits, also printed:
+
+- **Console API or subscription.** The environment cannot tell a Claude
+  Code login with a Console (API) account from a subscription login. This
+  changes no vision decision while every listed model has rows on both
+  Anthropic routes, as on `vision-list-2026-10-30`; if the two routes ever
+  list different models, the output says so, and the login type is
+  confirmed by hand before any vision use.
+- **OpenRouter.** No list row names `openrouter`, so the output says PDF
+  reading is text-only there, and a reader on that route writes `vision:
+  unavailable`.
+
+Exits: 0 route detected; 1 `PROJECT_DIR` is not a directory; 2 refused
+path (the destination guard, or a secret value in the argument); 10 the
+route detector cannot be loaded; 12 internal error (for example a route
+name the detector should not return).
 
 | Route family | Image rules | DAAF consequence |
 |--------------|-------------|------------------|
@@ -313,12 +453,14 @@ A listed reader may still look at such a page, but the reading is
 unvalidated: write `?` for any digit you cannot read, never infer one from
 context, the column or a trend; label the reading in the card as an
 unvalidated reading of a scan; log every text/vision/OCR disagreement; and
-tell the orchestrator (§ Gating, orchestrator step 5). `lit_verify` sends
-every vision reading on a truly scanned or OCR-layer page to a person
-(`VISION_ON_SCAN_PAGE`, review), because a plausible-looking number read
-from a scan often has no clean text to check it against. It does not flag
-readings on sparse pages (flagged `scanned`, little text, not mostly one
-image) or on figure pages; the orchestrator checks those by hand.
+tell the orchestrator. `lit_verify` sends every vision reading on a truly
+scanned or OCR-layer page to a person (`VISION_ON_SCAN_PAGE`, review),
+because a plausible-looking number read from a scan often has no clean text
+to check it against. A reading on a sparse page (flagged `scanned`, little
+text, not mostly one image) raises nothing in the card gate, and on a
+figure page the gate warns (`VISION_FIGURE_UNCORROBORATED`) only for a
+number in doubt that the paper's text does not print; `lit_verify audit`
+lists both for a person (§ Gating, step 5).
 
 **What the probe does not show:** fidelity on scanned or OCR-layer pages,
 figure pages or 300-DPI crops; any route other than `anthropic-subscription`

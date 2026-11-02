@@ -77,16 +77,16 @@ never what weight to give (`paper-notes.md` § Signals that are not quality).
 ## Citation network: snowballing and how papers use each other
 
 Who cites whom, and why, helps find papers that keyword searches miss and shows
-how a literature builds on itself. What exists today and what is still to come:
+how a literature builds on itself. Each capability and how to use it:
 
 | Capability | Status | How |
 |---|---|---|
 | **Forward snowballing** (who built on a paper) | Built | `scholar_search cites <ID> DEST [--years 2020-]`: OpenAlex `cites:` filter, sorted by citations (`--sort publication_date:desc` for newest) |
 | **Backward snowballing** (what a paper rests on) | Built | `scholar_search refs <ID> DEST`: OpenAlex's matched references, incomplete and sometimes wrong; check odd entries against the paper's own reference list |
 | **Close work with no shared links or keywords** | Built | `scholar_search similar <ID> DEST`: OpenAlex semantic search seeded with title and abstract |
-| **Citation sentences and intents** | Built (introduced in `scholar_search` 1.7.0, S4) | `scholar_search refs <ID> DEST --s2-context` or `scholar_search cites <ID> DEST --sort publication_date:desc --s2-context` (opt-in) adds, per paper, up to three sentences in which the citation occurs and Semantic Scholar's own "influential" label (not a quality signal), in the digest and the `.records.json` file; on `refs` also its citation intents (`background`, `methodology`, `result`). On `cites` Semantic Scholar sent no intents on any of 300 rows, and under any sort but newest first few papers match (both observed 2026-11-01). One extra Semantic Scholar call; if it is rate-limited after one retry, the OpenAlex result stands and the row says `context_status: rate_limited`; `elided` means the publisher withheld the list, so no sentences exist. It gives a sample of sentences, not coverage (`scholarly-search` `references/semantic-scholar.md`) |
-| **Citation-edge table** | Built (introduced in `lit_corpus` 1.0.0, S4) | `lit_corpus edges ingest` records each citing → cited pair seen by a `cites` or `refs` call (with the call that saw it, and any sentence and intents from a source whose licence allows storing them) in `citation_edges_v{N}`, so a synthesis can say "Smith (2020) uses Lee's (2016) method" with an edge id behind it (`[…]{.lr-edge edges="E012"}`), which `lit_verify report` checks (`lit-corpus.md`) |
-| **How a paper uses its key references** | Claim type built (card v3, introduced in `lit_verify` 1.9.0, S4); the reader's protocol for recording it comes with the Literature Review mode (S5) | A `citation_use` claim holds the quoted sentence where the paper cites a key reference, `cites_key` and the relation (`builds_on`, `uses_method`, `extends_result`, `contrasts`, `disputes`, `background`), page-checked like any claim; `edges ingest` copies the relation onto the matching edge. Until the S5 reader asks for these claims routinely, a reader writes them when the review needs them |
+| **Citation sentences and intents** | Built | `scholar_search refs <ID> DEST --s2-context` or `scholar_search cites <ID> DEST --sort publication_date:desc --s2-context` (opt-in) adds, per paper, up to three sentences in which the citation occurs and Semantic Scholar's own "influential" label (not a quality signal), in the digest and the `.records.json` file; on `refs` also its citation intents (`background`, `methodology`, `result`). On `cites` Semantic Scholar sent no intents on any of 300 rows, and under any sort but newest first few papers match (both observed 2026-11-01). One extra Semantic Scholar call; if it is rate-limited after one retry, the OpenAlex result stands and the row says `context_status: rate_limited`; `elided` means the publisher withheld the list, so no sentences exist. It gives a sample of sentences, not coverage (`scholarly-search` `references/semantic-scholar.md`) |
+| **Citation-edge table** | Built | `lit_corpus edges ingest` records each citing → cited pair seen by a `cites` or `refs` call (with the call that saw it, and any sentence and intents from a source whose licence allows storing them) in `citation_edges_v{N}`, so a synthesis can say "Smith (2020) uses Lee's (2016) method" with an edge id behind it (`[…]{.lr-edge edges="E012"}`), which `lit_verify report` checks (`lit-corpus.md`) |
+| **How a paper uses its key references** | Built (card v3) | A `citation_use` claim holds the quoted sentence where the paper cites a key reference, `cites_key` and the relation (`builds_on`, `uses_method`, `extends_result`, `contrasts`, `disputes`, `background`), page-checked like any claim; `edges ingest` copies the relation onto the matching edge. In the Literature Review mode the paper-reader writes one for each reference its dispatch lists under KEY REFERENCES TO TRACE (the approved key papers and seeds the paper may cite) that the paper cites, and may add one for another reference the paper builds on or argues with when it bears on the question |
 
 **Snowballing practice.** Start from the agreed key papers: one hop forward
 with a recent `--years` window, one hop backward. Screen what comes back like
@@ -174,21 +174,34 @@ researcher.
 
 ## Output shape
 
-A sensible default; adapt to the review type.
+A sensible default; adapt to the review type. The researcher reads every
+visible line, so headings and sentences use plain labels: finding, claim and
+link ids appear only inside markers and in the technical appendix under
+Methods. The markers are hidden when the file is rendered with Pandoc or
+Quarto; a plain Markdown preview shows them as text in braces. So the
+researcher reads an HTML copy rendered with Pandoc (in the Literature Review
+mode the orchestrator makes it), and the file opens with one fixed line that
+tells a reader of the Markdown source where that copy is. Write the line as
+given, with its example inside backticks and no result verb, so the report
+check reads no marker or finding wording in it.
 
 ```markdown
 # {Title}: standard review
 {date} · standard review · {type} · rounds: {n}
+
+> Text written as `[…]{…}` ties a statement to the checked evidence behind it, for DAAF's checks. The copy of this file ending in `.html` gives the same review without these tags.
 
 ## In short
 {3–5 sentences: the main findings in their calibrated wording; what the
 researcher can rely on; what is uncertain}
 
 ## Findings
-### F01 {short label}
+### {short plain label, e.g. Tutoring and reading in the early grades}
 [Tutoring probably improves reading scores in the early grades]{.lr-finding fid=F01 claims="W123-c03 W456-c01"} [@smith2021tutoring; @lee2019dosage].
-Certainty: moderate. Why: {reason naming claim ids}.
-Studies: {table of each study's design, weight, estimate as printed, page}.
+How sure: moderate ({the level's plain meaning}). Why: {the reason in plain
+words, naming the papers by citation and page, e.g. [@smith2021tutoring, p. 7]}.
+Studies: {table of each study's design, weight, estimate as printed, page,
+with the study cited in its row}.
 Boundary conditions: … Sensitivity: …
 
 ## Papers read in full
@@ -199,10 +212,25 @@ Boundary conditions: … Sensitivity: …
 
 ## Methods
 Search log, screening counts, key-paper choice and its reasons, what was not
-read in full, AI disclosure (what was AI-judged, what code checked).
+read in full, references by how they were confirmed (confirmed by the
+researcher; confirmed by DAAF's second check, an AI judgment; accepted by the
+researcher despite the automatic reference check; and, in a round write-up
+only, matches the record but not yet confirmed), AI disclosure (what was
+AI-judged, what code checked, what the researcher decided).
+
+### Technical appendix
+| Finding | Claim ids | Certainty | Recorded reason |
+|---|---|---|---|
+| F01 | W123-c03, W456-c01 | moderate | {the certainty reason as recorded, naming claim ids} |
 
 ## References
 ```
+
+The certainty reason recorded with `lit_corpus findings record` must name
+claim ids (`lit_corpus` refuses one that does not); the "Why" line in the
+text restates it in plain words, and the appendix keeps the recorded form.
+Methods is an exempt heading for wording checks (`lit-verify-report.md`), so
+the appendix's ids and codes do not trip them.
 
 Numbers in the "Studies" table are not checked: `lit_verify report` compares
 a number with the checked claims only in a sentence that cites the study
@@ -232,8 +260,13 @@ call. Flags, inputs and exits: `scholarly-search` for `scholar_search`,
    and read, a full-text (`ft`) decision for each.
 4. **Check references:** `scholar_search verify` and `retractions` for each
    paper that may be cited, then `lit_corpus attach verify` and `attach
-   retractions`; `lit_corpus attach decision` records the researcher's call on
-   a partial match or a retracted paper.
+   retractions`. The researcher's reply on a reference (a partial match, a
+   match waiting for its second check, a reference kept despite a mismatch)
+   is recorded at the reference glance with `lit_corpus adjudications
+   record-human`, their words verbatim, never with `attach decision`
+   (`lit-corpus.md` § Citation second check); in the Literature Review mode
+   the orchestrator runs it. The researcher's decision to keep a retracted
+   paper is `lit_corpus attach decision` with `include_retracted`.
 5. **Read the key papers** (workflow step 5): `pdf_ingest` and an evidence card
    per paper in `PROJECT_DIR/papers/{paper_key}/` (`lit_corpus key` prints the
    key), checked with `lit_verify card` (`pdf-reading`).
@@ -251,9 +284,18 @@ call. Flags, inputs and exits: `scholarly-search` for `scholar_search`,
    if wanted); `lit_corpus counts PROJECT_DIR --round R`.
 10. **Write the synthesis** under `PROJECT_DIR/output/` and check it:
     `lit_verify report PROJECT_DIR {synthesis path} --level standard` for each
-    round's draft, and with `--kind final` on the version the researcher
-    receives (that run checks the cards again).
+    round's draft.
 11. **Close the round:** `lit_corpus manifest PROJECT_DIR --round R`.
+12. **Before the final version:** every card that takes readings from
+    pictures of pages has its `lit_verify audit` record, and the readings it
+    lists for a person are compared and recorded with `lit_verify settle`
+    (`lit-verify-report.md` § Settling the readings an audit lists); the
+    researcher glances at the reference list (`lit_corpus adjudications
+    glance-sheet`), their reply is recorded with `adjudications record-human`,
+    and `export-bib` runs again. Then `lit_verify report --kind final` on the
+    version the researcher receives (that run checks the cards again). In the
+    Literature Review mode the orchestrator runs the audit, `settle`, the
+    glance and every `report` run.
 
 ## What the researcher should check
 

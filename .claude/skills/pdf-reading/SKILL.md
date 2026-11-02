@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-access
   skill-authored: "2026-10-19"
-  skill-last-updated: "2026-10-30"
+  skill-last-updated: "2026-11-01"
 ---
 
 # PDF Reading
@@ -42,8 +42,8 @@ stays available only for tasks DAAF does not cover, when the user asks for it.
 
 | Role | May do | Never does |
 |------|--------|-----------|
-| Reading agents (the orchestrator, search-agent, data-ingest; the planned paper-reader agent of the Literature Review mode, build session S5, not yet built) | Run `pdf_ingest` and `lit_verify` on a PDF already on disk; read `pages/`, `fulltext.md` and, when vision is available, the renders; write an evidence card | Fetch anything: a missing PDF is a retrieval need handed back to the orchestrator |
-| Retrieval agents (orchestrator, search-agent, literature-searcher when built) | Download PDFs with `web_fetch.sh` (`web-retrieval` skill) or locate them with `scholar_search.sh oa` (`scholarly-search` skill) | Read deeply as part of a search |
+| Reading agents (the orchestrator, search-agent, data-ingest; the Literature Review mode's paper-reader, which reads an ingest the literature-searcher made and runs only `lit_verify card`, never `pdf_ingest`) | Run `pdf_ingest` and `lit_verify` on a PDF already on disk; read `pages/`, `fulltext.md` and, when vision is available, the renders; write an evidence card | Fetch anything: a missing PDF is a retrieval need handed back to the orchestrator |
+| Retrieval agents (orchestrator, search-agent; the Literature Review mode's literature-searcher, which also runs `pdf_ingest` on each PDF it saved) | Download PDFs with `web_fetch.sh` (`web-retrieval` skill) or locate them with `scholar_search.sh oa` (`scholarly-search` skill) | Read deeply as part of a search |
 
 Keeping reading offline keeps one paper's card free of other sources, and
 every network call stays with an agent whose job is retrieval and leaves a
@@ -189,10 +189,9 @@ hash-checked only (`OCR_NOT_REDERIVED`, a warning). `--timeout` (default
 
 **What the gate does not prove.** Re-derivation proves agreement with the
 bytes on disk, not that they came from the publisher: a self-consistent
-forged source passes, and the orchestrator's audit compares
-`rederive.source_kind` and `web_fetch_row` with its own fetches. Forged OCR
-text is graded at most PARTIAL. Details: `references/evidence-card.md`
-§ Re-derivation.
+forged source passes, and `lit_verify audit` matches the source with the
+project's own fetch records. Forged OCR text is graded at most PARTIAL.
+Details: `references/evidence-card.md` § Re-derivation.
 
 The card (`evidence_card{S}.md`, directly inside `papers/{key}/`) carries YAML
 front matter and free prose, plus **exactly one** fenced block with info
@@ -387,18 +386,20 @@ model ID (`references/vision-validation.md` § Promotion and demotion).
 **Scope: table pages with a digital text layer** (no `scanned` and no
 `ocr_layer_suspected` flag in the ingest manifest). Truly scanned, sparse
 and OCR-layer pages were not probed and figure pages not scored, so no model
-is validated on them. `lit_verify` checks the **scan part** of this scope:
-on a page it re-derives as truly scanned (`pages[].class`) or as carrying an
-OCR text layer (`pages[].ocr_layer`), each `vision`/`both` claim and
-`vision_only` digest is `VISION_ON_SCAN_PAGE` (review: a person checks it,
-`references/evidence-card.md` § Vision consistency). It does **not** flag a
-vision reading on a sparse page (flagged `scanned`, little text, not mostly
-one image) or on a figure or chart page (class `normal`). On any page
-outside the scope you may still look, but the reading is unvalidated: write
-`?` for any digit you cannot read and never infer one from context, the
-column or a trend; label the reading in the card as unvalidated; log every
-text/vision/OCR disagreement; and tell the orchestrator, which checks what
-the gate does not flag (`references/vision-validation.md` § Gating, step 5).
+is validated on them. `lit_verify card` flags what it can: a vision reading
+on a page it re-derives as truly scanned (`pages[].class`) or OCR-layered
+(`pages[].ocr_layer`) is `VISION_ON_SCAN_PAGE` (review), and a vision-read
+number on a figure page (class `normal`) that is in doubt (`vision_reading`
+`estimated` or `uncertain`, or in no text lane of that page) and printed on
+no page is `VISION_FIGURE_UNCORROBORATED` (a warning;
+`references/evidence-card.md` § Vision consistency). A sparse page (flagged
+`scanned`, little text, not mostly one image) raises nothing there;
+`lit_verify audit` lists all three for a person. On any page outside the
+scope you may still look, but the reading is unvalidated: write `?` for any
+digit you cannot read, never infer one from context, the column or a trend,
+and mark a number read off a chart `vision_reading: estimated`; label the
+reading as unvalidated; log every text/vision/OCR disagreement; and tell the
+orchestrator.
 On every row vision stays a second reading, never ground truth: a number
 found in no text lane passes only at PARTIAL (`NUMBER_VISION_ONLY`), never
 quoted as a finding without a text-lane or human check. The GPT probe ran
@@ -410,22 +411,21 @@ is unreadable (`references/vision-validation.md` § The validation probe).
 ### Gating (Option C)
 
 1. **You check yourself.** Copy your exact model ID from your system prompt,
-   drop a trailing `[1m]`, take the route from the dispatch, and look for an
-   exact match in the list. No match → text only.
+   drop a trailing `[1m]`, take the route from the dispatch's `ROUTE:` line
+   and look for an exact match in the list. No line or no match → text only.
 2. **The card records it.** Block: `reader_model`, `vision_mode`,
    `vision_validated`, `vision_list_version`. Front matter (not checked by
    the gate): `reader_model_source: self-report`, `reader_route`, `vision:
    validated|unavailable`.
-3. **The orchestrator audits it** after you return, against the
-   transcript-derived model (the hook cache
-   `/tmp/claude-subagent-model-<session>-<agent_id>`, read-only, or the
-   subagent transcript's `.message.model`), and records
-   `transcript-confirmed` or a mismatch. Over the GPT shim that value echoes
-   the requested model name: safe to key on, not independent proof of the
-   serving model. It also checks your `reader_route` against the dispatch,
-   settles each `VISION_ON_SCAN_PAGE` item (a vision reading on a scan)
-   in the `card_check`, and checks by hand any vision reading on a sparse or
-   figure page, which the gate does not flag.
+3. **The orchestrator audits it** after you return, with `lit_verify audit`:
+   it compares your `reader_model` with the transcript-derived model (the
+   `context-reporter` hook's cache, else your transcript's `.message.model`;
+   over the GPT shim that value echoes the requested model name: safe to key
+   on, not independent proof of the serving model) and your `reader_route`
+   with the route `lit_verify route` recorded, lists the readings a person
+   must check (scan and sparse pages) or should look at (figure warnings),
+   checks where the PDF came from, and writes `vision_audit{S}.json` beside
+   the card, keyed by its SHA-256. The card is never edited.
 
 `lit_verify` checks what the card declares and fails closed on the list: it
 embeds the list per `vision_list_version`, and `vision_validated: true` for a
@@ -492,9 +492,9 @@ cannot run. Never install at runtime; the fix is a rebuild
 
 Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
 `scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
-Versions (2026-11-01): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.14.0-daaf
+Versions (2026-11-01): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.15.0-daaf
 (`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`; vision list
 `vision-list-2026-10-30`). Tests:
 `tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(188) and `lit_verify.sh selftest` (71 expectations), run file-first through
+(246) and `lit_verify.sh selftest` (90 expectations), run file-first through
 a captured script (`references/toolchain.md` § Tests).

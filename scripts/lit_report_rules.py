@@ -114,7 +114,26 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 #   papers of which only some print it, goes to review (NUMBER_NOT_IN_CITED_CLAIM), marked as a finding or not.
 #   report-rules-v5: CITATION_TITLE_DIFFERS_DRAFT (review; 72 statuses); CITATION_UNVERIFIED takes the fix
 #   lit_verify gives for the paper (the title rule's own fix). Phrase table unchanged (2026-11-01b).
-REPORT_RULES_VERSION = "report-rules-v5"       # this module as a whole
+# v6 (lit_verify 1.15.0, S5 W1-c, 2026-11-01; the user's decision that a final deliverable cites only second-checked references):
+#   report-rules-v6. The citation second check: a paper's citation status (re-derived by lit_verify from the
+#   second-check record) decides what a draft and a final deliverable may cite. Waiting for its second check: a
+#   review item in a draft (CITATION_PENDING_SECOND_CHECK_DRAFT), a failure at --kind final
+#   (CITATION_PENDING_SECOND_CHECK; also a legacy accepted partial match, which stays a review item in a draft);
+#   rejected by the second check: CITATION_REJECTED; confirmed by an AI second check or accepted by the researcher
+#   against the automatic check: citable, with a label warning (CITATION_CONFIRMED_BY_AI_CHECK,
+#   CITATION_ACCEPTED_DESPITE_CHECK; this includes a MISMATCH the researcher overrode, which lit_verify reports as
+#   human_overridden only while the override names the record the check's saved response re-derives). Reading
+#   notes that take readings from pictures of pages: no audit record of
+#   them (VISION_AUDIT_MISSING_DRAFT / VISION_AUDIT_MISSING) or an audit that did not confirm them
+#   (VISION_AUDIT_NOT_CONFIRMED_DRAFT / VISION_AUDIT_NOT_CONFIRMED). ADJUDICATION_ROW_MISMATCH is raised by
+#   lit_verify (re-derivation). 82 statuses. Phrase table 2026-11-01c: contract_version 0.4.0 only.
+#   Same version (S5 settle: a person's record settles an audit's listed readings): lit_verify re-derives a person's recorded
+#   comparison of the audit's listed readings (`lit_verify settle`); an audit of outcome AUDIT_SETTLEABLE whose every
+#   required reading a person recorded as matching reaches this module as no audit problem at all (no label: a
+#   person's check is the check the audit asked for, as a reference the researcher confirmed carries none); a reading
+#   a person recorded as not matching keeps VISION_AUDIT_NOT_CONFIRMED(_DRAFT) with its own reason and fix
+#   (AUDIT_FIX_DOES_NOT_MATCH); the fixes name `settle` first. No status added.
+REPORT_RULES_VERSION = "report-rules-v6"       # this module as a whole
 CITATION_PARSE_VERSION = "citations-v2"        # Pandoc 3.10 citation syntax, stdlib regex
 SENTENCE_SPLIT_VERSION = "sentences-v1"
 REPORT_LINT_VERSION = "report-lint-v5"
@@ -122,8 +141,8 @@ REPORT_LINT_VERSION = "report-lint-v5"
 # §§ CERTAINTY LANGUAGE (lockstep copy of certainty-language.yaml; see header)
 CERTAINTY_LANGUAGE = {
     "schema_version": "certainty-language-v1",
-    "table_version": "2026-11-01b",
-    "contract_version": "0.3.0",
+    "table_version": "2026-11-01c",
+    "contract_version": "0.4.0",
     "axis": "body_of_evidence_certainty",
     "keys_are": ["high", "moderate", "low", "very_low"],
     "stated_by": ("At the standard level the synthesizer states the level with a written reason; at the formal level "
@@ -315,6 +334,13 @@ REPORT_SEVERITY = {
     "PAPER_IDENTITY_MISMATCH": "fail", "BIB_ENTRY_MISMATCH": "fail",
     # report-rules-v5 (lit_verify 1.14.0, polish pass H)
     "CITATION_TITLE_DIFFERS_DRAFT": "review",
+    # report-rules-v6 / report-rederive-v6 (lit_verify 1.15.0, S5 W1-c): the citation second check and the audit
+    #   of readings taken from pictures of pages; the two label statuses are warnings (citable, labelled)
+    "CITATION_PENDING_SECOND_CHECK_DRAFT": "review", "CITATION_PENDING_SECOND_CHECK": "fail",
+    "CITATION_REJECTED": "fail", "ADJUDICATION_ROW_MISMATCH": "fail",
+    "CITATION_CONFIRMED_BY_AI_CHECK": "warning", "CITATION_ACCEPTED_DESPITE_CHECK": "warning",
+    "VISION_AUDIT_MISSING_DRAFT": "review", "VISION_AUDIT_MISSING": "fail",
+    "VISION_AUDIT_NOT_CONFIRMED_DRAFT": "review", "VISION_AUDIT_NOT_CONFIRMED": "fail",
 }
 REPORT_KINDS = ("synthesis", "final", "bibliography")
 REVIEW_LEVELS = ("quick", "standard", "formal")
@@ -332,6 +358,50 @@ FURTHER_READING_HEADING = "further reading"
 GRADES_FULL_TEXT = ("FULL_TEXT_VERIFIED", "FULL_TEXT_PARTIAL", "UNCONFIRMED")
 LEVEL_RANK = {"very_low": 0, "low": 1, "moderate": 2, "high": 3}
 VERIFIED = ("verified", "verified_partial", "abstract_verified")    # abstract_verified: a quote of the stored abstract
+# INTENT (report-rules-v6): LOCKSTEP COPIES of lit_corpus's second-check vocabulary
+#   (CITABLE_FINAL, DRAFT_REVIEW_STATUSES, LABELLED_STATUSES); this module stays stdlib, so it cannot import
+#   lit_corpus. A test keeps the copies equal. AI_CHECKED is the labelled pair a model confirmed.
+SECOND_CHECK_CITABLE_FINAL = ("model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden")
+SECOND_CHECK_DRAFT_REVIEW = ("pending_adjudication", "human_accepted_unbound")
+SECOND_CHECK_LABELLED = ("model_confirmed", "model_adjudicated", "human_overridden")
+SECOND_CHECK_AI_CHECKED = ("model_confirmed", "model_adjudicated")
+# INTENT (report-rules-v6): the audit outcomes that confirm reading notes (lit_verify audit, AUDIT_EXIT 0); any other
+#   outcome lists readings a person must check. The words say what the audit found, for the reason text.
+AUDIT_CONFIRMED = ("confirmed", "confirmed_with_checks")
+AUDIT_OUTCOME_WORDS = {
+    "person_must_check": "{n} reading(s) taken from pictures of PDF pages need a person to compare them with the PDF",
+    "mismatch": "DAAF could not confirm that a tested AI model read the pictures of the pages",
+    "chain_unconfirmed": "DAAF could not confirm where the PDF file came from",
+    "model_not_confirmed": "its record of which AI model read the pictures of the pages did not come from the place "
+                           "DAAF itself keeps that record"}
+# INTENT (report-rules-v6, S5 settle): the audit outcomes a person's recorded comparison can settle (lockstep with
+#   lit_verify SETTLE_OUTCOMES; a test keeps them equal). A source DAAF could not confirm is not among them: comparing
+#   readings with the page cannot show where the PDF came from.
+AUDIT_SETTLEABLE = ("person_must_check", "mismatch")
+# REASONING (report-rules-v6): the fix that clears the citation is first the researcher's recorded comparison of each
+#   listed reading with its page (`lit_verify settle`); else notes without readings from pictures of pages (a card
+#   with no vision readings needs no audit). The outcome-specific sentence leads.
+AUDIT_FIX_LEAD = {
+    "person_must_check": "Show the researcher each listed reading beside its PDF page (lit_verify settle --list) and "
+                         "record their reply in their own words (lit_verify settle), then check the deliverable again.",
+    "mismatch": "Show the researcher each reading taken from a picture beside its PDF page (lit_verify settle --list) "
+                "and record their reply in their own words (lit_verify settle), then check the deliverable again; or "
+                "have the paper read again by a reader whose AI model DAAF can confirm and audit the new notes.",
+    "chain_unconfirmed": "Comparing readings with the page cannot settle this. Confirm the PDF is the paper you "
+                         "expect; to use it, fetch it with DAAF's fetch tool (or put the researcher's own copy in "
+                         "user_pdfs/), read and audit it again, or clear it as follows.",
+    "model_not_confirmed": "This audit record lists nothing to compare, so it cannot be settled: check the notes again "
+                           "(lit_verify card) and audit the new check in the review's own session with the reader's "
+                           "agent IDs from the dispatch results (lit_verify audit), then check the deliverable again."}
+AUDIT_FIX_COMMON = ("Otherwise, to clear the citation, have the paper's notes rewritten without readings from pictures "
+                    "of pages (from the page text only, or with those claims dropped), check the new notes (lit_verify "
+                    "card), rebuild the claims (lit_corpus claims build) and check the deliverable again.")
+AUDIT_FIX_DOES_NOT_MATCH = ("Write new reading notes without that number, or with the number as printed on the page, "
+                            "check them with lit_verify card and run lit_verify audit; then rebuild the claims "
+                            "(lit_corpus claims build) and check the deliverable again.")
+SECOND_CHECK_FIX = ("Show the researcher the reference list (lit_corpus adjudications glance-sheet) and record their "
+                    "reply in their own words (adjudications record-human), export the reference list again "
+                    "(export-bib), then check the deliverable again; or drop the citation.")
 DISPUTE_RELATIONS = ("disputes", "contrasts")
 MAX_EXCERPT = 200
 
@@ -804,8 +874,11 @@ def sentences_in(lint, start, end):
 def check_report(text, view, kind="synthesis"):
     # The report gate on one deliverable (pure). `view` holds the RE-DERIVED review state:
     #   papers   {citekey: {paper_key, grade, verify_verdict, verify_note, accept_weak, retraction_status,
-    #             include_retracted, in_bib}}; grade FULL_TEXT_VERIFIED | FULL_TEXT_PARTIAL | UNCONFIRMED |
-    #             ABSTRACT_ONLY | METADATA_ONLY
+    #             include_retracted, in_bib, citation_status, rejected_by, vision_audit}}; grade FULL_TEXT_VERIFIED |
+    #             FULL_TEXT_PARTIAL | UNCONFIRMED | ABSTRACT_ONLY | METADATA_ONLY; citation_status re-derived from
+    #             the second-check record (absent: read as a check with no second check); vision_audit None (no
+    #             readings from page pictures, confirmed, or settled by the researcher's records), or {state: missing
+    #             | not_confirmed | does_not_match, readings, why, outcome, open}
     #   claims   {claim_id: {paper_key, citekey, status, superseded_by, verification, quote, numbers}}
     #   findings {finding_id: {status, certainty_scheme, certainty, certainty_reason, decided_by, not_rated_reason,
     #             moderator_status, claim_ids, dsum, dirs}}
@@ -923,7 +996,26 @@ def check_report(text, view, kind="synthesis"):
         if key not in key_done:
             key_done.add(key)
             v = p.get("verify_verdict")
-            if v not in ("CONFIDENT", "WEAK"):
+            # report-rules-v6: the citation status lit_verify re-derived from the second-check
+            #   record. A view without one is read as attach verify leaves a check that had no second check (fail
+            #   closed: a CONFIDENT check is then still waiting for it).
+            st = p.get("citation_status") or ("pending_adjudication" if v == "CONFIDENT" else
+                                              "human_accepted_unbound" if v == "WEAK" and p.get("accept_weak") else
+                                              "unverified")
+            if st == "rejected":
+                problems += 1
+                who = ("the researcher recorded" if p.get("rejected_by") == "researcher" else
+                       "DAAF's second check (an AI judgment) found")
+                add("citation", "CITATION_REJECTED", ln,
+                    f"Line {ln} cites {key}, but {who} that the database record its automatic reference check found "
+                    "is a different work, so the reference is not confirmed.",
+                    "Drop the citation; or find the paper's right record (check its DOI and title), check the "
+                    "reference again (scholar_search verify, then lit_corpus attach verify) and have the new check "
+                    "confirmed (adjudications glance-sheet, then record-human), export the reference list again "
+                    "(export-bib) and check the deliverable again.", citekeys=[key])
+            elif v not in ("CONFIDENT", "WEAK") and not (v == "MISMATCH" and st == "human_overridden"):
+                # (a MISMATCH the researcher overrode is citable, labelled below: lit_verify gives that status only
+                #   while the override names the very record the check's saved response re-derives)
                 problems += 1
                 detail = p.get("verify_note") or (PLAIN_VERIFY_VERDICT.get(v, "the reference check did not confirm "
                                                                           "it") if v else
@@ -933,20 +1025,52 @@ def check_report(text, view, kind="synthesis"):
                     f"Line {ln} cites {key}, but DAAF could not confirm that this reference exists as cited ({detail}).",
                     p.get("verify_fix") or "Do not cite it until the reference is checked again and confirmed.",
                     citekeys=[key])
-            elif v == "WEAK" and not p.get("accept_weak"):
+            elif v == "WEAK" and st not in SECOND_CHECK_CITABLE_FINAL + ("human_accepted_unbound",):
+                # a partial match no person confirmed (also a CONFIDENT check the final title rule lowered); the
+                #   researcher's recorded reply on the reference clears it
                 problems += 1
                 add("citation", "CITATION_WEAK_UNDECIDED", ln,
-                    f"Line {ln} cites {key}. DAAF's reference check found only a partial match for it, and no one has "
-                    "decided to accept it.", "Ask the researcher to look at the reference and record a decision, or "
-                    "drop the citation.", citekeys=[key])
-            elif v == "WEAK":
+                    f"Line {ln} cites {key}. DAAF's automatic reference check found only a partial match for it, and "
+                    "no one has decided to accept it.", SECOND_CHECK_FIX, citekeys=[key])
+            elif st == "pending_adjudication" or (st == "human_accepted_unbound" and kind == "final"):
+                # report-rules-v6: waiting for its second check: review in a draft, fail in a final deliverable (the
+                #   RETRACTION_CHECK_NOT_LATEST pair pattern). A legacy accepted partial match is not citable in a
+                #   final deliverable either; its fix is the same recorded reply.
+                problems += 1
+                what = ("the automatic reference check found only a partial match; the researcher accepted it "
+                        "earlier, but that decision is not tied to the exact reference record"
+                        if st == "human_accepted_unbound"
+                        else "its reference matches the database record, but it is not yet confirmed")
+                add("citation", "CITATION_PENDING_SECOND_CHECK" if kind == "final" else
+                    "CITATION_PENDING_SECOND_CHECK_DRAFT", ln,
+                    f"Line {ln} cites {key}: {what}. " + ("A final deliverable may cite only confirmed references."
+                                                         if kind == "final" else
+                                                         "The final check will fail this citation until then."),
+                    SECOND_CHECK_FIX, citekeys=[key])
+            elif st == "human_accepted_unbound":
                 problems += 1
                 add("citation", "CITATION_HUMAN_DECISION_UNBOUND", ln,
-                    f"Line {ln} cites {key}. The reference check found only a partial match; the researcher accepted "
-                    "it, but that decision is not yet tied to the exact reference record.",
-                    "Keep it if you agree; a person should confirm the reference before the review is final.",
-                    citekeys=[key])
-            if v in ("CONFIDENT", "WEAK") and not p.get("in_bib"):
+                    f"Line {ln} cites {key}. The automatic reference check found only a partial match; the researcher "
+                    "accepted it, but that decision is not tied to the exact reference record. The final check will "
+                    "fail this citation until it is.", SECOND_CHECK_FIX, citekeys=[key])
+            elif st not in SECOND_CHECK_CITABLE_FINAL:
+                problems += 1
+                add("citation", "CITATION_UNVERIFIED", ln,
+                    f"Line {ln} cites {key}, but DAAF could not confirm that this reference exists as cited (its "
+                    "second check is not on record).", SECOND_CHECK_FIX, citekeys=[key])
+            elif st in SECOND_CHECK_AI_CHECKED:
+                # report-rules-v6: citable, labelled (a warning: the verdict does not change)
+                add("citation", "CITATION_CONFIRMED_BY_AI_CHECK", ln,
+                    f"Line {ln} cites {key}, whose reference was confirmed by DAAF's second check, an AI judgment "
+                    "rather than a person's.", "Say so where the deliverable describes how its references were "
+                    "checked (for example: confirmed by DAAF's second check, an AI judgment).", citekeys=[key])
+            elif st == "human_overridden":
+                add("citation", "CITATION_ACCEPTED_DESPITE_CHECK", ln,
+                    f"Line {ln} cites {key}, whose reference the researcher accepted although DAAF's automatic check "
+                    "disagreed.", "Say so where the deliverable describes how its references were checked (for "
+                    "example: accepted by the researcher despite the automatic check).", citekeys=[key])
+            if (v in ("CONFIDENT", "WEAK") or (v == "MISMATCH" and st == "human_overridden")) and \
+                    st != "rejected" and not p.get("in_bib"):
                 problems += 1
                 add("citation", "CITEKEY_NOT_IN_BIB", ln,
                     f"Line {ln} cites {key}, a paper the review holds but did not put in its reference list (the list "
@@ -988,6 +1112,41 @@ def check_report(text, view, kind="synthesis"):
                     "will fail this citation.",
                     p.get("verify_fix") or "Check the paper's DOI and title before the final check.",
                     citekeys=[key])
+            # report-rules-v6: reading notes that take readings from pictures of pages need an audit
+            #   record that confirms them (review in a draft, fail in a final deliverable)
+            va = p.get("vision_audit") or {}
+            if va.get("state") == "missing":
+                problems += 1
+                n = va.get("readings") or 0
+                add("citation", "VISION_AUDIT_MISSING" if kind == "final" else "VISION_AUDIT_MISSING_DRAFT", ln,
+                    f"Line {ln} cites {key}. Its reading notes take {n} reading(s) from pictures of PDF pages, and "
+                    f"DAAF holds no check that the tested AI model did that reading ({va.get('why') or 'none is on file'}"
+                    "). " + ("A final deliverable cannot rely on such notes unchecked." if kind == "final" else
+                             "The final check will fail this citation until the check is run."),
+                    "Run the reading check on the paper's latest notes (lit_verify audit, with the reader's agent ID), "
+                    "then check the deliverable again.", citekeys=[key])
+            elif va.get("state") == "not_confirmed":
+                problems += 1
+                oc = va.get("outcome")
+                found = AUDIT_OUTCOME_WORDS.get(oc, "it did not confirm them").format(n=va.get("open") or "some")
+                add("citation", "VISION_AUDIT_NOT_CONFIRMED" if kind == "final" else
+                    "VISION_AUDIT_NOT_CONFIRMED_DRAFT", ln,
+                    f"Line {ln} cites {key}. The check of its reading notes did not confirm them: {found}. "
+                    + ("A final deliverable cannot rely on them until that is resolved." if kind == "final" else
+                       "The final check will fail this citation until that is resolved."),
+                    (AUDIT_FIX_LEAD.get(oc, "") + " " + AUDIT_FIX_COMMON).strip(), citekeys=[key])
+            elif va.get("state") == "does_not_match":
+                # report-rules-v6 (S5 settle): the researcher compared a listed reading with its page and recorded
+                #   that it does not match (the latest record of that reading): the notes carry a wrong reading
+                problems += 1
+                add("citation", "VISION_AUDIT_NOT_CONFIRMED" if kind == "final" else
+                    "VISION_AUDIT_NOT_CONFIRMED_DRAFT", ln,
+                    f"Line {ln} cites {key}. The researcher compared the readings its notes took from pictures of PDF "
+                    f"pages with the PDF and recorded that {va.get('open') or 'some'} of them do not match the page, "
+                    "so the notes carry a wrong reading. " + (
+                        "A final deliverable cannot rely on them until that is resolved." if kind == "final" else
+                        "The final check will fail this citation until that is resolved."),
+                    AUDIT_FIX_DOES_NOT_MATCH, citekeys=[key])
         rs = p.get("retraction_status")
         if rs in ("retracted", "expression of concern"):
             problems += 1

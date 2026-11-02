@@ -91,8 +91,11 @@ convention; no overlap statistic is computed.)
 
 1. The reader drafts an answer and a quote per item; a No for missing
    information quotes the section where the information would be.
-2. Each answer is an appraisal claim (`formal-review.md` § Recording checklist
-   answers): guide `amstar2`, item `1` to `16`, answer `Y`, `PY`, `N` or `NA`.
+2. Each answer backed by a quoted passage is an appraisal claim
+   (`formal-review.md` § Recording checklist answers): guide `amstar2`, item
+   `1` to `16`, answer `Y`, `PY`, `N` or `NA`. A No with no passage at all to
+   quote (the review never mentions the item) goes in the card's Appraisal
+   prose with its reason.
 3. The researcher confirms or changes each answer and, using the critical
    items the protocol fixed (§ Items and critical domains), states the overall
    confidence by the rule above, including whether several weaknesses move a

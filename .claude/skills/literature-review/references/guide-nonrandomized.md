@@ -170,10 +170,12 @@ what the paper shows, not its conclusion that trends are parallel.
 2. The reader drafts the target trial, the triage answers, an answer and a
    quote per question and per design check, and an `NI` reason where the paper
    is silent.
-3. Each answer is an appraisal claim (`formal-review.md` § Recording checklist
-   answers): guide `robins-i-v2` or `robins-e`, item = the tool's own question
-   id, or `QD1`… for a design check (DAAF ids, prefixed so they never clash
-   with tool ids), answer on the scale above.
+3. Each answer backed by a quoted passage is an appraisal claim
+   (`formal-review.md` § Recording checklist answers): guide `robins-i-v2` or
+   `robins-e`, item = the tool's own question id, or `QD1`… for a design check
+   (DAAF ids, prefixed so they never clash with tool ids), answer on the scale
+   above. An `NI` answer rests on the paper's silence: it goes in the card's
+   Appraisal prose with its reason, not in a claim.
 4. The researcher decides each domain judgment (and for ROBINS-E the direction
    and threat to conclusions) and the overall judgment, using the rules above;
    the record quotes them.

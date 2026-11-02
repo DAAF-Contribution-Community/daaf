@@ -99,9 +99,12 @@ directly if they are.
    `qed`, `rdd`, `scd`), overall and differential attrition, the baseline
    effect size per outcome and whether the analysis adjusts for it, any
    confounding factor, and for RD each of the five standards.
-3. Each item is an appraisal claim (guide `wwc5`; item, e.g. `baseline-es`,
-   `attrition-overall`, `rdd-continuity`; answer, e.g. `0.12`, `adjusted`,
-   `partial`); numbers go in the claim's `numbers` so they are page-checked.
+3. Each item backed by a quoted passage is an appraisal claim (guide `wwc5`;
+   item, e.g. `baseline-es`, `attrition-overall`, `rdd-continuity`; answer,
+   e.g. `0.12`, `adjusted`, `partial`); numbers go in the claim's `numbers` so
+   they are page-checked. An item the paper does not report (attrition not
+   given, say) goes in the card's Appraisal prose with its reason, not in a
+   claim (`formal-review.md` § Recording checklist answers).
 4. The researcher looks up the attrition boundary, applies the thresholds and
    ceilings above, and states the WWC rating; the record quotes them.
 

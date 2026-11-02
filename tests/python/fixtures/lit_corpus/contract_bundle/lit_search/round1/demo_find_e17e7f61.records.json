@@ -3,7 +3,7 @@
  "tool_version": "synthetic (lit_corpus demo)",
  "command": "find",
  "query": "adult reading clubs",
- "raw_artifact": "demo_find_e38d81b6.json",
+ "raw_artifact": "demo_find_e17e7f61.json",
  "raw_sha256": "3c7a117f9f43aa516e8b8934e95423612c4739d8da00493bf669ad7860244d33",
  "fusion": {
   "version": "fuse-v1"

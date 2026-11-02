@@ -22,8 +22,10 @@ the memo says so.
 
 A memo of one to three pages: the question, what the abstracts report, a short
 ranked list of papers to read first with the reason for each, gaps that seem to
-exist, and a reference list in which every entry has been checked to exist as
-cited. Every statement taken from an abstract carries the label "per abstract".
+exist, and a reference list in which every entry was matched by code to a
+database record and then confirmed by the researcher, who compares each title
+as cited with the title on record. Every statement taken from an abstract
+carries the label "per abstract".
 
 ## Step 1: search plan
 
@@ -81,9 +83,19 @@ label only, never finding markers: nothing in it is a rated finding.
 
 Before a reference appears in the memo:
 
-1. `scholar_search verify` with the title, first author and year; cite only a
-   `CONFIDENT` result, using the DOI `verify` returned (`scholarly-search`
-   § Verify before citing).
+1. `scholar_search verify` with the title, first author and year, using the
+   DOI `verify` returned (`scholarly-search` § Verify before citing). A
+   reference whose automatic check matched the record (`CONFIDENT`) may be
+   cited in the draft memo, but it is not yet confirmed (it waits for a
+   second check): the rule check can be fooled by a one-word change in a
+   title. While no adjudicator
+   model has passed its evaluation, that second check is the researcher's
+   reference glance before the final memo: one list
+   (`lit_corpus adjudications glance-sheet`), one reply, recorded in the
+   researcher's own words with `adjudications record-human`
+   (`lit-corpus.md` § Citation second check). A partial match (`WEAK`) is
+   not cited until the researcher confirms it the same way; a `MISMATCH`,
+   `NOT FOUND` or `EXISTS` result is not cited.
 2. `scholar_search retractions` on every paper the memo cites. A retraction or
    expression of concern is a hard flag: leave the paper out of the pointers,
    or name it as retracted if the researcher needs to know it exists.
@@ -125,10 +137,12 @@ sure we can be about each conclusion.
 ## How this was done
 Searches: {each query, the databases searched, the date}. Screened: {n};
 included as pointers: {n}. Defaults used: {time span, sources, criteria,
-rounds}; any of them can change at the next round. Every reference was checked
-against a bibliographic database to confirm it exists as cited, and checked for
-retractions. AI use: searching, screening and drafting by {model}; reference
-checks by code.
+rounds}; any of them can change at the next round. Every reference was matched
+by code against a bibliographic database record and checked for retractions.
+Before this memo is final, the researcher compares each title as cited with
+the title on record (`reference_glance_v{N}.md`). AI use: searching, screening
+and drafting by {model}; reference matching by code; reference confirmation by
+the researcher.
 
 ## Further reading
 Papers that look relevant but have no abstract on record, so nothing about
@@ -207,12 +221,24 @@ command per Bash call. Flags, inputs and exits: `scholarly-search` for
 8. **Write the memo** under `PROJECT_DIR/output/` (Step 5), citing each paper
    by its citekey from the corpus, with "per abstract" in every citation of a
    paper read from its abstract.
-9. **Check the memo:** `lit_verify report PROJECT_DIR {memo path} --level
-   quick` (`--kind final` on the version the researcher receives). Fix every
-   FAIL; show every NEEDS_REVIEW item to the researcher in plain words. A
-   paper with no abstract on record fails wherever it is cited except as an
-   item under the "Further reading" heading that names its topic, setting or
-   method and never what it found (Step 5); move it there or leave it out.
+9. **Check the draft memo:** `lit_verify report PROJECT_DIR {memo path}
+   --level quick`. Fix every FAIL; show every NEEDS_REVIEW item to the
+   researcher in plain words. A paper with no abstract on record fails
+   wherever it is cited except as an item under the "Further reading" heading
+   that names its topic, setting or method and never what it found (Step 5);
+   move it there or leave it out.
+10. **Reference glance** (Step 4): `lit_corpus adjudications glance-sheet
+    PROJECT_DIR --deliverable {memo path}` writes the list the researcher
+    glances at; their one reply is recorded with `lit_corpus adjudications
+    record-human`, their words verbatim (in the Literature Review mode the
+    orchestrator runs both and shows the list with the memo); then
+    `lit_corpus export-bib PROJECT_DIR` again.
+11. **Final check:** `lit_verify report PROJECT_DIR {memo path} --kind final
+    --level quick` on the memo the researcher saw, right after their reply
+    is recorded and before their approval counts. A FAIL (a reference the
+    reply left out or deferred is still cited, say) needs a new version,
+    checked the same way and shown to the researcher again. Then
+    `lit_corpus manifest PROJECT_DIR --round 1`.
 
 ## What the researcher should check
 
