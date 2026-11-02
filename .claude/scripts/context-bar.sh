@@ -455,13 +455,18 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     # context-reporter.sh and subagent-bar.sh, so all three agree.
     # Native Claude transcripts are unaffected (last entry is already positive,
     # so last-positive == last). `// 0` preserves the fail-open contract.
-    context_length=$(jq -s '
-        [.[] | select(.message.usage and .isSidechain != true and .isApiErrorMessage != true) | (
+    # Line-wise (fromjson?), like the hook: Claude Code appends to the
+    # transcript while the statusline reads it, so a line that is not valid
+    # JSON (such as a partly written last line) is skipped instead of failing
+    # the whole parse. stderr is redirected before stdin, so an unreadable
+    # transcript prints nothing.
+    context_length=$(jq -Rn '
+        [inputs | fromjson? | objects | select(.message.usage and .isSidechain != true and .isApiErrorMessage != true) | (
             (.message.usage.input_tokens // 0) +
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
         )] | map(select(. > 0)) | last // 0
-    ' < "$transcript_path" 2>/dev/null)
+    ' 2>/dev/null < "$transcript_path")
 
     # 20k baseline: conservative default estimate for system prompt, tools, memory,
     # skills, env block, XML framing, and other dynamic context
@@ -924,14 +929,16 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     [[ -n "$branch" ]] && plain_output+=" | 🔀${branch}"
     plain_output+=" | xxxxxxxxxx ${pct}% of ${max_k}k tokens"
     max_len=${#plain_output}
-    last_user_msg=$(jq -rs '
+    # Line-wise like the usage scan above: a line that is not valid JSON is
+    # skipped, and stderr is redirected before stdin.
+    last_user_msg=$(jq -Rnr '
         # Messages to skip (not useful as context)
         def is_unhelpful:
             startswith("[Request interrupted") or
             startswith("[Request cancelled") or
             . == "";
 
-        [.[] | select(.type == "user") |
+        [inputs | fromjson? | objects | select(.type == "user") |
          select(.message.content | type == "string" or
                 (type == "array" and any(.[]; .type == "text")))] |
         reverse |
@@ -941,7 +948,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
             gsub("[[:cntrl:]]"; " ") | gsub("  +"; " ")) |
         map(select(is_unhelpful | not)) |
         first // ""
-    ' < "$transcript_path" 2>/dev/null)
+    ' 2>/dev/null < "$transcript_path")
 
     if [[ -n "$last_user_msg" ]]; then
         if [[ ${#last_user_msg} -gt $max_len ]]; then

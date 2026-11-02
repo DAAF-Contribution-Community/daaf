@@ -342,6 +342,24 @@ JSONL
     assert_output --partial "search-agent"
 }
 
+@test "subagent transcript with a truncated last line still yields its tool count and timestamps" {
+    # The metrics scan is line-wise: the partly written last line is skipped,
+    # so the row keeps the last timestamp's time and the tool count (1).
+    local sid="aaaa1111-2222-3333"
+    local sa_dir="${TRANSCRIPT_DIR}/${sid}/subagents"
+    mkdir -p "$sa_dir"
+    _write_transcript "${sa_dir}/agent-bbbb2222-4444.jsonl"
+    printf '%s' '{"timestamp":"2026-09-23T10:00:09.000Z","message":{"role":"assis' >> "${sa_dir}/agent-bbbb2222-4444.jsonl"
+    printf '%s' '{"agentType":"search-agent"}' > "${sa_dir}/agent-bbbb2222-4444.meta.json"
+
+    _archive "$sid" "$TRANSCRIPT"
+    assert_success
+    run cat "${ARCHIVE_DIR}"/*_aaaa1111_orchestrator.md
+    assert_output --partial "| search-agent | bbbb2222 | 10:00:07 |"
+    # Tool-count cell is 1 (quoted or not); a failed parse would leave 0.
+    [[ "$output" =~ \|\ search-agent\ \|\ bbbb2222\ \|\ [^|]*\|\ [^|]*\|\ \"?1\"?\ \| ]]
+}
+
 @test "subagent with no .meta.json is archived with agent type 'unknown'" {
     local sid="aaaa1111-2222-3333"
     local sa_dir="${TRANSCRIPT_DIR}/${sid}/subagents"

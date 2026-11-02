@@ -2430,3 +2430,248 @@ _assert_effort_suffix_chain() {
 @test "chain: statusline gpt-5.6-sol#high id leaves bare cache; unchanged-transcript hook reports ELEVATED on 919k" {
     _assert_effort_suffix_chain 'gpt-5.6-sol#high'
 }
+
+# =========================================================================
+# Sonnet 5.x and Haiku 5.5: 1M physical window, CONSERVATIVE profile
+# -------------------------------------------------------------------------
+# Claude Code runs Sonnet 5.x (claude-sonnet-5, claude-sonnet-5-5) and Haiku
+# 5.5 with the 1M window by default, with no [1m] suffix (verified 2026-11-02
+# against the Claude Code model-config docs, "Extended context", and the
+# Claude platform model docs). The window arm includes *sonnet-5* and
+# *haiku-5-5*; the profile arm does not, so on 1M the conservative absolute
+# legs fire first: ELEVATED 150k, HIGH 200k, CRITICAL 250k. Sonnet 4.6,
+# Sonnet 4.5 and Haiku 4.5 stay on 200k.
+#
+# Also the subagent model lookup: line-wise, so a partly written last line
+# cannot blank the model (a blank subagent model falls to the SESSION's
+# window); isApiErrorMessage records are skipped; a subagent transcript's
+# model attachment names the model when no record carries a .message.model;
+# the shared model-scan program is byte-identical in both scripts; and an
+# unreadable transcript prints nothing.
+# =========================================================================
+
+# Fixture records for the model-lookup cases.
+_model_attachment_record() {
+    printf '{"type":"attachment","isSidechain":%s,"attachment":{"type":"model","text":"x","identity":{"modelId":"%s"}}}\n' "$2" "$1"
+}
+_usage_only_record() {
+    # An assistant record with usage but no model field. Args: $1 tokens, $2 isSidechain.
+    printf '{"type":"assistant","isSidechain":%s,"message":{"role":"assistant","usage":{"input_tokens":%d,"output_tokens":10}}}\n' "$2" "$1"
+}
+_partial_tail() {
+    # A transcript line cut off mid-write: no closing brace, no newline.
+    printf '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","model":"claude-son' >> "$1"
+}
+
+@test "mixed: claude-sonnet-5 subagent under an Opus 5.5 [1m] session reads 1000k with conservative gates" {
+    local row tokens severity pct
+    for row in "149999 NOMINAL 14" "150000 ELEVATED 15" "160000 ELEVATED 16" \
+               "199999 ELEVATED 19" "200000 HIGH 20" "210000 HIGH 21" \
+               "249999 HIGH 24" "250000 CRITICAL 25" "260000 CRITICAL 26"; do
+        read -r tokens severity pct <<< "$row"
+        _dotted_subagent_fixture "claude-sonnet-5" "$tokens" 'claude-opus-5-5[1m]' 1000000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "[${severity}]: $((tokens / 1000))k / 1000k tokens (${pct}%)"
+    done
+}
+
+@test "mixed: Sonnet 5.5, Haiku 5.5 and dotted provider forms map to 1000k; Sonnet 4.6/4.5 and Haiku 4.5 stay 200k" {
+    local row model expected
+    for row in \
+        'claude-sonnet-5-5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-sonnet-5-1 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-haiku-5-5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'anthropic/claude-sonnet-5.5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'anthropic/claude-haiku-5.5 [NOMINAL]: 100k / 1000k tokens (10%)' \
+        'claude-sonnet-4-6 [ELEVATED]: 100k / 200k tokens (50%)' \
+        'claude-sonnet-4-5 [ELEVATED]: 100k / 200k tokens (50%)' \
+        'claude-haiku-4-5 [ELEVATED]: 100k / 200k tokens (50%)'; do
+        model="${row%% *}"
+        expected="${row#* }"
+        _dotted_subagent_fixture "$model" 100000 'claude-opus-5-5[1m]' 1000000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+        assert_success
+        assert_output --partial "$expected"
+    done
+}
+
+@test "normalize_model_id (reporter copy): dotted Sonnet 5.5 and Haiku 5.5 become hyphenated" {
+    # Load-bearing for Haiku: raw anthropic/claude-haiku-5.5 contains no
+    # "haiku-5-5", so only the normalized id reaches the *haiku-5-5* arm.
+    local fn
+    fn=$(_extract_normalize "$CONTEXT_REPORTER_SH")
+    [ -n "$fn" ]
+    eval "$fn"
+    run normalize_model_id 'anthropic/claude-sonnet-5.5'
+    assert_output 'anthropic/claude-sonnet-5-5'
+    run normalize_model_id 'anthropic/claude-haiku-5.5'
+    assert_output 'anthropic/claude-haiku-5-5'
+}
+
+@test "cross-script: reporter and subagent-bar agree on Sonnet/Haiku windows" {
+    local row model expected rep bar
+    for row in \
+        'claude-sonnet-5 1000000' \
+        'claude-sonnet-5-5 1000000' \
+        'anthropic/claude-sonnet-5-5 1000000' \
+        'claude-haiku-5-5 1000000' \
+        'claude-sonnet-4-6 200000' \
+        'claude-sonnet-4-5 200000' \
+        'claude-sonnet-4-5-20250929 200000' \
+        'claude-haiku-4-5 200000' \
+        'claude-3-5-haiku-20241022 200000'; do
+        read -r model expected <<< "$row"
+        rep=$(_static_window_from "$CONTEXT_REPORTER_SH" "$model")
+        bar=$(_static_window_from "$SUBAGENT_BAR_FOR_LOCKSTEP" "$model")
+        [ "$rep" = "$expected" ] || { echo "reporter $model -> $rep (want $expected)"; return 1; }
+        [ "$bar" = "$expected" ] || { echo "subagent-bar $model -> $bar (want $expected)"; return 1; }
+    done
+}
+
+@test "first report: a truncated last line does not blank the subagent model (Sonnet 4.6 under a 1M session)" {
+    # The subagent's model is on disk, but the last line is mid-write. A
+    # slurping scan fails on the whole file: no model (so the session's 1000k
+    # window) and no usage (no report). The line-wise scan keeps both.
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 100000 'claude-opus-5-5[1m]' 1000000
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    assert_output "claude-sonnet-4-6"
+}
+
+@test "first report: a truncated last line does not blank a Sonnet 5.x subagent model (Sonnet 4.6 session, 200k)" {
+    # Unresolved, the reading would fall to the session's 200k: 160k = 80% CRITICAL.
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-5" 160000 'claude-sonnet-4-6' 200000
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+}
+
+@test "first report: the subagent's model attachment names its model before any assistant record does" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-sonnet-4-6' 200000
+    {
+        printf '{"type":"user","isSidechain":true,"message":{"role":"user","content":"hi"}}\n'
+        _model_attachment_record "claude-sonnet-5" true
+        _usage_only_record 160000 true
+    } > "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    # Without the attachment source: no model, so the session's 200k (80%, CRITICAL).
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    assert_output "claude-sonnet-5"
+}
+
+@test "model attachment plus truncated last line still classifies the subagent" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-sonnet-4-6' 200000
+    {
+        _model_attachment_record "claude-sonnet-5" true
+        _usage_only_record 160000 true
+    } > "$sub"
+    _partial_tail "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 160k / 1000k tokens (16%)"
+}
+
+@test "an assistant .message.model wins over the model attachment" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 1 'claude-opus-5-5[1m]' 1000000
+    {
+        _model_attachment_record "claude-sonnet-5" true
+        printf '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":100000,"output_tokens":10}}}\n'
+    } > "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+}
+
+@test "isApiErrorMessage records do not set the subagent model" {
+    local sub="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    _dotted_subagent_fixture "claude-sonnet-4-6" 100000 'claude-opus-5-5[1m]' 1000000
+    printf '{"type":"assistant","isSidechain":true,"isApiErrorMessage":true,"message":{"role":"assistant","model":"claude-fable-5"}}\n' >> "$sub"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "${TEST_DIR}/main.jsonl")
+    assert_success
+    # Counting the error record would pick claude-fable-5: 1000k, NOMINAL.
+    assert_output --partial "[ELEVATED]: 100k / 200k tokens (50%)"
+}
+
+@test "main transcript: the model attachment is not a session-model source" {
+    # The parent scan does not use the model attachment. With no window cache
+    # and no model cache, an attachment-only main transcript leaves the session
+    # model empty, so the static map's 200k default applies.
+    {
+        _model_attachment_record "claude-sonnet-5" false
+        _usage_only_record 100000 false
+    } > "${TEST_DIR}/t.jsonl"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 200k tokens (50%)"
+}
+
+@test "calculate: a truncated last line on the main transcript still reports the last usage" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5-5[1m]" 300000
+    printf '{"type":"assistant","isSidechain":false,"message":{"model":"claude-op' >> "${TEST_DIR}/t.jsonl"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]: 300k / 1000k tokens (30%)"
+}
+
+# The model-scan program shared with subagent-bar.sh sits between section-sign
+# markers in both files; both write the same model caches, so the block must
+# match byte for byte (indentation and redirect order included).
+_extract_model_scan() {
+    sed -n '/^# §§ MODEL_SCAN_JQ$/,/^# §§ END MODEL_SCAN_JQ$/p' "$1"
+}
+
+@test "lockstep: the model-scan jq block is byte-identical in the reporter and subagent-bar.sh" {
+    local rep bar f
+    rep=$(_extract_model_scan "$CONTEXT_REPORTER_SH")
+    bar=$(_extract_model_scan "$SUBAGENT_BAR_FOR_LOCKSTEP")
+    [ -n "$rep" ]
+    [ -n "$bar" ]
+    [ "$rep" = "$bar" ] || { diff <(printf '%s\n' "$rep") <(printf '%s\n' "$bar"); return 1; }
+    # The block holds the program and its redirect, not just the markers.
+    [[ "$rep" == *'inputs | fromjson? | objects'* ]]
+    [[ "$rep" == *"' 2>/dev/null < \"\$transcript\") || model=\"\""* ]]
+    # Exactly one start and one end marker per file, so a second copy outside
+    # the markers cannot hide behind the checked one.
+    for f in "$CONTEXT_REPORTER_SH" "$SUBAGENT_BAR_FOR_LOCKSTEP"; do
+        run grep -c '^# §§ MODEL_SCAN_JQ$' "$f"
+        assert_output "1"
+        run grep -c '^# §§ END MODEL_SCAN_JQ$' "$f"
+        assert_output "1"
+    done
+}
+
+@test "unreadable subagent transcript: exit 0, nothing on stdout or stderr, no injection" {
+    # Both scans redirect stderr before stdin, so a transcript the hook cannot
+    # open prints no "Permission denied". `run` captures stdout and stderr
+    # together, so an empty output means no injection and no diagnostic.
+    [ "$(id -u)" -ne 0 ] || skip "root can read a mode-000 file"
+    local parent="${SCRATCH_DIR}/main.jsonl"
+    local sub="${SCRATCH_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    local readable=1
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "$sub" "claude-sonnet-4-6" 100000
+    printf 'claude-opus-5-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _seed_window 1000000
+    chmod 000 "$sub"
+    [ -r "$sub" ] || readable=0
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    # Restore the mode before any assertion, so the fixture never outlives the
+    # test unreadable; teardown's rm -rf of SCRATCH_DIR then removes it.
+    chmod 600 "$sub"
+    [ "$readable" -eq 0 ]
+    assert_success
+    assert_output ""
+}

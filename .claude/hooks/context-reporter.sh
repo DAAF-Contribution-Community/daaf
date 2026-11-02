@@ -42,7 +42,10 @@
 #   rescanning unchanged files. When a transcript has changed, the model and
 #   usage are recovered from a full scan of the JSONL (last non-synthetic model,
 #   last positive usage sum) so a long run of trailing zero-token shim
-#   placeholders cannot hide the real values.
+#   placeholders cannot hide the real values. Both scans parse line by line
+#   (jq -Rn, inputs | fromjson?) and skip any line that is not a complete JSON
+#   object, because Claude Code appends to the transcript while hooks read it:
+#   a single partly written last line must not hide every record before it.
 #
 # Subagent support:
 #   settings.json PreToolUse hooks also fire for tool calls made BY subagents.
@@ -91,9 +94,11 @@
 #   broad GPT 5.6 family and the GPT-6 flagships (Astra, Sol, Luna) each map
 #   to a 1.05M physical window on API/OpenRouter routes, while the matched
 #   ChatGPT-subscription/Codex lane is capped at 919k for accounting (see the
-#   lane-cap block below). Likewise, claude-opus-4-8[1m] AND Opus 5
-#   (claude-opus-5, bare and [1m]) have 1M physical windows but keep the
-#   conservative profile.
+#   lane-cap block below). Likewise, claude-opus-4-8[1m], Opus 5
+#   (claude-opus-5, bare and [1m]), Sonnet 5.x (claude-sonnet-5,
+#   claude-sonnet-5-5) and Haiku 5.5 (claude-haiku-5-5) have 1M physical
+#   windows but keep the conservative profile; on a 1M window its absolute
+#   legs fire first (ELEVATED 150k, HIGH 200k, CRITICAL 250k).
 #   Opus 5.5 (claude-opus-5-5, bare and [1m]) is the ONE Opus exception (see
 #   POLICY ADMISSIONS). Every other Opus model, bare Opus 5 included, stays
 #   conservative: the profile arm names claude-opus-5-5 exactly (bare or as a
@@ -158,12 +163,29 @@ transcript_signature() {
 # invocation. When called with an empty transcript (e.g. the parent transcript
 # is unavailable in the direct-subagent branch) it returns the cached value
 # without scanning or writing.
+# The scan is line-wise and skips lines that are not valid JSON objects and
+# isApiErrorMessage records, so a partly written last line cannot blank the
+# model (an empty subagent model would send the reading to the SESSION's
+# window). stderr is redirected before stdin, so an unreadable transcript
+# prints no "Permission denied". The block between the section-sign markers
+# is kept BYTE-IDENTICAL with resolve_model_cache in
+# .claude/scripts/subagent-bar.sh, which writes the same caches (lockstep test
+# in tests/bash/context_reporter.bats). $3 = include_attachment (true/false,
+# default false): true only for a subagent's OWN transcript. Then, if no
+# record carries a .message.model yet, the model attachment Claude Code
+# writes at the top of a subagent transcript ({"type":"attachment",
+# "attachment":{"type":"model","identity":{"modelId":...}}}, observed
+# 2026-11-02, Claude Code 2.1.281) supplies it. A .message.model always wins
+# over the attachment.
 resolve_model_cache() {
     local transcript="${1:-}"
     local cache="${2:-}"
+    local include_attachment="${3:-false}"
     local signature_cache="${cache}.transcript-signature"
     local signature="" cached_signature="" cached_model="" model=""
     local model_tmp="${cache}.tmp.$$" signature_tmp="${signature_cache}.tmp.$$"
+
+    [[ "$include_attachment" == "true" ]] || include_attachment=false
 
     [[ -n "$cache" ]] || return 0
     [[ -s "$cache" ]] && cached_model=$(cat "$cache" 2>/dev/null)
@@ -176,10 +198,21 @@ resolve_model_cache() {
     fi
 
     if [[ -n "$transcript" && -f "$transcript" ]]; then
-        model=$(jq -rs '
-            [.[] | (.message.model // empty)
-             | select(. != "" and . != "<synthetic>")] | last // empty
-        ' < "$transcript" 2>/dev/null) || model=""
+# §§ MODEL_SCAN_JQ
+        model=$(jq -Rnr --argjson attach "$include_attachment" '
+            [inputs | fromjson? | objects | select(.isApiErrorMessage != true)
+             | ((.message? | objects | .model? | strings | {src: "message", id: .}),
+                (if $attach and .type? == "attachment" then
+                     .attachment? | objects | select(.type? == "model")
+                     | .identity? | objects | .modelId? | strings
+                     | {src: "attachment", id: .}
+                 else empty end))
+             | select(.id != "" and .id != "<synthetic>")] as $hits
+            | ([$hits[] | select(.src == "message") | .id] | last)
+              // ([$hits[] | select(.src == "attachment") | .id] | last)
+              // empty
+        ' 2>/dev/null < "$transcript") || model=""
+# §§ END MODEL_SCAN_JQ
     fi
     [[ -z "$model" ]] && model="$cached_model"
 
@@ -385,7 +418,9 @@ SESSION_MODEL=$(normalize_model_id "$SESSION_MODEL")
 AGENT_MODEL=""
 if [[ -n "$AGENT_ID" ]]; then
     AGENT_MODEL_CACHE="${reporter_cache_dir}/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
-    AGENT_MODEL=$(resolve_model_cache "$MEASURE_TRANSCRIPT" "$AGENT_MODEL_CACHE")
+    # include_attachment=true: the subagent's own transcript names its model in
+    # a model attachment before its first assistant record is readable.
+    AGENT_MODEL=$(resolve_model_cache "$MEASURE_TRANSCRIPT" "$AGENT_MODEL_CACHE" true)
     AGENT_MODEL=$(normalize_model_id "$AGENT_MODEL")
     MEASURE_MODEL="$AGENT_MODEL"
 else
@@ -469,8 +504,19 @@ static_window_for_model() {
                     # substring is acceptable HERE and not in the profile arm
                     # below: mapping a physical window is descriptive, not a
                     # privilege grant.
+                    # Sonnet 5.x (*sonnet-5*: claude-sonnet-5,
+                    # claude-sonnet-5-5) and Haiku 5.5 (*haiku-5-5*) also run
+                    # with the 1M window by default, with no [1m] suffix
+                    # (verified 2026-11-02 against the Claude Code docs,
+                    # model-config "Extended context", and the Claude platform
+                    # model docs). Neither glob matches a 200k model:
+                    # claude-sonnet-4-5, claude-sonnet-4-6 and claude-haiku-4-5
+                    # contain no "sonnet-5" or "haiku-5-5". A later major
+                    # version (claude-sonnet-6) matches neither and needs its
+                    # own arm. Window only: both stay on the CONSERVATIVE
+                    # profile in calculate().
                     case "$model" in
-                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*\[1m\]*)
+                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*sonnet-5*|*haiku-5-5*|*\[1m\]*)
                             window=1000000 ;;
                         *) window=200000 ;;
                     esac
@@ -482,8 +528,8 @@ static_window_for_model() {
 }
 
 # Physical window resolution (denominator), in precedence order:
-#   1. DIFFERENT-model subagent: always the static map for ITS model. A sonnet
-#      subagent inside a 1M fable session has 200k — its severity must be
+#   1. DIFFERENT-model subagent: always the static map for ITS model. A Sonnet
+#      4.6 subagent inside a 1M fable session has 200k — its severity must be
 #      computed against 200k, or HIGH/CRITICAL fire far too late. When
 #      SESSION_MODEL is empty (no parent cache) and AGENT_MODEL is set, they
 #      differ, so this arm still runs and never assumes same-model.
@@ -565,9 +611,13 @@ calculate() {
     # POSITIVE sum. Shim-routed transcripts can end with zero-token streaming
     # placeholders; native Claude transcripts are unchanged by last-positive.
     # Full-transcript scan via `< "$transcript"` (the -f guard
-    # above keeps a missing/binary file fail-open).
-    tokens=$(jq -s --argjson allow_sidechain "$allow_sidechain" '
-        [.[] | select(
+    # above keeps a missing/binary file fail-open). Line-wise, like the model
+    # scan: a line that is not valid JSON (such as a partly written last line)
+    # is skipped instead of failing the whole parse and suppressing the report.
+    # stderr is redirected before stdin, so an unreadable transcript prints no
+    # "Permission denied".
+    tokens=$(jq -Rn --argjson allow_sidechain "$allow_sidechain" '
+        [inputs | fromjson? | objects | select(
             .message.usage and
             ((.isSidechain != true) or $allow_sidechain) and
             .isApiErrorMessage != true
@@ -576,7 +626,7 @@ calculate() {
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
         )] | map(select(. > 0)) | last // 0
-    ' < "$transcript" 2>/dev/null) || tokens=0
+    ' 2>/dev/null < "$transcript") || tokens=0
 
     # Bound the numerator before tokens*100 so a huge (but
     # jq-emitted, int64-valid) value cannot overflow signed-64 and wrap pct

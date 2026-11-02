@@ -1562,16 +1562,16 @@ _measured_payload() {
 # (then 30/40/50% + 300/400/500k; 40/50/60% + 400/500/600k since the
 # 2026-10-23 user policy decision), by USER POLICY DECISION of 2026-09-23 (not by
 # validation)
-# (research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
+# (maintainer-only record, not shipped:
+# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
 # § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
 # as a provider path's final segment), NEVER *opus-5* and never a loose
 # *opus-5-5* substring: bare
 # Opus 5 must keep the conservative gates, which the last two cases lock, and
 # near misses are locked by the boundary-anchoring block appended below.
 # Lockstep twin of the Opus 5.5 block in tests/bash/context_reporter.bats
-# (whose profile cases needed the user-applied
-# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/context-reporter_opus55.patch,
-# now deployed; this suite's script under test is agent-editable and carried
+# (whose profile cases needed a user-applied hook patch, now deployed; this
+# suite's script under test is agent-editable and carried
 # both glob changes from the start, so every case here was green throughout).
 # =========================================================================
 
@@ -1713,7 +1713,8 @@ _measured_payload() {
 # its non-pro base; gpt-6-sol reads as gpt-5.6-sol (1.05M window + extended
 # tier); gpt-6-luna reads as gpt-5.6-luna (1.05M window, conservative tier);
 # gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
-# Provenance: research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames.
+# Provenance (maintainer-only record, not shipped:
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames).
 #
 # These cases use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (_iso_* helpers above),
 # like every test in this file (see setup()), so no fixture touches the shared
@@ -2290,4 +2291,172 @@ _claude_extended_row_matrix() {
         "500000 HIGH 25" \
         "599999 HIGH 29" \
         "600000 CRITICAL 30"
+}
+
+# =========================================================================
+# Sonnet 5.x and Haiku 5.5: 1M physical window, CONSERVATIVE profile
+# -------------------------------------------------------------------------
+# Claude Code runs Sonnet 5.x (claude-sonnet-5, claude-sonnet-5-5) and Haiku
+# 5.5 with the 1M window by default, with no [1m] suffix (verified 2026-11-02
+# against the Claude Code model-config docs, "Extended context", and the
+# Claude platform model docs). The window arm includes *sonnet-5* and
+# *haiku-5-5*; the quality profile arm does not, so on 1M the conservative
+# absolute legs fire first: ELEVATED 150k, HIGH 200k, CRITICAL 250k. Sonnet
+# 4.6, Sonnet 4.5 and Haiku 4.5 stay on 200k. The reporter-vs-subagent-bar
+# window agreement for these ids, and the byte-identity lockstep of the
+# shared model-scan block, are in tests/bash/context_reporter.bats.
+#
+# Also the child model lookup: line-wise (a partly written last line is
+# skipped), and a child transcript's model attachment names the model when no
+# record carries a .message.model yet.
+# =========================================================================
+
+# Fixture: a fresh Opus 5.5 [1m] session (1M window) with a different-model row.
+_iso_opus55_row_fixture() {
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model 'claude-opus-5-5[1m]'
+    _iso_seed_window 1000000
+    _iso_seed_task_model "t1" "$1"
+}
+
+_subbar_child_transcript() { printf '%s' "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${1}.jsonl"; }
+
+_subbar_model_attachment() {
+    # Append a model attachment record. Args: $1 task id, $2 model id.
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    printf '{"type":"attachment","isSidechain":true,"attachment":{"type":"model","text":"x","identity":{"modelId":"%s"}}}\n' \
+        "$2" >> "$(_subbar_child_transcript "$1")"
+}
+
+_subbar_partial_tail() {
+    # A transcript line cut off mid-write: no closing brace, no newline.
+    printf '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","model":"claude-son' \
+        >> "$(_subbar_child_transcript "$1")"
+}
+
+@test "claude-sonnet-5 row under an Opus 5.5 [1m] session reads 1M with conservative gates" {
+    local row tokens severity pct
+    for row in "149999 NOMINAL 14" "150000 ELEVATED 15" "160000 ELEVATED 16" \
+               "199999 ELEVATED 19" "200000 HIGH 20" "210000 HIGH 21" \
+               "249999 HIGH 24" "250000 CRITICAL 25" "260000 CRITICAL 26"; do
+        read -r tokens severity pct <<< "$row"
+        _iso_opus55_row_fixture "claude-sonnet-5"
+        run _iso_row t1 "$tokens"
+        assert_success
+        assert_output --partial "$(_color_for "$severity")"
+        assert_output --partial "m${pct}%"
+    done
+}
+
+@test "Sonnet 5.5, Haiku 5.5 and dotted provider rows map to 1M; Sonnet 4.6/4.5 and Haiku 4.5 rows stay 200k" {
+    local row model pct
+    for row in \
+        'claude-sonnet-5-5 10' \
+        'claude-sonnet-5-1 10' \
+        'claude-haiku-5-5 10' \
+        'anthropic/claude-sonnet-5.5 10' \
+        'anthropic/claude-haiku-5.5 10' \
+        'claude-sonnet-4-6 50' \
+        'claude-sonnet-4-5 50' \
+        'claude-haiku-4-5 50'; do
+        read -r model pct <<< "$row"
+        _iso_opus55_row_fixture "$model"
+        run _iso_row t1 100000
+        assert_success
+        assert_output --partial "m${pct}%"
+        # 100k is NOMINAL on 1M (10%) and ELEVATED on 200k (50%).
+        if [ "$pct" = 10 ]; then
+            assert_output --partial "$COLOR_NOMINAL"
+        else
+            assert_output --partial "$COLOR_ELEVATED"
+        fi
+    done
+}
+
+@test "child model: a truncated last line does not blank the row model" {
+    # Sonnet 4.6 session (200k). Unresolved, the row would use the session's
+    # 200k: 160k = 80%, CRITICAL. Resolved as claude-sonnet-5: 1M, 16%, ELEVATED.
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model 'claude-sonnet-4-6'
+    _iso_seed_window 200000
+    _write_subbar_task_model t1 'claude-sonnet-5'
+    _subbar_partial_tail t1
+    run _iso_row t1 160000
+    assert_success
+    assert_output --partial "m16%"
+    assert_output --partial "$COLOR_ELEVATED"
+    run cat "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-t1"
+    assert_output 'claude-sonnet-5'
+}
+
+@test "child model: the model attachment names the row model before any assistant record does" {
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model 'claude-sonnet-4-6'
+    _iso_seed_window 200000
+    _subbar_model_attachment t1 'claude-sonnet-5'
+    _subbar_partial_tail t1
+    run _iso_row t1 160000
+    assert_success
+    # Without the attachment source: session 200k, 80%, CRITICAL.
+    assert_output --partial "m16%"
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "(sonnet-5)"
+    run cat "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-t1"
+    assert_output 'claude-sonnet-5'
+}
+
+@test "child model: an assistant .message.model wins over the model attachment" {
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model 'claude-opus-5-5[1m]'
+    _iso_seed_window 1000000
+    _subbar_model_attachment t1 'claude-sonnet-5'
+    _append_subbar_model "$(_subbar_child_transcript t1)" 'claude-sonnet-4-6' true
+    run _iso_row t1 100000
+    assert_success
+    assert_output --partial "m50%"
+    assert_output --partial "(sonnet-4-6)"
+}
+
+@test "main transcript: the model attachment is not a session-model source" {
+    # The session scan does not use the model attachment. An attachment-only
+    # main transcript leaves the session model empty, so a claude-sonnet-5 row
+    # differs from it and maps by its own model (1M), not the 200k session cache.
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_window 200000
+    printf '{"type":"attachment","isSidechain":false,"attachment":{"type":"model","identity":{"modelId":"claude-sonnet-5"}}}\n' \
+        > "${TEST_DIR}/main.jsonl"
+    _write_subbar_task_model t1 'claude-sonnet-5'
+    run _iso_row t1 160000
+    assert_success
+    assert_output --partial "m16%"
+    run test -e "$(_iso_cache)/claude-model-${FAKE_SESSION}"
+    assert_failure
+}
+
+@test "generic zero fallback: a truncated last line does not zero the row reading" {
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model 'claude-sonnet-4-6'
+    _iso_seed_window 200000
+    _write_subbar_task_model t1 'claude-sonnet-4-6'
+    _append_subbar_usage t1 100000
+    _subbar_partial_tail t1
+    run _iso_row t1 0
+    assert_success
+    assert_output --partial "100k"
+    assert_output --partial "m50%"
+}
+
+@test "model-scan block: start/end markers each appear exactly once" {
+    # The block between the markers is byte-identical with the hook's copy
+    # (lockstep test in tests/bash/context_reporter.bats); one marker pair and
+    # one jq model-scan invocation keep a second copy from hiding beside it.
+    run grep -c '^# §§ MODEL_SCAN_JQ$' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
+    run grep -c '^# §§ END MODEL_SCAN_JQ$' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
+    run grep -c 'model=$(jq -Rnr --argjson attach' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
 }

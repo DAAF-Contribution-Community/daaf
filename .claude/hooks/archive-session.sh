@@ -334,16 +334,22 @@ JQEOF
                         SA_TYPE="unknown"
                     fi
 
-                    # Extract metrics from transcript in a single jq invocation
+                    # Extract metrics from transcript in a single jq invocation.
+                    # Line-wise (fromjson?): a line that is not valid JSON, such
+                    # as a partly written last line, is skipped instead of
+                    # failing the whole parse and zeroing every metric. stderr
+                    # is redirected before stdin, so an unreadable transcript
+                    # prints nothing.
                     mapfile -t _sa_metrics < <(
-                        jq -s '
+                        jq -Rn '
                             def tool_count: [.[].message.content[]? | select(.type == "tool_use")] | length;
                             def first_ts: [.[].timestamp // null | select(. != null)] | first // "";
                             def last_ts: [.[].timestamp // null | select(. != null)] | last // "";
+                            [inputs | fromjson? | objects] |
                             (tool_count | tostring),
                             first_ts,
                             last_ts
-                        ' "$SA_JSONL" 2>/dev/null
+                        ' 2>/dev/null < "$SA_JSONL"
                     )
                     SA_TOOLS="${_sa_metrics[0]:-0}"
                     SA_FIRST_TS="${_sa_metrics[1]:-}"

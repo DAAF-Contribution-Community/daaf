@@ -141,12 +141,24 @@ transcript_signature() {
 # nonempty, non-synthetic model. Both files are replaced through same-directory
 # temporary siblings, with the signature moved last so interrupted writes force
 # a safe refresh on the next invocation.
+# The block between the section-sign markers is kept BYTE-IDENTICAL with
+# resolve_model_cache in .claude/hooks/context-reporter.sh, which writes the
+# same caches (lockstep test in tests/bash/context_reporter.bats).
+# $3 = include_attachment (true/false, default false): true only for a
+# subagent's OWN transcript. Then, if no record carries a .message.model yet,
+# the model attachment Claude Code writes at the top of a subagent transcript
+# ({"type":"attachment","attachment":{"type":"model",
+# "identity":{"modelId":...}}}, observed 2026-11-02, Claude Code 2.1.281)
+# supplies it. A .message.model always wins over the attachment.
 resolve_model_cache() {
     local transcript="${1:-}"
     local cache="${2:-}"
+    local include_attachment="${3:-false}"
     local signature_cache="${cache}.transcript-signature"
     local signature="" cached_signature="" cached_model="" model=""
     local model_tmp="${cache}.tmp.$$" signature_tmp="${signature_cache}.tmp.$$"
+
+    [[ "$include_attachment" == "true" ]] || include_attachment=false
 
     [[ -n "$cache" ]] || return 0
     [[ -s "$cache" ]] && cached_model=$(cat "$cache" 2>/dev/null)
@@ -162,12 +174,24 @@ resolve_model_cache() {
         # Full-transcript scan: no `tail -n 50` bound, so more than
         # 50 trailing synthetic/placeholder model entries cannot hide the last
         # real model. The `< "$transcript"` redirect keeps a missing/binary file
-        # fail-open, mirroring context-bar.sh's recovery idiom.
-        model=$(jq -Rnr '
+        # fail-open, mirroring context-bar.sh's recovery idiom. Line-wise
+        # (fromjson?), so a line that is not valid JSON (such as a partly
+        # written last line) is skipped rather than failing the whole scan.
+# §§ MODEL_SCAN_JQ
+        model=$(jq -Rnr --argjson attach "$include_attachment" '
             [inputs | fromjson? | objects | select(.isApiErrorMessage != true)
-             | .message? | objects | .model? | strings
-             | select(. != "" and . != "<synthetic>")] | last // empty
+             | ((.message? | objects | .model? | strings | {src: "message", id: .}),
+                (if $attach and .type? == "attachment" then
+                     .attachment? | objects | select(.type? == "model")
+                     | .identity? | objects | .modelId? | strings
+                     | {src: "attachment", id: .}
+                 else empty end))
+             | select(.id != "" and .id != "<synthetic>")] as $hits
+            | ([$hits[] | select(.src == "message") | .id] | last)
+              // ([$hits[] | select(.src == "attachment") | .id] | last)
+              // empty
         ' 2>/dev/null < "$transcript") || model=""
+# §§ END MODEL_SCAN_JQ
     fi
     [[ -z "$model" ]] && model="$cached_model"
 
@@ -379,15 +403,15 @@ gpt_prev_chat_re='^gpt-5(\.2)?-chat(\[1m\])?$'
 # pass the normalize_model_id form, so provider-dotted Claude ids reach the
 # Claude arms hyphenated; exact z-ai/glm-5.2 and only terminal -YYYYMMDD
 # snapshots map to 1,048,576; native 1M Claude models (Fable/Mythos 5, Opus
-# 4.7/4.8, Opus 5) and generic [1m]-suffixed Claude ids map to 1,000,000; all
-# other models map to 200,000. This broad physical-window map is separate from
-# the quality-tier selector in the row loop. Re-verify after Claude Code /
-# provider updates. OUTPUT-consistent (not byte-identical — the code shape
-# differs) with context-reporter.sh's function of the same name: the GPT EREs
-# and the flagship-family pre-filter glob are copied verbatim, so every
-# flagship/mini/chat id and every malformed flagship-family id maps to the
-# same window in both (and in context-bar.sh's static map; cross-script
-# agreement tests in tests/bash/subagent_bar.bats and
+# 4.7/4.8, Opus 5, Sonnet 5.x, Haiku 5.5) and generic [1m]-suffixed Claude ids
+# map to 1,000,000; all other models map to 200,000. This broad physical-window
+# map is separate from the quality-tier selector in the row loop. Re-verify
+# after Claude Code / provider updates. OUTPUT-consistent (not byte-identical —
+# the code shape differs) with context-reporter.sh's function of the same
+# name: the GPT EREs and the flagship-family pre-filter glob are copied
+# verbatim, so every flagship/mini/chat id and every malformed flagship-family
+# id maps to the same window in both (and in context-bar.sh's static map;
+# cross-script agreement tests in tests/bash/subagent_bar.bats and
 # tests/bash/context_reporter.bats). One KNOWN, pre-existing difference is
 # deliberately left as is: malformed gpt-5 / gpt-5.2-family spellings
 # (e.g. gpt-5-pro) map to 200k here via the anchored prev EREs (1M if the id
@@ -406,6 +430,14 @@ gpt_prev_chat_re='^gpt-5(\.2)?-chat(\[1m\])?$'
 # explicit `*opus-5-5*` arm below changes no behavior. It is there for
 # auditability: the implicit match is correct only by coincidence (it happens to
 # be right because 5.5 is genuinely 1M), and the next Opus generation may not be.
+# Sonnet 5.x (*sonnet-5*: claude-sonnet-5, claude-sonnet-5-5) and Haiku 5.5
+# (*haiku-5-5*) also run with the 1M window by default, with no [1m] suffix
+# (verified 2026-11-02 against the Claude Code docs, model-config
+# "Extended context", and the Claude platform model docs). Neither glob
+# matches a 200k model: claude-sonnet-4-5, claude-sonnet-4-6 and
+# claude-haiku-4-5 contain no "sonnet-5" or "haiku-5-5". A later major version
+# (claude-sonnet-6) matches neither and needs its own arm. Window only: both
+# stay on the CONSERVATIVE quality profile in the row loop.
 static_window_for_model() {
     local model="${1:-}"
     local slug="${model##*/}"
@@ -444,7 +476,7 @@ static_window_for_model() {
                         window=200000 ;;
                     *)
                         case "$model" in
-                            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*\[1m\]*)
+                            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*sonnet-5*|*haiku-5-5*|*\[1m\]*)
                                 window=1000000 ;;
                             *) window=200000 ;;
                         esac
@@ -493,7 +525,9 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     [[ -n "$session_id" ]] && model_cache="${cache_dir}/claude-subagent-model-${session_id}-${id}"
     [[ -n "$subagents_dir" ]] && task_transcript="${subagents_dir}/agent-${id}.jsonl"
     if [[ -n "$model_cache" ]]; then
-        task_model=$(resolve_model_cache "$task_transcript" "$model_cache")
+        # include_attachment=true: the child's own transcript names its model in
+        # a model attachment before its first assistant record is readable.
+        task_model=$(resolve_model_cache "$task_transcript" "$model_cache" true)
     fi
 
     # This source-selection grammar is separate from physical capacity and
@@ -552,8 +586,9 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
         fi
     elif [[ "$tokens" == "0" && -n "$task_transcript" && -f "$task_transcript" ]]; then
         # Preserve the legacy generic zero-count fallback for unrelated rows.
-        tokens=$(jq -s '
-            [.[] | select(.message.usage and .isApiErrorMessage != true) | (
+        # Line-wise, so a partly written last line does not zero the reading.
+        tokens=$(jq -Rn '
+            [inputs | fromjson? | objects | select(.message.usage and .isApiErrorMessage != true) | (
                 (.message.usage.input_tokens // 0) +
                 (.message.usage.cache_read_input_tokens // 0) +
                 (.message.usage.cache_creation_input_tokens // 0)

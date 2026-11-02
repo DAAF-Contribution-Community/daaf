@@ -1262,8 +1262,9 @@ JSON
 
 # -------------------------------------------------------------------------
 # O3: the transcript token-sum jq must suppress stderr (idiom parity with the
-# ctx-window write at the sibling site). A corrupt transcript makes jq emit a
-# parse error; without 2>/dev/null it leaks into the statusline display stream.
+# ctx-window write at the sibling site). The scan skips lines that are not valid
+# JSON, but any jq diagnostic (e.g. a record of the wrong shape) must still be
+# kept off the statusline display stream by 2>/dev/null.
 # The value path stays fail-open (// 0 + canonical-decimal guard), so the bar
 # still renders against the resolved window.
 # -------------------------------------------------------------------------
@@ -1943,4 +1944,63 @@ MOCK_BAD_CURL
     # C1 removed: the two halves of the branch name join; no raw c2 9b bytes.
     assert_output --partial "🔀brinj"
     refute_output --partial "$(printf '\302\233')"
+}
+
+# =========================================================================
+# Transcript scans are line-wise
+# -------------------------------------------------------------------------
+# Claude Code appends to the transcript while the statusline reads it. The
+# usage scan and the last-user-message scan parse line by line, so a line that
+# is not valid JSON (such as a partly written last line) is skipped instead of
+# failing the whole parse; and stderr is redirected before stdin, so an
+# unreadable transcript prints nothing. Fixtures live in SCRATCH_DIR.
+# =========================================================================
+
+# Payload naming a transcript. Args: $1 model id, $2 transcript path, $3 window.
+_payload_transcript() {
+    printf '{"model":{"id":"%s","display_name":"%s"},"cwd":"%s","transcript_path":"%s","session_id":"%s","context_window":{"context_window_size":%s}}' \
+        "$1" "$1" "$TEST_DIR" "$2" "$FAKE_SESSION" "${3:-200000}"
+}
+
+# A main-chain transcript: one user message, one assistant record with
+# 100,000 input tokens, then a line cut off mid-write (no closing brace).
+_write_truncated_transcript() {
+    {
+        printf '{"type":"user","isSidechain":false,"message":{"role":"user","content":"hello from the user"}}\n'
+        printf '{"type":"assistant","isSidechain":false,"message":{"role":"assistant","model":"claude-sonnet-4-6","usage":{"input_tokens":50000,"cache_read_input_tokens":50000,"cache_creation_input_tokens":0,"output_tokens":10}}}\n'
+        printf '{"type":"assistant","isSidechain":false,"message":{"role":"assistant","model":"claude-son'
+    } > "$1"
+}
+
+@test "transcript: a truncated last line still yields the last usage on the bar" {
+    local transcript="${SCRATCH_DIR}/t.jsonl"
+    _write_truncated_transcript "$transcript"
+    run bash "$CONTEXT_BAR_SH" < <(_payload_transcript "claude-sonnet-4-6" "$transcript" 200000)
+    assert_success
+    # 100,000 of 200,000; a failed parse would show the ~10% baseline estimate.
+    assert_output --partial "50% of 200k tokens"
+    refute_output --partial "~10% of 200k tokens"
+}
+
+@test "transcript: the last user message still resolves with a truncated last line" {
+    local transcript="${SCRATCH_DIR}/t.jsonl"
+    _write_truncated_transcript "$transcript"
+    run bash "$CONTEXT_BAR_SH" < <(_payload_transcript "claude-sonnet-4-6" "$transcript" 200000)
+    assert_success
+    assert_output --partial "💬 hello from the user"
+}
+
+@test "transcript: an unreadable transcript prints no read diagnostic" {
+    [ "$(id -u)" -ne 0 ] || skip "root can read a mode-000 file"
+    local transcript="${SCRATCH_DIR}/t.jsonl" readable=1
+    _write_truncated_transcript "$transcript"
+    chmod 000 "$transcript"
+    [ -r "$transcript" ] || readable=0
+    run bash "$CONTEXT_BAR_SH" < <(_payload_transcript "claude-sonnet-4-6" "$transcript" 200000)
+    # Restore the mode before any assertion; teardown removes SCRATCH_DIR.
+    chmod 600 "$transcript"
+    [ "$readable" -eq 0 ]
+    assert_success
+    refute_output --partial "Permission denied"
+    refute_output --partial "💬"
 }
