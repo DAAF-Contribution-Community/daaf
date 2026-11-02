@@ -513,10 +513,15 @@ def _crash_result(tier: str, label: str, exc: BaseException) -> ProbeResult:
                    output="\n".join(scrub_secret_values(tb).splitlines()[-40:]))
     r.hint = ("A harness exception, not a deployment verdict: the traceback names the failing "
               "line in scripts/deploy_smoke/. Fix the harness, then re-run the tier.")
+    # An interrupt is not a harness defect either: Ctrl+C gets the same
+    # re-run advice as SIGTERM/SIGHUP, never "Fix the harness".
     if isinstance(exc, TerminationSignal):
         r.hint = (f"Not a deployment verdict: the run received {exc.signame} (a closed terminal, `timeout`, "
                   "`kill` or a CI cancellation) and stopped; probes that had started were cleaned up. "
                   "Re-run the tiers that did not finish.")
+    elif isinstance(exc, KeyboardInterrupt):
+        r.hint = ("Not a deployment verdict: the run received SIGINT (Ctrl+C) and stopped; probes that had "
+                  "started were cleaned up. Re-run the tiers that did not finish.")
     return r
 
 

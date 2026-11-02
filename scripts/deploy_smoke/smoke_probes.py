@@ -37,6 +37,7 @@ benchmarks/harness/ — NOT the sequential no-functions research-script style.
 
 import json
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -456,14 +457,28 @@ def find_transcript(session_id: str):
     """Locate a session transcript, archived-or-live, mirroring
     benchmarks/scorers/deterministic/checkpoint_adherence.py:find_benchmark_transcript.
     Archived (clean exit) is checked first, then the live projects file (survives
-    timeouts / no archive-hook fire)."""
+    timeouts / no archive-hook fire).
+
+    A resumed session (T3.2 resumes T3.1's) appends to the live file, while its
+    archive is the copy archive-session.sh made at the last SessionEnd that
+    completed, replaced only when the live file has grown. Until the resumed
+    call's SessionEnd archive lands (or if it never does: a timeout kill, a
+    hook that does not finish), the archive holds the earlier calls only. So
+    when the live file is larger than the archive, the live file is returned:
+    the live file only grows, and size is the hook's own completeness test.
+    An OSError while comparing keeps the archive."""
     sessions_dir = Path(BASE_DIR) / ".claude" / "logs" / "sessions"
     projects_dir = Path.home() / ".claude" / "projects" / _PROJECT_SLUG
+    live = projects_dir / f"{session_id}.jsonl"
     if sessions_dir.exists():
         short = session_id[:8]
         for p in sessions_dir.glob(f"*_{short}_orchestrator.jsonl"):
+            try:
+                if live.exists() and live.stat().st_size > p.stat().st_size:
+                    return live
+            except OSError:
+                pass
             return p
-    live = projects_dir / f"{session_id}.jsonl"
     if live.exists():
         return live
     return None
@@ -472,21 +487,42 @@ def find_transcript(session_id: str):
 def find_subagent_transcripts(session_id: str):
     """Return subagent transcript paths for a session, if any.
 
-    Subagent transcripts live beside the main transcript under
+    Live subagent transcripts sit beside the main transcript under
     <projects>/<slug>/<session_id>/subagents/agent-<id>.jsonl (per subagent-bar.sh's
     sidecar contract, where <slug> is the BASE_DIR-derived _PROJECT_SLUG, e.g.
-    "-daaf" for /daaf) — best-effort, fail-open to an empty list. An OSError
-    from the lookup (an unreadable session folder: Path.exists() re-raises
-    EACCES) also returns [], so a folder the harness cannot read never crashes
-    a tier (smoke_package.locate_transcripts guards its own call the same way)."""
+    "-daaf" for /daaf); they are returned when that folder holds any. Otherwise
+    (no folder, an empty one, or one that cannot be read) the SessionEnd
+    archive copies are returned, as smoke_package.locate_transcripts falls back
+    to them: archive-session.sh writes
+    .claude/logs/sessions/<date>_<time>_<sid8>_subagent_<id8>.jsonl. They are
+    de-duplicated by <id8>, keeping the newest timestamp prefix, so a second
+    archive set for the session never counts a subagent twice.
+
+    Best-effort and fail-open: an OSError from either lookup (an unreadable
+    folder: Path.exists() re-raises EACCES) gives that lookup no paths, so a
+    folder the harness cannot read never crashes a tier."""
     projects_dir = Path.home() / ".claude" / "projects" / _PROJECT_SLUG
     sub_dir = projects_dir / session_id / "subagents"
     try:
         if sub_dir.exists():
-            return sorted(sub_dir.glob("agent-*.jsonl"))
+            live = sorted(sub_dir.glob("agent-*.jsonl"))
+            if live:
+                return live
+    except OSError:
+        pass
+    sessions_dir = Path(BASE_DIR) / ".claude" / "logs" / "sessions"
+    try:
+        if not sessions_dir.exists():
+            return []
+        archived = sorted(sessions_dir.glob(f"*_{session_id[:8]}_subagent_*.jsonl"))
     except OSError:
         return []
-    return []
+    # INTENT: one path per subagent id; names sort by their timestamp prefix,
+    # so the last one seen per id is the newest archive copy.
+    newest = {}
+    for p in archived:
+        newest[p.name.rsplit("_subagent_", 1)[-1]] = p
+    return sorted(newest.values())
 
 
 def read_transcript_lines(path: Path):
@@ -1028,7 +1064,7 @@ def probe_statuslines(base_dir: str = BASE_DIR, cache_dir=None) -> ProbeResult:
     elif tmp_touched:
         r.verdict = Verdict.WARN
         r.detail = ("Both statusline scripts render, but the synthetic render wrote /tmp despite the cache-dir "
-                    f"override ({', '.join(tmp_touched)}): a renderer no longer honours "
+                    f"override ({', '.join(tmp_touched)}): a renderer ignores "
                     "DAAF_CONTEXT_BAR_CACHE_DIR / DAAF_SUBAGENT_BAR_CACHE_DIR.")
     else:
         r.verdict = Verdict.PASS
@@ -1623,7 +1659,7 @@ def probe_local_settings_shadowing(base_dir: str = BASE_DIR) -> ProbeResult:
     Claude Code applies the local file over the committed one, and an `env`
     block follows that precedence, so a stale local model selector silently
     re-points every session (a stale local ANTHROPIC_MODEL was observed during
-    the 2.1.281 post-rebuild pass; the shipped settings.json now sets only the
+    the 2.1.281 post-rebuild pass; the shipped settings.json sets only the
     soft ANTHROPIC_DEFAULT_MODEL, so a local ANTHROPIC_MODEL is a local-only
     selector). MODEL_SELECTOR_VARS covers both start selectors, all four tier
     aliases (OPUS/SONNET/HAIKU/FABLE) and CLAUDE_CODE_SUBAGENT_MODEL.
@@ -2856,9 +2892,9 @@ def _evaluate_t15(final_snap: dict, transcript_model, failure: str):
     Judges the MODEL cache against the model the transcript actually ran:
       * live-run failure -> SKIP (no real model session to judge against);
       * model cache equals the transcript model -> PASS;
-      * model cache present but different -> WARN (a stale or foreign writer —
-        before T1.6 moved to a report-local cache dir, T1.6's own synthetic
-        payload wrote "<model>[1m]" here and made this probe read its output);
+      * model cache present but different -> WARN (a stale or foreign writer;
+        T1.6 renders into a report-local cache dir, so its synthetic payload
+        never writes this cache);
       * model cache absent -> INFO (context-reporter writes it only once the
         transcript already carries an assistant model when the hook fires; a
         one-tool headless run can finish first — inference from the hook code).
@@ -2869,7 +2905,7 @@ def _evaluate_t15(final_snap: dict, transcript_model, failure: str):
     window_val = (final_snap.get("ctx_window") or {}).get("value")
     if window_val:
         window_note = (f" ctx-window cache={window_val} (unexpected under -p, which renders no "
-                       "statusline; the harness no longer writes session caches, so another "
+                       "statusline; the harness writes no session caches, so another "
                        "writer produced it).")
     else:
         window_note = (" ctx-window cache absent — expected: its only writer is the statusline "
@@ -2945,8 +2981,8 @@ def _run_t16(r6: ProbeResult, transcript, sid: str, observed_model, cache_dir, f
 
 def _evaluate_t17(input_tokens, output_tokens, total_turns, failure: str):
     """Pure T1.7 verdict. None-safe: a timeout or CLI-error run leaves token
-    fields None, which used to raise TypeError on `None > 0` and abort the whole
-    run with no report."""
+    fields None, so every comparison checks the type first; `None > 0` would
+    raise TypeError and abort the whole run with no report."""
     has_tokens = any(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
                      for v in (input_tokens, output_tokens))
     if failure:
@@ -3111,9 +3147,9 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
     to a scratch directory inside the project, never /tmp.
 
     route (smoke v2, keyword): the detected/stated route. It selects the T1.8
-    identity rules and, on anthropic-api, the --max-budget-usd cap. "" keeps the
-    old behaviour (T1.8 WARNs that the route is unknown). The run now uses
-    --output-format stream-json so the init record (apiKeySource, model) is kept.
+    identity rules and, on anthropic-api, the --max-budget-usd cap. "" makes
+    T1.8 WARN that the route is unknown. The run uses --output-format
+    stream-json so the init record (apiKeySource, model) is kept.
     """
     results = []
     result, meta = execute_smoke_run(
@@ -3207,9 +3243,9 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int, statusline_cache
     # /tmp/claude-model-<sid> (the bare transcript model); the statusline
     # (context-bar.sh) is the only writer of /tmp/claude-ctx-window-<sid>, and
     # `claude -p` renders no statusline. T1.5 runs BEFORE T1.6 on purpose, and
-    # T1.6 now renders into a report-local cache dir, so the harness can no
-    # longer write the caches this probe reads (it used to: the "[1m]" model and
-    # 200000 window a 2026-09-24 run PASSed on were T1.6's own synthetic payload).
+    # T1.6 renders into a report-local cache dir, so the harness never writes
+    # the caches this probe reads, and a value here never comes from T1.6's
+    # synthetic payload.
     r5 = ProbeResult(probe_id="T1.5", name="/tmp coordination caches", tier="1", profile=profile_name)
     first_snap = snapshot_tmp_caches(sid)
     final_snap = first_snap
@@ -3545,8 +3581,8 @@ def _evaluate_t21_routing(sub_models, agent_tier, env, route):
 
 
 # T2.7 — guardrails. A result counts as a deny ONLY when it carries one of these
-# exact shapes (review Q-M2, 2026-10-13: the old bare "denied"/"permission" match
-# let an OS "Permission denied" from a pip that actually ran count as a block):
+# exact shapes, because a bare "denied"/"permission" match would let an OS
+# "Permission denied" from a pip that actually ran count as a block:
 #   * bash-safety's block() prefix, "BLOCKED by bash-safety hook" — the exact
 #     text printed by the block() function in .claude/hooks/bash-safety.sh (and
 #     by its inline site-file load failures, which use the same prefix),
@@ -3557,8 +3593,8 @@ def _evaluate_t21_routing(sub_models, agent_tier, env, route):
 #     2026-09-29 subagent transcript (deny rule Bash(printenv*)): "Permission to
 #     use Bash with command printenv TMPDIR has been denied." Read shapes: from
 #     the 2.1.261 CLI source fragments, "Permission to read <path> has been
-#     denied."; and, found by a reviewer in the INSTALLED 2.1.281 binary (Read's
-#     validateInput, review fix cycle 2, 2026-10-13), "File is in a directory
+#     denied."; and, found in the INSTALLED 2.1.281 binary (Read's
+#     validateInput, observed 2026-10-13), "File is in a directory
 #     that is denied by your permission settings." when a deny rule matches the
 #     path. All are UNCONFIRMED UNTIL FIRST LIVE RUN of T2.7 on 2.1.281, so the
 #     patterns are narrow and an error result with any OTHER deny-like text is
@@ -3572,7 +3608,7 @@ _PERMISSION_DENY_READ_RE = re.compile(
 # its command segments actually invokes pip install (pip/pip3, optionally via
 # sudo, python[3[.N]] -m, or uv; an optional path prefix and leading VAR=value
 # assignments allowed). A grep, echo or --help that merely mentions the phrase
-# is not an attempt (review fix cycle 2). Segments split on ; & | ( ) and
+# is not an attempt, because it never runs pip. Segments split on ; & | ( ) and
 # newlines OUTSIDE quotes (shlex), so `grep -n "pip install" f` is one
 # grep segment. A shell wrapper's -c string (bash -c "pip install x") is
 # re-split and matched the same way (_shell_c_payload).
@@ -5251,7 +5287,7 @@ def _td9_static_launchers(base_dir: str, which, launchers=TD9_LAUNCHERS) -> list
             text = ""
         invokes = re.search(pattern, text) is not None
         if not invokes:
-            problems.append(f"{rel} no longer invokes `{binary}`")
+            problems.append(f"{rel} does not invoke `{binary}`")
         resolved = which(binary)
         evidence.append((f"bash -n {path}; grep the {binary} invocation",
                          f"bash_n_exit={rc} invokes_{binary}={invokes} which_{binary}={resolved}",
@@ -5674,9 +5710,11 @@ def _t32_retrieval_signal(records):
     A signal is a Skill call for one of _T32_RETRIEVAL_SKILLS (bare, '/name' or
     'plugin:name', the _skill_loaded normalization), or a Read whose file_path
     is that skill's SKILL.md (ending in skills/<name>/SKILL.md, absolute or
-    relative). Either needs a recorded non-error tool_result: a call with no
-    result or an errored one does not count. A Read of another file in those
-    skills (a references/*.md page) is not the skill and does not count alone.
+    relative, after posixpath.normpath resolves '..', '.' and repeated '/'
+    segments, so '/daaf/.claude//skills/x/../<name>/SKILL.md' counts). Either
+    needs a recorded non-error tool_result: a call with no result or an
+    errored one does not count. A Read of another file in those skills (a
+    references/*.md page) is not the skill and does not count alone.
     Returns "Skill <name>" or "Read <name>/SKILL.md"."""
     for name, inp, is_error in _tool_calls(records):
         if is_error is not False:
@@ -5686,7 +5724,10 @@ def _t32_retrieval_signal(records):
             if skill in _T32_RETRIEVAL_SKILLS:
                 return f"Skill {skill}"
         elif name == "Read":
-            path = str(_tool_input(inp).get("file_path", ""))
+            # A Read of 'a/x/../b' opens 'a/b', so the probe judges the resolved
+            # path. normpath is lexical: it never touches disk or follows symlinks.
+            raw = str(_tool_input(inp).get("file_path", ""))
+            path = posixpath.normpath(raw) if raw else raw
             for skill in _T32_RETRIEVAL_SKILLS:
                 suffix = f"skills/{skill}/SKILL.md"
                 if path == suffix or path.endswith("/" + suffix):
@@ -5732,10 +5773,11 @@ def _evaluate_t32(response_text, records, subagent_records=()):
         place = "the main transcript" if where == "main" else "a specialist (subagent) transcript"
         return Verdict.PASS, (f"The answer says grade -1 is Pre-K, with skill retrieval in {place}: {signal}"
                               + (" (daaf-orchestrator loaded too)." if orchestrator else ".")), facts
-    return Verdict.WARN, ("The answer says grade -1 is Pre-K, but it was answered without loading the skill: "
-                          "no Skill load or SKILL.md Read of education-data-context or education-data-source-ccd "
-                          f"in the session or its specialists' transcripts ({len(subagent_records)} subagent "
-                          "transcript(s) scanned), so skill retrieval is not proven"
+    # The verdict reason leads: the report's Observed cell keeps only the first
+    # 200 characters, and run_tier_3's attribution clauses are appended after.
+    return Verdict.WARN, (f"Pre-K answered without loading the skill: no retrieval in the main transcript or the "
+                          f"{len(subagent_records)} specialist transcript(s) scanned (no Skill load or SKILL.md Read "
+                          "of education-data-context or education-data-source-ccd), so retrieval is not proven"
                           + ("." if orchestrator else "; daaf-orchestrator did not load either.")), facts
 
 
@@ -5815,9 +5857,8 @@ def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = ""
 # ProbeResult.hint for FAIL/WARN results that did not set a shape-specific hint.
 # A hint must never contain a literal header name from
 # smoke_package.DROP_LINE_MARKERS (e.g. the Codex turn-state header): the
-# packager line-drops those in copied logs, and an earlier T0.20 hint that
-# named one erased its own report row (review fix cycle 2). Describe the
-# header in words instead.
+# packager line-drops those in copied logs, so a hint that named one would
+# erase its own report row. Describe the header in words instead.
 PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "T0.ABORT": "A preflight gate probe FAILed (named in the detail: T0.1 route, T0.3 env coherence, T0.16 credential overlap or T0.17 tier aliases): fix it and re-run, or pass --allow-preflight-fail to run the paid tiers against this configuration on purpose.",
     "T0.5": "Reinstall the pinned Claude Code (rebuild the image: bash rebuild_daaf.sh from daaf-docker).",
@@ -5862,7 +5903,7 @@ PROBE_HINTS = dict(ROUTE_PROBE_HINTS, **{
     "TD.6": "Read evidence/tier_d/TD.6.log for the failing R/Python skill smoke.",
     "TD.7": "Read evidence/tier_d/TD.7.log for the failing shim test module; the CI job runs the same command.",
     "TD.8": "A pinned library failed to import: read evidence/tier_d/TD.8.log and rebuild the image.",
-    "TD.9": "Read evidence/tier_d/td9/<service>.log (the service's own output, scrubbed): a service that starts but never answers HTTP is broken in the image (rebuild); a launcher that fails bash -n or no longer calls the binary needs fixing in scripts/launch_marimo.sh or launch_code_server.sh.",
+    "TD.9": "Read evidence/tier_d/td9/<service>.log (the service's own output, scrubbed): a service that starts but never answers HTTP is broken in the image (rebuild); a launcher that fails bash -n or does not call the binary needs fixing in scripts/launch_marimo.sh or launch_code_server.sh.",
     "TN.1": "The route endpoint is unreachable from this container: check network/proxy settings, and on shim routes start the shim.",
     "TN.2": "Run bash /daaf/scripts/web_fetch.sh https://example.com/ <dir> by hand and read its exit code (web-retrieval skill table).",
     "TN.3": "Run scholar_search.sh verify by hand; exit 4/6 is network, 10 a missing key (scholarly-search skill).",

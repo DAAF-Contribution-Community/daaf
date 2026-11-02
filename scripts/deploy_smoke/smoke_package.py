@@ -697,8 +697,9 @@ def locate_transcripts(session_id, base_dir, sessions_dir=None, projects_dir=Non
     """Return (main_transcript_path_or_None, [subagent_paths]) for one session.
 
     With the default locations and a full session id, smoke_probes'
-    find_transcript / find_subagent_transcripts are reused (archived first,
-    then live). Otherwise (8-character prefix, or injected directories) the
+    find_transcript (archived first, unless the live file is larger) and
+    find_subagent_transcripts (live first, archived when there are none live)
+    are reused. Otherwise (8-character prefix, or injected directories) the
     same two locations are globbed: archived
     .claude/logs/sessions/*_<sid8>_{orchestrator,subagent_*}.jsonl and live
     ~/.claude/projects/<slug>/<sid>.jsonl plus <sid>/subagents/agent-*.jsonl."""

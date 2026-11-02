@@ -966,7 +966,7 @@ class LocalServicesTests(unittest.TestCase):
                                            ("marimo", "scripts/other.sh", pattern),
                                            ("marimo", "scripts/missing.sh", pattern)))
         self.assertTrue(any("bash -n scripts/broken.sh failed" in p for p in bad), bad)
-        self.assertIn("scripts/other.sh no longer invokes `marimo`", bad)
+        self.assertIn("scripts/other.sh does not invoke `marimo`", bad)
         self.assertIn("scripts/missing.sh missing", bad)
         # The shipped launchers pass the same static check.
         shipped, _ = sp._td9_static_launchers(str(_REPO_ROOT), shutil.which)
@@ -1085,12 +1085,40 @@ class TerminationSignalTests(unittest.TestCase):
         # main() restores whatever handlers were installed before it ran.
         self.assertEqual({s: signal.getsignal(s) for s in runner.TERMINATION_SIGNALS}, before)
 
-    def test_ctrl_c_is_unchanged(self):
+    def test_ctrl_c_gets_the_interrupt_hint(self):
+        # Ctrl+C is an interrupt, not a harness defect: the same re-run advice
+        # as SIGTERM/SIGHUP, never "Fix the harness".
         rc, data, _ = self._main(mock.Mock(side_effect=KeyboardInterrupt()))
         self.assertEqual(rc, 130)
         crash = [r for r in data["results"] if r["probe_id"] == "RUN.CRASH"][0]
         self.assertIn("KeyboardInterrupt", crash["detail"])
-        self.assertIn("A harness exception", crash["hint"])
+        self.assertIn("Not a deployment verdict", crash["hint"])
+        self.assertIn("SIGINT (Ctrl+C)", crash["hint"])
+        self.assertIn("Re-run the tiers that did not finish", crash["hint"])
+        self.assertNotIn("Fix the harness", crash["hint"])
+
+    def test_an_exception_outside_the_tier_guards_is_run_crash(self):
+        # main() calls _run_tier_d without a guard (the guard is inside it), so
+        # an exception from it stands in for any unguarded code in the tier
+        # block: it reaches main()'s handler and is recorded as RUN.CRASH with
+        # the harness-defect hint, and the run exits 1.
+        report = _scratch(self, "runcrash") / "report"
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.dict(os.environ, {}, clear=True))
+            stack.enter_context(mock.patch.object(runner, "collect_versions", return_value={}))
+            stack.enter_context(mock.patch.object(runner, "git_sha", return_value="0" * 40))
+            stack.enter_context(mock.patch("sys.stdout", io.StringIO()))
+            stack.enter_context(mock.patch("sys.stderr", io.StringIO()))
+            stack.enter_context(mock.patch.object(runner, "_run_tier_d", side_effect=RuntimeError("boom")))
+            rc = runner.main(["--route", "anthropic-subscription", "--tiers", "D", "--yes", "--no-package",
+                              "--report-dir", str(report)])
+        data = json.loads((report / "report.json").read_text())
+        self.assertEqual(rc, 1)
+        crash = [r for r in data["results"] if r["probe_id"] == "RUN.CRASH"]
+        self.assertEqual(len(crash), 1)
+        self.assertIn("raised RuntimeError: boom", crash[0]["detail"])
+        self.assertIn("A harness exception", crash[0]["hint"])
+        self.assertEqual(runner._where_to_fix("RUN.CRASH", crash[0]["hint"]), runner._CRASH_LOCATION)
 
     @unittest.skipUnless(sys.platform.startswith("linux") and Path("/proc").is_dir() and hasattr(signal, "SIGHUP"),
                          "needs Linux /proc and SIGHUP")

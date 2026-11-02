@@ -858,6 +858,36 @@ class LiveEvaluatorTests(unittest.TestCase):
                          ("Read education-data-source-ccd/SKILL.md", "main"))
         self.assertIn("the main transcript", d)
 
+    def test_t32_normalizes_skill_md_read_paths(self):
+        # A Read of the real SKILL.md written with '..', './' or '//' segments
+        # opens that file, so it counts; normalization keeps the lookalikes out.
+        answer = "grade = -1 means Pre-K."
+        counted = {
+            "/daaf/.claude/skills/x/../education-data-context/SKILL.md": "education-data-context",
+            "/daaf/.claude//skills/education-data-source-ccd/SKILL.md": "education-data-source-ccd",
+            "./.claude/skills/education-data-context/./SKILL.md": "education-data-context",
+            "/daaf/.claude/skills/education-data-source-ccd/references/../SKILL.md": "education-data-source-ccd",
+        }
+        for path, skill in counted.items():
+            with self.subTest(path=path):
+                recs = [_use("r", "Read", {"file_path": path}), _res("r")]
+                v, d, facts = sp._evaluate_t32(answer, [], [recs])
+                self.assertEqual(v, Verdict.PASS, d)
+                self.assertEqual(facts["retrieval_signal"], f"Read {skill}/SKILL.md")
+        rejected = (
+            "/x/myskills/education-data-context/SKILL.md",
+            "/x/myskills//education-data-context/./SKILL.md",
+            "/daaf/.claude/skills/education-data-context/../polars/SKILL.md",
+            "/daaf/.claude/skills/education-data-source-ccd/references/../references/variable-definitions.md",
+            "/daaf/.claude/skills/education-data-context/SKILL.md/..",
+        )
+        for path in rejected:
+            with self.subTest(path=path):
+                recs = [_use("r", "Read", {"file_path": path}), _res("r")]
+                v, d, facts = sp._evaluate_t32(answer, [], [recs])
+                self.assertEqual(v, Verdict.WARN, d)
+                self.assertIsNone(facts["retrieval_signal"])
+
     def test_t32_non_signals_still_warn(self):
         answer = "grade = -1 means Pre-K."
         skill_md = "/daaf/.claude/skills/education-data-context/SKILL.md"
@@ -971,8 +1001,8 @@ class TierRunnerWiringTests(unittest.TestCase):
 
     def test_tier3_records_main_transcript_retrieval_in_the_t31_turn(self):
         # The orchestrator loads education-data-context in the T3.1 turn (before
-        # the gate). recs2 holds the same main transcript, so T3.2 PASSes as
-        # before; the fact and a detail clause show where the retrieval sits.
+        # the gate). recs2 holds the same main transcript, so T3.2 PASSes on that
+        # retrieval; the fact and a detail clause show where the retrieval sits.
         runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
         t31_path, t32_path = Path("t31-fake.jsonl"), Path("t32-fake.jsonl")
         t31 = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o"),
@@ -1194,6 +1224,103 @@ class ContractAndHintTests(unittest.TestCase):
         with mock.patch.object(sp.Path, "exists", return_value=True), \
              mock.patch.object(sp.Path, "glob", return_value=iter([Path("b.jsonl"), Path("a.jsonl")])):
             self.assertEqual(sp.find_subagent_transcripts(str(uuid.UUID(int=7))), [Path("a.jsonl"), Path("b.jsonl")])
+
+    def _transcript_dirs(self):
+        """A fixture BASE_DIR (with .claude/logs/sessions/) and home (with the
+        live projects folder), patched into smoke_probes for one test."""
+        root = _scratch(self, "transcripts")
+        base, home = root / "base", root / "home"
+        sessions = base / ".claude" / "logs" / "sessions"
+        projects = home / ".claude" / "projects" / sp._PROJECT_SLUG
+        sessions.mkdir(parents=True)
+        projects.mkdir(parents=True)
+        for patcher in (mock.patch.object(sp, "BASE_DIR", str(base)),
+                        mock.patch.object(sp.Path, "home", return_value=home)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return sessions, projects
+
+    def test_find_subagent_transcripts_falls_back_to_archived_copies(self):
+        sid = "17375d34-0000-4000-8000-000000000001"
+        sessions, projects = self._transcript_dirs()
+        # No live folder: the archived copies, one per subagent id (the newest
+        # timestamp wins), never a .md rendering or another session's file.
+        for name in ("2026-11-01_23-14-05_17375d34_subagent_aaaa1111.jsonl",
+                     "2026-11-01_23-15-19_17375d34_subagent_aaaa1111.jsonl",
+                     "2026-11-01_23-15-19_17375d34_subagent_bbbb2222.jsonl",
+                     "2026-11-01_23-15-19_17375d34_subagent_bbbb2222.md",
+                     "2026-11-01_23-15-19_99999999_subagent_cccc3333.jsonl"):
+            (sessions / name).write_text("{}\n")
+        want = [sessions / "2026-11-01_23-15-19_17375d34_subagent_aaaa1111.jsonl",
+                sessions / "2026-11-01_23-15-19_17375d34_subagent_bbbb2222.jsonl"]
+        self.assertEqual(sp.find_subagent_transcripts(sid), want)
+        # An empty live folder still falls back.
+        live_dir = projects / sid / "subagents"
+        live_dir.mkdir(parents=True)
+        self.assertEqual(sp.find_subagent_transcripts(sid), want)
+        # Live transcripts win: the archive is not consulted.
+        (live_dir / "agent-aaaa1111ffff.jsonl").write_text("{}\n")
+        self.assertEqual(sp.find_subagent_transcripts(sid), [live_dir / "agent-aaaa1111ffff.jsonl"])
+
+    def test_find_subagent_transcripts_archive_lookup_fails_open(self):
+        sid = "17375d34-0000-4000-8000-000000000001"
+        sessions, _ = self._transcript_dirs()
+        (sessions / "2026-11-01_23-15-19_17375d34_subagent_aaaa1111.jsonl").write_text("{}\n")
+        denied = PermissionError(13, "Permission denied")
+        with mock.patch.object(sp.Path, "glob", side_effect=denied):
+            self.assertEqual(sp.find_subagent_transcripts(sid), [])
+
+    def test_find_transcript_prefers_a_larger_live_file_over_a_stale_archive(self):
+        sid = "17375d34-0000-4000-8000-000000000001"
+        sessions, projects = self._transcript_dirs()
+        archive = sessions / "2026-11-01_23-14-05_17375d34_orchestrator.jsonl"
+        live = projects / f"{sid}.jsonl"
+        # Archive only, then live only.
+        archive.write_text('{"t": 1}\n')
+        self.assertEqual(sp.find_transcript(sid), archive)
+        archive.unlink()
+        live.write_text('{"t": 1}\n')
+        self.assertEqual(sp.find_transcript(sid), live)
+        # Both, the same content (the SessionEnd archive landed): the archive.
+        archive.write_text('{"t": 1}\n')
+        self.assertEqual(sp.find_transcript(sid), archive)
+        # The session was resumed and the live file grew past the archive (the
+        # resumed call's SessionEnd archive has not landed): the live file.
+        live.write_text('{"t": 1}\n{"t": 2}\n')
+        self.assertEqual(sp.find_transcript(sid), live)
+        # A comparison that cannot stat the live file keeps the archive.
+        real_stat = Path.stat
+
+        def stat_denied_for_live(path, *args, **kwargs):
+            if path.name == live.name:
+                raise PermissionError(13, "Permission denied")
+            return real_stat(path, *args, **kwargs)
+
+        with mock.patch.object(sp.Path, "stat", autospec=True, side_effect=stat_denied_for_live):
+            self.assertEqual(sp.find_transcript(sid), archive)
+
+    def test_t32_warn_detail_leads_with_the_reason(self):
+        # The report's Observed cell keeps the first 200 characters of a detail.
+        answer = "grade = -1 means Pre-K."
+        for subs in ([], [[]], [[], [], []]):
+            for main in ([], [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o")]):
+                with self.subTest(subagents=len(subs), orchestrator=bool(main)):
+                    v, d, _ = sp._evaluate_t32(answer, main, subs)
+                    self.assertEqual(v, Verdict.WARN, d)
+                    head = d[:200]
+                    self.assertIn("answered without loading the skill", head)
+                    self.assertIn("Pre-K", head)
+                    self.assertIn(f"{len(subs)} specialist transcript(s) scanned", head)
+        # With run_tier_3's attribution clause appended, the head is unchanged.
+        runs = [_fake_run("Data Lookup. Sound good?"), _fake_run("grade -1 is Pre-K")]
+        with mock.patch.object(sp, "execute_smoke_run", side_effect=runs), \
+             mock.patch.object(sp, "find_transcript", return_value=None), \
+             mock.patch.object(sp, "find_subagent_transcripts", side_effect=[[Path("a.jsonl")], [Path("a.jsonl")]]), \
+             mock.patch.object(sp, "load_transcript_records", return_value=[]):
+            _, r2 = sp.run_tier_3("", {}, 5, route=rd.ROUTE_ANTHROPIC)
+        self.assertIn("answered without loading the skill", r2.detail[:200])
+        self.assertIn("1 specialist transcript(s) scanned", r2.detail[:200])
+        self.assertTrue(r2.detail.endswith(" 1 specialist transcript(s) predate the T3.2 call."), r2.detail)
 
     def test_apply_hints_only_fills_fail_warn(self):
         ok = rd.ProbeResult("T0.5", "n", "0", verdict=Verdict.PASS)
