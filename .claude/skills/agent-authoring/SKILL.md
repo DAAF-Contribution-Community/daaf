@@ -151,21 +151,44 @@ for all contexts.
 | Scope | Register in | Example |
 |-------|-------------|---------|
 | All agents, all contexts | `settings.json` | `bash-safety.sh` (destructive command prevention) |
-| Specific agents only | Agent frontmatter `hooks` field | `enforce-file-first.sh` (file-first protocol for coding agents) |
+| Specific agents only | Agent frontmatter `hooks` field | `enforce-file-first.sh` (file-first protocol for agents with `Bash` in `tools`); `adjudicator-read-scope.sh` (citation-adjudicator's read boundary) |
 
-**Current per-agent hook: `enforce-file-first.sh`**
+**Per-agent hook: `enforce-file-first.sh`**
 
 Any agent that writes and executes Python or R scripts via `run_with_capture.sh`
 MUST register this hook. It blocks direct `python`/`python3` and `Rscript`
 invocations, enforcing the file-first execution protocol at the hook layer.
 
-Agents that need it: those with `Bash` in `tools` that execute Python or R
-scripts (currently: research-executor, code-reviewer, debugger, data-ingest).
+Agents that register it: research-executor, code-reviewer, debugger, data-ingest,
+source-researcher, research-synthesizer, data-planner, integration-checker,
+plan-checker, literature-searcher, paper-reader, literature-synthesizer.
 
-Agents that do NOT need it: read-only agents (`permissionMode: plan`), agents that
-don't execute Python or R (report-writer, notebook-assembler), and the orchestrator.
+Agents without it: the orchestrator; citation-adjudicator, whose `tools` list
+is Read only (it reads one path named in its prompt and searches nothing; it
+registers `adjudicator-read-scope.sh` instead, below); and five Bash holders
+whose frontmatter does not register it, although
+`agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 A13 asks every Bash
+holder to: search-agent, notebook-assembler, report-writer, framework-engineer
+and data-verifier. These five are gaps that A13 flags (the A13 probe in that
+checklist's § 10 lists them), not exemptions. framework-engineer runs captured
+scripts with `run_with_capture.sh`, so the MUST rule above covers it as well.
 
-**Frontmatter syntax:**
+**Agent-specific hook: `adjudicator-read-scope.sh`** (citation-adjudicator
+only). Read opens any path, so a Read-only `tools` list does not keep an agent
+to the files its prompt names. This hook does that for the reference checker:
+registered with `matcher: ""`, it sees every tool call of that agent, allows
+only a Read of a bundle file (a canonical absolute path to an existing
+`research/…/data/adjudication_bundles/{batch_id}.json`) and denies everything
+else, fail-closed. Its coverage and limits are in `agent_reference/BOUNDARIES.md`
+§ Defense-in-Depth Architecture, its tests in
+`tests/bash/adjudicator_read_scope.bats`. Another agent that must stay inside
+named files needs a hook of its own, drafted for the user to install (hooks are
+user-only). Install the script before the frontmatter registers it: on Claude
+Code 2.1.281 a registered hook whose script is missing does not block (verified
+against the Claude Code hooks reference on 2026-10-27).
+
+**Frontmatter syntax** (for `enforce-file-first.sh`; citation-adjudicator's
+block has the same shape, with `matcher: ""` and its own command):
 
 ```yaml
 hooks:
