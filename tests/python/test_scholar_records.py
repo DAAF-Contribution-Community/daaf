@@ -211,7 +211,7 @@ class Base(unittest.TestCase):
 # --- The records file ---------------------------------------------------------
 class RecordsFileTests(Base):
     def test_tool_version(self):
-        self.assertEqual(scholar_search.TOOL_VERSION, "1.8.0-daaf")
+        self.assertEqual(scholar_search.TOOL_VERSION, "1.9.0-daaf")   # 1.9.0: verify rules 2026-11-01a/b/c (no records change)
         self.assertEqual(scholar_search.RECORDS_SCHEMA, "scholar-records-v1")
 
     def test_find_writes_a_hashed_records_file_naming_the_raw_log(self):

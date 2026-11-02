@@ -216,7 +216,27 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   "Who Am I:". After a part word, one–twenty and first–twentieth spelled
   out count too ("Part Two" = "Part 2"). That matters because "Teachers
   I" and "Teachers II" are different papers one character apart. A number
-  difference gives WEAK, never MISMATCH.
+  difference gives WEAK, never MISMATCH. Three more checks (rules
+  `2026-11-01d`) also turn CONFIDENT into WEAK, never MISMATCH, and the
+  digest names what differs: **words** (every content word of each title
+  must appear in the other, as many times, so "better" vs "worse", an
+  added or dropped "not", or "with or without … with" vs "with or without
+  … without" is caught in a long title; a hyphenated word counts once, as
+  its parts or as one closed word, so "Smokers and Nonsmokers" vs
+  "Non-Smokers" is caught; hyphenation, "school children" /
+  "schoolchildren", number words (an ordinal such as "second" is not
+  "two"), a plural "s" ("es" after s, x, z, ch, sh), British / American
+  spelling and words such as "the", "of", "and" are set aside, and so is
+  a subtitle missing entirely from one side; a negation such as "not",
+  "no" or "without" is never set aside, read as a plural, or made or
+  hidden by joining words: "Not Able" is not "Notable"); **marks** the
+  similarity score ignores (`<` / `>` / `≤` / `≥`, a sign on a number,
+  `%`, and accents, counted per written form: "año" vs "ano", Vietnamese
+  tone marks); and **reviews** (a record indexed as a book review, a title
+  marked "Review of …" / "Review:" / "Book Review:" that the citation
+  lacks, or on `title:"…"` a journal item sharing its title with a book
+  review the search also found, is not the book). Limits of the word and
+  mark checks: api-notes.md § "How far to trust the `verify` gate".
   On `title:"…"` the identifier *is* the cited title, so `--title` is
   refused there.
 - **`--author`** takes the cited author as a reference list prints it:
@@ -244,7 +264,9 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   Smith" and "John Q. R. Smith" vs "John Q. S. Smith" differ; "C. K.
   Jackson" = "C. Kirabo Jackson"), and a hyphenated given name counts as one name
   ("J.-P. Sartre" = "Jean-Paul Sartre"; "Jean-Paul Smith" vs "Jean Smith"
-  differs). A clearly different one ("Jane Smith" vs "John Smith") is
+  differs), but only when the *cited* name is hyphenated: half of a listed
+  hyphenated name still passes ("Paul Sartre" on "Jean-Paul Sartre"; a
+  known limit). A clearly different one ("Jane Smith" vs "John Smith") is
   *ambiguous*, not MISMATCH, and so are cited given names the listed name
   has nothing to compare with ("Jane Smith" or "Health Canada" on a
   record listing just "Smith" or "Canada"). So is a name that reads like
@@ -330,14 +352,14 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   journal version legitimately differ by years. It is the only check
   that separates two versions with the same title, such as an updated
   Cochrane review cited with the update's DOI. On `title:"…"`,
-  same-titled candidates are ranked by `--author` pass first, then
-  `--year`, then citations: a wrong author is MISMATCH, a year gap only
-  WEAK.
+  same-titled candidates are ranked by not being a book review first,
+  then `--author` pass, then `--year`, then citations: a wrong author is
+  MISMATCH, a year gap only WEAK.
 
 | Verdict | Meaning | Do |
 |---------|---------|----|
-| `CONFIDENT` | The title check passed: full-title similarity ≥ 0.95, same numbers, and every given `--author` / `--year` check passed | Cite the DOI that `verify` returned (shown in the digest), not one recalled from elsewhere. Until the citation adjudicator ships: if the cited author is an organization cited by less than its full listed name ("&" company names included), treat it as WEAK |
-| `WEAK` | A candidate exists, but some check fell short: title similarity below 0.95 (on `title:"…"`: 0.70–0.95), either title under 3 letters, different numbers, a year gap over ±1, or an author check not checked / ambiguous | Do not cite yet: follow the WEAK workflow below |
+| `CONFIDENT` | The title check passed: full-title similarity ≥ 0.95, same numbers, words and marks, the record is not a review of the work, and every given `--author` / `--year` check passed. Only the one `--author` given is checked, never the co-authors | Cite the DOI that `verify` returned (shown in the digest), not one recalled from elsewhere. Until the citation adjudicator ships: if the cited author is an organization cited by less than its full listed name ("&" company names included), treat it as WEAK |
+| `WEAK` | A candidate exists, but some check fell short: title similarity below 0.95 (on `title:"…"`: 0.70–0.95), either title under 3 letters, different numbers, words, symbols or accents, a record that is (or may be) a review of the work, a year gap over ±1, or an author check not checked / ambiguous | Do not cite yet: follow the WEAK workflow below |
 | `MISMATCH` (exit 11) | A different work: with `--title` on an ID, even the main titles (before a colon) score < 0.45; or the `--author` surname is not part of any listed author (with `--first-author`: of the first author). On `title:"…"`: the best candidate is by other authors | Treat the citation as wrong or fabricated (on `title:"…"`, possibly a garbled real title that found the wrong paper; on either path, when the digest says the title matches, misattributed authors or a same-titled other work); find the real source or drop it |
 | `NOT FOUND` (exit 11) | No backend that answered has the ID, or on `title:"…"` the best candidate scored below 0.70 | Treat as unverified; the digest lists the nearest works (not matches) and names any backend that did not answer — retry later if one did not |
 | `EXISTS` | The identifier resolves; no title was checked (`--author`, if given, did not fail — a failed author check gives MISMATCH) | Not citable: re-run with `--title`, `--author` and `--year` |

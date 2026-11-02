@@ -40,9 +40,9 @@ import difflib
 import os
 import re
 
-from ._common import (VERIFY_CONFIDENT_MIN, VERIFY_MIN_TITLE_LETTERS, BackendError, arxiv_id_from, author_match,
-                      key_value, norm_doi, numerals_differ, record, short_oa_id, title_letter_count,
-                      verify_title_norm, year_within)
+from ._common import (BOOK_REVIEW_TYPES, VERIFY_CONFIDENT_MIN, VERIFY_MIN_TITLE_LETTERS, BackendError, arxiv_id_from,
+                      author_match, key_value, norm_doi, numerals_differ, record, short_oa_id, title_letter_count,
+                      title_marks_differ, title_words_differ, verify_title_norm, year_within)
 
 # §§ CONTRACT
 NAME = "openalex"
@@ -463,38 +463,49 @@ def best_title_match(want_title, candidates, title_key, year=None, year_key=None
     #   With year first, a genuine "Lee" cited with a slightly wrong year lost
     #   the tie to a same-titled "Hanushek" record of that year and was
     #   blocked; author first keeps Lee's record and lets the year gap show.
+    # REASONING (rules 2026-11-01a, book-review-v1): before author, a tie goes
+    #   to a candidate NOT typed as a book review: a review of a book carries
+    #   the book's title and often its author, and verify never grades a
+    #   review CONFIDENT, so preferring it would hide the book itself.
     scored = sorted(((title_score(want_title, title_key(c)),
+                      int(str(c.get("type") or "").lower() not in BOOK_REVIEW_TYPES),
                       int(author_match(author, authors_key(c), first_only=first_author)["status"] == "pass")
                       if (author and authors_key) else 0,
                       year_within(year, year_key(c)) if (year is not None and year_key) else 0,
                       c.get("cited_by_count") or c.get("is-referenced-by-count") or 0, i, c)
                      for i, c in enumerate(candidates)),
-                    key=lambda t: (t[0], t[1], t[2], t[3], -t[4]), reverse=True)
+                    key=lambda t: (t[0], t[1], t[2], t[3], t[4], -t[5]), reverse=True)
     if not scored:
         return 0.0, None
-    return scored[0][0], scored[0][5]
+    return scored[0][0], scored[0][6]
 
 
-def get_work(http, ident, extra_select=",referenced_works", year=None, author=None, first_author=False):
+def get_work(http, ident, extra_select=",referenced_works", year=None, author=None, first_author=False, seen=None):
     # Returns (openalex_work_json, match_note, ratio_or_None). `year` and
     # `author` only break similarity ties on a title: lookup (best_title_match).
+    # `seen` (a list, verify only): receives every title-search candidate, for
+    # verify's same-title book-review check (rules 2026-11-01a).
     ident = ident.strip()
     if ident.lower().startswith("title:"):
         title = ident[6:].strip().strip('"')
         cands = title_candidates(http, title, extra_select=extra_select)
+        if seen is not None:
+            seen.extend(c for c in cands if isinstance(c, dict))
         if not cands:
             raise BackendError(NAME, "not-found", f"openalex: no work matches title {title!r}")
         ratio, best = best_title_match(title, cands, lambda c: c.get("display_name"), year=year,
                                        year_key=lambda c: c.get("publication_year"), author=author,
                                        authors_key=authors_of, first_author=first_author)
         # The lookup note uses the verify gate's calibrated cutoff and its title
-        # guards (B1 letters, D2 numerals), so a "close title match" here never
-        # contradicts a `verify` title check on the same title. Its label never
+        # guards (B1 letters, D2 numerals, and from rules 2026-11-01a the word
+        # and mark checks), so a "close title match" here never contradicts a
+        # `verify` title check on the same title. Its label never
         # uses the verdict words (cycle 3, W-B): `verify` embeds this note, and
         # "CONFIDENT" must appear only on a CONFIDENT verdict.
         got = best.get("display_name") or ""
         close = (ratio >= VERIFY_CONFIDENT_MIN and numerals_differ(title, got) is None
-                 and min(title_letter_count(title), title_letter_count(got)) >= VERIFY_MIN_TITLE_LETTERS)
+                 and min(title_letter_count(title), title_letter_count(got)) >= VERIFY_MIN_TITLE_LETTERS
+                 and title_words_differ(title, got) is None and title_marks_differ(title, got) is None)
         label = "close title match" if close else "not a close title match — check it manually"
         return best, f"title lookup: similarity {ratio:.2f} ({label}); {len(cands)} candidate(s)", ratio
     wid = short_oa_id(ident) if re.match(r"^(https?://openalex\.org/)?W\d+$", ident, re.I) else None

@@ -129,43 +129,512 @@ Evidence locations:
   `probes/2026-10-31_phase4_openalex161_quality_review/` and
   `probes/2026-10-31_phase4_openalex_161_consistency_review/`.
 
-## How far to trust the `verify` gate (standing summary, rules `2026-10-06f`)
+## How far to trust the `verify` gate (standing summary, rules `2026-11-01d`)
 
-*Moved here unchanged from SKILL.md § Verify before citing on 2026-10-11 (S2 wiring, to keep the
-skill body near 500 lines); it summarizes the dated calibration entries below and is not itself a
-new measurement.*
+*A summary of the dated entries below, not itself a new measurement.*
 
-The cutoffs and rules (rules version
-`2026-10-06f`, constants in `scripts/scholar_backends/_common.py`, every
-value stamped in each MANIFEST row's `verify_cutoffs`) were calibrated
-**in-sample** on 84 labeled items, part of them written by the calibrating
-model; numbers and confusion tables are in the dated entries below. An
-independent held-out validation is scheduled before Literature Review mode
-depends on `verify`. What the calibration implies for use:
+The cutoffs and rules (rules version `2026-11-01d`, constants in
+`scripts/scholar_backends/_common.py`, every value stamped in each MANIFEST
+row's `verify_cutoffs`) were calibrated **in-sample** on 84 labeled items,
+part of them written by the calibrating model, then tested on a
+**held-out** set under rules `2026-10-06f` and on a fresh held-out set
+under rules `2026-11-01a`. What that implies for use:
+- **Held-out result (rules `2026-10-06f`, 2026-11-01).** 251 citations
+  were checked the way a researcher checks them (identifier, cited title,
+  first cited author, year), labeled by agents independent of the rule
+  tuning. Of 20 wrong references an AI wrote from memory (made-up papers,
+  a different paper behind the identifier, a made-up DOI), **0 were graded
+  CONFIDENT** (95% upper bound 13.9%: fewer than about 1 in 7 would slip
+  through). Of 93 near-misses written to break the checker, **29 were
+  graded CONFIDENT** (31%; 95% upper bound 40%). Those near-misses aim at
+  known weak spots, so 31% is a stress measure, not the rate to expect in
+  ordinary use, but it shows what CONFIDENT could not see: a one-word
+  change or an added or dropped "not" in a long title (11), marks the
+  score erases (7), and author cases (11). Two famous books were also
+  graded CONFIDENT on a review of the book. Of 138 correct citations, 82%
+  were CONFIDENT, 17% WEAK and 2 (1.4%) NOT FOUND. Evidence: the
+  2026-11-01 entries below.
+- **The three title checks.** Three checks on the CONFIDENT decision,
+  each giving WEAK, never MISMATCH, with the difference named in the
+  digest: the content words of both titles must agree both ways, as many
+  times each; the symbols, signs and accents the score erases must agree
+  (accents counted per written form); and a record that is, or may be, a
+  review of the cited work is not the work. They target the 11 title-word
+  cases, the 7 erased-mark cases and the two book reviews of the first
+  held-out set; they do nothing for the 11 author cases. On the
+  calibration set they move 1 of the 9 genuine CONFIDENT items to WEAK (a
+  word variant, "Education" cited for "Educational").
+- **Fresh held-out re-test (rules `2026-11-01a`, 2026-11-01).** 175 new
+  citations, written independently of the rule fixes: **2 of 101** that
+  must not pass were graded CONFIDENT (2.0%; 95% upper bound 6.1%), both
+  a reversed claim the word check missed ("not" beside a shared "notes";
+  a second "without" where "with or without" came earlier). Of the 74
+  correct citations, 55 were CONFIDENT, 19 WEAK, none MISMATCH or NOT
+  FOUND; the title checks caused 1 of the WEAKs (the review check, on a
+  book the index types as an article). The rules in force (`2026-11-01d`)
+  grade both misses WEAK; offline, on the cited and record titles of both
+  held-out sets and the calibration set, rules `2026-11-01b` through
+  `2026-11-01d` change no correct citation's grade, and move only those two
+  bad ones. Rules `2026-11-01d` have not been re-tested on a fresh set, and
+  the 11 author cases of the first set still pass. The fresh set was
+  crafted to break the checker and has no AI-written bibliography, so 2%
+  is a stress measure. Evidence: the 2026-11-01 entries below.
 - CONFIDENT means "the titles are at least 95% alike character by
-  character, with the same numbers, and every given author / year check
-  passed". It does not mean the same title. With `--year`, no labeled
-  wrong or fabricated title reached it (0 of 40; the identical-title
-  Cochrane update needs the year check to fail). Zero passes in this
-  sample bounds the true rate only loosely (about 7.5% at most by the
-  rule of three on 40, or 7.7% on the 39 title-separable mismatches; 95%
-  confidence, for titles like these).
-- Small edits that change the meaning still pass, because one changed
-  word is a small share of a long title's characters. Measured: one
-  word swapped ("Reading" → "Math") reaches CONFIDENT at about 90
-  characters / 14 words (0.951); an inserted "No " scored 0.992; in
-  Chinese or Japanese, a one-character swap or negation is CONFIDENT
-  from about 20 characters (小学 → 中学 0.963; 有 → 无 0.955). Marks that
-  carry meaning are dropped before scoring: `<` vs `>`, "-10%" vs "10%",
-  Vietnamese tone marks, "año" vs "ano". So read the matched title
-  (shown in the digest) once against the citation before citing: the
-  score cannot tell a typo from a changed claim, and a fabricated title
-  is often a one-word edit of a real one.
+  character, with the same numbers, the same content words as many
+  times, the same meaning-bearing marks, the record is not a review of the
+  work, and every given author / year check passed". It does not mean the
+  same title, and it never checks co-authors: only the one `--author`
+  given is compared.
+- **Standing limits** (each still passes CONFIDENT):
+  - *Co-authors.* `--author` takes one name; a wrong second or later
+    author is never seen (3 held-out cases).
+  - *Half of a hyphenated given name.* "Paul Sartre" passes on
+    "Jean-Paul Sartre": the listed name is split into "Jean" and "Paul",
+    and the "counts as one name" rule applies only when the *cited* name
+    is hyphenated (cycle 9's P-1; 3 held-out cases).
+  - *Organizations named by part of their name* ("Canada" on "Statistics
+    Canada", "&" companies): the documented residuals, with the interim
+    rule (SKILL.md § Verify before citing: treat as WEAK; 5 held-out
+    cases).
+  - *Spelled-out numbers.* The numeral guard counts a spelled-out number
+    only right after a part word ("Part Two" = "Part 2"). Elsewhere
+    ("Two-Year Effects" vs "Three-Year Effects") only the word check sees
+    the difference, as a changed word; "Two-Year" vs "2-Year" is a number
+    difference (WEAK).
+  - *Word-check set-asides.* The word check reads alike what correct
+    citations commonly vary, so a near-miss inside those classes still
+    passes: a function word swapped, added or dropped ("in" / "on";
+    English, French, Spanish, Portuguese, Italian and German articles and
+    prepositions, "and", and "do", listed as a Portuguese preposition and
+    so set aside as the English auxiliary too: an added "Do" in "What Do
+    Pupils Learn" passes), a plural or possessive "s" (or "es" after s,
+    x, z, ch or sh), a British / American spelling pair, a compound
+    written closed, spaced or hyphenated, a number written as a word,
+    digits or a Roman numeral (digits and Roman numerals are left to the
+    numeral guard), and a subtitle missing entirely from one side (the
+    score decides that case). A negation ("not", "no", "without", and
+    their French, Spanish, Portuguese, Italian and German forms) is never
+    set aside, never read as a plural ("no" is not "nos"), and never made
+    or hidden by joining words ("Not Able" is not "Notable"). Words are
+    matched one for one, and a hyphenated word counts once, as its parts
+    or as its closed form, so a word added a second time is seen,
+    including a part of a hyphenated word ("Smokers and Nonsmokers" for
+    "Non-Smokers"). Two cases are found by presence, not counted, so a
+    repeat there is not seen: a word the other title has only as words
+    written apart ("Schoolchildren" for "School Children", "Income" for an
+    index's "I ncome"), and a hyphenated word whose closed form the other
+    title has only written apart. So a part added beside a compound the
+    record writes spaced passes: "Smokers and Nonsmokers" against a
+    record's "Non Smokers" (or "Users and Nonusers" against "Non Users")
+    is CONFIDENT, while against "Non-Smokers" it is reported. Word order is
+    not compared, so a word moved elsewhere in the title is not seen.
+  - *Accents counted per written form.* The mark check counts how often
+    each accented form of a word occurs on each side, not where it
+    stands, so an accent moved to another copy of the same word is not
+    seen: Vietnamese "Tránh thai và tranh luận" against "Tranh thai và
+    tránh luận" passes (the tone moved between two syllables with the
+    same base). It needs a base syllable repeated with a swapped tone.
+  - *Spelling folds that merge two words.* The British / American folds
+    can write two different English words alike, and the word check then
+    reads them as one: "mourning" / "morning", "poet" / "pet", "shoe" /
+    "she", "canoe" / "cane".
+  - *Book reviews the metadata does not mark.* A review typed "article"
+    with the bare book title is caught only on `title:"…"`, and only when
+    the same search also found a review of the book typed "book-review".
+    On an identifier lookup, or without such a sibling, it passes: read
+    the venue (a "Journal of Reviews", a review section) and the page
+    count in the digest.
 - Expect WEAK for most genuine citations that drop or add a subtitle,
-  carry a report-number suffix, cite a renamed working paper, or garble a
-  word.
+  carry a report-number suffix, cite a renamed working paper, garble a
+  word, use another form of a word ("Education" / "Educational", "Does" /
+  "Do", or a plural that changes the stem: "Study" / "Studies", "Life" /
+  "Lives", "Potato" / "Potatoes", "Quiz" / "Quizzes"), split a closed word
+  whose first part is a negation that the closed word is not
+  ("Nonetheless" / "None the Less", "Nevertheless" / "Never the Less"),
+  or drop the accents of a title.
+- On `title:"…"`, an index that appends a series name to a report's title
+  can push a correct title below the 0.70 search floor: NOT FOUND, with
+  the report listed first among the nearest works by title (1 held-out
+  case). Read that list before treating the citation as made up.
 - On `title:"…"`, a WEAK is "not verified", not "real but garbled": a
   fabricated title often lands on the real paper it imitated.
+- Read the matched title (shown in the digest) once against the citation
+  before citing, character by character for symbols and accents, and
+  check the record is not a review.
+
+## Measured behavior: verify identical-title fix (2026-11-01)
+
+**Why.** A second quality review, of rules `2026-11-01c`, found that a
+title compared with an identical copy of itself could be WEAK when two
+consecutive words spell another word of the same title. In "A Cross
+Sectional Study of Tutoring across …", the pass that lets words written
+apart take a closed word gave "A Cross" the record's "across", and the
+title's own "across" was left without a partner. Ten invented pairs of
+this shape (nine identical: "A Broad Look at Study Abroad", "Day to Day
+Teaching Today", "Pre School and Preschool", "A Long Road Along" and
+others; one citing "Cross-Sectional" where the record has "Cross
+Sectional") graded WEAK at similarity 1.000. None of 2,535 real titles
+from saved search responses, each compared with itself, did. A cost,
+never a false pass, but it broke the rule that an exact title is not
+flagged.
+
+**Change (rules `2026-11-01d`, tool 1.9.0; word check
+`content-words-v4`; mark and review checks, scores, candidate search, row
+fields, return shapes and exit codes unchanged).** When the word matching
+leaves words missing and its pass for consecutive words written together
+took a word, the matching runs again with exact single words taken before
+that pass, and the shorter missing list is kept (the first on a tie, so
+a list changes only where the second order reports fewer words). Each
+order pairs words one for one, so a title passes only when a one-for-one
+pairing passes it. Exact words first is not enough on its own: it reports
+"School Children and Children" against "Schoolchildren and Children",
+which the first order passes.
+
+**Measured** (offline, no new live calls; `2026-11-01c` is the saved
+`_common.py`, replayed exactly).
+- The ten pairs are CONFIDENT, with no word list. "School Children and
+  Children" against "Schoolchildren and Children" stays CONFIDENT.
+- The 81 break pairs of the reviews of `2026-11-01b` and `2026-11-01c`
+  keep their grades and word lists. The 14 that are CONFIDENT under both
+  rules fall under the standing limits above or the numeral rules: a
+  function word swapped or added ("to" / "from", an added "Do"), a plural
+  or possessive "s" ("new" / "news", "is" / "i", "its" / "it", "Teacher's"
+  / "Teachers'"), a decade read as its year ("1980s" / "1980"), the
+  "Mourning" / "Morning" fold, a short subtitle on one side only, a "no"
+  moved between clauses, a compound the record writes spaced (two), and
+  an accent moved between copies of a word.
+- Cost and effect: the word, mark and review checks re-run on the cited
+  and record titles of every item in both held-out sets and the
+  calibration set (495 items), `2026-11-01c` against `2026-11-01d`: 0
+  results change.
+- The second order runs only when it can change the result; the results
+  equal running both orders every time (the review's proposed patch) on
+  6,666 pairs in both directions (the probe pairs, the 495 items and
+  6,000 seeded random titles): 0 differences. Against `2026-11-01c`, 164
+  word results change: 68 from flagged to passing (20 are the ten pairs,
+  both ways) and 96 to a shorter list, all in the seeded random titles;
+  none goes from passing to flagged.
+- Real titles: 0 of 2,535 flagged against themselves, or with hyphens
+  written as spaces.
+- Run time: an 800-word title takes about 0.6 to 0.7 s under both rules;
+  the second order adds time only on a flagged pair whose window pass took
+  a word.
+- Tests (`VerifyIdenticalTitleFixTests`, 5 tests): the ten pairs both
+  ways and through `verify_title_check`, "School Children and Children",
+  counting kept in both orders (a repeated "across", "Pre School,
+  Pre-School and Preschool", "Smokers and Non Smokers"), a tie that keeps
+  the first order's list, and an identical title through the CLI on four
+  lookup routes. `test_scholar_search.py` 296 tests,
+  `test_scholar_records.py` 33, `test_scholar_openalex_gate.py` 56,
+  `test_scholar_retry_log.py` 18, all OK.
+- Mutation check (each mutant run on a copy of the code, removed after):
+  9 mutants on the new conditions and the two bumped labels, 9 killed;
+  baseline 292 tests green (four checkout-location guard tests deselected
+  in the copy only). A tenth mutant, which always runs the second order,
+  survives as expected: it changes run time only.
+
+**Not covered.** Rules `2026-11-01d` are not re-tested on a fresh
+held-out set. The standing limits above are unchanged.
+
+## Measured behavior: verify review-fix round (2026-11-01)
+
+**Why.** A quality review and a consistency review of rules `2026-11-01b`
+probed the checks with invented titles (not citations from a held-out
+set). Under `2026-11-01b` these wrong titles graded CONFIDENT:
+- a hyphenated word offered its parts and its closed form at once:
+  "… Outcomes for Smokers and Nonsmokers …" against "… Outcomes for
+  Non-Smokers …" (similarity 0.961), and the same with "School and
+  Preschool" / "Pre-School" and "Users and Nonusers" / "Non-Users";
+- accents were compared by presence, so a changed accent passed when the
+  plain form also stood elsewhere in the title: Vietnamese "Tránh thai và
+  tranh luận" / "Tranh thai và tranh luận", Spanish "sí" / "si",
+  Portuguese "é" / "e" (all 1.00);
+- joining words made or hid a negation: "Are Not Able to" / "Are Notable
+  to", "Have Nowhere to" / "Have Now Here to" (0.995);
+- an ordinal and a cardinal had the same key: "Second-Year" /
+  "Two-Year", "First-Year" / "One-Year" (0.969);
+- the spelling folds turned "all" and "does" into the listed function
+  words "al" and "des", so an added "All" or "Does" passed (0.978).
+
+Also, "Review: …" never matched the review-title pattern (its closing
+word boundary needs a letter or digit after the colon), and "Socio-Economic"
+against "Socioeconomic" (likewise Socio-Emotional, Macro-Economic,
+Bio-Ethics, Geo-Engineering, and the spaced "Socio Economic") was a word
+difference, WEAK, because the "oe" fold ran on each part before the
+join. The user decided (2026-11-01) to fix these before committing the
+verify rules.
+
+**Change (rules `2026-11-01c`, tool 1.9.0; word check
+`content-words-v3`, mark check `marks-v2`, review check
+`book-review-v2`; scores, candidate search, row fields, return shapes
+and exit codes unchanged).**
+- **A hyphenated word counts once** (`title_words_missing`): the other
+  title's hyphenated word is used either as its parts or as its closed
+  form; taking one uses up the other. Words of this title written apart
+  that spell one word of the other ("Non Smokers") use that word up too.
+  Whole words are taken before parts of hyphenated words, so a word does
+  not split a compound a later word needs.
+- **Folded after joining** (`title_join_keys`): a joined word's key is
+  also built by joining first and folding after, so "Socio-Economic" =
+  "Socioeconomic"; the part-by-part form stays too ("Centre-Based").
+- **Joins keep negations**: a joined word counts only if it is a
+  negation exactly when one of its parts is: "cannot" = "can not",
+  "nobody" = "no body", but "notable" ≠ "not able" and "nowhere" ≠ "now
+  here". A leading "non" or "nicht" (`NEGATION_PREFIXES`) is a prefix:
+  "Non-Smokers" = "Nonsmokers", "Nicht-Raucher" = "Nichtraucher".
+- **Ordinals**: "second" and "2nd" share one key, apart from "two" and
+  "2" (`title_word_number_key`).
+- **Function words as written**: `TITLE_STOPWORDS` is looked up with the
+  word as written, before the spelling folds, so "all" and "does" are
+  compared, and Italian "della", "delle", "nella", whose folded forms are
+  not on the list, are set aside.
+- **Accents counted** (`title_marks_differ`): for each word written with
+  and without accents, a form one side has more often than the other is
+  named against a form the other side has more often.
+- **"Review: …"** carries a review marker (`REVIEW_TITLE_RE`).
+
+**Measured** (offline, no new live calls).
+- The probe titles: of the 15 wrong titles above that graded CONFIDENT,
+  14 are WEAK, each naming the differing word or accent; "Mourning" /
+  "Morning" stays CONFIDENT (a spelling-fold collision, a standing limit
+  above). The six "-Economic"-type compounds are CONFIDENT. "Second-Year"
+  against "2nd-Year" stays WEAK through the numeral guard, which counts
+  "2nd" but not a spelled-out ordinal away from a part word.
+- Cost and effect: the word, mark and review checks re-run on the cited
+  and record titles of every item in both held-out sets and the
+  calibration set, `2026-11-01b` (the saved `_common.py`, replayed
+  exactly) against `2026-11-01c`. Correct citations: 0 title grades
+  change (title check alone: fresh set 74, 61 CONFIDENT before and after;
+  first set 138, 120 and 120; calibration 44, 8 and 8). One correct
+  citation's word list changes, already WEAK at 0.760: its record repeats
+  "Brazil" in a subtitle the citation omits, and the second "Brazil" is
+  named. Citations that must not pass: no grade changes; four word lists,
+  all already WEAK or MISMATCH, also name an added "does" (three) or
+  "all" (one). The mark and review checks change no result on these
+  sets.
+- Tests (`VerifyReviewFixRoundTests`, 14 tests): one per defence, each on
+  a pair only that defence stops (the hyphenated-word pairs both ways and
+  with a soft hyphen, a repeated hyphenated word, "Smokers and Non
+  Smokers", "Not Able" / "Nowhere", "Second-Year" / "Two-Year", added
+  "All" and "Does", the three accent pairs, "Review:", a cited subtitle
+  that adds "not" against a record without a colon, "⩽" / "⩾" and symbol
+  order, "waltz" / "waltzes"); ten correct forms CONFIDENT (the "non"
+  and "nicht" prefixes, closed / hyphenated / spaced "-Economic" compounds,
+  British spellings, Italian "della", plurals beside a hyphenated
+  compound); the hyphenated-word and accent shapes through the CLI on
+  four lookup routes. `test_scholar_search.py` 291 tests,
+  `test_scholar_records.py` 33, `test_scholar_openalex_gate.py` 56,
+  `test_scholar_retry_log.py` 18, all OK.
+- Mutation check (each mutant run on a copy of the code, removed after):
+  24 mutants on this round's conditions, 22 killed; baseline 287 tests
+  green (four checkout-location guard tests deselected in the copy only).
+  The two survivors change only the order in which equal choices are
+  tried (which hyphenated word a part is taken from; a closed word or a
+  hyphenated one first). A different order only finds another one-for-one
+  pairing of the same words, and the presence check (words the other
+  title has only written apart) does not depend on order, so a different
+  order can flag a correct citation but cannot pass a title that no
+  one-for-one pairing passes. On 6,121 pairs (probe pairs and seeded
+  random titles), one survivor gave the same results as the code and the
+  other changed only which words 8 lists named. The review's 11 surviving
+  mutants of earlier conditions were re-run: 9 are killed by the new
+  tests; the two left (a minus sign right after a full stop, a CJK
+  character inside a hyphenated word) change only which unusual
+  spellings are flagged.
+
+**Not covered.** Rules `2026-11-01c` are not re-tested on a fresh
+held-out set. Standing limits above: spelling-fold collisions, a word
+the other title has only written apart (found by presence), word order,
+the "i" / "is" plural fold, plurals that change the stem (WEAK), and the
+author and review cases.
+
+## Measured behavior: verify held-out re-test and word-check fix (2026-11-01)
+
+**Why.** Rules `2026-11-01a` were re-tested on a fresh held-out set of 175
+citations, 101 of which must never be CONFIDENT, written by an agent that
+did not see the rules or their tuning sets. 2 of the 101 were graded
+CONFIDENT (2.0%; 95% upper bound 6.1%), both with a reversed claim:
+- "Statistics notes: Absence of evidence is evidence of absence" cited for
+  the record "Statistics notes: Absence of evidence is not evidence of
+  absence" (similarity 0.967). The word check found the record's "not" in
+  the cited title as "not" + "es" = "notes", from the "Statistics notes:"
+  both titles share.
+- "Polypill with or without Aspirin in Persons with Cardiovascular
+  Disease" cited for "… in Persons without Cardiovascular Disease" (0.979).
+  "with" is a set-aside function word, and the record's second "without"
+  was found in the cited title's "with or without": words were compared
+  as sets.
+
+The user decided (2026-11-01) to fix both, review the fixes and commit
+them ahead of the Literature Review mode build.
+
+**Change (rules `2026-11-01b`, tool 1.9.0; word check `content-words-v2`;
+scores, candidate search, the mark and review checks, row fields, return
+shapes and exit codes unchanged).**
+- **One for one** (`title_words_missing` with a word bag): each word on one
+  side uses up one occurrence on the other, in order of strength: a
+  hyphenated word whose joined form is one word of the other title
+  ("Pre-School" for "Preschool"), then the same word, then a plural or
+  possessive form. A word on one side more often than on the other is
+  named, and a plural form cannot borrow a word the other title's own
+  copy has used. Consecutive words written together must be a word of
+  the other title ("school children" = "schoolchildren"), not the same
+  words written apart there; otherwise a repeated two-word phrase hid the
+  repeat ("Effects of … and Effects of …" for one "Effects of"). Under
+  these rules a hyphenated word still offered its parts and its closed
+  form at once ("Smokers and Nonsmokers" passed for "Non-Smokers"); rules
+  `2026-11-01c` count it once (the entry above).
+- **"es" only after s, x, z, ch, sh** (`title_word_forms`,
+  `ES_PLURAL_BASE_ENDINGS`): "boxes" = "box", "approaches" = "approach";
+  "notes" ≠ "not", "rates" ≠ "rat". A plural that changes the stem is
+  not folded: "potato" / "potatoes" (the "oe" fold makes "potates"),
+  "study" / "studies", "life" / "lives" and "quiz" / "quizzes" are word
+  differences (WEAK).
+- **Negations are never folds** (`TITLE_NEGATIONS`: "no", "not", "non",
+  "nor", "never", "none", "without", "cannot" and others, plus French,
+  Spanish, Portuguese, Italian and German negations): a negation matches
+  only itself, and no word's plural form is a negation ("no" ≠ "nos", "Lo
+  que no dicen" vs "Lo que nos dicen"). The list is disjoint from
+  `TITLE_STOPWORDS`, which a test holds.
+
+**Measured** (offline, no new live calls).
+- Cost and effect: the word and mark checks re-run on the cited and
+  record titles of every item in both held-out sets and the calibration
+  set, `2026-11-01a` (the saved `_common.py`, replayed exactly) against
+  `2026-11-01b`. Correct citations: 0 title grades change (title grades,
+  from the title check alone: fresh set 74, 61 CONFIDENT before and after;
+  first set 138, 120 and 120; calibration 44, 8 and 8). One correct
+  citation's word list grows, already WEAK at 0.867 (a record title
+  "… Final Report. OPRE Report 2012-45." also names its second
+  "report"). Citations that must not pass: only the two above change
+  grade (CONFIDENT → WEAK, naming "not" and "without"); 11 others, all
+  already WEAK, MISMATCH or NOT FOUND, name more words. The first set's
+  11 author cases stay CONFIDENT. The mark check's results are identical.
+- Tests (`VerifyHeldoutRetestFixTests`, 12 tests): the two held-out
+  titles verbatim (in both directions for the second), through the CLI on
+  four lookup routes; "Results that are not notes" vs "Results that are
+  notes"; "no" / "nos" in Spanish; "rates" / "rat"; a repeated content
+  word; a plural that uses up its partner; a closed compound counted once;
+  seven correct forms (a hyphenated word beside the same word alone, a
+  title that repeats words, singular and plural trading places, repeated
+  possessives, "es" plurals) plus the ten correct forms of the
+  `2026-11-01a` tests, all CONFIDENT. `test_scholar_search.py` 277 tests,
+  `test_scholar_records.py` 33, `test_scholar_openalex_gate.py` 56,
+  `test_scholar_retry_log.py` 18, all OK.
+- Mutation check (each mutant run on a copy of the code, removed after):
+  16 mutants, one new condition each (9 on the one-for-one matching, 3 on
+  negations, 2 on the "es" rule, 2 on the version labels), all killed;
+  baseline 273 tests green (four checkout-location guard tests deselected
+  in the copy only). Two negation mutants and both "es" mutants are each
+  killed by one test that only that rule stops; the third negation mutant
+  (a negation set aside as a function word) by five tests.
+
+**Not covered.** Rules `2026-11-01b` are not re-tested on a fresh held-out
+set; the two items above are test fixtures, so they do not count as held
+out. Word order is not compared. A word found only by joining
+words the other title writes apart is found by presence, not counted. A
+swap of two short words where one is the other plus "s" ("i" / "is")
+still reads as a plural unless one is a negation. Co-authors, half of a
+hyphenated given name, organizations by part name and reviews the
+metadata does not mark are unchanged (standing limits above).
+
+## Measured behavior: verify held-out validation and fix round (2026-11-01)
+
+**Why.** The independent held-out validation scheduled before Literature
+Review mode relies on `verify` ran on 2026-11-01 under rules `2026-10-06f`
+(tool 1.8.0). The user did not accept the gate as it stood (user decision,
+2026-11-01): fix the title-word, erased-mark and book-review classes now,
+correct the standing summary, and re-test on a fresh held-out set.
+
+**Held-out result** (251 live `verify` calls on citations labeled by
+agents independent of the rule tuning).
+- Set C, 100 references an AI wrote from memory (two models, four reading
+  lists): 0 of 20 wrong references CONFIDENT (95% upper bound 13.9%; 13
+  NOT FOUND, 3 MISMATCH, 4 WEAK). Of the 80 correct ones, 69 CONFIDENT, 9
+  WEAK, 2 NOT FOUND.
+- Set B, 151 items written to break the checker: 29 of 93 near-misses
+  CONFIDENT (31.2%; 95% upper bound 40.0%). Through: a one-word swap or an
+  added or dropped "not" in a long title, at title similarities of 0.951
+  to 0.99 (10, plus "Two-Year" vs "Three-Year"); `<` / `>`, `≤` / `≥`,
+  Vietnamese tone marks and "año" / "ano", erased before scoring, all at
+  1.00 (7); author cases the rule cannot judge (11: later co-authors, half
+  of a hyphenated given name, organizations named by part of their name).
+- Not documented before: two famous books graded CONFIDENT on a review of
+  the book (the index lists the book's author on the review, which
+  appeared a year later; both reviews are typed "article" with the bare
+  book title, in a review journal and in a general journal), and a series
+  name the index appends to a report's title pushing a correct `title:"…"`
+  lookup to 0.692, below the 0.70 floor (NOT FOUND).
+- The standing summary's "0 of 40 … about 7.5% at most" was in-sample and
+  is replaced above.
+
+**Change (rules `2026-11-01a`, tool 1.9.0; scores, candidate search and
+exit codes unchanged).** Three checks on the CONFIDENT decision, each a
+step-aside to WEAK with a plain reason naming what differs:
+- **Content words, both directions** (`VERIFY_TITLE_WORD_GUARD`
+  `content-words-v1`, `title_words_differ`). Every content word of each
+  title must occur in the other. Read alike: hyphenated, spaced and
+  closed compounds and an index's split word (a word of one title may be
+  2–4 consecutive words of the other written together: "Under-Performing"
+  = "underperforming", "school children" = "schoolchildren", "I ncome" =
+  "Income"), number words ("Part Two" = "Part 2" = "Part II"), a plural or
+  possessive "s", British / American spelling (`SPELLING_FOLDS`: -our/-or,
+  -ise/-ize, -yse/-yze, ll/l, -tre/-ter, -ence/-ense, -ogue/-og,
+  -amme/-am, ae/oe/e), function words (`TITLE_STOPWORDS`; negations are
+  content words), and a subtitle missing entirely from one side. Each CJK,
+  kana or Hangul character is one word. Digits and Roman numerals are
+  left to the numeral guard.
+- **Meaning-bearing marks** (`VERIFY_MARK_GUARD` `marks-v1`,
+  `title_marks_differ`). The symbols `< > ≤ ≥ ≠ ± ∓ % ‰ +` and a minus
+  sign on a number must appear in the same order on both sides ("<=" =
+  "≤"), and a word written with other accents on the other side ("ano" /
+  "año", "khan" / "khăn") is named. The score and candidate matching keep
+  the folding, so retrieval is unchanged.
+- **Book reviews** (`VERIFY_REVIEW_GUARD` `book-review-v1`,
+  `verify_review_check`). A record typed `book-review`; a record title
+  carrying a review marker ("Review of …", "Book Review:", "[Review of the
+  book …]", "(book review)", "Rezension", "compte rendu", "reseña") the
+  cited title lacks; or, on `title:"…"`, a journal item (OpenAlex
+  `article`, `review`, …) whose title search also found a `book-review`
+  record titled with the cited title (or the cited title followed by
+  "by …"). A title-search tie now prefers a record not typed
+  `book-review`. The two held-out reviews are both typed `article`, so
+  only the last signal can reach them. In both saved held-out responses
+  the same title search also returned a record typed `book-review` titled
+  with the book's title (observed; the responses were read for this
+  design), so the signal was shaped with those two cases in view: only
+  the fresh re-test can show whether it generalizes.
+- Rows gain `title_word_check`, `title_mark_check` and `review_check`
+  (present only when the check fired) and three `verify_cutoffs` keys.
+
+**Measured** (offline; the held-out sets were not re-run, and the fresh
+one was not read).
+- Suites: `test_scholar_search.py` 265 tests OK (0 expected failures: the
+  six known-limit tests, a one-word swap at 185 and at 93 characters, an
+  inserted "No", two Chinese and one Japanese one-character edits, pass
+  as ordinary tests); `test_scholar_records.py` 33, `test_scholar_openalex_gate.py`
+  56, `test_scholar_retry_log.py` 18, `test_lit_verify.py` 188,
+  `test_lit_corpus.py` 34, all OK.
+- Calibration set (84 items), title grading `2026-10-06f` → `2026-11-01a`:
+  match 9/35/0 → 8/36/0 (C/W/M; M42, "Education" cited for
+  "Educational", moves to WEAK), mismatch unchanged (0/30/9 on the 39
+  title-separable items; X40, the identical-title item, CONFIDENT without
+  `--year` as before). Before the set-asides were added, the first draft
+  of the word check moved 6 of the 9 (an index's split word, a closed
+  compound, British spelling twice, a possessive and a plural, and M42).
+- New synthetic fixtures (`VerifyHeldoutFixTests`): 9 word near-misses
+  and 5 mark near-misses all WEAK; 10 genuine word forms and 5 genuine
+  mark forms all CONFIDENT; the three review signals WEAK; a book that
+  ties with its review wins and stays CONFIDENT.
+- Mutation check (each mutant run on a copy of the code, removed after):
+  26 mutants, one line each (12 on the word check, 6 on the mark check, 6
+  on the review check, 2 on the lookup note and row fields), all killed by
+  `test_scholar_search.py`; baseline 261 tests green (four
+  checkout-location guard tests deselected in the copy only).
+
+**Not covered** (standing limits above): co-authors, half of a hyphenated
+given name, organizations by part name, reviews the metadata does not
+mark, the series-name NOT FOUND, and the word-check set-asides.
 
 ## Measured behavior: records file and Semantic Scholar citation contexts (2026-10-31)
 

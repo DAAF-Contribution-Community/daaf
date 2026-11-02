@@ -217,9 +217,10 @@ from scholar_backends._common import (  # noqa: E402
     VERIFY_MISMATCH_BELOW, VERIFY_NUMERAL_GUARD, VERIFY_ORG_RULE, VERIFY_RULES_UPDATED, VERIFY_RULES_VERSION,
     VERIFY_SCORER,
     VERIFY_TITLE_NORM, VERIFY_TITLE_SEARCH_FLOOR, VERIFY_TRANSLIT, VERIFY_YEAR_TOLERANCE, BackendError, CONTACT_ENV,
+    BOOK_REVIEW_TYPES, JOURNAL_ITEM_TYPES, VERIFY_MARK_GUARD, VERIFY_REVIEW_GUARD, VERIFY_TITLE_WORD_GUARD,
     arxiv_id_from,
-    author_match, contact_email, first_surname, norm_doi, norm_title, numerals_differ, title_letter_count,
-    verify_title_norm, year_check,
+    author_match, contact_email, first_surname, norm_doi, norm_title, numerals_differ, review_title_marker,
+    title_letter_count, title_marks_differ, title_words_differ, verify_title_norm, year_check,
 )
 
 # §§ CONSTANTS
@@ -346,7 +347,33 @@ from scholar_backends._common import (  # noqa: E402
 # newest-first like publication_date:desc (no context_warning). The stderr
 # NOTE for contexts that are not available gives the same plain reason as the
 # digest ("Semantic Scholar was busy (rate-limited)"), not the raw status.
-TOOL_VERSION = "1.8.0-daaf"
+# 1.9.0 (2026-11-01, user decision after the held-out validation of verify;
+# rules 2026-11-01a): three guards on verify's CONFIDENT decision, each a WEAK
+# step-aside, never MISMATCH (_common.py § TITLE_GUARDS; verify_review_check):
+# the titles' content words must agree both ways (title_word_guard), the
+# symbols, signs and accents the score erases must agree (mark_guard), and a
+# record that is a review of the work cited (typed book-review, a review title
+# marker, or a journal item sharing its title with an indexed book review) is
+# not the work (review_guard). Verify rows gain title_word_check,
+# title_mark_check and review_check (present only when that guard fired) and
+# three verify_cutoffs keys; a title-search tie now prefers a record that is
+# not typed book-review. Scores, candidate search and exit codes are unchanged.
+# Rules 2026-11-01b (same release, after the fresh held-out re-test): the word
+# check (title_word_guard content-words-v2) matches words one for one, adds or
+# removes "es" only after s, x, z, ch or sh, and never folds a negation, so a
+# repeated "without" or a "not" beside a shared "notes" is reported.
+# Rules 2026-11-01c (same release, after the two reviews of 2026-11-01b): the
+# word check (content-words-v3) lets a hyphen run count once, as its words or
+# as its joined form, folds joined words after joining, keeps a negation from
+# appearing or vanishing through a join, keys ordinals apart from cardinals
+# and looks function words up as written; the mark check (marks-v2) counts
+# accented forms; the review guard (book-review-v2) reads "Review: …".
+# Rules 2026-11-01d (same release, after the second review of 2026-11-01c):
+# the word check (content-words-v4) also pairs words with exact single words
+# taken before consecutive words written together, and keeps the shorter
+# list of missing words, so a title whose consecutive words spell another of
+# its words ("A Cross Sectional … across") passes against itself.
+TOOL_VERSION = "1.9.0-daaf"
 USER_AGENT = f"DAAF-scholar-search/{TOOL_VERSION} (Data Analyst Augmentation Framework)"
 QUERY_MAX_LEN = 1000
 RESPONSE_CAP = 25 * 1024 * 1024
@@ -1051,11 +1078,19 @@ def verify_title_check(claimed, record_title):
     #   a different work ("Teachers I" vs "Teachers II", "Wave 3" vs "Wave 4"),
     #   so a CONFIDENT score with differing numbers is WEAK, never MISMATCH: the
     #   difference needs a human look, not a hard flag.
+    # REASONING (rules 2026-11-01a, the held-out fix round): the same holds for
+    #   one changed word or an added or dropped "not" in a long title (better
+    #   -> worse scored 0.974) and for the marks the score erases ("<5" vs
+    #   ">5", "año" vs "ano" scored 1.00). The word check (title_words_differ)
+    #   and the mark check (title_marks_differ) run only on a CONFIDENT score
+    #   and step aside to WEAK with the differing words or marks named, so the
+    #   person who checks knows where to look. Neither changes the scores.
     full = title_ratio(claimed, record_title)
     sub = title_ratio_subtitle_aware(claimed, record_title)
     weak_why = []
     letters = (title_letter_count(claimed), title_letter_count(record_title))
     numerals = numerals_differ(claimed, record_title)
+    words = marks = None
     if min(letters) < VERIFY_MIN_TITLE_LETTERS:
         side = "cited title" if letters[0] < VERIFY_MIN_TITLE_LETTERS else "record's title"
         weak_why.append(f"the {side} has {min(letters)} letter(s), too few to compare "
@@ -1067,10 +1102,33 @@ def verify_title_check(claimed, record_title):
             verdict = "WEAK"
             weak_why.append(f"numbers differ (cited {', '.join(numerals[0]) or 'none'}, record "
                             f"{', '.join(numerals[1]) or 'none'})")
+        words = title_words_differ(claimed, record_title)
+        if words:
+            verdict = "WEAK"
+            parts = [f"{side_} {', '.join(repr(w) for w in ws)}" for side_, ws in
+                     (("only the cited title has", words["cited_only"]),
+                      ("only the record's title has", words["record_only"])) if ws]
+            weak_why.append(f"the titles differ in words ({'; '.join(parts)}): one word can change what a "
+                            "title claims")
+        marks = title_marks_differ(claimed, record_title)
+        if marks:
+            verdict = "WEAK"
+            if marks["symbols"]:
+                weak_why.append(f"the titles differ in symbols (cited {' '.join(marks['symbols'][0]) or 'none'}, "
+                                f"record {' '.join(marks['symbols'][1]) or 'none'}): '<' and '>' or a sign "
+                                "can reverse a claim")
+            if marks["accents"]:
+                weak_why.append("the titles differ in accents (" + ", ".join(
+                    f"cited {a!r}, record {b!r}" for a, b in marks["accents"]) + "): an accent can make "
+                    "another word ('ano' and 'año')")
     else:
         verdict = "MISMATCH" if sub < VERIFY_MISMATCH_BELOW else "WEAK"
     return {"verdict": verdict, "full": full, "sub": sub, "weak_why": weak_why,
-            "numerals": None if not numerals else {"cited": numerals[0], "record": numerals[1]}}
+            "numerals": None if not numerals else {"cited": numerals[0], "record": numerals[1]},
+            "words": words,
+            "marks": None if not marks else {"symbols": None if not marks["symbols"] else
+                                             {"cited": marks["symbols"][0], "record": marks["symbols"][1]},
+                                             "accents": [list(p) for p in marks["accents"]]}}
 
 
 def verify_title_grade(claimed, record_title):
@@ -1078,6 +1136,52 @@ def verify_title_grade(claimed, record_title):
     # (the calibration scripts and tests grade fixture pairs with it).
     c = verify_title_check(claimed, record_title)
     return c["verdict"], c["full"], c["sub"]
+
+
+def verify_review_check(cited_title, rec, review_titles=()):
+    # INTENT (VERIFY_REVIEW_GUARD book-review-v1): a reason the record found is
+    #   a review of another work rather than the work cited, or None. Three
+    #   signals, first match wins:
+    #   - type: the record is typed a book review (BOOK_REVIEW_TYPES);
+    #   - title: the record's title carries a review marker ("Review of …",
+    #     "Book Review: …", "[Review of the book …]") the cited title lacks;
+    #   - same_title_review (title:"…" only): the record is a journal item
+    #     (JOURNAL_ITEM_TYPES) and the same title search found a book review
+    #     whose title is the cited title (or the cited title followed by
+    #     "by <author>", or a CONFIDENT-level score), so the cited title names
+    #     a reviewed book and this journal item may be another review of it.
+    # REASONING: the held-out validation found two famous books graded
+    #   CONFIDENT on a review of the book: the index lists the book's author on
+    #   the review and the review appeared a year later, so title, author and
+    #   year all agree. Both reviews were typed "article" with the bare book
+    #   title, so only the same-title signal reaches them; it needs the other
+    #   candidates, which only the title search has. WEAK, never MISMATCH: a
+    #   person checks the venue and pages.
+    # ASSUMES: a book, chapter, report or thesis record (not a journal item)
+    #   sharing a reviewed book's title is the book or part of it.
+    rtype = str(rec.get("type") or "").lower()
+    if rtype in BOOK_REVIEW_TYPES:
+        return {"signal": "type", "type": rtype,
+                "reason": f"the record found is indexed as a book review (type '{rtype}'), not the work "
+                          "itself: if you are citing the book, find the book's own record"}
+    marker = review_title_marker(rec.get("title"))
+    if marker and not review_title_marker(cited_title):
+        return {"signal": "title", "marker": marker,
+                "reason": f"the record's title marks it as a review of another work ({marker!r}), not the "
+                          "work itself"}
+    want = verify_title_norm(cited_title)
+    if rtype in JOURNAL_ITEM_TYPES and want:
+        for t in review_titles:
+            got = verify_title_norm(re.sub(r"\s+", " ", re.sub(r"(?i)^\W*(?:a\s+)?(?:book\s+reviews?|reviews?\s+of"
+                                                            r"|review\s*:)\W*", "", str(t or ""))))
+            if got == want or got.startswith(want + " by ") or title_ratio(cited_title, t) >= VERIFY_CONFIDENT_MIN:
+                venue = f", in {one_line(rec.get('venue'), 120)}" if rec.get("venue") else ""
+                return {"signal": "same_title_review", "review_title": one_line(t, 200),
+                        "reason": f"the index also lists a book review titled {one_line(t, 120)!r}, and the record "
+                                  f"found is a journal item (type '{rtype}'{venue}), so it may be a review of the "
+                                  "book rather than the book: check its venue and pages (`work <ID>`) and look "
+                                  "for the book's own record"}
+    return None
 
 
 def verify_cutoffs():
@@ -1090,7 +1194,8 @@ def verify_cutoffs():
             "author_rule": VERIFY_AUTHOR_RULE, "org_rule": VERIFY_ORG_RULE, "rules_updated": VERIFY_RULES_UPDATED,
             "rules_version": VERIFY_RULES_VERSION, "title_norm": VERIFY_TITLE_NORM,
             "min_title_letters": VERIFY_MIN_TITLE_LETTERS, "numeral_guard": VERIFY_NUMERAL_GUARD,
-            "translit": VERIFY_TRANSLIT}
+            "translit": VERIFY_TRANSLIT, "title_word_guard": VERIFY_TITLE_WORD_GUARD,
+            "mark_guard": VERIFY_MARK_GUARD, "review_guard": VERIFY_REVIEW_GUARD}
 
 
 # §§ FUSION
@@ -1891,8 +1996,11 @@ def cmd_verify(http, a, notes):
     #   title:"…") when its best candidate would not grade CONFIDENT. Verdicts:
     #   CONFIDENT  a title check passed: full-title similarity >=
     #              VERIFY_CONFIDENT_MIN, both titles long enough to compare
-    #              (B1), the same numbers on both sides (D2), and every given
-    #              --author / --year check passed;
+    #              (B1), the same numbers on both sides (D2), the same content
+    #              words as often (rules 2026-11-01b) and the same
+    #              meaning-bearing marks (rules 2026-11-01a), the
+    #              record not a review of the work (book-review-v1), and every
+    #              given --author / --year check passed;
     #   WEAK       a candidate exists, but some check is short of CONFIDENT;
     #   MISMATCH   (exit 11) the record is a different work: --title on an ID
     #              scores < VERIFY_MISMATCH_BELOW even subtitle-aware (R1), or
@@ -1922,11 +2030,20 @@ def cmd_verify(http, a, notes):
     #   (no title check at all -> EXISTS).
     cited_title = title if is_title else a.title
     best, errors, answered = None, {}, []
+    # INTENT (book-review-v1): every OpenAlex title-search candidate, for the
+    #   same-title review signal (verify_review_check); empty on an ID lookup.
+    oa_seen = []
 
     def candidate(rec, ratio, via, note):
         c = {"rec": rec, "ratio": ratio, "via": via, "note": note, "check": None}
         if cited_title is not None:
             c["check"] = verify_title_check(cited_title, rec["title"])
+            rv = verify_review_check(cited_title, rec, [x.get("display_name") for x in oa_seen
+                                                        if str(x.get("type") or "").lower() in BOOK_REVIEW_TYPES])
+            if rv and c["check"]["verdict"] != "MISMATCH":
+                c["check"]["review"] = rv
+                c["check"]["verdict"] = "WEAK"
+                c["check"]["weak_why"].append(rv["reason"])
         return c
 
     def rank(c):
@@ -1936,7 +2053,7 @@ def cmd_verify(http, a, notes):
 
     try:
         w, note, ratio = openalex.get_work(http, ident, extra_select="", year=a.year, author=a.author,
-                                           first_author=a.first_author)
+                                           first_author=a.first_author, seen=oa_seen)
         answered.append(openalex.NAME)
         best = candidate(openalex.to_record(w), ratio, openalex.NAME, note)
     except BackendError as exc:
@@ -2018,6 +2135,13 @@ def cmd_verify(http, a, notes):
         weak_why += check["weak_why"]
         if check["numerals"]:
             notes["numeral_check"] = check["numerals"]
+        # Rules 2026-11-01a: row fields present only when a guard fired.
+        if check.get("words"):
+            notes["title_word_check"] = check["words"]
+        if check.get("marks"):
+            notes["title_mark_check"] = check["marks"]
+        if check.get("review"):
+            notes["review_check"] = check["review"]
         if verdict == "MISMATCH":
             mismatch_why.append(f"the cited title scores {check['sub']:.2f} even with subtitles set aside "
                                 f"(main titles before a colon compared), below {VERIFY_MISMATCH_BELOW:.2f}")
@@ -3302,9 +3426,10 @@ def build_parser():
                          "proves the ID resolves (EXISTS, not citable)", limit=None)
     sp.add_argument("--title", help="cited title to cross-check against the record an ID resolves to (required "
                                     "for CONFIDENT; refused with title:\"…\", where the ID is the title): "
-                                    f"CONFIDENT needs a full-title similarity >= {VERIFY_CONFIDENT_MIN:.2f} and the "
-                                    f"same numbers on both sides; MISMATCH when even the main titles (before a "
-                                    f"colon) score < {VERIFY_MISMATCH_BELOW:.2f}")
+                                    f"CONFIDENT needs a full-title similarity >= {VERIFY_CONFIDENT_MIN:.2f}, the "
+                                    "same numbers, content words, symbols and accents on both sides, and a record "
+                                    "that is not a review of the work (each difference gives WEAK); MISMATCH when "
+                                    f"even the main titles (before a colon) score < {VERIFY_MISMATCH_BELOW:.2f}")
     sp.add_argument("--author", help="cited author ('Surname', 'Surname, First', 'F. Surname', 'Smith et al.', "
                                      "'Smith 2019', 'Smith Ed.', 'Smith JA', 'Fryer Jr.', 'van der Klaauw', "
                                      "'Steenbergen-Hu', 'OECD'), checked on an ID or on the title:\"…\" candidate "
@@ -3913,7 +4038,8 @@ def main(argv=None):
     if notes.get("failures"):
         row["failed_backends"] = notes["failures"]
     for k in ("verdict", "verified_by", "title_similarity", "title_similarity_subtitle_aware", "author_check",
-              "year_check", "numeral_check", "nearest_candidate", "retracted", "retracted_by", "verify_cutoffs",
+              "year_check", "numeral_check", "title_word_check", "title_mark_check", "review_check",
+              "nearest_candidate", "retracted", "retracted_by", "verify_cutoffs",
               "checked_backends", "unanswered_backends", "oa", "retractions", "relevance_score_present",
               "keywords", "counts", "scite_tally", "snippet_hidden"):
         if k in notes:

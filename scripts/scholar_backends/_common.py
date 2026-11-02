@@ -21,6 +21,7 @@ import html
 import os
 import re
 import unicodedata
+from collections import Counter
 
 LICENSE_ORDER = {"open": 0, "cc-by-nc": 1, "restricted": 2}
 CAPABILITY_VOCAB = frozenset({"search", "lookup", "cites", "refs", "oa_locate",
@@ -45,8 +46,11 @@ CONTACT_ENV = "SCHOLARLY_CONTACT_EMAIL"
 #              added subtitle (6 -> 3 of 44) vs the provisional 0.60.
 #   WEAK       everything between: do not cite until confirmed another way.
 # All of it is IN-SAMPLE (n = 84, the mismatches and garbles partly authored
-# by the calibrating model); an independent held-out validation is scheduled
-# before Literature Review mode depends on verify.
+# by the calibrating model). The independent held-out validation ran on
+# 2026-11-01 under rules 2026-10-06f (see the held-out fix round below); the
+# re-test of rules 2026-11-01a on a fresh held-out set let 2 of 101 bad
+# citations through, both WEAK under rules 2026-11-01b and later; rules
+# 2026-11-01d (in force) have not been re-tested on held-out data.
 # These govern the verify gate only. Version-sibling matching (fulltext
 # siblings, the ERIC `oa` leg) keeps the core's TITLE_MATCH_MIN.
 VERIFY_CONFIDENT_MIN = 0.95
@@ -268,19 +272,95 @@ VERIFY_CUTOFFS_CALIBRATED = "2026-10-02"
 #   (IPA-only letters, clicks, tone letters, wynn / yogh, digraphs) are left
 #   deleted and counted in api-notes: no principled single-letter mapping
 #   exists for them.
+# Held-out fix round (rules 2026-11-01a, tool 1.9.0; user decision 2026-11-01
+# after the held-out validation, which found 29 of 93 crafted near-misses
+# graded CONFIDENT; evidence: api-notes.md § "Measured behavior: verify
+# held-out validation and fix round (2026-11-01)"). Three guards on the
+# CONFIDENT decision only; each steps aside to WEAK, never MISMATCH, and none
+# changes how candidates are scored or searched (only a title-search tie now
+# prefers a record not typed "book-review", openalex.best_title_match):
+#   VERIFY_TITLE_WORD_GUARD "content-words-v1" (title_words_differ): every
+#     content word of each title must occur in the other (both directions),
+#     after verify_title_norm, with hyphenated words also compared joined
+#     ("Under-Performing" = "underperforming"), number words read as numbers
+#     ("Part Two" = "Part 2" = "Part II"), function words (TITLE_STOPWORDS)
+#     set aside and each CJK character counted as a word. A subtitle wholly
+#     absent on the other side is set aside, as the score already handles it.
+#     Catches one-word swaps and added or dropped negations in long titles.
+#   VERIFY_MARK_GUARD "marks-v1" (title_marks_differ): the comparison
+#     symbols, signs on numbers and percent marks (MEANING_SYMBOLS), and the
+#     accents verify_title_norm folds away on Latin letters, must agree; "<5"
+#     vs ">5", "año" vs "ano", Vietnamese tone marks.
+#   VERIFY_REVIEW_GUARD "book-review-v1" (review_title_marker; the record
+#     type and same-title review checks live in scholar_search.py): a record
+#     typed "book-review", a record whose title marks it as a review of
+#     another work, or (on title:"…") a journal item that shares its title with
+#     book reviews the index lists is never CONFIDENT for the work itself.
 #   VERIFY_RULES_VERSION changes with every rule change, so MANIFEST rows
 #   graded under different rules are distinguishable.
+# Rules 2026-11-01b (tool 1.9.0; user decision 2026-11-01 after the re-test
+# of 2026-11-01a on a fresh held-out set, which graded two reversed claims
+# CONFIDENT; evidence: api-notes.md § "Measured behavior: verify held-out
+# re-test and word-check fix (2026-11-01)"). VERIFY_TITLE_WORD_GUARD
+# "content-words-v2" changes how a word is found in the other title:
+#   - one for one (title_words_missing with a word bag): each occurrence of a
+#     word on one side uses up one occurrence on the other, so a word added a
+#     second time is a difference ("Persons with" -> "Persons without" when
+#     "with or without" already sits earlier in the title), and a plural fold
+#     can no longer borrow a word the other side's own copy has used up
+#     ("not" read as present because both titles say "Statistics notes:");
+#   - "es" is a plural ending only after s, x, z, ch or sh (title_word_forms:
+#     "box" = "boxes", never "not" = "notes" or "rat" = "rates");
+#   - a negation (TITLE_NEGATIONS) is never matched through a plural fold,
+#     as the word or as the form found ("no" is never "nos").
+#   The word lists reported, the WEAK step-aside and the return shapes of
+#   title_words_differ and title_marks_differ are unchanged.
+# Rules 2026-11-01c (tool 1.9.0; user decision 2026-11-01 after the two
+# reviews of rules 2026-11-01b; evidence: api-notes.md § "Measured behavior:
+# verify review-fix round (2026-11-01)"). Return shapes are unchanged.
+#   VERIFY_TITLE_WORD_GUARD "content-words-v3":
+#   - a hyphen run of the other title offers its joined form OR its words,
+#     never both: taking one uses up the other (title_words_missing), so
+#     "Smokers and Nonsmokers" against "Non-Smokers" is reported;
+#   - consecutive words written together as one word of the other title use
+#     that word up too ("Smokers and Non Smokers" against "Non-Smokers");
+#   - a join is folded after joining as well as before (title_join_keys:
+#     "Socio-Economic" = "Socioeconomic"), and counts only when the joined
+#     word is a negation exactly when one of its parts is ("Not Able" is not
+#     "Notable", "Now Here" not "Nowhere"; "can not" stays "cannot", and a
+#     leading "non" or "nicht" is a prefix: "Non-Smokers" = "Nonsmokers");
+#   - an ordinal is keyed apart from its cardinal ("Second-Year" is not
+#     "Two-Year"; "2nd" = "second");
+#   - a function word is recognized as written, before any spelling fold
+#     ("all" is compared, not read as the set-aside Spanish "al").
+#   VERIFY_MARK_GUARD "marks-v2": accents are compared by count per word
+#   ("Tránh … tranh" against "Tranh … tranh" is reported).
+#   VERIFY_REVIEW_GUARD "book-review-v2": a record title starting "Review:"
+#   carries a review marker (REVIEW_TITLE_RE).
+# Rules 2026-11-01d (tool 1.9.0; after the second review of rules
+# 2026-11-01c; evidence: api-notes.md § "Measured behavior: verify
+# identical-title fix (2026-11-01)"). Return shapes are unchanged.
+#   VERIFY_TITLE_WORD_GUARD "content-words-v4": title_words_missing pairs the
+#   words in a second order, exact single words before the window pass, when
+#   the first order leaves words missing and its window pass took a word, and
+#   keeps the shorter missing list. Two consecutive words that spell another
+#   word of the same title ("A Cross … across", "Day to Day … Today") no
+#   longer leave a correct title, even an identical one, with a word missing.
+#   The mark and review checks are unchanged (marks-v2, book-review-v2).
 VERIFY_SCORER = "hybrid-v1"
 VERIFY_TITLE_SEARCH_FLOOR = 0.70
 VERIFY_YEAR_TOLERANCE = 1
 VERIFY_AUTHOR_RULE = "contiguous-surname-v10"
 VERIFY_ORG_RULE = "org-conservative-v2"
-VERIFY_RULES_UPDATED = "2026-10-06"
-VERIFY_RULES_VERSION = "2026-10-06f"
+VERIFY_RULES_UPDATED = "2026-11-01"
+VERIFY_RULES_VERSION = "2026-11-01d"
 VERIFY_TITLE_NORM = "nfkc-casefold-v1"
 VERIFY_TRANSLIT = "translit-v2"
 VERIFY_MIN_TITLE_LETTERS = 3
 VERIFY_NUMERAL_GUARD = "numerals-v4"
+VERIFY_TITLE_WORD_GUARD = "content-words-v4"
+VERIFY_MARK_GUARD = "marks-v2"
+VERIFY_REVIEW_GUARD = "book-review-v2"
 # Cycle 5 (M1/L2/M2): a cited name read as an organization acronym, and the
 # all-caps cited names M2 never fails.
 ACRONYM_MIN_LETTERS = 3
@@ -305,13 +385,105 @@ PART_WORDS = frozenset({"part", "volume", "vol", "book", "chapter", "study", "ph
 SPELLED_NUMERALS = {w: i + 1 for i, w in enumerate(
     "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
     "seventeen eighteen nineteen twenty".split())}
-SPELLED_NUMERALS.update({w: i + 1 for i, w in enumerate(
-    "first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth "
-    "fifteenth sixteenth seventeenth eighteenth nineteenth twentieth".split())})
+SPELLED_ORDINALS = ("first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth "
+                    "fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
+SPELLED_NUMERALS.update({w: i + 1 for i, w in enumerate(SPELLED_ORDINALS)})
 # A segment-closing "I" right after one of these is the pronoun of an
 # inverted question ("Who Am I:", "What Should I: …"), not a part numeral
 # ("Teachers I:" still counts).
 PRONOUN_I_AFTER = frozenset("am was can could do did should would will shall may might must have had".split())
+# Rules 2026-11-01a (content-words-v1): words the title word check sets aside,
+# because adding or dropping one does not change what a title claims: English
+# articles, prepositions and "and" (so "&" = "and"), and the common French,
+# Spanish, Portuguese, Italian and German ones. Negations are NOT here ("no",
+# "not", "non", "without", "nicht", "kein", "sin", "sans", "senza", "sem"):
+# adding or dropping one reverses the claim. Words that are also common English
+# content words are left out ("die", "den", "am", "par", "i", and "no", which is
+# a Portuguese preposition but an English negation). Three listed words are
+# also English: "per" (a function word there too), "do" (an auxiliary) and
+# "con" (rare in titles). A word is looked up as written (title_words_missing
+# tests the shown form, before SPELLING_FOLDS), so "all" and "does", whose
+# folded forms "al" and "des" are listed, are compared. "für" is listed but
+# never matches: the shown form has its accents folded ("fur").
+TITLE_STOPWORDS = frozenset("""a an the of in on at to for from by with into onto upon about as and
+le la les l un une des du de d et en au aux dans pour sur avec
+el los las lo del al y e o por para con
+os do da dos das na nas um uma pelo pela em com
+il gli una uno di dei degli delle della dello nel nella per tra fra ed
+der das dem ein eine einer eines einem und im zum zur von vom mit für auf bei aus""".split())
+# Rules 2026-11-01b (content-words-v2): negations, as word keys (case and
+# accents folded: "não" is "nao", "ningún" "ningun"). A negation is matched
+# only by itself, never through a plural fold, and is never the form a fold
+# finds: "no" and "nos" ("Lo que no dicen" / "Lo que nos dicen") or "mai" and
+# "mais" are different words. Every one is outside TITLE_STOPWORDS, so the
+# word check never sets one aside (a test holds the two lists apart).
+TITLE_NEGATIONS = frozenset("""no not non nor never neither none nothing nobody nowhere without cannot
+ne pas sans jamais aucun aucune ni
+sin nunca ningun ninguna nada
+nao sem nem nenhum nenhuma
+senza mai nessun nessuno nessuna
+nicht kein keine keiner keinen keinem keines ohne nie niemals""".split())
+# Rules 2026-11-01c (content-words-v3): the negations that also begin a word
+# as a prefix, written closed, hyphenated or spaced ("Non-Smokers" =
+# "Nonsmokers", "Nicht-Raucher" = "Nichtraucher"). A word that starts with one
+# carries that negation when words are joined (title_join_keys).
+NEGATION_PREFIXES = ("non", "nicht")
+# Rules 2026-11-01b (content-words-v2): the endings after which English adds
+# "es" for a plural ("boxes", "classes", "approaches", "wishes", "waltzes").
+# After any other letter, a word plus "es" is another word ("not" / "notes",
+# "rat" / "rates"). Plurals that change the stem are not folded, so a pair
+# like these is a word difference (WEAK): "-oes" ("potato" / "potatoes"; the
+# "oe" fold makes "potates"), "-ies" ("study" / "studies"), "-ves" ("life" /
+# "lives") and a doubled consonant ("quiz" / "quizzes").
+ES_PLURAL_BASE_ENDINGS = ("s", "x", "z", "ch", "sh")
+# Rules 2026-11-01a (content-words-v1): British and American spellings of one
+# word compared alike, applied in order to every word on BOTH sides
+# ("neighbourhood" = "neighborhood", "randomised" = "randomized",
+# "programme" = "program", "modelling" = "modeling", "centre" = "center",
+# "paediatric" = "pediatric", "defence" = "defense", "catalogue" = "catalog",
+# "analyse" = "analyze"). Spelling normalization, like the transliteration
+# table, not a list of words; a number is read as a number first ("four" is
+# 4, never "for"). A pattern can also merge two different English words,
+# which the word check then reads as one: "mourning" / "morning", "poet" /
+# "pet", "shoe" / "she", "canoe" / "cane". Joined words are folded after
+# joining as well (title_join_keys: "Socio-Economic" = "socioeconomic").
+SPELLING_FOLDS = tuple((re.compile(p), r) for p, r in (
+    (r"ae|oe", "e"), (r"(?<=[^aeiou])our", "or"), (r"iz(?=[aeiy])", "is"), (r"yz(?=[aei])", "ys"), (r"ll", "l"),
+    (r"tre(?=s?$)", "ter"), (r"ence(?=s?$)", "ense"), (r"ogue(?=s?$)", "og"), (r"amme(?=s?$)", "am")))
+# Rules 2026-11-01a (marks-v1): marks verify_title_norm turns into spaces that
+# carry meaning: comparison and sign symbols and the percent and per-mille
+# signs. A hyphen or dash counts as a minus sign only right before a digit and
+# not after a letter, digit, dot or closing bracket ("aged -5", not "PreK-12"
+# or "2010-2015").
+MEANING_SYMBOLS = "<>≤≥≠±∓%‰+"
+SYMBOL_EQUIVALENTS = (("<=", "≤"), (">=", "≥"), ("⩽", "≤"), ("≦", "≤"), ("⩾", "≥"), ("≧", "≥"))
+SIGN_MINUS_RE = re.compile(r"(?<![\w.)\]])[-‐‑−–](?=\d)")
+# A real markup tag starts with a letter or "/" ("<i>", "</sub>"); "<5 years and
+# >2" is text, which verify_title_norm's broader tag pattern would delete.
+MARKUP_TAG_RE = re.compile(r"</?[A-Za-z][^<>]*>")
+# What joins the parts of one word for the title word check: hyphens
+# ("Pre-Pandemic", "Under-Performing"), the soft hyphen U+00AD, and
+# apostrophes ("Children's" = "Childrens", whatever the apostrophe).
+TITLE_JOINERS = "-‐‑­'’‘ʼ"
+# Rules 2026-11-01a (book-review-v1): what marks a record as a review of
+# another work. OpenAlex types book reviews "book-review"; a review can also be
+# typed "article" with the bare book title, so a title marker and (in
+# scholar_search.py) the same-title check stand beside the type. A title
+# marker counts only when the cited title does not carry one itself.
+BOOK_REVIEW_TYPES = frozenset({"book-review"})
+# Record types of an item in a journal, which can be a review of a book with
+# the same title; a book, chapter, report or thesis record is not stepped
+# aside by the same-title check.
+JOURNAL_ITEM_TYPES = frozenset({"article", "journal-article", "review", "editorial", "letter", "other", "paratext",
+                                "erratum", "peer-review"})
+# "review:" stands outside the closing \b, which needs a word character next
+# and so would never match "Review: The Gap" (book-review-v2).
+REVIEW_TITLE_RE = re.compile(
+    r"^\W*(?:a\s+)?(?:(?:book\s+reviews?|reviews?\s+of|reviewed\s+works?|rezension(?:\s+(?:von|zu))?|"
+    r"compte[\s-]+rendu|rese[ñn]a(?:\s+de)?|recensione)\b|review\s*:)"
+    r"|[\[(]\s*(?:book\s+)?review(?:\s+of)?\b"
+    r"|\bbook\s+reviews?\W*$"
+    r"|\breviewed\s+by\b", re.I)
 # A cited author containing one of these words is read as an ORGANIZATION
 # (cycle 3, I-D): compared by its whole name, never by its last word, and
 # "not checked" when that name is not on the record. Cycle 5 (M2) adds the
@@ -582,6 +754,417 @@ def numerals_differ(claimed_title, record_title):
     if sorted(v for _, v in a) == sorted(v for _, v in b):
         return None
     return [t for t, _ in a], [t for t, _ in b]
+
+
+# §§ TITLE_GUARDS (rules 2026-11-01a; word matching 2026-11-01b, 2026-11-01c and 2026-11-01d)
+def title_word_number_key(piece):
+    # INTENT (content-words-v3): a word as the word check reads a number:
+    #   a cardinal "two", "II", "2" -> "2"; an ordinal "second", "2nd" ->
+    #   "2th", kept apart from the cardinal ("Second-Year" is not "Two-Year");
+    #   a decade "1980s" -> "1980". Any other word is returned as it is.
+    m = re.fullmatch(r"(\d+)(st|nd|rd|th|s)", piece)
+    if m:
+        return m.group(1) if m.group(2) == "s" else str(int(m.group(1))) + "th"
+    if piece in SPELLED_NUMERALS:
+        return str(SPELLED_NUMERALS[piece]) + ("th" if piece in SPELLED_ORDINALS else "")
+    if piece in ROMAN_NUMERALS:
+        return str(ROMAN_NUMERALS[piece])
+    return str(int(piece)) if piece.isdecimal() else piece
+
+
+def title_spelling_fold(word):
+    # SPELLING_FOLDS applied in order ("neighbourhood" -> "neighborhood").
+    for pat, rep in SPELLING_FOLDS:
+        word = pat.sub(rep, word)
+    return word
+
+
+def title_word_runs(title):
+    # INTENT (content-words-v1): the title's words in order, as runs: a run is
+    #   one word, or the words a hyphen or apostrophe joins ("Pre-Pandemic" ->
+    #   ["pre", "pandemic"]; TITLE_JOINERS). Each word is a (key, shown)
+    #   pair: shown is verify_title_norm's form (case, accents and punctuation
+    #   folded, every script kept), with the joiner before it for a word that
+    #   continues a run ("-pandemic"); the key reads it as a number where it is
+    #   one (title_word_number_key), so a number written another way is not a
+    #   different word, then applies SPELLING_FOLDS. Each CJK, kana or Hangul
+    #   character is its own one-word run, because those scripts write no
+    #   spaces between words.
+    # REASONING: split on whitespace and hyphens BEFORE normalizing, because
+    #   verify_title_norm turns a hyphen into a space and the join would be lost.
+    t = MARKUP_TAG_RE.sub(" ", unicodedata.normalize("NFKC", str(title or "")))
+    runs = []
+    for chunk in t.split():
+        run, joinable = [], False
+        split = re.split("([" + re.escape(TITLE_JOINERS) + "])", chunk)
+        for k, part in enumerate(split[0::2]):
+            joiner = split[2 * k - 1] if k > 0 else ""
+            pieces = []
+            for w in verify_title_norm(part).split():
+                buf = ""
+                for ch in w:
+                    if cjk_char(ch):
+                        if buf:
+                            pieces.append(buf)
+                            buf = ""
+                        pieces.append(ch)
+                    else:
+                        buf += ch
+                if buf:
+                    pieces.append(buf)
+            for j, piece in enumerate(pieces):
+                w = title_spelling_fold(title_word_number_key(piece))
+                # ASSUMES: only the first word after a joiner continues the run,
+                #   and only when the word before it was not a CJK character
+                #   (which is always a run of its own).
+                if k > 0 and j == 0 and joinable and run and not cjk_char(piece[0]):
+                    run.append((w, joiner + piece))
+                else:
+                    if run:
+                        runs.append(run)
+                    run = [(w, piece)]
+            joinable = bool(pieces) and not cjk_char(pieces[-1][-1])
+        if run:
+            runs.append(run)
+    return runs
+
+
+def cjk_char(ch):
+    # A Chinese, Japanese (kana) or Korean character: a word of its own.
+    return unicodedata.name(ch, "").startswith(("CJK", "HIRAGANA", "KATAKANA", "HANGUL"))
+
+
+def title_join_keys(words):
+    # INTENT (content-words-v3): the keys under which `words` (consecutive
+    #   (key, shown) pairs of one title, a hyphen run or a window of 2-4 words)
+    #   count as ONE word written closed: their keys joined, and their number
+    #   keys joined and then spelling-folded, since a fold can need letters
+    #   from both sides of the join ("Socio-Economic" -> "socioeconomic" ->
+    #   "socieconomic", the key of the closed "Socioeconomic").
+    # REASONING: a join is kept only when the joined word is a negation
+    #   exactly when one of its parts is, so a negation cannot appear or
+    #   disappear by joining: "not" + "able" is not "notable", "now" + "here"
+    #   is not "nowhere", while "can" + "not" = "cannot" and "no" + "body" =
+    #   "nobody" (both TITLE_NEGATIONS). A word that starts with a
+    #   NEGATION_PREFIXES part carries that negation ("non" + "smokers" =
+    #   "nonsmokers").
+    # ASSUMES: a shown form starts with at most its run's joiner, and a word
+    #   never contains a joiner (title_word_runs splits on them).
+    parts = [k for k, _ in words]
+    joined = {"".join(parts),
+              title_spelling_fold("".join(title_word_number_key(s.lstrip(TITLE_JOINERS)) for _, s in words))}
+    negated = any(p in TITLE_NEGATIONS for p in parts)
+    return {j for j in joined if (j in TITLE_NEGATIONS or parts[0] in NEGATION_PREFIXES) == negated}
+
+
+def title_word_presence(title):
+    # The comparison keys of every word of the title, plus every run of 2-4
+    #   consecutive words written together (title_join_keys), so a compound
+    #   matches its spaced, hyphenated or closed form ("under performing" =
+    #   "under-performing" = "underperforming"), and an index's split word its
+    #   whole form ("I ncome" = "Income").
+    runs = title_word_runs(title)
+    words = [w for run in runs for w in run]
+    have = {k for k, _ in words}
+    for run in runs:
+        have |= title_join_keys(run)
+    for n in (2, 3, 4):
+        for i in range(len(words) - n + 1):
+            have |= title_join_keys(words[i:i + n])
+    return have
+
+
+def title_word_forms(key):
+    # INTENT (content-words-v2): the forms of a word key that count as the
+    #   same word, the key first: its plural or possessive "s" added or
+    #   removed ("Effects" = "Effect", "Maimonides's" = "Maimonides'"), and
+    #   "es" added or removed only where the stem ends in s, x, z, ch or sh
+    #   (ES_PLURAL_BASE_ENDINGS: "boxes" = "box", "approaches" = "approach").
+    # REASONING: after any other letter "es" makes another word: "es" read as
+    #   a plural there would find a record's "not" in a cited "notes" (a
+    #   held-out reversed claim) and "rat" in "rates".
+    # ASSUMES: a negation (TITLE_NEGATIONS) is a different word from anything
+    #   a plural fold makes of it or finds for it, so it has no other form and
+    #   is never another key's form ("no" / "nos").
+    if key in TITLE_NEGATIONS:
+        return (key,)
+    other = [key + "s"]
+    if key.endswith(ES_PLURAL_BASE_ENDINGS):
+        other.append(key + "es")
+    if key.endswith("s"):
+        other.append(key[:-1])
+    if key.endswith("es") and key[:-2].endswith(ES_PLURAL_BASE_ENDINGS):
+        other.append(key[:-2])
+    return (key,) + tuple(f for f in other if f and f not in TITLE_NEGATIONS)
+
+
+def title_word_present(key, have):
+    # A word key counts as present when one of its forms (title_word_forms)
+    #   is in `have` (a set: presence only, no counting).
+    return any(f in have for f in title_word_forms(key))
+
+
+def title_words_missing(title, have, other_runs=None):
+    # The shown forms of the title's content words that are not found in the
+    #   other title. `have` is the other title's title_word_presence;
+    #   `other_runs` (the other title's title_word_runs) turns on one-for-one
+    #   matching (content-words-v2 and v3); without it, presence in `have` is
+    #   enough (the subtitle test in title_words_differ). A one-word run that
+    #   is a function word (TITLE_STOPWORDS, looked up as written) or a number
+    #   written as digits or a Roman numeral is skipped. A run passes when
+    #   each of its words is matched or covered, or when its joined key is
+    #   found.
+    runs = title_word_runs(title)
+    words = [w for run in runs for w in run]
+    flat = [k for k, _ in words]
+    matched, joins, orders = None, have, (False,)
+    if other_runs is not None:
+        # INTENT (content-words-v2, v3): match words one for one against the
+        #   other title's words, so a word this title has more often than the
+        #   other is reported ("Persons with or without … Persons without":
+        #   the second "without" has no partner) and a fold cannot borrow a
+        #   word the other title's own copy has used up ("not" for the
+        #   "notes" both titles share). A hyphen run of the other title is
+        #   ONE word or its parts, never both (v3): taking its joined form
+        #   uses up its words, and taking one of its words leaves its joined
+        #   form unusable, so "Smokers and Nonsmokers" cannot take "smokers"
+        #   and "nonsmokers" from one "Non-Smokers".
+        # REASONING: in order, each pass over this title's words in title
+        #   order: (1) a hyphen run of this title takes a whole word of the
+        #   other (a one-word run, or an intact run by its joined key), so
+        #   "Pre-School and School" against "Preschool and School" pairs the
+        #   compounds; (2) 2-4 consecutive unmatched words take a whole word
+        #   they spell together ("Non Smokers" takes "Non-Smokers"); then
+        #   (3) exact and (4) plural forms (title_word_forms) of single words
+        #   take whole words, and only after that (5) exact and (6) plural
+        #   forms take a word inside one of the other's runs, which splits it.
+        #   Whole words go first so that a word does not split a run whose
+        #   joined form a later word of this title needs.
+        # REASONING (content-words-v4): the window pass (2) can take a word
+        #   this title also has on its own, leaving that word without a
+        #   partner: in "A Cross Sectional Study … across", "A Cross" takes
+        #   the other title's "across", so an identical title was reported.
+        #   Taking exact single words first instead breaks a compound written
+        #   apart ("School Children and Children" against "Schoolchildren and
+        #   Children": the first "Children" takes the lone "Children"). So the
+        #   matching runs in both orders, window pass first and then exact
+        #   single words first, and the shorter missing list is kept (the
+        #   first on a tie). Each order pairs words one for one, so a title
+        #   passes only when one valid pairing passes it. The second order
+        #   runs only when the first leaves words missing AND its window pass
+        #   took a word: when the window pass takes nothing, both orders make
+        #   the same takes and give the same result.
+        # ASSUMES: a word of the other title that exists only as several of
+        #   its words written apart (the other's "schoolchildren" from "School
+        #   Children", "income" from an index's "I ncome") is found by
+        #   presence (`joins`), not counted.
+        otok = [k for run in other_runs for k, _ in run]
+        spans, pos = [], 0
+        for run in other_runs:
+            spans.append((range(pos, pos + len(run)), title_join_keys(run) if len(run) > 1 else set()))
+            pos += len(run)
+        offered = set(otok) | {j for _, js in spans for j in js}
+        joins = {w for w in have if w not in offered}
+        orders = (False, True)
+
+        def take_whole(key):
+            # A one-word run of the other title, else a run whose words are all
+            #   unused and whose joined key this is; the run's words are used up.
+            for single in (True, False):
+                for r, js in spans:
+                    if (len(r) == 1) == single and all(free[i] for i in r) and \
+                            (otok[r[0]] == key if single else key in js):
+                        for i in r:
+                            free[i] = False
+                        return True
+            return False
+
+        def take_part(key):
+            # A word inside a run of the other title, a run already split
+            #   first; the run's joined key is then unusable (not all unused).
+            for split_first in (True, False):
+                for r, _ in spans:
+                    if len(r) > 1 and (not all(free[i] for i in r)) == split_first:
+                        for i in r:
+                            if free[i] and otok[i] == key:
+                                free[i] = False
+                                return True
+            return False
+
+    def covered(i):
+        # Without one-for-one matching: the word, or 2-4 consecutive words of
+        #   this title written together, is present in the other title. With
+        #   it: the word was matched, or it is present among the other title's
+        #   words written apart (`joins`). Consecutive words of this title are
+        #   never matched by presence there, which would let a repeated phrase
+        #   find the other title's one copy (the cited "Effects of" twice
+        #   against the record's one "Effects of"); pass (2) above counts them.
+        if matched is not None:
+            return matched[i] or title_word_present(flat[i], joins)
+        if title_word_present(flat[i], have):
+            return True
+        return any(j in have for s in range(max(0, i - 3), i + 1)
+                   for e in range(max(i + 1, s + 2), min(len(flat), s + 4) + 1)
+                   for j in title_join_keys(words[s:e]))
+    best = None
+    for exact_first in orders:
+        # INTENT (content-words-v4): one matching per order (see REASONING
+        #   above); without one-for-one matching there is one pass, by presence.
+        windowed = False
+        if other_runs is not None:
+            free = [True] * len(otok)
+            matched = [False] * len(flat)
+            pos = 0
+            for run in runs:
+                if len(run) > 1 and any(take_whole(f) for j in sorted(title_join_keys(run)) for f in title_word_forms(j)):
+                    matched[pos:pos + len(run)] = [True] * len(run)
+                pos += len(run)
+            if exact_first:
+                for i, k in enumerate(flat):
+                    if not matched[i] and take_whole(k):
+                        matched[i] = True
+            for s in range(len(flat)):
+                for e in range(s + 2, min(len(flat), s + 4) + 1):
+                    if not any(matched[s:e]) and any(take_whole(j) for j in sorted(title_join_keys(words[s:e]))):
+                        matched[s:e] = [True] * (e - s)
+                        windowed = True
+                        break
+            for take, plural in ((take_whole, False), (take_whole, True), (take_part, False), (take_part, True)):
+                for i, k in enumerate(flat):
+                    if not matched[i] and any(take(f) for f in (title_word_forms(k)[1:] if plural else (k,))):
+                        matched[i] = True
+        missing, pos = [], 0
+        for run in runs:
+            span = range(pos, pos + len(run))
+            pos += len(run)
+            # INTENT: a one-word run that is a function word, or a number written
+            #   as digits or a Roman numeral, is skipped: the numeral guard (D2)
+            #   already compares those ("Part I" = "Part 1"; "2018" vs "2019"). A
+            #   spelled-out number ("Two") stays: the numeral guard counts one only
+            #   after a part word. A function word is looked up as written
+            #   (content-words-v3), not by its folded key: "all" folds to the
+            #   listed "al".
+            shown = run[0][1]
+            if len(run) == 1 and (shown in TITLE_STOPWORDS or shown.isdecimal() or shown in ROMAN_NUMERALS
+                                  or shown in ROMAN_SEGMENT_END):
+                continue
+            if any(title_word_present(j, joins) for j in sorted(title_join_keys(run))) or all(covered(i) for i in span):
+                continue
+            missing.append("".join(s for _, s in run))
+        # ASSUMES: the first order's list is kept on a tie, so a word list
+        #   changes only where the exact-first order reports fewer words.
+        if best is None or len(missing) < len(best):
+            best = missing
+        if not best or not windowed:
+            break
+    return best
+
+
+def title_words_differ(claimed_title, record_title):
+    # INTENT (VERIFY_TITLE_WORD_GUARD content-words-v4): None when every content
+    #   word of each title occurs in the other, as often, else {"cited_only":
+    #   [...], "record_only": [...]} (shown forms) for the WEAK reason. Both
+    #   directions: one direction misses a dropped "not" (the record has it,
+    #   the citation does not). Words are matched one for one, and a hyphen
+    #   run counts once, as its words or as its joined form
+    #   (title_words_missing), so a word added a second time is a difference;
+    #   a compound the other title writes apart is found by presence only.
+    # REASONING: one changed word is a small share of a long title's characters
+    #   (better -> worse at 0.974, an added "Not" at 0.958), so the similarity
+    #   score alone grades such a title CONFIDENT; a word list difference is
+    #   what a person should look at. WEAK, never MISMATCH: a correct citation
+    #   can differ in a word ("PM2.5" vs "PM 2.5", "Education" vs "Educational").
+    #   What a correct citation commonly varies is compared alike instead:
+    #   hyphenation and closed compounds, a split word, number words, a plural
+    #   or possessive "s" (or "es" after s, x, z, ch, sh; never on a negation:
+    #   title_word_forms), British and American spelling (SPELLING_FOLDS).
+    # ASSUMES (subtitle): when one side has a colon, the other has none and
+    #   none of the subtitle's own content words (those not also in its main
+    #   title) occurs on the other side, the subtitle is wholly absent there;
+    #   only the main title's words are checked from that side, as the score
+    #   already handles a dropped or added subtitle (R1).
+    out = {}
+    for key, mine, other in (("cited_only", claimed_title, record_title),
+                             ("record_only", record_title, claimed_title)):
+        mine, other = str(mine or ""), str(other or "")
+        have = title_word_presence(other)
+        if ":" in mine and ":" not in other:
+            main, sub = mine.split(":", 1)
+            main_keys = title_word_presence(main)
+            sub_only = title_words_missing(sub, main_keys)
+            if set(sub_only) <= set(title_words_missing(sub, have)):
+                mine = main
+        # INTENT (content-words-v3): the other title's words, one per
+        #   occurrence, in their runs: a hyphen or apostrophe run offers its
+        #   words OR its joined form ("Pre-School" offers "pre" and "school",
+        #   or "preschool" to a closed or spaced compound on this side).
+        out[key] = title_words_missing(mine, have, title_word_runs(other))
+    return out if (out["cited_only"] or out["record_only"]) else None
+
+
+def title_symbols(title):
+    # The meaning-bearing symbols of a title, in order (MEANING_SYMBOLS, and a
+    #   minus sign as "−"), after NFKC and the SYMBOL_EQUIVALENTS spellings.
+    t = MARKUP_TAG_RE.sub(" ", unicodedata.normalize("NFKC", str(title or "")))
+    for a, b in SYMBOL_EQUIVALENTS:
+        t = t.replace(a, b)
+    return [m.group(0) if m.group(0) in MEANING_SYMBOLS else "−"
+            for m in re.finditer("[" + re.escape(MEANING_SYMBOLS) + "]|" + SIGN_MINUS_RE.pattern, t)]
+
+
+def title_marked_words(title):
+    # The title's words with their accents KEPT (case folded, NFC, punctuation
+    #   and symbols as spaces). The dot casefold adds to a capital "İ" is
+    #   dropped, so "İstanbul" = "Istanbul".
+    t = unicodedata.normalize("NFD", MARKUP_TAG_RE.sub(" ", unicodedata.normalize("NFKC", str(title or ""))).casefold())
+    t = re.sub("(?<=i)" + chr(0x0307), "", t)   # U+0307 COMBINING DOT ABOVE
+    t = "".join(" " if unicodedata.category(ch)[0] in "PSZC" else ch for ch in t)
+    return unicodedata.normalize("NFC", t).split()
+
+
+def title_marks_differ(claimed_title, record_title):
+    # INTENT (VERIFY_MARK_GUARD marks-v2): None when the meaning-bearing marks
+    #   agree, else {"symbols": (cited, record) or None, "accents": [(cited word,
+    #   record word), ...]} for the WEAK reason.
+    # REASONING: verify_title_norm (the score, and candidate matching, which
+    #   stay as they are) erases these marks, so "aged <5" and "aged >5", or
+    #   "tránh thai" and "tranh thai", scored 1.00. A person decides whether a
+    #   difference is a typing variant or another claim; WEAK, never MISMATCH.
+    #   Accented forms are counted, not just found (marks-v2): Vietnamese
+    #   repeats a syllable with different tones, so "Tránh thai và tranh luận"
+    #   against "Tranh thai và tranh luận" has "tranh" on both sides yet one
+    #   "tránh" became a "tranh".
+    # ASSUMES: words with the same accent-folded form are one word written in
+    #   ways that may differ ("año" / "ano"). For each such form on both sides,
+    #   a written form one side has more often than the other, paired with one
+    #   the other side has more often, is a difference (one pair per form). An
+    #   extra occurrence with no counterpart is the word check's business.
+    sa, sb = title_symbols(claimed_title), title_symbols(record_title)
+    symbols = None if sa == sb else (sa, sb)
+    fold_a, fold_b = {}, {}
+    for words, fold in ((title_marked_words(claimed_title), fold_a), (title_marked_words(record_title), fold_b)):
+        for w in words:
+            fold.setdefault(verify_title_norm(w), []).append(w)
+    accents = []
+    for f, forms_a in fold_a.items():
+        if f not in fold_b:
+            continue
+        ca, cb = Counter(forms_a), Counter(fold_b[f])
+        more_a = [w for w in ca if ca[w] > cb[w]]
+        more_b = [w for w in cb if cb[w] > ca[w]]
+        if more_a and more_b:
+            accents.append((more_a[0], more_b[0]))
+    if symbols is None and not accents:
+        return None
+    return {"symbols": symbols, "accents": accents}
+
+
+def review_title_marker(title):
+    # INTENT (VERIFY_REVIEW_GUARD book-review-v2): the review marker a title
+    #   carries ("Review of …", "Book Review: …", "Review: …", "… [Review of
+    #   the book …]", "… (book review)", "Rezension zu …"), or None.
+    m = REVIEW_TITLE_RE.search(unicodedata.normalize("NFKC", str(title or "")))
+    return m.group(0).strip() if m else None
 
 
 def unescape(value):

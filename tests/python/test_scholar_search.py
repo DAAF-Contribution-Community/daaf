@@ -792,11 +792,14 @@ class S1CleanupCliTests(Base):
                                                  "author_rule": "contiguous-surname-v10",
                                                  "org_rule": "org-conservative-v2",
                                                  "rules_updated": scholar_search.VERIFY_RULES_UPDATED,
-                                                 "rules_version": "2026-10-06f",
+                                                 "rules_version": "2026-11-01d",
                                                  "title_norm": "nfkc-casefold-v1",
                                                  "min_title_letters": scholar_search.VERIFY_MIN_TITLE_LETTERS,
                                                  "numeral_guard": "numerals-v4",
-                                                 "translit": "translit-v2"})
+                                                 "translit": "translit-v2",
+                                                 "title_word_guard": "content-words-v4",
+                                                 "mark_guard": "marks-v2",
+                                                 "review_guard": "book-review-v2"})
 
     def test_verify_title_not_found(self):
         def handler(url, params, headers):
@@ -1162,16 +1165,12 @@ class VerifyCycle2Tests(Base):
         tulsa = scholar_search.title_ratio(a, LONG_PREFIX + ": Evidence from Tulsa")
         self.assertLess(tulsa, 1.0, "the scorer now sees the tail")
 
-    @unittest.expectedFailure
-    def test_b2_known_limit_one_word_swap_in_long_title(self):
-        # KNOWN LIMIT (W1 class, deferred to the pre-S5 held-out validation per
-        # user decision D2): one place name swapped at the end of a ~185-char
-        # title still scores 0.975 untruncated, above VERIFY_CONFIDENT_MIN. A
-        # content-token guard would fix this; when it lands, this test passes
-        # and unittest reports an unexpected success: remove the decorator.
+    def test_b2_one_word_swap_in_long_title(self):
+        # W1 class: one place name swapped at the end of a ~185-char title scores 0.975 untruncated, above
+        # VERIFY_CONFIDENT_MIN; the word check (rules 2026-11-01a and later) makes it WEAK.
         verdict = scholar_search.verify_title_grade(LONG_PREFIX + ": Evidence from Boston",
                                                     LONG_PREFIX + ": Evidence from Tulsa")[0]
-        self.assertNotEqual(verdict, "CONFIDENT")
+        self.assertEqual(verdict, "WEAK")
 
     # --- B3: the title: path ---------------------------------------------------
     def test_b3_author_applies_on_the_title_path(self):
@@ -1512,8 +1511,8 @@ class VerifyCycle3Tests(Base):
 
     # --- W-D: the deferred minimal-edit limit, measured -------------------------
     def test_wd_measured_extent_of_the_known_limits(self):
-        # The numbers SKILL.md and api-notes.md quote for the deferred limit. One word swapped
-        # (Reading -> Math) reaches CONFIDENT at 14 words / 93 chars, not at 12 words / 82 chars.
+        # The scores behind the test_wd_ tests below. One word swapped (Reading -> Math) scores above
+        # VERIFY_CONFIDENT_MIN at 14 words / 93 chars, not at 12 words / 82 chars.
         r = scholar_search.title_ratio
         t12, t14 = " ".join(ONE_WORD_SWAP_BASE[:12]), " ".join(ONE_WORD_SWAP_BASE[:14])
         self.assertEqual((len(t12), round(r(t12.replace("Reading", "Math"), t12), 3)), (82, 0.944))
@@ -1525,32 +1524,27 @@ class VerifyCycle3Tests(Base):
         self.assertEqual(round(r("家庭作业对小学生数学成绩有显著影响的实验证据", "家庭作业对小学生数学成绩无显著影响的实验证据"), 3), 0.955)
         self.assertEqual(round(r("日本の小学校における英語教育の効果に関する研究", "日本の中学校における英語教育の効果に関する研究"), 3), 0.957)
 
-    @unittest.expectedFailure
-    def test_wd_known_limit_one_word_swap_at_14_words(self):
-        # KNOWN LIMIT (deferred to the pre-S5 content-token guard, decision D2), as the B2 test: flips
-        # to an unexpected success when a guard lands; then remove the decorator.
+    # Each pair below scores at or above VERIFY_CONFIDENT_MIN (test_wd_measured_extent_of_the_known_limits); the
+    # word check (rules 2026-11-01a and later) makes each WEAK.
+    def test_wd_one_word_swap_at_14_words(self):
         t = " ".join(ONE_WORD_SWAP_BASE[:14])
-        self.assertNotEqual(scholar_search.verify_title_grade(t.replace("Reading", "Math"), t)[0], "CONFIDENT")
+        self.assertEqual(scholar_search.verify_title_grade(t.replace("Reading", "Math"), t)[0], "WEAK")
 
-    @unittest.expectedFailure
-    def test_wd_known_limit_inserted_negation(self):
+    def test_wd_inserted_negation(self):
         full = " ".join(ONE_WORD_SWAP_BASE)
-        self.assertNotEqual(scholar_search.verify_title_grade("No " + full, full)[0], "CONFIDENT")
+        self.assertEqual(scholar_search.verify_title_grade("No " + full, full)[0], "WEAK")
 
-    @unittest.expectedFailure
-    def test_wd_known_limit_cjk_one_character_swap(self):
+    def test_wd_cjk_one_character_swap(self):
         cjk = "农村地区小学生课外辅导对学业成绩影响的随机对照试验研究"
-        self.assertNotEqual(scholar_search.verify_title_grade(cjk.replace("小学", "中学"), cjk)[0], "CONFIDENT")
+        self.assertEqual(scholar_search.verify_title_grade(cjk.replace("小学", "中学"), cjk)[0], "WEAK")
 
-    @unittest.expectedFailure
-    def test_wd_known_limit_cjk_one_character_negation(self):
-        self.assertNotEqual(scholar_search.verify_title_grade("家庭作业对小学生数学成绩有显著影响的实验证据",
-                                                              "家庭作业对小学生数学成绩无显著影响的实验证据")[0], "CONFIDENT")
+    def test_wd_cjk_one_character_negation(self):
+        self.assertEqual(scholar_search.verify_title_grade("家庭作业对小学生数学成绩有显著影响的实验证据",
+                                                           "家庭作业对小学生数学成绩无显著影响的实验证据")[0], "WEAK")
 
-    @unittest.expectedFailure
-    def test_wd_known_limit_japanese_one_character_swap(self):
-        self.assertNotEqual(scholar_search.verify_title_grade("日本の小学校における英語教育の効果に関する研究",
-                                                              "日本の中学校における英語教育の効果に関する研究")[0], "CONFIDENT")
+    def test_wd_japanese_one_character_swap(self):
+        self.assertEqual(scholar_search.verify_title_grade("日本の小学校における英語教育の効果に関する研究",
+                                                           "日本の中学校における英語教育の効果に関する研究")[0], "WEAK")
 
     # --- I-B, I-C ------------------------------------------------------------
     def test_ib_title_path_mismatch_wording_is_branched(self):
@@ -2672,12 +2666,13 @@ class VerifyCycle9Tests(Base):
     T = "Annual Program Report 2019"
 
     def test_cycle9_versions(self):
-        self.assertEqual(scholar_search.VERIFY_RULES_VERSION, "2026-10-06f")
+        # Rules 2026-11-01a bumped the rules version; VerifyHeldoutFixTests.test_versions pins the current one.
+        self.assertGreaterEqual(scholar_search.VERIFY_RULES_VERSION, "2026-10-06f")
         self.assertEqual(scholar_search.VERIFY_AUTHOR_RULE, "contiguous-surname-v10")
         self.assertEqual(scholar_search_common.VERIFY_TRANSLIT, "translit-v2")
         cut = scholar_search.verify_cutoffs()
         self.assertEqual((cut["rules_version"], cut["author_rule"], cut["translit"]),
-                         ("2026-10-06f", "contiguous-surname-v10", "translit-v2"))
+                         (scholar_search.VERIFY_RULES_VERSION, "contiguous-surname-v10", "translit-v2"))
 
     # --- F1 (B-1): every aligned given position after the first must agree -----
     def test_f1_every_later_given_position_must_agree(self):
@@ -2776,6 +2771,691 @@ class VerifyCycle9Tests(Base):
         self.assertNotIn("CONFIDENT", md)
 
 
+# Rules 2026-11-01a (user decision 2026-11-01 after the held-out validation of verify). Every title and name below
+# is invented: the near-miss shapes follow the held-out failure classes, never a held-out item's text.
+HV_LONG = ("Effects of an Invented Blended Tutoring Program on Reading Outcomes of Rural Fourth Graders "
+           "Compared With Classroom Instruction")
+HV_WORD_PAIRS = (
+    # (label, cited, record): each scores >= VERIFY_CONFIDENT_MIN, each differs in a word that changes the claim.
+    ("one-word swap", HV_LONG.replace("Outcomes", "Losses"), HV_LONG),
+    ("better -> worse", "Invented Online Pupils Show Equivalent or Worse Outcomes Than Pupils in Invented "
+                        "Classrooms Across Districts",
+     "Invented Online Pupils Show Equivalent or Better Outcomes Than Pupils in Invented Classrooms Across Districts"),
+    ("added negation", "Why Most Invented Findings in Rural Schooling Research Are Not False",
+     "Why Most Invented Findings in Rural Schooling Research Are False"),
+    ("dropped negation", "Invented Class Size Does Affect Reading Scores in Rural Districts of the Invented Region",
+     "Invented Class Size Does Not Affect Reading Scores in Rural Districts of the Invented Region"),
+    ("added qualifier", "The Economic Burden of Invented Fever Among Pupils Aged Six to Ten in Rural Districts of "
+                        "the Invented Region",
+     "The Burden of Invented Fever Among Pupils Aged Six to Ten in Rural Districts of the Invented Region"),
+    ("pre -> post", "Invented Pre-Pandemic Perceptions of Online Learning Among Rural Pupils",
+     "Invented Post-Pandemic Perceptions of Online Learning Among Rural Pupils"),
+    ("spelled-out number", "Two-Year Effects of an Invented Program for Community College Students",
+     "Three-Year Effects of an Invented Program for Community College Students"),
+    ("can -> can't", "Teachers Can Change Invented Outcomes in Rural Districts",
+     "Teachers Can't Change Invented Outcomes in Rural Districts"),
+    # verify_title_norm reads "<5 Boys and >" as a markup tag and deletes it, so the score is 1.00; the word
+    # check deletes only real tags (a letter or "/" after "<").
+    ("tag-like text", "Invented Uptake Among Pupils <5 Boys and >2 Visits in Rural Clinics",
+     "Invented Uptake Among Pupils <5 Girls and >2 Visits in Rural Clinics"),
+)
+HV_WORD_GENUINE = (
+    # (label, cited, record): forms a correct citation takes; each stays CONFIDENT.
+    ("hyphen joined", "Underperforming Schools and the Invented Reform of Their Teachers in Rural Places",
+     "Under-Performing Schools and the Invented Reform of Their Teachers in Rural Places"),
+    ("closed compound", "Invented Eating Habits and Physical Activity in Schoolchildren of Two Rural Towns",
+     "Invented Eating Habits and Physical Activity in School Children of Two Rural Towns"),
+    ("index split word", "Invented Geographic Effects on Intergenerational Income Mobility",
+     "Invented Geographic Effects on Intergenerational I ncome Mobility"),
+    ("plural and possessive", "Using Invented Ruler's Rule to Estimate the Effects of Class Size on Achievement",
+     "Using Invented Ruler' Rule to Estimate the Effect of Class Size on Achievement"),
+    ("British spelling", "Invented Neighborhood Effects on Randomized Programs for Rural Pupils",
+     "Invented Neighbourhood Effects on Randomised Programmes for Rural Pupils"),
+    ("ampersand and case", "INVENTED EFFECTS OF CLASS SIZE & PUPIL SCORES IN RURAL DISTRICTS",
+     "Invented Effects of Class Size and Pupil Scores in Rural Districts"),
+    ("number words", "Invented Reading Study Part Two of the Rural Districts Series",
+     "Invented Reading Study Part 2 of the Rural Districts Series"),
+    ("Roman part number", "Invented Reading Study Part II of the Rural Districts Series",
+     "Invented Reading Study Part 2 of the Rural Districts Series"),
+    ("short subtitle absent", "Invented Long Study of Reading Outcomes Among Rural Fourth Graders in Districts: A Note",
+     "Invented Long Study of Reading Outcomes Among Rural Fourth Graders in Districts"),
+    ("cannot = can not", "Teachers Cannot Change Invented Outcomes in Rural Districts",
+     "Teachers Can Not Change Invented Outcomes in Rural Districts"),
+)
+HV_MARK_PAIRS = (
+    ("< vs >", "Invented Vaccine Uptake in Children Aged <5 Years in Two Rural Districts",
+     "Invented Vaccine Uptake in Children Aged >5 Years in Two Rural Districts"),
+    ("≤ vs ≥", "Invented Vaccine Uptake in Children Aged ≤5 Years in Two Rural Districts",
+     "Invented Vaccine Uptake in Children Aged ≥5 Years in Two Rural Districts"),
+    ("minus sign dropped", "Invented Reading Gains of -5 Points in Rural Districts Over Two Years",
+     "Invented Reading Gains of 5 Points in Rural Districts Over Two Years"),
+    ("ano vs año", "Resultados del primer ano escolar en escuelas rurales inventadas",
+     "Resultados del primer año escolar en escuelas rurales inventadas"),
+    ("Vietnamese tone marks", "Những khô khan của giáo viên trẻ ở trường nông thôn",
+     "Những khó khăn của giáo viên trẻ ở trường nông thôn"),
+)
+HV_MARK_GENUINE = (
+    ("same accents", "Resultados del primer año escolar en escuelas rurales inventadas",
+     "Resultados del primer año escolar en escuelas rurales inventadas"),
+    ("<= spelled as ≤", "Invented Vaccine Uptake in Children Aged ≤5 Years in Two Rural Districts",
+     "Invented Vaccine Uptake in Children Aged <=5 Years in Two Rural Districts"),
+    ("dotted capital I", "İstanbul Okullarında Uydurma Bir Çalışma", "Istanbul Okullarında Uydurma Bir Çalışma"),
+    ("range dash", "Invented Reading Outcomes for Rural Pupils, 2010-2015", "Invented Reading Outcomes for Rural Pupils, 2010–2015"),
+    ("markup", "Invented Effects of <i>Phonics</i> Tutoring on Rural Readers", "Invented Effects of Phonics Tutoring on Rural Readers"),
+)
+HV_BOOK = "The Invented Gap: Vouchers and Rural Schools"
+
+
+class VerifyHeldoutFixTests(Base):
+    """Rules 2026-11-01a, tool 1.9.0: the three guards the held-out validation of 2026-11-01 asked for, each a
+    WEAK step-aside on the CONFIDENT decision (never MISMATCH). (1) content words must agree both ways;
+    (2) symbols, signs and accents the score erases must agree; (3) a review of a book is not the book. Each guard
+    has near-miss fixtures that must leave CONFIDENT and genuine fixtures that must keep it. No network."""
+
+    gate = VerifyCycle5Tests.gate
+
+    def test_versions(self):
+        # Rules 2026-11-01b changed the word check (VerifyHeldoutRetestFixTests); rules 2026-11-01c changed all three
+        # guards (VerifyReviewFixRoundTests); rules 2026-11-01d changed the word check's pairing order
+        # (VerifyIdenticalTitleFixTests).
+        self.assertEqual(scholar_search.VERIFY_RULES_VERSION, "2026-11-01d")
+        self.assertEqual(scholar_search.VERIFY_RULES_UPDATED, "2026-11-01")
+        self.assertEqual(scholar_search.TOOL_VERSION, "1.9.0-daaf")
+        cut = scholar_search.verify_cutoffs()
+        self.assertEqual((cut["title_word_guard"], cut["mark_guard"], cut["review_guard"]),
+                         ("content-words-v4", "marks-v2", "book-review-v2"))
+
+    # --- (1) the content-word check ---------------------------------------------------------------------------
+    def test_word_near_misses_are_weak_with_the_words_named(self):
+        for label, cited, rec in HV_WORD_PAIRS:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertGreaterEqual(c["full"], scholar_search.VERIFY_CONFIDENT_MIN)   # precondition
+                self.assertEqual(c["verdict"], "WEAK")
+                self.assertIsNotNone(c["words"])
+                self.assertTrue(any("differ in words" in w for w in c["weak_why"]), c["weak_why"])
+        c = scholar_search.verify_title_check(*HV_WORD_PAIRS[3][1:])
+        self.assertEqual(c["words"], {"cited_only": [], "record_only": ["not"]})   # both directions
+        c = scholar_search.verify_title_check(*HV_WORD_PAIRS[1][1:])
+        self.assertEqual(c["words"], {"cited_only": ["worse"], "record_only": ["better"]})
+        # CJK: each character is a word, so the digest names the one character that differs.
+        c = scholar_search.verify_title_check("家庭作业对小学生数学成绩有显著影响的实验证据", "家庭作业对小学生数学成绩无显著影响的实验证据")
+        self.assertEqual(c["words"], {"cited_only": ["有"], "record_only": ["无"]})
+
+    def test_word_genuine_forms_stay_confident(self):
+        for label, cited, rec in HV_WORD_GENUINE:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertGreaterEqual(c["full"], scholar_search.VERIFY_CONFIDENT_MIN)   # precondition
+                self.assertEqual((c["verdict"], c["words"]), ("CONFIDENT", None))
+
+    def test_word_guard_through_the_cli_on_every_route(self):
+        label, cited, rec = HV_WORD_PAIRS[2]
+        for route in CYCLE5_ROUTES:
+            with self.subTest(route=route):
+                code, verdict, _ = self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019, cited_title=cited)
+                self.assertEqual((code, verdict), (0, "WEAK"))
+                row = self.manifest()[-1]
+                self.assertEqual(row["title_word_check"], {"cited_only": ["not"], "record_only": []})
+                md = (self.dest / row["extract_artifact"]).read_text()
+                self.assertIn("the titles differ in words (only the cited title has 'not')", " ".join(md.split()))
+                self.assertNotIn("CONFIDENT", md)
+                if route == "title:oa":
+                    self.assertIn("not a close title match", md)   # the lookup note agrees with the check
+        _, cited, rec = HV_WORD_GENUINE[0]
+        for route in CYCLE5_ROUTES:
+            with self.subTest(genuine=route):
+                self.assertEqual(self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019,
+                                           cited_title=cited)[:2], (0, "CONFIDENT"))
+                self.assertNotIn("title_word_check", self.manifest()[-1])
+
+    def test_word_guard_never_gives_mismatch(self):
+        # A word difference with a passing author is WEAK; the hard MISMATCH stays with the score and the author.
+        for _, cited, rec in HV_WORD_PAIRS:
+            self.assertNotEqual(scholar_search.verify_title_check(cited, rec)["verdict"], "MISMATCH")
+
+    def test_cost_on_the_calibration_set(self):
+        # The labeled 2026-10-02 set: of the 9 genuine items CONFIDENT under rules 2026-10-06f, the word and mark
+        # checks demote exactly one, M42 ("Education" cited, "Educational" listed). No labeled mismatch reaches
+        # CONFIDENT either way.
+        items = fixture("verify_calibration_set.json")["items"]
+        old, demoted = [], []
+        for it in items:
+            a, b = it["claimed_title"], it["record_title"]
+            before = (scholar_search.title_ratio(a, b) >= scholar_search.VERIFY_CONFIDENT_MIN
+                      and not scholar_search_common.numerals_differ(a, b)
+                      and min(scholar_search.title_letter_count(a), scholar_search.title_letter_count(b)) >= 3)
+            if before and it["label"] == "match":
+                old.append(it["id"])
+                if scholar_search.verify_title_grade(a, b)[0] != "CONFIDENT":
+                    demoted.append(it["id"])
+        self.assertEqual((len(old), demoted), (9, ["M42"]))
+
+    # --- (2) meaning-bearing marks ----------------------------------------------------------------------------
+    def test_mark_near_misses_are_weak(self):
+        for label, cited, rec in HV_MARK_PAIRS:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertEqual(c["full"], 1.0, "the score erases the mark")   # precondition: the T2 class
+                self.assertEqual(c["verdict"], "WEAK")
+                self.assertIsNotNone(c["marks"])
+        c = scholar_search.verify_title_check(*HV_MARK_PAIRS[0][1:])
+        self.assertEqual(c["marks"], {"symbols": {"cited": ["<"], "record": [">"]}, "accents": []})
+        c = scholar_search.verify_title_check(*HV_MARK_PAIRS[3][1:])
+        self.assertEqual(c["marks"], {"symbols": None, "accents": [["ano", "año"]]})
+        self.assertTrue(any("'ano' and 'año'" in w for w in c["weak_why"]))
+
+    def test_mark_genuine_forms_stay_confident(self):
+        for label, cited, rec in HV_MARK_GENUINE:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertEqual((c["verdict"], c["marks"]), ("CONFIDENT", None))
+
+    def test_mark_guard_through_the_cli_and_candidates_unchanged(self):
+        _, cited, rec = HV_MARK_PAIRS[0]
+        for route in CYCLE5_ROUTES:
+            with self.subTest(route=route):
+                self.assertEqual(self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019,
+                                           cited_title=cited)[:2], (0, "WEAK"))
+                self.assertEqual(self.manifest()[-1]["title_mark_check"]["symbols"], {"cited": ["<"], "record": [">"]})
+        # Candidate matching keeps the folding: the record is still found and scored 1.00 (retrieval unchanged).
+        self.assertEqual(scholar_search.title_ratio(cited, rec), 1.0)
+        self.assertEqual(scholar_search.verify_title_norm(cited), scholar_search.verify_title_norm(rec))
+
+    # --- (3) a review of a book is not the book ---------------------------------------------------------------
+    def verify_work(self, work, argv_extra=()):
+        handler = lambda u, p, h: FakeResp(200, work) if "/works/doi:" in u else FakeResp(404, {})  # noqa: E731
+        code, out, *_ = self.run_cli(["verify", "10.1/x", str(self.dest), "--title", HV_BOOK, "--author", "Doe",
+                                      "--year", "2002", *argv_extra], handler)
+        return code, self.manifest()[-1]
+
+    def test_record_typed_book_review_is_weak(self):
+        work = dict(work_json(HV_BOOK, 2003, ["Ann Reviewer", "Jane Doe"]), type="book-review")
+        code, row = self.verify_work(work)
+        self.assertEqual((code, row["verdict"]), (0, "WEAK"))
+        self.assertEqual(row["review_check"]["signal"], "type")
+        md = " ".join((self.dest / row["extract_artifact"]).read_text().split())
+        self.assertIn("indexed as a book review", md)
+        self.assertNotIn("CONFIDENT", md)
+
+    def test_review_title_marker_is_weak(self):
+        for rec_title in ("Book Review: " + HV_BOOK, "Review of " + HV_BOOK,
+                          HV_BOOK + " [Review of the book " + HV_BOOK + ", by J. Doe]", HV_BOOK + " (Book Review)"):
+            with self.subTest(record=rec_title):
+                code, row = self.verify_work(dict(work_json(rec_title, 2003, ["Jane Doe"]), type="article"))
+                self.assertEqual((code, row["verdict"]), (0, "WEAK"))
+                self.assertEqual(row["review_check"]["signal"], "title")
+
+    def test_same_title_journal_item_beside_an_indexed_book_review_is_weak(self):
+        # The held-out shape: the review is typed "article" with the bare book title; the same title search also
+        # finds a typed book review of that book, so the journal item may be a review too.
+        article = dict(work_json(HV_BOOK, 2003, ["Ann Reviewer", "Jane Doe"], wid="W8", doi="10.9/review"),
+                       type="article", primary_location={"source": {"display_name": "Invented Journal of Reviews"}})
+        review = dict(work_json(HV_BOOK + ", by Jane Doe", 2004, ["Bo Critic"], wid="W9", doi="10.9/br"),
+                      type="book-review")
+        code, *_ = self.run_cli(["verify", f'title:"{HV_BOOK}"', str(self.dest), "--author", "Doe", "--year", "2002"],
+                                title_path_handler([article, review]))
+        row = self.manifest()[-1]
+        self.assertEqual((code, row["verdict"]), (0, "WEAK"))
+        self.assertEqual(row["review_check"]["signal"], "same_title_review")
+        md = " ".join((self.dest / row["extract_artifact"]).read_text().split())
+        self.assertIn("so it may be a review of the book rather than the book", md)
+        self.assertIn("Invented Journal of Reviews", md)
+
+    def test_book_wins_a_tie_with_a_review_and_stays_confident(self):
+        review = dict(work_json(HV_BOOK, 2003, ["Jane Doe"], wid="W8", doi="10.9/review", cites=900),
+                      type="book-review")
+        book = dict(work_json(HV_BOOK, 2002, ["Jane Doe"], wid="W7", doi="10.9/book", cites=5), type="book")
+        code, *_ = self.run_cli(["verify", f'title:"{HV_BOOK}"', str(self.dest), "--author", "Doe", "--year", "2002"],
+                                title_path_handler([review, book]))
+        row = self.manifest()[-1]
+        self.assertEqual((code, row["verdict"]), (0, "CONFIDENT"))
+        self.assertNotIn("review_check", row)
+        self.assertIn("DOI: 10.9/book", (self.dest / row["extract_artifact"]).read_text())
+
+    def test_review_genuine_forms_stay_confident(self):
+        # A review article cited by its own "A Review of …" title; an article with no reviews beside it; a book
+        # record beside reviews of itself.
+        own = "A Review of Invented Tutoring Research in Rural Schools"
+        own_work = dict(work_json(own, 2002, ["Jane Doe"]), type="review")
+        code, *_ = self.run_cli(["verify", "10.1/x", str(self.dest), "--title", own, "--author", "Doe", "--year",
+                                 "2002"], lambda u, p, h: FakeResp(200, own_work) if "/works/doi:" in u
+                                else FakeResp(404, {}))
+        self.assertEqual((code, self.manifest()[-1]["verdict"]), (0, "CONFIDENT"))
+        code, row = self.verify_work(dict(work_json(HV_BOOK, 2002, ["Jane Doe"]), type="article"))
+        self.assertEqual((code, row["verdict"]), (0, "CONFIDENT"))
+        book = dict(work_json(HV_BOOK, 2002, ["Jane Doe"], wid="W7", doi="10.9/book"), type="book")
+        review = dict(work_json(HV_BOOK + ", by Jane Doe", 2004, ["Bo Critic"], wid="W9", doi="10.9/br"),
+                      type="book-review")
+        code, *_ = self.run_cli(["verify", f'title:"{HV_BOOK}"', str(self.dest), "--author", "Doe", "--year", "2002"],
+                                title_path_handler([book, review]))
+        self.assertEqual((code, self.manifest()[-1]["verdict"]), (0, "CONFIDENT"))
+
+    def test_review_marker_reader(self):
+        m = scholar_search_common.review_title_marker
+        for t in ("Review of The Invented Gap", "Book Review: The Invented Gap", "BOOK REVIEWS The Invented Gap",
+                  "The Invented Gap [Review of the book The Invented Gap, by J. Doe]", "The Invented Gap (book review)",
+                  "Rezension zu: Die erfundene Lücke", "Compte rendu de La brèche inventée"):
+            self.assertIsNotNone(m(t), t)
+        for t in ("The Invented Gap", "Reviewing Invented Policy", "Peer Review in Invented Journals",
+                  "Invented Reviewers and Their Habits"):
+            self.assertIsNone(m(t), t)
+
+
+# Rules 2026-11-01b (user decision 2026-11-01 after the fresh held-out re-test of rules 2026-11-01a). V2_087 and
+# V2_088 are the two citations that re-test graded CONFIDENT, verbatim: the cited title, then the record's title as
+# the index lists it (published bibliographic data; the held-out set they come from has been used for testing, so it
+# is no longer held out). Every other title below is invented.
+V2_087 = ("Statistics notes: Absence of evidence is evidence of absence",
+          "Statistics notes: Absence of evidence is not evidence of absence")
+V2_088 = ("Polypill with or without Aspirin in Persons with Cardiovascular Disease",
+          "Polypill with or without Aspirin in Persons without Cardiovascular Disease")
+RETEST_GENUINE = (
+    # (label, cited, record): forms a correct citation takes; each stays CONFIDENT under one-for-one matching.
+    ("hyphen run and the same word alone", "Invented Pre-School and School Readiness Among Rural Pupils",
+     "Invented Preschool and School Readiness Among Rural Pupils"),
+    ("closed form and the same word alone", "Invented Preschool and School Readiness Among Rural Pupils",
+     "Invented Pre-School and School Readiness Among Rural Pupils"),
+    ("a correct title that repeats words", "Teachers Teaching Teachers: Invented Peer Coaching for Teachers",
+     "Teachers Teaching Teachers: Invented Peer Coaching for Teachers"),
+    ("singular and plural trade places", "The Effect of Invented Tutoring and the Effects of Invented Mentoring",
+     "The Effects of Invented Tutoring and the Effect of Invented Mentoring"),
+    ("repeated possessive and plural", "Teachers' Pay and Teachers' Unions in Invented Rural Districts",
+     "Teacher's Pay and Teachers Unions in Invented Rural Districts"),
+    ("es plural after ch", "Invented Approaches to Rural Reading Instruction for Pupils in Districts",
+     "Invented Approach to Rural Reading Instruction for Pupils in Districts"),
+    ("es plural after x", "Invented Boxes of Books in Rural Classrooms of the Invented Region",
+     "Invented Box of Books in Rural Classrooms of the Invented Region"),
+)
+
+
+class VerifyHeldoutRetestFixTests(Base):
+    """Rules 2026-11-01b, word check content-words-v2: the two reversed claims the fresh held-out re-test of rules
+    2026-11-01a graded CONFIDENT, and one test per defence each alone stops: (M) words are matched one for one, so a
+    repeated word counts and a plural fold cannot borrow a word already used; (E) "es" is a plural ending only after
+    s, x, z, ch or sh; (N) a negation is never matched through a plural fold. Controls keep correct citations
+    CONFIDENT. No network."""
+
+    gate = VerifyCycle5Tests.gate
+    differ = staticmethod(scholar_search_common.title_words_differ)
+
+    def weak_with(self, cited, rec, words):
+        c = scholar_search.verify_title_check(cited, rec)
+        self.assertGreaterEqual(c["full"], scholar_search.VERIFY_CONFIDENT_MIN)   # precondition: the score passes it
+        self.assertEqual((c["verdict"], c["words"]), ("WEAK", words))
+        self.assertTrue(any("differ in words" in w for w in c["weak_why"]), c["weak_why"])
+
+    def test_v2_087_not_beside_a_shared_notes_is_weak(self):
+        # The record's "not" was found through the "notes" both titles share ("not" + "es"). Stopped by M, E and N.
+        self.weak_with(*V2_087, {"cited_only": [], "record_only": ["not"]})
+        self.assertEqual(self.differ("Results that are not notes", "Results that are notes"),
+                         {"cited_only": ["not"], "record_only": []})
+        self.assertEqual(self.differ("Do notes matter? Evidence that is not", "Do notes matter? Evidence that is"),
+                         {"cited_only": ["not"], "record_only": []})
+
+    def test_v2_088_repeated_without_is_weak(self):
+        # "without" occurs once in the cited title and twice in the record's; "with" is a set-aside function word,
+        # so only the count shows the swap. Stopped by M alone.
+        self.weak_with(*V2_088, {"cited_only": [], "record_only": ["without"]})
+        self.weak_with(V2_088[1], V2_088[0], {"cited_only": ["without"], "record_only": []})
+
+    def test_held_out_shapes_through_the_cli(self):
+        for (cited, rec), words in ((V2_087, {"cited_only": [], "record_only": ["not"]}),
+                                    (V2_088, {"cited_only": [], "record_only": ["without"]})):
+            for route in CYCLE5_ROUTES:
+                with self.subTest(route=route, cited=cited):
+                    code, verdict, _ = self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019,
+                                                 cited_title=cited)
+                    self.assertEqual((code, verdict), (0, "WEAK"))
+                    row = self.manifest()[-1]
+                    self.assertEqual(row["title_word_check"], words)
+                    self.assertEqual((row["verify_cutoffs"]["rules_version"], row["verify_cutoffs"]["title_word_guard"]),
+                                     ("2026-11-01d", "content-words-v4"))
+                    md = (self.dest / row["extract_artifact"]).read_text()
+                    self.assertIn(f"only the record's title has {words['record_only'][0]!r}", " ".join(md.split()))
+                    self.assertNotIn("CONFIDENT", md)
+
+    # --- (M) one-for-one matching -------------------------------------------------------------------------------
+    def test_a_repeated_content_word_counts(self):
+        # Set comparison found "Effects" in the record, which has it once; the citation has it twice.
+        self.assertEqual(self.differ("Effects of Invented Tutoring and Effects of Invented Mentoring",
+                                     "Effects of Invented Tutoring and of Invented Mentoring"),
+                         {"cited_only": ["effects"], "record_only": []})
+
+    def test_a_plural_fold_uses_up_its_partner(self):
+        # Both record "Effects" fold to the citation's one "Effect"; only the first may take it.
+        self.assertEqual(self.differ("Effect of Invented Tutoring and of Invented Mentoring",
+                                     "Effects of Invented Tutoring and Effects of Invented Mentoring"),
+                         {"cited_only": [], "record_only": ["effects"]})
+
+    def test_a_closed_compound_counts_once(self):
+        # The record's "Pre-School" offers its closed form "preschool" once; the citation's second "Preschool" has
+        # no partner (and the record's standalone "School" none either).
+        self.assertEqual(self.differ("Invented Preschool Readiness and Preschool Quality in Rural Districts",
+                                     "Invented Pre-School Readiness and School Quality in Rural Districts"),
+                         {"cited_only": ["preschool"], "record_only": ["school"]})
+
+    def test_no_beside_a_shared_nos_counts(self):
+        # Stopped by M and by N.
+        self.assertEqual(self.differ("Lo que no nos dicen los maestros rurales inventados",
+                                     "Lo que nos dicen los maestros rurales inventados"),
+                         {"cited_only": ["no"], "record_only": []})
+
+    # --- (N) a negation is never a plural fold ------------------------------------------------------------------
+    def test_negation_and_its_plural_shape_are_different_words(self):
+        # "what they do not say" vs "what they tell us": each side has its word once, so only N separates them.
+        self.weak_with("Lo que no dicen los maestros rurales inventados", "Lo que nos dicen los maestros rurales inventados",
+                       {"cited_only": ["no"], "record_only": ["nos"]})
+        forms = scholar_search_common.title_word_forms
+        self.assertEqual(forms("not"), ("not",))
+        self.assertEqual(forms("no"), ("no",))
+        self.assertNotIn("no", forms("nos"))
+        self.assertNotIn("mai", forms("mais"))
+
+    def test_negations_are_never_set_aside_and_keep_their_keys(self):
+        neg, stop = scholar_search_common.TITLE_NEGATIONS, scholar_search_common.TITLE_STOPWORDS
+        self.assertEqual(neg & stop, frozenset())
+        for w in sorted(neg):
+            # The list holds word keys: case, accents and spelling folds leave each one as written.
+            self.assertEqual(scholar_search_common.title_word_runs(w), [[(w, w)]], w)
+        self.assertEqual(self.differ("Invented Tutoring for Persons with Reading Difficulty",
+                                     "Invented Tutoring for Persons without Reading Difficulty"),
+                         {"cited_only": [], "record_only": ["without"]})
+
+    # --- (E) "es" only after s, x, z, ch, sh ---------------------------------------------------------------------
+    def test_es_is_a_plural_only_after_a_sibilant(self):
+        # "rates" is not "rat" + "es"; neither title's word is a negation and each occurs once, so only E stops it.
+        self.weak_with("Survival rates in an invented laboratory study of rural pupils",
+                       "Survival rat in an invented laboratory study of rural pupils",
+                       {"cited_only": ["rates"], "record_only": ["rat"]})
+        forms = scholar_search_common.title_word_forms
+        self.assertNotIn("notes", forms("not"))
+        self.assertNotIn("rates", forms("rat"))
+        self.assertNotIn("rat", forms("rates"))
+        self.assertIn("rate", forms("rates"))
+        for stem, plural in (("box", "boxes"), ("class", "classes"), ("approach", "approaches"), ("wish", "wishes"),
+                             ("tax", "taxes"), ("bus", "buses")):
+            self.assertIn(plural, forms(stem))
+            self.assertIn(stem, forms(plural))
+
+    # --- controls -------------------------------------------------------------------------------------------------
+    def test_genuine_forms_stay_confident(self):
+        for label, cited, rec in RETEST_GENUINE + HV_WORD_GENUINE:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertGreaterEqual(c["full"], scholar_search.VERIFY_CONFIDENT_MIN)   # precondition
+                self.assertEqual((c["verdict"], c["words"]), ("CONFIDENT", None))
+
+    def test_return_shapes_unchanged(self):
+        # lit_corpus re-grades titles through these two functions: None, or the same dict shapes as in 2026-11-01a.
+        self.assertIsNone(self.differ(*RETEST_GENUINE[0][1:]))
+        self.assertEqual(sorted(self.differ(*V2_088)), ["cited_only", "record_only"])
+        self.assertIsNone(scholar_search_common.title_marks_differ(*V2_088))
+
+
+# Rules 2026-11-01c (user decision 2026-11-01 after the quality and consistency reviews of rules 2026-11-01b). Every
+# title below is invented; the padding keeps a one-word edit above VERIFY_CONFIDENT_MIN.
+RF_L = "in Rural Districts of the Invented Northern Region"
+RF_LL = RF_L + " and the Invented Southern Region Across Two Decades of State Reform"
+RF_GENUINE = (
+    # (label, cited, record): forms a correct citation takes; neither the word nor the mark check fires.
+    ("closed vs hyphenated negation prefix", f"Invented Tutoring Outcomes for Nonsmokers {RF_LL}",
+     f"Invented Tutoring Outcomes for Non-Smokers {RF_LL}"),
+    ("spaced vs closed negation prefix", f"Invented Tutoring Outcomes for Non Smokers {RF_LL}",
+     f"Invented Tutoring Outcomes for Nonsmokers {RF_LL}"),
+    ("both compounds on both sides", f"Invented Tutoring Outcomes for Smokers and Non-Smokers {RF_LL}",
+     f"Invented Tutoring Outcomes for Smokers and Nonsmokers {RF_LL}"),
+    ("German negation prefix", "Erfundene Nachhilfe für Nichtraucher in ländlichen Schulen der erfundenen Region",
+     "Erfundene Nachhilfe für Nicht-Raucher in ländlichen Schulen der erfundenen Region"),
+    ("fold after joining, hyphen", f"Invented Socio-Economic Gaps in Reading {RF_L}",
+     f"Invented Socioeconomic Gaps in Reading {RF_L}"),
+    ("fold after joining, spaced", f"Invented Socio Economic Gaps in Reading {RF_L}",
+     f"Invented Socioeconomic Gaps in Reading {RF_L}"),
+    ("fold after joining, ae/oe", f"Invented Bio-Ethics and Socio-Emotional Learning {RF_L}",
+     f"Invented Bioethics and Socioemotional Learning {RF_L}"),
+    ("British spellings", f"Invented Paediatric Modelling at a Rural Centre for Pupils {RF_L}",
+     f"Invented Pediatric Modeling at a Rural Center for Pupils {RF_L}"),
+    ("Italian function word as written", "Gli effetti della tutoria inventata nelle scuole rurali della regione",
+     "Gli effetti tutoria inventata nelle scuole rurali della regione"),
+    # Whole words before parts: "School" takes the plural "Schools" rather than splitting "Pre-School", which
+    # "Preschools" needs.
+    ("plurals beside a hyphenated compound", f"Invented School and Preschools Programs {RF_L}",
+     f"Invented Schools and Pre-School Programs {RF_L}"),
+)
+
+
+class VerifyReviewFixRoundTests(Base):
+    """Rules 2026-11-01c: content-words-v3, marks-v2, book-review-v2. One test per defence, each on a pair only that
+    defence stops: (R) a hyphen run of the other title is one word or its parts, never both; (W) words written
+    together use up the word they spell; (N) a join never makes or hides a negation; (O) ordinals are keyed apart
+    from cardinals; (S) function words are looked up as written; (A) accents are counted; (V) "Review:" marks a
+    review; (U) the subtitle set-aside needs the subtitle to be absent. Controls keep correct citations CONFIDENT.
+    No network."""
+
+    gate = VerifyCycle5Tests.gate
+    verify_work = VerifyHeldoutFixTests.verify_work
+    differ = staticmethod(scholar_search_common.title_words_differ)
+    weak_with = VerifyHeldoutRetestFixTests.weak_with
+
+    # --- (R) a hyphen run counts once -------------------------------------------------------------------------------
+    def test_a_hyphen_run_is_its_words_or_its_joined_form_never_both(self):
+        for added, cited, rec in (
+                ("smokers", f"Invented Tutoring Outcomes for Smokers and Nonsmokers {RF_LL}",
+                 f"Invented Tutoring Outcomes for Non-Smokers {RF_LL}"),
+                ("school", f"Effects of Invented Universal School and Preschool Programs on Reading {RF_LL}",
+                 f"Effects of Invented Universal Pre-School Programs on Reading {RF_LL}"),
+                ("users", f"Invented Reading Gains of Users and Nonusers of Tutoring {RF_LL}",
+                 f"Invented Reading Gains of Non-Users of Tutoring {RF_LL}"),
+                # A soft hyphen (U+00AD) joins like a hyphen; written apart, the record's words would be found by
+                # presence and the added "Smokers" missed.
+                ("smokers", f"Invented Tutoring Outcomes for Smokers and Nonsmokers {RF_LL}",
+                 f"Invented Tutoring Outcomes for Non­Smokers {RF_LL}")):
+            with self.subTest(added=added):
+                self.weak_with(cited, rec, {"cited_only": [added], "record_only": []})
+                self.weak_with(rec, cited, {"cited_only": [], "record_only": [added]})
+
+    def test_a_repeated_hyphen_run_counts(self):
+        self.weak_with(f"Invented Tutoring for Non-Smokers and Outcomes for Non-Smokers {RF_LL}",
+                       f"Invented Tutoring for Non-Smokers and Outcomes for {RF_LL}",
+                       {"cited_only": ["non-smokers"], "record_only": []})
+
+    # --- (W) words written together use up the word they spell -------------------------------------------------------
+    def test_words_written_together_use_up_the_word(self):
+        # "Non Smokers" takes the record's "Non-Smokers" whole, so the cited "Smokers" has no partner left.
+        self.weak_with(f"Invented Tutoring Outcomes for Smokers and Non Smokers {RF_LL}",
+                       f"Invented Tutoring Outcomes for Non-Smokers {RF_LL}",
+                       {"cited_only": ["smokers"], "record_only": []})
+
+    # --- (N) a join never makes or hides a negation --------------------------------------------------------------------
+    def test_a_join_never_makes_or_hides_a_negation(self):
+        self.weak_with(f"Why Invented Teachers Are Not Able to Raise Reading Scores {RF_L}",
+                       f"Why Invented Teachers Are Notable to Raise Reading Scores {RF_L}",
+                       {"cited_only": ["not", "able"], "record_only": ["notable"]})
+        self.weak_with(f"Invented Rural Pupils Have Nowhere to Learn After School {RF_L}",
+                       f"Invented Rural Pupils Have Now Here to Learn After School {RF_L}",
+                       {"cited_only": ["nowhere"], "record_only": ["now", "here"]})
+        keys = scholar_search_common.title_join_keys
+        self.assertEqual(keys([("can", "can"), ("not", "not")]), {"cannot"})
+        self.assertEqual(keys([("not", "not"), ("able", "able")]), set())
+        self.assertEqual(keys([("non", "non"), ("smokers", "-smokers")]), {"nonsmokers"})
+
+    # --- joins folded after joining as well as before (cost) ------------------------------------------------------------
+    def test_genuine_forms_stay_confident(self):
+        for label, cited, rec in RF_GENUINE:
+            with self.subTest(label=label):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertGreaterEqual(c["full"], scholar_search.VERIFY_CONFIDENT_MIN)   # precondition
+                self.assertEqual((c["verdict"], c["words"], c["marks"]), ("CONFIDENT", None, None))
+
+    def test_a_join_is_folded_after_joining_and_part_by_part(self):
+        have = scholar_search_common.title_word_presence
+        self.assertIn("socieconomic", have("Socio-Economic"))     # fold after joining = the closed form's key
+        self.assertEqual(have("Socioeconomic"), {"socieconomic"})
+        self.assertTrue({"centerbased", "centrebased"} <= have("Centre-Based"))   # "tre" folds only at a word end
+
+    # --- (O) ordinals apart from cardinals ------------------------------------------------------------------------------
+    def test_ordinals_are_keyed_apart_from_cardinals(self):
+        self.weak_with(f"Persistence of Invented Second-Year Community College Students {RF_L}",
+                       f"Persistence of Invented Two-Year Community College Students {RF_L}",
+                       {"cited_only": ["second-year"], "record_only": ["two-year"]})
+        runs = scholar_search_common.title_word_runs
+        self.assertEqual([k for k, _ in runs("Second-Year")[0]], [k for k, _ in runs("2nd-Year")[0]])
+        self.assertNotEqual([k for k, _ in runs("Second")[0]], [k for k, _ in runs("Two")[0]])
+        self.assertEqual(runs("1980s")[0][0][0], "1980")
+
+    # --- (S) function words looked up as written --------------------------------------------------------------------------
+    def test_function_words_are_looked_up_as_written(self):
+        # "all" folds to the listed Spanish "al" and "does" to the French "des"; neither is set aside.
+        self.weak_with(f"Effects of Invented Tutoring on All Pupils {RF_L}", f"Effects of Invented Tutoring on Pupils {RF_L}",
+                       {"cited_only": ["all"], "record_only": []})
+        self.weak_with(f"Why Invented Class Size Does Matter for Reading Scores {RF_L}",
+                       f"Why Invented Class Size Matter for Reading Scores {RF_L}",
+                       {"cited_only": ["does"], "record_only": []})
+
+    # --- (A) accents counted ------------------------------------------------------------------------------------------------
+    def test_accents_are_counted_per_form(self):
+        for cited, rec, pair in (
+                ("Tránh thai và tranh luận về giáo dục giới tính ở trường nông thôn tỉnh Bắc Giang",
+                 "Tranh thai và tranh luận về giáo dục giới tính ở trường nông thôn tỉnh Bắc Giang", ["tránh", "tranh"]),
+                ("Por qué la tutoría sí funciona si los maestros rurales inventados participan en el programa",
+                 "Por qué la tutoría si funciona si los maestros rurales inventados participan en el programa", ["sí", "si"]),
+                ("A escola rural inventada é boa e justa para os alunos do interior do estado",
+                 "A escola rural inventada e boa e justa para os alunos do interior do estado", ["é", "e"])):
+            with self.subTest(pair=pair):
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertEqual(c["full"], 1.0, "the score erases the accent")   # precondition
+                self.assertEqual((c["verdict"], c["words"], c["marks"]), ("WEAK", None, {"symbols": None, "accents": [pair]}))
+        same = "Tránh thai và tranh luận về giáo dục giới tính ở trường nông thôn tỉnh Bắc Giang"
+        self.assertIsNone(scholar_search_common.title_marks_differ(same, same))
+
+    # --- (V) "Review:" ----------------------------------------------------------------------------------------------------
+    def test_review_colon_is_a_review_marker(self):
+        m = scholar_search_common.review_title_marker
+        self.assertEqual(m("Review: " + HV_BOOK), "Review:")
+        self.assertIsNotNone(m(HV_BOOK + ", reviewed by Ann Reviewer"))
+        for t in ("Reviewer: Invented Notes", "Reviews and Reviewers in Invented Journals"):
+            self.assertIsNone(m(t), t)
+        code, row = self.verify_work(dict(work_json("Review: " + HV_BOOK, 2003, ["Jane Doe"]), type="article"))
+        self.assertEqual((code, row["verdict"], row["review_check"]["signal"]), (0, "WEAK", "title"))
+
+    # --- (U) the subtitle set-aside, and marks the earlier tests did not reach -------------------------------------------
+    def test_a_subtitle_is_set_aside_only_when_absent(self):
+        # The cited subtitle's words occur in the record except the added "not", so the subtitle is compared.
+        self.weak_with(f"Invented Class Size and Reading Scores {RF_L}: Tutoring Does Not Work for Pupils",
+                       f"Invented Class Size and Reading Scores {RF_L} Tutoring Does Work for Pupils",
+                       {"cited_only": ["not"], "record_only": []})
+
+    def test_symbols_in_other_spellings_and_in_order(self):
+        # "⩽" and "⩾" are read as "≤" and "≥" (else neither is a symbol and the pair agrees); symbols compare in order.
+        c = scholar_search.verify_title_check(f"Invented Uptake in Children Aged ⩽5 Years {RF_L}",
+                                              f"Invented Uptake in Children Aged ⩾5 Years {RF_L}")
+        self.assertEqual((c["full"], c["verdict"], c["marks"]["symbols"]), (1.0, "WEAK", {"cited": ["≤"], "record": ["≥"]}))
+        self.assertEqual(scholar_search_common.title_marks_differ("Invented Uptake Aged <5 and Visits >10 in Rural Districts",
+                                                                  "Invented Uptake Aged >5 and Visits <10 in Rural Districts"),
+                         {"symbols": (["<", ">"], [">", "<"]), "accents": []})
+
+    def test_es_plural_after_z(self):
+        forms = scholar_search_common.title_word_forms
+        self.assertIn("waltzes", forms("waltz"))
+        self.assertIn("waltz", forms("waltzes"))
+
+    # --- through the CLI ------------------------------------------------------------------------------------------------
+    def test_review_fix_shapes_through_the_cli(self):
+        for cited, rec, field in ((f"Invented Tutoring Outcomes for Smokers and Nonsmokers {RF_LL}",
+                                   f"Invented Tutoring Outcomes for Non-Smokers {RF_LL}", "title_word_check"),
+                                  ("Tránh thai và tranh luận về giáo dục giới tính ở trường nông thôn tỉnh Bắc Giang",
+                                   "Tranh thai và tranh luận về giáo dục giới tính ở trường nông thôn tỉnh Bắc Giang",
+                                   "title_mark_check")):
+            for route in CYCLE5_ROUTES:
+                with self.subTest(route=route, field=field):
+                    code, verdict, _ = self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019, cited_title=cited)
+                    self.assertEqual((code, verdict), (0, "WEAK"))
+                    row = self.manifest()[-1]
+                    self.assertIn(field, row)
+                    self.assertEqual((row["verify_cutoffs"]["rules_version"], row["verify_cutoffs"]["title_word_guard"],
+                                      row["verify_cutoffs"]["mark_guard"], row["verify_cutoffs"]["review_guard"]),
+                                     ("2026-11-01d", "content-words-v4", "marks-v2", "book-review-v2"))
+
+
+# Rules 2026-11-01d (after the second review of rules 2026-11-01c). Every title is invented.
+# In each pair two consecutive words spell another word of the same title; nine are identical, one drops a hyphen.
+IT_SHAPES = (
+    ("A Cross ... across", f"A Cross Sectional Study of Tutoring across Invented Districts {RF_L}",
+     f"A Cross Sectional Study of Tutoring across Invented Districts {RF_L}"),
+    ("A Broad ... Abroad", f"A Broad Look at Study Abroad Programs {RF_L}", f"A Broad Look at Study Abroad Programs {RF_L}"),
+    ("A Way ... Away", f"A Way Forward: Moving Away from Tracking {RF_L}", f"A Way Forward: Moving Away from Tracking {RF_L}"),
+    ("Every Day ... Everyday", f"Every Day Practices and Everyday Life of Invented Pupils {RF_L}",
+     f"Every Day Practices and Everyday Life of Invented Pupils {RF_L}"),
+    ("A Head ... Ahead", f"A Head Start Program Ahead of Its Time {RF_L}", f"A Head Start Program Ahead of Its Time {RF_L}"),
+    ("Day to Day ... Today", f"Day to Day Teaching Today {RF_L}", f"Day to Day Teaching Today {RF_L}"),
+    ("Pre School ... Preschool", f"Invented Pre School and Preschool Programs {RF_L}",
+     f"Invented Pre School and Preschool Programs {RF_L}"),
+    ("Non Smokers ... Nonsmokers", f"Invented Non Smokers and Nonsmokers {RF_L}",
+     f"Invented Non Smokers and Nonsmokers {RF_L}"),
+    ("hyphen dropped: A Cross-Sectional ... across", f"A Cross-Sectional Study of Tutoring across Invented Districts {RF_L}",
+     f"A Cross Sectional Study of Tutoring across Invented Districts {RF_L}"),
+    ("A Long ... Along", f"A Long Road Along the Way for Invented Pupils {RF_L}",
+     f"A Long Road Along the Way for Invented Pupils {RF_L}"),
+)
+
+
+class VerifyIdenticalTitleFixTests(Base):
+    """Rules 2026-11-01d, word check content-words-v4: the matching also runs with exact single words taken before
+    consecutive words written together, and keeps the shorter missing list, so a title whose consecutive words spell
+    another of its words passes against itself. The order the earlier rules used is still needed (a compound written
+    apart), and counting still holds. No network."""
+
+    gate = VerifyCycle5Tests.gate
+    differ = staticmethod(scholar_search_common.title_words_differ)
+    weak_with = VerifyHeldoutRetestFixTests.weak_with
+
+    def test_consecutive_words_spelling_another_word_of_the_title_pass(self):
+        for label, cited, rec in IT_SHAPES:
+            with self.subTest(label=label):
+                self.assertIsNone(self.differ(cited, rec))
+                self.assertIsNone(self.differ(rec, cited))
+                c = scholar_search.verify_title_check(cited, rec)
+                self.assertEqual((c["verdict"], c["words"], c["marks"]), ("CONFIDENT", None, None))
+
+    def test_a_compound_written_apart_still_takes_its_closed_form(self):
+        # Exact single words first alone would let the first "Children" take the record's lone "Children", leaving
+        # "School" and the second "Children" without partners; the window-first order pairs this title.
+        cited = f"Invented Meals for School Children and Children {RF_L}"
+        rec = f"Invented Meals for Schoolchildren and Children {RF_L}"
+        self.assertIsNone(self.differ(cited, rec))
+        self.assertIsNone(self.differ(rec, cited))
+        self.assertEqual(scholar_search.verify_title_check(cited, rec)["verdict"], "CONFIDENT")
+
+    def test_counting_still_holds_in_both_orders(self):
+        # A word added a second time is still reported when consecutive words spell it elsewhere in the title.
+        self.weak_with(f"A Cross Sectional Study of Tutoring across Districts and across Invented Regions {RF_L}",
+                       f"A Cross Sectional Study of Tutoring across Districts and Invented Regions {RF_L}",
+                       {"cited_only": ["across"], "record_only": []})
+        self.weak_with(f"Invented Pre School, Pre-School and Preschool Programs {RF_LL}",
+                       f"Invented Pre-School and Preschool Programs {RF_LL}",
+                       {"cited_only": ["preschool"], "record_only": []})
+        self.weak_with(f"Invented Tutoring Outcomes for Smokers and Non Smokers {RF_LL}",
+                       f"Invented Tutoring Outcomes for Non-Smokers {RF_LL}",
+                       {"cited_only": ["smokers"], "record_only": []})
+
+    def test_a_tie_keeps_the_first_orders_list(self):
+        # Window first, "to Day" takes "Today" and the cited "Today" is left; exact words first, "Today" takes "Today"
+        # and the second "Day" is left. Both lists have one word: the first order's list, as rules 2026-11-01c named it.
+        self.assertEqual(self.differ("Day to Day Teaching Today", "Today Teaching Day"),
+                         {"cited_only": ["today"], "record_only": []})
+
+    def test_identical_title_through_the_cli(self):
+        cited = rec = IT_SHAPES[0][1]
+        for route in CYCLE5_ROUTES:
+            with self.subTest(route=route):
+                code, verdict, _ = self.gate(route, "Jane Doe", ["Jane Doe"], title=rec, year=2019, cited_title=cited)
+                self.assertEqual((code, verdict), (0, "CONFIDENT"))
+                row = self.manifest()[-1]
+                self.assertNotIn("title_word_check", row)
+                self.assertEqual((row["verify_cutoffs"]["rules_version"], row["verify_cutoffs"]["title_word_guard"]),
+                                 ("2026-11-01d", "content-words-v4"))
+
+
 class VerifyCalibrationTests(unittest.TestCase):
     """Locks the verify calibration in (no network): the 2026-10-02 cutoffs
     and the 2026-10-03 R1-R4 rules.
@@ -2851,7 +3531,9 @@ class VerifyCalibrationTests(unittest.TestCase):
         # log): match 9/35/0, mismatch 0/30/9 (R1-R4 was 12/32/0 and 0/29/10: M30 and M32 lost
         # CONFIDENT once the 160-char truncation stopped hiding the record's subtitle, M37 to the
         # numeral guard; X21 moved MISMATCH -> WEAK untruncated). With the cited year (R4), all 84
-        # items: match 9/35/0, mismatch 0/31/9 (X40 -> WEAK).
+        # items: match 9/35/0, mismatch 0/31/9 (X40 -> WEAK). Rules 2026-11-01a: the word check moves
+        # the genuine M42 ("Education" cited, "Educational" listed) CONFIDENT -> WEAK, so match is 8/36/0;
+        # nothing else moves (VerifyHeldoutFixTests.test_cost_on_the_calibration_set).
         hybrid, with_year = {}, {}
         for it in self.items:
             if it["subtype"] != "identical_title_other_work":
@@ -2859,9 +3541,9 @@ class VerifyCalibrationTests(unittest.TestCase):
                 hybrid[(it["label"], g)] = hybrid.get((it["label"], g), 0) + 1
             g = self.grade(it)
             with_year[(it["label"], g)] = with_year.get((it["label"], g), 0) + 1
-        self.assertEqual(hybrid, {("match", "CONFIDENT"): 9, ("match", "WEAK"): 35,
+        self.assertEqual(hybrid, {("match", "CONFIDENT"): 8, ("match", "WEAK"): 36,
                                   ("mismatch", "WEAK"): 30, ("mismatch", "MISMATCH"): 9})
-        self.assertEqual(with_year, {("match", "CONFIDENT"): 9, ("match", "WEAK"): 35,
+        self.assertEqual(with_year, {("match", "CONFIDENT"): 8, ("match", "WEAK"): 36,
                                      ("mismatch", "WEAK"): 31, ("mismatch", "MISMATCH"): 9})
 
     def test_d2_numeral_guard_on_the_labeled_set(self):
