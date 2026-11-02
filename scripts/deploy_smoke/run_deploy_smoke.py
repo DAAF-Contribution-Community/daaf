@@ -21,8 +21,9 @@ Route-appropriate probes then run across tiers:
   Tier 2  functional battery     capability-structural probes (dispatch, coding in Python and R, web,
                                  skill, isolation, nested-dispatch prevention, guardrails)
   Tier A  Auto mode (opt-in)     one claude -p --permission-mode auto call
-  Tier 3  golden path (opt-in)   mode-confirmation gate + Pre-K answer with a curated-skill retrieval
-                                 (by the orchestrator or its Data Lookup specialist)
+  Tier 3  golden path (opt-in)   daaf-orchestrator engages, then a resumed session answers Pre-K with an
+                                 education-data-* skill retrieval (by the orchestrator or its Data Lookup
+                                 specialist); gate adherence is recorded, not graded
 
 The suite runs on any DAAF image (T0.0 reports whether it is the developer
 image, which adds the bats and Pester batteries). Before any paid tier (1, 2,
@@ -716,9 +717,10 @@ _FIX_LOCATIONS = (
     ("T1.", "provider credentials and route; .claude/hooks/ for the plumbing probes"),
     ("T2.", ".claude/agents/, .claude/skills/, .claude/hooks/ (see the transcript)"),
     ("TA.", "Auto-mode settings; shim classifier path on shim routes"),
-    ("T3.1", ".claude/skills/daaf-orchestrator/"),
+    ("T3.1", ".claude/skills/daaf-orchestrator/ (frontmatter); .claude/hooks/remind-orchestrator.sh and its "
+             ".claude/settings.json registration (user-applied)"),
     ("T3.2", ".claude/skills/daaf-orchestrator/references/data-lookup-mode.md (Data Lookup); .claude/agents/ "
-             "(search-agent, source-researcher); .claude/skills/education-data-{context,source-ccd}/"),
+             "(search-agent, source-researcher); .claude/skills/education-data-*/"),
 )
 _SKILL_REF = ".claude/skills/daaf-deploy-smoke-testing/references/interpreting-results.md"
 # Every synthetic *.CRASH record (T<tier>.CRASH, POST.CRASH, RUN.CRASH) is a

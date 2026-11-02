@@ -182,5 +182,5 @@ After completing the checklist, verify:
 1. **Count consistency:** Grep for the old count word (e.g., "seven") across all framework files — should be zero occurrences
 2. **Cross-references resolve:** Every file path mentioned in the new mode reference file exists
 3. **Escalation paths are bidirectional:** Both the "from" and "to" modes in the escalation table acknowledge the path
-4. **Confirmation template ends with a question:** The template in SKILL.md must name the mode and end with an explicit confirmation question in bold (the deploy smoke test T3.1 checks both in a live Data Lookup reply), and must carry no scope estimates
+4. **Confirmation template ends with a question:** The template in SKILL.md must name the mode and end with an explicit confirmation question in bold (the deploy smoke test T3.1 records both in a live reply as information only; DAAFBench grades adherence), and must carry no scope estimates
 5. **Decision tree branch is correctly positioned:** More specific triggers appear earlier to prevent misclassification
