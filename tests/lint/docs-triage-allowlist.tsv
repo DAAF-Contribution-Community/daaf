@@ -29,61 +29,107 @@ CITATION.cff	C	date-released:	the release date is a required citation field
 # Listed one by one: an unlogged script in the same folder can still be fixed.
 benchmarks/datasets/test_fixtures/code_reviewer/enrollment_trends.py	*	*	logged script (immutable)
 benchmarks/datasets/test_fixtures/code_reviewer/frpl_poverty_rates.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/01_audit-education-portal-mirror.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/02_stage-education-portal-mirror_b.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/03_validate-education-portal-mirror.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/04_delta-classify-mirror-v2.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/04_delta-classify-mirror-v2_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/05_carry-forward-mirror-v2.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/06_fetch-convert-mirror-v2.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/06_fetch-convert-mirror-v2_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/06_fetch-convert-mirror-v2_b.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/06_fetch-convert-mirror-v2_c.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/07_validate-mirror-v2-tree.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/07_validate-mirror-v2-tree_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/08_remote-inventory-vs-manifest.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/08_remote-inventory-vs-manifest_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/09_pinned-url-fetch-probes.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/12_python-code-samples.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/13_r-fetch-patterns-samples.R	*	*	logged script (immutable)
-scripts/mirror_maintenance/16_datasets-reference-year-audit.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/17_ipeds-saipe-claim-probes.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/18_id-dtype-coded-value-probes.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/19_crdc-ccd-sentinel-deepdive.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/24_k12-inventory-and-env.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/37_live-probe-inventory.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/38_boundary-years_b.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/39_doc-route-sweep.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/40_route-reconciliation.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/40_route-reconciliation_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/41_variable-inventory.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/42_varlist-audit.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/42_varlist-audit_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/43_code-table-audit.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/44_filter-claims.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/44_filter-claims_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/48_fidelity-expansion-aggregate-report.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/48_fidelity-expansion-aggregate-report_b.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/49_laneB-pair-selection.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/49_laneB-pair-selection_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/50_laneB-count-sweep.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/50_laneB-count-sweep_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/50_laneB-count-sweep_a_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/50_laneB-count-sweep_a_a_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/51_laneB-value-slices_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/52_laneB-aggregate-report.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/53_endpoint-file-bridge.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/54_generate-variable-dictionaries.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/54_generate-variable-dictionaries_b.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/54_generate-variable-dictionaries_c.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/54_generate-variable-dictionaries_d.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/54_generate-variable-dictionaries_e.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/55_race-edfacts-closure-probe.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/55_race-edfacts-closure-probe_a.py	*	*	logged script (immutable)
-scripts/mirror_maintenance/56_race-edfacts-reprobe.py	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_imports_d.py	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_pyfixest.py	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_pyfixest_a.py	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_r_stats_b.R	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_skimr.R	*	*	logged script (immutable)
 scripts/smoke_tests/smoke_tidymodels_b.R	*	*	logged script (immutable)
+#
+# --- User guides: example dates and codes users actually see (explained where met; S3) ---
+user_reference/02_understanding_daaf.md	C	2026-01-15 enrollment study	example prompt date, not a stamp
+user_reference/02_understanding_daaf.md	C	2026-01-24a	version-suffix example
+user_reference/02_understanding_daaf.md	D	CP	validation banners and checkpoint codes users see in execution logs, explained in place
+user_reference/02_understanding_daaf.md	D	QA	quality-review result lines and file names users see in scripts/cr/, explained in place
+user_reference/03_best_practices.md	C	poverty analysis from 2026-02-10	example prompt date, not a stamp
+user_reference/03_best_practices.md	D	CP	validation banners and checkpoint codes users see in execution logs, explained in place
+user_reference/03_best_practices.md	D	RESULT: PASSED	quality-review result line users see in scripts/cr/, explained in place
+user_reference/04_extending_daaf.md	D	CP1 VALIDATION	banner users see, explained in place
+user_reference/04_extending_daaf.md	D	emSign ECC Root CA - G3	part of a certificate authority name, not a gate code
+user_reference/07_faq_technical.md	D	CP2 VALIDATION	banner users see, quoted and explained where met
+#
+# --- Host scripts and image config: pinned values and external-fact stamps (tier 2) ---
+scripts/host/daaf.sh	C	echo "2026-06-21"	dry-run docker stub: canned `git log --date=short` output for the CI smoke dashboard; pinned by tests/bash/daaf.bats
+scripts/host/daaf.ps1	C	Write-Output "2026-06-21"	dry-run docker stub: canned `git log --date=short` output for the CI smoke dashboard (twin of daaf.sh)
+scripts/host/install.sh	C	verified against compose-go main	external Docker Compose project-name normalization rule, standard-form stamp
+scripts/host/restore_from_backup.sh	C	observed 2026-10-01, bash under a	external fact (bash trap behavior under a pty), standard-form stamp
+Dockerfile	C	date (2026-09-24) in the local time zone	illustrative bare date in the uv time-zone rule (a value, not a stamp)
+Dockerfile	C	INCIDENT: on 2026-10-20	eMudhra disclosure date (the security incident itself)
+tests/*/view_quarto*	A	research/2026-07-15_AdHoc_Quarto_Viewer_Sample/	synthetic mock discovery path in the viewer tests (fixture data, not a workspace citation)
+agent_reference/WORKFLOW_PHASE4_ANALYSIS.md	C	Executed: 2026-01-24	example execution-log line in the Stage 9 literal-copy example (a value, not a stamp)
+#
+# --- User-read templates (tier 4): agent-facing fields, notes and guidelines, and visible banners ---
+# Templates serve two readers (DOCUMENTATION_STANDARDS.md § Audiences). Each row below is text for
+# the agent filling the template in, or a banner the user sees in script output and is told about.
+# A fragment matches anywhere on a line, so "Stage " or "DI-" would also hide a code put back into
+# a restart prompt: tests/bash/docs_triage.bats checks the Full Pipeline and Data Onboarding
+# restart prompts against family D with no allowlist.
+agent_reference/REPORT_TEMPLATE.md	D	<!-- Agent note	report-writer instruction comment (QA Result mapping), deleted before delivery
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	<!-- Agent note	agent instruction comments the report-writer deletes at RV-4, and the Agent Notes guideline that names the marker
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	Copy this template to	usage instruction for the agent, outside the template body
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	Awaiting PSU-RV1 / Confirmed at PSU-RV1	Scope Decisions status values that session recovery matches literally
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	[RV-1 / RV-2 / RV-3 / RV-4]	Current Stage values session recovery keys its resume actions on (agent field)
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	`CP2 VALIDATION: PASSED`	validation banner the user sees in script logs, explained where met
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	[CP1/CP2/CP3/CP4]	transcribes the validation banners the scripts print (visible banner)
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	during **RV-1 (Intake & Setup)**	usage guideline for the agent, outside the template body
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	during RV-2. Do not batch	usage guideline for the agent, outside the template body
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	**After RV-3	usage guideline for the agent, outside the template body
+agent_reference/REPRODUCTION_REPORT_TEMPLATE.md	D	**During RV-4	usage guideline for the agent, outside the template body
+agent_reference/AI_DISCLOSURE_REFERENCE.md	D	(Stage 11)	loading trigger and Integration Points name the consuming stage for agents
+agent_reference/AI_DISCLOSURE_REFERENCE.md	D	Never derive human validation from the CP1-CP4 verdicts	GUIDE-LLM mapping table (agent-facing): tells the writer which STATE fields not to use
+agent_reference/AI_DISCLOSURE_REFERENCE.md	D	written by the report-writer at RV-4	agent-facing placement note for the reproduction disclosure
+agent_reference/AI_DISCLOSURE_REFERENCE.md	C	(e.g., "2026-02-11")	example date-prefix value in the field mapping, not a stamp
+agent_reference/PLAN_TASKS_TEMPLATE.md	D	[Stage	task headers carry the stage tag plan-checker and the orchestrator search for; machine-read task file
+agent_reference/PLAN_TASKS_TEMPLATE.md	D	Run CP	task actions name the validation checkpoint built into the script (agent task specification)
+agent_reference/PLAN_TASKS_TEMPLATE.md	D	<done>CP	done criteria are the checkpoint verdicts plan-checker maps to tasks
+agent_reference/PLAN_TASKS_TEMPLATE.md	D	frozen after Stage 4.5	immutability rule for agents
+agent_reference/PLAN_TASKS_TEMPLATE.md	D	CP4 in Wave 4	agent note defining when a CP4 task is done
+agent_reference/PLAN_TEMPLATE.md	D	Valid: "CP1 PASSED	key-principle example of a measurable done criterion, for the planner
+agent_reference/PLAN_TEMPLATE.md	D	QA2 compares it with the rate it recomputes	Domain Configuration field note naming the check that reads it (agent-facing)
+agent_reference/PLAN_TEMPLATE.md	D	The suppression fields feed the CP2 and QA2	Domain Configuration guidance on which checks read the suppression fields (agent-facing)
+agent_reference/PLAN_TEMPLATE.md	D	Use during Stage 12 (Final Review)	must-haves checklist instruction for data-verifier
+agent_reference/PLAN_TEMPLATE.md	D	### Stage 2: Data Exploration	discovery heading agents cite by name
+agent_reference/PLAN_TEMPLATE.md	D	### Stage 3: Source Deep-Dive	discovery heading agents cite by name (report-writer; Domain Configuration note)
+agent_reference/PLAN_TEMPLATE.md	D	Completeness Assessment:**	discovery completeness checklists for the planner
+agent_reference/PLAN_TEMPLATE.md	D	| Stage [N] |	discovery gap table: the Source column names the discovery stage heading above that found the gap (planner and plan-checker field)
+agent_reference/PLAN_TEMPLATE.md	D	from the Stage 2-3 year coverage	orchestrator data-lag protocol
+agent_reference/PLAN_TEMPLATE.md	D	CP1 year-freshness check detects lag	orchestrator data-lag protocol
+agent_reference/PLAN_TEMPLATE.md	D	PAUSE execution after Stage 5	orchestrator data-lag protocol
+agent_reference/PLAN_TEMPLATE.md	D	CP1 flags only the years listed	planner note on the CP1 FLAG_YEARS setting
+agent_reference/PLAN_TEMPLATE.md	D	with the CP1 year-freshness and flagged-years checks	orchestrator data-lag protocol (where findings are recorded)
+agent_reference/PLAN_TEMPLATE.md	D	→ `scripts/stage	script path convention: maps stages to the folders the user sees, named as they appear
+agent_reference/PLAN_TEMPLATE.md	D	#### Stage 	Stage Interface Specification headings (data contracts between steps, for agents)
+agent_reference/PLAN_TEMPLATE.md	D	maps to Stage 8 task specifications	planner instruction
+agent_reference/PLAN_TEMPLATE.md	D	prints its result in a banner such as	names the validation banner users see in script output (CP1 VALIDATION: PASSED) and explains it
+agent_reference/PLAN_TEMPLATE.md	D	### CP	Validation Checkpoints headings match the CP banners scripts print; agents address the sections by name
+agent_reference/PLAN_TEMPLATE.md	D	| CP4.	CP4 sub-check rows mirror VALIDATION_CHECKPOINTS § CP4 Sub-Checks (data-verifier checklist)
+agent_reference/PLAN_TEMPLATE.md	D	Pre-Output Verification (Stage 12)	data-verifier checklist heading and its pointer to VALIDATION_CHECKPOINTS
+agent_reference/PLAN_TEMPLATE.md	D	Stage 9 notebook validates successfully	Pre-Output Verification row (data-verifier checklist)
+agent_reference/PLAN_TEMPLATE.md	D	**Stage 3 (Source Deep-Dive):**	risk-register update instruction for the planner
+agent_reference/PLAN_TEMPLATE.md	C	approved 24-task scope on 2026-07-16	example value in the Pre-Approved Scope Record field, not a stamp
+agent_reference/STATE_TEMPLATE.md	C	e.g., "2026-02-11"	example session date in a template field (a value, not a stamp)
+agent_reference/STATE_TEMPLATE.md	D	CP	agent-facing checkpoint fields (CP1-CP4 verdict tables and recovery rules); the restart prompt is pinned code-free by docs_triage.bats
+agent_reference/STATE_TEMPLATE.md	D	QA	agent-facing QA status tables and enums (QA1-QA4b); the restart prompt is pinned code-free by docs_triage.bats
+agent_reference/STATE_TEMPLATE.md	D	Stage 	agent-facing stage references in coordination fields and usage guidelines; the restart prompt is pinned code-free by docs_triage.bats
+agent_reference/STATE_TEMPLATE.md	D	Gate G	agent-facing gate status (G1, G4.5)
+agent_reference/STATE_TEMPLATE.md	D	PSU2	agent-facing G4.5 gate condition (the user's plan confirmation)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	C	e.g., "2026-03-23"	example session date in a template field (a value, not a stamp)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	CPP	agent-facing validation tables (CPP1-CPP4, CPP-SKILL)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	QAP	agent-facing QA tables (QAP1-QAP4)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	QAS	agent-facing synthetic-path QA rows (QAS-A/B/C)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	CPS-	agent-facing synthetic-path validators (CPS-INTAKE, CPS-GEN)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	PSU-D	agent-facing checkpoint references (PSU-DI1/DI2, PSU-DS1/DS2)
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	DI-	agent-facing stage codes in coordination fields; the restart prompt is pinned code-free by docs_triage.bats
+agent_reference/STATE_TEMPLATE_ONBOARDING.md	D	DS-	agent-facing synthetic-path stage codes; the restart prompt is pinned code-free by docs_triage.bats
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	| **Stage** | [LR-0	Agent fields table (labelled as agent codes); the user reads the plain "where we are" table
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	| **Open checkpoint** | [CP-1	Agent fields table (labelled as agent codes); the user reads the plain "where we are" table
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	hard Scope Check (CP-1)	orchestrator note on the status line session recovery reads
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	the key-paper list (CP-K)	orchestrator note on what the section records at each level
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	disagreement (CP-S), recorded with	orchestrator note on what the section records at each level
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	shown at the reference check (CP-G;	orchestrator note on when the glance sheet is shown
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	review, CP-A)	orchestrator note on who writes the appraisal log and when
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	[LR-n	Stage columns of the decision, blocker, learning-signal and last-action tables (agent coordination fields)
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	(stage LR-0)	When to Create guideline for the orchestrator, outside the template body
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	Show the review plan again (CP-1)	recovery rule for the orchestrator
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	again (CP-G; at a quick scan	recovery rule for the orchestrator
+agent_reference/STATE_TEMPLATE_LITREVIEW.md	D	Show the round check-in again (CP-R)	recovery rule for the orchestrator
