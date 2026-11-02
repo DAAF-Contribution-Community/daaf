@@ -298,7 +298,7 @@ Checklist website: https://llm-checklist.com/ (accessed 2026-10-06).
 
 When citing DAAF in publications, use:
 
-> Kim, B. H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B. H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 
 **BibTeX:**
 
@@ -308,7 +308,7 @@ When citing DAAF in publications, use:
   title = {{DAAF}: The Data Analyst Augmentation Framework},
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
-  version = {3.0.2},
+  version = {3.1.0},
   license = {LGPL-3.0-or-later}
 }
 ```

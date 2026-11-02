@@ -150,7 +150,7 @@ This analysis has the following limitations that should be considered when inter
 
 ### Software & Tools
 
-> Kim, B.H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B.H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 > *Cited because: Analysis framework*
 
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
