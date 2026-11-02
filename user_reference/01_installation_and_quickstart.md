@@ -1419,7 +1419,7 @@ GPT support is a **supported capability we've engineered carefully** — activel
 
 Most DAAF data sources — including all built-in education data from the Urban Institute — are **freely accessible with no authentication required**. You can skip this step entirely if you're only working with education data.
 
-However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
+However, some data domains require API keys from their hosting platforms. The table below shows API keys for data sources and services that ship with DAAF. When you onboard a new data source from an API via Data Onboarding Mode, DAAF will guide you through setting up the appropriate environment variable using the same pattern shown here. You can set multiple API keys simultaneously — each uses a unique environment variable name.
 
 | Data Source | Environment Variable | Where to Get a Key |
 |-------------|---------------------|-------------------|
@@ -1430,6 +1430,7 @@ However, some data domains require API keys from their hosting platforms. The ta
 | Scholarly literature search: Scite (optional, **paid** Pro plan). Not needed for Scite's citation-stance tallies or its editorial notices in the retraction check, which work keyless. The key only enables Scite Search, which also requires `--ack-scite-license`: Scite calls a Pro key "for evaluation", and research use of Search needs a separate license. Scite raw responses and tallies stay in `restricted/` and are never shared | `SCITE_API_KEY` | Scite API Console: [scite.ai/users/me/api](https://scite.ai/users/me/api) |
 | Scholarly literature search: Elicit (optional, **paid** Pro plan or higher). Enables Elicit paper search with study-design tags and AI-generated research reports; reports draw on your plan's usage and run only with `--confirm-spend`. Outputs stay in `restricted/`, are never shared, and must be deleted within 30 days if your API access ends (Elicit's terms) | `ELICIT_API_KEY` | [elicit.com/settings](https://elicit.com/settings) |
 | Scholarly literature search: contact email (optional; not a key) — enables Crossref's faster "polite pool" and the Unpaywall open-access lookup, and is sent only to those two services | `SCHOLARLY_CONTACT_EMAIL` | Your own email address |
+| Typesafe AI's Jev model (optional, **paid** per use; not a data source). Needed only if you ask DAAF to use Jev, an outside service that answers yes/no, multiple-choice and rating questions about text or images with probabilities. Every call is billed to your Typesafe account, and the text or images DAAF sends are processed by Typesafe, so DAAF is set up to ask you before sending any research material, and not to send sensitive or personal data | `TYPESAFE_API_KEY` | [console.typesafe.ai/keys](https://console.typesafe.ai/keys) |
 
 #### Recommended: Use an environment_settings.txt file (persistent across restarts)
 

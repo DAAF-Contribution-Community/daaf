@@ -939,6 +939,21 @@
 # --- To activate, remove the leading '#': ---
 #SCHOLARLY_CONTACT_EMAIL=you@your-institution.edu
 #
+# ----------------------------------------------------------------------------
+# Typesafe AI (Jev)  (OPTIONAL, PAID; restart required)
+# ----------------------------------------------------------------------------
+# Needed only if you ask DAAF to use Typesafe AI's Jev model (DAAF's optional
+# typesafe-ai skill). Jev is an outside, paid service that answers yes/no,
+# multiple-choice and rating questions about text or images, with
+# probabilities. It is not a data source: every call is billed to your
+# Typesafe account, and the text or images DAAF sends are processed by
+# Typesafe. DAAF is set up to ask you before it sends any research text, and
+# not to send sensitive or personal data. The key is sent only in request
+# headers and is never printed.
+# Create a key in the Typesafe console: https://console.typesafe.ai/keys
+# --- To activate, remove the leading '#': ---
+#TYPESAFE_API_KEY=your_typesafe_key_here
+#
 # Add your own keys below. When you onboard a new data source via DAAF's Data
 # Onboarding Mode, it will tell you which environment variable to add here.
 #
