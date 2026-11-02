@@ -5824,7 +5824,9 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
     whatever its agent type (subagent_records, one record list per
     transcript). facts records the signal and where it was seen ("main" or
     "subagent", main first); daaf-orchestrator loading is read from the main
-    transcript and reported in the detail."""
+    transcript and reported in the detail. With no main-transcript records the
+    load is not checked: orchestrator_skill_loaded is None, as in T3.1, and the
+    detail names no load either way."""
     text = response_text or ""
     subagent_records = list(subagent_records or ())
     resumed, resume_reason = resume
@@ -5836,7 +5838,7 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
             if signal is not None:
                 where = "subagent"
                 break
-    orchestrator = _skill_loaded(records, "daaf-orchestrator")
+    orchestrator = _skill_loaded(records, "daaf-orchestrator") if records else None
     facts = {"resumed_same_session": resumed, "prek_answer": bool(_PREK_RE.search(text)),
              "retrieval_seen": signal is not None, "retrieval_signal": signal, "retrieval_where": where,
              "subagent_transcripts": len(subagent_records), "orchestrator_skill_loaded": orchestrator}
@@ -5856,7 +5858,7 @@ def _evaluate_t32(response_text, records, subagent_records=(), resume=(True, "")
                           + f"Pre-K answered without loading the skill: no retrieval in the main transcript or the "
                           f"{len(subagent_records)} specialist transcript(s) scanned (no non-error Skill load of an "
                           "education-data-* skill or Read of a file under one), so retrieval is not proven"
-                          + ("." if orchestrator else "; daaf-orchestrator did not load either.")), facts
+                          + ("; daaf-orchestrator did not load either." if orchestrator is False else ".")), facts
 
 
 def run_tier_3(profile_name: str, extra_env: dict, timeout: int, route: str = "", evidence_dir=None) -> list:

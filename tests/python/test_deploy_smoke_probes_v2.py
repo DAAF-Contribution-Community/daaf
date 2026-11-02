@@ -875,11 +875,17 @@ class LiveEvaluatorTests(unittest.TestCase):
         orch = [_use("o", "Skill", {"skill": "daaf-orchestrator"}), _res("o")]
         ctx = [_use("c", "Skill", {"skill": "x:education-data-context"}), _res("c")]
         answer = "grade = -1 means Pre-K."
-        v, d, facts = sp._evaluate_t32(answer, [])
-        self.assertEqual(v, Verdict.WARN)
+        # A main transcript without the load: "did not load either".
+        prompt_only = [{"type": "user", "message": {"role": "user", "content": sp.T32_PROMPT}}]
+        v, d, facts = sp._evaluate_t32(answer, prompt_only)
+        self.assertEqual((v, facts["orchestrator_skill_loaded"]), (Verdict.WARN, False), d)
         self.assertIn("answered without loading the skill", d)
         self.assertIn("education-data-* skill", d)
         self.assertIn("daaf-orchestrator did not load either", d)
+        # No main-transcript records: the load is not checked, as in T3.1.
+        v, d, facts = sp._evaluate_t32(answer, [])
+        self.assertEqual((v, facts["orchestrator_skill_loaded"]), (Verdict.WARN, None), d)
+        self.assertNotIn("did not load", d)
         v, d, _ = sp._evaluate_t32(answer, orch)
         self.assertEqual(v, Verdict.WARN)
         self.assertNotIn("daaf-orchestrator did not load", d)
@@ -1205,6 +1211,9 @@ class TierRunnerWiringTests(unittest.TestCase):
         facts2 = self._facts(results[1], "resumed_same_session")
         self.assertEqual(set(facts2), self._T32_FACTS)
         self.assertIsNone(facts2["resumed_same_session"])
+        # Both probes leave the orchestrator load unchecked, and neither says it did not load.
+        self.assertIsNone(facts2["orchestrator_skill_loaded"])
+        self.assertNotIn("did not load", results[1].detail)
 
     def test_tier3_t31_warns_when_no_main_transcript_was_found(self):
         # An empty main transcript (none found, or unreadable) leaves the
