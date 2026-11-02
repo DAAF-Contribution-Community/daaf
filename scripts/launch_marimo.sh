@@ -11,7 +11,10 @@
 # Examples:
 #   bash /daaf/scripts/launch_marimo.sh
 #   bash /daaf/scripts/launch_marimo.sh /daaf/research/2026-04-15_My_Analysis
-#   bash /daaf/scripts/launch_marimo.sh --port 2720
+#
+# --port is for use inside the container only. Compose publishes only container
+# ports 2718-2720, one per DAAF web service (docker-compose.yml), so a browser
+# on the host reaches marimo only on its own port, 2718.
 #
 # Default behavior:
 #   - Browses /daaf/research/ (where all project notebooks live)
@@ -26,7 +29,9 @@
 # server runs; binding the published port to the host's 127.0.0.1 does not stop
 # a browser page. With a token, the browser logs in once through the printed
 # link, http://localhost:PORT/?access_token=TOKEN, and marimo keeps the session
-# in a SameSite=Lax cookie, which a cross-site page's WebSocket does not carry.
+# in a SameSite=Lax cookie, which a cross-site page's WebSocket does not carry
+# (verified against marimo 0.25.0 source, _server/api/endpoints/terminal.py,
+# _server/api/auth.py and _server/main.py, on 2026-11-02).
 #
 # Where the token lives: 256 bits from /dev/urandom (hex), written to
 # $HOME/.local/state/daaf/marimo-token-PORT (directory 0700, file 0600; the
@@ -96,7 +101,8 @@ while [ $# -gt 0 ]; do
             echo ""
             echo "Arguments:"
             echo "  directory       Directory to browse (default: /daaf/research)"
-            echo "  --port PORT     Port for the marimo server (default: 2718)"
+            echo "  --port PORT     Port for the marimo server (default: 2718; another port"
+            echo "                  is reachable only from inside the container)"
             echo "  --background    Start the server in the background and exit"
             echo "  --print-token   Print the access token of the server running on PORT"
             echo ""
@@ -161,13 +167,25 @@ fi
 TOKEN_DIR="${HOME:?HOME is not set}/.local/state/daaf"
 TOKEN_FILE="$TOKEN_DIR/marimo-token-$PORT"
 
+# --- Project flag for printed host commands ---
+
+# A `docker compose` command printed for the user runs in their shell on the
+# host, where Compose uses the project `daaf` unless given `-p`. The install's
+# own name reaches the container as DAAF_PROJECT_NAME when it is set in
+# environment_settings.txt (the compose env_file), so for any other project the
+# printed command carries `-p <name>`, as the host scripts print it.
+COMPOSE_P_FLAG=""
+if [ -n "${DAAF_PROJECT_NAME:-}" ] && [ "$DAAF_PROJECT_NAME" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${DAAF_PROJECT_NAME} "
+fi
+
 # --- Preflight ---
 
 # --print-token only reads state, so it does not need marimo itself.
 if [ "$PRINT_TOKEN" = false ] && ! command -v marimo >/dev/null 2>&1; then
     echo "ERROR: marimo is not installed." >&2
     echo "  marimo ships in the DAAF image, so a missing marimo means the image needs rebuilding:" >&2
-    printf '%s\n' "  exit the container, then run 'bash rebuild_daaf.sh' ('.\\rebuild_daaf.ps1' on Windows) from the daaf-docker folder." >&2
+    printf '%s\n' "  exit the container, then choose 10) Rebuild Container in the DAAF Control Panel, or run 'bash rebuild_daaf.sh' ('.\\rebuild_daaf.ps1' on Windows) from the daaf-docker folder." >&2
     exit 30
 fi
 
@@ -190,10 +208,11 @@ if [ -n "$LISTEN_INODE" ]; then
 
     if echo "$LISTEN_CMD" | grep -q "marimo"; then
         # Which token does the running server use? This launcher starts marimo
-        # with --token-password-file "$TOKEN_FILE"; launchers before the token
-        # change used --no-token; anything else was started by hand, with a
-        # token this script cannot know. ${TOKEN_FILE} stays inside the double
-        # quotes of the pattern, so any glob characters in it match literally.
+        # with --token-password-file "$TOKEN_FILE"; a server started with
+        # --no-token has none (DAAF launchers without token support started
+        # it that way); anything else was started by hand, with a token this
+        # script cannot know. ${TOKEN_FILE} stays inside the double quotes of
+        # the pattern, so any glob characters in it match literally.
         TOKEN_STATE="unknown"
         case " $LISTEN_CMD " in
             *" --no-token "*)
@@ -237,24 +256,26 @@ if [ -n "$LISTEN_INODE" ]; then
                 echo "  access token, so any web page open in your browser could reach it."
                 echo "  Stop it, then open the notebooks again to start it with a token:"
                 echo "    - DAAF Control Panel: 12) Stop Web Services, or"
-                echo "    - from your daaf-docker folder: docker compose exec daaf-docker pkill -f \"marimo edit\""
+                echo "    - from your daaf-docker folder: docker compose ${COMPOSE_P_FLAG}exec daaf-docker pkill -f \"marimo edit\""
                 ;;
             *)
                 echo "  It was not started by this launcher, so its access token is unknown."
                 echo "  Use the link that was printed when it started, or stop it and launch again:"
                 echo "    - DAAF Control Panel: 12) Stop Web Services, or"
-                echo "    - from your daaf-docker folder: docker compose exec daaf-docker pkill -f \"marimo edit\""
+                echo "    - from your daaf-docker folder: docker compose ${COMPOSE_P_FLAG}exec daaf-docker pkill -f \"marimo edit\""
                 ;;
         esac
         echo ""
         exit 0
     elif [ -n "$LISTEN_PID" ]; then
         echo "ERROR: Port $PORT is in use by another process: $LISTEN_CMD (PID $LISTEN_PID)" >&2
-        echo "  Free the port or use --port to specify a different one." >&2
+        echo "  Fix: stop that process (kill $LISTEN_PID in the container, or DAAF Control Panel option 12 \"Stop Web Services\", which stops whatever holds ports 2718-2720), then launch again." >&2
+        echo "  Keep the default port: your browser reaches the notebooks only through container port 2718, so --port is for use inside the container only." >&2
         exit 1
     else
         echo "ERROR: Port $PORT is in use but the owning process could not be identified." >&2
-        echo "  Free the port or use --port to specify a different one." >&2
+        echo "  Fix: choose 11) Restart Container in the DAAF Control Panel, which frees every port (it also ends any open Claude Code session), then launch again." >&2
+        echo "  Keep the default port: your browser reaches the notebooks only through container port 2718, so --port is for use inside the container only." >&2
         exit 1
     fi
 fi

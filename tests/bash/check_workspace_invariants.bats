@@ -114,9 +114,9 @@ teardown() {
 
 # --- Symlink allowlist: built-in block and the DAAF_INVARIANT_ALLOWLIST override ---
 # No test here needs the real allowlisted folder to exist, so every test runs on
-# every runner (CI included) and none skips. The built-in entries are absolute
-# DAAF dev-container paths, and find reports fixture paths under TEST_DIR, so a
-# fixture can never start with a built-in entry. The tests therefore use:
+# every runner (CI included) and none skips. The built-in entry is an absolute
+# container path, and find reports fixture paths under TEST_DIR, so a fixture
+# can never start with a built-in entry. The tests therefore use:
 #   - DAAF_INVARIANT_ALLOWLIST on the real checker, to exempt a fixture prefix;
 #   - a static read of the real ALLOWLIST block, to pin its content;
 #   - a copy of the checker whose built-in block names a fixture prefix (see
@@ -152,18 +152,14 @@ _checker_with_builtin() {
     printf '%s\n' "$copy"
 }
 
-@test "built-in allowlist: the real ALLOWLIST block holds exactly the R Support GLPK and Claude Code temp-root prefixes (static; the folders need not exist)" {
+@test "built-in allowlist: the real ALLOWLIST block holds exactly the Claude Code temp-root prefix (static; the folder need not exist)" {
     # Pinned on purpose: widening an exemption to a safety gate should have to
     # touch this test too. Every entry must be absolute and end in /, the form
     # the override's header recommends (the / keeps it from matching a sibling).
-    # The first entry is a maintainer-only folder, not shipped (see the
-    # checker's ALLOWLIST comment). The second entry is the CLAUDE_CODE_TMPDIR
-    # value in docker-compose.yml.
+    # The one entry is the CLAUDE_CODE_TMPDIR value in docker-compose.yml.
     run _allowlist_entries "$CHECKER"
     assert_success
-    assert_output "$(printf '%s\n' \
-        "/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/" \
-        "/daaf/claude-code-tmp/")"
+    assert_output "/daaf/claude-code-tmp/"
     local entry
     while IFS= read -r entry; do
         [[ "$entry" == /*/ ]] || { echo "ALLOWLIST entry is not absolute and /-terminated: ${entry}"; return 1; }
@@ -492,7 +488,7 @@ _checker_with_rerooted_builtin() {
     run env DAAF_INVARIANT_ROOT="$TEST_DIR" bash "$CHECKER"
     assert_failure
     assert_output --partial "Windows-incompatible name(s)"
-    assert_output --partial "these names break Windows backups (docker cp aborts)"
+    assert_output --partial "a Windows backup leaves these names out"
     assert_output --partial "1 name(s) Windows cannot create and 0 case-only clash pair(s)"
     # cat -A marks the embedded newline as "$" + line break, so the name spans
     # two output lines: ".../sub/name$" then "nl$".

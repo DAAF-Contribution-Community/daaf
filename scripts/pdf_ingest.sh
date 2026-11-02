@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
 # pdf_ingest.sh - thin wrapper for DAAF's deterministic PDF ingest (no LLM)
-#                 (added 2026-10-13, Lit Review S3)
 # =============================================================================
 #
 # Framework-level tool behind the PDF layer of the Literature Review mode.

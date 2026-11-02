@@ -20,6 +20,9 @@
 #   - Idempotent: skips files already present in the destination.
 #   - Retrospective: intended to run at project completion (or near-completion)
 #     to gather all session transcripts that touched project files.
+#   - Every run also creates logs/ and records a pending collection marker before
+#     searching, because the session running this command is archived only when
+#     it ends; see "Record a pending collection marker" below.
 #
 # Exit codes:
 #   0 — success (including when no sessions matched)
@@ -44,7 +47,7 @@ fi
 
 # --- Resolve paths ---
 
-# DAAF repo root: two levels up from this script (scripts/ -> repo root)
+# DAAF repo root: the parent of this script's folder (scripts/)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -66,6 +69,27 @@ echo "Source:     $SESSIONS_DIR"
 echo "Dest:       $DEST_DIR"
 echo ""
 
+# --- Record a pending collection marker ---
+# The session running this command is not in the archive yet: archive-session.sh
+# archives it at SessionEnd, then copies its archive set into <project>/logs/ for
+# each marker whose project basename its transcript mentions. Writing the marker
+# (and creating logs/) before the search means a project worked on only in this
+# session is still collected when the session ends, even though the search below
+# finds nothing. recover-session-logs.sh also consumes markers, at every
+# SessionStart (a compaction included) and whenever the Log Explorer starts or
+# refreshes (view_logs.sh, view_logs.ps1, log_viewer_server.py), copying
+# only sessions already archived; a marker it takes before this session ends is
+# gone by SessionEnd. The printed advice therefore says "should" and offers a
+# re-run in a later session.
+mkdir -p "$DEST_DIR"
+PENDING_FILE="$REPO_ROOT/.claude/logs/pending_log_collection.jsonl"
+jq -n -c \
+    --arg pp "$PROJECT_PATH" \
+    --arg pb "$PROJECT_BASENAME" \
+    --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    '{project_path: $pp, project_basename: $pb, requested_at: $ts}' \
+    >> "$PENDING_FILE" 2>/dev/null
+
 # --- Search for matching sessions ---
 
 # Search ONLY orchestrator transcripts for the project basename, then collect
@@ -82,8 +106,11 @@ while IFS= read -r orch_path; do
 done < <(grep -rl --include="*_orchestrator.jsonl" "$PROJECT_BASENAME" "$SESSIONS_DIR" 2>/dev/null || true)
 
 if [ ${#MATCHING_SESSIONS[@]} -eq 0 ]; then
-    echo "No sessions found referencing '$PROJECT_BASENAME'."
-    echo "This is expected if the project had no file operations yet (e.g., Phase 1 only)."
+    echo "No archived session mentions '$PROJECT_BASENAME' yet, so nothing was copied."
+    echo "A session's transcript is archived when that session ends. If you ran this"
+    echo "inside Claude Code, this session's transcript should be copied into $DEST_DIR/"
+    echo "when the session ends. If that folder is still empty afterwards, run this command"
+    echo "again in a later session."
     exit 0
 fi
 
@@ -91,8 +118,6 @@ echo "Found ${#MATCHING_SESSIONS[@]} session(s) referencing this project."
 echo ""
 
 # --- Copy matching sessions ---
-
-mkdir -p "$DEST_DIR"
 
 COPIED=0
 SKIPPED=0
@@ -142,19 +167,7 @@ if [ $COPIED -gt 0 ] || [ $SKIPPED -gt 0 ]; then
     done
 fi
 
-# --- Write pending log collection marker for deferred archiving ---
-# The current session's archive won't exist yet (SessionEnd hasn't fired).
-# Record a marker so archive-session.sh can copy the archive to this project
-# when the session ends. If the session crashes, recover-session-logs.sh
-# processes stale markers on the next session start.
-PENDING_FILE="$REPO_ROOT/.claude/logs/pending_log_collection.jsonl"
-jq -n -c \
-    --arg pp "$PROJECT_PATH" \
-    --arg pb "$PROJECT_BASENAME" \
-    --arg ts "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-    '{project_path: $pp, project_basename: $pb, requested_at: $ts}' \
-    >> "$PENDING_FILE" 2>/dev/null
-
 echo ""
-echo "Pending collection marker written for deferred archiving."
-echo "The current session's transcript will be collected when the session ends."
+echo "If you ran this inside Claude Code, this session's transcript should be copied here"
+echo "too when the session ends. If it is missing afterwards, run this command again in a"
+echo "later session."

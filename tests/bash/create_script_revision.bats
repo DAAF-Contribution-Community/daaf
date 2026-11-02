@@ -143,6 +143,21 @@ _make_executed_fixture() {
     assert_output --partial "Unsupported source extension"
 }
 
+@test "refuses a destination whose folder does not exist, naming the mkdir -p fix" {
+    local src="${BATS_TEST_TMPDIR}/10_task.py"
+    local missing="${BATS_TEST_TMPDIR}/no_such_dir"
+    printf '%s\n' 'print("x")' > "$src"
+
+    run bash "$CREATE_SCRIPT_REVISION_SH" "$src" "${missing}/10_task_a.py"
+    [ "$status" -eq 1 ]
+    assert_output --partial "The destination folder does not exist: ${missing}"
+    assert_output --partial "mkdir -p \"${missing}\""
+    # The refusal comes before mktemp, so mktemp's own error never appears
+    # and nothing is created.
+    refute_output --partial "mktemp"
+    [ ! -e "$missing" ]
+}
+
 @test "missing arguments print usage and exit non-zero" {
     run bash "$CREATE_SCRIPT_REVISION_SH"
     assert_failure

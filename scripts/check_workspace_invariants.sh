@@ -5,20 +5,18 @@
 # filesystem under /daaf and enforces invariants that protect the backup/audit
 # boundary.
 #
-# Invariant 1 (no unauthorized symlinks): Scratch probes (backup gates, symlink
-# verification harnesses) have repeatedly left invariant-violating filesystem
-# objects behind — most damagingly symlinks with tab/newline names under
-# scripts/scratch/, which broke real user backups three separate times on
-# 2026-07-14. Symlinks under a prefix in the ALLOWLIST block below are exempt;
-# one of them is Claude Code's own temp root (claude-code-tmp/ at the repo root),
-# where Claude Code links each subagent dispatch's output file.
+# Invariant 1 (no unauthorized symlinks): a scratch probe (a backup gate, a
+# symlink verification harness) that leaves a symlink behind pollutes the
+# workspace, and a symlink whose name holds a tab or newline stops a backup (the
+# backup scripts refuse it). Symlinks under a prefix in the ALLOWLIST block below
+# are exempt; the one entry is Claude Code's own temp root (claude-code-tmp/ at
+# the repo root), where Claude Code links each subagent dispatch's output file.
 #
-# Invariant 2 (no leak artifacts at repo root): A host tool run with the wrong
-# CWD scatters stub files at the repo root. On 2026-07-14 a `migrate_daaf.sh`
-# dry-run executed with CWD=/daaf left 13 zero-byte stub files plus a
-# `docker-compose.yml.pre-migrate` at the repo root; an `install.sh` dry-run in
-# the same position leaves a stray `daaf-docker/` directory. These pollute the
-# tracked tree and are easy to miss by eye.
+# Invariant 2 (no leak artifacts at repo root): a host tool run with the wrong
+# CWD scatters files at the repo root: a `migrate_daaf.sh` dry-run run from
+# /daaf leaves zero-byte stub files and a `docker-compose.yml.pre-migrate`, and
+# an `install.sh` dry-run in the same position a stray `daaf-docker/` directory.
+# These pollute the tracked tree and are easy to miss by eye.
 #
 # Invariant 3 (no Windows-incompatible names): Windows cannot create a file or
 # folder whose name contains a control character (0x01-0x1F) or any of
@@ -27,10 +25,11 @@
 # case-insensitive, with or without an extension such as nul.txt). It also
 # treats two names in one directory that differ only in case as the same name.
 # On Windows, `docker cp` stops extracting at the first such name and drops
-# every later file, so a single leftover hostile test fixture (a file named
-# with an embedded newline, on 2026-09-30) aborted a real Windows backup. The
-# check covers every name under the root except .git internals, including
-# .claude/logs, because a hostile name anywhere in the volume breaks a backup.
+# every later file (observed 2026-09-30, Docker Client 29.1.3 on Windows), so the
+# Windows backup removes such names from its snapshot first and warns that they
+# were left out; a Mac disk may keep only one of each case-only pair. The check
+# covers every name under the root except .git internals, including
+# .claude/logs, because the backup copies the whole volume.
 # The classes follow Microsoft's "Naming Files, Paths, and Namespaces" and Git
 # for Windows' core.protectNTFS, and are kept identical in scope to the
 # backup scripts' own name check (scripts/host/backup_daaf.{sh,ps1}). Not
@@ -49,11 +48,11 @@
 # cover names alone. It exists for the backup scripts' "could not read the list
 # of names" WARNING (scripts/host/backup_daaf.{sh,ps1}), which sends users here
 # to list such names themselves. Invariants 1-2 are rules for the DAAF folder
-# only: pointed at another folder they flag legitimate files and say "delete
-# these objects" (observed 2026-10-01 on /home/appuser/.claude: Codex's
-# symlinks, a CLAUDE.md and .claude.json.tmp* files), so the hint must never
-# run them there. Its advice line also drops the "a test fixture or scratch
-# probe likely leaked them" guess, which is a DAAF-development assumption.
+# only: pointed at another folder, such as /home/appuser/.claude, they flag
+# legitimate files there (symlinks and empty files) and say "delete these
+# objects", so the hint must never run them there. In this mode the advice line
+# leaves out the full mode's guess that a test fixture or scratch probe leaked
+# the names, which fits only the DAAF folder.
 #
 # Root override: set DAAF_INVARIANT_ROOT to point the checker at another tree
 # instead of the default /daaf. Two uses:
@@ -67,8 +66,9 @@
 #
 # Allowlist override: set DAAF_INVARIANT_ALLOWLIST to REPLACE the built-in
 # symlink allowlist (the ALLOWLIST block below) for one run. It exists for
-# tests: the built-in entries are DAAF dev-container paths that a CI checkout
-# does not have, so a fixture can only be exempted through this variable, e.g.
+# tests: the built-in entry is a container path (/daaf/claude-code-tmp/) that a
+# CI checkout does not have, so a fixture can only be exempted through this
+# variable, e.g.
 #       DAAF_INVARIANT_ROOT=<fixture> DAAF_INVARIANT_ALLOWLIST=<fixture>/allowed/ \
 #           bash /daaf/scripts/check_workspace_invariants.sh
 #   - Format: one absolute path prefix per line (newline-separated); several
@@ -96,8 +96,6 @@
 #   - While it is set, every full run prints a NOTE on stderr (also with -q),
 #     so a leftover export cannot quietly change the gate. --names-only skips
 #     Invariant 1, so it prints no NOTE, but a relative entry still stops it.
-# Default behavior with neither env var set and no args is byte-for-byte
-# compatible with existing callers.
 #
 # Exit codes:
 #   0 — all invariants satisfied (with --names-only: Invariant 3 satisfied)
@@ -113,24 +111,19 @@ set -euo pipefail
 # from the symlink invariant. Keep each entry as specific as possible.
 # DAAF_INVARIANT_ALLOWLIST, when set, replaces this list (see the header).
 #
-# syslibs_glpk: extracted .deb shared libraries (.so.N symlinks), kept for the
-# R Support GLPK work (maintainer-only workspace, not shipped:
-# research/2026-07-06_FrameworkDev_R_Support/); graduation out of scratch
-# deferred — the image now ships libglpk40.
-#
 # claude-code-tmp: Claude Code's own temp root at the repo root, set by
-# CLAUDE_CODE_TMPDIR in the docker-compose.yml environment block (Claude Code
-# appends claude-<uid>/). Claude Code writes one tasks/<agent-id>.output symlink
-# per subagent dispatch, pointing into the claude-config volume
-# (~/.claude/projects/.../subagents/agent-<id>.jsonl), so every session that
-# dispatches a subagent leaves symlinks here. They belong to Claude Code, not to
-# a probe; the backup scripts strip and record symlinks before copying. The
-# exemption also covers the per-session scratchpad inside this folder, which
-# Claude Code tells agents to use; Invariant 3 still checks names there. Only
-# this folder is exempt: a symlink under scripts/scratch/ (the temp root's
-# location before 2026-10-26 included) or anywhere else is still flagged.
+# CLAUDE_CODE_TMPDIR in the docker-compose.yml environment block. Claude Code
+# appends claude-<uid>/ and writes one tasks/<agent-id>.output symlink per
+# subagent dispatch, pointing into the claude-config volume
+# (~/.claude/projects/.../subagents/agent-<id>.jsonl) (observed 2026-11-02,
+# Claude Code 2.1.281), so every session that dispatches a subagent leaves
+# symlinks here. They belong to Claude Code, not to a probe; the backup scripts
+# strip and record symlinks before copying. The exemption also covers the
+# per-session scratchpad inside this folder, which Claude Code tells agents to
+# use (observed 2026-11-02, Claude Code 2.1.281); Invariant 3 still checks
+# names there. Only this folder is exempt: a symlink under scripts/scratch/ or
+# anywhere else is still flagged.
 readonly ALLOWLIST=(
-    "/daaf/research/2026-07-06_FrameworkDev_R_Support/scripts/scratch/syslibs_glpk/"
     "/daaf/claude-code-tmp/"
 )
 
@@ -144,14 +137,14 @@ readonly ROOT_LEAK_ALLOWLIST=(
 
 # --- Config ---
 # ROOT defaults to /daaf; DAAF_INVARIANT_ROOT overrides it for fixture-based
-# testing. The default path keeps existing no-arg callers byte-for-byte identical.
+# testing and for --names-only runs on another folder (see the header).
 readonly ROOT="${DAAF_INVARIANT_ROOT:-/daaf}"
 QUIET=0
 NAMES_ONLY=0
 
 # --- Parse arguments ---
 # Each argument is checked on its own, so -q and --names-only combine in either
-# order; anything else prints the usage and exits 1, as before.
+# order; anything else prints the usage and exits 1.
 for arg in "$@"; do
     case "$arg" in
         -q|--quiet) QUIET=1 ;;
@@ -196,7 +189,7 @@ if [ -n "${DAAF_INVARIANT_ALLOWLIST+set}" ]; then
         # INTENT: refuse an entry that would exempt the WHOLE checked tree.
         # REASONING: matching is a literal prefix test, so an entry such as `/`,
         #   `/da` or `$ROOT/` matches every symlink under ROOT and turns Invariant 1
-        #   off while the run still exits 0 (review 55, SUGGESTION). Callers such as
+        #   off while the run still exits 0. Callers such as
         #   the deploy-smoke probe judge by exit code alone, so this must be an error.
         # ASSUMES: every checked path starts with "${ROOT%/}/", with or without a
         #   trailing slash on ROOT.
@@ -233,8 +226,8 @@ sym_violations=()
 # REASONING: each walk's input below is `[ "$NAMES_ONLY" -eq 1 ] || find ...`, so
 #   the loop reads an empty stream and its counters and violation lists stay
 #   empty -- the reports for both invariants then print nothing. Guarding the
-#   input instead of wrapping each loop in an `if` keeps the loop bodies as they
-#   were.
+#   input instead of wrapping each loop in an `if` leaves one loop body that
+#   serves both modes.
 # ASSUMES: an empty stream is the only effect needed; nothing else reads
 #   $checked / $root_scanned except the full-check OK line, which --names-only
 #   replaces.
@@ -297,8 +290,8 @@ done < <([ "$NAMES_ONLY" -eq 1 ] || find "$ROOT" -mindepth 1 -maxdepth 1 -not -p
 
 # --- Invariant 3: no Windows-incompatible names under $ROOT (excluding .git) ---
 # Every name in the tree must be creatable on Windows, and no two names in one
-# directory may differ only in (ASCII) case. No allowlist: a hostile name
-# anywhere in the volume breaks a Windows backup, so there is no safe exception.
+# directory may differ only in (ASCII) case. No allowlist: such a name anywhere
+# in the volume is left out of a Windows backup, so there is no safe exception.
 
 names_checked=0
 name_summary_seen=0
@@ -394,6 +387,7 @@ if [ "$name_summary_seen" -eq 0 ]; then
     any_violation=1
     echo "WORKSPACE INVARIANT ERROR: the Windows-name walk under $ROOT did not complete" >&2
     echo "  (find/awk ended without its summary record); treating as a violation." >&2
+    echo "  Run the check again. If this repeats, read the find or awk error printed above." >&2
 fi
 
 # --- Report: Invariant 1 ---
@@ -441,7 +435,8 @@ if [ "${#name_violations[@]}" -gt 0 ] || [ "${#clash_pairs[@]}" -gt 0 ]; then
     any_violation=1
     echo "WORKSPACE INVARIANT VIOLATION: Windows-incompatible name(s) found under $ROOT" >&2
     echo "  (${#name_violations[@]} name(s) Windows cannot create and ${#clash_pairs[@]} case-only clash pair(s), of $names_checked name(s) checked)" >&2
-    echo "  Fix: rename or delete; these names break Windows backups (docker cp aborts)." >&2
+    echo "  Fix: rename or delete them; a Windows backup leaves these names out, and a Mac" >&2
+    echo "       disk may keep only one name of a case-only pair." >&2
     echo "       Windows cannot create names with a control character, any of" >&2
     echo "       < > : \" | ? * \\, a trailing dot or space, or a reserved device name" >&2
     echo "       (CON, PRN, AUX, NUL, COM1-9, LPT1-9 and COM¹-³/LPT¹-³, CONIN\$, CONOUT\$;" >&2
