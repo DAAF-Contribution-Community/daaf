@@ -251,7 +251,8 @@ Describe "daaf.ps1" {
             }) -join ' ') -replace '\s+', ' '
             $flat | Should -BeLike '*Settings marked "rebuild required" there*'
             # Same examples and Rebuild list as the handler's intro text.
-            $flat | Should -BeLike '*there (such as DAAF_DEV, or turning on the provider shim for the first time), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -BeLike '*there (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -BeLike '*provider settings including turning on the provider shim, ports*'
             $flat | Should -BeLike '*no image build. It ends any open Claude Code session or web service. Settings marked*'
             $flat | Should -Not -BeLike '*web service first.*'
         }
@@ -328,9 +329,18 @@ Describe "daaf.ps1" {
             $helpBody | Should -Match 'cancel'
         }
 
-        It "mirrors the code-server default password source" {
+        It "names where the code-server password is set, never a host-shell value" {
+            # code-server reads PASSWORD from the container environment
+            # (environment_settings.txt via env_file), not from the panel's process.
             $Content | Should -Match 'launch_code_server\.sh'
-            $Content | Should -Match '"daaf"'
+            $Content | Should -Match ([regex]::Escape('Password: the PASSWORD set in environment_settings.txt (default: daaf)'))
+            $Content | Should -Not -Match '\$env:PASSWORD'
+        }
+
+        It "qualifies the updates label and says where to report a bug (parity with daaf.sh)" {
+            $Content | Should -Match ([regex]::Escape('updates available as of the last update check)'))
+            $Content | Should -Match ([regex]::Escape('(up to date as of the last update check)'))
+            $Content | Should -Match ([regex]::Escape('https://github.com/DAAF-Contribution-Community/daaf/issues'))
         }
     }
 }
@@ -1139,11 +1149,13 @@ Describe "daaf.ps1 behavioral tests" {
             (@($script:DaafKeysFromFile) -join ' ') | Should -BeExactly "DAAF_PROJECT_NAME"
         }
 
-        It "the intro names DAAF_DEV, the first-time shim, and the Dockerfile/packages/docker-compose.yml list" {
+        It "the intro says the restart turns on the shim, and names DAAF_DEV and the Dockerfile/packages/docker-compose.yml list" {
             Start-TestPanel
             $script:MockAnswer = "n"
             $flat = (Invoke-DaafRestart 6>&1 | Out-String) -replace '\s+', ' '
-            $flat | Should -BeLike '*Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV, or turning on the provider shim for the first time), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -BeLike '*Turning on the provider shim takes effect with this restart.*'
+            $flat | Should -BeLike '*Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.*'
+            $flat | Should -Not -BeLike "*first time*"
             $flat | Should -Not -BeLike "*Alternative Providers*"
         }
     }

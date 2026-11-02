@@ -1,10 +1,33 @@
 # ============================================================================
 # DAAF Migration End-to-End Test (Windows PowerShell)
 # ============================================================================
+# For DAAF contributors who change migrate_daaf, update_daaf or the installers.
+# You do not need this test to use DAAF.
+#
+# WARNING: this test DELETES the DAAF install named by DAAF_PROJECT_NAME
+# (default "daaf"): its containers, its image, its research data volume
+# (<project>_daaf-data) and its Claude Code sign-in and session volume
+# (<project>_daaf-claude-config). It lists the exact names and asks y/N before
+# deleting anything. Run it on a machine with no DAAF install you need, or back
+# that install up first (Control Panel: 7) Create Backup). Era 3 runs can use a
+# throwaway DAAF_PROJECT_NAME; era 1 and 2 runs always use "daaf". With no one
+# to answer (CI, redirected input), it deletes nothing and stops unless
+# $env:DAAF_TEST_MIGRATION_CONFIRM = "yes" is set. -All asks once for all its
+# vectors.
+#
+# Requirements beyond a standard DAAF install:
+#   - A clone of the DAAF repository; run this script from the clone. The
+#     installer and updater do not copy it into daaf-docker:
+#       git clone https://github.com/DAAF-Contribution-Community/daaf.git
+#   - git on the host PATH
+#   - Network access to GitHub (old versions are downloaded at their tags)
+#   - Free disk space for the extra DAAF images the test builds
+#
 # Automated harness that walks the ACTUAL end-user install pathway for a chosen
 # historical DAAF version, plants user work, runs the migration script from the
 # local repo, and verifies the end state:
-#   1. Nukes any existing DAAF Docker resources (clean slate)
+#   1. Deletes the DAAF install named by DAAF_PROJECT_NAME, after asking (see
+#      WARNING above)
 #   2. Installs the old version THE WAY USERS ACTUALLY DID at that version:
 #        Era 1 (v1.0.0)         git clone + busybox copy + docker compose up
 #                               (/daaf gets a full .git: origin remote, main)
@@ -29,8 +52,8 @@
 # as possible. The point is to mirror what a real user's machine actually ran,
 # so migration bugs surface authentically. Deliberate, documented deviations --
 # each exists only to pin a moving target to a reproducible historical state:
-#   - Era 1: users cloned when main WAS v1.0.0; a clone today lands on current
-#     main. After the documented clone, the harness runs
+#   - Era 1: users cloned when main WAS v1.0.0; a fresh clone lands on the
+#     current main. After the documented clone, the harness runs
 #     `git checkout -B main v1.0.0` to rewind main to the tag. (The object
 #     store still contains newer history than a 2026-era user had; migration
 #     only fetches and sets upstream, so this is inert.)
@@ -49,17 +72,10 @@
 # answer. In auto mode (-Auto / -All) the child scripts run non-interactive (their
 # stdin is redirected from an empty file, the .ps1 non-interactive seam) and every
 # prompt auto-selects its first valid choice, so no tester input is needed.
-# HISTORICAL WART (now FIXED): earlier revisions of migrate_daaf.ps1 /
-# update_daaf.ps1 / daaf.ps1 clobbered the harness's DAAF_NESTED suppression (they
-# set-then-Remove-Item instead of save/restore), which surfaced up to 2-3 stray
-# "Press Enter to continue/close" pauses from the child scripts. That is FIXED as
-# of commit 4cd280d (2026-07-17): all 6 clobber sites now save and restore
-# DAAF_NESTED, so stray pauses are no longer expected on current main /
-# daaf_dev_R2. Auto mode is additionally immune by construction -- the child's
-# stdin is an empty redirect, so even a stray Read-Host reads EOF and returns
-# immediately (no hang possible even if the wart ever regressed). See
-# research/2026-07-06_FrameworkDev_MigrationTestHarness/SESSION_NOTES.md for the
-# original finding.
+# migrate_daaf.ps1, update_daaf.ps1 and daaf.ps1 save and restore DAAF_NESTED,
+# so interactive runs show no stray "Press Enter" pauses from the child scripts.
+# Auto mode gives each child an empty stdin, so a stray Read-Host would read
+# end-of-file and return at once.
 #
 # BUILD COST: Era 1/2 runs build the OLD Dockerfiles -- authentic and slow
 # (10+ min cold). v1.0.0 pins no base-image digest (floating tag) and does not
@@ -78,6 +94,7 @@
 #   .\test_migration.ps1 -Auto                                 # non-interactive single vector
 #   .\test_migration.ps1 -All                                  # matrix: fresh + v1.0.0 + v2.0.1 + v2.1.0
 #   .\test_migration.ps1 -SkipMultiInstance                    # skip phase 8 (or SKIP_MULTI_INSTANCE=1)
+#   $env:DAAF_TEST_MIGRATION_CONFIRM = "yes"; .\test_migration.ps1 -All   # no y/N question (CI)
 #
 # Environment variables:
 #   DAAF_TEST_VERSION      Tag/branch to install (default: v2.0.1 -- the
@@ -86,21 +103,23 @@
 #                          auto -- v1.0.0=1, v2.0.0/v2.0.1=2, everything
 #                          else=3). Tags below v2.1.0 cannot run era 3: no
 #                          scripts\host\install.ps1 exists at those tags.
-#   DAAF_MIGRATION_BRANCH  Branch for migration script downloads
-#                          (default: daaf_dev -- keep this tracking the branch
-#                           currently under update-testing)
+#   DAAF_MIGRATION_BRANCH  Branch passed as DAAF_BRANCH to the migration, the
+#                          driven update and the fresh and second installs:
+#                          they download host scripts from it, and the
+#                          installs clone it (default: daaf_dev).
+#                          migrate_daaf.ps1 and install.ps1 themselves come
+#                          from this local checkout, so check out the same
+#                          branch.
+#   DAAF_TEST_MIGRATION_CONFIRM  Set to "yes" to delete the install without the
+#                          y/N question (CI and other unattended runs)
 #
 # Parameters:
 #   -SkipMultiInstance     Skip the multi-instance phase (8), which lengthens
 #                          the run (fresh build + teardown). Equivalent env
 #                          toggle: $env:SKIP_MULTI_INSTANCE = "1"
 #
-# Prerequisites:
-#   - Docker Desktop installed and running
-#   - git on the host PATH (Era 1 replays the documented git clone)
-#   - Internet connection (to pull old versions from GitHub)
-#   - This script must be run from a local clone of the DAAF repo
-#     (it copies migrate_daaf.ps1 from the local repo)
+# Prerequisites: Docker Desktop installed and running, plus the requirements
+# listed under the WARNING above.
 #
 # Which versions of the local scripts?
 #   - migrate_daaf.ps1 and install.ps1 are taken from the LOCAL repo this
@@ -170,11 +189,11 @@
 #   Class C  COMMITTED CLAUDE.md prose append (merge coverage on a tracked file).
 #            Probe: grep '## Identity' /daaf/CLAUDE.md.
 #            Marker: test-migration-marker-C
-#            NOTE: on daaf_dev CLAUDE.md is heavily rewritten relative to the old
-#            eras, so a committed append near it legitimately MAY hit a merge
-#            conflict on update. The .ps1 records Class C's Phase-7 outcome as an
-#            OBSERVE note (never pass/fail) to avoid a spurious FAIL on an expected
-#            conflict -- a documented divergence from the .sh (see DIVERGENCES).
+#            NOTE: the current CLAUDE.md differs heavily from the old eras', so
+#            a committed append near it legitimately MAY hit a merge conflict on
+#            update. Both twins record Class C's Phase-7 outcome as an OBSERVE
+#            note (never pass/fail) to avoid a spurious FAIL on an expected
+#            conflict.
 #   Class D  HOST-side environment_settings.txt byte-identity across migration
 #            (and update). Content hash captured pre-migration, re-checked in
 #            Phase 7. Applicable only when the era's install seeded the file.
@@ -190,9 +209,8 @@
 #   land at END-OF-FILE, which 3-way-merges cleanly UNLESS upstream also rewrote
 #   the file's final lines. The COMMITTED CLAUDE.md append (Class C) is EXPECTED
 #   to collide on the v2.x -> v3.0.0 vectors (v3.0.0 rewrites CLAUDE.md wholesale):
-#   the first driven update aborts mid-merge on that conflict. That abort is no
-#   longer a dead end -- the harness EXERCISES the full conflict -> resolve ->
-#   resume journey. When the unmerged set is EXACTLY CLAUDE.md it simulates the
+#   the first driven update aborts mid-merge on that conflict, and the harness
+#   exercises the full conflict -> resolve -> resume journey. When the unmerged set is EXACTLY CLAUDE.md it simulates the
 #   guided resolution a real user performs with Claude Code (take upstream's file,
 #   re-preserve the user's prose), commits, and re-drives the now-resumable
 #   updater, which must finish cleanly (stash pop, tier-B host-script sync,
@@ -216,7 +234,8 @@
 #   Environment variables:
 #     DAAF_TEST_VERSION          Tag/branch to install, or "fresh" (default v2.0.1).
 #     DAAF_TEST_ERA              Force era pathway 1|2|3 (default: auto by version).
-#     DAAF_MIGRATION_BRANCH      Branch whose migrate/install/host scripts are tested.
+#     DAAF_MIGRATION_BRANCH      Branch passed as DAAF_BRANCH (see above; default daaf_dev).
+#     DAAF_TEST_MIGRATION_CONFIRM=yes  Delete the install without the y/N question.
 #     DAAF_TEST_AUTO=1           Env equivalent of -Auto.
 #     DAAF_TEST_MATRIX=1         Env equivalent of -All.
 #     DAAF_TEST_MATRIX_VERSIONS  Override the matrix vector list (space-separated).
@@ -258,11 +277,14 @@
 #   4. Host-script executable bit: the .sh asserts `-x` on downloaded host scripts;
 #      Windows has no executable bit, so the .ps1 uses a Test-Path presence check
 #      only. (The host-script SET also differs: daaf.sh/daaf_lib.sh vs
-#      daaf.ps1/daaf_lib.ps1, commit 4fa8c43 -- reflected in the fresh track and
-#      Check 9.)
-#   The B(i)/B(ii) three-way outcome (PASS / CONFLICTED-skip / FAIL) and the
-#   Class C observe-only treatment are now SHARED by both twins (the .sh backported
-#   them), so fixture semantics are no longer a divergence.
+#      daaf.ps1/daaf_lib.ps1 -- reflected in the fresh track and Check 9.)
+#   Shared by both twins: the B(i)/B(ii) three-way outcome (PASS /
+#   CONFLICTED-skip / FAIL), the Class C observe-only treatment, the y/N deletion
+#   question with its DAAF_TEST_MIGRATION_CONFIRM=yes opt-in, and the install
+#   script check before the fresh track. One difference without a platform
+#   reason: when the install script is missing at phase 8, the .sh skips the
+#   phase, while the .ps1 skips only the bring-up and its coexistence checks then
+#   FAIL for the missing second install.
 #
 # ============================================================================
 
@@ -277,8 +299,9 @@ param(
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With it set to $true under 'Stop', a nonzero native exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
@@ -403,7 +426,7 @@ function Test-ConflictAutoResolvable([string]$MergeHead, [string]$Unmerged) {
     return $false
 }
 
-# --- Source-only guard (D8) ---
+# --- Source-only guard ---
 # When dot-sourced with DAAF_TEST_MODE=1, return here: the Pester suite gets the
 # tm_* functions above without running any of the harness body below. Placed AFTER
 # all pure-function definitions and BEFORE Set-StrictMode / execution, mirroring the
@@ -415,8 +438,8 @@ Set-StrictMode -Version 3.0
 # MARGIN GUARD: do not insert fallible statements between here and the
 # summary-contract block below. The scope-wide trap calls Write-SummaryOnce,
 # so a terminating error thrown before that function (and its $script: state)
-# is defined resurrects the field-run-4 CommandNotFoundException crash. The
-# statements in between must remain null-safe casts and $env: reads only.
+# is defined crashes the trap with CommandNotFoundException. The statements in
+# between must remain null-safe casts and $env: reads only.
 
 # --- Argument / mode resolution ---
 # param() above binds -All/-Auto/-SkipMultiInstance; fold in the env entry points
@@ -436,11 +459,10 @@ if ($script:RunAll) { $script:AutoMode = $true }
 # PowerShell `trap` statements are SCOPE-WIDE: the trap below is armed for the
 # WHOLE script scope (including the matrix-driver branch, which exits before
 # ever reaching later lines), while `function` definitions only exist once
-# execution passes them. Field run 4 (2026-07-17): with this block below the
-# driver, a child's stderr line ("Cloning into...") wrapped by 2>&1 under
-# EAP=Stop fired the trap inside the driver loop, and the trap died with
-# CommandNotFoundException on the not-yet-defined Write-SummaryOnce, killing
-# the whole matrix. Repro: scripts/scratch/probe_trap_scope.ps1.
+# execution passes them. With this block below the driver, a terminating error
+# in the driver loop (a child's stderr line wrapped by 2>&1 under EAP=Stop, for
+# example) would fire the trap before Write-SummaryOnce exists, and the trap
+# would die with CommandNotFoundException, killing the whole matrix.
 
 # Default install-from version: v2.0.1 -- the richest migration path (ZIP era:
 # no remote, synthetic root commit, graft + permission-fix machinery all get
@@ -471,6 +493,7 @@ $script:HarnessRepairedOwnership = $false  # did the harness chown the Era-1 pay
 $script:OrigOwnerUid = ""               # volume payload owner uid captured at ownership-window OPEN
 $script:OrigOwnerGid = ""               # volume payload owner gid captured at ownership-window OPEN
 $script:HarnessSetGitIdentity = $false  # did the harness set a repo-local git identity (Phase 4)?
+$TestDir = ""                           # the work folder, set once created; Write-SummaryOnce prints its delete hint
 
 function Write-SummaryOnce {
     # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
@@ -487,6 +510,13 @@ function Write-SummaryOnce {
     if ($script:RunAll) { return }
     if ($script:SummaryEmitted) { return }
     $script:SummaryEmitted = $true
+    # Every single-vector exit after the work folder exists passes through here
+    # (Complete-Run, or the trap after a Write-Error), so the delete hint prints
+    # at each of them, as the .sh twin's EXIT trap does.
+    if ($TestDir) {
+        Write-Host "Test working directory preserved at: $TestDir"
+        Write-Host "(Delete manually when done inspecting: Remove-Item -Recurse -Force '$($TestDir -replace "'", "''")')"
+    }
     $interactive = $false
     try { $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { $interactive = $false }
     if (-not $script:AutoMode -and -not $env:DAAF_NESTED -and $interactive) {
@@ -519,7 +549,7 @@ function Invoke-NativeLogged([scriptblock]$Command) {
     # scoped EAP=Continue. Under PS 5.1 with a redirected error stream, a
     # native command's routine stderr output (git clone progress, docker build
     # chatter) becomes ErrorRecords; under EAP=Stop the first record is a
-    # TERMINATING error (field run 4). Continue + ForEach-Object "$_" renders
+    # TERMINATING error. Continue + ForEach-Object "$_" renders
     # them as plain text lines (parity with the .sh harness's `tee` output).
     # Returns the native exit code. Simple positional parameter on purpose
     # (PS 5.1-safe helper rules per the header constraints).
@@ -553,6 +583,24 @@ if ($script:RunAll) {
     Write-Host "  Logs:     $($matrixDir.FullName)"
     Write-Host ""
 
+    # Every vector deletes the install it tests (Phase 1), so ask once here and
+    # pass the answer to the vectors as DAAF_TEST_MIGRATION_CONFIRM=yes. With
+    # redirected input at end-of-file, Read-Host returns $null and nothing is
+    # deleted. Each vector still lists the exact names it deletes.
+    if ($env:DAAF_TEST_MIGRATION_CONFIRM -ne "yes") {
+        Write-Host "WARNING: Each vector first DELETES the DAAF install that DAAF_PROJECT_NAME names (default 'daaf'):" -ForegroundColor Yellow
+        Write-Host "  its containers, its image, its research data volume and its Claude Code sign-in"
+        Write-Host "  and session volume. Each vector lists the exact names before it deletes them."
+        Write-Host "  If you use that install, back it up first (Control Panel: 7) Create Backup)."
+        $matrixAnswer = Read-Host "Delete it for every vector and continue? [y/N]"
+        if ("$matrixAnswer" -ne "y") {
+            Write-Host ""
+            Write-Host "INFO: Nothing was deleted. To run without this question (for example in CI), first run: `$env:DAAF_TEST_MIGRATION_CONFIRM = `"yes`"" -ForegroundColor Cyan
+            exit 1
+        }
+        Write-Host ""
+    }
+
     # Children skip Phase 8 by default (each build+teardown is expensive); opt in
     # with DAAF_TEST_MATRIX_FULL_MULTI=1. The fresh vector never runs Phase 8.
     $childSkip = if ($env:DAAF_TEST_MATRIX_FULL_MULTI -eq "1") { "0" } else { "1" }
@@ -565,6 +613,7 @@ if ($script:RunAll) {
     $savedTestVersion = $env:DAAF_TEST_VERSION
     $savedTestAuto = $env:DAAF_TEST_AUTO
     $savedSkipMulti = $env:SKIP_MULTI_INSTANCE
+    $savedConfirm = $env:DAAF_TEST_MIGRATION_CONFIRM
 
     $matrixFail = 0
     $scoreboard = @()
@@ -577,11 +626,12 @@ if ($script:RunAll) {
             $env:DAAF_TEST_VERSION = $vec
             $env:DAAF_TEST_AUTO = "1"
             $env:SKIP_MULTI_INSTANCE = $thisSkip
+            $env:DAAF_TEST_MIGRATION_CONFIRM = "yes"
             # Scoped EAP=Continue + stringification: under PS 5.1, `2>&1` wraps
             # the child's stderr lines as ErrorRecords, and with EAP=Stop the
             # FIRST such line (e.g. git clone's "Cloning into...") becomes a
-            # TERMINATING error in this loop (field run 4 killed the matrix
-            # here). Continue lets them flow; ForEach-Object "$_" stringifies
+            # TERMINATING error in this loop and kills the matrix. Continue lets
+            # them flow; ForEach-Object "$_" stringifies
             # records so the log gets clean text (parity with the .sh `tee`).
             $savedEAP = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
@@ -618,6 +668,7 @@ if ($script:RunAll) {
         if ($null -ne $savedTestVersion) { $env:DAAF_TEST_VERSION = $savedTestVersion } else { Remove-Item Env:\DAAF_TEST_VERSION -ErrorAction SilentlyContinue }
         if ($null -ne $savedTestAuto) { $env:DAAF_TEST_AUTO = $savedTestAuto } else { Remove-Item Env:\DAAF_TEST_AUTO -ErrorAction SilentlyContinue }
         if ($null -ne $savedSkipMulti) { $env:SKIP_MULTI_INSTANCE = $savedSkipMulti } else { Remove-Item Env:\SKIP_MULTI_INSTANCE -ErrorAction SilentlyContinue }
+        if ($null -ne $savedConfirm) { $env:DAAF_TEST_MIGRATION_CONFIRM = $savedConfirm } else { Remove-Item Env:\DAAF_TEST_MIGRATION_CONFIRM -ErrorAction SilentlyContinue }
     }
 
     Write-Host "==========================================" -ForegroundColor White
@@ -638,9 +689,8 @@ if ($script:RunAll) {
 # --- Configuration ---
 # ($TestVersion is derived in the summary-contract block ABOVE the matrix
 # driver, because $script:VectorName needs it there. Remaining config follows.)
-# Default migration branch: the branch whose migrate_daaf.ps1 + host scripts are
-# under test. Keep this pointing at the CURRENT update-testing branch (today:
-# daaf_dev). Overridable per-run via DAAF_MIGRATION_BRANCH without editing here.
+# Default migration branch, passed as DAAF_BRANCH to migrate, the driven update
+# and the installs (see the header). Override per run with DAAF_MIGRATION_BRANCH.
 $MigrationBranch = if ($env:DAAF_MIGRATION_BRANCH) { $env:DAAF_MIGRATION_BRANCH } else { "daaf_dev" }
 $Repo = "DAAF-Contribution-Community/daaf"
 # (The -SkipMultiInstance switch and the SKIP_MULTI_INSTANCE=1 env toggle are
@@ -671,8 +721,8 @@ if ($TestEra -notin @("1", "2", "3")) {
 
 # --- Era/version compatibility guard ---
 # Era 3 downloads scripts\host\install.ps1 from the chosen ref; tags below
-# v2.1.0 predate that layout entirely (the host helper set landed at v2.1.0,
-# commit a399639), so the download 404s. Fail fast with a clear message.
+# v2.1.0 predate that layout (v2.1.0 is the first tag with the host helper
+# set), so the download 404s. Fail fast with a clear message.
 # Only vX.Y.Z tags are checked -- branch names always carry the current layout.
 # Comparison parses numeric components ([version]) because a lexical compare is
 # wrong ("v2.10.0" sorts before "v2.2.0" lexically).
@@ -706,8 +756,8 @@ function Resolve-DaafProjectName {
 
 # --- Docker identifier derivation (default "daaf" instance) ---
 # All identifiers are derived from DAAF_PROJECT_NAME rather than hardcoded, so a
-# non-default install is testable and so this mirrors how nuke_daaf.ps1 /
-# backup_daaf.ps1 derive their names. Docker joins the compose project name to the
+# non-default install is testable and so this matches how backup_daaf.ps1
+# derives its names. Docker joins the compose project name to the
 # service with a DASH (containers/image) and to declared volumes with an
 # UNDERSCORE (verified against docker-compose.yml). Default project name "daaf"
 # reproduces the original hardcoded values byte-for-byte. The project is the
@@ -748,7 +798,7 @@ $SecondPortVscode = "12720"
 # flow fixes as "daaf"), and v2.0.x hardcodes `name: daaf`. A non-default
 # project name is only meaningful for Era 3. The check uses the normalized name
 # (so `DAAF` passes), but the message shows the value as the user typed it, plus the
-# normalized name when the two differ (review 51q NIT-2; same text as the .sh twin).
+# normalized name when the two differ (same text as the .sh twin).
 if ($TestEra -ne "3" -and $ProjectName -ne "daaf") {
     $eraGot = "'$env:DAAF_PROJECT_NAME'"
     if ("$env:DAAF_PROJECT_NAME" -cne $ProjectName) { $eraGot += ", which Docker Compose uses as '$ProjectName'" }
@@ -765,7 +815,8 @@ $LocalRepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 # Verify local migrate_daaf.ps1 exists
 $LocalMigratePath = Join-Path $LocalRepoRoot "scripts\host\migrate_daaf.ps1"
 if (-not (Test-Path $LocalMigratePath)) {
-    Write-Error "Cannot find migrate_daaf.ps1 in the local repo. Expected at: $LocalMigratePath"
+    Write-Error ("Cannot find migrate_daaf.ps1 in the local repo. Expected at: $LocalMigratePath " +
+        "Run this script from within a DAAF repo clone (git clone https://github.com/DAAF-Contribution-Community/daaf.git).")
     exit 1
 }
 # install.ps1 is reused for the second instance in phase 8 (see there for why).
@@ -817,7 +868,7 @@ function Test-Check {
 }
 
 # Invoke a HARNESS-OWNED .ps1 as a hardened child process and return its exit
-# code. Two defenses against the field failure where a script copied from a
+# code. Two defenses against the case where a script copied from a
 # Downloads-path repo (carrying NTFS Mark-of-the-Web) is refused by RemoteSigned
 # with "...is not digitally signed. You cannot run this script on the current
 # system":
@@ -839,7 +890,7 @@ function Test-Check {
 #
 # ARGUMENT QUOTING: Start-Process joins an -ArgumentList ARRAY with bare spaces
 # and quotes nothing (PowerShell#5576), so a $Path under a spaced user-profile
-# TEMP or install folder used to split into several argv entries. Both launchers
+# TEMP or install folder would split into several argv entries. Both launchers
 # below build ONE pre-joined string whose every element goes through
 # ConvertTo-DaafNativeArg.
 
@@ -879,8 +930,8 @@ function Invoke-HardenedScript {
     # #20400): touch $proc.Handle BEFORE waiting. Start-Process -PassThru
     # returns a Process object that has not opened a handle; without one, the
     # .NET runtime cannot retrieve the exit code and $proc.ExitCode is $null
-    # after WaitForExit(). That $null was the field failure "exited with code ."
-    # -- a SUCCESSFUL child scored as failed because $null -ne 0 is $true.
+    # after WaitForExit(), which prints as "exited with code ." and scores a
+    # SUCCESSFUL child as failed because $null -ne 0 is $true.
     # Best-effort: if the handle cannot be opened, the $null check below fails
     # the run closed.
     try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the child process handle: $_" }
@@ -951,12 +1002,11 @@ function Invoke-HardenedScriptAuto {
     return $proc.ExitCode
 }
 
-# Write file content into the container via STDIN. This exists because of a
-# PS 5.1 field failure: passing `bash -c '... "quoted" ...'` through docker.exe
-# mangles embedded double quotes (pre-7.3 native argument passing does not
-# escape them), silently re-tokenizing the payload -- the old fixture writes
-# printed "Test"/"Work" and created NOTHING. Rules that keep container commands
-# safe on PS 5.1:
+# Write file content into the container via STDIN. On PS 5.1, passing
+# `bash -c '... "quoted" ...'` through docker.exe mangles embedded double quotes
+# (pre-7.3 native argument passing does not escape them), silently re-tokenizing
+# the payload, so a quoted fixture write creates nothing. Rules that keep
+# container commands safe on PS 5.1:
 #   1. Multi-line / quote-bearing file content goes through this function
 #      (content rides stdin, immune to argv quoting; CRLF is stripped).
 #   2. Any direct docker-exec argv (Invoke-ContainerExec/-Git) must contain NO
@@ -985,11 +1035,11 @@ function Write-ContainerFile {
 # SIMPLE functions using $args -- deliberately NOT [CmdletBinding()] +
 # ValueFromRemainingArguments. An advanced function gains PowerShell's common
 # parameters, and lone flags prefix-bind onto them: `-p` uniquely prefixes
-# -PipelineVariable and CONSUMES THE NEXT ARGUMENT as its value. Field failure
-# 2026-07-06: `Invoke-ContainerExec mkdir -p d1 d2 d3` reached docker as
-# `mkdir d2 d3` (no -p, d1 eaten), failed silently under 2>$null, and every
-# fixture write under those dirs then died on a bash redirect error. The same
-# binding would eat the SHA in `cat-file -p <sha>`. This mirrors the
+# -PipelineVariable and CONSUMES THE NEXT ARGUMENT as its value:
+# `Invoke-ContainerExec mkdir -p d1 d2 d3` would reach docker as `mkdir d2 d3`
+# (no -p, d1 eaten), fail silently under 2>$null, and every fixture write under
+# those dirs would then die on a bash redirect error. The same binding would eat
+# the SHA in `cat-file -p <sha>`. This mirrors the
 # documented idiom in migrate_daaf.ps1's own container helpers.
 function Invoke-ContainerExec {
     $savedEAP = $ErrorActionPreference
@@ -1074,16 +1124,38 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "INFO: Removing any existing DAAF Docker resources..." -ForegroundColor Cyan
+# The clean slate deletes the install named by DAAF_PROJECT_NAME, research data
+# included, so name what goes and ask first. DAAF_TEST_MIGRATION_CONFIRM=yes
+# answers for unattended runs (the -All driver sets it after asking once). With
+# redirected input at end-of-file, Read-Host returns $null and nothing is
+# deleted. Only y or Y continues (-ne is case-insensitive).
+Write-Host "  This test deletes the DAAF install '$ProjectName' before it starts:"
+Write-Host "    containers:  $ContainerMain $ContainerInit"
+Write-Host "    image:       $ImageName"
+Write-Host "    volumes:     $VolumeName (research data)"
+Write-Host "                 $ClaudeVolumeName (Claude Code sign-in and sessions)"
+Write-Host "  It also removes a second test install ($SecondProjectName) left by an earlier run."
+Write-Host ""
+if ($env:DAAF_TEST_MIGRATION_CONFIRM -eq "yes") {
+    Write-Host "INFO: DAAF_TEST_MIGRATION_CONFIRM=yes is set, so the test does not ask." -ForegroundColor Cyan
+} else {
+    Write-Host "WARNING: If you use this install, back it up first (Control Panel: 7) Create Backup)." -ForegroundColor Yellow
+    $confirmAnswer = Read-Host "Delete them and continue? [y/N]"
+    if ("$confirmAnswer" -ne "y") {
+        Write-Host ""
+        Write-Host "INFO: Nothing was deleted. To run without this question (for example in CI), first run: `$env:DAAF_TEST_MIGRATION_CONFIRM = `"yes`"" -ForegroundColor Cyan
+        Complete-Run 1
+    }
+}
+
+Write-Host "INFO: Removing the DAAF install '$ProjectName'..." -ForegroundColor Cyan
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-# Default instance
 docker rm -f $ContainerMain 2>&1 | Out-Null
 docker rm -f $ContainerInit 2>&1 | Out-Null
 docker volume rm $VolumeName 2>&1 | Out-Null
-# Remove the Claude Code state volume too. A prior run (or a migrated install)
-# creates this once the current compose file is in play; leaving it behind would
-# leak Claude auth/session state across test runs. Absence is tolerated.
+# The Claude Code state volume goes too: leaving it would carry sign-in and
+# session state across test runs. Older installs have none; absence is tolerated.
 docker volume rm $ClaudeVolumeName 2>&1 | Out-Null
 docker rmi $ImageName 2>&1 | Out-Null
 # Clean up any leftovers from a previous, possibly aborted, multi-instance pass
@@ -1111,7 +1183,7 @@ if ($TestVersion -eq "fresh") {
     Write-Host "[2/2] Fresh-install track (local install.ps1)" -ForegroundColor White
     Write-Host ""
 
-    # D7 guard: install.ps1 must exist in the local repo (mirror of the .sh -f test).
+    # install.ps1 must exist in the local repo (same check as the .sh -f test).
     if (-not (Test-Path $LocalInstallPath)) {
         Write-Error "Cannot find install.ps1 in the local repo -- fresh-install track needs it. Expected at: $LocalInstallPath"
         Complete-Run 1
@@ -1198,7 +1270,7 @@ if ($TestVersion -eq "fresh") {
     # Host scripts present in the fresh daaf-docker dir. DIVERGENCE from the .sh
     # twin: Windows has no executable bit, so this is a Test-Path presence check
     # ONLY (the .sh additionally asserts -x). The list is the .ps1 host-script set
-    # (daaf.sh/daaf_lib.sh are never shipped to Windows -- commit 4fa8c43).
+    # (daaf.sh/daaf_lib.sh are never shipped to Windows).
     $FreshHostDir = Join-Path $FreshDir "daaf-docker"
     foreach ($Script in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1")) {
         Test-Check "Fresh host script present: $Script" (Test-Path (Join-Path $FreshHostDir $Script))
@@ -1420,14 +1492,13 @@ Write-Host ""
 # =====================================================================
 # PHASE 3: Verify Era State
 # =====================================================================
-# The old harness "simulated" Era 2 here by stripping the remote from a modern
-# shallow clone. That never produced a real Era 2 repo (genuine upstream
-# history remained, and the shallow boundary commit's visible parent lines
-# fooled migrate_daaf's graft-already-in-place check into skipping the graft
-# entirely). Phase 2 now replays the real pathways, so this phase only WAITS
-# for and VERIFIES the era state the install should have produced -- if the
-# state is wrong, that is a broken replay and the run stops here rather than
-# feeding Phase 7 misleading results.
+# Phase 2 replays the real install pathway, so this phase only WAITS for and
+# VERIFIES the era state the install should have produced. A wrong state means
+# a broken replay, and the run stops here rather than feeding Phase 7 misleading
+# results. The era state is never faked: stripping the remote from a modern
+# shallow clone does not make an Era 2 repo (upstream history remains, and the
+# shallow boundary commit's parent lines make migrate_daaf's
+# graft-already-in-place check skip the graft).
 Write-Host "[3/7] Verify Era $TestEra state" -ForegroundColor White
 Write-Host ""
 
@@ -1475,7 +1546,7 @@ if ($retries -ge 30) {
 # at Phase 3 before migrate ever runs. Add a global safe.directory exemption for
 # the exec user NOW, spanning all pre-migrate old-container git usage. It is
 # CLOSED (removed) immediately before migrate is invoked (Phase 6), but ONLY if
-# the harness added it here -- so the field run still exercises migrate's own
+# the harness added it here -- so the run still exercises migrate's own
 # section-4b safe.directory fix end-to-end on the v1.0.0 vector rather than the
 # harness masking it. Harmless on the v2.x vectors: their payload is already
 # exec-user-owned, so the add is a redundant no-op exemption that cannot change
@@ -1505,20 +1576,18 @@ if ($TestEra -eq "1") {
         Write-Host "SUCCESS: Era 1 state verified (origin remote + branch main from the clone)." -ForegroundColor Green
     } else {
         # Surface the RAW git error + /daaf ownership BEFORE the terminating
-        # Write-Error (Invoke-ContainerGit discards stderr, which hid the
-        # diagnosis in field run 4 -- modern-git "dubious ownership" refusal:
-        # root-owned volume payload vs the v1.0.0 image's non-root user, with
-        # no safe.directory config in that era).
-        # PS 5.1 native-stderr capture (round-5 field-confirmed, Windows): under a
-        # redirected error stream `docker exec ... 2>&1` renders git's stderr lines
-        # as ErrorRecords, and with EAP=SilentlyContinue + Out-String those records
-        # were DROPPED -- so $gitDiag came back EMPTY on Windows where the .sh twin
-        # printed git's dubious-ownership fatal. Capture them the way
-        # Invoke-NativeLogged surfaces native stderr: scoped EAP=Continue + 2>&1 +
-        # per-object stringify (ForEach-Object "$_"), joined into one string. The
-        # .sh side already surfaces this text (raw docker exec 2>&1) and is left
-        # unchanged; parity here means both twins surface git's stderr, not
-        # identical mechanics.
+        # Write-Error: Invoke-ContainerGit discards stderr. A likely cause is
+        # modern git's "dubious ownership" refusal (root-owned volume payload vs
+        # the v1.0.0 image's non-root user, with no safe.directory config in that
+        # era).
+        # PS 5.1 native-stderr capture: under a redirected error stream
+        # `docker exec ... 2>&1` renders git's stderr lines as ErrorRecords, and
+        # EAP=SilentlyContinue + Out-String DROPS those records, leaving $gitDiag
+        # empty. Capture them the way Invoke-NativeLogged surfaces native stderr:
+        # scoped EAP=Continue + 2>&1 + per-object stringify (ForEach-Object "$_"),
+        # joined into one string. The .sh twin surfaces the same text with a raw
+        # `docker exec 2>&1`; both twins surface git's stderr, by different
+        # mechanics.
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         $gitDiag = ((docker exec $script:ContainerName git -C /daaf remote get-url origin 2>&1 | ForEach-Object { "$_" }) -join "`n").Trim()
         $ownerDiag = ((docker exec $script:ContainerName ls -ldn /daaf /daaf/.git 2>&1 | ForEach-Object { "$_" }) -join "`n").Trim()
@@ -1557,10 +1626,9 @@ if ($TestEra -eq "1") {
         # replacement ref rather than rewriting the root, so post-graft
         # `rev-list --max-parents=0 HEAD` walks THROUGH the grafted root into
         # upstream history and returns upstream's genuine root -- parentless
-        # by definition, forever. Inspecting that commit produced run 3's
-        # false FAIL (repro: scripts/scratch/graft_repro.sh in the session
-        # workspace -- cat-file on the synthetic root shows 1 parent
-        # post-graft; on rev-list's answer, 0).
+        # by definition, forever. Inspecting that commit would report a
+        # false FAIL on a healthy migration: after the graft, cat-file on the
+        # synthetic root shows 1 parent, and on rev-list's answer, 0.
         $script:Era2RootSha = $HeadSha
         Write-Host "SUCCESS: Era 2 state verified (local-only repo, single synthetic root commit $($HeadSha.Substring(0, [Math]::Min(12, $HeadSha.Length))), no remote)." -ForegroundColor Green
     } else {
@@ -1591,8 +1659,8 @@ if ($TestEra -eq "1") {
         # refspec, an origin/main remote-tracking ref, and main tracking
         # origin/main. The tag-pinned replay clone has none of those (its
         # refspec is pinned to the tag), so migrate's best-effort
-        # `--set-upstream-to=origin/main` failed on a git state no real user
-        # had (field run 4: tracking '' on the v2.1.0 vector). set-branches
+        # `--set-upstream-to=origin/main` would fail on a git state no real
+        # user had. set-branches
         # rewrites the refspec to main-only; the shallow fetch materializes
         # origin/main at the CURRENT tip; set-upstream then matches the
         # tracking a real `clone -b main` had from day one. Invoke-NativeLogged
@@ -1619,10 +1687,9 @@ if ($TestEra -eq "1") {
 Write-Host ""
 
 # --- Harness volume ownership repair window (OPEN) ---
-# Round-6 field evidence (Mac + Windows): the documented Era-1 install leaves
-# the volume payload owned by root (busybox cp -a preserves the bind mount's
-# presented owner; the v1.0.0 compose has no daaf-init repair service -- that
-# arrived in v2.0.0), while the container runs as non-root uid 1000. Phase 4-5
+# The documented Era-1 install leaves the volume payload owned by root (busybox
+# cp -a preserves the bind mount's presented owner; the v1.0.0 compose has no
+# daaf-init repair service, which v2.0.0 adds), while the container runs as non-root uid 1000. Phase 4-5
 # fixture planting therefore cannot write /daaf on the v1.0.0 vector. The
 # harness repairs ownership HERE -- after the phase-3 verify, which stays on
 # the untouched broken state -- so fixtures plant through the same code paths
@@ -1668,12 +1735,10 @@ Write-Host ""
 Write-Host "INFO: Creating committed framework changes and research files..." -ForegroundColor Cyan
 
 # --- Harness git identity window (OPEN) ---
-# Round-6b field evidence (Mac + Windows): the v1.0.0 image provisions no git
-# identity (no entrypoint; v2.0.0+ eras set repo-local daaf@local on startup,
-# and the modern Dockerfile bakes one globally), and git refuses
-# commit-creating ops without one -- the fixture commit below produced
-# nothing SILENTLY (Invoke-ContainerGit swallows stderr) and only the
-# fixture-commit verify gate caught the aftermath. Set a harness identity
+# The v1.0.0 image provisions no git identity (no entrypoint; v2.0.0+ eras set
+# repo-local daaf@local on startup, and the current Dockerfile bakes one
+# globally), and git refuses commit-creating ops without one, so the fixture
+# commit below would produce nothing. Set a harness identity
 # ONLY when none exists, and remove it before migrate runs so migrate's own
 # section-4d era-parity identity repair is exercised end-to-end on the
 # v1.0.0 vector. Third window, mirroring the safe.directory and ownership
@@ -1695,15 +1760,16 @@ if (-not [string]::IsNullOrWhiteSpace($GitEmailPre)) {
     }
 }
 
-# FIXTURE RULES (both learned from field failures):
-#   - No embedded double quotes in any docker-exec argv (PS 5.1 mangles them;
-#     the old fixtures here silently created NOTHING and printed "Test"/"Work").
-#     Multi-line or quote-bearing content goes through Write-ContainerFile.
-#   - Framework-change markers live in NEW files (upstream has no such path,
-#     so update merges can never conflict on them). The old CLAUDE.md-append
-#     markers were conflict bait: daaf_dev heavily rewrites CLAUDE.md relative
-#     to the old eras, and a merge conflict would abort the update for reasons
-#     unrelated to migration correctness.
+# FIXTURE RULES (mirrored with the .sh twin where they apply):
+#   - No embedded double quotes in any docker-exec argv (PS 5.1 mangles them, so
+#     a quoted fixture write silently creates nothing). Multi-line or
+#     quote-bearing content goes through Write-ContainerFile.
+#   - Class A framework-change markers live in NEW files (upstream has no such
+#     path, so update merges can never conflict on them). A CLAUDE.md append
+#     would be conflict bait: the current CLAUDE.md differs heavily from the
+#     old eras', and a merge conflict would abort the update for reasons
+#     unrelated to migration correctness. (The Class B/C appends test that
+#     merge path on purpose, as separate fixtures.)
 
 # Create a research project
 Invoke-ContainerExec mkdir -p /daaf/research/2026-01-15_Test_Analysis/data /daaf/research/2026-01-15_Test_Analysis/scripts /daaf/research/2026-01-15_Test_Analysis/output
@@ -1728,10 +1794,10 @@ Write-ContainerFile -Path "/daaf/research/2026-01-15_Test_Analysis/README.md" -C
 Write-ContainerFile -Path "/daaf/agent_reference/test_migration_marker.md" -Content 'test-migration-marker: committed'
 
 # Commit everything
-# Invoke-NativeLogged, NOT Invoke-ContainerGit: the latter swallows stderr,
-# which made the round-6b missing-identity failure invisible (the verify gate
-# below caught only the aftermath). Fixture commits must print git's own
-# message on failure; rc is discarded because the verify gate is the arbiter.
+# Invoke-NativeLogged, NOT Invoke-ContainerGit: the latter swallows stderr, so
+# a failed fixture commit (a missing git identity, for example) would leave only
+# the verify gate's aftermath. Fixture commits must print git's own message on
+# failure; rc is discarded because the verify gate is the arbiter.
 $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }
 $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf commit -m "Test: Add research project and framework tweaks" }
 
@@ -1740,8 +1806,8 @@ if ([string]::IsNullOrWhiteSpace($CommittedSha)) {
     Write-Error "Fixture commit failed - no HEAD SHA readable. Cannot proceed to migration with unplanted fixtures."
     exit 1
 }
-# Verify the fixtures actually landed IN the commit (the old harness only
-# discovered missing fixtures at Phase 7, after migration had already run).
+# Verify the fixtures actually landed IN the commit, so a missing fixture stops
+# the run here, before migration, not as a misleading Phase 7 FAIL.
 $CommittedFiles = Invoke-ContainerGit show --name-only --format= HEAD
 foreach ($MustHave in @(
     "research/2026-01-15_Test_Analysis/scripts/01_fetch.py",
@@ -1781,8 +1847,8 @@ if ($LASTEXITCODE -eq 0) {
     Write-ObserveNote "Class C not planted: CLAUDE.md has no '## Identity' section at $TestVersion."
 }
 if ($script:PlantedB1 -or $script:PlantedC) {
-    # Invoke-NativeLogged (loud stderr), not Invoke-ContainerGit -- see the
-    # round-6b note on the phase-4 fixture commit above.
+    # Invoke-NativeLogged (loud stderr), not Invoke-ContainerGit -- see the note
+    # on the phase-4 fixture commit above.
     $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }
     $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf commit -m "Test: class B(i)/C framework-file appends" }
     $B1CFiles = Invoke-ContainerGit show --name-only --format= HEAD
@@ -1916,8 +1982,8 @@ $ClaudeVolumeExistedPreMigration = Test-DockerVolume $ClaudeVolumeName
 #     fidelity), and the updater INTENTIONALLY persists that choice into
 #     environment_settings.txt -- a designed, single-line mutation, not fixture
 #     loss. Hashing modulo '^DAAF_BRANCH=' keeps the check byte-strict for
-#     everything else while tolerating the one sanctioned write (quality
-#     review, field-run-4 fix pass; mirrors the .sh `grep -v | cksum`).
+#     everything else while tolerating the one sanctioned write (mirrors the
+#     .sh `grep -v | cksum`).
 function Get-ClassDHash([string]$Path) {
     # PS 5.1-safe string hash: Get-FileHash cannot hash filtered content, so
     # SHA256 over the UTF8 bytes of the non-DAAF_BRANCH lines joined by LF.
@@ -1944,7 +2010,7 @@ if (Test-Path $ClassDPath) {
 # --- Harness git safe.directory exemption window (CLOSE) ---
 # Remove the exemption the harness added in Phase 3, immediately BEFORE migrate is
 # invoked -- but ONLY if the harness added it (if it pre-existed, leave it). This
-# is the point of the window: closing it here means the field run exercises
+# is the point of the window: closing it here means the run exercises
 # migrate's OWN section-4b safe.directory fix on the v1.0.0 vector end-to-end,
 # instead of the harness's instrumentation masking whether migrate handles the
 # root-owned Era-1 payload. Targeted value-regex removal (^/daaf$) so any other
@@ -1995,8 +2061,8 @@ if ($script:HarnessRepairedOwnership) {
 # Run migration non-interactively via the hardened child-process path. The copy
 # at $HostDir\migrate_daaf.ps1 is harness-owned (copied above), so Unblock-File +
 # -ExecutionPolicy Bypass inside Invoke-HardenedScript defeat the RemoteSigned
-# "...is not digitally signed" refusal seen in the field when the local repo
-# lived under a Downloads path carrying Mark-of-the-Web. $env:DAAF_* set below
+# "...is not digitally signed" refusal that Windows gives when the local repo
+# lives under a Downloads path carrying Mark-of-the-Web. $env:DAAF_* set below
 # are inherited by the child via Start-Process -NoNewWindow.
 $env:DAAF_BRANCH = $MigrationBranch
 $env:DAAF_NESTED = "1"
@@ -2024,7 +2090,7 @@ Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
 Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
 
 Write-Host ""
-# Fix B: report the migration outcome TRUTHFULLY. A nonzero exit (or a spawn
+# Report the migration outcome TRUTHFULLY. A nonzero exit (or a spawn
 # failure caught above) is a real FAIL fed into the results counter -- never
 # printed as SUCCESS. Verification (Phase 7) still runs regardless, because it
 # shows the blast radius of a failed migration; but it runs under a banner that
@@ -2067,9 +2133,8 @@ if ($script:AutoMode) {
         Write-Host ""
         # DAAF_BRANCH keeps the driven update BRANCH-FAITHFUL (parity with the
         # migrate drive above): without it the updater auto-detects 'main' and
-        # merges GitHub origin/main instead of the branch under test -- field
-        # run 4 merged main's tip, so the noble Dockerfile never arrived and no
-        # rebuild was exercised.
+        # merges GitHub origin/main instead of the branch under test, so the
+        # branch's Dockerfile never arrives and no rebuild is exercised.
         $env:DAAF_BRANCH = $MigrationBranch
         $env:DAAF_NESTED = "1"
         $UpdateExit = 1
@@ -2141,8 +2206,8 @@ if ($script:AutoMode) {
             } else {
                 # Not the expected auto-resolvable conflict: either no merge is in
                 # progress, or the unmerged set is not exactly CLAUDE.md (e.g. a
-                # Dockerfile B(i) conflict, or a multi-file conflict). Fail loudly,
-                # verbatim as before, and surface the unmerged set for triage.
+                # Dockerfile B(i) conflict, or a multi-file conflict). Fail loudly
+                # and surface the unmerged set for triage.
                 Test-Check "Update script completed (exit $UpdateExit)" $false
                 $UnmergedFlat = ($Unmerged -replace "`r", " " -replace "`n", " ")
                 Write-ObserveNote "First driven update exited $UpdateExit but the conflict is NOT auto-resolvable (unexpected): MERGE_HEAD='$MergeHead', unmerged set='$UnmergedFlat'. Failing loudly per design."
@@ -2250,12 +2315,8 @@ if (-not [string]::IsNullOrWhiteSpace($OriginUrl) -and $OriginUrl -match $Repo) 
 #     origin/main.
 #   - Era 3 BRANCH installs (e.g. daaf_dev): no local main ever exists; the
 #     clone's branch keeps its own tracking (origin/<branch>). migrate's
-#     set-upstream to main is a silent no-op there. (Historical wart: migrate
-#     once printed "Tracking set: main -> origin/main" unconditionally, even on
-#     that no-op; fixed as of commit 4cd280d (2026-07-17), which prints the
-#     message only on set-upstream success and an honest NOTE otherwise. This
-#     harness has always asserted the REAL git tracking state below, never the
-#     printed string, so its behavior is unchanged either way.)
+#     set-upstream to main is a no-op there. This check reads the real git
+#     tracking state, never migrate's printed message.
 $ExpectedTracking = "origin/main"
 if ($TestEra -eq "3" -and $TestVersion -notmatch '^v\d+\.\d+\.\d+$') {
     $ExpectedTracking = "origin/$TestVersion"
@@ -2271,10 +2332,9 @@ if ($Tracking -eq $ExpectedTracking) {
 # SHA Phase 3 captured pre-migration. Do NOT re-discover the root with
 # `rev-list --max-parents=0` here: after a SUCCESSFUL graft that command walks
 # through the replaced root and returns upstream's genuine root, which is
-# parentless forever -- inspecting it produced a false FAIL on a healthy
-# migration (field run 3; repro in the session workspace's
-# scripts/scratch/graft_repro.sh). cat-file honors replace refs, so the
-# grafted parent is visible on the captured SHA.
+# parentless forever, so inspecting it would report a false FAIL on a healthy
+# migration. cat-file honors replace refs, so the grafted parent is visible on
+# the captured SHA.
 if ($TestEra -eq "2") {
     if (-not [string]::IsNullOrWhiteSpace($script:Era2RootSha)) {
         $CatFileOutput = Invoke-ContainerGit cat-file -p $script:Era2RootSha
@@ -2284,8 +2344,8 @@ if ($TestEra -eq "2") {
             # exactly one parent -- the expected success case!) Where-Object
             # returns a scalar string, and .Count on a scalar (or on the
             # zero-match null) throws PropertyNotFoundStrict under
-            # Set-StrictMode 3.0. Field failure 2026-07-06; migrate_daaf.ps1
-            # guards this same expression with @().
+            # Set-StrictMode 3.0. migrate_daaf.ps1 guards the same expression
+            # the same way.
             $ParentCount = @($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
         }
         Test-Check "Era 2 graft in place (synthetic root now has a parent)" ($ParentCount -gt 0)
@@ -2337,9 +2397,9 @@ Test-Check "Uncommitted framework changes preserved" ($LASTEXITCODE -eq 0)
 Invoke-ContainerExec grep -q uncommitted-stash-check /daaf/research/2026-01-15_Test_Analysis/README.md
 Test-Check "Dirty tracked change preserved (updater stash/pop path)" ($LASTEXITCODE -eq 0)
 
-# Check 7c: Post-migration volume writability (round-6 regression tripwire).
-# The v1.0.0 era's documented install left the payload root-owned (no
-# daaf-init repair service until v2.0.0), blocking the container user from
+# Check 7c: Post-migration volume writability.
+# The v1.0.0 era's documented install leaves the payload root-owned (v1.0.0
+# has no daaf-init repair service), blocking the container user from
 # writing /daaf at all. After migration the volume must be writable by the
 # container user on EVERY vector: migrate's section-4c repair (Era 1) and the
 # modern compose's daaf-init (all eras, every startup) both guarantee it.
@@ -2356,8 +2416,7 @@ Write-Host ""
 Write-Host "  Extended Fixture Checks (classes B/C/D):" -ForegroundColor White
 
 # Outcome semantics for the B(i)/B(ii) appends to tracked framework files (a
-# three-way outcome, slightly richer than the .sh present/absent binary --
-# DIVERGENCE): marker present with NO git conflict markers = PASS; conflict markers
+# three-way outcome, the same in both twins): marker present with NO git conflict markers = PASS; conflict markers
 # in the file = CONFLICTED (an Add-Skip with a prominent note, since a conflict on a
 # heavily-rewritten upstream file is an expected, non-defect outcome); marker absent
 # with no conflict markers = FAIL. The conflict probe greps for 7-char git markers
@@ -2381,11 +2440,11 @@ if ($script:PlantedB1) {
     Add-Skip "Class B(i): not planted (no USER ADDITIONS block at $TestVersion)."
 }
 
-# Class C: committed CLAUDE.md prose append -- OBSERVE-ONLY (never pass/fail).
-# DIVERGENCE from the .sh (which pass/fails this): on daaf_dev CLAUDE.md is heavily
-# rewritten relative to the old eras, so a committed append near '## Identity'
-# legitimately MAY hit a merge conflict on update. Recording the outcome as an
-# observe note avoids a spurious FAIL on an expected conflict.
+# Class C: committed CLAUDE.md prose append -- OBSERVE-ONLY (never pass/fail),
+# as in the .sh twin. The current CLAUDE.md differs heavily from the old eras',
+# so a committed append near '## Identity' legitimately MAY hit a merge
+# conflict on update. Recording the outcome as an observe note avoids a
+# spurious FAIL on an expected conflict.
 if ($script:PlantedC) {
     Invoke-ContainerExec grep -q 'test-migration-marker-C' /daaf/CLAUDE.md
     if ($LASTEXITCODE -eq 0) {
@@ -2438,11 +2497,11 @@ Write-Host ""
 Write-Host "  Host Script Checks:" -ForegroundColor White
 
 # Check 9: Host scripts were downloaded.
-# This list mirrors what migrate_daaf.ps1 actually fetches today (see its
+# This list mirrors what migrate_daaf.ps1 fetches (see its
 # "foreach ($File in @(...))" download loop): the .ps1 utility set plus the two
 # shipped text files. Note this DIFFERS from the .sh twin: daaf.sh/daaf_lib.sh
-# are never shipped to Windows (commit 4fa8c43), so they are absent here by
-# design; Windows gets daaf.ps1/daaf_lib.ps1 instead.
+# are never shipped to Windows, so they are absent here by design; Windows gets
+# daaf.ps1/daaf_lib.ps1 instead.
 foreach ($Script in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     Test-Check "Host script downloaded: $Script" (Test-Path (Join-Path $HostDir $Script))
 }
@@ -2645,18 +2704,17 @@ if (-not $SkipMultiInstance) {
     # EMPTY-/daaf container (no repo clone), which is not a realistic instance and
     # would make the coexistence checks meaningless. install.ps1 already reads
     # DAAF_PROJECT_NAME (process env wins) to derive its volume name, and compose
-    # reads all four DAAF_* keys from the process env for interpolation -- so we
+    # interpolates the four keys written above from the process env -- so we
     # set them, point install.ps1 at the current branch, and run it in the second
     # directory. DAAF_NESTED suppresses its exit pause.
     if (-not (Test-Path $LocalInstallPath)) {
-        Write-Host "WARNING: Cannot find install.ps1 at $LocalInstallPath - skipping multi-instance bring-up." -ForegroundColor Yellow
+        Write-Host "WARNING: install.ps1 is not in this repository clone ($LocalInstallPath), so the second install is not started; the checks below report it as missing." -ForegroundColor Yellow
     } else {
         Write-Host "INFO: Bringing up second instance from branch '$MigrationBranch' via install.ps1..." -ForegroundColor Cyan
         Write-Host ""
 
-        # This was the second field-failure site: invoking install.ps1 directly
-        # from the user's Downloads-path repo hit the same RemoteSigned "...is
-        # not digitally signed" refusal. We must NOT Unblock-File the user's repo
+        # Invoking install.ps1 directly from a Downloads-path repo hits the same
+        # RemoteSigned "...is not digitally signed" refusal. We must NOT Unblock-File the user's repo
         # original ($LocalInstallPath), so COPY it into the harness-owned second
         # install dir first and run the COPY via Invoke-HardenedScript (which
         # unblocks only that copy + spawns with -ExecutionPolicy Bypass).
@@ -2670,7 +2728,7 @@ if (-not $SkipMultiInstance) {
         # Save prior values of EVERY env var + the location we mutate below, and
         # initialize each saved-value variable BEFORE the try so no finally path
         # reads an unassigned variable under Set-StrictMode 3.0. All mutations
-        # (the four DAAF_* keys, DAAF_BRANCH, DAAF_NESTED, DAAF_FORCE_REINSTALL)
+        # (the four keys written above, DAAF_BRANCH, DAAF_NESTED, DAAF_FORCE_REINSTALL)
         # and the Set-Location move happen INSIDE the try so the finally always
         # restores the caller's exact prior state -- clearing a var only when it
         # was genuinely unset, never clobbering a caller-set value.
@@ -2777,7 +2835,7 @@ if (-not $SkipMultiInstance) {
     # (daaftest2-daaf-docker), NOT shared with the default instance's
     # daaf-daaf-docker -- removing it cannot affect the default instance. The
     # busybox init IMAGE, by contrast, IS shared across instances, so leave it
-    # alone (nuke_daaf.ps1 only removes busybox when no container references it).
+    # in place for the default instance and any other install that uses it.
     Write-Host "INFO: Tearing down the second instance (container, init, volumes, distinct image)..." -ForegroundColor Cyan
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     docker rm -f $SecondContainerMain 2>&1 | Out-Null
@@ -2841,20 +2899,25 @@ if ($script:TestsFailed -gt 0) {
     Write-Host "  Host dir:   $HostDir"
     Write-Host "  Test dir:   $TestDir"
     Write-Host ""
-    Write-Host "Test working directory preserved at: $TestDir"
-    Write-Host "(Delete manually when done inspecting)"
+    Write-Host "  When you are done inspecting, remove the test install's containers, volumes and image:"
+    Write-Host "    docker rm -f $ContainerMain $ContainerInit"
+    Write-Host "    docker volume rm $VolumeName $ClaudeVolumeName"
+    Write-Host "    docker rmi $ImageName"
+    Write-Host "  The next run of this test also removes them before it starts."
+    Write-Host ""
     Complete-Run 1
 } else {
     Write-Host "SUCCESS: All checks passed!" -ForegroundColor Green
     Write-Host ""
     Write-Host "  The DAAF Docker resources are still running for manual inspection."
-    Write-Host "  To clean up:  `$env:DAAF_NUKE_CONFIRM = '1'; & '$LocalRepoRoot\scripts\host\nuke_daaf.ps1'"
+    Write-Host "  To clean up, remove the test install's containers, volumes and image:"
+    Write-Host "    docker rm -f $ContainerMain $ContainerInit"
+    Write-Host "    docker volume rm $VolumeName $ClaudeVolumeName"
+    Write-Host "    docker rmi $ImageName"
+    Write-Host "  The next run of this test also removes them before it starts."
     Write-Host ""
-    Write-Host "Test working directory preserved at: $TestDir"
-    Write-Host "(Delete manually when done inspecting)"
     Complete-Run 0
 }
 
-# NOTE: the standalone end-of-run "Press Enter to close" pause is intentionally
-# gone -- Write-SummaryOnce performs the interactive pause (auto/nested-aware) just
-# before emitting the summary, so the summary line is always the final stdout line.
+# No end-of-run pause here: Write-SummaryOnce pauses (when interactive) before it
+# emits the summary, so the summary line stays the final stdout line.

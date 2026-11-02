@@ -55,8 +55,9 @@ _DAAF_KEYS_FROM_FILE=""
 # (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO, DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE)
 # plus DAAF_DEV, the opt-in BUILD flag consumed as
 # `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml, plus DAAF_BRANCH,
-# the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.sh), plus
+# the branch the updater follows (update_daaf.sh also reads it from the file with
+# its own loader; because the panel exports it, an updater the panel starts finds
+# it already set in its environment), plus
 # DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
 # data volume (consumed by resolve_data_volume_name below and by the backup /
 # restore tools; whitelisting it lets a value persisted in the settings file reach
@@ -213,12 +214,12 @@ reload_daaf_settings() {
 # script derives from the project ("<project>_daaf-data",
 # "<project>_daaf-claude-config", "<project>-daaf-docker-1") is the name Compose
 # created. Compose does not use the top-level `name: ${DAAF_PROJECT_NAME:-daaf}`
-# verbatim: compose-go's loader (loader/loader.go, NormalizeProjectName) lowercases
-# it, keeps only [a-z0-9_-] and trims leading '_' and '-'. So a settings file that
-# says `Work` gives the volume "work_daaf-data", not "Work_daaf-data". (Source
-# quoted from compose-go main in research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
-# reviews/44q_quality_review.md ISSUE-1; that the Compose versions DAAF supports,
-# Docker 25+, all normalize this way is an inference from that source.)
+# verbatim: compose-go normalizes a name read from the compose file
+# (NormalizeProjectName: lowercase, keep only [a-z0-9_-], trim leading '_' and '-').
+# Verified against Compose's compose-go `loader/loader.go` (main) on 2026-11-01.
+# So a settings file that says `Work` gives the volume "work_daaf-data", not
+# "Work_daaf-data". That every Compose release DAAF supports (Docker 25+)
+# normalizes the same way is assumed, not checked per release.
 #
 # Unset or empty DAAF_PROJECT_NAME => "daaf", unchanged. A value that normalizes to
 # nothing (e.g. "___" or "@@") prints an EMPTY line; the function still returns 0
@@ -230,14 +231,15 @@ reload_daaf_settings() {
 # lowercased and every other byte outside [a-z0-9_-] is dropped, so a non-ASCII
 # letter is dropped. Go's Unicode lowercasing maps a few non-ASCII letters to ASCII
 # ones it would keep (the Kelvin sign U+212A becomes 'k'); neither this helper nor
-# its twins follow it there (review 45q NIT-1).
+# its twins follow it there.
 #
-# SYNC NOTE: the same two normalization lines are in install.sh (inline, it runs
-# standalone), and this whole function is carried BYTE-IDENTICAL in
-# backup_daaf.sh, restore_from_backup.sh, update_daaf.sh and the maintainer harness
-# test_migration.sh (standalone scripts that do not source this library). The
-# PowerShell twin is Resolve-DaafProjectName in daaf_lib.ps1. tests/bash/daaf_lib.bats
-# pins the copies and the installer to the same results on a fixed input set.
+# SYNC NOTE: the same two normalization lines are in install.sh and run_daaf.sh
+# (inline, they run standalone), and this whole function is carried
+# BYTE-IDENTICAL in backup_daaf.sh, restore_from_backup.sh, update_daaf.sh and the
+# maintainer harness test_migration.sh (standalone scripts that do not source this
+# library). The PowerShell twin is Resolve-DaafProjectName in daaf_lib.ps1.
+# tests/bash/daaf_lib.bats pins the copies, the installer and run_daaf.sh to the
+# same results on a fixed input set.
 resolve_project_name() {
     local project="daaf"
     if [ -n "${DAAF_PROJECT_NAME:-}" ]; then
@@ -372,14 +374,11 @@ open_url() {
 # Check if a service is listening on a port inside the DAAF container.
 # Returns 0 if listening, 1 otherwise.
 #
-# The probe reads /proc/net/tcp{,6} directly rather than shelling out to `ss`:
-# the `ss` binary (iproute2) is NOT installed in the DAAF image, so the old
-# iproute2-based probe always failed silently and check_port always returned 1.
-# The /proc/net/tcp approach needs no extra binary and matches the pattern
-# already proven in generate_log_viewer.sh and launch_code_server.sh. In that
-# file, column 2 is "local_address" formatted as HEXIP:HEXPORT and column 4 is
-# the socket state, where 0A means LISTEN. We match the listening port by its
-# uppercase 4-hex-digit representation.
+# The probe reads /proc/net/tcp{,6} directly: the DAAF image has no `ss`
+# (iproute2), and /proc needs no extra binary (generate_log_viewer.sh and
+# launch_code_server.sh use the same pattern). In /proc/net/tcp, column 2 is
+# "local_address" as HEXIP:HEXPORT and column 4 is the socket state, where 0A
+# means LISTEN; the port is matched by its uppercase 4-hex-digit form.
 check_port() {
     local port="${1:?check_port requires a port number}"
 
@@ -415,7 +414,9 @@ check_port() {
 # Returns 0 when the container is running (already up or just started), 1 on
 # failure. Callers gate on the return code (`if ! ensure_container; then ...`);
 # there is no exported status variable (the PowerShell twin Confirm-DaafContainer
-# likewise returns a boolean rather than setting a flag).
+# likewise returns a boolean rather than setting a flag). `up -d` runs with its
+# stderr discarded, so a caller reporting the failure sends the user to a path
+# that shows Docker's message (run_daaf.sh runs `up -d` with stderr visible).
 ensure_container() {
     # In dry-run mode, just pretend the container is running
     if [ "${DAAF_DRY_RUN:-}" = "1" ]; then

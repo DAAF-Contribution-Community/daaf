@@ -6,10 +6,10 @@
 # ============================================
 # DAAF freezes its build inputs to ONE "environment date" so that rebuilding
 # this file later reproduces the same image, instead of whatever the package
-# indexes happen to serve on the day of the rebuild. The current environment
-# date is 2026-09-24T13:20:00Z (the build time of the image these values were
-# verified against). Four inputs carry it (the apt snapshot currently runs
-# ahead of it, see SECURITY EXCEPTIONS below):
+# indexes happen to serve on the day of the rebuild. The environment date is
+# 2026-09-24T13:20:00Z (the build time of the image these values were verified
+# against). Four inputs carry it (the apt snapshot runs ahead of it under
+# security exception (3), see SECURITY EXCEPTIONS below):
 #
 #   UBUNTU_BASE_IMAGE  ubuntu:24.04@sha256:008173c2...  base OS layers
 #                      (multi-arch index digest; = tag noble-20260911)
@@ -46,11 +46,11 @@
 # installer script (https://claude.ai/install.sh) is additionally fetched
 # live on every build; only the version it installs is pinned.
 #
-# SECURITY EXCEPTIONS (dated). The environment date itself was deliberately
+# SECURITY EXCEPTIONS (dated). The environment date itself is deliberately
 # NOT moved for these fixes, because moving it moves every Python package
 # (DAAF keeps analytic library versions stable). Each exception moves only
 # what it must:
-#   (1) Trust store (2026-10-27): the keys of eMudhra intermediate CAs under
+#   (1) Trust store: the keys of eMudhra intermediate CAs under
 #       the root "emSign ECC Root CA - G3" were compromised, so the root is
 #       distrusted. The "Distrust compromised CA roots" layer below removes G3
 #       from the system CA store; certifi alone resolves past UV_EXCLUDE_NEWER
@@ -60,24 +60,24 @@
 #       the system store or certifi (it runs after the distrust layer, at the
 #       end of the Python stack and as the last RUN of the build, which also
 #       scans TinyTeX's tlmgr CA file; see NEUTRALISED below).
-#   (2) Pillow (2026-10-28): pillow 13.0.0 by a one-package override (instant
+#   (2) Pillow: pillow 13.0.0 by a one-package override (instant
 #       2026-10-17T00:00:00Z) in the PDF reading stack block. 12.3.0 has 41
 #       published advisories (5 critical), all fixed in 13.0.0. No other
 #       Python package moves (dry-run, x86_64 and aarch64). A version check
 #       just before the build's last RUN fails the build if a later install
 #       moved Pillow off 13.0.0.
-#   (3) apt snapshot ahead of UV_EXCLUDE_NEWER (2026-10-28): UBUNTU_SNAPSHOT
+#   (3) apt snapshot ahead of UV_EXCLUDE_NEWER: UBUNTU_SNAPSHOT
 #       is 20261024T000000Z, one month after the Python date, to take the
-#       Ubuntu security updates the 2026-09-24 snapshot withheld: poppler
-#       24.02.0-1ubuntu9.11 (poppler reads every PDF DAAF ingests),
+#       Ubuntu security updates that a snapshot at the Python date lacks:
+#       poppler 24.02.0-1ubuntu9.11 (poppler reads every PDF DAAF ingests),
 #       ca-certificates 20260816ubuntu0.24.04.1 (ships no G3), openssl
-#       3.0.13-0ubuntu3.16 and others. Measured on amd64 and arm64: at the
-#       new snapshot 52 apt binaries (22 source packages) differ from the
-#       current image, and a rebuild upgrades 48 of them (20 source
-#       packages). The other 4 are base-image binaries (libaudit1,
+#       3.0.13-0ubuntu3.16 and others. Measured on amd64 and arm64: compared
+#       with snapshot 20260924T132000Z, 52 apt binaries (22 source packages)
+#       differ, and the image takes the newer version of 48 of them (20
+#       source packages). The other 4 are base-image binaries (libaudit1,
 #       libaudit-common, libsystemd0, libudev1) that keep their base
-#       versions: no install line names them, and the 2026-10-24 OSV scan
-#       found no fix advisory for them. The 48 are Ubuntu patch releases
+#       versions: no install line names them, and OSV (checked 2026-10-24)
+#       lists no fix advisory for them. The 48 are Ubuntu patch releases
 #       (mostly security fixes) of the same upstream version, except
 #       ca-certificates (the CA list) and tzdata 2026c -> 2026e, which changes
 #       time-zone rules: America/Winnipeg (permanent -05) and America/Inuvik
@@ -128,7 +128,10 @@
 # Python date, never behind (tests/bash/daaf_lib.bats checks both). Pick the
 # new instant no earlier than the current UBUNTU_SNAPSHOT, so no apt package
 # moves back; optionally re-pin the base digest, then rebuild and diff
-# `uv pip list` and `dpkg-query -W`. RULE:
+# `uv pip list` and `dpkg-query -W`. Whenever a snapshot move changes poppler
+# (it reads every PDF DAAF ingests), re-check a few known papers after the
+# rebuild, as .claude/skills/pdf-reading/references/toolchain.md describes: a
+# poppler patch release can change its text extraction in rare cases. RULE:
 # the base image's dated tag (noble-YYYYMMDD) must be ON OR BEFORE the snapshot
 # date. Packages such as libc6-dev and libssl-dev depend on the EXACT version of
 # a library the base already ships (libc6-dev Depends: libc6 (= ...)); apt never
@@ -151,8 +154,8 @@
 # a sandboxed apt 2.8.3 (APT::Architecture=arm64, direct snapshot URIs,
 # 2026-10-01), and the binary-arm64 indexes of snapshot 20261024T000000Z
 # (noble-updates, -security and -backports, all four components) were fetched
-# from that same /ubuntu/ path on 2026-10-28 (HTTP 200); a full arm64 image
-# build is still UNVERIFIED pending a test build. If an arm64 build fails at
+# from that same /ubuntu/ path (snapshot.ubuntu.com, fetched 2026-10-28, HTTP
+# 200); a full arm64 image build is UNVERIFIED. If an arm64 build fails at
 # the snapshot layer, the escape hatch is to
 # set the UBUNTU_SNAPSHOT default below to empty: the stock sources are then
 # left untouched, apt resolves against the live archive (system packages NOT
@@ -186,11 +189,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # canonical pattern from Astral's Docker docs) instead of via a base-image tag.
 # UV_BREAK_SYSTEM_PACKAGES=1 lifts noble's PEP 668 "externally-managed" guard:
 # Ubuntu's apt python3.12 ships /usr/lib/python3.12/EXTERNALLY-MANAGED, which
-# makes every `uv pip install --system` layer refuse with exit 2 (the old base
-# image's Python had no such marker). That guard protects live systems from
-# apt/pip conflicts; this image IS the managed environment (uv-only, pinned
-# versions, runtime installs hook-blocked), and uv's docs designate this
-# variable for exactly this containerized use.
+# makes every `uv pip install --system` layer refuse with exit 2. That guard
+# protects live systems from apt/pip conflicts; this image IS the managed
+# environment (uv-only, pinned versions, runtime installs hook-blocked), and
+# uv's docs designate this variable for exactly this containerized use.
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_BREAK_SYSTEM_PACKAGES=1
 ENV UV_COMPILE_BYTECODE=1
@@ -198,12 +200,12 @@ ENV UV_COMPILE_BYTECODE=1
 # UV_NATIVE_TLS=1 makes uv verify HTTPS against the operating system's CA store
 # (/etc/ssl/certs) instead of the webpki root list compiled into the uv binary.
 # uv 0.9.30's built-in list still trusts "emSign ECC Root CA - G3", the root of
-# the 2026-10-20 eMudhra compromise (uv fixed its list only in 0.13.4,
-# GHSA-hq85-5cpj-mr62), whereas the system store has G3 removed by the
-# "Distrust compromised CA roots" layer below, which runs before uv's first
-# download. This covers the build's PyPI downloads and any in-container
-# `uv pip compile` dry-run. It also lets uv work behind a TLS-inspecting proxy
-# whose root is installed in the OS store. It is not a version change: the uv
+# the eMudhra compromise (uv fixed its list in 0.13.4, GHSA-hq85-5cpj-mr62),
+# whereas the system store has G3 removed by the "Distrust compromised CA
+# roots" layer below, which runs before uv's first download. This covers the
+# build's PyPI downloads and any in-container `uv pip compile` dry-run. It
+# also lets uv work behind a TLS-inspecting proxy whose root is installed in
+# the OS store. It is not a version change: the uv
 # binary and every resolution stay the same; only the roots uv trusts change.
 # uv documents the variable: `--native-tls  Whether to load TLS certificates
 # from the platform's native store [env: UV_NATIVE_TLS=]` (uv 0.9.30 help).
@@ -211,16 +213,14 @@ ENV UV_NATIVE_TLS=1
 
 # Freeze Python resolution to the environment date (see the ENVIRONMENT DATE
 # banner at the top of this file). The `==` pins in the uv blocks below fix only
-# the ~57 top-level packages; the other ~107 of the ~164 distributions installed
-# at the 2026-10-01 measurement are transitive dependencies that uv re-resolves
-# against live PyPI on every rebuild (blocks added since then grew the set: the
-# 2026-10-27 dry-run of every pin resolved 173, the installed set). Without a
-# cutoff they drift: re-resolving the very same pins 7 days after the 2026-09-24
-# build changed 13 of 164 packages (numba 0.67.0 -> 0.68.0 and llvmlite
-# 0.49.0 -> 0.50.0 among them). UV_EXCLUDE_NEWER makes uv ignore
-# every distribution file uploaded after the cutoff, so the same pins re-resolve
-# to the same full set (verified 2026-10-01: `uv pip compile --exclude-newer
-# 2026-09-24T13:20:00Z` of the pins reproduced the installed set, 164/164).
+# the packages they name; their dependencies re-resolve against live PyPI on
+# every rebuild, and without a cutoff they drift (PyPI, observed 2026-10-01:
+# re-resolving the same pins seven days after the cutoff changed 13 of 164
+# packages, numba 0.67.0 -> 0.68.0 and llvmlite 0.49.0 -> 0.50.0 among them).
+# UV_EXCLUDE_NEWER makes uv ignore every distribution file uploaded after the
+# cutoff, so the same pins re-resolve to the same full set (verified against
+# PyPI on 2026-10-01: `uv pip compile --exclude-newer 2026-09-24T13:20:00Z` of
+# the pins reproduced the installed set exactly).
 #   - ALWAYS a full RFC 3339 timestamp ending in `Z`. uv interprets a bare
 #     date (2026-09-24) in the local time zone of whatever machine runs it.
 #     Inside this build that is the image's UTC, but the same value used in a
@@ -270,13 +270,13 @@ ENV LC_ALL=C.UTF-8
 # ============================================
 # Copy the pinned uv/uvx static binaries from Astral's published image (no
 # uv-on-noble image exists, so this is the canonical way to get a pinned uv onto
-# an Ubuntu base). The tag carries the same uv version the old bookworm base
-# pinned (0.9.30), and the reference is additionally pinned by DIGEST (part of
-# the environment date; see the banner at the top of this file) so a re-pushed
-# tag cannot swap the binaries. Like the base image, this is the multi-arch OCI
-# INDEX digest (linux/amd64 + linux/arm64), so each platform still copies its
-# own binaries. To bump: `docker buildx imagetools inspect
-# ghcr.io/astral-sh/uv:<version>` on the host and copy the top-level `Digest:`.
+# an Ubuntu base). The tag pins uv 0.9.30, and the reference is additionally
+# pinned by DIGEST (part of the environment date; see the banner at the top of
+# this file) so a re-pushed tag cannot swap the binaries. Like the base
+# image, this is the multi-arch OCI INDEX digest (linux/amd64 + linux/arm64),
+# so each platform still copies its own binaries. To bump: `docker buildx
+# imagetools inspect ghcr.io/astral-sh/uv:<version>` on the host and copy the
+# top-level `Digest:`.
 # The reference stays literal on purpose (no ARG): variable expansion in
 # `COPY --from` is not something this file relies on. noble's default `python3`
 # is 3.12, so the interpreter, its dev headers, and venv support are installed
@@ -311,7 +311,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39736e7feae937a65983e49d2ab
 # With the snapshot disabled (marker absent) it prints a WARNING and lets the
 # layer continue.
 #
-# apt 2.8.3 semantics this relies on (observed 2026-10-01 in a sandboxed apt):
+# apt semantics this relies on (observed 2026-10-01, Ubuntu noble's apt 2.8.3):
 # without `--no-release-info`, `indextargets` lists only targets whose index
 # files exist, and its `$(SHADOWED)` format field is substituted only for
 # shadowed targets (otherwise the literal text `$(SHADOWED)` is printed).
@@ -397,10 +397,11 @@ DAAF_APT_UPDATE_EOF
 # date rather than whatever a later rebuild would fetch. Snapshot IDs have the
 # form YYYYMMDDTHHMMSSZ (UTC); keep this value the SAME instant as
 # UV_EXCLUDE_NEWER above, except during a dated security exception listed in
-# the banner, when it may run AHEAD of it (never behind). Now: 20261024T000000Z,
-# exception (3), one month ahead of UV_EXCLUDE_NEWER 2026-09-24T13:20:00Z, for
-# Ubuntu's poppler, ca-certificates, openssl and other security updates; both
-# return to one instant at the next routine date bump.
+# the banner, when it may run AHEAD of it (never behind). Value:
+# 20261024T000000Z under exception (3), one month ahead of UV_EXCLUDE_NEWER
+# 2026-09-24T13:20:00Z, for Ubuntu's poppler, ca-certificates, openssl and
+# other security updates; both return to one instant at the next routine date
+# bump.
 #
 # HOW (direct snapshot URIs): the deb822 sources file is OVERWRITTEN with two
 # stanzas -- noble/noble-updates/noble-backports and noble-security, all four
@@ -430,10 +431,10 @@ DAAF_APT_UPDATE_EOF
 # `apt-get install ca-certificates` therefore pass
 # `-o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false` -- scoped to
 # those two commands and that one host, and never written to a config file.
-# (Key order matters: this host-scoped form was observed to disable peer
-# verification for snapshot.ubuntu.com, while the look-alike
-# `Acquire::https::Verify-Peer::snapshot.ubuntu.com` was observed to have NO
-# effect -- sandboxed apt 2.8.3 probes with an empty CA bundle, 2026-10-01.)
+# (Key order matters: this host-scoped form disables peer verification for
+# snapshot.ubuntu.com, while the look-alike
+# `Acquire::https::Verify-Peer::snapshot.ubuntu.com` has NO effect; observed
+# 2026-10-01, Ubuntu noble's apt 2.8.3 in a sandbox with an empty CA bundle.)
 # apt's package integrity does not rest on TLS: the InRelease index is
 # GPG-verified against the `Signed-By` Ubuntu archive keyring, and every package
 # hash chains from it (the stock sources themselves use plain http). From the
@@ -513,27 +514,15 @@ RUN set -eu; \
 # emergency-distrusted G3 (NSS 3.131.1); Ubuntu, certifi and uv followed. Only
 # G3 is affected: emSign G1, C1 and C3 stay trusted, matching NSS and Ubuntu.
 #
-# WHY A TARGETED DISTRUST, AND WHY IT STAYS NOW THAT THE SNAPSHOT MOVED:
-# Ubuntu's fixed package is ca-certificates 20260816ubuntu0.24.04.1 (snapshot
-# IDs >= 20261020T170000Z). When this layer was written (2026-10-27) the
-# snapshot was 20260924T132000Z and was kept there, because moving
-# UBUNTU_SNAPSHOT moves every apt package that has a newer version at the new
-# instant; so this layer removed only G3, using Ubuntu's documented method:
-# prefix the entry in /etc/ca-certificates.conf with `!` (deselect) and run
-# update-ca-certificates. On 2026-10-28 the snapshot was moved to
-# 20261024T000000Z after all (security exception (3) in the banner), mainly
-# for poppler's security fixes. At the new snapshot 52 apt binaries (22 source
-# packages) differ from the current image on amd64 and arm64, and a rebuild
-# upgrades 48 of them (20 source packages; the banner names the 4 base-image
-# binaries that keep their versions), among them poppler 24.02.0-1ubuntu9.9 ->
-# -1ubuntu9.11: security backports of the same upstream release, which can
-# still change PDF text extraction in rare cases (not measured before the
-# rebuild; the post-rebuild check re-ingests sample papers and compares the
-# text). It also installs the fixed ca-certificates, which no longer ships G3
-# (its .deb has no emSign_ECC_Root_CA_-_G3.crt; G1, C1 and C3 remain), so this
-# layer now prints "... is not listed ... nothing to deselect". It stays as a
-# guard: if a later snapshot or the live-archive escape hatch brought G3 back,
-# it deselects it, and the check below runs either way.
+# WHY A TARGETED DISTRUST: Ubuntu's fixed package, ca-certificates
+# 20260816ubuntu0.24.04.1 (snapshot IDs >= 20261020T170000Z), ships no G3 (its
+# .deb has no emSign_ECC_Root_CA_-_G3.crt; G1, C1 and C3 remain), so at the
+# pinned snapshot this layer prints "... is not listed ... nothing to
+# deselect". It stays as a guard that does not depend on the snapshot: if a
+# later snapshot or the live-archive escape hatch brought G3 back, it
+# deselects only G3 with Ubuntu's documented method (prefix the entry in
+# /etc/ca-certificates.conf with `!`, then run update-ca-certificates), and
+# the check below runs either way.
 #
 # PERSISTENCE: later apt layers may re-run update-ca-certificates through
 # package triggers; it honors the `!` entry. The package's own configure step
@@ -541,8 +530,8 @@ RUN set -eu; \
 # CERTS_DISABLED), so the deselection survives a reconfigure. The check re-runs
 # at the end of the Python stack and as the last RUN of the build regardless.
 #
-# FORWARD COMPATIBILITY: idempotent. With a ca-certificates that no longer
-# ships G3 (the current snapshot and any later one), its entry is absent and
+# FORWARD COMPATIBILITY: idempotent. With a ca-certificates that ships no G3
+# (the pinned snapshot and any later one), its entry is absent and
 # this layer is a harmless no-op that still runs the check. On the
 # UBUNTU_SNAPSHOT-empty escape hatch (live archive) the same holds.
 #
@@ -751,20 +740,18 @@ RUN if grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
 # Geospatial: required by fiona (rasterstats dep) and beneficial for rasterio,
 # geopandas, osmnx.
 #
-# PDF OCR: the system half of the DAAF PDF reading layer (Literature Review
-# build session S3, decision D-20, 2026-10-13): scripts/pdf_ingest.sh runs OCR
-# only on pages it flags as scanned. poppler-utils (pdftotext, pdftoppm,
+# PDF OCR: the system half of the DAAF PDF reading layer: scripts/pdf_ingest.sh
+# runs OCR only on pages it flags as scanned. poppler-utils (pdftotext, pdftoppm,
 # pdfinfo) is in the system-deps block above; the Python half is the "PDF
 # reading stack" block in the Python section below. tesseract-ocr lives in
 # Ubuntu's `universe` component, so it sits after the universe guard. CPU-only:
 # no GPU and no model downloads; at run time pdf_ingest caps Tesseract at one
 # thread (OMP_THREAD_LIMIT=1 in the subprocess environment), so OCR stays light.
 # License: Apache-2.0 (tesseract-ocr, -eng, -osd).
-# REASONING (why one layer, not a separate OCR block): each apt layer's
-# daaf-apt-update re-downloads the ~33 MB snapshot index. In CI run 38481261916
-# (2026-10-13, slow snapshot server) a separate Tesseract layer spent 133 s of
-# its 171 s on that index refresh and 34 s on the 8.4 MB of packages, so
-# sharing this layer's refresh removes most of the cost.
+# WHY ONE LAYER, not a separate OCR block: each apt layer's daaf-apt-update
+# re-downloads the ~33 MB snapshot index, which can take over two minutes on a
+# slow snapshot server, several times as long as Tesseract's 8.4 MB of
+# packages; sharing this layer's refresh avoids that cost.
 RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
@@ -822,10 +809,11 @@ ARG DAAF_DEV_PWSH_VERSION=7.6.3
 ARG DAAF_DEV_PESTER_VERSION=5.7.1
 ARG DAAF_DEV_PSSA_VERSION=1.24.0
 ARG CODEX_VERSION=0.164.0
-# SHA-256 of each release tarball (GitHub release asset digests for
-# rust-v0.164.0, matched by the downloaded bytes on 2026-10-27). Bumping
-# CODEX_VERSION requires updating BOTH hashes; each release also publishes a
-# codex-package_SHA256SUMS asset to copy them from. See the Codex RUN below.
+# SHA-256 of each release tarball, verified against the GitHub release asset
+# digests of Codex rust-v0.164.0 on 2026-10-27 (the downloaded bytes matched).
+# Bumping CODEX_VERSION requires updating BOTH hashes; each release also
+# publishes a codex-package_SHA256SUMS asset to copy them from. See the Codex
+# RUN below.
 ARG CODEX_SHA256_AMD64=90dd0b03b28afcb7fa733a4f73b413db2916a47347efd43fb669cc1c774ee8e4
 ARG CODEX_SHA256_ARM64=29a507a2a3fd8f6cd94b96b762d281d299d15d7902dee6132d314b78cf9108eb
 ARG DAAF_DEV_GH_VERSION=2.95.0
@@ -881,15 +869,13 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # convention). The binary is available in every image; provider activation and
 # authentication remain separate, explicit runtime choices.
 #
-# VERSION 0.164.0 (stable, 2026-10-23; was 0.153.2): the first stable release
-# whose embedded root list (webpki-roots 1.0.10) no longer contains the
-# compromised "emSign ECC Root CA - G3" (see "Distrust compromised CA roots"
-# above). Codex 0.153.2 embedded G3, and pointing CODEX_CA_CERTIFICATE or
-# SSL_CERT_FILE at a G3-free bundle did not help: those bundles ADD to the
-# embedded roots rather than replacing them. Verified by a static scan of the
-# x86_64 and aarch64 release binaries with positive controls (maintainer-only
-# notes, not shipped: research/2026-10-24_FrameworkDev_CVE_Security_Audit/
-# preliminary_notes/05_codex_root_store.md).
+# VERSION 0.164.0 (Codex stable release of 2026-10-23) is the first stable
+# release whose embedded root list (webpki-roots 1.0.10) omits the compromised
+# "emSign ECC Root CA - G3" (see "Distrust compromised CA roots" above). Codex
+# 0.153.2 embeds G3, and pointing CODEX_CA_CERTIFICATE or SSL_CERT_FILE at a
+# G3-free bundle does not remove it: those bundles ADD to the embedded roots
+# rather than replace them (static scan of the x86_64 and aarch64 release
+# binaries of Codex with positive controls, 2026-10-24).
 #
 # CHECKSUM: the tarball is verified against the per-architecture SHA-256 pinned
 # beside CODEX_VERSION (`sha256sum -c`, after the download and before
@@ -954,14 +940,14 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 #
 # R VERSION NOTE: Pinned to R 4.5.x for P3M binary package compatibility.
 # On the Ubuntu 24.04 (noble) base, P3M serves pre-built binaries for R 4.5.3 on
-# BOTH x86_64 and arm64 (verified 2026-07-14: x-package-binary-tag 4.5-noble and
-# 4.5-noble-arm64 on the pinned snapshot), so neither architecture compiles the
-# framework R packages from source — the Apple Silicon source-build path that the
-# old Debian Bookworm base forced (bookworm being end-of-support for P3M binaries)
-# is gone. R 4.6.x is deliberately NOT adopted here: as of 2026-07-14 P3M still
-# serves NO noble R 4.6 binaries on either arch (live-probe UA fallback to source,
-# contradicting Posit's docs), and the pinned snapshot's S7 0.2.1 is broken under
-# R 4.6. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose on PATH.
+# BOTH x86_64 and arm64 (verified against P3M on 2026-07-14: x-package-binary-tag
+# 4.5-noble and 4.5-noble-arm64 on the pinned snapshot), so neither architecture
+# compiles the framework R packages from source. R 4.6.x is deliberately NOT
+# adopted: P3M served NO noble R 4.6 binaries on either arch (observed
+# 2026-07-14, P3M live probe: the User-Agent fallback returned source,
+# contradicting Posit's docs), and the pinned snapshot's S7 0.2.1 is broken
+# under R 4.6. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose
+# on PATH.
 # Upgrade path: bump R_VERSION only once a live probe confirms 4.6-noble /
 # 4.6-noble-arm64 binary tags AND the snapshot date is >= 2026-04-22 (S7 0.2.2).
 ARG R_VERSION=4.5.3
@@ -991,8 +977,8 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 # (libuv1-dev, libharfbuzz-dev, libfribidi-dev, libnode-dev) are NOT needed to
 # build the framework's own package set. They are retained for two ongoing
 # reasons:
-#   1. USER-ADDED source packages. A user who adds an R package (USER ADDITIONS
-#      block, or an analysis-time install.packages()) that is absent from the
+#   1. USER-ADDED source packages. A user who adds an R package to this file
+#      (the USER ADDITIONS block or a framework R block) that is absent from the
 #      pinned P3M snapshot — or that has no binary — compiles it from source and
 #      needs these headers present. Keeping them installed preserves that path:
 #        - libuv1-dev     -> uv.h    (fs -> sass -> bslib -> rmarkdown/leaflet)
@@ -1004,8 +990,8 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 #      dlopens at load time on EVERY arch — a runtime dlopen, not a NEEDED link
 #      (objdump-confirmed on the noble V8 binary), so V8 installs cleanly but
 #      gt::as_raw_html() fails at first use with
-#      `libnode.so.NNN: cannot open shared object file` if libnode-dev is absent
-#      (R-support Parity Matrix Ticket 8). The presence gate's
+#      `libnode.so.NNN: cannot open shared object file` if libnode-dev is
+#      absent. The presence gate's
 #      requireNamespace("V8") dlopens libnode.so and so catches this at build
 #      time. Do NOT drop libnode-dev.
 #
@@ -1064,25 +1050,23 @@ RUN daaf-apt-update && apt-get install -y --no-install-recommends \
 # new apt package, call `daaf-apt-update` (never a bare `apt-get update`) so the
 # snapshot origin guard still runs.
 #
-# IMPORTANT — CONTAINER-HOST BOUNDARY: If you (or DAAF/Claude Code) are
-# editing this file from inside a running DAAF container, your edits
-# live in the VOLUME copy of the Dockerfile — NOT the HOST copy that
-# Docker Compose actually reads at build time. You must copy the
-# modified Dockerfile back to the host project folder BEFORE running
-# the rebuild, or your changes will silently fail to take effect (the
-# build will "succeed" with no errors, but your new package will not
-# be installed). From your host terminal, in your DAAF project folder:
+# IMPORTANT — CONTAINER-HOST BOUNDARY: if you (or DAAF) edit this file
+# inside the DAAF container, the edits land in the container's copy of the
+# Dockerfile, not the copy in your daaf-docker folder that the build reads.
+# A build that skips copying it back "succeeds" with no error, but your new
+# package is not installed. To copy it back and rebuild in one step, choose
+# 10) Rebuild Container in the DAAF Control Panel, or exit the container and
+# run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your
+# daaf-docker folder.
 #
-#   docker compose cp daaf-docker:/daaf/Dockerfile ./Dockerfile
-#   docker compose up -d --build
-#
-# Docker layer caching makes rebuilds fast — only changed layers re-run.
+# Docker layer caching makes rebuilds fast — only the changed layer and the
+# layers after it re-run.
 # For packages needing C libraries (e.g., libfoo-dev), also add them to
-# the apt-get block in "Install System Dependencies" above (a single
-# copy-back step covers both edits, since they're in the same file).
+# the apt-get block in "Install System Dependencies" above (one rebuild
+# covers both edits, since they're in the same file).
 #
 # For the full explanation, step-by-step procedure, common scenarios,
-# and runtime install options, see:
+# and why packages are not installed into a running container, see:
 #   user_reference/04_extending_daaf.md
 #   (section: "The Recommended Path: Modify the Dockerfile")
 # -----------------------------------------------
@@ -1092,8 +1076,9 @@ RUN daaf-apt-update && apt-get install -y --no-install-recommends \
 #       (packaging bug: no Requires-Dist in METADATA; import only worked because
 #       numba/formulaic/etc. arrived transitively via umap-learn, wildboottest,
 #       linearmodels), and the 0.40.1 hotfix declares a scipy upper bound that
-#       conflicts with scipy==1.17.0. 0.60.0 has correct metadata; expect one
-#       new transitive dep (maketables, its table backend) in the image.
+#       conflicts with scipy==1.17.0. 0.60.0 has correct metadata; of its
+#       dependencies only maketables (its table backend) comes from this
+#       block alone.
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
@@ -1152,18 +1137,16 @@ RUN uv pip install --system \
     osmnx==2.1.0
 
 # Install visualization packages
-# NOTE: marimo pinned 0.25.0 (2026-10-16; was 0.19.11) for security: 0.19.11 is
-#       affected by CVE-2026-39987 (critical pre-auth RCE via the edit-mode
-#       /terminal/ws endpoint, fixed 0.23.0), CVE-2026-54386 (XSS, fixed 0.23.9)
-#       and CVE-2026-67618 / CVE-2026-75149 (malicious-notebook PEP 723 and MCP
-#       config injection, fixed 0.23.15). 0.25.0 was uploaded inside
-#       UV_EXCLUDE_NEWER, so no per-package override. It adds two transitive deps,
-#       pyzmq 27.2.0 and python-multipart 0.0.32 (wheels on x86_64 and aarch64,
-#       resolved under the freeze), and its pymdown-extensions bound (>=10.21.2,<12)
-#       lets that marimo-only dep resolve to 11.0.2 (was 10.21.3; observed in the
-#       post-rebuild freeze). Transitive deps are left to resolution under the
-#       freeze, not pinned. Maintainer-only notes (not shipped):
-#       research/2026-10-16_FrameworkDev_MarimoUpgrade/.
+# NOTE: marimo is pinned at 0.25.0 for security: every release before 0.23.15
+#       is affected by at least one of: CVE-2026-39987 (critical pre-auth RCE
+#       via the edit-mode /terminal/ws endpoint, fixed 0.23.0), CVE-2026-54386
+#       (XSS, fixed 0.23.9), CVE-2026-67618 and CVE-2026-75149
+#       (malicious-notebook PEP 723 and MCP config injection, fixed 0.23.15),
+#       so never pin below 0.23.15. 0.25.0 was uploaded before
+#       UV_EXCLUDE_NEWER, so it needs no per-package override. pyzmq 27.2.0 and
+#       python-multipart 0.0.32 are installed for marimo alone, and
+#       pymdown-extensions resolves to 11.0.2 within marimo's >=10.21.2,<12
+#       bound; all are left to resolution under the freeze, not pinned.
 RUN uv pip install --system \
     matplotlib==3.10.8 \
     seaborn==0.13.2 \
@@ -1197,18 +1180,16 @@ RUN uv pip install --system \
 
 # Install the DAAF web-retrieval extraction stack (scripts/web_fetch.py)
 # trafilatura provides high-fidelity main-content extraction for the DAAF
-# web-retrieval fetch utility (scripts/web_fetch.py + web_fetch.sh). Pinned
-# per research/2026-08-08_FrameworkDev_WebRetrieval/DESIGN_SPEC.md
-# (maintainer-only, not shipped). lxml is pinned to the exact version already
-# resolved in the image (no ownership
-# conflict); courlan/htmldate/justext are the genuinely new direct deps.
+# web-retrieval fetch utility (scripts/web_fetch.py + web_fetch.sh). lxml is
+# pinned to the version the other blocks resolve (no ownership conflict);
+# courlan, htmldate and justext are pinned here as well.
 # urllib3 is left to existing resolution to avoid duplicate pin ownership (it
 # is pinned in the core block); charset_normalizer is pinned once, in the PDF
 # reading stack block below. certifi is not pinned here either: its one pin is
-# the trust-store exception layer at the end of the Python stack (eMudhra
-# distrust, 2026-10-27), which overrides whatever these blocks resolve.
-# web_fetch.py degrades to a bs4 fallback if this stack is absent, so the tool
-# works pre-rebuild and gains fidelity post-rebuild.
+# the trust-store exception layer at the end of the Python stack (security
+# exception (1)), which overrides whatever these blocks resolve.
+# web_fetch.py falls back to a minimal bs4 extractor if trafilatura cannot be
+# imported (an image built without this block).
 RUN uv pip install --system \
     trafilatura==2.2.0 \
     lxml==6.1.1 \
@@ -1217,8 +1198,8 @@ RUN uv pip install --system \
     justext==3.0.2
 
 # Install the DAAF PDF reading stack (scripts/pdf_ingest.py, scripts/lit_verify.py)
-# The Python half of the PDF reading layer (Literature Review build session S3,
-# decision D-20, 2026-10-13); Tesseract shares the geospatial apt layer above.
+# The Python half of the PDF reading layer; Tesseract shares the geospatial apt
+# layer above.
 # pdf_ingest uses poppler pdftotext as its anchor text lane, pypdfium2 as a
 # second lane and pdfplumber for table hints; lit_verify uses rapidfuzz for
 # quote matching. Every distribution these four packages install is pinned
@@ -1232,26 +1213,26 @@ RUN uv pip install --system \
 #   pycparser 3.0               BSD-3-Clause (cffi dep)
 #   pillow 13.0.0               MIT-CMU (pdfplumber dep; also matplotlib, contextily)
 #   charset-normalizer 3.5.1    MIT (pdfminer.six dep; also requests, trafilatura)
-# pillow and charset-normalizer were already in the image with no explicit pin.
-# charset-normalizer is pinned at the version already resolved (the lxml rule
+# Earlier blocks also bring in pillow and charset-normalizer without pinning
+# them. charset-normalizer is pinned at the version they resolve (the lxml rule
 # above), so this block does not change it. pillow is the exception:
-# SECURITY EXCEPTION (2) in the banner (2026-10-28). The earlier blocks resolve
+# SECURITY EXCEPTION (2) in the banner. The earlier blocks resolve
 # pillow 12.3.0 at UV_EXCLUDE_NEWER, which has 41 published advisories (5
 # critical, 23 high; e.g. CVE-2026-112403, a JPEG heap overflow), all fixed in
 # 13.0.0. This block moves pillow alone to 13.0.0 with a one-package override:
-#   - 13.0.0's files were uploaded 2026-10-16T22:15:24Z..22:18:09Z (PyPI JSON,
-#     2026-10-28); the override instant 2026-10-17T00:00:00Z follows all of
-#     them, and no later pillow release existed when it was chosen.
+#   - 13.0.0's files were uploaded 2026-10-16T22:15:24Z..22:18:09Z (verified
+#     against the PyPI JSON API on 2026-10-28); the override instant
+#     2026-10-17T00:00:00Z follows all of them.
 #   - pillow declares no dependencies, and its dependents accept 13.0.0
 #     (pdfplumber 0.11.10 Pillow>=12.2.0, matplotlib pillow>=8, contextily any).
 #     A dry-run `uv pip compile` of every `==` pin in this file with this
 #     override and the certifi one, at UV_EXCLUDE_NEWER, resolved the same
 #     173-package set except certifi and pillow on x86_64 and aarch64
-#     (2026-10-28).
+#     (resolved against PyPI on 2026-10-28).
 #   - Pillow 13 drops Python 3.10 and removes a few APIs (the silent clipping
 #     when saving I-mode images as PNG, fromarray(mode=...) where the mode
 #     changes the dtype, Image._show, ImageCms product_name; get_child_images
-#     moved). No DAAF code or skill uses them (repo grep, 2026-10-28); user
+#     moved). No DAAF code or skill uses them; user
 #     figure code that does needs a mode conversion first.
 #   - REMOVE the --exclude-newer-package flag when the environment date is
 #     next bumped to an instant on or after 2026-10-17T00:00:00Z (keep the
@@ -1260,13 +1241,11 @@ RUN uv pip install --system \
 # A pin in this later block wins over what the earlier blocks resolve, so
 # re-check both pins against matplotlib, requests and trafilatura whenever the
 # environment date is bumped.
-# PyMuPDF is deliberately EXCLUDED: AGPL (decision D-2). CPU-only: prebuilt
-# wheels for x86_64 and aarch64, all at or before UV_EXCLUDE_NEWER except
-# pillow 13.0.0 (override above). The 2026-10-28 dry-run `uv pip compile` with
-# both overrides resolved exactly these 9 versions, pillow 13.0.0 included, on
-# both (maintainer-only notes, not shipped:
-# research/2026-10-24_FrameworkDev_CVE_Security_Audit/
-# scripts/pd_02_uv_compile_pillow_override.py).
+# PyMuPDF is deliberately EXCLUDED: AGPL. CPU-only: prebuilt wheels for x86_64
+# and aarch64, all at or before UV_EXCLUDE_NEWER except pillow 13.0.0 (override
+# above). A dry-run `uv pip compile` with both overrides resolved exactly these
+# 9 versions, pillow 13.0.0 included, on both architectures (resolved against
+# PyPI on 2026-10-28).
 RUN uv pip install --system \
     --exclude-newer-package pillow=2026-10-17T00:00:00Z \
     pypdfium2==5.13.0 \
@@ -1292,7 +1271,8 @@ RUN uv pip install --system \
     httpx==0.28.1 \
     uvicorn==0.51.0
 
-# Trust-store exception: certifi past the environment date (2026-10-27).
+# Trust-store exception (security exception (1) in the banner): certifi past
+# the environment date.
 # certifi is the CA bundle that requests and httpx verify against (the
 # provider shim's model traffic, web_fetch, scholar_search, data fetches). At
 # UV_EXCLUDE_NEWER it resolves to certifi 2026.7.22, which still trusts the
@@ -1309,7 +1289,8 @@ RUN uv pip install --system \
 #     dependencies and no analytic effect. A dry-run `uv pip compile` of every
 #     `==` pin in this file plus this line, at the environment date with this
 #     override, resolved the identical 173-package set except certifi
-#     (2026.7.22 -> 2026.10.19) on x86_64 and aarch64 (2026-10-27).
+#     (2026.7.22 -> 2026.10.19) on x86_64 and aarch64
+#     (resolved against PyPI on 2026-10-27).
 #   - It is the last Python package layer so no later framework Python block
 #     can replace it (the build's last RUN re-checks certifi's bundle anyway).
 #   - REMOVE this layer when the environment date is next bumped to an
@@ -1365,14 +1346,12 @@ RUN daaf-check-distrusted-roots "$(python3 -c 'import certifi; print(certifi.whe
 # R 4.5 binary-availability and S7 constraints in the R VERSION NOTE above.
 # On the Ubuntu 24.04 (noble) base P3M provides pre-built binaries on
 # BOTH x86_64 and arm64 — much faster than source compilation — so no framework R
-# package compiles from source on either architecture (verified 2026-07-14:
-# x-package-binary-tag 4.5-noble on x86_64 and 4.5-noble-arm64 on aarch64 for the
-# pinned snapshot). This replaced the former Debian Bookworm base, which served
-# binaries on x86_64 only and forced ~25-35 min of all-source R compilation on
-# Apple Silicon (bookworm being end-of-support for P3M binaries). The four extra
-# dev headers (libuv1-dev, libharfbuzz-dev, libfribidi-dev, libnode-dev) are
-# still installed in the R-toolchain apt block above, now for USER-ADDED source
-# packages and for libnode's runtime dlopen linkage under V8 (see that block).
+# package compiles from source on either architecture (verified against
+# P3M on 2026-07-14: x-package-binary-tag 4.5-noble on x86_64 and
+# 4.5-noble-arm64 on aarch64 for the pinned snapshot). The four extra dev
+# headers (libuv1-dev, libharfbuzz-dev, libfribidi-dev, libnode-dev) in the
+# R-toolchain apt block above serve USER-ADDED source packages and libnode's
+# runtime dlopen linkage under V8 (see that block).
 ARG P3M_SNAPSHOT_DATE=2026-04-15
 RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
     && echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/noble/${P3M_SNAPSHOT_DATE}'))" \
@@ -1402,9 +1381,10 @@ RUN Rscript -e 'pkgs <- c( \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # Statistics and econometrics
-# NOTE: the wild-cluster-bootstrap package was removed here — archived on CRAN,
-# no R 4.5 binary in the P3M snapshot. It can be installed at analysis time if
-# needed (e.g. via a source/archive build).
+# NOTE: the wild-cluster-bootstrap package (fwildclusterboot) is not installed:
+# it is archived on CRAN and has no R 4.5 binary in the P3M snapshot. To use it,
+# add a source or archive install to this file; runtime installs are blocked
+# (CLAUDE.md § Runtime Package Installation).
 RUN Rscript -e 'pkgs <- c( \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
         "marginaleffects", "rdrobust", "lme4", \
@@ -1428,10 +1408,10 @@ RUN Rscript -e 'pkgs <- c( \
 # "V8" is pinned explicitly (it would otherwise arrive only as a transitive
 # dependency of gt's HTML path) because gt's HTML rendering — gt::as_raw_html(),
 # used to inline tables into reports — requires it, and requireNamespace("V8")
-# dlopens libnode.so. Listing V8 here and in the presence gate means the gate now
+# dlopens libnode.so. Listing V8 here and in the presence gate means the gate
 # EXERCISES that native linkage at build time, catching the missing-runtime-lib
 # failure class (libnode.so absent) rather than letting it surface only when a
-# report is first rendered (R-support Parity Matrix Ticket 8).
+# report is first rendered.
 RUN Rscript -e 'pkgs <- c( \
         "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
         "plotly", "gt", "V8", "knitr", "kableExtra", "viridis" \
@@ -1481,8 +1461,7 @@ RUN Rscript -e 'pkgs <- c( \
 # renv.lock file. No shipped DAAF workflow uses it yet. Inside the container,
 # use it only to SNAPSHOT the packages a project's R scripts import into a lockfile — never
 # to install or restore packages inside the container (runtime installs are
-# blocked; see CLAUDE.md § Runtime Package Installation). Rationale (maintainer-only, not shipped):
-# research/2026-10-02_FrameworkDev_ManuscriptPrepMode/preliminary_notes/17_research_t8_aea_data_editor.md §4.
+# blocked; see CLAUDE.md § Runtime Package Installation).
 RUN Rscript -e 'pkgs <- c( \
         "renv" \
         ); \
@@ -1491,15 +1470,13 @@ RUN Rscript -e 'pkgs <- c( \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # Presence gate: the FINAL identity check that the installed package set matches the
-# union of the install.packages() blocks above. Its role changed with the per-block
-# fail-fast pattern: the per-block requireNamespace() checks now catch a failed package
-# INSIDE its own layer (fast, adjacent to the compile error), so this gate is no longer
-# the first line of defense against a silently-dropped package (as happened with the
-# archived wild-bootstrap package). It still earns its keep as the union check — one
-# authoritative list that must stay identical to the blocks — and it additionally
-# EXERCISES native linkage: requireNamespace("V8") dlopens libnode.so, so the gate
-# fails at build time if the libnode.so runtime library is missing (the gt::as_raw_html
-# failure class; R-support Parity Matrix Ticket 8) rather than deferring it to first use.
+# union of the install.packages() blocks above. The per-block requireNamespace()
+# checks catch a failed package INSIDE its own layer (fast, adjacent to the compile
+# error); this gate is the union check — one authoritative list that must stay
+# identical to the blocks — and it also EXERCISES native linkage:
+# requireNamespace("V8") dlopens libnode.so, so the gate fails at build time if the
+# libnode.so runtime library is missing (the gt::as_raw_html failure class) rather
+# than deferring it to first use.
 # Keep this list in sync with the blocks above when adding or removing packages.
 RUN Rscript -e 'pkgs <- c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
@@ -1525,11 +1502,10 @@ RUN Rscript -e 'pkgs <- c( \
 
 # Quarto CLI (language-agnostic notebook system; DAAF uses it for R Stage 9
 # notebooks, and it can also render Typst PDF and DOCX).
-# Pin the version; update when intentionally upgrading.
-# 1.7.29 -> 1.10.18 (2026-10-03): Typst linestretch/abstract-title, list tables,
-# multi-bib Typst fix, manuscript-project fixes, apaquarto (>=1.9), PDF/UA alt text.
-# Bundles pandoc 3.10 + typst 0.15.1. Plan + regression notes (maintainer-only, not shipped):
-# research/2026-10-02_FrameworkDev_ManuscriptPrepMode/preliminary_notes/18_research_t9_quarto_bump_plan.md
+# Pin the version; update when intentionally upgrading. 1.10.18 provides Typst
+# linestretch/abstract-title, list tables, the multi-bib Typst fix,
+# manuscript-project fixes, apaquarto (>=1.9) and PDF/UA alt text. It bundles
+# pandoc 3.10 + typst 0.15.1.
 ARG QUARTO_VERSION=1.10.18
 RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${ARCH}.deb" \
@@ -1540,8 +1516,8 @@ RUN ARCH=$(dpkg --print-architecture) \
 # TinyTeX (LaTeX for Quarto's `format: pdf`, engine lualatex), pinned and
 # checksummed like the Codex CLI.
 #
-# WHY: Quarto renders PDF through LaTeX, and the image had none, so
-# `format: pdf` failed and agents fell back to Typst. TinyTeX is the TeX Live
+# WHY: Quarto renders `format: pdf` through LaTeX, so the image needs a LaTeX
+# distribution (without one, agents fall back to Typst). TinyTeX is the TeX Live
 # subset Quarto's own `quarto install tinytex` uses. It is installed HERE, at
 # build time, root-owned in /opt/TinyTeX, and not per user at runtime: CLAUDE.md
 # § Runtime Package Installation forbids runtime installs, and a frozen tree is
@@ -1552,10 +1528,11 @@ RUN ARCH=$(dpkg --print-architecture) \
 # carries the leading `v`), bundle `TinyTeX` (not -0/-1, which lack
 # koma-script, tcolorbox and fontawesome5; not -2, which exists only on the
 # mutable `daily` tag). Its assets are byte-identical to the daily build of
-# 2026-10-21, and its package database matches the texlive.info tlnet archive
-# of 2026-10-19 revision for revision (320 of 320 records), so that archive is
-# the repository for the extra packages: selnolig (loaded whenever `lang:` is
-# set), lua-ul + luacolor (strikeout and `.mark` highlight), marginfix (natbib
+# 2026-10-21 (TinyTeX `daily` tag), and its package database matches the
+# texlive.info tlnet archive of 2026-10-19 revision for revision (320 of 320
+# records), so that archive is the repository for the extra packages:
+# selnolig (loaded whenever `lang:` is set), lua-ul + luacolor (strikeout and
+# `.mark` highlight), marginfix (natbib
 # margin citations), xurl + footnotehyper (optional, template-guarded), and
 # luatexbase with its one dependency ctablestack (the bundle lacks both, and
 # babel's luababel.def and selnolig.sty load luatexbase, so any `lang:` render
@@ -1584,8 +1561,8 @@ RUN ARCH=$(dpkg --print-architecture) \
 # ua-2) would fail on it too.
 #
 # CHECKSUM: the tarball is verified against the per-architecture SHA-256
-# pinned beside TINYTEX_VERSION (GitHub release asset digests for v2026.11,
-# matched by the downloaded bytes on 2026-11-01) with `sha256sum -c`, after the
+# pinned beside TINYTEX_VERSION (GitHub release asset digests for v2026.11; the
+# TinyTeX tarballs matched them on 2026-11-01) with `sha256sum -c`, after the
 # download and before extraction. The build downloads the archive's package
 # database (tlpkg/texlive.tlpdb, uncompressed) and checks it against
 # TINYTEX_TLPDB_SHA512 before tlmgr installs anything: the pin binds the
@@ -1649,16 +1626,12 @@ RUN ARCH=$(dpkg --print-architecture) \
 # boundary: DAAF's build does not populate it with packages, and nothing in
 # DAAF installs into it.
 #
-# Evidence: the asset digests pinned below, bundle coverage, the archive match, the
-# CA file and the font-cache settings were checked against the downloaded
-# release assets and the dated archive before pinning (2026-11-01).
-# The four TinyTeX RUNs (the three below and the smoke render) were simulated
-# on amd64 as a non-root user against the real tarball and archive
-# (2026-11-01): path links, package install, revision and #15143 checks, font
-# cache and the PDF compile pass. Checked in the rebuilt amd64 image
-# (2026-11-01): appuser cannot write the tree, and the first render builds the
-# font-name database in TEXMFVAR. Untested: the arm64 tarball; the build's own
-# checks and smoke render cover it.
+# Evidence: the asset digests pinned below, bundle coverage, the archive match,
+# the CA file and the font-cache settings were verified against the TinyTeX
+# release assets and the dated texlive.info archive on 2026-11-01. An amd64
+# image built from these layers passed the build's own checks and the smoke
+# render. The arm64 tarball has not been built; on arm64 the build's own
+# checks and smoke render are its only test.
 ARG TINYTEX_VERSION=v2026.11
 ARG TINYTEX_SHA256_AMD64=50e68059058db770a28bcca44d5a323cb57fc10d470017c858404aafeaac9dd7
 ARG TINYTEX_SHA256_ARM64=a493b548ba82aafd715f297397de959bc8131c16a9be9e4b90fa6454e5d57fb1
@@ -1819,10 +1792,10 @@ RUN ARCH=$(dpkg --print-architecture) \
 # ============================================
 # Create non-root user for security
 # ============================================
-# ubuntu:24.04 ships a default `ubuntu` user at UID/GID 1000 (bookworm did not),
-# which collides with the explicit --gid/--uid 1000 below ("GID 1000 is not
-# unique", exit 4). Remove it first; keeping appuser at 1000 preserves file
-# ownership parity for existing volumes. The mail-spool touch/chown suppresses
+# ubuntu:24.04 ships a default `ubuntu` user at UID/GID 1000, which collides
+# with the explicit --gid/--uid 1000 below ("GID 1000 is not unique", exit 4).
+# Remove it first; keeping appuser at 1000 preserves file ownership parity for
+# existing volumes. The mail-spool touch/chown suppresses
 # a harmless "mail spool not found" warning from userdel so build logs stay
 # clean. userdel -r also removes /home/ubuntu and the ubuntu group (GID 1000).
 RUN touch /var/mail/ubuntu \
@@ -1917,9 +1890,10 @@ RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64
 RUN echo '{"workbench.colorTheme":"GitHub Dark Default","editor.fontSize":14,"editor.minimap.enabled":false,"telemetry.telemetryLevel":"off","extensions.autoUpdate":false,"security.workspace.trust.enabled":false}' \
     > /home/appuser/.local/share/code-server/User/settings.json
 
-# Configure git identity for DAAF's internal version tracking.
-# Agents make local commits during research sessions to create an audit trail.
-# This identity is used for those automated commits inside the container only.
+# Git identity for commits made inside the container: by the orchestrator, only
+# when git commit management is enabled and the user approves the commit
+# (CLAUDE.md § User Preferences), or by the user. It applies inside the
+# container only.
 RUN git config --global user.email "daaf@local" \
     && git config --global user.name "DAAF Container"
 
@@ -1933,10 +1907,9 @@ RUN git config --global user.email "daaf@local" \
 # in scope here — there is no intervening FROM.
 #
 # FAIL-SOFT by design: `|| echo ...` swallows a non-zero exit so a dev build
-# never dies here. gh's flag/setup-git behavior cannot be exercised in this
-# authoring environment (no gh binary, no Docker), and with no authenticated
-# host gh needs `--force --hostname github.com` (cli/cli#8521) — a hard failure
-# on that edge would break every DAAF_DEV build for a non-essential convenience.
+# never dies here. With no authenticated host, gh needs `--force --hostname
+# github.com` (cli/cli#8521), and a hard failure on that edge would break every
+# DAAF_DEV build for a non-essential convenience.
 # Runtime GH_TOKEN auth (see the install RUN above) does not depend on this step.
 RUN if [ "${DAAF_DEV}" = "1" ]; then \
         gh auth setup-git --force --hostname github.com \
@@ -1944,10 +1917,10 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
     fi
 
 # Install Claude Code as appuser (pinned version)
-# Pinned to 2.1.281 (npm `latest` = `next`; changelog head) on 2026-09-24. The
-# previous pin, 2.1.280 (2026-09-23), is the first version that ships Claude
-# Opus 5.5 (`claude-opus-5-5`, added 2.1.280; 1M context, now the default `opus`
-# alias). DAAF's .claude/settings.json ships the soft session default
+# Pinned to 2.1.281 (npm `latest` = `next` and changelog head on 2026-09-24).
+# 2.1.280 is the first version that ships Claude Opus 5.5 (`claude-opus-5-5`;
+# 1M context; the default `opus` alias at 2.1.280 and 2.1.281). DAAF's
+# .claude/settings.json ships the soft session default
 # `ANTHROPIC_DEFAULT_MODEL=opus` (honored from Claude Code 2.1.236), which at
 # this pin resolves to Opus 5.5 on a standard Anthropic subscription / API key;
 # a pin before 2.1.280 resolves the same `opus` to an earlier Opus. Every
@@ -1955,10 +1928,10 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # the Opus 5.5 default named in user_reference/01_installation_and_quickstart.md
 # and user_reference/07_faq_technical.md), and must re-check that Auto mode
 # still works on a provider-shim route: shim routes rely on Claude Code's
-# client-side classifier fallback, which a third party reports may be removed in
-# releases after 2026-10-23 (see the deploy-smoke skill's interpreting-results.md
-# § Auto mode). 2.1.276 is the HARD
-# MINIMUM for any shim-lane install:
+# client-side classifier fallback, which a third party reports may be removed
+# in Claude Code releases after 2026-10-23 (see the deploy-smoke skill's
+# interpreting-results.md § Auto mode). 2.1.276 is the HARD MINIMUM for any
+# shim-lane install:
 # three separate `ANTHROPIC_BASE_URL` gateway/proxy regressions landed in
 # 2.1.265 (Artifact-tool input-schema regex -> HTTP 400, fixed 2.1.268;
 # `CLAUDE_CODE_USE_GATEWAY` forcing Cloud sign-in, fixed 2.1.266) and 2.1.275
@@ -1969,19 +1942,11 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # check prompt for command-substitution targets (`rm -r "$(pwd)"`) even in
 # bypass mode (2-minute wait, then deny), and fixes proxy/gateway stream
 # handling (clean-close truncation, dropped or duplicated events).
-# Delta review 2.1.203-2.1.281 + regression checklist (four contributing reviews;
-# maintainer-only, not shipped):
-#   research/2026-07-29_FrameworkDev_ClaudeCode_Upgrade_2.1.212/  (2.1.203-2.1.212)
-#   research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261/  (2.1.213-2.1.261)
-#   research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/  (2.1.262-2.1.280)
-#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/  (2.1.281)
-# Prior review (2.1.188-2.1.202; maintainer-only, not shipped):
-#   research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202/
 # Rollback target: 2.1.280 (the only earlier pin at which the shipped `opus`
 # default still resolves to Opus 5.5; 2.1.261 predates Opus 5.5, so there it
 # would resolve to an earlier Opus)
 ARG CLAUDE_CODE_VERSION=2.1.281
-# CLAUDE_CODE_CERT_STORE=system (2026-10-27, eMudhra distrust): Claude Code
+# CLAUDE_CODE_CERT_STORE=system (eMudhra distrust): Claude Code
 # 2.1.281 bundles its own Mozilla CA list, and that list still contains the
 # compromised "emSign ECC Root CA - G3" (see "Distrust compromised CA roots"
 # near the top). Its default store setting is `bundled,system`, so G3 would stay
@@ -1996,11 +1961,8 @@ ARG CLAUDE_CODE_VERSION=2.1.281
 # system-store load ("system store returned empty", "Failed to load system CA
 # certificates") re-adds the bundled list, which holds G3, and a missing
 # system-CA API ("deferring to runtime") leaves the runtime's default store in
-# place (inference: Bun's bundled list). In testing on 2.1.281 the system store
-# loaded ("Loaded 120 system CA certificates", stores=system); a post-rebuild
-# check reads the debug log for that line and for the absence of the fallback
-# messages. Evidence and check (maintainer-only, not shipped):
-#   research/2026-10-24_FrameworkDev_CVE_Security_Audit/  (reviews/02, drafts/)
+# place (inference: Bun's bundled list). In testing on Claude Code 2.1.281 the
+# system store loaded ("Loaded 120 system CA certificates", stores=system).
 # Inference from the same code, not tested: certificates in NODE_EXTRA_CA_CERTS
 # are still appended under `system`. Set before the installer RUN so the
 # install step uses it too. REVISIT at the next Claude Code upgrade: releases
@@ -2039,6 +2001,9 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 #       added to the presence-gate list), not here — the gate only checks the
 #       packages listed there.
 #   (c) Anything a later framework layer depends on must precede that layer.
+#   (d) A LaTeX package goes in `TT_PKGS` in the TinyTeX block above, not here,
+#       so it installs from the same dated archive as the other extra LaTeX
+#       packages (user_reference/04_extending_daaf.md § "LaTeX Packages").
 # A standalone tool that nothing else depends on (a CLI utility, an extra
 # analysis package) is the ideal candidate for this block.
 #
@@ -2067,17 +2032,23 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # release download instead. R installs use the separate P3M snapshot date.
 #
 # CONTAINER-HOST BOUNDARY: the same warning that applies to the mid-file
-# customization blocks applies here — if you edit this file from inside a running
-# DAAF container you are editing the VOLUME copy, not the HOST copy Docker
-# Compose builds from. Copy it back to the host before rebuilding (the
-# rebuild_daaf.sh / .ps1 scripts do this for you). See
-# user_reference/04_extending_daaf.md § "The Recommended Path: Modify the
-# Dockerfile" for the full procedure.
+# customization blocks applies here — if you edit this file inside the DAAF
+# container, you are editing the container's copy, not the copy in your
+# daaf-docker folder that the build reads. The rebuild in HOW TO USE below
+# copies it back for you. See user_reference/04_extending_daaf.md § "The
+# Recommended Path: Modify the Dockerfile" for the full procedure.
 #
 # HOW TO USE: everything below is COMMENTED OUT so an unused block adds ZERO
 # instructions and produces a byte-for-byte identical image to a default build.
 # Uncomment the directives and the example(s) you need, following the patterns
-# already used elsewhere in this file.
+# already used elsewhere in this file. Then rebuild the image: choose
+# 10) Rebuild Container in the DAAF Control Panel, or exit the container and
+# run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your
+# daaf-docker folder.
+#
+# Add packages here, never inside a running container: a package installed in
+# a running container is lost whenever the container is rebuilt or recreated,
+# and DAAF's agents will not install one there.
 #
 # ---- ROOT-LEVEL INSTALLS (uncomment `USER root` + your install line[s]) ----
 # Root is needed for apt-get and for system-wide (`--system`) package installs.
@@ -2096,10 +2067,16 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 #     your-package==1.2.3
 #
 # R package (installs from the P3M snapshot configured above) — matches the
-# R install blocks above. NOTE: packages added here are NOT covered by the
-# presence gate; if you need gate coverage, add them to the framework R blocks
-# instead (see caveat (b)).
-# RUN Rscript -e 'install.packages("yourPackage")'
+# R install blocks above, including their check: install.packages() only warns
+# when a package fails to install, so the requireNamespace() check after it
+# stops the build instead of letting it finish without the package. Uncomment
+# all four lines. NOTE: packages added here are NOT covered by the presence
+# gate; if you need gate coverage, add them to the framework R blocks instead
+# (see caveat (b)).
+# RUN Rscript -e 'pkgs <- c("yourPackage"); \
+#         install.packages(pkgs); \
+#         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+#         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 #
 # ---- RESTORE THE NON-ROOT RUNTIME USER (REQUIRED if you used `USER root`) ----
 # The FINAL `USER` directive in the Dockerfile determines the container's
@@ -2111,9 +2088,10 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 #
 # ---- USER-LEVEL / HOME-DIRECTORY INSTALLS (place AFTER `USER appuser`) ----
 # Anything that writes into /home/appuser belongs here, after the user is
-# restored: curl|bash-style per-user installers, editor extensions, dotfiles,
-# `uv pip install --user` / `pip install --user`, etc. Running these as root
-# would write into /root or leave root-owned files in /home/appuser.
+# restored: curl|bash-style per-user installers, editor extensions, dotfiles.
+# Running these as root would write into /root or leave root-owned files in
+# /home/appuser. Python and R packages go in the root-level examples above
+# (`uv pip install --system`, `install.packages()`), not here.
 # RUN curl -fsSL https://example.com/install.sh | bash
 # ============================================
 
@@ -2122,9 +2100,9 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # #15143 path: `lang: en-US` (babel + selnolig, which load luatexbase), a
 # callout (tcolorbox, fontawesome5), strikeout and `.mark` (lua-ul, luacolor),
 # a footnote and a URL (footnotehyper, xurl), and `pdf-standard: ua-2`
-# (\DocumentMetadata with KOMA-Script 3.49.2 under Quarto 1.10.18; it passed in
-# the non-root amd64 simulation). `latex-auto-install: false` makes a missing
-# package fail at once instead of starting tlmgr. Before rendering it checks
+# (\DocumentMetadata with KOMA-Script 3.49.2 under Quarto 1.10.18).
+# `latex-auto-install: false` makes a missing package fail at once instead of
+# starting tlmgr. Before rendering it checks
 # that appuser runs it, that kpathsea honors ENV TEXMFVAR, and that appuser
 # cannot write the tree. The render's caches (TEXMFVAR, XDG dirs) point into the
 # temporary directory, which starts in the same state as appuser's real cache

@@ -105,7 +105,7 @@ if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
     fi
 
     if ! docker info &> /dev/null; then
-        echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
+        echo "ERROR: Docker does not seem to be running. Start Docker Desktop (or the Docker service) and try again." >&2
         exit 1
     fi
 fi
@@ -121,7 +121,7 @@ if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
     # the failing command -- so a failure is never silent. Important for users
     # who launch the panel by double-clicking in Terminal, where the window
     # would otherwise close instantly on an uncaught error.
-    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug -- please report it. The panel will now exit." >&2' ERR
+    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug. Please report it, with the lines above, at" >&2; echo "  https://github.com/DAAF-Contribution-Community/daaf/issues" >&2; echo "  The panel will now exit." >&2' ERR
 
     # On any error exit, pause so a double-clicked Terminal window does not
     # vanish before the diagnostic above can be read. Skips the clean-quit path
@@ -167,6 +167,13 @@ gather_status() {
             </dev/null 2>/dev/null > "$tmpdir/date" &
         docker compose exec -T daaf-docker git -C /daaf branch --show-current \
             </dev/null 2>/dev/null > "$tmpdir/branch" &
+        # Commits on origin/main that HEAD lacks, as of the last fetch. The
+        # panel never fetches (a fetch per redraw is a network call); the
+        # updater's fetch from origin does. The installer's clone sets
+        # origin/main only for an install from main (the clone is
+        # single-branch); with no origin/main the count is empty and the label
+        # is omitted. The count is against origin/main even when the updater
+        # follows DAAF_BRANCH or an `upstream` remote.
         docker compose exec -T daaf-docker git -C /daaf rev-list --count HEAD..origin/main \
             </dev/null 2>/dev/null > "$tmpdir/updates" &
         local ports_probe='
@@ -204,7 +211,7 @@ gather_status() {
     if [ -e "${backup_dirs[0]}" ]; then
         # Bash 3.2 (macOS /bin/bash) does not support negative array subscripts
         # (${arr[-1]} was added in 4.3), so index the last element via arithmetic.
-        # Timestamp-prefixed names sort lexicographically, so the last glob match
+        # Date-prefixed names sort lexicographically, so the last glob match
         # is the newest backup.
         local last_backup_dir="${backup_dirs[$((${#backup_dirs[@]} - 1))]}"
         STATUS_LAST_BACKUP=$(basename "$last_backup_dir" | sed 's/_daaf_backup//')
@@ -241,13 +248,14 @@ display_menu() {
     fi
     echo "$version_line"
 
-    # Branch line
+    # Branch line. The count is only as fresh as the last update check (the panel
+    # does not fetch; see gather_status), so the label says so.
     local branch_line
     branch_line="  Branch:     ${STATUS_BRANCH}"
     if [ -n "$STATUS_UPDATES" ] && [ "$STATUS_UPDATES" != "0" ]; then
-        branch_line="${branch_line} (${STATUS_UPDATES} updates available)"
+        branch_line="${branch_line} (${STATUS_UPDATES} updates available as of the last update check)"
     elif [ -n "$STATUS_UPDATES" ]; then
-        branch_line="${branch_line} (up to date)"
+        branch_line="${branch_line} (up to date as of the last update check)"
     fi
     echo "$branch_line"
 
@@ -388,7 +396,9 @@ handle_notebooks() {
     # Ensure the container is up before attempting docker compose exec, so we
     # give a clear message instead of letting a failed exec surface obscurely.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
@@ -462,16 +472,19 @@ handle_vscode() {
 
     # Ensure the container is up before attempting docker compose exec.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
-    # code-server runs with --auth password; the launcher prints the password to
-    # its own stdout, which is lost under `exec -d`. Mirror launch_code_server.sh's
-    # default here so the menu can display it. Honor a PASSWORD override if the
-    # user exported one before launching the panel.
-    # Default mirrors launch_code_server.sh (PASSWORD env var overrides both).
-    local vscode_password="${PASSWORD:-daaf}"
+    # code-server runs with --auth password. launch_code_server.sh reads PASSWORD
+    # from the CONTAINER environment (default "daaf"), which Compose fills from
+    # environment_settings.txt (env_file) when it creates the container. The
+    # launcher prints the value, but its stdout is lost under `exec -d`, and the
+    # panel's own environment does not hold it (the settings loader bridges only
+    # DAAF_* keys), so the menu names where the password is set instead of
+    # printing a value.
 
     if check_port 2720; then
         echo "  VS Code is already running."
@@ -506,7 +519,7 @@ handle_vscode() {
     local url="http://localhost:${PANEL_PORT_VSCODE}"
     echo ""
     echo "  ${CYAN}${url}${RESET}"
-    echo "  ${BOLD}Password:${RESET} ${vscode_password}"
+    echo "  ${BOLD}Password:${RESET} the PASSWORD set in environment_settings.txt (default: daaf)"
     echo ""
     open_url "$url"
 }
@@ -517,7 +530,9 @@ handle_logs() {
 
     # Ensure the container is up before attempting docker compose exec.
     if ! ensure_container; then
-        echo "  ${YELLOW}Could not start the DAAF container. Is Docker running?${RESET}"
+        echo "  ${YELLOW}Could not start the DAAF container.${RESET}"
+        echo "  To see Docker's error (for example, a port already in use), choose"
+        echo "  1) Start Claude Code: it starts the container and shows the error."
         return
     fi
 
@@ -611,10 +626,10 @@ handle_logs() {
     fi
 
     # --- Step 2: Ensure the log viewer server is running ---
-    # Start the server against the SELECTED source, not always --archive. The
-    # old code always launched with --archive, which exits before serving when
-    # the DAAF-wide archive is empty -- leaving a valid project selection with a
-    # dead URL. Serving from the chosen source decouples the two.
+    # Start the server against the SELECTED source, not always --archive, so a
+    # valid project selection is not left with a dead URL when the DAAF-wide
+    # archive is empty (--archive exits before serving then). Serving from the
+    # chosen source decouples the two.
     if ! check_port 2719; then
         echo "  Starting log viewer server..."
         local -a serve_args=()
@@ -820,10 +835,10 @@ handle_restart() {
     echo "  Your research files and your Claude Code login are kept (they live in"
     echo "  Docker volumes)."
     echo ""
-    echo "  Settings marked \"rebuild required\" in environment_settings.txt (such as"
-    echo "  DAAF_DEV, or turning on the provider shim for the first time), and"
-    echo "  changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild"
-    echo "  Container instead."
+    echo "  Turning on the provider shim takes effect with this restart. Settings"
+    echo "  marked \"rebuild required\" in environment_settings.txt (such as"
+    echo "  DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml,"
+    echo "  need Rebuild Container instead."
     echo ""
 
     # Default No: y or yes in any case, surrounding whitespace ignored (same rule
@@ -884,8 +899,8 @@ handle_restart() {
         echo "  To keep this install: make environment_settings.txt use the project"
         echo "  name \"${active_project}\" again, then choose Restart Container again."
         echo "  To switch installs on purpose: quit this panel and follow \"Running"
-        echo "  multiple DAAF instances\" in the Installation Guide"
-        echo "  (user_reference/01_installation_and_quickstart.md)."
+        echo "  multiple DAAF instances\" in the Installation Guide:"
+        echo "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
         return 0
     fi
 
@@ -895,7 +910,7 @@ handle_restart() {
     if ! docker compose down; then
         echo ""
         echo "  ${YELLOW}Could not stop the container. Check the Docker message above and"
-        echo "  make sure Docker Desktop is running, then try again.${RESET}"
+        echo "  make sure Docker is running, then try again.${RESET}"
         return 0
     fi
 
@@ -948,8 +963,8 @@ handle_restart() {
         echo "  To keep this install: make environment_settings.txt use the project"
         echo "  name \"${active_project}\" again, then choose Restart Container again."
         echo "  To switch installs on purpose: quit this panel and follow \"Running"
-        echo "  multiple DAAF instances\" in the Installation Guide"
-        echo "  (user_reference/01_installation_and_quickstart.md)."
+        echo "  multiple DAAF instances\" in the Installation Guide:"
+        echo "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
         return 0
     fi
     set_panel_ports
@@ -1020,7 +1035,7 @@ handle_stop_services() {
     # Two ports per service: check_port and the stop payload below run INSIDE the
     # container, so they use the fixed container ports 2718/2719/2720; the list
     # shows the HOST-published PANEL_PORT_* the user opens, like the status
-    # dashboard (a remapped DAAF_PORT_MARIMO=3718 was listed as "port 2718").
+    # dashboard.
     if check_port 2718; then marimo_running=true; svc_running=true; fi
     if check_port 2719; then logs_running=true; svc_running=true; fi
     if check_port 2720; then vscode_running=true; svc_running=true; fi
@@ -1123,28 +1138,37 @@ handle_help() {
     echo "  ${BOLD}MANAGE${RESET}"
     echo ""
     echo "  ${CYAN}7) Create Backup${RESET}"
-    echo "     Create a timestamped backup of your DAAF Docker volume."
-    echo "     Backups are saved in the current directory."
+    echo "     Copy everything DAAF keeps in its Docker volume (your research,"
+    echo "     plus DAAF's own files and their git history) and your Claude Code"
+    echo "     login and history into a new dated folder (ending in _daaf_backup)"
+    echo "     in this daaf-docker folder. The backup contains your login, so keep"
+    echo "     it private and do not share it."
     echo ""
     echo "  ${CYAN}8) Restore from Backup${RESET}"
-    echo "     Restore a previous backup to the DAAF Docker volume."
-    echo "     You will be prompted to select which backup to restore."
+    echo "     Replace everything DAAF keeps in its Docker volume (your research,"
+    echo "     plus DAAF's own files and their git history, which go back to the"
+    echo "     backup's version) with a backup you pick from this folder, and your"
+    echo "     Claude Code login and history too if the backup has them. You type"
+    echo "     RESTORE to confirm first."
     echo ""
     echo "  ${CYAN}9) Check for Updates${RESET}"
     echo "     Check for and apply updates to the DAAF framework."
     echo ""
     echo "  ${CYAN}10) Rebuild Container${RESET}"
-    echo "     Rebuild the DAAF Docker container from the latest image."
-    echo "     Your data volume is preserved during rebuilds."
+    echo "     Copy the Dockerfile and docker-compose.yml from DAAF's files in the"
+    echo "     container into this folder (replacing the copies here), build a new"
+    echo "     image from them, and start the container. Use it after an update or"
+    echo "     an edit to the container's copies of those files, or for settings"
+    echo "     marked \"rebuild required\". Your research files and login are kept."
     echo ""
     echo "  ${CYAN}11) Restart Container${RESET}"
     echo "     Apply changes you made in environment_settings.txt (API keys,"
-    echo "     provider settings, ports). Stops and recreates the container,"
-    echo "     usually in under a minute -- no image build. It ends any open"
-    echo "     Claude Code session or web service. Settings marked"
-    echo "     \"rebuild required\" there (such as DAAF_DEV, or turning on the"
-    echo "     provider shim for the first time), and changes to the Dockerfile,"
-    echo "     packages, or docker-compose.yml, need Rebuild Container instead."
+    echo "     provider settings including turning on the provider shim, ports)."
+    echo "     Stops and recreates the container, usually in under a minute --"
+    echo "     no image build. It ends any open Claude Code session or web service."
+    echo "     Settings marked \"rebuild required\" there (such as DAAF_DEV), and"
+    echo "     changes to the Dockerfile, packages, or docker-compose.yml, need"
+    echo "     Rebuild Container instead."
     echo ""
     echo "  ${CYAN}12) Stop Web Services${RESET}"
     echo "     Stop any running web services (notebooks, log viewer,"

@@ -248,7 +248,8 @@ _mock_restore_docker() {
                         # `> /dev/null 2>&1` on the create is in effect (a real docker is a
                         # child: its redirection never reaches the handler) -- so they run
                         # with the script's own stdout/stderr, which the test passes as fds
-                        # 7 and 8 (probe: scratch/engineer37/probe_trap_redirect.sh).
+                        # 7 and 8 (maintainer-only probe, not shipped:
+                        # research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/probes/engineer37/probe_trap_redirect.sh).
                         if [[ "${v}" == *claude-config-restore-tmp ]]; then mode=claudetmpcreate; else mode=tmpcreate; fi
                         if [ "${RM_INTERRUPT_AT:-}" = "${mode}" ]; then { kill -INT "$$"; :; } >&7 2>&8; fi
                         if [ "${RM_FAIL:-}" = "crash${mode}" ]; then { exit 7; } >&7 2>&8; fi
@@ -692,6 +693,12 @@ _make_backup() {
     assert_failure
     assert_output --partial "ERROR"
     assert_output --partial "not found"
+    # Starting DAAF on a deleted volume stops at run_daaf's "not installed" check, so
+    # the steps warn about that report instead of asking the user to type /exit.
+    assert_output --partial "empty volume and then reports that DAAF is not installed in the container. That is"
+    assert_output --partial "expected here, so do not reinstall: choose 8) Restore from Backup and answer y when"
+    assert_output --partial "run 'bash run_daaf.sh' (same"
+    refute_output --partial "/exit"
 }
 
 # --- No backups found ---
@@ -2027,7 +2034,9 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     assert_failure 1
     assert_output --partial "ERROR: A container started using your DAAF data while the restore was being"
     assert_output --partial "prepared: other-daaf-1"
-    assert_output --partial "Stop it (docker compose down) and run the restore again."
+    assert_output --partial "       Stop it with the command below (it may belong to another DAAF install), then run"
+    assert_output --partial "         docker stop other-daaf-1"
+    refute_output --partial "docker compose down"
     assert_output --partial "Your DAAF data has not been changed."
     # Names from stdout only: the mock's stderr notice is never listed as a container.
     refute_output --partial "fake-docker-ps-stderr-notice"
@@ -3344,11 +3353,32 @@ _calls_after_data_swap() {
     run bash -c 'bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" < /dev/null'
     assert_success
     assert_output --partial "The DAAF container is currently running:"
-    assert_output --partial "Restore cancelled. Stop the container manually and try again:"
-    assert_output --partial "  docker compose down"
+    assert_output --partial "Restore cancelled. Your DAAF data has not been changed."
+    assert_output --partial "To restore, run the restore again and answer y to stop the container,"
+    assert_output --partial "or stop it yourself first with:"
+    assert_output --partial "  docker stop daaf-daaf-docker-1"
+    refute_output --partial "docker compose down"
+    refute_output --partial "docker compose -p"
     [ ! -f "${TEST_DIR}/composed_down" ]
     run grep -cE '^(volume create|volume rm|create|cp|compose) ' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
+}
+
+@test "H1: declining to stop prints docker stop with every listed name (second install, shared volume)" {
+    # Two holders: this install's container and another install's that shares the
+    # volume. A compose command would reach only one project; docker stop reaches both.
+    _make_backup
+    export DAAF_NESTED=1 RM_RUNNING=$'work-daaf-docker-1\nother-daaf-docker-1'
+    unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    _mock_restore_docker
+    run bash -c 'bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" < /dev/null'
+    assert_success
+    assert_output --partial "Restore cancelled. Your DAAF data has not been changed."
+    assert_output --partial "To restore, run the restore again and answer y to stop the container,"
+    assert_output --partial "  docker stop work-daaf-docker-1 other-daaf-docker-1"
+    refute_output --partial "docker compose -p"
+    refute_output --partial "docker compose down"
 }
 
 @test "S7: end of input at the backup-number prompt is an invalid (empty) selection: exit 1 with the usual message" {

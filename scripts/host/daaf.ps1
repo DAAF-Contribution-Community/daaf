@@ -22,8 +22,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (backup_daaf.ps1 and restore_from_backup.ps1 set the same
+# line). Under 'Stop' with this set to $true, a native nonzero exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
 # daaf_lib.ps1, dot-sourced below, runs in this script's scope and so inherits it.
 $PSNativeCommandUseErrorActionPreference = $false
 
@@ -78,10 +79,8 @@ Initialize-DaafPortDisplay
 #
 # NOTE: the port-status probes (Get-DaafPortStatus, Test-DaafPort) short-circuit
 # to DAAF_MOCK_PORTS in their OWN dry-run branches before ever reaching docker,
-# so this shim never has to interpret their payloads. Under real (non-dry-run)
-# operation those probes use the base64-as-argument transport (v3): the b64
-# token and the `echo $1 | base64 -d | bash ...` remote wrapper show up in $args,
-# but that is irrelevant here because the dry-run branch returns first. Any other
+# so this shim never has to interpret their payloads (which travel as a base64
+# token in $args; see Test-DaafPort in daaf_lib.ps1). Any other
 # `docker compose exec` payload that does reach this shim (e.g. the stop-services
 # base64 call) falls through the generic `*compose exec*` arm as a no-op, which
 # is the intended dry-run behavior.
@@ -126,7 +125,7 @@ if ($env:DAAF_TEST_MODE -ne "1") {
     $savedEAP = $ErrorActionPreference
     try { $ErrorActionPreference = "SilentlyContinue"; $null = docker info 2>&1 } finally { $ErrorActionPreference = $savedEAP }
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
+        Write-Host "ERROR: Docker does not seem to be running. Start Docker Desktop (or the Docker service) and try again." -ForegroundColor Red
         if (-not $env:DAAF_NESTED) { $null = Read-DaafLine "Press Enter to close" }
         exit 1
     }
@@ -174,25 +173,27 @@ function Get-DaafStatus {
         $script:STATUS_DATE    = (Invoke-DaafGit "log" "-1" "--format=%cd" "--date=short")
         $script:STATUS_BRANCH  = (Invoke-DaafGit "branch" "--show-current")
         if (-not $script:STATUS_BRANCH) { $script:STATUS_BRANCH = "detached" }
+        # Counts commits on origin/main as last fetched (by the updater, or by the
+        # installer's clone of main); the panel never fetches. See daaf.sh
+        # gather_status.
         $script:STATUS_UPDATES = (Invoke-DaafGit "rev-list" "--count" "HEAD..origin/main")
 
-        # Port probes: ONE batched exec for all three ports instead of three
-        # separate Test-DaafPort execs. On Windows Docker Desktop each
-        # `docker compose exec` costs ~0.5-2s, so three per menu redraw made the
-        # dashboard visibly slow. This mirrors daaf.sh gather_status's single
-        # ports_probe: the container-side payload loops over 2718/2719/2720 and
-        # emits one "PORT:<n>" line per LISTENing port, which we parse per port.
-        # Test-DaafPort is retained for single-port readiness polls elsewhere.
+        # Port probes: ONE exec for all three ports, because each
+        # `docker compose exec` costs ~0.5-2s on Docker Desktop for Windows and
+        # the dashboard redraws after every menu choice. This mirrors daaf.sh
+        # gather_status's single ports_probe: the container-side payload loops
+        # over 2718/2719/2720 and emits one "PORT:<n>" line per LISTENing port,
+        # which we parse per port. Test-DaafPort serves the single-port readiness
+        # polls elsewhere.
         $portStatus = Get-DaafPortStatus
         $script:STATUS_PORT_2718 = $portStatus["2718"]
         $script:STATUS_PORT_2719 = $portStatus["2719"]
         $script:STATUS_PORT_2720 = $portStatus["2720"]
     }
 
-    # Local backup check (no Docker needed). Timestamp-prefixed names sort
+    # Local backup check (no Docker needed). Date-prefixed names sort
     # lexicographically, so the last match is the newest backup. Mirrors
-    # daaf.sh's glob-array last-element lookup (the very line that was fatal
-    # under Bash 3.2 -- PowerShell has no such subscript hazard).
+    # daaf.sh's glob-array last-element lookup.
     $backupDirs = @(Get-ChildItem -Path "." -Directory -Filter "*_daaf_backup" -ErrorAction SilentlyContinue | Sort-Object Name)
     if ($backupDirs.Count -gt 0) {
         $lastBackup = $backupDirs[$backupDirs.Count - 1].Name
@@ -203,32 +204,26 @@ function Get-DaafStatus {
 }
 
 # Probe all three service ports (2718/2719/2720) in ONE container exec and
-# return a hashtable of "<port>" -> $true/$false. Batches what used to be three
-# separate Test-DaafPort execs (each ~0.5-2s on Windows Docker Desktop) into a
-# single call to keep the menu redraw responsive.
+# return a hashtable of "<port>" -> $true/$false: one exec instead of three
+# Test-DaafPort calls (each ~0.5-2s on Docker Desktop for Windows) keeps the menu
+# redraw responsive.
 #
 # The container-side payload is mirrored VERBATIM from daaf.sh gather_status's
 # ports_probe: it loops the three ports and echoes "PORT:<n>" for each LISTENing
 # one (column 2 = HEXIP:HEXPORT, column 4 = 0A = LISTEN, matched on the
 # uppercase 4-hex-digit port). We parse the emitted lines back into booleans.
 #
-# TRANSPORT v3 -- base64-as-argument (do NOT revert): the payload is base64-
-# encoded and the TOKEN is passed as a native argument; the container decodes it
-# and runs it, and we capture its "PORT:<n>" stdout lines. This payload takes no
-# positional args (the three ports are hardcoded), so the remote wrapper is the
-# arg-less `echo $1 | base64 -d | bash`. Two earlier transports both failed on
-# real Windows: v1 `bash -c <payload>` mangled the awk `"` patterns (PS 5.1
-# native-arg quoting bug, fixed only in 7.3+); v2 `<payload> | bash -s` (stdin)
-# left a stray CR on the last line (PS appends CRLF piping to a native process)
-# and the PS-pipeline -> docker.exe npipe stdin wiring is unreliable. See the
-# fully annotated Test-DaafPort transport note in daaf_lib.ps1.
+# Transport: the payload goes to the container as a base64 token in a native
+# argument, for the reasons in the Test-DaafPort transport note (daaf_lib.ps1).
+# This payload takes no positional args (the three ports are hardcoded), so the
+# remote wrapper is the arg-less `echo $1 | base64 -d | bash`.
 function Get-DaafPortStatus {
     $result = @{ "2718" = $false; "2719" = $false; "2720" = $false }
 
     # In dry-run mode, consult DAAF_MOCK_PORTS directly (parity with
     # Test-DaafPort's dry-run branch and daaf.sh's check_port mock) rather than
-    # routing through the docker shim -- the payload is on stdin and so is
-    # invisible to a $args-matching shim.
+    # routing through the docker shim, which cannot read the base64-encoded
+    # payload.
     if ($env:DAAF_DRY_RUN -eq "1") {
         foreach ($p in @("2718", "2719", "2720")) {
             if ($env:DAAF_MOCK_PORTS -and ($env:DAAF_MOCK_PORTS -like "*${p}:yes*")) {
@@ -248,14 +243,10 @@ function Get-DaafPortStatus {
         done
 '@
 
-    # Encode the payload and pass the b64 token as a native arg. The single-
-    # quoted PS literal 'echo $1 | base64 -d | bash' has spaces but ZERO double
-    # quotes, so PS 5.1 wraps it in "..." on the CommandLine intact; $1 stays
-    # literal and is the container bash's positional param (`_` is $0, the token
-    # is $1). `echo $1` is unquoted deliberately (base64 alphabet has no
-    # whitespace/glob chars) -- quoting it would reintroduce double quotes and
-    # revert to the v1 failure. We capture stdout (the PORT:<n> lines) here, not
-    # Out-Null, so the per-port parse below is preserved.
+    # The wrapper literal follows the Test-DaafPort rules (no double quotes in
+    # it; `echo $1` unquoted; `_` is $0, the token is $1). Stdout (the
+    # PORT:<n> lines) is captured here, not sent to Out-Null, for the per-port
+    # parse below.
     $b64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($portsProbe))
     $savedEAP = $ErrorActionPreference
     try {
@@ -313,12 +304,13 @@ function Show-DaafMenu {
     }
     Write-Host $versionLine
 
-    # Branch line
+    # Branch line. The count is only as fresh as the last update check (the panel
+    # does not fetch), so the label says so.
     $branchLine = "  Branch:     $($script:STATUS_BRANCH)"
     if ($script:STATUS_UPDATES -and $script:STATUS_UPDATES -ne "0") {
-        $branchLine = "$branchLine ($($script:STATUS_UPDATES) updates available)"
+        $branchLine = "$branchLine ($($script:STATUS_UPDATES) updates available as of the last update check)"
     } elseif ($script:STATUS_UPDATES) {
-        $branchLine = "$branchLine (up to date)"
+        $branchLine = "$branchLine (up to date as of the last update check)"
     }
     Write-Host $branchLine
 
@@ -415,8 +407,8 @@ function Read-DaafChoice {
 # NOT by a return value the main loop consumes in a conditional. This keeps every
 # handler out of a success-stream-capturing context so the interactive delegates
 # (Claude Code, container shell) inherit real console handles for TTY allocation
-# -- routing quit through a captured `return $false` was what pipe-attached their
-# stdio and broke TTY detection. Handlers are invoked as bare statements here and
+# -- a quit routed through a captured `return $false` would pipe-attach their
+# stdio and break TTY detection. Handlers are invoked as bare statements here and
 # in the main loop; any incidental output they emit is theirs to print, not a
 # control signal. Empty input and invalid input simply fall through to a redraw.
 function Invoke-DaafChoice {
@@ -453,20 +445,17 @@ function Invoke-DaafChoice {
 # does not abort the panel -- control always returns to the menu with the
 # failure surfaced. DAAF_NESTED=1 suppresses the child's pause-on-exit prompt.
 #
-# CONSOLE INHERITANCE (do NOT revert to `& child.ps1`): the child runs an
-# interactive `docker compose exec` (Claude Code / a container bash shell) that
-# needs the real console for TTY allocation. When any ancestor in the PowerShell
-# call chain captures the success stream -- and the menu loop does, because a
-# handler's return value used to drive the loop's continue/quit decision --
-# native child processes get pipe-attached stdio instead of console handles.
-# `docker compose exec` then auto-detects a non-terminal and skips `-t`, so
-# Claude Code sees non-TTY stdin, flips to `--print` mode, and dies with
-# "no stdin data received"; a plain container bash reads its script off the pipe
-# and appears frozen. Launching the child via Start-Process with
-# -NoNewWindow inherits THIS process's console handles directly, bypassing any
-# capturing ancestor. The loop rework below (script-scoped quit flag instead of
-# return-value dispatch) is the other half of the fix -- together they keep the
-# handler chain out of a capturing context.
+# CONSOLE INHERITANCE (keep Start-Process -NoNewWindow; never `& child.ps1`): the
+# child runs an interactive `docker compose exec` (Claude Code / a container bash
+# shell) that needs the real console for TTY allocation. When any ancestor in the
+# PowerShell call chain captures the success stream, native child processes get
+# pipe-attached stdio instead of console handles. `docker compose exec` then
+# auto-detects a non-terminal and skips `-t`, so Claude Code sees non-TTY stdin,
+# flips to `--print` mode, and dies with "no stdin data received"; a plain
+# container bash reads its script off the pipe and appears frozen. Start-Process
+# -NoNewWindow hands the child THIS process's console handles whatever its
+# callers do, and the menu loop's script-scoped quit flag (see Invoke-DaafChoice)
+# keeps the handler chain out of a capturing context in the first place.
 function Invoke-DaafDelegateInteractive {
     param(
         [string]$ScriptName,
@@ -487,10 +476,10 @@ function Invoke-DaafDelegateInteractive {
     $childPath = Join-Path $script:DaafScriptDir $ScriptName
 
     # Build ONE pre-joined, correctly quoted argument string. Start-Process joins an
-    # -ArgumentList ARRAY with bare spaces and quotes nothing, so the child path --
-    # which lives under the install folder, e.g. "C:\Users\John Smith\daaf-docker"
-    # or a "OneDrive - Org" folder -- used to split into several argv entries and the
-    # child host failed to find the script (PowerShell#5576). Every element, the
+    # -ArgumentList ARRAY with bare spaces and quotes nothing, so a child path with
+    # spaces -- it lives under the install folder, e.g. "C:\Users\John Smith\daaf-docker"
+    # or a "OneDrive - Org" folder -- would split into several argv entries and the
+    # child host would not find the script (PowerShell#5576). Every element, the
     # -File path included, goes through ConvertTo-DaafNativeArg (daaf_lib.ps1), which
     # also handles embedded quotes and trailing backslashes; current callers pass
     # simple tokens ("bash") or nothing as $ScriptArgs. $null elements are dropped
@@ -553,8 +542,7 @@ function Invoke-DaafDelegateInteractive {
     }
 
     # Three outcomes, never two: an unreadable ($null) exit status is UNKNOWN and
-    # gets its own message -- it is not success. (The old `$ec -and $ec -ne 0`
-    # test read $null as "no error" and printed nothing.)
+    # gets its own message -- it is not success.
     if ($null -eq $ec) {
         Write-Host ""
         Write-Host "  Could not read the exit status of $ScriptName -- check its output above for errors." -ForegroundColor Yellow
@@ -595,7 +583,9 @@ function Invoke-DaafNotebookBrowser {
     # Ensure the container is up before attempting docker compose exec, so we
     # give a clear message instead of letting a failed exec surface obscurely.
     if (-not (Confirm-DaafContainer)) {
-        Write-Host "  Could not start the DAAF container. Is Docker running?" -ForegroundColor Yellow
+        Write-Host "  Could not start the DAAF container." -ForegroundColor Yellow
+        Write-Host "  To see Docker's error (for example, a port already in use), choose"
+        Write-Host "  1) Start Claude Code: it starts the container and shows the error."
         return
     }
 
@@ -682,16 +672,19 @@ function Invoke-DaafVSCode {
 
     # Ensure the container is up before attempting docker compose exec.
     if (-not (Confirm-DaafContainer)) {
-        Write-Host "  Could not start the DAAF container. Is Docker running?" -ForegroundColor Yellow
+        Write-Host "  Could not start the DAAF container." -ForegroundColor Yellow
+        Write-Host "  To see Docker's error (for example, a port already in use), choose"
+        Write-Host "  1) Start Claude Code: it starts the container and shows the error."
         return
     }
 
-    # code-server runs with --auth password; the launcher prints the password to
-    # its own stdout, which is lost under `exec -d`. Mirror launch_code_server.sh's
-    # default here so the menu can display it. Honor a PASSWORD override if the
-    # user exported one before launching the panel.
-    # Default mirrors launch_code_server.sh (PASSWORD env var overrides both).
-    $vscodePassword = if ($env:PASSWORD) { $env:PASSWORD } else { "daaf" }
+    # code-server runs with --auth password. launch_code_server.sh reads PASSWORD
+    # from the CONTAINER environment (default "daaf"), which Compose fills from
+    # environment_settings.txt (env_file) when it creates the container. The
+    # launcher prints the value, but its stdout is lost under `exec -d`, and the
+    # panel's own environment does not hold it (the settings loader bridges only
+    # DAAF_* keys), so the menu names where the password is set instead of
+    # printing a value.
 
     if (Test-DaafPort 2720) {
         Write-Host "  VS Code is already running."
@@ -733,7 +726,7 @@ function Invoke-DaafVSCode {
     $url = "http://localhost:$DaafPortVscode"
     Write-Host ""
     Write-Host "  $url" -ForegroundColor Cyan
-    Write-Host "  Password: $vscodePassword"
+    Write-Host "  Password: the PASSWORD set in environment_settings.txt (default: daaf)"
     Write-Host ""
     Open-DaafUrl $url
 }
@@ -744,7 +737,9 @@ function Invoke-DaafLogViewer {
 
     # Ensure the container is up before attempting docker compose exec.
     if (-not (Confirm-DaafContainer)) {
-        Write-Host "  Could not start the DAAF container. Is Docker running?" -ForegroundColor Yellow
+        Write-Host "  Could not start the DAAF container." -ForegroundColor Yellow
+        Write-Host "  To see Docker's error (for example, a port already in use), choose"
+        Write-Host "  1) Start Claude Code: it starts the container and shows the error."
         return
     }
 
@@ -922,13 +917,10 @@ function Invoke-DaafQuartoViewer { Invoke-DaafDelegate "view_quarto.ps1" }
 # restore_from_backup.ps1) prints a clear message and returns to the menu
 # rather than aborting the panel. Mirrors daaf.sh run_delegate.
 #
-# CONSOLE INHERITANCE (do NOT revert to `& child.ps1`): these maintenance
-# children (backup/restore/update/rebuild) run interactive Read-Host prompts and
-# may run interactive docker execs. For the same reason as
-# Invoke-DaafDelegateInteractive -- the menu loop no longer captures handler
-# return values, but Start-Process with -NoNewWindow guarantees the child gets
-# real console handles regardless of any capturing ancestor -- we spawn the
-# child as a child process rather than calling it in-process.
+# CONSOLE INHERITANCE (keep Start-Process -NoNewWindow; never `& child.ps1`): these
+# children (backup/restore/update/rebuild, view_quarto) run interactive Read-Host
+# prompts and may run interactive docker execs, so they need real console handles
+# for the reason given at Invoke-DaafDelegateInteractive.
 function Invoke-DaafDelegate {
     param([string]$ScriptName)
     Write-Host ""
@@ -985,8 +977,8 @@ function Invoke-DaafDelegate {
     }
 
     # Three outcomes: success, failure, and UNKNOWN. An unreadable ($null) exit
-    # status is never summarised as a clean return -- the old `-not $ec` test did
-    # exactly that, so a failed backup/restore/update/rebuild could read as success.
+    # status is never summarised as a clean return, so a failed
+    # backup/restore/update/rebuild cannot read as success.
     if ($null -eq $ec) {
         Write-Host ""
         Write-Host "  Could not read the exit status of $ScriptName -- check its output above for errors." -ForegroundColor Yellow
@@ -1107,10 +1099,10 @@ function Invoke-DaafRestart {
     Write-Host "  Your research files and your Claude Code login are kept (they live in"
     Write-Host "  Docker volumes)."
     Write-Host ""
-    Write-Host "  Settings marked `"rebuild required`" in environment_settings.txt (such as"
-    Write-Host "  DAAF_DEV, or turning on the provider shim for the first time), and"
-    Write-Host "  changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild"
-    Write-Host "  Container instead."
+    Write-Host "  Turning on the provider shim takes effect with this restart. Settings"
+    Write-Host "  marked `"rebuild required`" in environment_settings.txt (such as"
+    Write-Host "  DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml,"
+    Write-Host "  need Rebuild Container instead."
     Write-Host ""
 
     # Default No: y or yes in any case, surrounding spaces ignored (same rule as
@@ -1181,8 +1173,8 @@ function Invoke-DaafRestart {
         Write-Host "  To keep this install: make environment_settings.txt use the project"
         Write-Host "  name `"$activeProject`" again, then choose Restart Container again."
         Write-Host "  To switch installs on purpose: quit this panel and follow `"Running"
-        Write-Host "  multiple DAAF instances`" in the Installation Guide"
-        Write-Host "  (user_reference/01_installation_and_quickstart.md)."
+        Write-Host "  multiple DAAF instances`" in the Installation Guide:"
+        Write-Host "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
         return
     }
 
@@ -1201,7 +1193,7 @@ function Invoke-DaafRestart {
     if ($downExit -ne 0) {
         Write-Host ""
         Write-Host "  Could not stop the container. Check the Docker message above and" -ForegroundColor Yellow
-        Write-Host "  make sure Docker Desktop is running, then try again." -ForegroundColor Yellow
+        Write-Host "  make sure Docker is running, then try again." -ForegroundColor Yellow
         return
     }
 
@@ -1254,8 +1246,8 @@ function Invoke-DaafRestart {
         Write-Host "  To keep this install: make environment_settings.txt use the project"
         Write-Host "  name `"$activeProject`" again, then choose Restart Container again."
         Write-Host "  To switch installs on purpose: quit this panel and follow `"Running"
-        Write-Host "  multiple DAAF instances`" in the Installation Guide"
-        Write-Host "  (user_reference/01_installation_and_quickstart.md)."
+        Write-Host "  multiple DAAF instances`" in the Installation Guide:"
+        Write-Host "  https://github.com/DAAF-Contribution-Community/daaf/blob/main/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
         return
     }
     Initialize-DaafPortDisplay
@@ -1359,7 +1351,7 @@ function Invoke-DaafServiceStop {
     # Two ports per service: Test-DaafPort and the stop payload below run INSIDE
     # the container, so they use the fixed container ports 2718/2719/2720; the
     # list shows the HOST-published $DaafPort* the user opens, like the status
-    # dashboard (a remapped DAAF_PORT_MARIMO=3718 was listed as "port 2718").
+    # dashboard.
     $marimoRunning = Test-DaafPort 2718
     $logsRunning   = Test-DaafPort 2719
     $vscodeRunning = Test-DaafPort 2720
@@ -1395,18 +1387,12 @@ function Invoke-DaafServiceStop {
         # in the image, so this reuses the /proc pattern from
         # generate_log_viewer.sh. Surface stderr so failures are visible.
         #
-        # TRANSPORT v3 -- base64-as-argument (do NOT revert). This payload
-        # contains embedded double quotes (the find/grep/sed patterns) and takes
-        # no positional args (ports hardcoded), so it uses the arg-less remote
-        # wrapper `echo $1 | base64 -d | bash`, with the b64 token passed as a
-        # native argument. Two earlier transports both failed on real Windows:
-        # v1 `bash -c <payload>` mangled the embedded `"` (PS 5.1 native-arg
-        # quoting bug, fixed only in 7.3+), delivering a broken script so the
-        # services were never stopped; v2 `<payload> | bash -s` (stdin) left a
-        # stray CR on the last line (PS appends CRLF piping to a native process)
-        # and the PS-pipeline -> docker.exe npipe stdin wiring is unreliable. The
-        # b64 token is [A-Za-z0-9+/=] only, so PS 5.1's arg marshalling cannot
-        # damage it. See the fully annotated Test-DaafPort note in daaf_lib.ps1.
+        # Transport: a base64 token in a native argument, for the reasons in the
+        # Test-DaafPort transport note (daaf_lib.ps1); this payload has embedded
+        # double quotes (the find/grep/sed patterns), which Windows PowerShell
+        # 5.1 would mangle in a `bash -c <payload>` call. It takes no positional
+        # args (ports hardcoded), so the wrapper is the arg-less
+        # `echo $1 | base64 -d | bash`.
         # Each result line names the service, not $port: $port is the container
         # port, which differs from the host port the user knows when remapped.
         $stopScript = @'
@@ -1430,12 +1416,8 @@ function Invoke-DaafServiceStop {
                 fi
             done
 '@
-        # The single-quoted PS literal 'echo $1 | base64 -d | bash' has spaces
-        # but ZERO double quotes -> PS 5.1 wraps it in "..." intact; $1 stays
-        # literal and is the container bash's positional param (`_` is $0, the
-        # token is $1). `echo $1` is unquoted deliberately (base64 alphabet has
-        # no whitespace/glob chars); quoting it would reintroduce double quotes
-        # and revert to v1. $LASTEXITCODE reflects docker after the call.
+        # The wrapper literal follows the Test-DaafPort rules (no double quotes in
+        # it; `echo $1` unquoted). $LASTEXITCODE reflects docker after the call.
         $b64 = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($stopScript))
         $savedEAP = $ErrorActionPreference
         try {
@@ -1491,28 +1473,37 @@ function Show-DaafHelp {
     Write-Host "  MANAGE"
     Write-Host ""
     Write-Host "  7) Create Backup" -ForegroundColor Cyan
-    Write-Host "     Create a timestamped backup of your DAAF Docker volume."
-    Write-Host "     Backups are saved in the current directory."
+    Write-Host "     Copy everything DAAF keeps in its Docker volume (your research,"
+    Write-Host "     plus DAAF's own files and their git history) and your Claude Code"
+    Write-Host "     login and history into a new dated folder (ending in _daaf_backup)"
+    Write-Host "     in this daaf-docker folder. The backup contains your login, so keep"
+    Write-Host "     it private and do not share it."
     Write-Host ""
     Write-Host "  8) Restore from Backup" -ForegroundColor Cyan
-    Write-Host "     Restore a previous backup to the DAAF Docker volume."
-    Write-Host "     You will be prompted to select which backup to restore."
+    Write-Host "     Replace everything DAAF keeps in its Docker volume (your research,"
+    Write-Host "     plus DAAF's own files and their git history, which go back to the"
+    Write-Host "     backup's version) with a backup you pick from this folder, and your"
+    Write-Host "     Claude Code login and history too if the backup has them. You type"
+    Write-Host "     RESTORE to confirm first."
     Write-Host ""
     Write-Host "  9) Check for Updates" -ForegroundColor Cyan
     Write-Host "     Check for and apply updates to the DAAF framework."
     Write-Host ""
     Write-Host "  10) Rebuild Container" -ForegroundColor Cyan
-    Write-Host "     Rebuild the DAAF Docker container from the latest image."
-    Write-Host "     Your data volume is preserved during rebuilds."
+    Write-Host "     Copy the Dockerfile and docker-compose.yml from DAAF's files in the"
+    Write-Host "     container into this folder (replacing the copies here), build a new"
+    Write-Host "     image from them, and start the container. Use it after an update or"
+    Write-Host "     an edit to the container's copies of those files, or for settings"
+    Write-Host "     marked `"rebuild required`". Your research files and login are kept."
     Write-Host ""
     Write-Host "  11) Restart Container" -ForegroundColor Cyan
     Write-Host "     Apply changes you made in environment_settings.txt (API keys,"
-    Write-Host "     provider settings, ports). Stops and recreates the container,"
-    Write-Host "     usually in under a minute -- no image build. It ends any open"
-    Write-Host "     Claude Code session or web service. Settings marked"
-    Write-Host "     `"rebuild required`" there (such as DAAF_DEV, or turning on the"
-    Write-Host "     provider shim for the first time), and changes to the Dockerfile,"
-    Write-Host "     packages, or docker-compose.yml, need Rebuild Container instead."
+    Write-Host "     provider settings including turning on the provider shim, ports)."
+    Write-Host "     Stops and recreates the container, usually in under a minute --"
+    Write-Host "     no image build. It ends any open Claude Code session or web service."
+    Write-Host "     Settings marked `"rebuild required`" there (such as DAAF_DEV), and"
+    Write-Host "     changes to the Dockerfile, packages, or docker-compose.yml, need"
+    Write-Host "     Rebuild Container instead."
     Write-Host ""
     Write-Host "  12) Stop Web Services" -ForegroundColor Cyan
     Write-Host "     Stop any running web services (notebooks, log viewer,"
@@ -1555,10 +1546,10 @@ Set-StrictMode -Version 3.0
 # ============================================================================
 # Main Loop
 # ============================================================================
-# Wrapped in try/catch/finally so an unexpected failure prints a diagnostic and
-# pauses -- a double-clicked window must not vanish before the error can be read
-# (parity with daaf.sh's ERR + EXIT traps). Ctrl+C surfaces as a
-# PipelineStoppedException, which we treat as a clean "Goodbye!".
+# Wrapped in try/catch so an unexpected failure prints a diagnostic and pauses
+# -- a double-clicked window must not vanish before the error can be read
+# (parity with daaf.sh's ERR + EXIT traps). The catch has no special case: every
+# exception that reaches it prints the bug banner and exits 1.
 #
 # The loop is gated on the script-scoped $script:DaafMenuRunning flag rather than
 # on captured handler return values. Quit paths (the `q` choice and Read-DaafChoice's
@@ -1582,7 +1573,9 @@ try {
     Write-Host ""
     Write-Host "ERROR: DAAF Control Panel hit an unexpected failure." -ForegroundColor Red
     Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "  This is a bug -- please report it. The panel will now exit." -ForegroundColor Red
+    Write-Host "  This is a bug. Please report it, with the lines above, at" -ForegroundColor Red
+    Write-Host "  https://github.com/DAAF-Contribution-Community/daaf/issues" -ForegroundColor Red
+    Write-Host "  The panel will now exit." -ForegroundColor Red
     # Pause so a double-clicked window does not vanish before the diagnostic can
     # be read. Skips the pause in nested/dry-run/non-interactive/redirected-stdin
     # contexts so CI smoke tests never block here.

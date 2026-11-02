@@ -1,7 +1,7 @@
 # ============================================================================
 # DAAF Log Explorer (Windows PowerShell)
 # ============================================================================
-# Opens the interactive session log viewer in your browser.
+# Starts the session log viewer and prints the link to open in your browser.
 # Starts the DAAF container if needed, recovers any orphaned session logs,
 # presents available log sources, and starts an HTTP server.
 #
@@ -22,8 +22,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With it set to $true under 'Stop', a nonzero native exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
@@ -36,7 +37,7 @@ function Wait-AndExit {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
@@ -71,6 +72,16 @@ function Import-DaafSettingsInline {
     }
 }
 Import-DaafSettingsInline
+
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.ps1 prints it. The name is normalized the
+# way Resolve-DaafProjectName in daaf_lib.ps1 does it.
+$HintProject = 'daaf'
+if ($env:DAAF_PROJECT_NAME) { $HintProject = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+$ComposePFlag = if ($HintProject -and $HintProject -ne 'daaf') { "-p $HintProject " } else { "" }
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -277,7 +288,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to generate log viewer." -ForegroundColor Red
     Write-Host "  The container may not be running, or there may be no session logs to display." -ForegroundColor Red
-    Write-Host "  Try: docker compose logs daaf-docker" -ForegroundColor Yellow
+    Write-Host "  Try: docker compose ${ComposePFlag}logs daaf-docker" -ForegroundColor Yellow
 }
 
 # If the server was already running, the command above returns immediately

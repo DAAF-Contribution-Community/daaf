@@ -27,8 +27,9 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# environment so the volume name below reflects DAAF_PROJECT_NAME. This script
+# Bridge the seven whitelisted DAAF_* keys from environment_settings.txt (the list in
+# load_daaf_settings, daaf_lib.sh) into the environment so the volume name below
+# reflects DAAF_PROJECT_NAME and DAAF_DATA_VOLUME_NAME. This script
 # operates on the Docker volume via raw `docker run`/`docker volume` (not
 # `docker compose`), so compose interpolation does not apply -- we must derive the
 # project-prefixed volume name ourselves. Canonical shared pattern (kept in sync
@@ -82,7 +83,7 @@ resolve_project_name() {
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
 # derives the prefix from the project name (default "daaf"), so a second instance
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
-# "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# "daaf_daaf-data".
 # <project> is PROJECT_NAME, the normalized name above (empty => refused before any
 # Docker call; see "Project-name check" below).
 # DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
@@ -126,9 +127,9 @@ SYMLINKS_MANIFEST=".daaf-symlinks"
 PERMISSIONS_MANIFEST=".daaf-permissions"
 # The helper image every container step runs, PINNED by digest: busybox 1.37.0,
 # multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below. Pinned
-# because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
-# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
-# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# because the untagged `busybox` (latest) tag moves to new, untested releases (it
+# pointed at busybox 1.38.0 on 2026-09-23, observed on Docker Hub). The same string is
+# in backup_daaf.{sh,ps1},
 # restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
 # keep every copy identical (a parity test enforces it).
 BUSYBOX_IMAGE='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
@@ -147,10 +148,10 @@ fi
 # --- Host-side backup-folder count (never silent) ---
 # Counts the data files ("files") or their logical KB ("kb") under a backup folder,
 # with the root-relative exclusions every count site shares (the root manifests and
-# the root Claude subfolder), and says whether the count is COMPLETE. The old form,
-# `$(cd ... && find ... 2>/dev/null | ...) || FILE_COUNT=0`, discarded find's read
-# errors and, under pipefail, replaced a partial count with 0: one unreadable folder
-# printed "0 files were copied. The Docker volume may be empty." and exited 1.
+# the root Claude subfolder), and says whether the count is COMPLETE. A read error must
+# never turn into 0 or "may be empty": a count that discards find's errors
+# (`2>/dev/null`) and falls back to 0 under pipefail would report one unreadable
+# folder as "0 files were copied. The Docker volume may be empty." and exit 1.
 #
 # Here the group's stderr (find's read errors, and any from tr/wc/ls/awk) lands in the
 # SAME captured string as the result, which the pipeline prints LAST: wc/awk write
@@ -331,7 +332,7 @@ fi
 
 if ! docker info &> /dev/null; then
     echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again."
-    # Old-Engine hint (F1; review round 9): a client of 25 or newer that cannot talk to an
+    # Old-Engine hint: a client of 25 or newer that cannot talk to an
     # Engine older than 25.0 (Docker 29 removed the older API versions) also fails
     # `docker info`, so the version check below is never reached. Read the versions
     # (stdout only, the last non-empty line); when the client's major reads as 25 or newer
@@ -359,7 +360,7 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
-# --- Project-name NOTE (review 51q SUGGESTION-2) ---
+# --- Project-name NOTE ---
 # When the data volume name is derived (DAAF_DATA_VOLUME_NAME unset) from a project
 # name that Compose normalizes to something else (`Work` -> `work`), say so once,
 # with the installer's NOTE wording, before the volume name is first shown (the
@@ -372,7 +373,7 @@ if [ -z "${DAAF_DATA_VOLUME_NAME:-}" ] && [ -n "${DAAF_PROJECT_NAME:-}" ] && [ "
     echo ""
 fi
 
-# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# --- Docker version check ---
 # Docker 29 removed API versions below 1.44: a 29.x client cannot drive an Engine older
 # than 25.0, and a 29.0-29.2 Engine refuses an older client. So read both versions
 # (stdout only, the last non-empty line) and refuse, before anything is created, when
@@ -413,14 +414,24 @@ if [ "${DOCKER_VERSION_STATE}" = "untested" ]; then
     echo ""
 fi
 
-# Check the volume exists
+# Check the volume exists. The backup reads the volume directly and needs no container,
+# so a stopped or removed container never leads here: `docker compose down` keeps named
+# volumes and only `down -v` removes them (`docker compose down` reference on
+# docs.docker.com, verified against the Docker Compose docs on 2026-11-01). The volume
+# name comes from this folder's environment_settings.txt, so the usual cause is the
+# wrong folder.
 if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
     echo "ERROR: Docker volume '${VOLUME_NAME}' not found."
-    echo "Have you run the DAAF installer yet?"
+    echo "The backup finds DAAF's data volume through the environment_settings.txt in the"
+    echo "folder it runs from, so run it from the daaf-docker folder of the install you"
+    echo "want to back up. Stopping DAAF does not cause this: 'docker compose down' removes"
+    echo "the container but keeps the volume, while 'docker compose down -v' or"
+    echo "'docker volume rm' deletes the volume and the data in it."
+    echo "If DAAF was never installed from this folder, run the installer instead."
     exit 1
 fi
 
-# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# --- Helper image check ---
 # Every container step runs the pinned ${BUSYBOX_IMAGE}. Make sure it is on this computer
 # NOW, before the backup folder is created and before the long scan and staging steps:
 # when it is missing, download it here with its progress showing, so an offline computer
@@ -468,8 +479,8 @@ fi
 echo "Backup name: ${BACKUP_NAME}/"
 # Name the volume being copied (the resolved name, so DAAF_PROJECT_NAME and the
 # DAAF_DATA_VOLUME_NAME override both show; twin of the .ps1 line). With more than
-# one install on a machine, nothing else in the output said which volume a backup
-# came from.
+# one install on a machine, nothing else in the output names the volume a backup
+# comes from.
 echo "Source volume: ${VOLUME_NAME}"
 echo ""
 
@@ -563,9 +574,9 @@ mkdir -p "${BACKUP_NAME}"
 # `docker cp` has the same abort-and-truncate failure as for symlinks: moby's Windows
 # archive extractor creates nothing for a FIFO/device entry, then its timestamp step
 # (`chtimes`) fails on the missing path and aborts the whole extraction -- after the
-# CLI has already printed "Successfully copied" (field failure 2026-09-29, sibling
-# project on a variant of this script: a stale provider-shim `output.fifo` stopped a
-# Windows backup; last progress reading 94%). Sockets are stripped defensively (how
+# CLI has already printed "Successfully copied" (observed 2026-09-29, Docker Desktop
+# on Windows: a stale provider-shim `output.fifo` stopped the copy). Sockets are
+# stripped defensively (how
 # Docker archives them was not verified). None of these carry data, so they are
 # dropped with NO manifest and restore does not recreate them. The
 # grouped `\( ... \)` predicates keep `-exec` bound to all four types; with no
@@ -602,12 +613,12 @@ mkdir -p "${BACKUP_NAME}"
 # the whole (typically short) symlink path list under a "one of these embeds a
 # newline" header. The driver relays that STDOUT to the user via `docker logs` on the
 # failure path below (the staging container is detached, so its output would
-# otherwise be lost). WHY STDOUT, not stderr: on a real Windows host, PS 5.1's
-# native-command `2>&1` merge dropped the staging container's stderr, so the offender
-# list never reached the user's terminal (field failure 2026-07-14). The staging
-# program's stdout is otherwise unused (`docker run -d` detaches; the CID comes from
-# the daemon, not the program), and stdout survives `docker logs` retrieval on every
-# PowerShell version -- stderr was the fragile leg. The `\\t` / `\\011`
+# otherwise be lost). WHY STDOUT, not stderr: Windows PowerShell 5.1's native-command
+# `2>&1` merge drops the container's stderr (observed 2026-07-14, Windows PowerShell
+# 5.1), so an offender list on stderr would never reach the .ps1 twin's user. The
+# staging program's stdout is otherwise unused (`docker run -d` detaches; the CID comes
+# from the daemon, not the program), and stdout survives `docker logs` retrieval on
+# every PowerShell version. The `\\t` / `\\011`
 # double-backslash forms survive the single-quote string so the container `sh` hands
 # printf ONE backslash (mirrors the restore-replay octal idiom); the echo/cat/grep
 # offender lines add no printf escapes and stay quote-free for PS 5.1 twin parity.
@@ -622,7 +633,7 @@ mkdir -p "${BACKUP_NAME}"
 # $BackupCountProgram) excludes: the root manifest, a root ".daaf-permissions", and a
 # root ".daaf-claude-config" subtree. Restore's permission replay can leave a stray
 # root ".daaf-permissions" in the volume when it fails; counting it on one side only
-# produced a false zero-tolerance mismatch. SYNC NOTE: those two names are hardcoded
+# would cause a false zero-tolerance mismatch. SYNC NOTE: those two names are hardcoded
 # literals here (only the symlink manifest is spliced in), so update them by hand if
 # PERMISSIONS_MANIFEST or CLAUDE_SUBDIR ever changes.
 #
@@ -638,10 +649,11 @@ mkdir -p "${BACKUP_NAME}"
 #
 # That same rule makes a `find`/`stat` read error SILENT. busybox ash does support
 # `set -o pipefail` (BASH_PIPEFAIL = ENABLE_ASH_BASH_COMPAT, and ASH_BASH_COMPAT is
-# `default y`; read in the busybox source, not executed under busybox), but this
-# program does not turn it on, so awk would print a short count and the program would
-# exit 0. So the count's stderr goes to /tmp/count_err (the throwaway container's own
-# /tmp), and the markers are printed only when it is empty; otherwise
+# `default y`; verified against busybox `shell/ash.c` on 2026-11-01, read in the
+# source, not executed under busybox), but this program does not turn it on, so awk
+# would print a short count and the program would exit 0. So the count's stderr goes
+# to /tmp/count_err (the throwaway container's own /tmp), and the markers are printed
+# only when it is empty; otherwise
 # STAGED_COUNT_ERRORS=<lines> is printed INSTEAD. Missing markers take the existing "Could not read the snapshot's
 # file count" fallback below; the `if` never fails `set -e`, so staging still exits 0.
 #
@@ -649,9 +661,9 @@ mkdir -p "${BACKUP_NAME}"
 # symlink inside a removed folder never enters ".daaf-symlinks" and restore's replay
 # cannot trip on it; it is also why the pinned tail of the program is untouched). A
 # name Windows cannot create makes Windows `docker cp` ABORT mid-extraction and drop
-# every later entry (field failure 2026-09-30, Docker Client 29.1.3: `docker cp`
-# stopped at a file named `name<LF>nl` -- "The filename, directory name, or volume
-# label syntax is incorrect" -- after 72,386 of 73,785 files). The step is switched by
+# every later entry (observed 2026-09-30, Docker Client 29.1.3 on Windows: `docker cp`
+# stopped at a file named `name<LF>nl` with "The filename, directory name, or volume
+# label syntax is incorrect"). The step is switched by
 # the DAAF_STAGE_NAMES environment variable, passed with `docker run -e` AFTER the
 # `-v` (the program itself stays byte-identical in both twins):
 #   win      -- backup_daaf.ps1 ONLY. Removes (rm -rf, so a folder takes its subtree)
@@ -674,7 +686,7 @@ mkdir -p "${BACKUP_NAME}"
 #   empty    -- this twin on Linux: the step does not run (these names are legal on
 #               macOS/Linux disks, so they are never removed there).
 # Symlinks are never removed here (`! -type l`): they are stripped into the manifest
-# below as before, and the fatal tab/newline symlink gate still applies to them.
+# below, and the fatal tab/newline symlink gate still applies to them.
 # Hostile names cannot spoof a marker: every listed path follows a fixed prefix on its
 # own line, and `tr` turns NUL separators into newlines and every control byte 0x01-0x1F
 # inside a name (newline, CR, tab, ESC ...) into `?` (32 bytes in, 32 out: \012 plus
@@ -686,14 +698,14 @@ mkdir -p "${BACKUP_NAME}"
 # (`\$` keeps the dollars literal) and uses no string literals, so the program stays
 # free of double quotes; -v passes the words it prints. Tested under dash + GNU
 # find/awk/tr/sort (tests/bash/backup_daaf.bats); busybox is not installed in the dev
-# image, and a one-shot host probe ran the real program under busybox on Windows
-# (2026-10-01, matched exactly: research/2026-09-29_FrameworkDev_BackupLongPathCount/
-# 2026-09-30_busybox_host_probe.md). Two busybox differences are designed around from
+# image, and the real program matched that output under busybox 1.37.0 on a Windows
+# host (observed 2026-10-01, Docker Desktop). Two busybox differences are designed around from
 # its source: (1) busybox `-iname` upcases the NAME when libc lacks
 # FNM_CASEFOLD, so every -iname pattern is written in upper case; (2) busybox `find`
 # runs the final batch of an `-exec ... {} +` only for actions at the TOP level of the
 # expression (flush_exec_plus() walks the top-level OR branches and never looks
-# inside `\( \)`; Alpine aports MR !75008), so a batched -exec inside parentheses
+# inside `\( \)`; verified against upstream Alpine aports MR !75008 on 2026-11-01),
+# so a batched -exec inside parentheses
 # silently never runs for the last -- usually the only -- batch. The case listing
 # therefore uses two top-level OR branches, each with its own `! -path $C`, instead of
 # a parenthesized group (identical output under GNU find), and
@@ -791,8 +803,9 @@ echo "Preparing volume snapshot (staging + symlink strip)... (this may take a wh
 # restore_from_backup.sh's `if ! CID="$(docker create ...)"` guard).
 if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" "${BUSYBOX_IMAGE}" sh -c "${STAGE_PROGRAM}")"; then
     echo "" >&2
-    echo "ERROR: Could not start the staging container for a symlink-safe backup." >&2
-    echo "       No backup files were written. Check Docker Desktop for errors and re-run." >&2
+    echo "ERROR: The backup could not start its helper container in Docker, so nothing was copied." >&2
+    echo "       Check that Docker is running, then run the backup again. The empty folder" >&2
+    echo "       ${BACKUP_NAME}/ it created can be deleted." >&2
     # Best-effort reap: `docker run -d` can fail AFTER creating the container
     # (Created/Exited state) while still printing its CID to stdout, which the
     # command substitution above captured -- remove it so a launch failure does not
@@ -809,10 +822,8 @@ if [ "${STAGE_STATUS}" != "0" ]; then
     # log, NOT this terminal. Fetch and show that log BEFORE `docker rm -f` removes
     # the container (order matters: after removal the log is gone). Best-effort: a
     # `docker logs` failure must not mask the original staging error. (The gate prints
-    # offenders to STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped the
-    # container's stderr in the field 2026-07-14, so the offender list never reached
-    # the user; stdout is version-agnostic. The `2>&1` here still merges both streams
-    # into the log for completeness.)
+    # offenders to STDOUT; see WHY STDOUT above. The `2>&1` here still merges both
+    # streams into the log for completeness.)
     STAGE_LOG="$(docker logs "${STAGE_CID}" 2>&1 || true)"
     docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
@@ -910,8 +921,8 @@ while kill -0 "${COPY_PID}" 2>/dev/null; do
     # Progress display only. Counted with the SAME root exclusions as the snapshot it is
     # shown against (_daaf_tree_count, as in the verification below): the staged tree
     # always carries the root ".daaf-symlinks" manifest, which the snapshot excludes, so
-    # a plain `find | wc -l` read one high at the end of the copy (the .ps1 twin showed
-    # "73848 / 73847" in the field, 2026-10-01) and counted a name holding a newline twice.
+    # a plain `find | wc -l` would read one high at the end of the copy and count a name
+    # holding a newline twice.
     _daaf_tree_count "${BACKUP_NAME}" files
     COPIED="${TREE_COUNT}"
     if [ "${EXPECTED_FILES}" -gt 0 ]; then
@@ -995,7 +1006,7 @@ if [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
     HAD_WARNINGS=1
 fi
 # Print the ACTUAL final host-side count, not a fabricated "100%". On a truncated
-# copy (the Windows symlink/special-file abort this staging step now prevents, or
+# copy (the Windows symlink/special-file abort this staging step prevents, or
 # any other partial copy) an unconditional "100%" would lie about completeness.
 if [ "${EXPECTED_FILES}" -gt 0 ]; then
     FINAL_PERCENT=$((FILE_COUNT * 100 / EXPECTED_FILES))
@@ -1011,7 +1022,7 @@ printf "\r  Progress: %s / %d files (%d%%)   \n" "${FILE_COUNT_LABEL}" "${EXPECT
 # BEFORE the two fatal exits below (zero files; corroborated short copy) -- because a
 # file+folder clash can itself stop the copy on a case-insensitive disk, and a list
 # printed after those exits would never reach the user of the run that needs it
-# (review round 7). Printed exactly once per volume. Skipped on Linux, where the step
+# Printed exactly once per volume. Skipped on Linux, where the step
 # does not run. The data-volume staging exited 0 to get here, so the list is expected
 # (1): a log without its final marker warns that the list could not be read.
 if [ -n "${STAGE_NAMES_MODE}" ]; then
@@ -1079,8 +1090,8 @@ elif [ "${COPY_EXIT}" -ne 0 ]; then
 fi
 
 # --- File-count verification ---
-# Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# Do NOT trust docker cp's exit code as the sole failure signal: a truncated copy
+# can exit 0. A nonzero
 # exit that ALSO comes up short on the count is already fatal (the corroborated
 # short-copy branch above). This block catches the harder case -- a clean ZERO exit
 # that still copied the wrong number of files -- and warns loudly (latching the WITH
@@ -1088,12 +1099,8 @@ fi
 #
 # ZERO tolerance when the snapshot markers were read: the snapshot is exactly the
 # tree `docker cp` streamed and both counts use the same predicates, so any
-# difference is a real one (the old 1% tolerance hid a Windows gap of 197 files out
-# of 73,031 on 2026-09-29 -- 187 hidden by the PowerShell 5.1 long-path skip, plus 10
-# most likely live-volume drift between scan and snapshot -- a volume-vs-backup diff
-# found every surviving pre-backup file present -- and a probed FIFO-abort
-# truncation of 714 of 71,820 files). The 1% tolerance survives ONLY on the fallback
-# path, where the expected count is the live-volume scan and benign drift between
+# difference is a real one; a 1% tolerance would hide hundreds of missing files in a
+# large volume. The 1% tolerance applies ONLY on the fallback path, where the expected count is the live-volume scan and benign drift between
 # scan and snapshot is possible, so a mismatch there is only "may be incomplete".
 #
 # Against the snapshot the wording follows the direction (same structure as the .ps1
@@ -1213,9 +1220,8 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     echo "Backing up Claude Code state from volume ${CLAUDE_VOLUME_NAME} (credentials, session history, plugins)..."
     mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
     # Same STAGING mechanism as the data volume above (this volume ALSO carries
-    # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
-    # up the Claude Code state volume" warning appeared on Windows: `docker cp`
-    # aborted on the first link). Stage into a throwaway container to strip the
+    # symlinks, e.g. codex-daaf/tmp/arg0/..., which would stop a Windows `docker cp`
+    # at the first link). Stage into a throwaway container to strip the
     # symlinks into this subfolder's own ".daaf-symlinks" manifest (and delete any
     # special files, unreported here -- the scan above covers the data volume only),
     # then cp the stripped staged tree out. Synchronous (this copy is small). `docker cp`
@@ -1227,8 +1233,8 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # never fatal; the data backup above already succeeded). Capture the launch
     # outcome in a SEPARATE flag rather than blanking the CID: `docker run -d` can
     # fail AFTER creating the container (Created/Exited) while still printing its CID,
-    # and the old `|| CLAUDE_STAGE_CID=""` discarded that CID before any cleanup could
-    # reap it -- leaking the helper container. Keep the captured CID intact so the
+    # and blanking the CID on failure (`|| CLAUDE_STAGE_CID=""`) would leak that helper
+    # container. Keep the captured CID intact so the
     # trap below and the `docker rm -f` at the end of this block can remove it
     # (mirrors backup_daaf.ps1's $claudeStageStartOk flag + finally-reap pattern).
     # Assigning inside the `if` condition keeps `set -e` from aborting on a launch
@@ -1309,8 +1315,8 @@ fi
 
 # --- Capture the executable-permission manifest ---
 # Why: NTFS (and the FAT/exFAT of external drives) stores no POSIX permission
-# bits, so when a backup lands on a Windows host every file's mode is lost. On
-# restore, `docker cp` INTO the volume fabricates 0755 for every file, and git
+# bits, so a backup folder kept on such a drive (on any host) loses every file's
+# mode. On restore, `docker cp` INTO the volume fabricates 0755 for every file, and git
 # inside the container then reports every tracked 0644 file as modified (a pure
 # 100644->100755 mode diff, no content change). To make restore able to put the
 # modes back, record -- here, from the volume, where the modes are still intact --
@@ -1353,14 +1359,18 @@ if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" "${BUSYBOX_IMAGE}
         # scan-failure branch below) and let restore degrade gracefully (an absent
         # manifest simply means no permission normalization on restore).
         echo "WARNING: Could not record the executable-permission manifest." >&2
-        echo "         The backup is still valid; on restore, file permissions may need" >&2
-        echo "         manual repair if this backup is restored on a Windows host." >&2
+        echo "         The backup is still valid. Run the backup again to record it: if this backup" >&2
+        echo "         folder is kept on a Windows (NTFS) or exFAT/FAT drive, a restore from it cannot" >&2
+        echo "         tell which files are executable, and git may then show many files as changed" >&2
+        echo "         by mode only." >&2
         HAD_WARNINGS=1
     fi
 else
     echo "WARNING: Could not record the executable-permission manifest." >&2
-    echo "         The backup is still valid; on restore, file permissions may need" >&2
-    echo "         manual repair if this backup is restored on a Windows host." >&2
+    echo "         The backup is still valid. Run the backup again to record it: if this backup" >&2
+    echo "         folder is kept on a Windows (NTFS) or exFAT/FAT drive, a restore from it cannot" >&2
+    echo "         tell which files are executable, and git may then show many files as changed" >&2
+    echo "         by mode only." >&2
     HAD_WARNINGS=1
 fi
 

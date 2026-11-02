@@ -582,3 +582,87 @@ teardown() {
     run grep -cF "(got: '\$ProjectName')" "${REPO_ROOT}/scripts/host/test_migration.ps1"
     assert_output "0"
 }
+
+# --- Deletion confirmation (Phase 1 and the --all driver) ---
+# Phase 1 deletes the install named by DAAF_PROJECT_NAME, so the harness lists the
+# names and asks y/N first; only y or Y continues. These tests run the harness for
+# real against the docker and curl mocks from setup(), on an era-3 branch vector
+# with a throwaway project name. MOCK_DOCKER_ARGV_LOG records every docker call;
+# the curl mock fails, so a run that passes Phase 1 stops at the install download.
+
+@test "confirmation: 'n' and empty input refuse, and no docker rm/rmi runs" {
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/docker_argv.log"
+    export MOCK_CURL_EXIT=22
+    for answer in "n" ""; do
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_TEST_MIGRATION_CONFIRM \
+            NO_COLOR=1 TMPDIR="${TEST_DIR}" DAAF_TEST_VERSION=daaf_dev DAAF_PROJECT_NAME=batsstub \
+            bash "${REPO_ROOT}/scripts/host/test_migration.sh" <<< "${answer}"
+        assert_failure 1
+        assert_output --partial "This test deletes the DAAF install 'batsstub' before it starts:"
+        assert_output --partial "batsstub_daaf-data (research data)"
+        assert_output --partial "Delete them and continue? [y/N]: "
+        assert_output --partial "Nothing was deleted."
+        refute_output --partial "Removing the DAAF install"
+        run grep -c -e $'^rm\037' -e $'^volume\037rm\037' -e $'^rmi\037' "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "0"
+    done
+}
+
+@test "confirmation: end-of-file input (no one to answer) refuses, and no docker rm/rmi runs" {
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/docker_argv.log"
+    export MOCK_CURL_EXIT=22
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_TEST_MIGRATION_CONFIRM \
+        NO_COLOR=1 TMPDIR="${TEST_DIR}" DAAF_TEST_VERSION=daaf_dev DAAF_PROJECT_NAME=batsstub \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh" < /dev/null
+    assert_failure 1
+    assert_output --partial "Nothing was deleted. To run without this question (for example in CI), set DAAF_TEST_MIGRATION_CONFIRM=yes."
+    run grep -c -e $'^rm\037' -e $'^volume\037rm\037' -e $'^rmi\037' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "0"
+}
+
+@test "confirmation: 'y' and DAAF_TEST_MIGRATION_CONFIRM=yes both delete the named install" {
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/docker_argv.log"
+    export MOCK_CURL_EXIT=22
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_TEST_MIGRATION_CONFIRM \
+        NO_COLOR=1 TMPDIR="${TEST_DIR}" DAAF_TEST_VERSION=daaf_dev DAAF_PROJECT_NAME=batsstub \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh" <<< "y"
+    assert_failure 1
+    assert_output --partial "Removing the DAAF install 'batsstub'..."
+    assert_output --partial "Failed to download install.sh for daaf_dev from GitHub."
+    run grep -c -e $'^volume\037rm\037batsstub_daaf-data\037' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
+
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA \
+        NO_COLOR=1 TMPDIR="${TEST_DIR}" DAAF_TEST_VERSION=daaf_dev DAAF_PROJECT_NAME=batsstub \
+        DAAF_TEST_MIGRATION_CONFIRM=yes \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh" < /dev/null
+    assert_failure 1
+    assert_output --partial "DAAF_TEST_MIGRATION_CONFIRM=yes is set, so the test does not ask."
+    refute_output --partial "Delete them and continue?"
+    run grep -c -e $'^volume\037rm\037batsstub_daaf-data\037' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
+}
+
+@test "confirmation: --all asks once and, on 'n', runs no vector and no docker call" {
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/docker_argv.log"
+    export MOCK_CURL_EXIT=22
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    run env -u DAAF_TEST_MODE -u DAAF_TEST_MATRIX -u DAAF_TEST_ERA -u DAAF_TEST_MIGRATION_CONFIRM \
+        NO_COLOR=1 TMPDIR="${TEST_DIR}" DAAF_PROJECT_NAME=batsstub \
+        bash "${REPO_ROOT}/scripts/host/test_migration.sh" --all <<< "n"
+    assert_failure 1
+    assert_output --partial "Delete it for every vector and continue? [y/N]: "
+    assert_output --partial "Nothing was deleted."
+    refute_output --partial "--- vector:"
+    [ ! -s "${MOCK_DOCKER_ARGV_LOG}" ]
+}
+
+@test "confirmation (.sh/.ps1): both twins pass the matrix answer to their vectors" {
+    run grep -cF 'DAAF_TEST_MIGRATION_CONFIRM=yes \' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_output "1"
+    run grep -cxF '            $env:DAAF_TEST_MIGRATION_CONFIRM = "yes"' "${REPO_ROOT}/scripts/host/test_migration.ps1"
+    assert_output "1"
+}

@@ -4,8 +4,10 @@
 # ============================================================================
 # Opens code-server (VS Code in the browser) for browsing, editing, and
 # reviewing files in the DAAF container.
-# Starts the DAAF container if needed. Automatically opens the browser when
-# daaf_lib.sh is available.
+# Starts the DAAF container if needed. code-server runs in this terminal until
+# Ctrl+C. The browser opens automatically (daaf_lib.sh's open_url) only after
+# launch_code_server.sh returns: at once when code-server was already running,
+# otherwise after the server stops.
 #
 # Usage:
 #   cd daaf-docker
@@ -28,8 +30,8 @@ if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# environment so `docker compose` interpolation resolves the project name and
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys (the case
+# pattern below) into the environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
 # load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
 # -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
@@ -144,12 +146,12 @@ echo "Opening DAAF Code Browser (VS Code in the browser)..."
 echo ""
 if ! docker compose exec daaf-docker bash /daaf/scripts/launch_code_server.sh; then
     echo "" >&2
-    echo "ERROR: Failed to start code-server." >&2
-    echo "  The container may not be running, or code-server may not be installed." >&2
-    echo "  Try: docker compose logs daaf-docker" >&2
+    echo "ERROR: Failed to start code-server, or it stopped with an error." >&2
+    echo "  Its messages are above. If you stopped it yourself with Ctrl+C, you can ignore this." >&2
 fi
 
-# Open browser automatically if library is available. URL uses the HOST-published
+# Open the browser if the library is available. This runs only after the
+# container-side script returns (see the header). URL uses the HOST-published
 # port (DAAF_PORT_VSCODE); the container port stays fixed at 2720.
 if command -v open_url >/dev/null 2>&1; then
     open_url "http://localhost:${DAAF_PORT_VSCODE}"

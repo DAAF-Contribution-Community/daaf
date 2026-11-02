@@ -375,7 +375,7 @@ teardown() {
     STATUS_PORT_2720=false
 
     run display_menu
-    assert_output --partial "5 updates available"
+    assert_output --partial "5 updates available as of the last update check"
 }
 
 @test "display_menu shows up to date when no updates" {
@@ -390,7 +390,7 @@ teardown() {
     STATUS_PORT_2720=false
 
     run display_menu
-    assert_output --partial "up to date"
+    assert_output --partial "up to date as of the last update check"
 }
 
 @test "display_menu shows never when no backups" {
@@ -1062,19 +1062,26 @@ teardown() {
     assert_output --partial "Returned to DAAF Control Panel"
 }
 
-@test "handle_vscode displays the code-server password" {
+@test "handle_vscode says where the code-server password is set" {
     mock_port_check "2720:yes"
     run handle_vscode
     assert_success
     assert_output --partial "Password:"
-    assert_output --partial "daaf"
+    assert_output --partial "the PASSWORD set in environment_settings.txt (default: daaf)"
 }
 
-@test "handle_vscode honors a PASSWORD override in the displayed password" {
+@test "handle_vscode never shows a host-shell PASSWORD as the password" {
+    # code-server reads PASSWORD from the container environment
+    # (environment_settings.txt via env_file), not from the panel's shell.
     mock_port_check "2720:yes"
     PASSWORD="hunter2" run handle_vscode
     assert_success
-    assert_output --partial "hunter2"
+    refute_output --partial "hunter2"
+}
+
+@test "daaf.sh's unexpected-failure banner says where to report the bug" {
+    run grep -F 'https://github.com/DAAF-Contribution-Community/daaf/issues' "${REPO_ROOT}/scripts/host/daaf.sh"
+    assert_success
 }
 
 @test "handle_logs starts the server against the selected source, not always --archive" {
@@ -1712,14 +1719,16 @@ skip_unless_chmod_blocks_reads() {
     assert_output --partial "AFTER_TRACKER=DAAF_PROJECT_NAME"
 }
 
-@test "handle_restart: the intro names DAAF_DEV, the first-time shim, and the Dockerfile/packages/docker-compose.yml list" {
+@test "handle_restart: the intro says the restart turns on the shim, and names DAAF_DEV and the Dockerfile/packages/docker-compose.yml list" {
     run_restart "n"
     assert_success
     # The sentence wraps across lines, so compare with line breaks and runs of
     # spaces collapsed.
     local flat
     flat=$(printf '%s\n' "$output" | tr '\n' ' ' | tr -s ' ')
-    [[ "${flat}" == *'Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV, or turning on the provider shim for the first time), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat}" == *'Turning on the provider shim takes effect with this restart.'* ]]
+    [[ "${flat}" == *'Settings marked "rebuild required" in environment_settings.txt (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat}" != *"first time"* ]]
     [[ "${flat}" != *"Alternative Providers"* ]]
 }
 
@@ -1748,7 +1757,8 @@ skip_unless_chmod_blocks_reads() {
     flat11=$(printf '%s\n' "${desc11}" | tr '\n' ' ' | tr -s ' ')
     [[ "${flat11}" == *'Settings marked "rebuild required" there'* ]]
     # Same examples and Rebuild list as the handler's intro text.
-    [[ "${flat11}" == *'there (such as DAAF_DEV, or turning on the provider shim for the first time), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat11}" == *'there (such as DAAF_DEV), and changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild Container instead.'* ]]
+    [[ "${flat11}" == *'provider settings including turning on the provider shim, ports'* ]]
     [[ "${flat11}" == *'no image build. It ends any open Claude Code session or web service. Settings marked'* ]]
     [[ "${flat11}" != *'web service first.'* ]]
 

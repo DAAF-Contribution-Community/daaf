@@ -1180,6 +1180,43 @@ teardown() {
     assert_output --partial "git commit"
     # Merge type should NOT show rebase --continue
     refute_output --partial "git rebase --continue"
+    # Staging is `git add -u`: it resolves the conflicts and leaves untracked
+    # research projects out of the commit, so the printed undo cannot delete them.
+    assert_output --partial "  git add -u"
+    refute_output --partial "git add ."
+    refute_output --partial "git add -A"
+    assert_output --partial "new files such as your"
+}
+
+@test "update: hand-run hints carry -p <project> for a non-default project from the settings file" {
+    # A user's fresh shell lacks DAAF_PROJECT_NAME, so a bare `docker compose`
+    # there would act on the default install. The project comes from
+    # environment_settings.txt (normalized as Compose does: Work -> work).
+    printf 'DAAF_PROJECT_NAME=Work\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset DAAF_PROJECT_NAME
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        docker() {
+            case "$1" in
+                compose) shift; case "$1" in exec) printf "file.txt\n"; return 0 ;; *) return 0 ;; esac ;;
+                *) return 0 ;;
+            esac
+        }
+        prompt_choice() { echo "2"; }
+        handle_conflict "merge" "merge --abort" || true
+    '
+    assert_output --partial "  docker compose -p work exec daaf-docker git -C /daaf merge --abort"
+    assert_output --partial "  docker compose -p work exec daaf-docker git -C /daaf reset --hard backup/test-branch"
+    refute_output --partial "  docker compose exec daaf-docker"
+}
+
+@test "update: no printed instruction in either twin stages with git add . or git add -A" {
+    # The only printed `git add .` is the "never git add ." warning in the
+    # Claude prompts; `git add -A` is never printed.
+    run bash -c 'grep -n -E "(echo|Write-Host) .*git add (\.|-A)" "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh" "'"${REPO_ROOT}"'/scripts/host/update_daaf.ps1" | grep -v "never git add \." || true'
+    assert_output ""
 }
 
 @test "update: handle_conflict rebase type shows git rebase --continue" {
@@ -1234,6 +1271,190 @@ teardown() {
     assert_failure 1
     assert_output --partial "resolve the conflicts manually"
     assert_output --partial "reset --hard backup/test-branch"
+}
+
+# --- After an updater-launched Claude Code session (option 1) ---
+# "Conflicts resolved!" appears only when no unmerged files remain AND git has no
+# merge, rebase or cherry-pick in progress. These tests force option 1
+# (IS_INTERACTIVE=true, prompt_choice returns 1); the docker mock answers the
+# in-container `claude` launch with success. Without a terminal, the launch's
+# `< /dev/tty` redirect may fail; the script's `|| true` absorbs that.
+
+@test "update: option 1 with a merge still in progress prints no success message and returns 1" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "" ;;
+                *"MERGE_HEAD"*) echo "merge" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_conflict "merge" "merge --abort"
+    '
+    assert_failure 1
+    refute_output --partial "Conflicts resolved!"
+    assert_output --partial "the merge is not finished yet"
+    assert_output --partial "  git commit -m \"Resolved merge conflicts from DAAF update\""
+    assert_output --partial "  bash update_daaf.sh"
+    assert_output --partial "git -C /daaf merge --abort"
+    assert_output --partial "reset --hard backup/test-branch"
+}
+
+@test "update: option 1 with a rebase still in progress points to git rebase --continue" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "" ;;
+                *"rebase-merge"*) echo "rebase" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_conflict "rebase" "rebase --abort"
+    '
+    assert_failure 1
+    refute_output --partial "Conflicts resolved!"
+    assert_output --partial "the rebase is not finished yet"
+    assert_output --partial "  git rebase --continue"
+    assert_output --partial "git -C /daaf rebase --abort"
+}
+
+@test "update: option 1 with nothing left in progress prints the success message and returns 0" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "" ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_conflict "merge" "merge --abort"
+    '
+    assert_success
+    assert_output --partial "Conflicts resolved!"
+    refute_output --partial "not finished yet"
+}
+
+@test "update: option 1 with unmerged files left lists them and prints no success message" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "CLAUDE.md" ;;
+                *"MERGE_HEAD"*) echo "merge" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_conflict "merge" "merge --abort"
+    '
+    assert_failure 1
+    refute_output --partial "Conflicts resolved!"
+    assert_output --partial "Some conflicts still remain in these files:"
+    assert_output --partial "  CLAUDE.md"
+}
+
+@test "update: option 1 fails closed when the git state probe cannot run" {
+    # A probe that fails (container stopped) must not read as "nothing in progress".
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) return 1 ;;
+                *"MERGE_HEAD"*) return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_conflict "merge" "merge --abort"
+    '
+    assert_failure 1
+    refute_output --partial "Conflicts resolved!"
+    assert_output --partial "could not check git's state"
+    assert_output --partial "  git status"
+}
+
+@test "update: stash option 1 prints the success message only when nothing is in progress" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "" ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_stash_conflict
+    '
+    assert_success
+    assert_output --partial "Conflicts resolved!"
+}
+
+@test "update: stash option 1 with a merge in progress prints no success message" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        BACKUP_BRANCH="backup/test-branch"
+        IS_INTERACTIVE=true
+        prompt_choice() { echo "1"; }
+        docker() {
+            case "$*" in
+                *"--diff-filter=U"*) echo "" ;;
+                *"MERGE_HEAD"*) echo "merge" ;;
+                *) return 0 ;;
+            esac
+        }
+        handle_stash_conflict
+    '
+    assert_failure 1
+    refute_output --partial "Conflicts resolved!"
+    assert_output --partial "the merge is not finished yet"
+    assert_output --partial "git -C /daaf merge --abort"
+    assert_output --partial "git -C /daaf stash pop"
+}
+
+@test "update: _git_operation_in_progress probes merge, rebase and cherry-pick state, and is silent under dry run" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        docker() { printf "%s\n" "$*" > "'"${TEST_DIR}"'/probe_args"; echo "cherry-pick"; }
+        echo "STATE:$(_git_operation_in_progress)"
+        DAAF_DRY_RUN=1
+        echo "DRY:$(_git_operation_in_progress)"
+    '
+    assert_success
+    assert_output --partial "STATE:cherry-pick"
+    assert_output --partial "DRY:"
+    refute_output --partial "DRY:cherry-pick"
+    run cat "${TEST_DIR}/probe_args"
+    assert_output --partial "/daaf/.git/MERGE_HEAD"
+    assert_output --partial "/daaf/.git/rebase-merge"
+    assert_output --partial "/daaf/.git/rebase-apply"
+    assert_output --partial "/daaf/.git/CHERRY_PICK_HEAD"
 }
 
 # --- Safety tests ---
@@ -1421,6 +1642,7 @@ setup_state_machine() {
 @test "update: no remote configured exits with guidance" {
     setup_state_machine
     run bash -c '
+        unset DAAF_PROJECT_NAME
         docker() {
             local all_args="$*"
             case "$all_args" in
@@ -1437,9 +1659,40 @@ setup_state_machine() {
         export -f docker
         bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
     '
-    # exit 0 with guidance message
+    # exit 0 with guidance message: the documented migration one-liner
     assert_success
     assert_output --partial "not connected to the update server"
+    assert_output --partial "  curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh | bash"
+}
+
+@test "update: no remote on a non-default project points to re-adding origin, not to migrate" {
+    # migrate_daaf.sh works only on the default install's volume, so a second
+    # install must not be sent there.
+    setup_state_machine
+    printf 'DAAF_PROJECT_NAME=work\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset DAAF_PROJECT_NAME
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*) return 0 ;;
+                *"compose exec"*"remote get-url"*) echo "" ; return 1 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "not connected to the update server"
+    assert_output --partial "it works only"
+    assert_output --partial "  docker compose -p work exec daaf-docker git -C /daaf remote add origin https://github.com/DAAF-Contribution-Community/daaf.git"
+    refute_output --partial "migrate_daaf.sh | bash"
 }
 
 @test "update: network failure during fetch exits with error" {
@@ -1654,9 +1907,53 @@ STUB
 # REFUSAL (exit 1): the updater tracks a branch for ongoing updates and cannot
 # advance to a fixed tag, so it names the tag, points at the supported re-install
 # path, and states which branch ongoing updates track. It never persists a tag.
-# (Repurposed from the former "tag-specific error" test after the env-tag design
-# decision -- the file-origin tag path below is the softer warn-and-continue arm.)
+# The file-origin tag path below is the softer warn-and-continue arm.
 @test "update: env-origin DAAF_BRANCH tag is refused with re-install guidance" {
+    setup_state_machine
+    run bash -c '
+        unset DAAF_PROJECT_NAME
+        export DAAF_BRANCH="v3.0.1"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/v3.0.1"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"refs/tags/v3.0.1"*) return 0 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "v3.0.1"
+    assert_output --partial "version tag"
+    assert_output --partial "not a branch"
+    # Names the supported re-install path: forced, pinned to the tag, run from
+    # this folder's parent, printed as a quoted absolute path (never `cd ..`).
+    assert_output --partial "  DAAF_FORCE_REINSTALL=1 DAAF_BRANCH=v3.0.1 bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh)\""
+    assert_output --partial "  cd \"${TEST_DIR%/*}\""
+    refute_output --partial "cd .."
+    assert_output --partial "WARNING: a re-install overwrites DAAF's framework files"
+    # ...and states which branch ongoing updates track.
+    assert_output --partial "default branch"
+    # A tag is never saved as the update branch.
+    assert_output --partial "never saved as your update branch"
+}
+
+# main's install.sh downloads host scripts that releases before v3.0.0 lack, so a
+# forced re-install onto such a tag would overwrite files and then stop. The
+# updater prints no re-install command for them.
+@test "update: env-origin DAAF_BRANCH tag older than v3.0.0 gets no re-install command" {
     setup_state_machine
     run bash -c '
         export DAAF_BRANCH="v2.1.0"
@@ -1681,16 +1978,17 @@ STUB
         export -f docker
         bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
     '
-    assert_failure
-    assert_output --partial "v2.1.0"
+    assert_failure 1
     assert_output --partial "version tag"
-    assert_output --partial "not a branch"
-    # Names the supported re-install path (pinned to the tag)...
-    assert_output --partial "DAAF_BRANCH=v2.1.0 bash -c"
-    # ...and states which branch ongoing updates track.
-    assert_output --partial "default branch"
-    # A tag is never saved as the update branch.
+    assert_output --partial "Moving an installation onto a release older than v3.0.0 is not"
+    assert_output --partial "installing one in a new folder can re-install"
+    assert_output --partial "over your default installation (daaf) if you have one."
+    refute_output --partial "installed fresh"
+    assert_output --partial "https://github.com/DAAF-Contribution-Community/daaf/issues"
+    refute_output --partial "DAAF_FORCE_REINSTALL"
+    refute_output --partial "install.sh)"
     assert_output --partial "never saved as your update branch"
+    assert_output --partial "No changes were made."
 }
 
 # A file-origin DAAF_BRANCH tag (set in environment_settings.txt, NOT the

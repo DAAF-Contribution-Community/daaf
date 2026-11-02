@@ -20,15 +20,16 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. Every docker call here
-# reads $LASTEXITCODE itself (audit 04: under 'Stop' with this set to $true, pwsh 7.6
-# threw NativeCommandExitException; under 'Continue' it added a "Program ... ended with
-# non-zero exit code" line that could become the "Docker said:" text).
+# reads $LASTEXITCODE itself. With it set to $true under 'Stop', a nonzero native exit
+# throws NativeCommandExitException, and under 'Continue' it adds a "Program ...
+# ended with non-zero exit code" line that could become the "Docker said:" text
+# (observed 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 # The helper image every container step runs, PINNED by digest: busybox 1.37.0,
 # multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below. Pinned
-# because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
-# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
-# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# because the untagged `busybox` (latest) tag moves to new, untested releases (it
+# pointed at busybox 1.38.0 on 2026-09-23, observed on Docker Hub). The same string is
+# in backup_daaf.{sh,ps1},
 # restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
 # keep every copy identical (a parity test enforces it). No `"`, space or trailing `\`,
 # so it passes to docker.exe unchanged on Windows PowerShell 5.1.
@@ -101,8 +102,9 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# process environment so the volume name below reflects DAAF_PROJECT_NAME. This
+# Bridge the seven whitelisted DAAF_* keys from environment_settings.txt (the $known
+# list below, kept in step with daaf_lib.ps1) into the process environment so the
+# volume name below reflects DAAF_PROJECT_NAME and DAAF_DATA_VOLUME_NAME. This
 # script operates on the Docker volume via raw `docker run`/`docker volume` (not
 # `docker compose`), so compose interpolation does not apply -- we must derive the
 # project-prefixed volume name ourselves. Canonical shared pattern (kept in sync
@@ -204,8 +206,7 @@ function Get-DaafCountMarker {
 # that staging log cannot be read. It is never silent: Windows PowerShell 5.1
 # Get-ChildItem cannot descend into a folder whose Windows path is 248+ characters
 # (nor list a file at 260+) unless LongPathsEnabled=1, and `-ErrorAction
-# SilentlyContinue` alone would turn that into a quiet undercount (field 2026-09-29:
-# 72,834 counted vs 73,021 present -- 187 files hidden). The errors are captured with
+# SilentlyContinue` alone would turn that into a quiet undercount. The errors are captured with
 # -ErrorVariable and returned, so the caller can call the count a LOWER BOUND.
 # Exclusions are root-relative, mirroring the container-side count: named files at
 # the root, and every file under named root subfolders. They are compared
@@ -262,7 +263,7 @@ function Measure-DaafBackupTree {
 # a log WITHOUT that marker means the list could not be read (`docker logs` failed,
 # came back empty, or was cut short) -- and names may have been removed with nobody
 # told. That prints its own WARNING and returns $true. A WARNING that latches, not a
-# Note: leaving names out is a WARNING when the list is read (D3, 2026-09-30), an
+# Note: leaving names out is a WARNING when the list is read, an
 # unreadable list cannot rule it out, and the snapshot markers are then usually
 # unreadable too, so the fallback 1% count tolerance could hide the removed files.
 #
@@ -273,8 +274,8 @@ function Measure-DaafBackupTree {
 # `DAAF_INVARIANT_ROOT=<path> bash scripts/check_workspace_invariants.sh --names-only`.
 # Both pass --names-only, which runs only the checker's names check: pointed at Claude
 # Code's folder, its other two checks (symlinks, repo-root leftovers) list files that
-# belong there and tell the reader to delete them (observed 2026-10-01: Codex's
-# symlinks and two zero-byte files at that folder's root were flagged).
+# belong there (Codex's symlinks, zero-byte files at that folder's root) and tell the
+# reader to delete them.
 function Write-DaafNameReport {
     [CmdletBinding()]
     param(
@@ -356,7 +357,7 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # and missing-property reads.
 Set-StrictMode -Version 3.0
 
-# --- Platform guard (F1 compatibility; audit 04) ---
+# --- Platform guard ---
 # This is the Windows twin, written and tested for Windows PowerShell 5.1 (and pwsh on
 # Windows); under pwsh on macOS it would, for example, strip file names that are legal
 # there (DAAF_STAGE_NAMES=win). Under PowerShell 7 on macOS or Linux, refuse before
@@ -378,7 +379,7 @@ if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows -and $env:DAAF_DRY
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
 # derives the prefix from the project name (default "daaf"), so a second instance
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
-# "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# "daaf_daaf-data".
 # <project> is $projectName, the normalized name from Resolve-DaafProjectName above
 # (empty => refused before any Docker call; see "Project-name check" below).
 # DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
@@ -470,7 +471,7 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
-    # Old-Engine hint (F1; review round 9): same rule and text as the .sh twin (see there)
+    # Old-Engine hint: same rule and text as the .sh twin (see there)
     # and restore_from_backup.{sh,ps1}. A client of 25 or newer that cannot talk to an Engine
     # older than 25.0 also fails `docker info`, so the version check below is never reached.
     # Stdout only (2>$null), the last non-empty line; the hint is added only when the
@@ -492,7 +493,7 @@ if ($LASTEXITCODE -ne 0) {
     Wait-AndExit 1
 }
 
-# --- Project-name NOTE (review 51q SUGGESTION-2) ---
+# --- Project-name NOTE ---
 # Twin of the .sh NOTE (see there): with DAAF_DATA_VOLUME_NAME unset and a project
 # name Compose normalizes to something else (`Work` -> `work`), say so once, before
 # the volume name is first shown. -cne: a case-only difference counts. Never printed
@@ -503,7 +504,7 @@ if (-not $env:DAAF_DATA_VOLUME_NAME -and $env:DAAF_PROJECT_NAME -and $env:DAAF_P
     Write-Host ""
 }
 
-# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# --- Docker version check ---
 # Same rule and wording as the .sh twin (see there) and restore_from_backup.{sh,ps1}:
 # refuse when either side's major version is below 25 or cannot be read; a major other
 # than the tested 29 only prints a NOTE (no $HadWarnings latch). Stdout only (2>$null),
@@ -555,20 +556,27 @@ if ($DockerVersionState -eq 'untested') {
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker volume inspect $VolumeName 2>&1
 $ErrorActionPreference = $savedEAP
+# A missing volume is never a stopped or removed container (see the .sh twin): the
+# usual cause is running from another install's folder.
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
-    Write-Host "Have you run the DAAF installer yet?"
+    Write-Host "The backup finds DAAF's data volume through the environment_settings.txt in the"
+    Write-Host "folder it runs from, so run it from the daaf-docker folder of the install you"
+    Write-Host "want to back up. Stopping DAAF does not cause this: 'docker compose down' removes"
+    Write-Host "the container but keeps the volume, while 'docker compose down -v' or"
+    Write-Host "'docker volume rm' deletes the volume and the data in it."
+    Write-Host "If DAAF was never installed from this folder, run the installer instead."
     Wait-AndExit 1
 }
 
-# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# --- Helper image check ---
 # Same as the .sh twin (see there): make sure the pinned $BusyboxImage is on this
 # computer before the backup folder is created and before the long scan and staging
 # steps; download it here (progress shown) when missing, and refuse with nothing changed
 # when that fails. The pull's stdout lines are shown as they arrive and its stderr lines
-# are kept for the "Docker said:" line, so the bracket is 'Continue' (field test
-# 2026-10-05, D2: Windows PowerShell 5.1 drops native stderr under SilentlyContinue,
-# even with 2>&1).
+# are kept for the "Docker said:" line, so the bracket is 'Continue': Windows
+# PowerShell 5.1 drops native stderr under SilentlyContinue, even with 2>&1 (observed
+# 2026-10-05, Windows PowerShell 5.1).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $null = docker image inspect $BusyboxImage 2>&1
 $imageInspectExit = $LASTEXITCODE
@@ -618,8 +626,8 @@ if (Test-Path $BackupName) {
 Write-Host "Backup name: $BackupName\"
 # Name the volume being copied (the resolved name, so DAAF_PROJECT_NAME and the
 # DAAF_DATA_VOLUME_NAME override both show). With more than one install on a machine,
-# nothing else in the output said which volume a backup came from, and a user once
-# diffed a backup against the wrong install's volume.
+# nothing else in the output names the volume a backup comes from, and comparing a
+# backup against the wrong install's volume is an easy mistake.
 Write-Host "Source volume: $VolumeName"
 Write-Host ""
 
@@ -658,8 +666,8 @@ Write-Host "Scanning Docker volume..."
 # `${c% *}` / `${c#* }` (a `find | wc -l` would count a name holding a newline twice).
 # So when the "Snapshot: N files (M fewer than the scan ...)" line below reports a
 # difference, it is genuine live-volume change, not a predicate gap (a stray root
-# ".daaf-permissions" left by a failed restore replay used to show up there as
-# "drift"), and on the fallback path the scan is a like-for-like expected count. The
+# ".daaf-permissions" left by a failed restore replay is excluded on both sides, so it
+# never shows as "drift"), and on the fallback path the scan is a like-for-like expected count. The
 # three names are hardcoded literals (see the SYNC NOTE in the Configuration section),
 # matching the .sh twin's scan; tests/bash/backup_twin_parity.bats pins the predicate.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -764,9 +772,9 @@ $HostPath = (Resolve-Path $BackupName).Path
 # `docker cp` has the same abort-and-truncate failure as for symlinks: moby's Windows
 # archive extractor creates nothing for a FIFO/device entry, then its timestamp step
 # (`chtimes`) fails on the missing path and aborts the whole extraction -- after the
-# CLI has already printed "Successfully copied" (field failure 2026-09-29, sibling
-# project on a variant of this script: a stale provider-shim `output.fifo` stopped a
-# Windows backup; last progress reading 94%). Sockets are stripped defensively (how
+# CLI has already printed "Successfully copied" (observed 2026-09-29, Docker Desktop
+# on Windows: a stale provider-shim `output.fifo` stopped the copy). Sockets are
+# stripped defensively (how
 # Docker archives them was not verified). None of these carry data, so they are
 # dropped with NO manifest and restore does not recreate them. The
 # grouped `\( ... \)` predicates keep `-exec` bound to all four types; with no
@@ -796,12 +804,11 @@ $HostPath = (Resolve-Path $BackupName).Path
 # (typically short) symlink path list, since mismatched line counts cannot isolate
 # the culprit. The driver relays that STDOUT via `docker logs` on the failure path
 # below (the staging container is detached, so its output would otherwise be lost).
-# WHY STDOUT, not stderr: on a real Windows host, PS 5.1's native-command `2>&1` merge
-# dropped the staging container's stderr, so the offender list never reached the
-# user's terminal (field failure 2026-07-14). The staging program's stdout is
+# WHY STDOUT, not stderr: Windows PowerShell 5.1's native-command `2>&1` merge drops
+# the container's stderr (observed 2026-07-14, Windows PowerShell 5.1), so an offender
+# list on stderr would never reach the user's terminal. The staging program's stdout is
 # otherwise unused (`docker run -d` detaches; the CID comes from the daemon, not the
-# program), and stdout survives `docker logs` retrieval on every PowerShell version --
-# stderr was the fragile leg.
+# program), and stdout survives `docker logs` retrieval on every PowerShell version.
 # This here-string is a SINGLE-quoted (`@'...'@`) literal, so its bytes reach the
 # container `sh` verbatim; the `\\011` DOUBLE backslash therefore survives to hand
 # printf ONE backslash (the same octal-escape trap the .sh twin and the restore-replay
@@ -817,10 +824,11 @@ $HostPath = (Resolve-Path $BackupName).Path
 #
 # A count that hit a read error is NOT a count. A pipeline's exit status is its LAST
 # command's (awk here). busybox ash does support `set -o pipefail` (BASH_PIPEFAIL =
-# ENABLE_ASH_BASH_COMPAT, and ASH_BASH_COMPAT is `default y`; read in the busybox
-# source, not executed under busybox), but this program does not turn it on, so a
-# `find` or `stat` error would otherwise be silent: awk would print a SHORT count and
-# the program would exit 0 (reproduced under dash in review round 2). So the count's
+# ENABLE_ASH_BASH_COMPAT, and ASH_BASH_COMPAT is `default y`; verified against busybox
+# `shell/ash.c` on 2026-11-01, read in the source, not executed under busybox), but
+# this program does not turn it on, so a `find` or `stat` error would otherwise be
+# silent: awk would print a SHORT count and
+# the program would exit 0 (reproduced under dash). So the count's
 # stderr goes to /tmp/count_err (the throwaway container's own /tmp, like the link
 # files above), and the markers are printed only when that file is empty; otherwise
 # the program prints STAGED_COUNT_ERRORS=<lines> INSTEAD of STAGED_FILES/STAGED_KB.
@@ -834,8 +842,8 @@ $HostPath = (Resolve-Path $BackupName).Path
 # and, like the host-side count, a root ".daaf-permissions" and everything under a
 # root ".daaf-claude-config". Those two are never volume content in a healthy volume,
 # but restore's permission replay can leave a stray root ".daaf-permissions" behind
-# when it fails; counting it on one side only produced a false zero-tolerance
-# mismatch (review reproduction: STAGED_FILES=2 vs BACKUP_FILES=1).
+# when it fails; counting it on one side only would cause a false zero-tolerance
+# mismatch (STAGED_FILES=2 vs BACKUP_FILES=1 for one data file).
 #
 # ONE traversal yields both numbers: `stat -c %s` prints one size line per file
 # (even for a name that holds a newline, which `find | wc -l` would count twice), and
@@ -850,10 +858,9 @@ $HostPath = (Resolve-Path $BackupName).Path
 # UNCREATABLE NAMES (twin of backup_daaf.sh; the full annotation lives there). Right
 # after `cd /staging` and BEFORE the symlink manifest, a step switched by the
 # DAAF_STAGE_NAMES environment variable handles names Windows cannot create -- a name
-# that made Windows `docker cp` ABORT mid-extraction and drop every later entry (field
-# failure 2026-09-30, Docker Client 29.1.3: stopped at a file named `name<LF>nl`,
-# "The filename, directory name, or volume label syntax is incorrect", after 72,386
-# of 73,785 files). THIS twin passes `-e DAAF_STAGE_NAMES=win` (after the `-v`) for
+# that makes Windows `docker cp` ABORT mid-extraction and drop every later entry
+# (observed 2026-09-30, Docker Client 29.1.3: it stopped at a file named `name<LF>nl`
+# with "The filename, directory name, or volume label syntax is incorrect"). THIS twin passes `-e DAAF_STAGE_NAMES=win` (after the `-v`) for
 # both volumes; the .sh twin never does (the names are legal on macOS/Linux; it passes
 # "casewarn" on macOS to LIST case-only clashes, and nothing on Linux). In win mode the
 # step removes every non-symlink entry (a folder with its subtree) whose own name has a
@@ -869,14 +876,14 @@ $HostPath = (Resolve-Path $BackupName).Path
 # stay last (last match wins). Write-DaafNameReport turns them into the WARNING after
 # the copy, and STAGED_STRIPPED_FILES keeps the "Snapshot" line from blaming removed
 # files on live-volume change. Symlinks are never removed by this step, so the fatal
-# tab/newline symlink gate below is unchanged. The bats suite runs it under dash + GNU
-# find; a one-shot host probe ran it under real busybox on Windows (2026-10-01, matched
-# exactly: research/2026-09-29_FrameworkDev_BackupLongPathCount/
-# 2026-09-30_busybox_host_probe.md). Two busybox differences are designed around
+# tab/newline symlink gate below still applies. The bats suite runs it under dash + GNU
+# find, and the real program matched that output under busybox 1.37.0 on a Windows
+# host (observed 2026-10-01, Docker Desktop). Two busybox differences are designed around
 # from its source (see the .sh twin): upper-case -iname patterns, and NO batched
 # `-exec ... {} +` inside `\( \)` -- busybox never runs the final batch of an -exec
-# that is not at the top level of the expression (Alpine aports MR !75008), so the
-# case listing uses two top-level OR branches (pinned by backup_twin_parity.bats).
+# that is not at the top level of the expression
+# (verified against upstream Alpine aports MR !75008 on 2026-11-01), so the case
+# listing uses two top-level OR branches (pinned by backup_twin_parity.bats).
 $StageProgram = @'
 set -e
 cp -a /source /staging
@@ -961,11 +968,11 @@ Write-Host "Preparing volume snapshot (staging + symlink strip)... (this may tak
 # CID; `docker wait` blocks until the staging program finishes and prints its exit
 # status, which MUST be checked -- a nonzero status means staging failed before any
 # host bytes were written, so the backup aborts fatally (nothing useful produced).
-# The CID comes from STDOUT ONLY, the last non-empty line (audit 04, "stderr/stdout
-# ordering"): with `2>&1 | Select-Object -Last 1`, a stderr line that arrived after the
-# CID (pwsh 7.6 repro: the merged order differs between Continue and SilentlyContinue)
-# replaced it, and the helper then leaked. Nothing here shows Docker's text, so stderr is
-# discarded (restore_from_backup.ps1 reads its helper CID the same way).
+# The CID comes from STDOUT ONLY, the last non-empty line: with `2>&1 | Select-Object
+# -Last 1`, a stderr line that arrives after the CID (the merged order varies from run
+# to run; observed 2026-11-01, PowerShell 7.6.3) would replace it and leak the
+# helper. Nothing here shows Docker's text, so stderr is discarded
+# (restore_from_backup.ps1 reads its helper CID the same way).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $stageCidLines = @(docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win $BusyboxImage sh -c $StageProgram 2>$null)
 $stageRunExit = $LASTEXITCODE
@@ -979,17 +986,19 @@ if (-not $stageStartOk) {
         $null = docker rm -f $StageCid 2>&1
         $ErrorActionPreference = $savedEAP
     }
-    Write-Host "ERROR: Could not start the staging container for a symlink-safe backup." -ForegroundColor Red
+    Write-Host "ERROR: The backup could not start its helper container in Docker, so nothing was copied." -ForegroundColor Red
+    Write-Host "       Check that Docker Desktop is running, then run the backup again. The empty folder"
+    Write-Host "       $BackupName\ it created can be deleted."
     Wait-AndExit 1
 }
 
 # From here until the copy finishes, ONE try/finally owns the staging container: its
 # finally runs `docker rm -f $StageCid` however the block ends -- success, a throw, or
 # Ctrl-C (PowerShell runs finally blocks when the user stops the script) during the
-# possibly long `docker wait`, the `docker logs` reads, or the copy. Before this, the
-# try began only at the copy loop, so an interruption while waiting for staging left
-# a full-size staging container (a complete copy of the volume) behind in the Docker
-# VM. As everywhere in this script, nothing inside the try calls `exit`/Wait-AndExit
+# possibly long `docker wait`, the `docker logs` reads, or the copy. The try starts
+# here, not at the copy loop, because an interruption while waiting for staging would
+# otherwise leave a full-size staging container (a complete copy of the volume) behind
+# in the Docker VM. As everywhere in this script, nothing inside the try calls `exit`/Wait-AndExit
 # (version-fragile on PS 5.1 when a finally must still run): a staging failure only
 # sets $StageFailed, and the fatal exit happens after the finally.
 $StageFailed = $false
@@ -1002,17 +1011,16 @@ $ExpectedKB = $VolumeLogicalKB
 # The staging log, kept for the name report after the copy (Write-DaafNameReport).
 $StageDoneLog = @()
 try {
-    # The status from STDOUT ONLY, the last non-empty line (as for the CID above): a late
-    # stderr line can no longer stand in for it (it failed closed to 1 before, but only
-    # by luck of the parse).
+    # The status from STDOUT ONLY, the last non-empty line (as for the CID above), so a
+    # late stderr line can never stand in for it.
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $stageWaitLines = @(docker wait $StageCid 2>$null)
     $ErrorActionPreference = $savedEAP
     $StageStatusRaw = $null
     foreach ($waitLine in $stageWaitLines) { if ("$waitLine".Trim() -ne '') { $StageStatusRaw = "$waitLine".Trim() } }
     # Gate on TryParse's BOOLEAN return. [int]::TryParse writes 0 into the [ref] on a
-    # parse FAILURE (not just a parse of "0"), so the old `$null = TryParse(...)` form
-    # silently overwrote the fail-closed default with 0 whenever `docker wait` emitted a
+    # parse FAILURE (not just a parse of "0"), so an ungated `$null = TryParse(...)`
+    # would overwrite the fail-closed default with 0 whenever `docker wait` emitted a
     # non-numeric last line (e.g. a daemon error merged via 2>&1) -- flipping this fatal
     # gate from "abort" to "proceed to copy a partial staged tree." Parse into a temp var
     # and adopt it ONLY on success; otherwise stay fail-closed at 1 (mirrors the correct
@@ -1028,12 +1036,10 @@ try {
         # log, NOT this terminal. Fetch that log now, BEFORE the finally below runs
         # `docker rm -f` (order matters); it is shown after the finally. Best-effort: a
         # `docker logs` failure must not mask the original staging error. (The gate
-        # prints offenders to STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped
-        # the container's stderr in the field 2026-07-14, so the offender list never
-        # reached the user; stdout is version-agnostic. The `2>&1` here still merges
+        # prints offenders to STDOUT; see WHY STDOUT above. The `2>&1` here still merges
         # both streams into the log, under 'Continue': Windows PowerShell 5.1 drops
-        # native stderr from a 2>&1 capture under SilentlyContinue, which lost a stderr
-        # cause such as "No space left on device".)
+        # native stderr from a 2>&1 capture under SilentlyContinue, which would lose a
+        # stderr cause such as "No space left on device".)
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $StageLog = (docker logs $StageCid 2>&1 | Out-String)
         $ErrorActionPreference = $savedEAP
@@ -1106,9 +1112,10 @@ try {
         # ONE pre-joined, quoted argument string -- NOT an array. Start-Process does not
         # quote array elements: it joins them with bare spaces (Microsoft's Start-Process
         # docs: "joins the array into a single string with each element of the array
-        # separated by a single space"; PowerShell#5576), so a $HostPath under a spaced
-        # folder such as "C:\Users\John Smith" or "OneDrive - Org" reached docker as
-        # several arguments and the copy failed. ConvertTo-DaafNativeArg (inlined above)
+        # separated by a single space"; PowerShell#5576; both verified against the
+        # PowerShell docs and issue on 2026-11-01), so a $HostPath under a spaced
+        # folder such as "C:\Users\John Smith" or "OneDrive - Org" would reach docker as
+        # several arguments and the copy would fail. ConvertTo-DaafNativeArg (inlined above)
         # quotes each element for the Windows argv parser. Source is the staged (symlink-
         # and special-file-free) tree, not the volume.
         $CopyArgs = (@('cp', "${StageCid}:/staging/.", $HostPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
@@ -1122,13 +1129,11 @@ try {
         # the process exits, ExitCode later reads as $null (the exit status is gone).
         # PowerShell#5421 reports it for Windows PowerShell 5.1 and PowerShell 6; #20400
         # for 7.4 previews; the 7.4.1 release notes list the fix -- so it affects Windows
-        # PowerShell 5.1 and PowerShell 6.0-7.4.0 on Windows. Touching .Handle opens and
-        # retains one for the object's lifetime, which keeps the exit status readable after
-        # exit. The old code then coerced that $null to 0 -- a plausible reason the earlier
-        # symlink truncation "surfaced with a ZERO exit" (see the file-count verification
-        # below). In-repo field precedent: the same `ExitCode` = $null symptom and
-        # Handle-cache fix in test_migration.ps1 Invoke-HardenedScript ("exited with code
-        # ."). Best-effort: if the handle cannot be opened (the process already exited),
+        # PowerShell 5.1 and PowerShell 6.0-7.4.0 on Windows (verified against the
+        # PowerShell issues #5421 and #20400 and the v7.4.1 release notes on 2026-11-01).
+        # Touching .Handle opens and retains one for the object's lifetime, which keeps the exit status readable after
+        # exit. test_migration.ps1 Invoke-HardenedScript caches the handle for the same
+        # reason (its symptom: "exited with code ."). Best-effort: if the handle cannot be opened (the process already exited),
         # the exit code is treated as UNKNOWN below, never 0.
         try {
             $null = $CopyProcess.Handle
@@ -1144,8 +1149,8 @@ try {
             # verified (container-side) count. Counted with the SAME root exclusions as
             # the snapshot it is shown against (Measure-DaafBackupTree, as in the fallback
             # count below): the staged tree always carries the root ".daaf-symlinks"
-            # manifest, which the snapshot excludes, so a plain count of every file read
-            # one high at the end of the copy (field 2026-10-01: "73848 / 73847").
+            # manifest, which the snapshot excludes, so a plain count of every file would
+            # read one high at the end of the copy.
             $Copied = (Measure-DaafBackupTree -Root $HostPath -ExcludeRootFiles @($SymlinksManifest, $PermissionsManifest) -ExcludeRootDirs @($ClaudeSubDir)).Files
             if ($ExpectedFiles -gt 0) {
                 $Percent = [math]::Min(100, [math]::Floor($Copied * 100 / $ExpectedFiles))
@@ -1203,8 +1208,8 @@ if ($StageFailed) {
 # WaitForExit here settles it before we trust ExitCode.)
 $CopyProcess.WaitForExit()
 # An unreadable exit code ($null, or a getter that throws) is UNKNOWN -- it is never
-# coerced to 0. Coercing it read an unknown (possibly failed) copy as a clean
-# success, which disarmed the corroborated short-copy check below. With
+# coerced to 0: that would read an unknown (possibly failed) copy as a clean
+# success and disarm the corroborated short-copy check below. With
 # $CopyExitKnown false, the branches below never treat the copy as clean on the exit
 # code's say-so: they warn, latch $HadWarnings, and lean on the file counts.
 $CopyExitCode = $null
@@ -1230,10 +1235,9 @@ $HadWarnings = $false
 # Count what actually landed in the host folder CONTAINER-SIDE, through a read-only
 # bind mount. This is the authoritative completeness signal. Windows PowerShell 5.1
 # Get-ChildItem cannot descend into folders whose Windows path is 248+ characters
-# when LongPathsEnabled=0, and `-ErrorAction SilentlyContinue` hid that as a quiet
-# undercount: field run 2026-09-29 counted 72,834 files where a container-side count
-# of the same folder found 73,021 -- 187 files hidden (docker cp, written in Go,
-# handles long paths fine). Linux `find` in the Docker VM has no such limit.
+# when LongPathsEnabled=0, and `-ErrorAction SilentlyContinue` would hide that as a
+# quiet undercount (docker cp, written in Go, handles long paths fine). Linux `find`
+# in the Docker VM has no such limit.
 #
 # $BackupCountProgram uses EXACTLY the staged count's `find` predicate and KB formula
 # (pinned by tests/bash/backup_twin_parity.bats), so the two sides are comparable
@@ -1245,11 +1249,13 @@ $HadWarnings = $false
 # Desktop's host file sharing, so every walk of it is slow. Quote-free like
 # $StageProgram (the `\*` keeps `sh` from globbing the pattern).
 #
-# VISIBILITY SENTINEL: Docker Desktop has been reported to present an EMPTY folder
-# for a bind mount of some locations -- a non-C: drive, a USB or network drive
-# (docker/for-win#14271; not reproduced here). The program would then count 0 and
-# exit 0, and the backup would report "0 files copied" on a complete copy. So the
-# program also prints BACKUP_SENTINEL=1 only when it can see the root
+# VISIBILITY SENTINEL: a bind mount of some locations -- a non-C: drive, a USB or
+# network drive -- can fail on Docker Desktop for Windows. docker/for-win#14271 shows
+# an explicit "bind source path does not exist" error for them (verified against the
+# GitHub issue on 2026-11-01); that error exits nonzero and takes the "could not count"
+# fallback below. A mount that shows an EMPTY folder instead is not reproduced here,
+# but the program would then count 0 and exit 0, and the backup would report "0 files
+# copied" on a complete copy. So the program also prints BACKUP_SENTINEL=1 only when it can see the root
 # ".daaf-symlinks", which the staging step writes into EVERY backup (0 bytes when the
 # volume has no symlinks). No sentinel = the container count is unavailable, and the
 # PowerShell fallback runs with a note saying why. The sentinel is a marker line
@@ -1261,8 +1267,8 @@ $HadWarnings = $false
 # goes to /tmp/count_err inside the throwaway container, and BACKUP_FILES/BACKUP_KB are
 # printed only when that file is empty; otherwise BACKUP_COUNT_ERRORS=<lines> is
 # printed instead, and the count is UNAVAILABLE (PowerShell fallback, with a note
-# naming the errors). Without this, a `find` read error through the bind mount
-# produced a short count, BACKUP_SENTINEL=1 and exit 0 -- trusted as EXACT, it could
+# naming the errors). Without this, a `find` read error through the bind mount would
+# produce a short count, BACKUP_SENTINEL=1 and exit 0 -- trusted as EXACT, it could
 # report "missing files" or even trip the fatal short-copy branch on a complete
 # backup. `: > /tmp/count_err` first, under `set -e`: if the file cannot be created
 # the program exits nonzero (count unavailable) rather than printing an unchecked count.
@@ -1359,7 +1365,7 @@ $FileCountLabel = "$FileCount"
 if ($CountIsLowerBound) { $FileCountLabel = "$FileCount+" }
 
 # Print the ACTUAL final count, not a fabricated "100%". On a truncated copy (the
-# Windows symlink/special-file abort this staging step now prevents, or any other
+# Windows symlink/special-file abort this staging step prevents, or any other
 # partial copy) an unconditional "100%" would lie about completeness.
 if ($ExpectedFiles -gt 0) {
     $FinalPercent = [math]::Min(100, [math]::Floor($FileCount * 100 / $ExpectedFiles))
@@ -1373,7 +1379,7 @@ Write-Host "  Progress: $FileCountLabel / $ExpectedFiles files ($FinalPercent%) 
 # -- see UNCREATABLE NAMES above $StageProgram. Reported HERE, right after the final
 # count line and BEFORE the two fatal exits below (zero files; corroborated short
 # copy): if the copy still stopped early for some other reason, the user of that run
-# must still learn which names were left out (review round 7; twin of the .sh case
+# must still learn which names were left out (twin of the .sh case
 # report's placement). Printed exactly once. The data-volume staging exited 0 to get
 # here, so -ExpectMarker is always right: a log without STAGED_STRIPPED_NAMES means the
 # list could not be read. On the success path the exit status stays 0.
@@ -1465,10 +1471,9 @@ if ($CopyExitKnown -and $CopyExitCode -ne 0 -and $FileCount -lt $ExpectedFiles -
 }
 
 # --- File-count verification ---
-# Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run (INFERENCE:
-# most likely the since-removed $null-to-0 ExitCode coercion -- see the handle cache
-# after Start-Process above -- since docker cp returns the extraction error). A nonzero
+# Do NOT trust docker cp's exit code as the sole failure signal: a truncated copy can
+# exit 0, or its exit code can be unreadable (see the handle cache after Start-Process
+# above). A nonzero
 # exit that ALSO comes up short on the count is already fatal (the corroborated
 # short-copy branch above). This block catches the harder case -- a clean ZERO exit
 # that still copied the wrong number of files -- and warns loudly (latching the WITH
@@ -1476,12 +1481,8 @@ if ($CopyExitKnown -and $CopyExitCode -ne 0 -and $FileCount -lt $ExpectedFiles -
 #
 # ZERO tolerance when the snapshot markers were read: the snapshot is exactly the
 # tree `docker cp` streamed, and both counts use the same predicates, so any
-# difference is a real one. That closes the hole the old 1% tolerance left open --
-# it hid the 2026-09-29 gap of 197 files out of 73,031 (187 hidden by the Windows
-# PowerShell 5.1 long-path skip, plus 10 most likely live-volume drift between scan
-# and snapshot -- a volume-vs-backup diff found every surviving pre-backup file
-# present) and a probe of a FIFO-abort truncation (714 of 71,820 files, under its
-# 718-file tolerance). The 1% tolerance survives ONLY on the fallback path, where
+# difference is a real one; a 1% tolerance would hide hundreds of missing files in a
+# large volume. The 1% tolerance applies ONLY on the fallback path, where
 # the expected count is the live-volume scan and benign drift between scan and
 # snapshot is possible, so a mismatch there is only "may be incomplete".
 #
@@ -1594,9 +1595,8 @@ if ($claudeVolumeExists) {
     $ClaudeDestPath = Join-Path $HostPath $ClaudeSubDir
     New-Item -ItemType Directory -Path $ClaudeDestPath -Force | Out-Null
     # Same STAGING mechanism as the data volume above (this volume ALSO carries
-    # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
-    # up the Claude Code state volume" warning appeared on Windows: `docker cp`
-    # aborted on the first link). Stage into a throwaway container to strip the
+    # symlinks, e.g. codex-daaf/tmp/arg0/..., which would stop a Windows `docker cp`
+    # at the first link). Stage into a throwaway container to strip the
     # symlinks into this subfolder's own ".daaf-symlinks" manifest (and delete any
     # special files, unreported here -- the scan above covers the data volume only),
     # then cp the stripped staged tree out. Run synchronously (this copy is small). Only
@@ -1712,7 +1712,7 @@ if ($claudeVolumeExists) {
 
 # --- Capture the executable-permission manifest ---
 # Why: NTFS (and the FAT/exFAT of external drives) stores no POSIX permission
-# bits, so when this backup lands on the Windows host every file's mode is lost.
+# bits, so a backup folder on such a drive loses every file's mode.
 # On restore, `docker cp` INTO the volume fabricates 0755 for every file, and git
 # inside the container then reports every tracked 0644 file as modified (a pure
 # 100644->100755 mode diff, no content change). To let restore put the modes back,
@@ -1765,14 +1765,18 @@ if ($manifestScanOk) {
     } catch {
         Remove-Item -LiteralPath $ManifestPath -Force -ErrorAction SilentlyContinue
         Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
-        Write-Host "         The backup is still valid; on restore, file permissions may need"
-        Write-Host "         manual repair if this backup is restored on a Windows host."
+        Write-Host "         The backup is still valid. Run the backup again to record it: if this backup"
+        Write-Host "         folder is kept on a Windows (NTFS) or exFAT/FAT drive, a restore from it cannot"
+        Write-Host "         tell which files are executable, and git may then show many files as changed"
+        Write-Host "         by mode only."
         $HadWarnings = $true
     }
 } else {
     Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
-    Write-Host "         The backup is still valid; on restore, file permissions may need"
-    Write-Host "         manual repair if this backup is restored on a Windows host."
+    Write-Host "         The backup is still valid. Run the backup again to record it: if this backup"
+    Write-Host "         folder is kept on a Windows (NTFS) or exFAT/FAT drive, a restore from it cannot"
+    Write-Host "         tell which files are executable, and git may then show many files as changed"
+    Write-Host "         by mode only."
     $HadWarnings = $true
 }
 

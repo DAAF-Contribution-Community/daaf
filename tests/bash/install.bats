@@ -101,6 +101,9 @@ setup() {
     # The installer also bridges these from an existing environment_settings.txt;
     # start every test with none of them set.
     unset DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV MOCK_INSTALL_CALL_LOG MOCK_INSTALL_FAIL_ON
+    # A DAAF dev container also exports DAAF_BRANCH, which every printed re-run
+    # carries when it is not main; tests that need a branch set it explicitly.
+    unset DAAF_BRANCH
     # install.sh does NOT require docker-compose.yml to exist beforehand
     # (it creates the install directory itself)
 }
@@ -997,7 +1000,8 @@ install_named_folder() {
 # =========================================================================
 # Round #45: the project name as Compose uses it, printed commands that carry it
 # =========================================================================
-# Review 44q (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/reviews/):
+# Review 44q (maintainer-only record, not shipped:
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/reviews/):
 #   ISSUE-1  Compose normalizes `name:` (compose-go NormalizeProjectName: lowercase,
 #            keep [a-z0-9_-], trim leading '_'/'-'); the installer checked the raw
 #            value. Now the normalized name is checked, exported and printed; a name
@@ -1186,6 +1190,8 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     cd "${TEST_DIR}"
     compose_f="${TEST_DIR}/daaf-docker/docker-compose.yml"
     retry="(set DAAF_PROJECT_NAME=x, and DAAF_FORCE_REINSTALL=1 if prompted)."
+    # A failure after `up -d` prints a forced re-run that carries the ports and project.
+    force_rerun_re="DAAF_PORT_MARIMO=3101 DAAF_PORT_LOGVIEWER=3102 DAAF_PORT_VSCODE=3103 DAAF_PROJECT_NAME=x DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\""
     for fail in " build --progress" " up -d" "exec -T daaf-docker true" "git clone" "cp -a /tmp/daaf-clone" "test -f /daaf/CLAUDE.md"; do
         export MOCK_INSTALL_FAIL_ON="${fail}"
         run bash "${REPO_ROOT}/scripts/host/install.sh"
@@ -1198,19 +1204,56 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
             " up -d")
                 grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}" ;;
             "exec -T daaf-docker true")
-                grep -Fxq "  DAAF_PORT_MARIMO=3101 DAAF_PORT_LOGVIEWER=3102 DAAF_PORT_VSCODE=3103 docker compose -p x -f ${compose_f} up -d" <<< "${output}" ;;
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "git clone")
-                [ "$(grep -Fxc "  docker compose -p x -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "2" ]
-                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+                [ "$(grep -Fxc "  docker compose -p x -f \"${compose_f}\" exec -T daaf-docker \\" <<< "${output}")" = "2" ]
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "cp -a /tmp/daaf-clone")
-                [ "$(grep -Fxc "  docker compose -p x -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "1" ]
-                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+                [ "$(grep -Fxc "  docker compose -p x -f \"${compose_f}\" exec -T daaf-docker \\" <<< "${output}")" = "1" ]
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "test -f /daaf/CLAUDE.md")
-                grep -Fxq "  docker compose -p x exec daaf-docker bash" <<< "${output}" ;;
+                grep -Fxq "  docker compose -p x exec daaf-docker bash" <<< "${output}"
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
+        esac
+        case "${fail}" in
+            "exec -T daaf-docker true"|"git clone"|"cp -a /tmp/daaf-clone"|"test -f /daaf/CLAUDE.md")
+                # The forced re-run starts with a quoted cd to the folder above daaf-docker.
+                [ "$(grep -Ex -B1 -- "  ${force_rerun_re}" <<< "${output}" | head -n 1)" = "  cd \"${TEST_DIR}\"" ] ;;
         esac
         # No printed compose command without the project, no bare retry text.
         refute_output --regexp 'docker compose (-f|exec|down|up)'
         refute_output --partial "(set DAAF_FORCE_REINSTALL=1 if prompted)"
+        # The folder already has the user's settings file: never tell them to
+        # copy the template over it.
+        refute_output --partial "By hand, also create environment_settings.txt"
+        refute_output --partial "cp environment_settings_example.txt environment_settings.txt"
+    done
+}
+
+@test "install.sh: a failure after up -d on a fresh named install lists the settings to add by hand, and never without the project" {
+    # No settings file yet (fresh install), so the by-hand route must say how to
+    # create one, with the DAAF_* values this run used.
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="x"
+    export DAAF_PORT_VSCODE="3103"
+    sleep() { true; }
+    export -f sleep
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    cd "${TEST_DIR}"
+    for fail in "git clone" "cp -a /tmp/daaf-clone" "test -f /daaf/CLAUDE.md"; do
+        export MOCK_INSTALL_FAIL_ON="${fail}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "fail=[${fail}]"
+        echo "${output}"
+        [ "${status}" -eq 1 ]
+        grep -Exq -- "  DAAF_PORT_VSCODE=3103 DAAF_PROJECT_NAME=x DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}"
+        grep -Fxq "By hand, also create environment_settings.txt:" <<< "${output}"
+        grep -Fxq "  cp environment_settings_example.txt environment_settings.txt" <<< "${output}"
+        grep -Fxq "  DAAF_PROJECT_NAME=x" <<< "${output}"
+        grep -Fxq "  DAAF_PORT_VSCODE=3103" <<< "${output}"
+        grep -Fq "11) Restart Container" <<< "${output}"
+        refute_output --regexp 'docker compose (-f|exec|down|up)'
     done
 }
 
@@ -1238,6 +1281,7 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     cd "${TEST_DIR}"
     compose_f="${TEST_DIR}/daaf-docker/docker-compose.yml"
     retry="(set DAAF_FORCE_REINSTALL=1 if prompted)."
+    force_rerun_re="DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\""
     # --force-recreate last: only then is there still no settings file to seed.
     for fail in " build --progress" " up -d" "exec -T daaf-docker true" "git clone" "cp -a /tmp/daaf-clone" "test -f /daaf/CLAUDE.md" "--force-recreate"; do
         export MOCK_INSTALL_FAIL_ON="${fail}"
@@ -1250,19 +1294,29 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
             " up -d")
                 grep -Fxq "You can safely re-run this installer to retry ${retry}" <<< "${output}" ;;
             "exec -T daaf-docker true")
-                grep -Fxq "  docker compose -f ${compose_f} up -d" <<< "${output}" ;;
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "git clone")
-                [ "$(grep -Fxc "  docker compose -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "2" ]
-                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+                [ "$(grep -Fxc "  docker compose -f \"${compose_f}\" exec -T daaf-docker \\" <<< "${output}")" = "2" ]
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}"
+                # The by-hand settings step quotes its folder.
+                grep -Fxq "  cd \"${TEST_DIR}/daaf-docker\"" <<< "${output}"
+                grep -Fxq "  cp environment_settings_example.txt environment_settings.txt" <<< "${output}" ;;
             "cp -a /tmp/daaf-clone")
-                [ "$(grep -Fxc "  docker compose -f ${compose_f} exec -T daaf-docker \\" <<< "${output}")" = "1" ]
-                grep -Fxq "You can also safely re-run this installer to retry from scratch ${retry}" <<< "${output}" ;;
+                [ "$(grep -Fxc "  docker compose -f \"${compose_f}\" exec -T daaf-docker \\" <<< "${output}")" = "1" ]
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "test -f /daaf/CLAUDE.md")
-                grep -Fxq "  docker compose exec daaf-docker bash" <<< "${output}" ;;
+                grep -Fxq "  docker compose exec daaf-docker bash" <<< "${output}"
+                grep -Exq -- "  ${force_rerun_re}" <<< "${output}" ;;
             "--force-recreate")
                 assert_success
+                grep -Fxq "        cd \"${TEST_DIR}/daaf-docker\"" <<< "${output}"
                 grep -Fxq "        docker compose down" <<< "${output}"
                 grep -Fxq "  docker compose exec daaf-docker bash   # enter the container" <<< "${output}" ;;
+        esac
+        case "${fail}" in
+            "exec -T daaf-docker true"|"git clone"|"cp -a /tmp/daaf-clone"|"test -f /daaf/CLAUDE.md")
+                # The forced re-run starts with a quoted cd to the folder above daaf-docker.
+                [ "$(grep -Ex -B1 -- "  ${force_rerun_re}" <<< "${output}" | head -n 1)" = "  cd \"${TEST_DIR}\"" ] ;;
         esac
         refute_output --partial "docker compose -p"
         refute_output --partial "DAAF_PROJECT_NAME="
@@ -1270,7 +1324,7 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     done
 }
 
-@test "install.sh #45 ISSUE-2: ports set for the default project ride on the printed up -d command (no -p)" {
+@test "install.sh #45 ISSUE-2: ports set for the default project ride on the printed forced re-run (no project)" {
     export DAAF_PORT_MARIMO="3101"
     export MOCK_INSTALL_FAIL_ON="exec -T daaf-docker true"
     export DAAF_NESTED=1
@@ -1279,7 +1333,73 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     cd "${TEST_DIR}"
     run bash "${REPO_ROOT}/scripts/host/install.sh"
     [ "${status}" -eq 1 ]
-    grep -Fxq "  DAAF_PORT_MARIMO=3101 docker compose -f ${TEST_DIR}/daaf-docker/docker-compose.yml up -d" <<< "${output}"
+    grep -Exq -- "  DAAF_PORT_MARIMO=3101 DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}"
+    refute_output --partial "DAAF_PROJECT_NAME="
+}
+
+@test "install.sh: every printed re-run carries DAAF_BRANCH (not main) and DAAF_DEV=1" {
+    # The installer does not read DAAF_BRANCH from environment_settings.txt, so a
+    # re-run from a new terminal without it would install main over this install.
+    export DAAF_BRANCH="feature-x"
+    export DAAF_DEV="1"
+    export DAAF_NESTED=1
+    sleep() { true; }
+    export -f sleep
+    MOCK_INSTALL_VOLUMES=""
+    export MOCK_INSTALL_VOLUMES
+    cd "${TEST_DIR}"
+    url_re='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/feature-x/scripts/host/install\.sh'
+    for fail in " build --progress" "exec -T daaf-docker true"; do
+        export MOCK_INSTALL_FAIL_ON="${fail}"
+        run bash "${REPO_ROOT}/scripts/host/install.sh"
+        echo "fail=[${fail}]"
+        [ "${status}" -eq 1 ]
+        case "${fail}" in
+            " build --progress")
+                grep -Fxq "You can safely re-run this installer to retry (set DAAF_BRANCH=feature-x DAAF_DEV=1, and DAAF_FORCE_REINSTALL=1 if prompted)." <<< "${output}"
+                grep -Exq -- "  DAAF_BRANCH=feature-x DAAF_DEV=1 DAAF_DIAG_BUILD=1 bash -c \"\\\$\\(curl -fsSL ${url_re}\\)\"" <<< "${output}" ;;
+            "exec -T daaf-docker true")
+                grep -Exq -- "  DAAF_BRANCH=feature-x DAAF_DEV=1 DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${url_re}\\)\"" <<< "${output}" ;;
+        esac
+    done
+    # The case-1 refusal's forced re-run carries them too, after the project.
+    unset MOCK_INSTALL_FAIL_ON
+    export DAAF_PROJECT_NAME="x"
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    create_fake_compose_file "${TEST_DIR}/daaf-docker"
+    MOCK_INSTALL_VOLUMES="x_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    grep -Exq -- "  DAAF_PROJECT_NAME=x DAAF_BRANCH=feature-x DAAF_DEV=1 DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${url_re}\\)\"" <<< "${output}"
+    # DAAF_BRANCH=main and a DAAF_DEV other than 1 add no prefix.
+    export DAAF_BRANCH="main"
+    export DAAF_DEV="0"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_failure
+    grep -Exq -- "  DAAF_PROJECT_NAME=x DAAF_FORCE_REINSTALL=1 bash -c \"\\\$\\(curl -fsSL ${INSTALL_URL_RE}\\)\"" <<< "${output}"
+    refute_output --partial "DAAF_BRANCH="
+    refute_output --partial "DAAF_DEV="
+}
+
+@test "install.sh: case 2 second-copy example exports DAAF_BRANCH only when it is not main" {
+    # The example fetches this branch's installer; without DAAF_BRANCH that
+    # installer would install main.
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_INSTALL_VOLUMES="myproj_daaf-data"
+    export MOCK_INSTALL_VOLUMES
+    export DAAF_NESTED=1
+    export DAAF_BRANCH="feature-x"
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    grep -A1 -Fx "  export DAAF_BRANCH=feature-x" <<< "${output}" \
+        | grep -Fxq "  curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/feature-x/scripts/host/install.sh | bash"
+    export DAAF_BRANCH="main"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    [ "${status}" -eq 1 ]
+    assert_output --partial "  export DAAF_PORT_VSCODE="
+    refute_output --partial "export DAAF_BRANCH="
 }
 
 @test "install.sh #45 SUGGESTION-1: a shell value wins over the settings file for ALL FIVE keys" {
@@ -1414,8 +1534,7 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
 # --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
 # Root cause: the dry-run curl mock touched a zero-byte stub for every -o
 # target under $INSTALL_DIR (=<CWD>/daaf-docker). A dry-run install must now
-# create NOTHING on disk -- no daaf-docker/ directory, no stub files. See:
-# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+# create NOTHING on disk -- no daaf-docker/ directory, no stub files.
 
 @test "install.sh: dry-run creates no daaf-docker directory or files" {
     cd "${TEST_DIR}"
@@ -1879,6 +1998,37 @@ INSTALL_URL_RE='https://raw\.githubusercontent\.com/DAAF-Contribution-Community/
     assert_success
     assert_output --partial "did not fully complete"
     [ ! -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    # The fallback lists the value this run used and how to apply the file.
+    grep -Fxq "        cp environment_settings_example.txt environment_settings.txt" <<< "${output}"
+    grep -Fxq "        DAAF_PROJECT_NAME=myproj" <<< "${output}"
+    grep -Fq "11) Restart Container" <<< "${output}"
+}
+
+@test "install.sh: a missing settings template is replaced by a download command, not a cp of the missing file" {
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_DOCKER_EXEC_EXIT=0
+    # Like mock_curl, but the template download writes nothing.
+    curl() {
+        local outfile="" args=("$@") i
+        for (( i=0; i<${#args[@]}; i++ )); do
+            [ "${args[$i]}" = "-o" ] && outfile="${args[$((i+1))]}"
+        done
+        case "${outfile}" in
+            *environment_settings_example.txt) return 0 ;;
+        esac
+        if [ -n "${outfile}" ]; then mkdir -p "$(dirname "${outfile}")"; touch "${outfile}"; fi
+        return 0
+    }
+    export -f curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    echo "${output}"
+    assert_success
+    assert_output --partial "Could not create environment_settings.txt (the example template was"
+    grep -Exq "        curl -fsSL https://raw\.githubusercontent\.com/DAAF-Contribution-Community/daaf/[^/ ]+/scripts/host/environment_settings_example\.txt -o environment_settings\.txt" <<< "${output}"
+    grep -Fxq "        DAAF_PROJECT_NAME=myproj" <<< "${output}"
+    refute_output --partial "cp environment_settings_example.txt"
 }
 
 @test "install.sh: dry-run does not create environment_settings.txt (seeder zero-write)" {

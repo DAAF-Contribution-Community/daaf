@@ -225,6 +225,10 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/run_vscode.sh"
     assert_output --partial "ERROR"
     assert_output --partial "Failed to start code-server"
+    # code-server's own messages print in this terminal; a bare `docker compose
+    # logs` would not show them (and would read the default install's log).
+    assert_output --partial "If you stopped it yourself with Ctrl+C, you can ignore this."
+    refute_output --partial "docker compose logs"
 }
 
 # --- Container already running ---

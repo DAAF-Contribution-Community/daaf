@@ -197,22 +197,24 @@ Describe "run_daaf.ps1 native stderr handling (dispatch #63)" {
         # stderr crosses the real native-command path). $FakeBody is the body of the
         # fake's `case "$*" in ... esac`; every call is logged to $TestDrive/<tag>.log.
         function Invoke-RunDaafUnderFake {
-            param([string]$Tag, [string]$FakeBody, [switch]$WithSettings)
+            param([string]$Tag, [string]$FakeBody, [switch]$WithSettings, [string]$SettingsText = "# test`n")
             $work = Join-Path $TestDrive ("$Tag-" + [guid]::NewGuid().ToString('N'))
             $bin = Join-Path $work 'bin'
             $null = New-Item -ItemType Directory -Force -Path $bin
             New-FakeComposeFile -Directory $work
-            if ($WithSettings) { [System.IO.File]::WriteAllText((Join-Path $work 'environment_settings.txt'), "# test`n") }
+            if ($WithSettings) { [System.IO.File]::WriteAllText((Join-Path $work 'environment_settings.txt'), $SettingsText) }
             $callLog = Join-Path $TestDrive "$Tag.log"
             $fake = "#!/usr/bin/env bash`nprintf '%s\n' `"`$*`" >> '$callLog'`ncase `"`$*`" in`n$FakeBody`n    *) exit 0 ;;`nesac`n"
             [System.IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake)
             & chmod +x (Join-Path $bin 'docker')
             $saved = @{}
-            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
+            foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED', 'DAAF_PROJECT_NAME', 'DAAF_BRANCH', 'DAAF_DEV')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k, 'Process') }
             Push-Location -LiteralPath $work
             try {
                 $env:PATH = $bin + [System.IO.Path]::PathSeparator + $saved['PATH']
-                Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+                # A DAAF dev container exports its own DAAF_PROJECT_NAME, DAAF_BRANCH
+                # and DAAF_DEV; start without them.
+                Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE, Env:DAAF_PROJECT_NAME, Env:DAAF_BRANCH, Env:DAAF_DEV -ErrorAction SilentlyContinue
                 $env:DAAF_NESTED = "1"
                 $out = & $script:ScriptPath *>&1 | Out-String
                 $code = $LASTEXITCODE
@@ -284,6 +286,62 @@ Describe "run_daaf.ps1 native stderr handling (dispatch #63)" {
         $r.Calls | Should -Contain 'inspect --format {{.Created}} abc123'
         @($r.Calls | Where-Object { $_ -like 'inspect*' }).Count | Should -Be 1
         $r.Output | Should -BeLike "*NOTE: Your environment_settings.txt file has been modified since this container was started.*"
+        $r.ExitCode | Should -Be 0
+    }
+
+    It "with a named project, the by-hand restart and the reinstall hint carry the project (twin of run_daaf.bats)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        # Running container created in 2000, so the settings file is newer; its
+        # DAAF files are missing (test -f fails).
+        $body = @(
+            "    info) exit 0 ;;"
+            "    'compose ps -q daaf-docker') echo abc123; exit 0 ;;"
+            "    'inspect --format {{.Created}} abc123') echo '2000-01-01T00:00:00.000000000Z'; exit 0 ;;"
+            "    *'test -f /daaf/CLAUDE.md'*) exit 1 ;;"
+        ) -join "`n"
+        $r = Invoke-RunDaafUnderFake -Tag 'named-hints' -FakeBody $body -WithSettings -SettingsText "DAAF_PROJECT_NAME=Work`n"
+        $lines = @($r.Output -split '\r?\n')
+        $r.Output | Should -BeLike "*11) Restart Container in the DAAF Control Panel*"
+        # Normalized as Docker Compose does: "Work" is project "work".
+        $lines | Should -Contain '        docker compose -p work down'
+        $r.Output | Should -BeLike "*DAAF does not appear to be installed*"
+        $r.Output | Should -Not -BeLike "*update_daaf*"
+        $lines | Should -Contain '  $env:DAAF_PROJECT_NAME = "work"; $env:DAAF_FORCE_REINSTALL = "1"'
+        $lines | Should -Contain '  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex'
+        $r.Output | Should -Not -Match 'docker compose down'
+        $r.ExitCode | Should -Be 1
+    }
+
+    It "the reinstall hint starts with a quoted cd and carries DAAF_BRANCH (not main) and DAAF_DEV (twin of run_daaf.bats)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $body = @(
+            "    info) exit 0 ;;"
+            "    'compose ps -q daaf-docker') echo abc123; exit 0 ;;"
+            "    'inspect --format {{.Created}} abc123') echo '2000-01-01T00:00:00.000000000Z'; exit 0 ;;"
+            "    *'test -f /daaf/CLAUDE.md'*) exit 1 ;;"
+        ) -join "`n"
+        $r = Invoke-RunDaafUnderFake -Tag 'branch-hint' -FakeBody $body -WithSettings -SettingsText "DAAF_BRANCH=feature-x`nDAAF_DEV=1`n"
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  $env:DAAF_BRANCH = "feature-x"; $env:DAAF_DEV = "1"; $env:DAAF_FORCE_REINSTALL = "1"')
+        $i | Should -BeGreaterThan 0
+        $lines[$i - 1] | Should -BeLike '  cd "*"'
+        $lines[$i + 1] | Should -Be '  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex'
+        $r.ExitCode | Should -Be 1
+        # DAAF_BRANCH=main prints no branch prefix.
+        $r2 = Invoke-RunDaafUnderFake -Tag 'main-hint' -FakeBody $body -WithSettings -SettingsText "DAAF_BRANCH=main`n"
+        @($r2.Output -split '\r?\n') | Should -Contain '  $env:DAAF_FORCE_REINSTALL = "1"'
+        $r2.Output | Should -Not -BeLike '*$env:DAAF_BRANCH*'
+    }
+
+    It "the default project prints the by-hand restart without -p, and the launch hint says /exit" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        $body = @(
+            "    info) exit 0 ;;"
+            "    'compose ps -q daaf-docker') echo abc123; exit 0 ;;"
+            "    'inspect --format {{.Created}} abc123') echo '2000-01-01T00:00:00.000000000Z'; exit 0 ;;"
+        ) -join "`n"
+        $r = Invoke-RunDaafUnderFake -Tag 'default-hints' -FakeBody $body -WithSettings
+        $lines = @($r.Output -split '\r?\n')
+        $lines | Should -Contain '        docker compose down'
+        $r.Output | Should -BeLike "*(Type /exit to leave Claude Code when you are done.)*"
+        $r.Output | Should -Not -BeLike "*Ctrl+C*"
         $r.ExitCode | Should -Be 0
     }
 }

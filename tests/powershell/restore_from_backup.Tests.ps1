@@ -3392,7 +3392,20 @@ esac
             $r.Output | Should -BeLike "*The DAAF container is currently running:*"
             $r.Output | Should -BeLike "*  - daaf-docker-1*"
             $r.Output | Should -Not -BeLike "*fake docker config notice*"
-            $r.Output | Should -BeLike "*Restore cancelled. Stop the container manually and try again:*"
+            $r.Output | Should -BeLike "*Restore cancelled. Your DAAF data has not been changed.*"
+            $r.Output | Should -BeLike "*To restore, run the restore again and answer y to stop the container,*"
+            $r.Output | Should -BeLike "*  docker stop daaf-docker-1*"
+            $r.Output | Should -Not -BeLike "*docker compose down*"
+            $r.Output | Should -Not -BeLike "*docker compose -p*"
+        }
+
+        It "declining to stop prints docker stop with every listed name (another install sharing the volume)" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_RUNNING_AT_START = "work-daaf-docker-1`nother-daaf-docker-1" }
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*  - work-daaf-docker-1*"
+            $r.Output | Should -BeLike "*  - other-daaf-docker-1*"
+            $r.Output | Should -BeLike "*  docker stop work-daaf-docker-1 other-daaf-docker-1*"
+            $r.Output | Should -Not -BeLike "*docker compose -p*"
         }
 
         It "a docker ps that FAILS at startup refuses (could not check), exit 1, before anything is created" {
@@ -4065,6 +4078,18 @@ esac
             [array]::IndexOf($lines2, "ERROR: Docker volume 'work_daaf-data' not found.") | Should -BeGreaterThan $noteAt
         }
 
+        # Twin of the restore_from_backup.bats "fails when Docker volume does not exist" pins:
+        # starting DAAF on a deleted volume stops at run_daaf's "not installed" check, so the
+        # steps warn about that report instead of asking the user to type /exit.
+        It "a missing volume's recovery steps expect the 'not installed' report and say not to reinstall" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Settings "DAAF_PROJECT_NAME=work`n" -Fake @{ DAAF_PROJECT_NAME = '' }
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*empty volume and then reports that DAAF is not installed in the container. That is*"
+            $r.Output | Should -BeLike "*expected here, so do not reinstall: choose 8) Restore from Backup and answer y when*"
+            $r.Output | Should -BeLike "*run '.\run_daaf.ps1' (same*"
+            $r.Output | Should -Not -BeLike "*/exit*"
+        }
+
         It "prints no NOTE for <Label>" -ForEach @(
             @{ Label = "'work'"; Settings = "DAAF_PROJECT_NAME=work`n"; Fake = @{ DAAF_PROJECT_NAME = '' }; Seed = @('work_daaf-data', 'work_daaf-claude-config') }
             @{ Label = "an unset name"; Settings = ''; Fake = @{ DAAF_PROJECT_NAME = '' }; Seed = @() }
@@ -4264,7 +4289,8 @@ Describe "restore_from_backup.ps1 error paths" {
 
     Context "User declines to stop container" {
         It "cancels restore when user declines stop (exit 0)" {
-            $Content | Should -Match 'Restore cancelled\. Stop the container manually'
+            $Content | Should -Match 'Restore cancelled\. Your DAAF data has not been changed\.'
+            $Content | Should -Match '"  docker stop \$\(\(\$RunningContainers'
         }
     }
 

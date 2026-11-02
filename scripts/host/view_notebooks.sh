@@ -31,7 +31,7 @@ if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
 # load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
@@ -72,6 +72,22 @@ else
         done < "${settings_file}"
     }
     _daaf_load_settings
+fi
+
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.sh prints it. Without daaf_lib.sh the name
+# is printed as set.
+COMPOSE_P_FLAG=""
+if command -v resolve_project_name >/dev/null 2>&1; then
+    HINT_PROJECT="$(resolve_project_name)"
+else
+    HINT_PROJECT="${DAAF_PROJECT_NAME:-daaf}"
+fi
+if [ -n "${HINT_PROJECT}" ] && [ "${HINT_PROJECT}" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${HINT_PROJECT} "
 fi
 
 # Host-facing port for the browser URL (defaults to the fixed container port).
@@ -150,7 +166,7 @@ if ! docker compose exec daaf-docker bash /daaf/scripts/launch_marimo.sh; then
     echo "" >&2
     echo "ERROR: Failed to start the notebook browser." >&2
     echo "  The container may not be running, or marimo may not be installed." >&2
-    echo "  Try: docker compose logs daaf-docker" >&2
+    echo "  Try: docker compose ${COMPOSE_P_FLAG}logs daaf-docker" >&2
 fi
 
 # Open browser automatically if library is available. URL uses the HOST-published

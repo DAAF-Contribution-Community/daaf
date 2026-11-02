@@ -35,8 +35,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With it set to $true under 'Stop', a nonzero native exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
@@ -67,7 +68,7 @@ function Read-QuartoSelection {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT
@@ -103,6 +104,16 @@ function Import-DaafSettingsInline {
     }
 }
 Import-DaafSettingsInline
+
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.ps1 prints it. The name is normalized the
+# way Resolve-DaafProjectName in daaf_lib.ps1 does it.
+$HintProject = 'daaf'
+if ($env:DAAF_PROJECT_NAME) { $HintProject = ($env:DAAF_PROJECT_NAME -creplace '[^A-Za-z0-9_-]', '').ToLowerInvariant().TrimStart('_', '-') }
+$ComposePFlag = if ($HintProject -and $HintProject -ne 'daaf') { "-p $HintProject " } else { "" }
 
 # Host directory the rendered HTML is copied into (created on first use).
 # Relative to the invoking directory so the user finds output right where they
@@ -211,7 +222,7 @@ if ($Running -eq 0) {
     $ErrorActionPreference = $savedEAP
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to start the container." -ForegroundColor Red
-        Write-Host "  Try: docker compose logs daaf-docker" -ForegroundColor Yellow
+        Write-Host "  Try: docker compose ${ComposePFlag}logs daaf-docker" -ForegroundColor Yellow
         Wait-AndExit 1
     }
     Write-Host "Container started."
@@ -370,12 +381,9 @@ if ($TargetArg -eq "") {
 }
 
 # --- Render inside the container ---
-# `-M embed-resources:true` forces a SINGLE self-contained HTML regardless of
-# whether the source .qmd's YAML sets it, so the copied-out file is fully
-# portable (all CSS/JS/images inlined -- no sidecar _files/ directory to copy).
-# Verified against Quarto 1.7.29 and re-verified on 1.10.18 (2026-11-01):
-# `-M embed-resources:true` produces one .html with no _files/ dir even when
-# the .qmd YAML omits the setting.
+# `-M embed-resources:true` writes one portable .html (CSS, JS and images
+# inlined, no _files/ folder to copy), even when the .qmd YAML omits the setting
+# (Quarto 1.10.18, verified 2026-11-01).
 $HtmlRel = $QmdRel -replace "\.qmd$", ".html"
 $HtmlBasename = Split-Path -Leaf $HtmlRel
 
@@ -420,11 +428,15 @@ try {
     $ErrorActionPreference = $savedEAP
 }
 if ($cpExit -ne 0) {
+    # Single quotes keep $ and backticks in a path literal when the hint is
+    # pasted into PowerShell; an embedded ' is written as ''.
+    $hintSrc = "daaf-docker:/daaf/$HtmlRel" -replace "'", "''"
+    $hintDst = "$HostHtml" -replace "'", "''"
     Write-Host ""
     Write-Host "ERROR: Failed to copy the rendered HTML out of the container." -ForegroundColor Red
     Write-Host "  The render succeeded, so the file exists at /daaf/$HtmlRel inside" -ForegroundColor Yellow
-    Write-Host "  the container. You can copy it manually with:" -ForegroundColor Yellow
-    Write-Host "    docker compose cp daaf-docker:/daaf/$HtmlRel $HostHtml" -ForegroundColor Yellow
+    Write-Host "  the container. You can copy it manually from your daaf-docker folder with:" -ForegroundColor Yellow
+    Write-Host "    docker compose ${ComposePFlag}cp '$hintSrc' '$hintDst'" -ForegroundColor Yellow
     Wait-AndExit 1
 }
 
@@ -433,16 +445,16 @@ Write-Host "Rendered document copied to: $HostHtml"
 
 # --- Open in the default browser ---
 # Start-Process is the native Windows opener and resolves the platform default
-# handler on PS 7 (macOS/Linux) too. Any failure is swallowed -- the path is
-# printed above regardless, so the user can always open it by hand.
+# handler on PS 7 (macOS/Linux) too. Any failure is swallowed, and the absolute
+# path is printed either way, so the user can always open it by hand.
 $AbsHtmlDir = (Resolve-Path -LiteralPath $QuartoHtmlDir).Path
 $AbsHtml = Join-Path $AbsHtmlDir $HtmlBasename
 try {
     $null = Start-Process $AbsHtml
-    Write-Host "Opening in your default browser..."
+    Write-Host "Opening it in your browser. If nothing opens, open this file:"
 } catch {
     Write-Host "Open it in your browser to view:"
-    Write-Host "  $AbsHtml"
 }
+Write-Host "  $AbsHtml"
 
 Wait-AndExit 0

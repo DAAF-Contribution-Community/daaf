@@ -166,8 +166,11 @@ Describe "rebuild_daaf.ps1 error paths" {
             $Content | Should -Match "No daaf-docker container found \(running or stopped\)"
         }
 
-        It "suggests running the installer first" {
-            $Content | Should -Match 'Have you run the DAAF installer'
+        It "says how to recreate a container removed by docker compose down (start DAAF, then rebuild)" {
+            $Content | Should -Match "'docker compose down' removes it"
+            $Content | Should -Match '1\) Start Claude Code in the DAAF Control Panel \(\.\\daaf\.ps1\)'
+            $Content | Should -Match "'\.\\run_daaf\.ps1 bash', type exit, then run '\.\\rebuild_daaf\.ps1' again\."
+            $Content | Should -Not -Match 'Have you run the DAAF installer'
         }
     }
 

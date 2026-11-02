@@ -5,7 +5,7 @@
 #   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 #
 # What this script does:
-#   1. Creates a minimal build directory (~5 KB)
+#   1. Creates the daaf-docker build folder
 #   2. Downloads the Dockerfile, docker-compose.yml, and convenience scripts
 #   3. Builds the Docker image (Python, data science stack, Claude Code)
 #   4. Clones the full DAAF repository into the Docker volume
@@ -23,8 +23,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With this set to $true under 'Stop', pwsh throws NativeCommandExitException (observed
+# 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-ForUser {
@@ -42,15 +43,12 @@ if ($env:DAAF_DRY_RUN -eq "1") {
     function docker {
         $argStr = $args -join ' '
         $global:LASTEXITCODE = 0
-        # Match patterns are space/flag-anchored so they cannot collide with the
-        # random InstallDir path embedded in $argStr. switch -Wildcard uses the
-        # same `*` globbing as Bash `case`, so the same reasoning applies as in
-        # install.sh: a temp-directory path fragment (no spaces, no hyphenated
-        # flags, no long literals) can no longer route to the wrong arm. The
-        # former *compose*build* / *compose*up* substring forms were functionally
-        # immune here (every real arm returns via $LASTEXITCODE = 0), but are
-        # hardened to the path-proof style used in install.sh and the .bats mocks
-        # for cross-file parity and future-proofing.
+        # Match patterns are space/flag-anchored so the random InstallDir path
+        # embedded in $argStr cannot route a call to the wrong arm. switch
+        # -Wildcard uses the same `*` globbing as Bash `case`, so the reasoning
+        # in install.sh applies: a temp-directory path fragment has no spaces,
+        # no hyphenated flags and no long literals. install.sh and the .bats
+        # mocks use the same path-proof style.
         switch -Wildcard ($argStr) {
             "info" { return }
             "*volume inspect*" {
@@ -91,11 +89,10 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
-        # Dry-run is fully non-writing: acknowledge the parameters and succeed
-        # WITHOUT creating any files or directories. The former mock wrote an
-        # empty file for each -OutFile target, which (with $InstallDir under the
-        # caller's CWD) leaked zero-byte stubs on disk. The New-Item site below
-        # is gated so the full flow still walks end-to-end.
+        # Dry-run writes nothing: acknowledge the parameters and succeed without
+        # creating any file or directory ($InstallDir sits under the caller's
+        # CWD, so a stub file would be left on disk). The New-Item site below is
+        # gated so the full flow still walks end-to-end.
         $null = $UseBasicParsing, $Uri, $OutFile
     }
 }
@@ -190,8 +187,7 @@ if ($LASTEXITCODE -ne 0) {
 # same here, BEFORE the existing-install check and before any compose call, so the
 # volume the check examines, the project and ports Compose builds and starts, and
 # the project named by every printed re-install or manual `docker compose` command
-# are one value (reviews 42q I-2, 43d ISSUE-1: the file's project used to name
-# only the volume checked; see "Printed commands carry the project" below).
+# are one value (see "Printed commands carry the project" below).
 # Same rules as Import-DaafSettingsFile for these five whitelisted keys (that
 # library is not available: this script runs standalone via `irm | iex`): never
 # dot-source the file (it holds API keys); blank and comment lines skipped; the
@@ -208,9 +204,9 @@ if ($LASTEXITCODE -ne 0) {
 # Import-DaafSettingsFile (a lowercase "daaf_dev=1" line is adopted). The
 # install.sh twin uses a `case` glob, which is case-SENSITIVE, as load_daaf_settings
 # is. Each twin matches its own platform's launcher loader; the twins differ from
-# each other on purpose (review 44c N-4 / 44q NIT-3; no behaviour change).
+# each other on purpose.
 # An existing file that cannot be read stops the run with a plain ERROR before
-# anything is downloaded (review 44q NIT-1), even when the process already
+# anything is downloaded, even when the process already
 # supplies every bridged key: the same file is the container's env_file, so the
 # `up -d` below could not read it either, and stopping here is simpler and fails
 # safe. The whole file is read first (try/catch), so nothing is adopted from a
@@ -263,8 +259,8 @@ if (Test-Path -LiteralPath $SettingsPath) {
 # Every character outside ASCII [A-Za-z0-9_-] is dropped BEFORE lowercasing, so
 # the result is ASCII and locale-safe: ToLowerInvariant would otherwise map a few
 # non-ASCII letters to ASCII ones it would then keep (the Kelvin sign U+212A
-# becomes 'k'), which install.sh (byte-wise `LC_ALL=C tr`) drops (review 45q
-# NIT-1). Go's Unicode lowercasing keeps such letters; neither twin follows it
+# becomes 'k'), which install.sh (byte-wise `LC_ALL=C tr`) drops. Go's Unicode
+# lowercasing keeps such letters; neither twin follows it
 # there. A value that normalizes to nothing is refused before anything is
 # downloaded. SYNC NOTE: same rule (non-ASCII dropped, then ASCII lowercased,
 # then [a-z0-9_-] kept and leading '_'/'-' trimmed), messages and NOTE in
@@ -282,9 +278,9 @@ if ([string]::IsNullOrEmpty($InstallTargetProject)) {
     Write-Host "       Nothing has been downloaded or changed."
     Wait-ForUser; return
 }
-# One NOTE when anything was taken from the settings file (review 44q
-# SUGGESTION-3), listing each adopted key with a non-empty value, plus the
-# normalization sentence when the name changed; nothing when neither applies.
+# One NOTE when anything was taken from the settings file, listing each adopted
+# key with a non-empty value, plus the normalization sentence when the name
+# changed; nothing when neither applies.
 $SettingsNoteKeys = @(@('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV') | Where-Object {
     ($BridgeAdopted -contains $_) -and -not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_, "Process"))
 })
@@ -307,30 +303,49 @@ if (-not [string]::IsNullOrEmpty($ProjectNameGiven)) {
     $env:DAAF_PROJECT_NAME = $InstallTargetProject
 }
 
-# --- Printed commands carry the project (review 44q ISSUE-2) ---
+# --- Printed commands carry the project ---
 # Parity twin of the block in install.sh (see there for the rationale). The manual
 # `docker compose ...` commands and the "re-run this installer" texts printed on
 # failure run in the user's own PowerShell window, where a project taken from
 # environment_settings.txt is not set. For any project other than 'daaf', every
-# printed compose command carries `-p <project>`; the `up -d` retry is preceded by
-# `$env:` lines for the ports this run used (printed whenever a port is set); and
-# every "re-run this installer" text names DAAF_PROJECT_NAME=<project>, as the
-# FORCE hints do ($ForceRerunLine). For project 'daaf' with no ports set, every
-# line is byte-identical to before. SYNC NOTE: same commands in install.sh.
+# printed compose command carries `-p <project>`, and every "re-run this
+# installer" text names DAAF_PROJECT_NAME=<project>, as the FORCE hints do
+# ($ForceRerunLine). The re-run printed for a failure after `up -d` is also
+# preceded by `$env:` lines for the ports this run used (printed whenever a port
+# is set). Every printed installer re-run also carries this run's branch
+# (DAAF_BRANCH, when it is not main) and DAAF_DEV=1 (when set), as $RerunBuildPart:
+# the bridge never reads DAAF_BRANCH, and a first install that failed before
+# seeding has no settings file to supply DAAF_DEV (see install.sh). For project
+# 'daaf' with no ports set, on main without DAAF_DEV, no printed command carries a
+# prefix. SYNC NOTE: same commands in install.sh.
 $ComposePFlag = ""
-$DiagRerunLine = '  $env:DAAF_DIAG_BUILD = "1"'
-$RetryForceText = "set DAAF_FORCE_REINSTALL=1 if prompted"
+$RerunProjectPart = ""
+$RerunVars = @()
 if ($InstallTargetProject -cne "daaf") {
     $ComposePFlag = "-p $InstallTargetProject "
-    $DiagRerunLine = "  `$env:DAAF_PROJECT_NAME = `"$InstallTargetProject`"; `$env:DAAF_DIAG_BUILD = `"1`""
-    $RetryForceText = "set DAAF_PROJECT_NAME=$InstallTargetProject, and DAAF_FORCE_REINSTALL=1 if prompted"
+    $RerunProjectPart = "`$env:DAAF_PROJECT_NAME = `"$InstallTargetProject`"; "
+    $RerunVars += "DAAF_PROJECT_NAME=$InstallTargetProject"
+}
+$RerunBuildPart = ""
+if ($Branch -cne "main") {
+    $RerunBuildPart += "`$env:DAAF_BRANCH = `"$Branch`"; "
+    $RerunVars += "DAAF_BRANCH=$Branch"
+}
+if ($env:DAAF_DEV -eq "1") {
+    $RerunBuildPart += "`$env:DAAF_DEV = `"1`"; "
+    $RerunVars += "DAAF_DEV=1"
+}
+$DiagRerunLine = "  $RerunProjectPart$RerunBuildPart`$env:DAAF_DIAG_BUILD = `"1`""
+$RetryForceText = "set DAAF_FORCE_REINSTALL=1 if prompted"
+if ($RerunVars.Count -gt 0) {
+    $RetryForceText = "set " + ($RerunVars -join ' ') + ", and DAAF_FORCE_REINSTALL=1 if prompted"
 }
 $UpPortLines = @(@('DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE') | Where-Object {
     -not [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($_, "Process"))
 } | ForEach-Object { "  `$env:$_ = `"" + [Environment]::GetEnvironmentVariable($_, "Process") + "`"" })
 # The data volume of THIS folder's install (checked when a docker-compose.yml is
 # here): "<project>_daaf-data", or DAAF_DATA_VOLUME_NAME from the PROCESS
-# environment (the shared-workspace escape hatch, unchanged). A
+# environment (the shared-workspace escape hatch). A
 # DAAF_DATA_VOLUME_NAME in environment_settings.txt is deliberately not read: step
 # [2/4] re-downloads docker-compose.yml with its shared-volume block commented out,
 # so this run always writes "<project>_daaf-data" (see install.sh for the case a
@@ -342,23 +357,22 @@ if ($env:DAAF_DATA_VOLUME_NAME) { $DataVolumeName = $env:DAAF_DATA_VOLUME_NAME }
 # Parity twin of the block in install.sh (see there for the full rationale). The
 # data volume this run would mount -- recreating its container (`up -d`) and
 # copying a fresh clone over its framework files and git history -- is named by
-# the Compose PROJECT, not by this folder. Before 2026-10-06 the check ran only
-# when THIS folder held a docker-compose.yml, so running the installer from a
-# different folder with the same project name silently took over the existing
-# install (review B-1). Four cases:
+# the Compose PROJECT, not by this folder. The check must not depend on this
+# folder: running the installer from another folder with the same project name
+# would otherwise take over that install. Four cases:
 #   1. volume present, compose file here  -> this folder's install: WARNING, stop
-#                                            unless DAAF_FORCE_REINSTALL=1 (unchanged)
+#                                            unless DAAF_FORCE_REINSTALL=1
 #   2. volume present, no compose file    -> an install made from ANOTHER folder:
 #                                            refuse before anything is downloaded
 #                                            or built (FORCE honoured)
-#   3. volume absent,  compose file here  -> earlier attempt incomplete: NOTE (unchanged)
-#   4. volume absent,  no compose file    -> fresh install (unchanged)
+#   3. volume absent,  compose file here  -> earlier attempt incomplete: NOTE
+#   4. volume absent,  no compose file    -> fresh install
 # A volume that could not be checked ("unknown", see Get-DaafVolumeState) is never
 # read as absent: refuse unless DAAF_FORCE_REINSTALL=1.
 # Which volume is checked ($InstallTargetProject is the one project derived and
 # normalized above, already in the process environment for Compose whenever a
 # project was given in the process or in environment_settings.txt): with a compose
-# file here, $DataVolumeName as before;
+# file here, $DataVolumeName;
 # without one, the volume THIS run will create and write,
 # "${InstallTargetProject}_daaf-data". DAAF_DATA_VOLUME_NAME is deliberately NOT used there:
 # the downloaded compose file's shared-volume block is commented out, and the
@@ -382,13 +396,39 @@ $CheckVolumeState = Get-DaafVolumeState -Name $CheckVolumeName
 # (Wait-ForUser's `exit`), and its $env: values with it, so for any project other
 # than the default the hint sets DAAF_PROJECT_NAME on the same line as the FORCE
 # flag; otherwise the re-run in a new window would fall back to project 'daaf'
-# and could take over that installation instead (review 42q I-1). All three
-# refusals print it (case 1, case 2, "could not check"), and it names
-# $InstallTargetProject, so a project taken from environment_settings.txt is
-# carried too (review 43d ISSUE-1). Parity twin of FORCE_RERUN_ENV in install.sh.
-$ForceRerunLine = '  $env:DAAF_FORCE_REINSTALL = "1"'
-if ($InstallTargetProject -cne "daaf") {
-    $ForceRerunLine = "  `$env:DAAF_PROJECT_NAME = `"$InstallTargetProject`"; `$env:DAAF_FORCE_REINSTALL = `"1`""
+# and could take over that installation instead. All three refusals print it
+# (case 1, case 2, "could not check"), and it names $InstallTargetProject, so a
+# project taken from environment_settings.txt is carried too, as are the branch
+# and DAAF_DEV ($RerunBuildPart above). Parity twin of FORCE_RERUN_ENV in
+# install.sh.
+$ForceRerunLine = "  $RerunProjectPart$RerunBuildPart`$env:DAAF_FORCE_REINSTALL = `"1`""
+# The re-run printed when a step after `up -d` fails (readiness, clone, copy,
+# verify): a `cd` to the folder above daaf-docker, the ports this run used, then
+# the forced re-run. Parity twin of FORCE_RERUN_LINE in install.sh (see there for
+# why it needs the `cd`, DAAF_FORCE_REINSTALL and the ports).
+$ForceRerunLines = @("  cd `"$(Split-Path -Parent $InstallDir)`"") + @($UpPortLines) + @($ForceRerunLine, "  irm $RawBase/scripts/host/install.ps1 | iex")
+
+# Print the steps that create environment_settings.txt by hand, prose indented
+# by -Indent and commands two spaces deeper; -CreateCommand creates the file.
+# Parity twin of print_settings_file_steps in install.sh (see there for why the
+# DAAF_* lines and the Restart are needed, and why callers skip it when a
+# settings file exists). SYNC NOTE: same lines there.
+function Write-SettingsFileStep {
+    param([string]$Indent = "", [string]$CreateCommand)
+    Write-Host "$Indent  cd `"$InstallDir`""
+    Write-Host "$Indent  $CreateCommand"
+    $listed = $false
+    foreach ($k in @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_DATA_VOLUME_NAME')) {
+        $v = [Environment]::GetEnvironmentVariable($k, "Process")
+        if ([string]::IsNullOrEmpty($v)) { continue }
+        if (-not $listed) {
+            Write-Host "${Indent}Add these lines to environment_settings.txt (this install used them):"
+            $listed = $true
+        }
+        Write-Host "$Indent  $k=$v"
+    }
+    Write-Host "${Indent}Add any API keys you use, then choose 11) Restart Container in the"
+    Write-Host "${Indent}Control Panel (.\daaf.ps1) so the container reads the file."
 }
 
 if ($CheckVolumeState -eq "unknown") {
@@ -417,7 +457,8 @@ if ($CheckVolumeState -eq "unknown") {
         } else {
             Write-Host "WARNING: An existing DAAF installation was detected." -ForegroundColor Yellow
             Write-Host "         (Docker volume '$CheckVolumeName', project '$InstallTargetProject')"
-            # Review 44q SUGGESTION-2 (see install.sh). SYNC NOTE: same lines there.
+            # A folder with no settings file takes the project from the
+            # process (see install.sh). SYNC NOTE: same lines there.
             if (-not (Test-Path -LiteralPath $SettingsPath)) {
                 Write-Host "         This folder has no environment_settings.txt, so the project name comes"
                 Write-Host "         from your shell (default 'daaf'). If you meant to install a separate"
@@ -429,7 +470,7 @@ if ($CheckVolumeState -eq "unknown") {
             Write-Host "deleted, but a backup is strongly recommended."
             Write-Host ""
             Write-Host "To update DAAF instead (recommended - preserves local changes):"
-            Write-Host "  cd $InstallDir"
+            Write-Host "  cd `"$InstallDir`""
             Write-Host "  .\update_daaf.ps1"
             Write-Host ""
             Write-Host "To force a fresh re-install:"
@@ -493,6 +534,9 @@ if ($CheckVolumeState -eq "unknown") {
         Write-Host "  `$env:DAAF_PORT_MARIMO = `"$ExamplePortMarimo`""
         Write-Host "  `$env:DAAF_PORT_LOGVIEWER = `"$ExamplePortLogViewer`""
         Write-Host "  `$env:DAAF_PORT_VSCODE = `"$ExamplePortVsCode`""
+        # The example fetches this branch's installer, which installs main unless
+        # DAAF_BRANCH reaches it too.
+        if ($Branch -cne "main") { Write-Host "  `$env:DAAF_BRANCH = `"$Branch`"" }
         Write-Host "  irm $RawBase/scripts/host/install.ps1 | iex"
         Write-Host 'See "Running multiple DAAF instances" in the installation guide:'
         Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installation_and_quickstart.md#running-multiple-daaf-instances"
@@ -557,17 +601,16 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 }
 
 # --- Apple Silicon / arm64 build-time notice ---
-# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
-# so Apple Silicon no longer compiles R packages from source. The first build is
-# still a sizable one-time download, but there is no arm64-specific source-compile
-# penalty. A brief heads-up keeps the quiet install phase from looking like a hang.
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries, like x86_64, so
+# R packages are not compiled from source. The first build is still a sizable
+# one-time download; a brief heads-up keeps its quiet stretches from looking like
+# a hang.
 $DaafArch = $env:PROCESSOR_ARCHITECTURE
 if ($DaafArch -eq "ARM64") {
     Write-Host ""
     Write-Host "NOTE: arm64 detected. The first build downloads a large stack of Python"
     Write-Host "      and R packages, so it takes a while with some quiet stretches -- this"
-    Write-Host "      is normal, not a hang. arm64 now installs pre-built R binaries (no"
-    Write-Host "      source compilation)."
+    Write-Host "      is normal, not a hang."
     Write-Host ""
 }
 
@@ -650,10 +693,10 @@ $retries = 0
 $maxRetries = 30
 # Docker's stderr from every attempt, kept in memory (not a temp file) for the
 # "Docker reported:" lines below. 'Continue', not 'SilentlyContinue': Windows
-# PowerShell 5.1 drops native stderr from a 2>&1 capture under SilentlyContinue
-# (and from the old `2>> file` redirect too; CI-observed 2026-10-12). Only the stderr
-# records are kept ("$_" renders one as its plain message text); stdout passes
-# through as before.
+# PowerShell 5.1 drops native stderr from a 2>&1 capture or a `2>> file` redirect
+# under SilentlyContinue (observed 2026-10-12 in CI, Windows PowerShell 5.1). Only
+# the stderr records are kept ("$_" renders one as its plain message text); stdout
+# passes through to the terminal.
 $readyErrLines = New-Object System.Collections.Generic.List[string]
 while ($retries -lt $maxRetries) {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -674,9 +717,9 @@ if ($retries -ge $maxRetries) {
         $readyErrLines | Select-Object -Last 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
         Write-Host ""
     }
-    Write-Host "Check Docker Desktop for errors, then retry with:"
-    foreach ($portLine in $UpPortLines) { Write-Host $portLine }
-    Write-Host "  docker compose $($ComposePFlag)-f $InstallDir\docker-compose.yml up -d"
+    Write-Host "Check Docker for errors, then run the installer again with DAAF_FORCE_REINSTALL=1."
+    Write-Host "It repeats every step; without it, the installer stops at this unfinished install:"
+    foreach ($rerunLine in $ForceRerunLines) { Write-Host $rerunLine }
     Wait-ForUser; return
 }
 
@@ -700,12 +743,18 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to clone the DAAF repository." -ForegroundColor Red
     Write-Host "The Docker image was built successfully, but the repository could not be downloaded."
-    Write-Host "Check your internet connection and retry with:"
-    Write-Host "  docker compose $($ComposePFlag)-f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "Check your internet connection, then run the installer again with DAAF_FORCE_REINSTALL=1."
+    Write-Host "It repeats every step; without it, the installer stops at this unfinished install:"
+    foreach ($rerunLine in $ForceRerunLines) { Write-Host $rerunLine }
+    Write-Host "Or finish by hand:"
+    Write-Host "  docker compose $($ComposePFlag)-f `"$InstallDir\docker-compose.yml`" exec -T daaf-docker ``"
     Write-Host "    git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
-    Write-Host "  docker compose $($ComposePFlag)-f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "  docker compose $($ComposePFlag)-f `"$InstallDir\docker-compose.yml`" exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    Write-Host "You can also safely re-run this installer to retry from scratch ($RetryForceText)."
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        Write-Host "By hand, also create environment_settings.txt:"
+        Write-SettingsFileStep -Indent "" -CreateCommand "Copy-Item environment_settings_example.txt environment_settings.txt"
+    }
     Wait-ForUser; return
 }
 
@@ -717,10 +766,16 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to copy repository files into the container." -ForegroundColor Red
     Write-Host "The clone succeeded, but copying to /daaf/ failed (possibly a permissions issue)."
-    Write-Host "You can retry manually with:"
-    Write-Host "  docker compose $($ComposePFlag)-f $InstallDir\docker-compose.yml exec -T daaf-docker ``"
+    Write-Host "Run the installer again with DAAF_FORCE_REINSTALL=1. It repeats every step;"
+    Write-Host "without it, the installer stops at this unfinished install:"
+    foreach ($rerunLine in $ForceRerunLines) { Write-Host $rerunLine }
+    Write-Host "Or retry the copy by hand:"
+    Write-Host "  docker compose $($ComposePFlag)-f `"$InstallDir\docker-compose.yml`" exec -T daaf-docker ``"
     Write-Host "    bash -c 'cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone'"
-    Write-Host "You can also safely re-run this installer to retry from scratch ($RetryForceText)."
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        Write-Host "By hand, also create environment_settings.txt:"
+        Write-SettingsFileStep -Indent "" -CreateCommand "Copy-Item environment_settings_example.txt environment_settings.txt"
+    }
     Wait-ForUser; return
 }
 
@@ -732,11 +787,19 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "WARNING: Installation may be incomplete -- /daaf/CLAUDE.md was not found in the container." -ForegroundColor Yellow
     Write-Host "The Docker image was built, but the repository files may not have copied correctly."
-    Write-Host "You can try cloning manually inside the container:"
-    Write-Host "  cd $InstallDir"
+    Write-Host "Run the installer again with DAAF_FORCE_REINSTALL=1. It repeats every step;"
+    Write-Host "without it, the installer stops at this unfinished install:"
+    foreach ($rerunLine in $ForceRerunLines) { Write-Host $rerunLine }
+    Write-Host "Or clone by hand inside the container:"
+    Write-Host "  cd `"$InstallDir`""
     Write-Host "  docker compose $($ComposePFlag)exec daaf-docker bash"
     Write-Host "  git clone --depth 1 -b $Branch https://github.com/$Repo.git /tmp/daaf-clone"
     Write-Host "  cp -a /tmp/daaf-clone/. /daaf/ && rm -rf /tmp/daaf-clone"
+    Write-Host "  exit"
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        Write-Host "By hand, also create environment_settings.txt:"
+        Write-SettingsFileStep -Indent "" -CreateCommand "Copy-Item environment_settings_example.txt environment_settings.txt"
+    }
     Wait-ForUser; return
 }
 
@@ -870,7 +933,7 @@ function Set-DaafSettingsKey {
 #     break future updates). Tag-vs-branch is detected from the container clone:
 #     `git clone -b <ref>` leaves HEAD symbolic for a branch and detached for a
 #     tag, so `symbolic-ref -q HEAD` is a cheap local (no-network) discriminator.
-#   - Always print an outcome note; fully DAAF_DRY_RUN gated (HSM5).
+#   - Always print an outcome note; fully DAAF_DRY_RUN gated.
 $SeedSrc = Join-Path $InstallDir "environment_settings_example.txt"
 $SeedDst = Join-Path $InstallDir "environment_settings.txt"
 
@@ -886,11 +949,9 @@ elseif (Test-Path -LiteralPath $SeedDst) {
 }
 elseif (-not (Test-Path -LiteralPath $SeedSrc)) {
     Write-Host ""
-    Write-Host "NOTE: Could not seed environment_settings.txt (the example template was"
-    Write-Host "      not found). To configure settings manually:"
-    Write-Host "        cd $InstallDir"
-    Write-Host "        Copy-Item environment_settings_example.txt environment_settings.txt"
-    Write-Host "        # then edit environment_settings.txt with your keys and settings"
+    Write-Host "NOTE: Could not create environment_settings.txt (the example template was"
+    Write-Host "      not found). To create it yourself, download the template:"
+    Write-SettingsFileStep -Indent "      " -CreateCommand "Invoke-WebRequest -UseBasicParsing -Uri $RawBase/scripts/host/environment_settings_example.txt -OutFile environment_settings.txt"
 }
 else {
     # Determine whether DAAF_BRANCH (if set) is a branch or a version tag.
@@ -954,7 +1015,8 @@ else {
             Write-Host "      a branch (the container clone was not reachable). Add DAAF_BRANCH to"
             Write-Host "      environment_settings.txt manually if desired."
         }
-        Write-Host "      Review it and add any data source API keys before your next launch."
+        Write-Host "      It holds your API keys and AI provider settings. After you edit it,"
+        Write-Host "      choose 11) Restart Container in the Control Panel to apply the change."
 
         # Recreate the container so the newly created environment_settings.txt takes
         # effect. docker-compose.yml injects it via `env_file`, which is applied at
@@ -978,18 +1040,17 @@ else {
         if ($RecreateExit -ne 0) {
             Write-Host "NOTE: Could not restart the container to apply the seeded settings. They"
             Write-Host "      were written to environment_settings.txt but will not take effect"
-            Write-Host "      until you recreate the container. Close all DAAF sessions, then run:"
-            Write-Host "        cd $InstallDir"
+            Write-Host "      until you recreate the container. Close all DAAF sessions, then choose"
+            Write-Host "      11) Restart Container in the Control Panel (.\daaf.ps1), or run:"
+            Write-Host "        cd `"$InstallDir`""
             Write-Host "        docker compose $($ComposePFlag)down"
             Write-Host "        .\run_daaf.ps1"
         }
     } else {
         Write-Host "NOTE: Automatic settings seeding did not fully complete, so your other"
         Write-Host "      installation steps finished but environment_settings.txt may be absent"
-        Write-Host "      or partial. To configure it manually:"
-        Write-Host "        cd $InstallDir"
-        Write-Host "        Copy-Item environment_settings_example.txt environment_settings.txt"
-        Write-Host "        # then edit environment_settings.txt with your keys and settings"
+        Write-Host "      or partial. To create it yourself (this replaces a partial file):"
+        Write-SettingsFileStep -Indent "      " -CreateCommand "Copy-Item environment_settings_example.txt environment_settings.txt"
     }
 }
 
@@ -1039,7 +1100,7 @@ Write-Host ""
 Write-Host "To start using DAAF:"
 Write-Host ""
 Write-Host "  1. Navigate to the install directory and launch the DAAF Control Panel:"
-Write-Host "     cd $InstallDir"
+Write-Host "     cd `"$InstallDir`""
 Write-Host "     .\daaf.ps1"
 Write-Host ""
 Write-Host "     Or, to skip the terminal: double-click daaf.bat in $InstallDir"
@@ -1049,7 +1110,15 @@ Write-Host ""
 Write-Host "     The Control Panel provides a status dashboard, service management,"
 Write-Host "     and all DAAF operations in one place."
 Write-Host ""
-Write-Host "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
+Write-Host "  2. Choose 1) Start Claude Code. With an Anthropic subscription or API key,"
+Write-Host "     Claude Code asks you to sign in the first time; follow its prompts."
+Write-Host ""
+Write-Host "     Using OpenRouter, Bedrock, Vertex, OpenAI or ChatGPT instead? First add"
+Write-Host "     your provider settings to environment_settings.txt (see `"Configure"
+Write-Host "     authentication`" in the guide linked below; OpenAI and ChatGPT use its"
+Write-Host "     Option F), then choose 11) Restart Container, and only then"
+Write-Host "     1) Start Claude Code. ChatGPT also needs a one-time sign-in that you run"
+Write-Host "     from 6) Open Terminal in Container; the guide's ChatGPT steps show how."
 Write-Host ""
 Write-Host "Available scripts (in $InstallDir):"
 Write-Host "  .\daaf.ps1                     DAAF Control Panel (recommended)"
@@ -1064,9 +1133,11 @@ Write-Host "  .\view_notebooks.ps1           Browse and edit marimo notebooks in
 Write-Host "  .\view_quarto.ps1              Render and view Quarto notebooks in your browser"
 Write-Host "  .\run_vscode.ps1               Open VS Code in your browser (code-server)"
 Write-Host ""
-Write-Host "To set up data source API keys (optional):"
-Write-Host "  Copy-Item environment_settings_example.txt environment_settings.txt   Copy the template"
-Write-Host "  Edit environment_settings.txt with your keys, then restart with: .\run_daaf.ps1"
+Write-Host "To add API keys or provider settings later:"
+Write-Host "  Edit environment_settings.txt in $InstallDir, then choose"
+Write-Host "  11) Restart Container in the Control Panel (.\daaf.ps1) to apply it."
+Write-Host "  Do not copy the example template over an existing environment_settings.txt:"
+Write-Host "  that replaces your settings."
 Write-Host ""
 Write-Host "Manual alternative (if you prefer individual commands):"
 Write-Host "  docker compose $($ComposePFlag)exec daaf-docker bash   # enter the container"
@@ -1075,7 +1146,8 @@ Write-Host ""
 Write-Host "For day-to-day usage and more, see:"
 Write-Host "  https://github.com/$Repo/blob/$Branch/user_reference/01_installation_and_quickstart.md"
 Write-Host ""
-Write-Host "Keep this directory - it contains the Dockerfile needed for rebuilds."
+Write-Host "Keep this folder: it holds your settings file (environment_settings.txt), your"
+Write-Host "backups, and the scripts that start, update, back up and rebuild DAAF."
 Write-Host ""
 Write-Host "To get started using any of those scripts, enter the install directory first:"
 Write-Host "  cd daaf-docker"

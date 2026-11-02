@@ -1045,6 +1045,127 @@ Describe "update_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
+    # Test-ConflictStateClear / Get-GitOperationInProgress
+    # -----------------------------------------------------------------
+    # The check Resolve-Conflict and Resolve-StashConflict run after an
+    # updater-launched Claude Code session. Option 1 needs an interactive console,
+    # which Pester cannot fake, so the check is tested directly. "Conflicts
+    # resolved!" appears only when no unmerged files remain AND git has no merge,
+    # rebase or cherry-pick in progress.
+    Context "Test-ConflictStateClear" {
+        It "a merge still in progress prints no success message and returns false" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "" }
+                if ($a -match 'MERGE_HEAD') { return "merge" }
+                return ""
+            }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            $text = ($result | Where-Object { $_ -isnot [bool] }) -join "`n"
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $false
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'the merge is not finished yet'
+            $text | Should -Match 'git commit -m "Resolved merge conflicts from DAAF update"'
+            $text | Should -Match '\.\\update_daaf\.ps1'
+            $text | Should -Match 'git -C /daaf merge --abort'
+        }
+
+        It "a rebase still in progress points to git rebase --continue" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "" }
+                if ($a -match 'rebase-merge') { return "rebase" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "rebase" "rebase --abort" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'git rebase --continue'
+            $text | Should -Match 'git -C /daaf rebase --abort'
+        }
+
+        It "nothing left in progress prints the success message and returns true" {
+            Mock docker { $global:LASTEXITCODE = 0; return "" }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $true
+            (($result | Where-Object { $_ -isnot [bool] }) -join "`n") | Should -Match 'Conflicts resolved!'
+        }
+
+        It "returns exactly one boolean on its output stream" {
+            Mock docker { $global:LASTEXITCODE = 0; return "" }
+            $out = @(Test-ConflictStateClear "stash" 6>$null)
+            $out.Count | Should -Be 1
+            $out[0] | Should -BeOfType [bool]
+        }
+
+        It "unmerged files left are listed and no success message is printed" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'diff-filter=U') { return "CLAUDE.md" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "merge" "merge --abort" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'Some conflicts still remain in these files:'
+            $text | Should -Match '  CLAUDE\.md'
+        }
+
+        It "fails closed when the git state probe cannot run" {
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'MERGE_HEAD') { $global:LASTEXITCODE = 1; return }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+            $result = Test-ConflictStateClear "merge" "merge --abort" 6>&1
+            ($result | Where-Object { $_ -is [bool] }) | Should -Be $false
+            $text = ($result | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match "could not check git's state"
+        }
+
+        It "stash kind with a merge in progress offers the abort and the stash pop" {
+            Mock docker {
+                $a = $args -join ' '
+                $global:LASTEXITCODE = 0
+                if ($a -match 'MERGE_HEAD') { return "merge" }
+                return ""
+            }
+            $text = (Test-ConflictStateClear "stash" 6>&1 | Where-Object { $_ -isnot [bool] }) -join "`n"
+            $text | Should -Not -Match 'Conflicts resolved!'
+            $text | Should -Match 'git -C /daaf merge --abort'
+            $text | Should -Match 'git -C /daaf stash pop'
+        }
+    }
+
+    Context "Get-GitOperationInProgress" {
+        It "probes merge, rebase and cherry-pick state in the repo's .git directory" {
+            $script:ProbeArgs = $null
+            Mock docker { $script:ProbeArgs = ($args -join ' '); $global:LASTEXITCODE = 0; return "cherry-pick" }
+            Get-GitOperationInProgress | Should -Be "cherry-pick"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/MERGE_HEAD*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/rebase-merge*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/rebase-apply*"
+            $script:ProbeArgs | Should -BeLike "*/daaf/.git/CHERRY_PICK_HEAD*"
+            $script:ProbeArgs | Should -Not -BeLike '*"*'
+        }
+
+        It "returns unknown when docker sets no exit code" {
+            Mock docker { return "" }
+            Get-GitOperationInProgress | Should -Be "unknown"
+        }
+
+        It "is a no-op under DAAF_DRY_RUN" {
+            $env:DAAF_DRY_RUN = "1"
+            Mock docker { }
+            try { Get-GitOperationInProgress | Should -Be "" } finally { Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue }
+            Should -Invoke docker -Times 0
+        }
+    }
+
+    # -----------------------------------------------------------------
     # Safety: Mutex and trap
     # -----------------------------------------------------------------
     Context "Safety mechanisms" {
@@ -1395,12 +1516,14 @@ function docker {
 
     # An env-origin DAAF_BRANCH tag gives an informative REFUSAL (exit 1): the
     # updater names the tag, points at the supported re-install path, and states
-    # which branch ongoing updates track. It never persists a tag. (Repurposed
-    # from the former "tag-specific error" test after the env-tag design decision;
-    # the file-origin tag path below is the softer warn-and-continue arm.)
+    # which branch ongoing updates track. It never persists a tag. The file-origin
+    # tag path below is the softer warn-and-continue arm.
     It "env-origin DAAF_BRANCH tag is refused with re-install guidance" {
         $env:DAAF_NESTED = "1"
-        $env:DAAF_BRANCH = "v2.1.0"
+        $env:DAAF_BRANCH = "v3.0.2"
+        # The default project prints no DAAF_PROJECT_NAME prefix on the command.
+        $savedProject = $env:DAAF_PROJECT_NAME
+        Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
         $wrapperScript = Join-Path $script:TestDir "test_wrapper_tag.ps1"
         Set-Content -Path $wrapperScript -Value @'
 $ErrorActionPreference = "Stop"
@@ -1418,8 +1541,8 @@ function docker {
         }
         "*compose exec*git -C /daaf fetch*" { return }
         "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
-        "*compose exec*git -C /daaf rev-parse --verify*origin/v2.1.0*" { $global:LASTEXITCODE = 1; return }
-        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v2.1.0*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/v3.0.2*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v3.0.2*" { $global:LASTEXITCODE = 0; return }
         "*compose exec*git -C /daaf branch*" { return }
         "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
         "*compose exec*git*" { return }
@@ -1432,16 +1555,121 @@ function docker {
         $output = & pwsh -NoProfile -File $wrapperScript *>&1
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -Be 1
-        $outputStr | Should -BeLike "*v2.1.0*"
+        $outputStr | Should -BeLike "*v3.0.2*"
         $outputStr | Should -BeLike "*version tag*"
         $outputStr | Should -BeLike "*not a branch*"
-        # Names the supported re-install path (pinned to the tag)...
-        $outputStr | Should -BeLike "*install.ps1 | iex*"
+        # Names the supported re-install path: forced, pinned to the tag, run from
+        # this folder's parent, printed as a quoted absolute path (never `cd ..`).
+        $outputStr | Should -BeLike ('*  $env:DAAF_FORCE_REINSTALL = "1"; $env:DAAF_BRANCH = ''v3.0.2''; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex*')
+        $outputStr | Should -BeLike ("*  cd `"" + (Split-Path -Parent $script:TestDir.FullName) + "`"*")
+        $outputStr | Should -Not -BeLike "*cd ..*"
         # ...states which branch ongoing updates track...
         $outputStr | Should -BeLike "*default branch*"
         # ...and never saves a tag as the update branch.
         $outputStr | Should -BeLike "*never saved as your update branch*"
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject }
+    }
+
+    # main's install.ps1 downloads host scripts (daaf.bat among them) that
+    # releases before v3.0.2 lack, so a forced re-install onto such a tag would
+    # overwrite files and then stop. The updater prints no re-install command.
+    It "env-origin DAAF_BRANCH tag <Tag> (older than v3.0.2) gets no re-install command" -ForEach @(
+        @{ Tag = 'v2.1.0' }
+        @{ Tag = 'v3.0.1' }
+    ) {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = $Tag
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_oldtag.ps1"
+        Set-Content -Path $wrapperScript -Value (@'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/TAGVALUE*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/TAGVALUE*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@ -replace 'TAGVALUE', $Tag)
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*version tag*"
+        $outputStr | Should -BeLike "*Moving an installation onto a release older than v3.0.2 is not*"
+        $outputStr | Should -BeLike "*installing a release older than v3.0.0*"
+        $outputStr | Should -BeLike "*in a new folder can re-install over your default installation (daaf)*"
+        $outputStr | Should -Not -BeLike "*installed fresh*"
+        $outputStr | Should -BeLike "*https://github.com/DAAF-Contribution-Community/daaf/issues*"
+        $outputStr | Should -Not -BeLike "*DAAF_FORCE_REINSTALL*"
+        $outputStr | Should -Not -BeLike "*install.ps1 | iex*"
+        $outputStr | Should -BeLike "*never saved as your update branch*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # migrate_daaf.ps1 works only on the default install's volume, so an
+    # unconnected install with its own project name is told to re-add origin.
+    It "no remote: the default project gets the migrate one-liner, '<Project>' gets the re-link route" -ForEach @(
+        @{ Project = 'daaf'; Migrate = $true }
+        @{ Project = 'work'; Migrate = $false }
+    ) {
+        $env:DAAF_NESTED = "1"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        $savedProject = $env:DAAF_PROJECT_NAME
+        try {
+            $env:DAAF_PROJECT_NAME = $Project
+            $wrapperScript = Join-Path $script:TestDir "test_wrapper_noremote.ps1"
+            Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+            Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+            $output = & pwsh -NoProfile -File $wrapperScript *>&1
+            $outputStr = $output | Out-String
+            $LASTEXITCODE | Should -Be 0
+            $outputStr | Should -BeLike "*not connected to the update server*"
+            if ($Migrate) {
+                $outputStr | Should -BeLike "*  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.ps1 | iex*"
+            } else {
+                $outputStr | Should -BeLike "*  docker compose -p work exec daaf-docker git -C /daaf remote add origin https://github.com/DAAF-Contribution-Community/daaf.git*"
+                $outputStr | Should -Not -BeLike "*migrate_daaf.ps1 | iex*"
+            }
+        } finally {
+            if ($null -ne $savedProject) { $env:DAAF_PROJECT_NAME = $savedProject } else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+        }
     }
 
     # A file-origin DAAF_BRANCH tag (in environment_settings.txt, NOT the env)

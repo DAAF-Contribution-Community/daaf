@@ -38,8 +38,9 @@ if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ];
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# environment so the volume name below reflects DAAF_PROJECT_NAME and the
+# Bridge the seven whitelisted DAAF_* keys from environment_settings.txt (the list in
+# load_daaf_settings, daaf_lib.sh) into the environment so the volume name below
+# reflects DAAF_PROJECT_NAME and DAAF_DATA_VOLUME_NAME, and the
 # `docker compose down` further below targets the right project. Canonical shared
 # pattern (kept in sync with load_daaf_settings in daaf_lib.sh). Parse only these
 # whitelisted keys (never `source` -- the file holds API keys); shell env wins; absent
@@ -89,7 +90,7 @@ resolve_project_name() {
 
 # --- Configuration ---
 # Project-prefixed volume name "<project>_daaf-data". Default unset =>
-# "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# "daaf_daaf-data".
 # <project> is PROJECT_NAME, the normalized name above (empty => refused before any
 # Docker call; see "Project-name check" below).
 # DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
@@ -191,9 +192,9 @@ SWAP_PROGRAM='trap : INT TERM HUP; test -f /src/.daaf-restore-swap-started || ex
 SWAP_VERIFY_PROGRAM='export LC_ALL=C; : > /tmp/err || exit 4; for t in src dest; do cd /$t 2>>/tmp/err && { find . ! -path ./.daaf-restore-swap-started ! -type d -exec stat -c %f:%u:%g:%s:%n {} + ; find . ! -path . -type d -exec stat -c %f:%u:%g:%n {} + ; find . -type l -exec readlink {} \; ; } 2>>/tmp/err | sort 2>>/tmp/err > /tmp/$t.lst || echo LIST_FAILED_$t >> /tmp/err; done; if test -s /tmp/err; then echo SWAP_VERIFY_ERRORS=$(grep -c ^ /tmp/err); elif cmp -s /tmp/src.lst /tmp/dest.lst; then echo SWAP_VERIFY=MATCH; else echo SWAP_VERIFY=MISMATCH; fi; echo SWAP_VERIFY_ENTRIES=$(grep -c ^ /tmp/src.lst):$(grep -c ^ /tmp/dest.lst)'
 # The helper image every container step above and below runs, PINNED by digest: busybox
 # 1.37.0, multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below.
-# Pinned because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
-# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
-# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# Pinned because the untagged `busybox` (latest) tag moves to new, untested releases (it
+# pointed at busybox 1.38.0 on 2026-09-23, observed on Docker Hub). The same string is
+# in backup_daaf.{sh,ps1},
 # restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
 # keep every copy identical (a parity test enforces it).
 BUSYBOX_IMAGE='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
@@ -304,7 +305,7 @@ fi
 
 if ! docker info &> /dev/null; then
     echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
-    # Old-Engine hint (F1; review round 9): a client of 25 or newer that cannot talk to an
+    # Old-Engine hint: a client of 25 or newer that cannot talk to an
     # Engine older than 25.0 (Docker 29 removed the older API versions) also fails
     # `docker info`, so the version check below is never reached. Read the versions
     # (stdout only, the last non-empty line); when the client's major reads as 25 or newer
@@ -331,7 +332,7 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
-# --- Project-name NOTE (review 51q SUGGESTION-2) ---
+# --- Project-name NOTE ---
 # When the data volume name is derived (DAAF_DATA_VOLUME_NAME unset) from a project
 # name that Compose normalizes to something else (`Work` -> `work`), say so once,
 # with the installer's NOTE wording, before the volume name is first shown (the
@@ -344,7 +345,7 @@ if [ -z "${DAAF_DATA_VOLUME_NAME:-}" ] && [ -n "${DAAF_PROJECT_NAME:-}" ] && [ "
     echo ""
 fi
 
-# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# --- Docker version check ---
 # Docker 29 removed API versions below 1.44: a 29.x client cannot drive an Engine older
 # than 25.0, and a 29.0-29.2 Engine refuses an older client. So read both versions
 # (stdout only, the last non-empty line) and refuse, before any prompt and before
@@ -385,13 +386,29 @@ if [ "${DOCKER_VERSION_STATE}" = "untested" ]; then
     echo ""
 fi
 
+# The restore replaces the volume's contents and needs no container, so a stopped or
+# removed container never leads here: `docker compose down` keeps named volumes and
+# only `down -v` removes them (`docker compose down` reference on docs.docker.com,
+# verified against the Docker Compose docs on 2026-11-01). The usual cause is the wrong
+# folder (the volume name comes from this folder's environment_settings.txt). A deleted
+# volume is created again by the `docker compose up -d` that run_daaf runs.
 if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
     echo "ERROR: Docker volume '${VOLUME_NAME}' not found." >&2
-    echo "Have you run the DAAF installer yet?" >&2
+    echo "The restore finds DAAF's data volume through the environment_settings.txt in the" >&2
+    echo "folder it runs from, so run it from the daaf-docker folder of the install you" >&2
+    echo "want to restore. Stopping DAAF does not cause this: 'docker compose down' removes" >&2
+    echo "the container but keeps the volume, while 'docker compose down -v' or" >&2
+    echo "'docker volume rm' deletes it. To restore into a deleted volume, create it again:" >&2
+    echo "choose 1) Start Claude Code in the DAAF Control Panel (bash daaf.sh). It creates an" >&2
+    echo "empty volume and then reports that DAAF is not installed in the container. That is" >&2
+    echo "expected here, so do not reinstall: choose 8) Restore from Backup and answer y when" >&2
+    echo "it offers to stop DAAF. Without the Control Panel: run 'bash run_daaf.sh' (same" >&2
+    echo "report), then run 'bash restore_from_backup.sh' again." >&2
+    echo "If DAAF was never installed from this folder, run the installer instead." >&2
     exit 1
 fi
 
-# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# --- Helper image check ---
 # Every container step runs the pinned ${BUSYBOX_IMAGE}. Make sure it is on this computer
 # NOW, before any prompt and before the temporary copy is prepared: when it is missing,
 # download it here with its progress showing, so an offline computer is refused with
@@ -417,8 +434,8 @@ fi
 
 # --- Check for running containers using the volume ---
 # Names come from stdout only (a stderr line, e.g. a Docker config WARNING, is never a
-# container). A FAILED `docker ps` is not "nothing is running" -- until 2026-10-02 the
-# `|| true` here read it that way -- so refuse: nothing has been created yet. Same
+# container). A FAILED `docker ps` is not "nothing is running", so refuse: nothing has
+# been created yet. Same
 # wording, outcome and exit code as the .ps1 twin, and the same first line as the
 # swap-time re-check below.
 RUNNING_CONTAINERS=""
@@ -452,9 +469,16 @@ if [ -n "${RUNNING_CONTAINERS}" ]; then
         echo "Containers stopped."
         echo ""
     else
+        # The hand-run hint names the containers listed above (`docker stop <names>`, as
+        # the swap-time re-check below does), not `docker compose down`: a compose
+        # command typed in the user's own shell stops one project only (the default
+        # 'daaf' unless -p names another), and a container that shares this volume may
+        # belong to another install.
         echo ""
-        echo "Restore cancelled. Stop the container manually and try again:"
-        echo "  docker compose down"
+        echo "Restore cancelled. Your DAAF data has not been changed."
+        echo "To restore, run the restore again and answer y to stop the container,"
+        echo "or stop it yourself first with:"
+        echo "  docker stop $(printf '%s' "${RUNNING_CONTAINERS}" | tr '\n' ' ')"
         exit 0
     fi
 fi
@@ -504,7 +528,7 @@ for i in "${!SORTED_BACKUPS[@]}"; do
     # subfolder (it restores to its own volume, not the data volume) and BOTH
     # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is
     # restored content). The exclusions are ROOT-relative, the rule every count site
-    # now shares (the backup twins' snapshot and host counts, the .ps1 twin's
+    # shares (the backup twins' snapshot and host counts, the .ps1 twin's
     # container-side and PowerShell counts): only the root manifests and the root
     # Claude subfolder are skipped, so a data file that merely has the same name
     # deeper in the tree still counts. It also counts the same way as the backup
@@ -532,7 +556,7 @@ for i in "${!SORTED_BACKUPS[@]}"; do
     # (Measure-DaafBackupTree and the container-side $BackupCountProgram) exclude both
     # ".daaf-permissions" and ".daaf-symlinks". Mirrors the "Scanning backup" logic below.
     # `|| true` on every du below: du exits 1 on a folder it cannot read, and under
-    # pipefail + set -e that aborted the whole script right here -- silently, before the
+    # pipefail + set -e that would abort the whole script here -- silently, before the
     # "N+" note -- instead of letting the scan below refuse with an explanation. du still
     # prints the total it could read, which is all this display line needs.
     total_kb=$(du -sk "${dir}" 2>/dev/null | awk '{print $1}') || true
@@ -584,8 +608,8 @@ fi
 
 SELECTED="${SORTED_BACKUPS[$((CHOICE - 1))]}"
 SELECTED_NAME="$(basename "${SELECTED}")"
-# Guarded: an unguarded `$(cd ... && pwd)` under `set -e` aborted the script here with
-# only bash's bare "cd: ... Permission denied" when the backup folder itself was not
+# Guarded: an unguarded `$(cd ... && pwd)` under `set -e` would abort the script here
+# with only bash's bare "cd: ... Permission denied" when the backup folder itself is not
 # readable/searchable. Refuse in the same style as the scan below -- before anything is
 # changed. cd's error is captured into SELECTED_PATH (stdout is only pwd on success).
 if ! SELECTED_PATH="$(cd "${SELECTED}" 2>&1 && pwd)"; then
@@ -649,13 +673,10 @@ HAD_WARNINGS=0
 # lower bound comes from Windows PowerShell 5.1's path-length limit, which `docker cp`
 # (Go, long-path aware) does not share. On macOS/Linux `find` has no such limit, so a
 # read error is a real permission or I/O problem -- and `docker cp` reads the same
-# files as the same user, so the copy would most likely fail partway on it too. (The
-# copy now goes into a temporary volume that is checked before anything is replaced,
-# so such a failure would also leave the live data untouched; refusing up front is
-# still kept -- user decision D4, 2026-10-01 -- because it names the unreadable file,
-# which a failed or short copy cannot.) Previously an unguarded `$(...)` under
-# pipefail aborted the script at this point with only find's own error lines as
-# explanation.
+# files as the same user, so the copy would most likely fail partway on it too. Such a
+# failure would leave the live data untouched (the copy goes into a temporary volume
+# that is checked first), but refusing up front names the unreadable file, which a
+# failed or short copy cannot.
 #
 # `find` only opens FOLDERS (to list them); it never opens a regular file, so the count
 # alone catches an unreadable folder but NOT an unreadable file (a mode-000 file, or a
@@ -749,18 +770,17 @@ TEMP_CREATED=0
 CLAUDE_TEMP_CREATED=0
 # 1 from right BEFORE a temp volume's `docker volume create` until that attempt is
 # resolved (recorded in TEMP_CREATED / CLAUDE_TEMP_CREATED, or deliberately left alone
-# by _restore_check_new_temp's refusal). See _restore_adopt_attempted_temps (task #36).
+# by _restore_check_new_temp's refusal). See _restore_adopt_attempted_temps.
 TEMP_CREATE_ATTEMPTED=0
 CLAUDE_TEMP_CREATE_ATTEMPTED=0
 SWAP_STARTED=0
 # 1 once every swap and its metadata check passed (the INT handler's wording).
 SWAPS_DONE=0
 TEMP_REMOVE_FAILED=0
-# Why a temp volume was kept (message lines, newline-separated; field test 2026-10-05,
-# D1/D2).
+# Why a temp volume was kept (message lines, newline-separated).
 TEMP_REMOVE_NOTE=""
 # 1 once the Claude Code state swap phase began: the data volume was already replaced
-# and checked (the INT handler's wording; field test 2026-10-05, D3).
+# and checked (selects the INT handler's wording).
 CLAUDE_SWAP_PHASE=0
 # 1 once a pre-swap cleanup ran (or was deliberately skipped), so the EXIT handler
 # does not repeat it.
@@ -779,7 +799,7 @@ MARKERS_WRITTEN=0
 # the temps that still carry THIS run's identity label.
 TEMP_CLEANUP_CAREFUL=0
 # 1 once the Claude swap container actually ran (any exit but its own refusal, 3): the
-# live Claude Code state may then be erased, which its failure message says (S-a).
+# live Claude Code state may then be erased, which its failure message says.
 CLAUDE_SWAP_RAN=0
 RERUN_COMMAND="bash restore_from_backup.sh"
 
@@ -809,10 +829,10 @@ _restore_temp_is_ours() {
     return 1
 }
 
-# Task #36 (review 32q, I-3): a Ctrl+C during a temp volume's `docker volume create`, or
-# during _restore_check_new_temp's `docker run`, is deferred until that docker command
-# ends, and the INT handler then runs BEFORE TEMP_CREATED=1 (CLAUDE_TEMP_CREATED=1) is
-# set -- so the new, empty, labelled temp volume was left behind. For a create attempt
+# A Ctrl+C during a temp volume's `docker volume create`, or during
+# _restore_check_new_temp's `docker run`, is deferred until that docker command ends,
+# and the INT handler then runs BEFORE TEMP_CREATED=1 (CLAUDE_TEMP_CREATED=1) is set --
+# which would leave the new, empty, labelled temp volume behind. For a create attempt
 # that was never resolved, count the temp as this run's (so the usual removal path --
 # holders, the kept-copy note -- applies) ONLY when it exists AND still carries THIS
 # run's identity label: `docker volume create` silently reuses an existing volume and
@@ -846,9 +866,8 @@ _restore_reap_helpers() {
 # cannot be removed is not later reported as a restore that had "started replacing"
 # the data. With TEMP_CLEANUP_CAREFUL=1 the label reap is skipped and a temp that no
 # longer carries this run's identity label is left alone (and no longer counted as
-# this run's), consistency review round 2 (SF2). A temp whose create was attempted but
-# not yet recorded is removed only when it is provably this run's (task #36,
-# _restore_adopt_attempted_temps).
+# this run's). A temp whose create was attempted but not yet recorded is removed only
+# when it is provably this run's (_restore_adopt_attempted_temps).
 _restore_remove_temps() {
     local unmark=0 rm_mode="" rm_status
     if [ "${SWAP_STARTED}" -eq 1 ] && [ "${1:-}" != "final" ]; then return 0; fi
@@ -864,7 +883,7 @@ _restore_remove_temps() {
     else
         _restore_reap_helpers
     fi
-    # Field test 2026-10-05, D1: each removal goes through _restore_remove_volume
+    # Each removal goes through _restore_remove_volume
     # (stopped holders first, then the volume); careful cleanup removes no holder. A temp
     # that is kept stays this run's (TEMP_CREATED) and its reason is kept for the message.
     if [ "${TEMP_CREATED}" -eq 1 ]; then
@@ -886,12 +905,12 @@ _restore_remove_temps() {
 }
 
 # The last non-empty line of Docker's stderr text $1, trimmed (empty when there is
-# none): the "Docker said:" text of a failure message (field test 2026-10-05, D2).
+# none): the "Docker said:" text of a failure message.
 _restore_last_line() {
     printf '%s\n' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep . | tail -n 1 || true
 }
 
-# Field test 2026-10-05, D1: remove temp volume $1 together with the STOPPED containers
+# Remove temp volume $1 together with the STOPPED containers
 # that still reference it. A Ctrl+C between `docker run`'s create and start leaves a
 # never-started ("created") container -- `--rm` acts only on exit, and an unlabelled one
 # (the swap check, the space check, the marker probe) escapes the label reap -- which
@@ -899,15 +918,16 @@ _restore_last_line() {
 # (a Docker restart is expected to remove it: moby restore(), inference). Holders come
 # from STDOUT only (a stderr line is not an ID): `docker ps -a --filter volume=<temp>`.
 # Moby's `volume` filter matches a mount's volume NAME (a bind's source) or its
-# DESTINATION exactly, several values OR'd (daemon/list.go, read 2026-10-05); a temp
-# name never starts with "/", so it cannot match a destination. A holder in `created`,
-# `exited` or `dead` is removed with a PLAIN `docker rm` (never -f): the daemon refuses a
-# running one (daemon/delete.go: "stop the container before removing or force remove"),
-# so a container that started since the list survives, and `docker rm` never removes a
-# NAMED volume (the live one stays). Any other state -- running, restarting, paused,
-# removing, or one not known here -- means another restore may still be using it:
+# DESTINATION exactly, several values OR'd (verified against
+# upstream moby `daemon/list.go` on 2026-10-05); a temp name never starts with "/", so
+# it cannot match a destination. A holder in `created`, `exited` or `dead` is removed with a PLAIN
+# `docker rm` (never -f): the daemon refuses a running one (moby `daemon/delete.go`:
+# "stop the container before removing or force remove"; verified against upstream
+# moby `daemon/delete.go` on 2026-11-01), so a container that started since the list
+# survives, and `docker rm` never removes a NAMED volume (the live one stays). Any
+# other state -- running, restarting, paused, removing, or one not known here -- means another restore may still be using it:
 # nothing is removed. A failed list is "could not check", never "no holders". $2 =
-# careful (cleanup, SF2: the temp may be another restore's; no holder is removed) |
+# careful (cleanup: the temp may be another restore's; no holder is removed) |
 # check (list only) | empty. Only this run's two temp names are ever removed. Returns
 # 0 removed (check: removable), 1 a removal failed, 2 in use, 3 the list failed; sets
 # RESTORE_RM_SAID (Docker's last stderr line) and RESTORE_RM_PS_EXIT (docker ps's exit).
@@ -963,8 +983,7 @@ _restore_note_removal() {
     fi
 }
 
-# How to remove temp volume(s) $2 (space-separated) by hand (field test 2026-10-05,
-# D1): the removal command, then -- for a volume Docker says is in use -- how to find
+# How to remove temp volume(s) $2 (space-separated) by hand: the removal command, then -- for a volume Docker says is in use -- how to find
 # and remove the container that holds it. $1 is the message's indent; commands get two
 # more. Prints to stdout; callers redirect.
 _restore_remove_hint() {
@@ -1004,7 +1023,7 @@ _restore_has_line() {
     return 1
 }
 
-# The exact-name fallback (review round 2, S3) for a check whose inspect failed with
+# The exact-name fallback for a check whose inspect failed with
 # text that is not a recognised "no such ..." message (Docker's wording can change):
 # list the names, STDOUT only, and compare whole lines exactly. $1 = volume |
 # container (all containers) | running (running containers only), $2 = the name.
@@ -1056,11 +1075,11 @@ _restore_fail_after_swap() {
     exit 1
 }
 
-# A Claude Code state failure AFTER the data swap succeeded and was checked (review
-# round 2, S5): say plainly that the project files are in place and only the login
-# and history are not. Same keep-the-temps rules and next steps as the after-swap path.
-# Review round 3 (S-a): once the Claude swap container ran (CLAUDE_SWAP_RAN), the old
-# login may be erased too -- say so, and that the restore puts the backup's back.
+# A Claude Code state failure AFTER the data swap succeeded and was checked: say
+# plainly that the project files are in place and only the login and history are not.
+# Same keep-the-temps rules and next steps as the after-swap path. Once the Claude swap
+# container ran (CLAUDE_SWAP_RAN), the old login may be erased too -- say so, and that
+# the restore puts the backup's back.
 _restore_fail_claude_after_data() {
     local line
     echo "" >&2
@@ -1082,19 +1101,20 @@ _restore_fail_claude_after_data() {
     exit 1
 }
 
-# A data swap that provably replaced NOTHING (review round 2, S1): ONLY exit 3, the swap
-# program's own refusal (its source lacked this run's state marker; it exits before its
-# rm). Nothing was replaced, so this is NOT the after-swap path. Review round 3 (I-1):
-# Docker's 125 is NOT such proof. Docker documents 125 as "the error is with Docker
+# A data swap that provably replaced NOTHING: ONLY exit 3, the swap program's own
+# refusal (its source lacked this run's state marker; it exits before its rm). Nothing
+# was replaced, so this is NOT the after-swap path. Docker's 125 is NOT such proof. Docker documents 125 as "the error is with Docker
 # daemon itself" (Running containers guide, "Exit status"), and `docker run` can return
 # 125 after the container started -- e.g. when it loses track of it in a daemon restart
-# mid-swap (moby PR #34999 / #46857), possibly after the rm ran. So 125, whether or not
-# the swap container still exists, takes the after-swap path (temps and marker kept).
+# mid-swap (moby PR #34999 / #46857), possibly after the rm ran. (Verified against
+# docs.docker.com and upstream moby on 2026-11-01: in #34999 a connection dropped
+# while waiting surfaces as exit 125; #46857 is about a daemon restart and --rm
+# containers.) So 125, whether or not the swap container still exists, takes the after-swap path (temps and marker kept).
 # The temps are removed carefully (TEMP_CLEANUP_CAREFUL: identity-checked, marker first,
 # no label reap) -- a temp that is no longer this run's is left alone, and it holds no
 # marker of ours, so the next run reports it as a restore that "stopped before it
-# replaced anything". The careful flag is set BEFORE the swap-started flag is cleared
-# (S-c): a Ctrl+C between the two then still finds the swap "started" (temps kept),
+# replaced anything". The careful flag is set BEFORE the swap-started flag is cleared:
+# a Ctrl+C between the two then still finds the swap "started" (temps kept),
 # never an ordinary cleanup with a label reap.
 _restore_fail_swap_not_run() {
     TEMP_CLEANUP_CAREFUL=1
@@ -1106,7 +1126,7 @@ _restore_fail_swap_not_run() {
 # A temp volume that is no longer the one this run created and checked (see
 # RESTORE_RUN_LABEL): refuse WITHOUT removing anything -- the volume under that name
 # may belong to another restore -- and exit 1. Only used before any swap started.
-# Review round 2 (S2): once the state markers were written, the marker is deleted
+# Once the state markers were written, the marker is deleted
 # (best-effort) from this run's OTHER temps that still carry its identity label, so the
 # next run does not report this refusal as a restore that "had started replacing" the
 # data. No volume is removed and no helper is reaped.
@@ -1145,7 +1165,7 @@ _restore_on_interrupt() {
         echo "this restore again and choose the same backup:" >&2
         echo "  ${RERUN_COMMAND}" >&2
     elif [ "${SWAP_STARTED}" -eq 1 ]; then
-        # Field test 2026-10-05, D3: during the Claude Code state phase the data volume
+        # During the Claude Code state phase the data volume
         # was already replaced and checked -- say so.
         if [ "${CLAUDE_SWAP_PHASE}" -eq 1 ]; then
             echo "Restore interrupted while the Claude Code state (login and session history) was being replaced." >&2
@@ -1171,14 +1191,13 @@ trap _restore_on_interrupt INT TERM
 # an unexpected command failure under `set -e`, for example -- removes them here.
 # Never after a swap started (a temp copy may then be the only complete one). Exits
 # that already cleaned up (or deliberately left a volume alone) set TEMP_CLEANUP_TRIED.
-# Review round 3 (S-b): its first act after saving the status IGNORES INT/TERM, so a
-# Ctrl+C during its cleanup cannot abort it halfway (one temp removed, the other left).
-# Review round 2 (I-B): just before the pause it re-arms INT/TERM to end the script with
-# the status it was already exiting with, so a Ctrl+C at the pause neither runs
-# _restore_on_interrupt (whose text would be wrong here) nor changes the exit code.
-# (`trap - INT TERM` alone is not enough: a Ctrl+C at the pause then ends bash with
-# status 130 -- observed under a pty on 2026-10-01, scratch/engineer11 probe.)
-# Task #36: a temp whose create was attempted but never recorded counts as left behind
+# Its first act after saving the status IGNORES INT/TERM, so a Ctrl+C during its
+# cleanup cannot abort it halfway (one temp removed, the other left). Just before the
+# pause it re-arms INT/TERM to end the script with the status it was already exiting
+# with, so a Ctrl+C at the pause neither runs _restore_on_interrupt (whose text would
+# be wrong here) nor changes the exit code. (`trap - INT TERM` alone is not enough: a
+# Ctrl+C at the pause then ends bash with status 130; observed 2026-10-01, bash under a
+# pty.) A temp whose create was attempted but never recorded counts as left behind
 # only when it is provably this run's (_restore_adopt_attempted_temps).
 _restore_on_exit() {
     RESTORE_EXIT_STATUS=$?
@@ -1225,8 +1244,7 @@ _restore_inspect_failed() {
     exit 1
 }
 # A leftover temp volume $1 that something still uses ($2 = 2) or whose users could not
-# be listed ($2 = 3, see _restore_remove_volume): refuse, exit 1 (field test
-# 2026-10-05, D1).
+# be listed ($2 = 3, see _restore_remove_volume): refuse, exit 1.
 _restore_leftover_refusal() {
     echo "" >&2
     if [ "$2" -eq 2 ]; then
@@ -1254,11 +1272,10 @@ _restore_is_not_found() {
 }
 LEFTOVER_VOLUMES=""
 LEFTOVER_CONTAINERS=""
-# Review round 2 (I-A): the running state is read from STDOUT only, and the swap counts
-# as running when ANY line is exactly "true". (Read through `2>&1 | tail -n 1`, a
-# stderr line arriving last made a RUNNING swap look stopped, and the user was then
-# offered `docker rm -f` of a live swap.) The error text is read by a second call, only
-# when the first failed. (S3) Error text that is not a recognised "no such ..." message
+# The running state is read from STDOUT only, and the swap counts as running when ANY
+# line is exactly "true". (Read through `2>&1 | tail -n 1`, a stderr line arriving last
+# would make a RUNNING swap look stopped and offer `docker rm -f` of a live swap.) The
+# error text is read by a second call, only when the first failed. Error text that is not a recognised "no such ..." message
 # falls back to the exact-name lists before the check is given up as "could not check".
 for sc in "${SWAP_CONTAINER_NAME}" "${CLAUDE_SWAP_CONTAINER_NAME}"; do
     SC_EXIT=0
@@ -1345,9 +1362,9 @@ if [ -n "${LEFTOVER_VOLUMES}${LEFTOVER_CONTAINERS}" ]; then
         if [ -n "${LEFTOVER_VOLUMES}" ]; then _restore_remove_hint "" "${LEFTOVER_VOLUMES}"; fi
         exit 0
     fi
-    # Field test 2026-10-05, D1: a never-started container left by the earlier restore's
-    # Ctrl+C still references its temp volume (and the live one), so `docker volume rm`
-    # failed every time. Every leftover volume's holders are listed FIRST, before anything
+    # A never-started container left by an earlier restore's Ctrl+C still references
+    # its temp volume (and the live one) and keeps `docker volume rm` failing, so every
+    # leftover volume's holders are listed FIRST, before anything
     # is removed: one in use (or a list that fails) refuses here, with nothing removed;
     # stopped ones are removed with the volume below (_restore_remove_volume).
     for tv in ${LEFTOVER_VOLUMES}; do
@@ -1358,19 +1375,22 @@ if [ -n "${LEFTOVER_VOLUMES}${LEFTOVER_CONTAINERS}" ]; then
     _restore_reap_helpers
     LEFTOVER_FAILED=0
     LEFTOVER_SAID=""
-    # Review round 6 (R5): each leftover swap container -- found NOT running before the
+    # Each leftover swap container -- found NOT running before the
     # prompt -- is removed with a PLAIN `docker rm` (never -f). The y/n prompt can wait
     # for any length of time, and a restore started meanwhile in another window runs its
     # swap under the SAME name; the daemon refuses to remove a running container without
-    # -f (daemon/delete.go: "stop the container before removing or force remove"), so
-    # that swap is never killed. A failed removal stops here: no leftover volume is
-    # touched (a running swap may be using the temp) and the failure message below shows
-    # Docker's reason. Delta review of round 7 (ISSUE 1): a swap container that is GONE by
-    # now (its --rm finished, Docker restarted, another window removed it) counts as
-    # removed. A plain rm of a missing container exits 1 with "No such container" (docker
-    # CLI cli/command/container/rm.go at v29.1.3 ignores not-found only for -f), so that
-    # text is read as success here. Any other failure -- still running, or a removal
-    # already in progress -- still stops here with nothing removed.
+    # -f (moby daemon/delete.go: "stop the container before removing or force remove";
+    # verified against upstream moby on 2026-11-01), so that swap is never killed. A
+    # failed removal stops here: no leftover volume is touched (a running swap may be
+    # using the temp) and the failure message below shows
+    # Docker's reason. A swap container that is GONE by now (its --rm finished, Docker
+    # restarted, another window removed it) counts as removed. A plain rm of a missing
+    # container exits 1 with "No such container" (docker CLI
+    # `cli/command/container/rm.go` at v29.1.3 ignores not-found only for -f, and moby
+    # `daemon/errors.go` prints "No such container: <id>"; both verified
+    # upstream on 2026-11-01), so that text is read as success here. Any other failure
+    # -- still running, or a removal already in progress -- still stops here with
+    # nothing removed.
     for sc in ${LEFTOVER_CONTAINERS}; do
         if ! RM_SAID="$(docker rm "${sc}" 2>&1 > /dev/null)"; then
             if _restore_is_not_found "${RM_SAID}"; then continue; fi
@@ -1476,18 +1496,18 @@ echo ""
 # alone (it is NOT marked as created by this run, and its create attempt is closed
 # first, so nothing removes it). A Ctrl+C DURING the check never reaches this verdict:
 # the INT handler then removes the temp only if it carries this run's identity label
-# (task #36, _restore_adopt_attempted_temps).
+# (_restore_adopt_attempted_temps).
 _restore_check_new_temp() {
     local listing status=0
-    # STDOUT only (review round 2): a stray stderr line (a Docker config WARNING) once
-    # made every new temp look non-empty. A `find` that hits an error still exits
+    # STDOUT only: a stray stderr line (a Docker config WARNING) would make every new
+    # temp look non-empty. A `find` that hits an error still exits
     # nonzero, so a listing that could not be made still fails the check.
     listing="$(docker run --rm --label "${RESTORE_LABEL}=$2" -v "$1:/dest:ro" "${BUSYBOX_IMAGE}" find /dest -mindepth 1 2>/dev/null)" || status=$?
     if [ "${status}" -eq 0 ] && [ -z "${listing}" ] && _restore_temp_is_ours "$1"; then return 0; fi
-    # Task #36: close the create attempt BEFORE the refusal's cleanup runs, so a volume
+    # Close the create attempt BEFORE the refusal's cleanup runs, so a volume
     # this check could not confirm is never removed as an "attempted" one.
     if [ "$1" = "${TEMP_VOLUME_NAME}" ]; then TEMP_CREATE_ATTEMPTED=0; else CLAUDE_TEMP_CREATE_ATTEMPTED=0; fi
-    # SF2 (review round 2): the volume under that name may be another restore's, so its
+    # The volume under that name may be another restore's, so its
     # prepare helpers are not reaped either; this run's own other temps are removed only
     # if they still carry this run's identity label.
     TEMP_CLEANUP_CAREFUL=1
@@ -1497,7 +1517,7 @@ _restore_check_new_temp() {
         "       Close any other restore window, then run this restore again: it will show" \
         "       the leftover copy and ask whether to remove it."
 }
-# Task #36: the attempt is recorded BEFORE the create (a Ctrl+C there is handled by
+# The attempt is recorded BEFORE the create (a Ctrl+C there is handled by
 # _restore_adopt_attempted_temps) and closed only AFTER TEMP_CREATED=1.
 TEMP_CREATE_ATTEMPTED=1
 if ! docker volume create --label "${RESTORE_LABEL}=${VOLUME_NAME}" --label "${RESTORE_RUN_LABEL}=${RESTORE_RUN_ID}" "${TEMP_VOLUME_NAME}" > /dev/null 2>&1; then
@@ -1551,7 +1571,7 @@ fi
 # stripped as parameter-expansion suffix/prefix (busybox sed has no \xNN escapes;
 # `tr -d` would corrupt multi-byte UTF-8 names), and the manifest is removed after.
 # Replay failure stays a latched WARNING (the copy is intact; only permissions may be
-# off), as before copy-then-swap -- it does not stop the restore.
+# off) -- it does not stop the restore.
 if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" test -f "/dest/${PERMISSIONS_MANIFEST}"; then
     echo "Restoring executable permissions from ${PERMISSIONS_MANIFEST}..."
     if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c '
@@ -1574,9 +1594,13 @@ if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_N
         rm -f "$manifest"
     '; then
         echo "WARNING: Could not fully replay executable permissions." >&2
-        echo "         Your data was copied intact; only file permissions may be off." >&2
-        echo "         If git reports many files as changed by mode only, or a script" >&2
-        echo "         will not run, repair with: chmod +x <file> inside the container." >&2
+        echo "         Your data was copied intact; only file permissions may be off. To try again," >&2
+        echo "         cancel at the RESTORE question below and run the restore again. If you" >&2
+        echo "         restore anyway, fix what you notice in a terminal inside DAAF (Control Panel:" >&2
+        echo "         6) Open Terminal in Container):" >&2
+        echo "           - a script will not run: chmod +x <file>" >&2
+        echo "           - git shows many files changed only in mode (old mode 100644, new mode" >&2
+        echo "             100755): chmod -x <file> for each of them" >&2
         HAD_WARNINGS=1
     fi
 else
@@ -1648,7 +1672,7 @@ echo "Verified: ${TEMP_COUNT} files in the temporary copy."
 # the backup contains Claude state; older backups predating the volume restore
 # data-only with a NOTE. Same mechanism as the data volume (create + cp + chown + its
 # own symlink manifest replay). Any failure here stops the restore before ANY volume
-# is replaced (user decision D2): the data and its login state stay consistent.
+# is replaced: the data and its login state stay consistent.
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     echo "Preparing the Claude Code state (credentials, session history, plugins)..."
     CLAUDE_TEMP_CREATE_ATTEMPTED=1
@@ -1722,7 +1746,7 @@ if [ "${SPACE_EXIT}" -eq 0 ] && [ -n "${AVAIL_KB}" ] && [ -n "${LIVE_KB}" ] && [
     fi
 fi
 
-# --- (4) Confirmation (after the copy was checked; user decision D1) ---
+# --- (4) Confirmation (after the copy was checked) ---
 echo ""
 echo "=========================================="
 echo "  *** WARNING: DESTRUCTIVE OPERATION ***"
@@ -1765,6 +1789,9 @@ fi
 
 # Nothing may use the live volumes while they are replaced (a container could have
 # been started -- e.g. by another install sharing the volume -- since the first check).
+# The hint names the containers (`docker stop <names>`), not `docker compose down`: a
+# compose command run by hand stops only one project, and that container may belong
+# to another install.
 # Names come from stdout only. A FAILED `docker ps` is not "nothing is running": the
 # check could not be made, so refuse (same wording and outcome as the .ps1 twin).
 RUNNING_NOW=""
@@ -1777,7 +1804,9 @@ if [ "${RUNNING_NOW_EXIT}" -ne 0 ]; then
 elif [ -n "${RUNNING_NOW}" ]; then
     _restore_fail_before_swap "ERROR: A container started using your DAAF data while the restore was being" \
         "       prepared: $(printf '%s' "${RUNNING_NOW}" | tr '\n' ' ')" \
-        "       Stop it (docker compose down) and run the restore again."
+        "       Stop it with the command below (it may belong to another DAAF install), then run" \
+        "       the restore again:" \
+        "         docker stop $(printf '%s' "${RUNNING_NOW}" | tr '\n' ' ')"
 fi
 
 # The temp volumes must still be the ones this run created and checked: while the
@@ -1850,13 +1879,13 @@ fi
 # Same swap program and check as the data volume, right after it (before the live
 # count check, the same order as the .ps1 twin).
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
-    # Field test 2026-10-05, D3: from here an interrupt says the Claude Code state was
+    # From here an interrupt says the Claude Code state was
     # being replaced (the data volume already is, and was checked).
     CLAUDE_SWAP_PHASE=1
     echo ""
     echo "Replacing the Claude Code state..."
     # Right before the Claude swap: still our volume? (The data volume is already
-    # replaced and checked, so every Claude failure below says so plainly -- S5; the
+    # replaced and checked, so every Claude failure below says so plainly; the
     # changed volume is not ours, so it is not listed as the kept copy.)
     if ! _restore_temp_is_ours "${CLAUDE_TEMP_VOLUME_NAME}"; then
         CLAUDE_TEMP_CREATED=0
@@ -1867,7 +1896,7 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     SWAP_EXIT=0
     docker run --rm --sig-proxy=false --name "${CLAUDE_SWAP_CONTAINER_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/src:ro" -v "${CLAUDE_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c "${SWAP_PROGRAM}" || SWAP_EXIT=$?
     # Exit 3 is the program's own refusal before its rm (the live Claude state is
-    # untouched); any other outcome means the swap ran and may have erased it (S-a).
+    # untouched); any other outcome means the swap ran and may have erased it.
     if [ "${SWAP_EXIT}" -ne 3 ]; then CLAUDE_SWAP_RAN=1; fi
     if [ "${SWAP_EXIT}" -ne 0 ]; then
         _restore_fail_claude_after_data "ERROR: Replacing the Claude Code state (login and session history) did not" \

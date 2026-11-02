@@ -42,7 +42,7 @@ if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
 fi
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
 # load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
@@ -83,6 +83,22 @@ else
         done < "${settings_file}"
     }
     _daaf_load_settings
+fi
+
+# --- Project flag for printed commands ---
+# A `docker compose` command printed for the user runs in the user's own shell,
+# where DAAF_PROJECT_NAME from environment_settings.txt is not set, so it would
+# reach the default install 'daaf'. For any other project the printed command
+# carries `-p <project>`, as install.sh prints it. Without daaf_lib.sh the name
+# is printed as set.
+COMPOSE_P_FLAG=""
+if command -v resolve_project_name >/dev/null 2>&1; then
+    HINT_PROJECT="$(resolve_project_name)"
+else
+    HINT_PROJECT="${DAAF_PROJECT_NAME:-daaf}"
+fi
+if [ -n "${HINT_PROJECT}" ] && [ "${HINT_PROJECT}" != "daaf" ]; then
+    COMPOSE_P_FLAG="-p ${HINT_PROJECT} "
 fi
 
 # Host directory the rendered HTML is copied into (created on first use).
@@ -186,7 +202,7 @@ if [ -z "${RUNNING_CID}" ]; then
     echo "Starting DAAF container..."
     if ! docker compose up -d; then
         echo "ERROR: Failed to start the container." >&2
-        echo "  Try: docker compose logs daaf-docker" >&2
+        echo "  Try: docker compose ${COMPOSE_P_FLAG}logs daaf-docker" >&2
         exit 1
     fi
     echo "Container started."
@@ -333,12 +349,9 @@ else
 fi
 
 # --- Render inside the container ---
-# `-M embed-resources:true` forces a SINGLE self-contained HTML regardless of
-# whether the source .qmd's YAML sets it, so the copied-out file is fully
-# portable (all CSS/JS/images inlined -- no sidecar _files/ directory to copy).
-# Verified against Quarto 1.7.29 and re-verified on 1.10.18 (2026-11-01):
-# `-M embed-resources:true` produces one .html with no _files/ dir even when
-# the .qmd YAML omits the setting.
+# `-M embed-resources:true` writes one portable .html (CSS, JS and images
+# inlined, no _files/ folder to copy), even when the .qmd YAML omits the setting
+# (Quarto 1.10.18, verified 2026-11-01).
 HTML_REL="${QMD_REL%.qmd}.html"
 HTML_BASENAME="$(basename "${HTML_REL}")"
 
@@ -372,11 +385,15 @@ fi
 mkdir -p "${QUARTO_HTML_DIR}"
 
 if ! docker compose cp "daaf-docker:/daaf/${HTML_REL}" "${HOST_HTML}"; then
+    # Single quotes keep $ and backticks in a path literal when the hint is
+    # pasted into a shell; an embedded ' is written as '\''.
+    _hint_src=$(printf '%s' "daaf-docker:/daaf/${HTML_REL}" | sed "s/'/'\\\\''/g")
+    _hint_dst=$(printf '%s' "${HOST_HTML}" | sed "s/'/'\\\\''/g")
     echo "" >&2
     echo "ERROR: Failed to copy the rendered HTML out of the container." >&2
     echo "  The render succeeded, so the file exists at /daaf/${HTML_REL} inside" >&2
-    echo "  the container. You can copy it manually with:" >&2
-    echo "    docker compose cp daaf-docker:/daaf/${HTML_REL} ${HOST_HTML}" >&2
+    echo "  the container. You can copy it manually from your daaf-docker folder with:" >&2
+    echo "    docker compose ${COMPOSE_P_FLAG}cp '${_hint_src}' '${_hint_dst}'" >&2
     exit 1
 fi
 
@@ -386,12 +403,14 @@ echo "Rendered document copied to: ${HOST_HTML}"
 # --- Open in the default browser ---
 # Prefer the shared open_url helper (handles macOS/WSL/Linux). Pass the raw local
 # path rather than constructing a file:// URI: literal #, ?, and % characters in
-# a valid filename otherwise acquire URI fragment/query/escape semantics. Fall
-# back silently if daaf_lib.sh was not sourced -- the path is printed regardless.
+# a valid filename otherwise acquire URI fragment/query/escape semantics. The
+# absolute path is printed either way: open_url returns quietly when the host
+# has no browser opener, and daaf_lib.sh may not be sourced at all.
 ABS_HTML="$(cd "$(dirname "${HOST_HTML}")" && pwd)/$(basename "${HOST_HTML}")"
 if command -v open_url >/dev/null 2>&1; then
     open_url "${ABS_HTML}"
-    echo "Opening in your default browser..."
+    echo "Opening it in your browser. If nothing opens, open this file:"
+    echo "  ${ABS_HTML}"
 else
     echo "Open it in your browser to view:"
     echo "  ${ABS_HTML}"

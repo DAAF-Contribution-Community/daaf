@@ -848,8 +848,8 @@ teardown() {
 # from the project must use that same name. The helper lives in daaf_lib.sh; the
 # standalone scripts (backup_daaf.sh, restore_from_backup.sh, update_daaf.sh, and the
 # maintainer harness test_migration.sh) carry a byte-identical copy, and install.sh
-# carries its own two inline lines. The tests below pin all of them to one fixed
-# input set.
+# and run_daaf.sh carry their own two inline lines. The tests below pin all of them
+# to one fixed input set.
 #
 # The scripts that carry an inline copy (word-split on purpose: plain file names).
 _PROJECT_NAME_COPIES="backup_daaf.sh restore_from_backup.sh update_daaf.sh test_migration.sh"
@@ -965,7 +965,7 @@ EOF
     done
 }
 
-@test "resolve_project_name: each inline copy and install.sh give the library's results on the fixed input set" {
+@test "resolve_project_name: each inline copy, install.sh and run_daaf.sh give the library's results on the fixed input set" {
     local f n
     # The library is the reference (pinned to the expected column above); every copy
     # is run over the same cases and must give the same per-case lines.
@@ -1000,6 +1000,23 @@ EOF
     run _run_project_name_cases "${TEST_DIR}/copy_install.sh"
     assert_success
     [ "${output}" = "${want}" ] || { echo "install.sh differs:"; echo "${output}"; return 1; }
+    # run_daaf.sh also runs standalone and keeps its own two lines, which feed
+    # every -p and DAAF_PROJECT_NAME= it prints (its default "daaf" is inside the
+    # first line). Wrap exactly those lines the same way.
+    n="$(grep -cF 'HINT_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/run_daaf.sh")"
+    [ "${n}" -eq 1 ]
+    n="$(grep -cF 'HINT_PROJECT="${HINT_PROJECT#' "${REPO_ROOT}/scripts/host/run_daaf.sh")"
+    [ "${n}" -eq 1 ]
+    {
+        echo 'resolve_project_name() {'
+        grep -F 'HINT_PROJECT="$(printf' "${REPO_ROOT}/scripts/host/run_daaf.sh"
+        grep -F 'HINT_PROJECT="${HINT_PROJECT#' "${REPO_ROOT}/scripts/host/run_daaf.sh"
+        echo '    printf "%s\n" "${HINT_PROJECT}"'
+        echo '}'
+    } > "${TEST_DIR}/copy_run_daaf.sh"
+    run _run_project_name_cases "${TEST_DIR}/copy_run_daaf.sh"
+    assert_success
+    [ "${output}" = "${want}" ] || { echo "run_daaf.sh differs:"; echo "${output}"; return 1; }
 }
 
 @test "resolve_project_name: no host script derives a Docker name from the RAW DAAF_PROJECT_NAME" {

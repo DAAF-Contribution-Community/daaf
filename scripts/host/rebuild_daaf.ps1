@@ -27,8 +27,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With this set to $true under 'Stop', pwsh throws NativeCommandExitException (observed
+# 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
@@ -166,8 +167,12 @@ $ContainerId = (docker compose ps -aq daaf-docker 2>$null | Out-String).Trim()
 $ErrorActionPreference = $savedEAP
 if ([string]::IsNullOrWhiteSpace($ContainerId)) {
     Write-Host "ERROR: No daaf-docker container found (running or stopped)." -ForegroundColor Red
-    Write-Host "Have you run the DAAF installer? The container must exist (running or stopped)"
-    Write-Host "for this script to copy the updated files from it."
+    Write-Host "The rebuild copies its build files out of that container, so it must exist."
+    Write-Host "'docker compose down' removes it, for example. To create it again, choose"
+    Write-Host "1) Start Claude Code in the DAAF Control Panel (.\daaf.ps1), type /exit,"
+    Write-Host "then choose 10) Rebuild Container again. Without the Control Panel: run"
+    Write-Host "'.\run_daaf.ps1 bash', type exit, then run '.\rebuild_daaf.ps1' again."
+    Write-Host "If DAAF was never installed from this folder, run the installer instead."
     Wait-AndExit 1
 }
 
@@ -241,17 +246,15 @@ if ((-not $DockerfileChanged) -and (-not $ComposefileChanged)) {
 }
 
 # --- Apple Silicon / arm64 build-time notice ---
-# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
-# so Apple Silicon no longer compiles R packages from source. A rebuild that
-# touches an early layer still re-runs the sizable package installs, but there is
-# no arm64-specific source-compile penalty. A brief heads-up keeps the quiet
-# install phase from looking like a hang.
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries, like x86_64, so
+# R packages are not compiled from source. A rebuild that touches an early layer
+# still re-runs the sizable package installs; a brief heads-up keeps their quiet
+# stretches from looking like a hang.
 $DaafArch = $env:PROCESSOR_ARCHITECTURE
 if ($DaafArch -eq "ARM64") {
     Write-Host ""
     Write-Host "NOTE: arm64 detected. If this rebuild re-runs the package layers it takes"
     Write-Host "      a while with some quiet stretches -- this is normal, not a hang."
-    Write-Host "      arm64 now installs pre-built R binaries (no source compilation)."
     Write-Host ""
 }
 
@@ -300,7 +303,7 @@ Write-Host ""
 # Docker Compose versions prior to ~v2.27.
 # BUILDX_BUILDER is set only when the diagnostic builder was selected above, then
 # restored right after the build so it does not leak into later docker calls.
-# HAZARD (parallel to the bash twin's comment at rebuild_daaf.sh:251-255, whose
+# HAZARD (parallel to the BUILDX_BUILDER comment in rebuild_daaf.sh, whose
 # command-scoped `BUILDX_BUILDER=... docker compose build` prefix never mutates the
 # process env): assigning `$env:BUILDX_BUILDER = $null` REMOVES the variable entirely
 # rather than setting it empty, so a naive clear would DESTROY a user's own
@@ -345,10 +348,10 @@ $retries = 0
 $maxRetries = 30
 # Docker's stderr from every attempt, kept in memory (not a temp file) for the
 # "Docker reported:" lines below. 'Continue', not 'SilentlyContinue': Windows
-# PowerShell 5.1 drops native stderr from a 2>&1 capture under SilentlyContinue
-# (and from the old `2>> file` redirect too; CI-observed 2026-10-12). Only the stderr
-# records are kept ("$_" renders one as its plain message text); stdout passes
-# through as before.
+# PowerShell 5.1 drops native stderr from a 2>&1 capture or a `2>> file` redirect
+# under SilentlyContinue (observed 2026-10-12 in CI, Windows PowerShell 5.1). Only
+# the stderr records are kept ("$_" renders one as its plain message text); stdout
+# passes through to the terminal.
 $readyErrLines = New-Object System.Collections.Generic.List[string]
 while ($retries -lt $maxRetries) {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"

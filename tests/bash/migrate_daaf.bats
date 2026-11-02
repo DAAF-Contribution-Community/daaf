@@ -561,8 +561,7 @@ source_migrate_test_mode() {
 # docker-compose.yml. Running the dry-run from a compose-seeded directory
 # therefore leaked ~13 zero-byte stubs (named after the host scripts) plus a
 # docker-compose.yml.pre-migrate at the caller's root. These tests pin that the
-# dry-run creates NOTHING on disk. See:
-# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+# dry-run creates NOTHING on disk.
 
 @test "migrate_daaf.sh: dry-run from a compose-seeded dir creates no new files" {
     # Seed TEST_DIR with a docker-compose.yml so HOST_DIR resolves to it (the
@@ -764,6 +763,7 @@ SH
     setup_migrate_integrated
     run bash -c '
         cd "'"${TEST_DIR}"'"
+        unset DAAF_BRANCH
         curl() {
             local outfile=""
             local args=("$@")
@@ -804,6 +804,10 @@ SH
     assert_output --partial "STUB BACKUP RAN"
     assert_output --partial "ERROR: Backup failed (exit code 1)"
     assert_output --partial "The migration will not proceed without a successful backup."
+    # The retry is the documented one-liner: a `curl | bash` run leaves no
+    # migrate_daaf.sh on disk to re-run.
+    assert_output --partial "curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/migrate_daaf.sh | bash"
+    refute_output --partial "bash migrate_daaf.sh"
     # The abort happens in section 3, so no section-4 post-backup step is reached.
     refute_output --partial "Starting container"
     refute_output --partial "Migration complete"
@@ -912,7 +916,7 @@ SH
     '
     assert_success
     assert_output --partial "graft already in place"
-    assert_output --partial "replace ref present"
+    assert_output --partial "(git still records that link)"
     assert_output --partial "Migration complete"
 }
 

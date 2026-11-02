@@ -24,15 +24,16 @@ assignees: ''
 - [ ] Campus Safety
 - [ ] NHGIS
 - [ ] NCCS
+- [ ] County Presidential Returns (MIT Election Data and Science Lab)
 - [ ] Other: <!-- specify -->
 
 ## What went wrong?
 
-<!-- Describe the issue — wrong values, missing columns, API error, unexpected row counts, etc. -->
+<!-- Describe the issue — wrong values, missing columns, a download error, unexpected row counts, etc. -->
 
 ## What query or variables were involved?
 
-<!-- If you can identify them — endpoint URL, variable names, filters used, year range, etc. -->
+<!-- If you can identify them — the data file (mirror path or download URL), variable names, filters used, year range, etc. -->
 
 ## What the data looked like vs. what you expected
 
@@ -56,10 +57,12 @@ IMPORTANT: Redact any API keys or sensitive data.
 
 ## Environment
 
-- **Claude model:** <!-- e.g., Opus 4.6, Opus 4.5, Sonnet 4.5 — see "Model" in your session log header -->
-- **Setup:** <!-- Docker or native install -->
-- **DAAF version:** <!-- Check your session log header (.claude/logs/sessions/*.md) — model and DAAF version are logged automatically -->
+- **DAAF version:** <!-- see "DAAF Version" in your session log header (.claude/logs/sessions/*.md) -->
+- **Claude Code version:** <!-- run `claude --version` inside the container (Control Panel option 6, Open Terminal in Container) -->
+- **Model:** <!-- the exact model name: see "Model" in your session log header, or type /model in Claude Code -->
+- **Provider route:** <!-- one of: Anthropic subscription (say which plan), Anthropic API key, ChatGPT subscription through DAAF's provider shim, OpenAI API key through the provider shim (or an institutional gateway), OpenRouter, AWS Bedrock, Google Vertex AI -->
+- **Host OS:** <!-- the computer that runs Docker, e.g., Windows 11, macOS 15, Ubuntu 24.04 -->
 
 ## Additional context
 
-<!-- Anything else — links to Urban Institute docs, screenshots, related issues, etc. -->
+<!-- Anything else — links to the data provider's documentation, screenshots, related issues, etc. -->

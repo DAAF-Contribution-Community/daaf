@@ -451,7 +451,6 @@ Describe "migrate_daaf.ps1 dry-run mode" {
     # every -OutFile target, and $HostDir resolves to the CWD when it holds a
     # docker-compose.yml -- leaking stub scripts + a docker-compose.yml.pre-migrate
     # into the caller's directory. The dry-run must now create NOTHING on disk.
-    # See: research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
     It "dry-run from a compose-seeded dir creates no new files" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
@@ -772,7 +771,7 @@ $NonInteractive = $true
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -BeIn @(0, $null)
         $outputStr | Should -BeLike "*graft already in place*"
-        $outputStr | Should -BeLike "*replace ref present*"
+        $outputStr | Should -BeLike "*(git still records that link)*"
     }
 
     It "shallow clone forces the graft path (not falsely skipped)" {

@@ -235,6 +235,12 @@ teardown() {
     assert_failure
     assert_output --partial "ERROR"
     assert_output --partial "No daaf-docker container found"
+    # A container removed by `docker compose down` is recreated by starting DAAF,
+    # not by re-running the installer (which refuses an existing install).
+    assert_output --partial "'docker compose down' removes it"
+    assert_output --partial "1) Start Claude Code in the DAAF Control Panel (bash daaf.sh)"
+    assert_output --partial "'bash run_daaf.sh bash', type exit, then run 'bash rebuild_daaf.sh' again."
+    refute_output --partial "Have you run the DAAF installer"
 }
 
 @test "rebuild_daaf.sh: fails when Dockerfile copy from container fails" {

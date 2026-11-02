@@ -93,6 +93,8 @@ Describe "run_vscode.ps1" {
 
         It "handles code-server launch failure" {
             $Content | Should -Match 'Failed to start code-server'
+            $Content | Should -Match 'If you stopped it yourself with Ctrl\+C, you can ignore this\.'
+            $Content | Should -Not -Match 'docker compose logs'
         }
 
         It "reports container already running" {

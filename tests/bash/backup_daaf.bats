@@ -1678,7 +1678,7 @@ _mock_snapshot_docker() {
 
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_failure
-    assert_output --partial "Could not start the staging container"
+    assert_output --partial "ERROR: The backup could not start its helper container in Docker, so nothing was copied."
     # The captured CID must have been reaped in the error branch.
     run grep -F 'rm -f stagecid0000' "${TEST_DIR}/docker_calls.log"
     assert_success

@@ -39,16 +39,9 @@
 # VERBATIM from daaf_lib.sh: they run inside the Linux container, so they must
 # remain Linux shell, not PowerShell. Only the outer invocation wrapper is
 # PowerShell here. The payloads are delivered as a base64 TOKEN passed as a
-# native argument (transport v3): `bash -c 'echo $1 | base64 -d | bash ...' _ $b64`.
-# A base64 token contains only [A-Za-z0-9+/=] -- no quotes, no spaces, no CR --
-# so it survives PS 5.1's native-arg marshalling intact and involves no stdin.
-# This replaced two earlier transports that both failed on real Windows:
-#   v1 `bash -c <payload>` -- PS 5.1 mangles embedded double quotes in native
-#      args (the awk `"` patterns); fixed only in PS 7.3+.
-#   v2 `<payload> | bash -s` (stdin) -- PS appends CRLF when piping a string to
-#      a native process, leaving a stray \r on the last line, and the PS
-#      pipeline -> docker.exe npipe stdin wiring is unreliable on Windows.
-# See Test-DaafPort for the fully annotated call site.
+# native argument: `bash -c 'echo $1 | base64 -d | bash ...' _ $b64`. Test-DaafPort
+# holds the one full note on why (and why `bash -c <payload>` and stdin do not
+# work from Windows PowerShell); the other call sites point there.
 #
 # Supports DAAF_DRY_RUN=1 for CI smoke testing without Docker.
 #
@@ -88,8 +81,9 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # interpolation in docker-compose.yml (${DAAF_PROJECT_NAME:-daaf},
 # ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV, the opt-in
 # BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`, plus DAAF_BRANCH,
-# the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.ps1), plus
+# the branch the updater follows (update_daaf.ps1 also reads it from the file with
+# its own loader; because the panel sets it, an updater the panel starts finds it
+# already set in its environment), plus
 # DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
 # data volume (consumed by Resolve-DaafDataVolumeName below and by the backup /
 # restore tools).
@@ -235,15 +229,15 @@ function Sync-DaafSettingsFile {
 # lowercasing (-creplace, case-sensitive), so the result is ASCII and matches the
 # bash twin's byte-wise `LC_ALL=C tr`. ToLowerInvariant first would map a few
 # non-ASCII letters to ASCII ones it would then keep (the Kelvin sign U+212A becomes
-# 'k'; review 45q NIT-1).
+# 'k').
 #
-# SYNC NOTE: the same expression is in install.ps1 (inline, it runs standalone), and
-# this whole function is carried BYTE-IDENTICAL in backup_daaf.ps1,
-# restore_from_backup.ps1, update_daaf.ps1 and the maintainer harness
-# test_migration.ps1 (standalone scripts that do not dot-source this library).
-# tests/powershell/daaf_lib.Tests.ps1 pins the copies and the installer to the same
-# results on a fixed input set. PS 5.1 safe; strict-clean (only $env: reads and
-# string ops).
+# SYNC NOTE: the same expression is in install.ps1 and run_daaf.ps1 (inline, they
+# run standalone), and this whole function is carried BYTE-IDENTICAL in
+# backup_daaf.ps1, restore_from_backup.ps1, update_daaf.ps1 and the maintainer
+# harness test_migration.ps1 (standalone scripts that do not dot-source this
+# library). tests/powershell/daaf_lib.Tests.ps1 pins the copies, the installer and
+# run_daaf.ps1 to the same results on a fixed input set. PS 5.1 safe; strict-clean
+# (only $env: reads and string ops).
 function Resolve-DaafProjectName {
     [CmdletBinding()]
     param()
@@ -449,27 +443,22 @@ function Test-DaafPort {
             /proc/net/tcp /proc/net/tcp6 2>/dev/null
 '@
 
-    # TRANSPORT v3 -- base64-as-argument (do NOT revert to either prior form):
-    #
-    #   v1 (`bash -c $probe _ $Port`): FAILED. Windows PowerShell 5.1 does not
-    #   correctly escape embedded double quotes when marshalling a string into a
-    #   native process's argument vector (fixed only in PS 7.3+). This payload
-    #   contains embedded `"` (the awk field patterns), so passing it via `-c`
-    #   under PS 5.1 delivered a mangled script and the probe read "not
-    #   listening" forever.
-    #
-    #   v2 (pipe the $probe string into `docker compose exec -T ... bash -s
-    #   $Port` on stdin): FAILED in the field. Piping a PS string into a native
-    #   process's stdin is unreliable on
-    #   Windows: PowerShell appends a Windows CRLF, so the payload's last line
-    #   carried a stray `\r` that broke the trailing awk redirect; and the
-    #   PS-object-pipeline -> docker.exe (npipe) stdin wiring is itself flaky.
-    #   Services worked but the probe never saw them.
-    #
-    #   v3 (this): encode the payload as base64 and pass the TOKEN as a native
-    #   argument. A base64 token is drawn from [A-Za-z0-9+/=] only -- no quotes,
-    #   no spaces, no CR -- so PS 5.1's arg marshalling cannot damage it, and
-    #   stdin is not involved at all. The container decodes and runs it.
+    # TRANSPORT (canonical note; daaf.ps1's Get-DaafPortStatus and stop-services
+    # payloads use the same transport and point here). The payload is base64-
+    # encoded and the TOKEN is passed as a native argument; the container decodes
+    # and runs it. Keep it that way; the two simpler forms fail from Windows:
+    #   * `bash -c $probe _ $Port`: Windows PowerShell 5.1 does not escape
+    #     embedded double quotes when it builds a native command line (fixed in
+    #     PowerShell 7.3). This payload has them (the awk field patterns), so
+    #     5.1 delivers a mangled script and the probe always reads "not
+    #     listening".
+    #   * piping $probe into `bash -s $Port` on stdin: PowerShell appends CRLF
+    #     when it pipes a string to a native process, so the last line carries a
+    #     stray `\r` that breaks the trailing awk redirect, and the pipe into
+    #     docker.exe (npipe) is unreliable on Windows.
+    # A base64 token is drawn from [A-Za-z0-9+/=] only -- no quotes, no spaces,
+    # no CR -- so 5.1's argument marshalling cannot damage it, and stdin is not
+    # involved.
     #
     # Why this exact remote shape:
     #   * The single-quoted PS literal below contains spaces but ZERO double
@@ -479,8 +468,8 @@ function Test-DaafPort {
     #     (`_` is $0, the b64 token is $1, the port is $2).
     #   * `echo $1` is UNQUOTED deliberately: the base64 alphabet has no
     #     whitespace or glob characters, so word-splitting/globbing cannot harm
-    #     it. Do NOT "fix" it to "$1" -- that would reintroduce double quotes into
-    #     the single-quoted literal and put us back on the v1 failure path.
+    #     it. Do NOT "fix" it to "$1": a double quote in the literal hits the 5.1
+    #     quoting bug above.
     #   * `bash -s -- $2` forwards the port to the decoded probe as its $1 (the
     #     `--` stops option parsing so a numeric port is never read as a flag).
     #   * ASCII encoding is correct: these host files are enforced-ASCII, and the
@@ -508,6 +497,9 @@ function Test-DaafPort {
 # Returns $true on success, $false on failure. Mirrors daaf_lib.sh
 # ensure_container; both use their return value as the single source of truth
 # (no exported status variable), so callers use `if (Confirm-DaafContainer) { ... }`.
+# `up -d` runs with its stderr discarded, so a caller reporting the failure sends
+# the user to a path that shows Docker's message (run_daaf.ps1 runs `up -d` with
+# stderr visible).
 function Confirm-DaafContainer {
     [CmdletBinding()]
     param()

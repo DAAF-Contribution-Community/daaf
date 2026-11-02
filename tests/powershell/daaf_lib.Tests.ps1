@@ -20,7 +20,8 @@
 #
 # A third Describe (at the end) pins Resolve-DaafProjectName: the Compose
 # project-name normalization, its byte-identical inline copies in the standalone
-# scripts, and install.ps1's inline expression, all on one fixed input set.
+# scripts, and the inline expressions in install.ps1 and run_daaf.ps1, all on one
+# fixed input set.
 # ============================================================================
 
 Describe "daaf_lib.ps1 Resolve-DaafDataVolumeName" {
@@ -236,7 +237,7 @@ Describe "daaf_lib.ps1 Resolve-DaafProjectName" {
         }
     }
 
-    It "each inline copy and install.ps1 give the library's result for <In>" -ForEach $script:ProjectNameCases {
+    It "each inline copy, install.ps1 and run_daaf.ps1 give the library's result for <In>" -ForEach $script:ProjectNameCases {
         # (PowerShell variable names are case-insensitive: $libResult, not $want,
         # so the case's own $Want is not overwritten.)
         $env:DAAF_PROJECT_NAME = $In
@@ -253,15 +254,23 @@ Describe "daaf_lib.ps1 Resolve-DaafProjectName" {
         $lines.Count | Should -Be 1
         $installDef = "function Resolve-DaafProjectName {`n" + $lines[0] + "`nreturn `$InstallTargetProject`n}"
         Invoke-ProjectNameCopy -Definition $installDef -Value $In | Should -BeExactly $libResult -Because "install.ps1"
+        # run_daaf.ps1 also runs standalone; its one-line expression feeds every -p
+        # and DAAF_PROJECT_NAME it prints.
+        $runLines = @(Get-Content -LiteralPath "$RepoRoot/scripts/host/run_daaf.ps1" | Where-Object { $_ -like '$HintProject = if (*' })
+        $runLines.Count | Should -Be 1
+        $runDef = "function Resolve-DaafProjectName {`n" + $runLines[0] + "`nreturn `$HintProject`n}"
+        Invoke-ProjectNameCopy -Definition $runDef -Value $In | Should -BeExactly $libResult -Because "run_daaf.ps1"
     }
 
-    It "each inline copy and install.ps1 return 'daaf' when DAAF_PROJECT_NAME is unset" {
+    It "each inline copy, install.ps1 and run_daaf.ps1 return 'daaf' when DAAF_PROJECT_NAME is unset" {
         foreach ($f in $script:Copies) {
             $def = Get-ProjectNameFunctionText "$RepoRoot/scripts/host/$f"
             Invoke-ProjectNameCopy -Definition $def -Value '' | Should -BeExactly 'daaf' -Because "$f copy"
         }
         $line = @(Get-Content -LiteralPath "$RepoRoot/scripts/host/install.ps1" | Where-Object { $_ -like '$InstallTargetProject = if (*' })[0]
         Invoke-ProjectNameCopy -Definition ("function Resolve-DaafProjectName {`n" + $line + "`nreturn `$InstallTargetProject`n}") -Value '' | Should -BeExactly 'daaf'
+        $runLine = @(Get-Content -LiteralPath "$RepoRoot/scripts/host/run_daaf.ps1" | Where-Object { $_ -like '$HintProject = if (*' })[0]
+        Invoke-ProjectNameCopy -Definition ("function Resolve-DaafProjectName {`n" + $runLine + "`nreturn `$HintProject`n}") -Value '' | Should -BeExactly 'daaf' -Because "run_daaf.ps1"
     }
 
     It "no host script derives a Docker name from the RAW DAAF_PROJECT_NAME" {

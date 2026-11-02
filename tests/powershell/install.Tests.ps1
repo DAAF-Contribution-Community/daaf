@@ -309,8 +309,7 @@ Describe "install.ps1 dry-run mode" {
     # Root cause: the dry-run Invoke-WebRequest mock wrote an empty file for every
     # -OutFile target under $InstallDir (=<CWD>/daaf-docker), leaking zero-byte
     # stubs on disk. A dry-run install must now create NOTHING -- no daaf-docker/
-    # directory, no stub files. See:
-    # research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+    # directory, no stub files.
     It "dry-run creates no daaf-docker directory or files" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"
@@ -614,7 +613,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
                 $webRequests.Add($Uri)
             }
             $names = @('DAAF_PROJECT_NAME', 'DAAF_DATA_VOLUME_NAME', 'DAAF_FORCE_REINSTALL', 'DAAF_DRY_RUN', 'DAAF_TEST_MODE', 'DAAF_NESTED', 'DAAF_DIAG_BUILD',
-                'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV')
+                'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
             $saved = @{}
             foreach ($n in $names) {
                 $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
@@ -1049,7 +1048,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             $r = Invoke-InstallUnderMock -WithCompose -SettingsText $script:NamedSettings -BuildOk -FailOn $fail
             $lines = @($r.Output -split '\r?\n')
             $composeF = (Join-Path $r.Dir 'daaf-docker') + '\docker-compose.yml'
-            $execLine = '  docker compose -p x -f ' + $composeF + ' exec -T daaf-docker `'
+            $execLine = '  docker compose -p x -f "' + $composeF + '" exec -T daaf-docker `'
             $because = "fail=[$fail]"
             switch ($fail) {
                 ' build --progress' {
@@ -1059,25 +1058,43 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
                 ' up -d' {
                     $lines | Should -Contain "You can safely re-run this installer to retry $retry" -Because $because
                 }
-                'exec -T daaf-docker true' {
-                    $i = [array]::IndexOf($lines, "  docker compose -p x -f $composeF up -d")
-                    $i | Should -BeGreaterThan 2 -Because $because
-                    $lines[($i - 3)..($i - 1)] | Should -Be @('  $env:DAAF_PORT_MARIMO = "3101"', '  $env:DAAF_PORT_LOGVIEWER = "3102"', '  $env:DAAF_PORT_VSCODE = "3103"') -Because $because
-                }
-                'git clone' {
-                    @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 2 -Because $because
-                    $lines | Should -Contain "You can also safely re-run this installer to retry from scratch $retry" -Because $because
-                }
-                'cp -a /tmp/daaf-clone' {
-                    @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 1 -Because $because
-                    $lines | Should -Contain "You can also safely re-run this installer to retry from scratch $retry" -Because $because
-                }
-                'test -f /daaf/CLAUDE.md' {
-                    $lines | Should -Contain '  docker compose -p x exec daaf-docker bash' -Because $because
-                }
+            }
+            if ($fail -in @('exec -T daaf-docker true', 'git clone', 'cp -a /tmp/daaf-clone', 'test -f /daaf/CLAUDE.md')) {
+                # A failure after `up -d` prints the forced re-run with the ports and project.
+                $i = [array]::IndexOf($lines, '  $env:DAAF_PROJECT_NAME = "x"; $env:DAAF_FORCE_REINSTALL = "1"')
+                $i | Should -BeGreaterThan 2 -Because $because
+                $lines[($i - 3)..($i - 1)] | Should -Be @('  $env:DAAF_PORT_MARIMO = "3101"', '  $env:DAAF_PORT_LOGVIEWER = "3102"', '  $env:DAAF_PORT_VSCODE = "3103"') -Because $because
+                # It starts with a quoted cd to the folder above daaf-docker.
+                $lines[$i - 4] | Should -Be ('  cd "' + $r.Dir + '"') -Because $because
+                $lines[$i + 1] | Should -BeLike '  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/*/scripts/host/install.ps1 | iex' -Because $because
+                # The folder already has the user's settings file: never tell them to copy the template over it.
+                $r.Output | Should -Not -BeLike '*By hand, also create environment_settings.txt*' -Because $because
+                $r.Output | Should -Not -BeLike '*Copy-Item environment_settings_example.txt*' -Because $because
+            }
+            switch ($fail) {
+                'git clone' { @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 2 -Because $because }
+                'cp -a /tmp/daaf-clone' { @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 1 -Because $because }
+                'test -f /daaf/CLAUDE.md' { $lines | Should -Contain '  docker compose -p x exec daaf-docker bash' -Because $because }
             }
             $r.Output | Should -Not -Match 'docker compose (-f|exec|down|up)' -Because $because
             $r.Output | Should -Not -BeLike '*(set DAAF_FORCE_REINSTALL=1 if prompted)*' -Because $because
+        }
+    }
+
+    It "a failure after up -d on a fresh named install lists the settings to add by hand, and never without the project" {
+        foreach ($fail in @('git clone', 'cp -a /tmp/daaf-clone', 'test -f /daaf/CLAUDE.md')) {
+            $r = Invoke-InstallUnderMock -BuildOk -WithTemplate -FailOn $fail -EnvVars @{ DAAF_PROJECT_NAME = 'x'; DAAF_PORT_VSCODE = '3103' }
+            $lines = @($r.Output -split '\r?\n')
+            $because = "fail=[$fail]"
+            $i = [array]::IndexOf($lines, '  $env:DAAF_PROJECT_NAME = "x"; $env:DAAF_FORCE_REINSTALL = "1"')
+            $i | Should -BeGreaterThan 0 -Because $because
+            $lines[$i - 1] | Should -Be '  $env:DAAF_PORT_VSCODE = "3103"' -Because $because
+            $lines | Should -Contain 'By hand, also create environment_settings.txt:' -Because $because
+            $lines | Should -Contain '  Copy-Item environment_settings_example.txt environment_settings.txt' -Because $because
+            $lines | Should -Contain '  DAAF_PROJECT_NAME=x' -Because $because
+            $lines | Should -Contain '  DAAF_PORT_VSCODE=3103' -Because $because
+            $r.Output | Should -BeLike '*11) Restart Container*' -Because $because
+            $r.Output | Should -Not -Match 'docker compose (-f|exec|down|up)' -Because $because
         }
     }
 
@@ -1096,7 +1113,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             $r = Invoke-InstallUnderMock -BuildOk -WithTemplate -FailOn $fail
             $lines = @($r.Output -split '\r?\n')
             $composeF = (Join-Path $r.Dir 'daaf-docker') + '\docker-compose.yml'
-            $execLine = '  docker compose -f ' + $composeF + ' exec -T daaf-docker `'
+            $execLine = '  docker compose -f "' + $composeF + '" exec -T daaf-docker `'
             $because = "fail=[$fail]"
             switch ($fail) {
                 ' build --progress' {
@@ -1105,20 +1122,29 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
                 }
                 ' up -d' { $lines | Should -Contain "You can safely re-run this installer to retry $retry" -Because $because }
                 'exec -T daaf-docker true' {
-                    $i = [array]::IndexOf($lines, "  docker compose -f $composeF up -d")
-                    $i | Should -BeGreaterThan 0 -Because $because
-                    $lines[$i - 1] | Should -Be 'Check Docker Desktop for errors, then retry with:' -Because $because
+                    $i = [array]::IndexOf($lines, '  $env:DAAF_FORCE_REINSTALL = "1"')
+                    $i | Should -BeGreaterThan 2 -Because $because
+                    $lines[$i - 3] | Should -Be 'Check Docker for errors, then run the installer again with DAAF_FORCE_REINSTALL=1.' -Because $because
+                    $lines[$i - 1] | Should -Be ('  cd "' + $r.Dir + '"') -Because $because
+                    $lines[$i + 1] | Should -BeLike '  irm *install.ps1 | iex' -Because $because
                 }
                 'git clone' {
                     @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 2 -Because $because
-                    $lines | Should -Contain "You can also safely re-run this installer to retry from scratch $retry" -Because $because
+                    $lines | Should -Contain '  $env:DAAF_FORCE_REINSTALL = "1"' -Because $because
+                    # The by-hand settings step quotes its folder.
+                    $lines | Should -Contain ('  cd "' + (Join-Path $r.Dir 'daaf-docker') + '"') -Because $because
+                    $lines | Should -Contain '  Copy-Item environment_settings_example.txt environment_settings.txt' -Because $because
                 }
                 'cp -a /tmp/daaf-clone' {
                     @($lines | Where-Object { $_ -ceq $execLine }).Count | Should -Be 1 -Because $because
-                    $lines | Should -Contain "You can also safely re-run this installer to retry from scratch $retry" -Because $because
+                    $lines | Should -Contain '  $env:DAAF_FORCE_REINSTALL = "1"' -Because $because
                 }
-                'test -f /daaf/CLAUDE.md' { $lines | Should -Contain '  docker compose exec daaf-docker bash' -Because $because }
+                'test -f /daaf/CLAUDE.md' {
+                    $lines | Should -Contain '  docker compose exec daaf-docker bash' -Because $because
+                    $lines | Should -Contain '  $env:DAAF_FORCE_REINSTALL = "1"' -Because $because
+                }
                 '--force-recreate' {
+                    $lines | Should -Contain ('        cd "' + (Join-Path $r.Dir 'daaf-docker') + '"') -Because $because
                     $lines | Should -Contain '        docker compose down' -Because $because
                     $lines | Should -Contain '  docker compose exec daaf-docker bash   # enter the container' -Because $because
                 }
@@ -1129,13 +1155,50 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
         }
     }
 
-    It "#45 ISSUE-2: ports set for the default project ride on the printed up -d command (no -p)" {
+    It "#45 ISSUE-2: ports set for the default project ride on the printed forced re-run (no project)" {
         $r = Invoke-InstallUnderMock -BuildOk -FailOn 'exec -T daaf-docker true' -EnvVars @{ DAAF_PORT_MARIMO = '3101' }
         $lines = @($r.Output -split '\r?\n')
-        $composeF = (Join-Path $r.Dir 'daaf-docker') + '\docker-compose.yml'
-        $i = [array]::IndexOf($lines, "  docker compose -f $composeF up -d")
+        $i = [array]::IndexOf($lines, '  $env:DAAF_FORCE_REINSTALL = "1"')
         $i | Should -BeGreaterThan 0
         $lines[$i - 1] | Should -Be '  $env:DAAF_PORT_MARIMO = "3101"'
+        $r.Output | Should -Not -BeLike '*DAAF_PROJECT_NAME =*'
+    }
+
+    It "every printed re-run carries DAAF_BRANCH (not main) and DAAF_DEV (twin of install.bats)" {
+        # The installer does not read DAAF_BRANCH from environment_settings.txt, so a
+        # re-run in a new window without it would install main over this install.
+        $branchVars = @{ DAAF_BRANCH = 'feature-x'; DAAF_DEV = '1' }
+        $r = Invoke-InstallUnderMock -EnvVars $branchVars
+        $lines = @($r.Output -split '\r?\n')
+        $lines | Should -Contain 'You can safely re-run this installer to retry (set DAAF_BRANCH=feature-x DAAF_DEV=1, and DAAF_FORCE_REINSTALL=1 if prompted).'
+        $lines | Should -Contain '  $env:DAAF_BRANCH = "feature-x"; $env:DAAF_DEV = "1"; $env:DAAF_DIAG_BUILD = "1"'
+        $lines | Should -Contain '  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/feature-x/scripts/host/install.ps1 | iex'
+        $r = Invoke-InstallUnderMock -BuildOk -FailOn 'exec -T daaf-docker true' -EnvVars $branchVars
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  $env:DAAF_BRANCH = "feature-x"; $env:DAAF_DEV = "1"; $env:DAAF_FORCE_REINSTALL = "1"')
+        $i | Should -BeGreaterThan 0
+        $lines[$i - 1] | Should -Be ('  cd "' + $r.Dir + '"')
+        # The case-1 refusal's forced re-run carries them too, after the project.
+        $r = Invoke-InstallUnderMock -Volumes @('x_daaf-data') -WithCompose -EnvVars @{ DAAF_PROJECT_NAME = 'x'; DAAF_BRANCH = 'feature-x'; DAAF_DEV = '1' }
+        @($r.Output -split '\r?\n') | Should -Contain '  $env:DAAF_PROJECT_NAME = "x"; $env:DAAF_BRANCH = "feature-x"; $env:DAAF_DEV = "1"; $env:DAAF_FORCE_REINSTALL = "1"'
+        # DAAF_BRANCH=main and a DAAF_DEV other than 1 add nothing.
+        $r = Invoke-InstallUnderMock -Volumes @('x_daaf-data') -WithCompose -EnvVars @{ DAAF_PROJECT_NAME = 'x'; DAAF_BRANCH = 'main'; DAAF_DEV = '0' }
+        @($r.Output -split '\r?\n') | Should -Contain '  $env:DAAF_PROJECT_NAME = "x"; $env:DAAF_FORCE_REINSTALL = "1"'
+        $r.Output | Should -Not -BeLike '*$env:DAAF_BRANCH*'
+        $r.Output | Should -Not -BeLike '*$env:DAAF_DEV*'
+    }
+
+    It "case 2: the second-copy example sets DAAF_BRANCH only when it is not main (twin of install.bats)" {
+        # The example fetches this branch's installer; without DAAF_BRANCH that
+        # installer would install main.
+        $r = Invoke-InstallUnderMock -Volumes @('myproj_daaf-data') -EnvVars @{ DAAF_PROJECT_NAME = 'myproj'; DAAF_BRANCH = 'feature-x' }
+        $lines = @($r.Output -split '\r?\n')
+        $i = [array]::IndexOf($lines, '  $env:DAAF_BRANCH = "feature-x"')
+        $i | Should -BeGreaterThan 0
+        $lines[$i + 1] | Should -Be '  irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/feature-x/scripts/host/install.ps1 | iex'
+        $r = Invoke-InstallUnderMock -Volumes @('myproj_daaf-data') -EnvVars @{ DAAF_PROJECT_NAME = 'myproj'; DAAF_BRANCH = 'main' }
+        $r.Output | Should -BeLike '*  $env:DAAF_PORT_VSCODE = *'
+        $r.Output | Should -Not -BeLike '*$env:DAAF_BRANCH*'
     }
 
     It "G2 (dispatch #63): a readiness timeout shows the last five of a native docker's stderr lines under 'Docker reported:'" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
@@ -1159,7 +1222,7 @@ Describe "install.ps1 existing-install guard (folder-independent)" {
             '    Error response from daemon: container fake is restarting (attempt 29)'
             '    Error response from daemon: container fake is restarting (attempt 30)'
             '')
-        $lines[$i + 7] | Should -Be 'Check Docker Desktop for errors, then retry with:'
+        $lines[$i + 7] | Should -Be 'Check Docker for errors, then run the installer again with DAAF_FORCE_REINSTALL=1.'
     }
 
     It "#45 SUGGESTION-1: a process value wins over the settings file for ALL FIVE keys" {

@@ -3,7 +3,8 @@
 # ============================================================================
 # Opens code-server (VS Code in the browser) for browsing, editing, and
 # reviewing files in the DAAF container.
-# Starts the DAAF container if needed.
+# Starts the DAAF container if needed. code-server runs in this window until
+# Ctrl+C; open the printed URL in a browser (this script does not open one).
 #
 # Usage:
 #   cd daaf-docker
@@ -21,8 +22,9 @@
 $ErrorActionPreference = "Stop"
 # pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
 # native command's nonzero exit into an error record or a throw. The native calls here
-# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
-# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1).
+# With it set to $true under 'Stop', a nonzero native exit throws
+# NativeCommandExitException (observed 2026-11-01, PowerShell 7.6.3).
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
@@ -35,8 +37,8 @@ function Wait-AndExit {
 }
 
 # --- Multi-instance settings (shared pattern) ---
-# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
-# process environment so `docker compose` interpolation resolves the project name
+# Bridge environment_settings.txt's seven whitelisted DAAF_* keys ($known below)
+# into the process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
 # daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
@@ -157,9 +159,8 @@ docker compose exec daaf-docker bash /daaf/scripts/launch_code_server.sh
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "ERROR: Failed to start code-server." -ForegroundColor Red
-    Write-Host "  The container may not be running, or code-server may not be installed." -ForegroundColor Red
-    Write-Host "  Try: docker compose logs daaf-docker" -ForegroundColor Yellow
+    Write-Host "ERROR: Failed to start code-server, or it stopped with an error." -ForegroundColor Red
+    Write-Host "  Its messages are above. If you stopped it yourself with Ctrl+C, you can ignore this." -ForegroundColor Yellow
 }
 
 # If code-server was already running, the container-side script returns

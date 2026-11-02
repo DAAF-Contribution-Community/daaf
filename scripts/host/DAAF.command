@@ -57,7 +57,8 @@ cd "$(dirname "$0")" || {
 if [ ! -f "daaf.sh" ]; then
     echo "ERROR: daaf.sh was not found next to this launcher." >&2
     echo "This launcher must live in your daaf-docker folder alongside daaf.sh." >&2
-    echo "If it is missing, re-run the installer or your update to restore it." >&2
+    echo "If daaf.sh is missing from that folder, open a terminal there and run" >&2
+    echo "bash update_daaf.sh (the updater restores missing DAAF files)." >&2
     read -r -p "Press Enter to close... " _ || true
     exit 1
 fi
