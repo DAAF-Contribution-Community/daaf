@@ -182,7 +182,7 @@ Session context utilization must always be monitored to ensure high performance 
 
 ### Context Quality Curve
 
-These thresholds apply to **all agents** — orchestrator and subagents alike. Trigger points are **threshold-profile-conditional**: the three profiles below cross each severity level at different points, but the four severity **levels and their required actions are identical** regardless of profile. Each agent is evaluated against the profile selected from its **own** model ID — a Sonnet subagent dispatched under a Fable session still uses the conservative-default thresholds, consistent with the per-subagent window mapping the hook already applies.
+These thresholds apply to **all agents** — orchestrator and subagents alike. Trigger points are **threshold-profile-conditional**: the three profiles below cross each severity level at different points, but the four severity **levels and their required actions are identical** regardless of profile.
 
 **Trigger points by threshold profile** (percentage OR absolute tokens, whichever fires first):
 
@@ -203,7 +203,7 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 ### Subagent Context Monitoring
 
-Subagents receive their own `context-reporter` utilization injections, measured from each subagent's own transcript — never the orchestrator's numbers. If the hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
+If the `context-reporter` hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
 
 **Subagent-specific actions by threshold:**
 
@@ -211,7 +211,7 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 |--------|-----------------|
 | **NOMINAL** | Continue executing the assigned task normally |
 | **ELEVATED** | Assess remaining work honestly. If completion is uncertain, begin structuring your return output — summarize key findings so far, note what remains. Continue working but prioritize completing the most valuable deliverables first |
-| **HIGH** | **Return early.** Complete only the current atomic unit (the script, review, or analysis step you are in the middle of). Format your return output with: (1) completed work and findings, (2) a clear list of incomplete items so the orchestrator can redelegate them, (3) any file paths created or modified. Do not start new work items |
+| **HIGH** | **Return early.** Complete only the current atomic unit (the script, review, or analysis step you are in the middle of). Format your return per the early-return protocol below. Do not start new work items |
 | **CRITICAL** | **Stop immediately and return.** Report whatever has been completed, clearly mark the output as incomplete, and list all remaining work items. An incomplete but well-documented return is far more valuable than a context-exhausted agent that produces degraded output |
 
 **Early return protocol:** When returning early due to context pressure, subagents should structure their response to maximize the orchestrator's ability to continue the work — either by redelegating to a fresh subagent or by handling it directly. Include:
@@ -221,7 +221,7 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 - Any decisions made or assumptions applied that the next agent needs to know
 - Confidence assessment of completed work
 
-**Async completion note:** How a dispatched subagent's completion — including an early return under context pressure — reaches the orchestrator depends on the Claude Code version and settings. With DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code version (2.1.281, observed 2026-09-24) run in the foreground and return inline in the dispatching turn; without that setting, or on other versions, completion can arrive as an async task notification rather than a synchronous tool return, and when several subagents were dispatched together these notifications may arrive one at a time. Either way, a subagent's early-return output must be self-contained per the protocol above, because the orchestrator will not act on it until the whole dispatched wave has returned (see `.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)").
+**Async completion note:** An early-return output must be self-contained, because the orchestrator acts on it only once the whole dispatched wave has returned (orchestrator `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)" holds the delivery details).
 
 **STATE.md updates:** Subagents do not write STATE.md directly — that is the orchestrator's responsibility. However, subagents returning early under context pressure should include enough structured information in their return output for the orchestrator to update STATE.md accurately. The orchestrator must update STATE.md whenever a subagent returns early due to ELEVATED or higher utilization.
 
@@ -240,11 +240,9 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 
 ### Quality Primacy Rule
 
-Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome.
+Context management is NEVER about reducing the quality or completeness of work. Subagent prompt fidelity, documentation completeness, and inlined context are non-negotiable regardless of utilization level. If maintaining quality means reaching a restart point sooner, that is the correct outcome. At ELEVATED, delegate more execution to subagents, with prompts as thorough as at NOMINAL.
 
 ### Behavioral Guardrails
-
-**What thresholds control:** Utilization determines WHEN to restart, never WHETHER to maintain fidelity. At ELEVATED, delegate more execution to subagents but construct prompts with the same thoroughness as at NOMINAL.
 
 **STATE.md fidelity is critical:** When updating STATE.md under context pressure, resist the urge to abbreviate. STATE.md is what the next session reads to resume — every shortcut taken here becomes a gap in the recovery context.
 
@@ -287,7 +285,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Safety-System Integrity
 
-- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit(...)` deny rules (which bind only the file-editing tools; an `Edit` rule covers `Write` too — "Edit rules apply to all built-in tools that edit files", and `Write(path)` rules "never match" (Claude Code permissions docs; verified live on 2.1.261) — so no separate `Write(...)` rule exists), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
+- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit(...)` deny rules (which bind only the file-editing tools), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
 - **Exception — reads and git index ops are fine:** Reading these files (`cat`, `grep`, `ls`, `bash <hook>` for testing) and git index operations (`git add`, `git update-index --chmod=+x`) stay open. Supported settings edits via the `Edit`/`Write` **tools** also remain usable, because those produce diff-visible changes; only opaque shell writes are blocked.
 
 ### Runtime Package Installation
@@ -321,11 +319,6 @@ Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-singl
 - **Wrong:** `mkdir -p /path && cp file /path && ls /path`
 - **Right:** Three separate Bash calls, each with one command
 
-**Script execution:** Use absolute paths — no `cd` required:
-```
-bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py
-```
-
 ### Shell Script Permissions
 
 All `.sh` files are committed with the executable bit set: after creating or modifying a shell script, run `chmod +x <file>` then `git update-index --chmod=+x <file>`, and verify with `git ls-files -s <file>` (mode must be `100755`). Same for the macOS launcher `scripts/host/DAAF.command`; the Windows `scripts/host/daaf.bat` shim is the exception — mode `100644` with CRLF bytes (`*.bat -text` in `.gitattributes`).
@@ -340,13 +333,11 @@ All `.sh` files are committed with the executable bit set: after creating or mod
 
 Framework files never cite scratch: a file they need lives in a tracked home. Before the final report or synthesis (at wrap-up if there is none; Framework Development runs it before its review), run the Scratch Graduation Check (`agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Scratch Graduation Check).
 
-The `/tmp` guards miss the gaps listed in § Provenance Boundary, so avoiding them is on you; *reading* DAAF's own `/tmp` coordination caches stays fine.
-
 **Self-cleaning probes.** A scratch probe or test that creates invariant-violating filesystem objects (symlinks, especially with tab/newline names; files or folders whose names Windows cannot create — control characters, `< > : " | ? * \`, a trailing dot or space, or reserved device names such as `CON` or `nul.txt`; and case-only name pairs) must delete them before it exits, via trap-based cleanup *inside the probe script* (`trap cleanup EXIT INT TERM` + `find "$FIXTURE_DIR" -depth -delete` on a dedicated fixture directory) — a dispatch-prompt instruction binds only its addressee, but a script-embedded trap covers every future runner (leftover probe symlinks have broken real backups, and a leftover newline-named fixture aborted a Windows backup). Verify the workspace is clean with `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`, which walks the live filesystem for unauthorized symlinks, repo-root leak artifacts (zero-byte stub files, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run), and names Windows cannot create or case-only name clashes anywhere outside `.git` — git cannot see untracked scratch. See the `shell-scripting` skill > `bash-standards.md` > "Probe and Test-Harness Hygiene."
 
 ### Versioning & Naming
 
-**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. When a script fails, the original keeps its appended execution log; fixes go into `_a`/`_b` revisions created with `scripts/create_script_revision.sh` (max 2 self-revisions before escalating). Never modify a script after its execution log is appended. The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. A failed script's fixes go into `_a`/`_b` revisions, at most 2 self-revisions before escalating (§ Execution Philosophy > Immutable script versioning). The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
 ### Subagent File Output
 
@@ -363,32 +354,13 @@ Claude Code 2.1.281 (observed 2026-10-19) adds a note to every subagent's instru
 |------|---------|
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Script execution protocol, format templates, and stage-specific examples |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | Script documentation standards (IAT) |
-| `agent_reference/PLAN_TEMPLATE.md` | Research plan template (Full Pipeline) |
-| `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template (Full Pipeline) |
-| `agent_reference/STATE_TEMPLATE.md` | Session state file template (Full Pipeline) |
-| `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | Session state file template (Data Onboarding mode) |
-| `agent_reference/STATE_TEMPLATE_LITREVIEW.md` | Session state file template (Literature Review mode) |
-| `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` | Literature Review output contract: tables, citation statuses and files other modes consume |
-| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b, QAP1-QAP4, QAS-A/B/C) |
-| `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates (CP1-CP4, CPP1-CPP4, CPS-INTAKE, CPS-GEN) |
-| `agent_reference/SCOPE_POLICY.md` | Canonical plan scope / task-count policy (data-planner + plan-checker) |
-| `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | AI use attribution and GUIDE-LLM checklist mapping for all modes |
-| `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` | Reproduction Report template (Reproducibility Verification mode) |
-| `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | Full pipeline analysis Phase 1: Stages 1-3.5 |
-| `agent_reference/WORKFLOW_PHASE2_PLANNING.md` | Full pipeline analysis Phase 2: Stages 4-4.5 |
-| `agent_reference/WORKFLOW_PHASE3_ACQUISITION.md` | Full pipeline analysis Phase 3: Stages 5-6 |
-| `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` | Full pipeline analysis Phase 4: Stages 7-10 |
-| `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | Full pipeline analysis Phase 5: Stages 11-12 |
 | `agent_reference/BOUNDARIES.md` | Agent boundary definitions |
-| `agent_reference/CITATION_REFERENCE.md` | Citation index for pipeline citation propagation and verification |
 | `agent_reference/ERROR_RECOVERY.md` | Error recovery protocols |
-| `agent_reference/DATA_SOURCE_SKILL_TEMPLATE.md` | Data source skill authoring template |
-| `agent_reference/AGENT_TEMPLATE.md` | Agent definition file template |
-| `agent_reference/MODE_TEMPLATE.md` | Engagement mode definition template |
-| `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` | Comprehensive registration-point checklists for all framework component types |
 | `agent_reference/CONTEXT_THRESHOLDS_REFERENCE.md` | Context-threshold profile-selection mechanics (canonical) |
 | `.claude/agents/README.md` | Agent index and usage guide |
+
+Mode- and role-specific references (templates, workflow phases, checkpoint definitions, scope policy, authoring templates, the integration checklist) are named by the mode files and agent definitions that use them.
 
 ---
 

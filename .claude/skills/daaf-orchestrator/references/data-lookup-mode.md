@@ -22,7 +22,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **Where reads land:** this mode never creates a project, so fetch artifacts, PDF ingests and any digest stay in the session's staging folder, `{scratchpad}/scope_staging/` (`SKILL.md` § Scope Check > Read First). The answer cites the URL or document title, never the staged path. If the session escalates to a mode that creates a project, they graduate there.
 - **If reading widens the question:** the existing rules still hold. Do not run more than one skill or expand into exploration without asking (§ Boundaries); propose Data Discovery instead (§ Escalation Triggers).
 
-The read-first rule and the tier table are in `SKILL.md` § Scope Check.
+The read-first rule and the tier definitions are in `SKILL.md` § Scope Check.
 
 ---
 

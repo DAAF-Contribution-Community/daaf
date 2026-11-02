@@ -10,19 +10,17 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
 
 ### Mandatory (every new mode)
 
-1. Create mode reference file at `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` using the structure below
-2. Update orchestrator `SKILL.md` (11 registration points):
+1. Create mode reference file at `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` using the structure below; it names every reference the mode loads after confirmation, with its trigger (`FRAMEWORK_INTEGRATION_CHECKLIST.md` M10)
+2. Update orchestrator `SKILL.md` (9 registration points):
    - [ ] YAML frontmatter `description` — update mode count
    - [ ] Expanded Orientation bullet — update mode count + add mode description
    - [ ] Engagement Mode Classification intro — update count word
    - [ ] Mode Decision Framework tree — add new branch
    - [ ] Mode Summary Table — add new row
    - [ ] Confirmation Templates by Mode — add a process-only template block: names the mode, restates the goal, previews the arc, checkpoints and kinds of output, names what the user referenced and where scope gets confirmed, and ends with a question. No scope estimates: nothing has been read yet (§ Mode Confirmation Gate)
-   - [ ] Scope Check > Tiers — add a row with the mode's tier (Hard / Soft / None) and where the check happens (see item 8)
    - [ ] Scope Check > Read First staging list — add the mode to the right bullet: stage, then graduate on confirmation; no staging, the folder exists; or stage, never graduate unless the user escalates (see item 8)
    - [ ] Mode Escalation Paths — add rows (both FROM and TO the new mode)
    - [ ] Reference File Index — add new row
-   - [ ] Documentation Loading Decision Tree — add new branch
 3. Add mode-specific boundaries to `agent_reference/BOUNDARIES.md` > Mode-Specific Boundaries
 4. Update `README.md` — mode count word + new table row
 5. Update `user_reference/02_understanding_daaf.md`:
@@ -33,13 +31,13 @@ Use this template when adding a new engagement mode to the DAAF orchestrator. A 
    - [ ] Mode transition table — add rows for escalation paths
 6. Add mode-specific AI disclosure guidance to `agent_reference/AI_DISCLOSURE_REFERENCE.md`
 7. Update session recovery in `.claude/skills/daaf-orchestrator/references/session-recovery.md`; hard-tier modes: add a session-recovery.md § Step 5c row naming a record with a status field (awaiting confirmation / confirmed), so a resumed session knows whether to re-present the Scope Check
-8. Declare the mode's Scope Check tier and location: the row in `SKILL.md` § Scope Check > Tiers (item 2) and a `## Scope Check` section in the mode file right after `## User Orientation`. Decide its staging too (the Read First staging list, item 2, and the section's Staging bullet): whether a folder for the task exists when a material is read decides where read-first artifacts go. A hard-tier mode embeds the standard block (`SKILL.md` § Scope Check > Standard Block) in its first checkpoint's template, keeping that checkpoint's own fields
+8. Declare the mode's Scope Check tier and location: a `## Scope Check` section in the mode file right after `## User Orientation`. Decide its staging too (the Read First staging list, item 2, and the section's Staging bullet): whether a folder for the task exists when a material is read decides where read-first artifacts go. A hard-tier mode embeds the standard block (`SKILL.md` § Scope Check > Standard Block) in its first checkpoint's template, keeping that checkpoint's own fields
 
 ### Conditional
 
 9. Add mode-specific error recovery to `agent_reference/ERROR_RECOVERY.md` (if mode has non-trivial error patterns)
 10. Create mode-specific state template in `agent_reference/` (if different from Full Pipeline's STATE_TEMPLATE.md)
-11. Update `CLAUDE.md` Reference Files table (if new template file created)
+11. Name any new template file, with its trigger, in the mode file that loads it (CLAUDE.md's Reference Files table holds only files every agent may need: `FRAMEWORK_INTEGRATION_CHECKLIST.md` R2)
 12. Update `CONTRIBUTING.md` (if mode affects contribution workflow)
 13. Update `user_reference/07_faq_technical.md` (if mode is likely to generate FAQ questions)
 14. Update `user_reference/04_extending_daaf.md` (if mode affects extension model)
@@ -75,7 +73,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **[Mode-specific carve-out, if any]:** [e.g., Data Onboarding keeps data files behind the sensitivity question]
 - **On resume:** [Hard tier only: the record that shows the Scope Check as awaiting confirmation or confirmed (STATE.md, SESSION_NOTES.md or a mode report), and that a confirmed scope is not re-presented; mirror it in the session-recovery.md § Step 5c row (item 7)]
 
-The read-first rule, the tier table and the standard block are in `SKILL.md` § Scope Check.
+The read-first rule, the tier definitions and the standard block are in `SKILL.md` § Scope Check.
 
 ---
 

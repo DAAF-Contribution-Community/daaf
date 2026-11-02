@@ -60,9 +60,9 @@ Data science code should be MORE documented than typical code because:
 
 ### For Every Code Block
 
-1. **GOAL**: What are you trying to accomplish?
-2. **APPROACH**: Why this method vs. alternatives?
-3. **ASSUMPTIONS**: What must be true for this to work?
+1. **INTENT**: What are you trying to accomplish?
+2. **REASONING**: Why this method vs. alternatives?
+3. **ASSUMES**: What must be true for this to work?
 4. **EXPECTED RESULT**: What should the output look like?
 
 ### For Data Operations
@@ -70,13 +70,13 @@ Data science code should be MORE documented than typical code because:
 **Python:**
 ```python
 # ================================================================
-# GOAL: Filter to customers with valid purchase history
+# INTENT: Filter to customers with valid purchase history
 # 
-# APPROACH: Require at least one purchase in the last 365 days.
+# REASONING: Require at least one purchase in the last 365 days.
 # We chose 365 days (vs. 90 or 180) because seasonal customers
 # (e.g., holiday-only shoppers) are still valuable for this analysis.
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - 'last_purchase_date' is populated for all customers with purchases
 # - Customers with NULL last_purchase_date have never purchased
 #
@@ -95,13 +95,13 @@ print(f"Retained {retention_rate:.1f}% of customers")
 **R:**
 ```r
 # ================================================================
-# GOAL: Filter to customers with valid purchase history
+# INTENT: Filter to customers with valid purchase history
 # 
-# APPROACH: Require at least one purchase in the last 365 days.
+# REASONING: Require at least one purchase in the last 365 days.
 # We chose 365 days (vs. 90 or 180) because seasonal customers
 # (e.g., holiday-only shoppers) are still valuable for this analysis.
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - 'last_purchase_date' is populated for all customers with purchases
 # - Customers with NA last_purchase_date have never purchased
 #
@@ -121,9 +121,9 @@ cat(sprintf("Retained %.1f%% of customers\n", retention_rate))
 **Python:**
 ```python
 # ================================================================
-# GOAL: Handle outliers in transaction amounts
+# INTENT: Handle outliers in transaction amounts
 #
-# METHOD: Winsorization at 1st and 99th percentiles
+# REASONING: Winsorization at 1st and 99th percentiles
 #
 # WHY WINSORIZE vs. REMOVE:
 # - Removing outliers loses data and may bias toward "normal" transactions
@@ -134,7 +134,7 @@ cat(sprintf("Retained %.1f%% of customers\n", retention_rate))
 # - Need to preserve original scale for business interpretation
 # - Log transform would complicate downstream aggregations
 #
-# ASSUMPTION: Outliers are measurement/entry errors, not real events
+# ASSUMES: Outliers are measurement/entry errors, not real events
 # (Verified: extreme values correspond to known data quality issues)
 # ================================================================
 p01 = df["amount"].quantile(0.01)
@@ -148,9 +148,9 @@ df = df.with_columns(
 **R:**
 ```r
 # ================================================================
-# GOAL: Handle outliers in transaction amounts
+# INTENT: Handle outliers in transaction amounts
 #
-# METHOD: Winsorization at 1st and 99th percentiles
+# REASONING: Winsorization at 1st and 99th percentiles
 #
 # WHY WINSORIZE vs. REMOVE:
 # - Removing outliers loses data and may bias toward "normal" transactions
@@ -161,7 +161,7 @@ df = df.with_columns(
 # - Need to preserve original scale for business interpretation
 # - Log transform would complicate downstream aggregations
 #
-# ASSUMPTION: Outliers are measurement/entry errors, not real events
+# ASSUMES: Outliers are measurement/entry errors, not real events
 # (Verified: extreme values correspond to known data quality issues)
 # ================================================================
 p01 <- quantile(df$amount, 0.01, na.rm = TRUE)
@@ -176,7 +176,7 @@ df <- df |>
 **Python:**
 ```python
 # ================================================================
-# GOAL: Enrich orders with customer demographic data
+# INTENT: Enrich orders with customer demographic data
 #
 # JOIN TYPE: Left join
 # - Keep all orders even if customer demographics missing
@@ -208,7 +208,7 @@ print(f"Customer match rate: {match_rate:.1f}%")
 **R:**
 ```r
 # ================================================================
-# GOAL: Enrich orders with customer demographic data
+# INTENT: Enrich orders with customer demographic data
 #
 # JOIN TYPE: Left join
 # - Keep all orders even if customer demographics missing
@@ -416,6 +416,8 @@ Keep in code comments:
 
 ### Reactive Validation Documentation
 
+> Interactive widgets such as `mo.ui.dropdown` belong only in standalone marimo apps, never in Stage 9 notebooks (`marimo` skill § ABSOLUTE PROHIBITIONS for Stage 9).
+
 ```python
 # Interactive column selector for exploration
 # Purpose: Allow user to quickly inspect any column's distribution
@@ -578,9 +580,9 @@ cat(sprintf("Removed %d non-positive amount records\n", original_count - nrow(df
 # ANALYSIS: Customer Segmentation by Purchase Frequency
 # ============================================================================
 # 
-# OBJECTIVE: Segment customers into frequency tiers for targeted marketing
+# INTENT: Segment customers into frequency tiers for targeted marketing
 #
-# METHODOLOGY:
+# REASONING:
 # - Calculate purchase frequency (orders per month) for each customer
 # - Segment into quartiles: Low, Medium, High, Very High frequency
 # - Quartiles chosen over fixed thresholds because:
@@ -588,7 +590,7 @@ cat(sprintf("Removed %d non-positive amount records\n", original_count - nrow(df
 #   - Ensures balanced segment sizes for marketing capacity
 #   - Standard approach aligns with previous analyses
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - Only counting orders with status='complete' (not cancelled/pending)
 # - Using 12-month lookback window to smooth seasonality
 # - New customers (<3 months tenure) excluded (not enough history)
@@ -644,9 +646,9 @@ print(segment_distribution)
 # ANALYSIS: Customer Segmentation by Purchase Frequency
 # ============================================================================
 # 
-# OBJECTIVE: Segment customers into frequency tiers for targeted marketing
+# INTENT: Segment customers into frequency tiers for targeted marketing
 #
-# METHODOLOGY:
+# REASONING:
 # - Calculate purchase frequency (orders per month) for each customer
 # - Segment into quartiles: Low, Medium, High, Very High frequency
 # - Quartiles chosen over fixed thresholds because:
@@ -654,7 +656,7 @@ print(segment_distribution)
 #   - Ensures balanced segment sizes for marketing capacity
 #   - Standard approach aligns with previous analyses
 #
-# ASSUMPTIONS:
+# ASSUMES:
 # - Only counting orders with status='complete' (not cancelled/pending)
 # - Using 12-month lookback window to smooth seasonality
 # - New customers (<3 months tenure) excluded (not enough history)

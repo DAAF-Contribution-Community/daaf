@@ -1,6 +1,6 @@
 # Script Execution Reference
 
-This document is the **single source of truth** for how scripts are written, executed, captured, versioned, and managed in DAAF. It covers both the file-first execution protocol and the standardized script format templates.
+This document is the **single source of truth** for how scripts are written, executed, captured, versioned, and managed in DAAF, apart from the code-style rules, which are in CLAUDE.md § Code Style. It covers both the file-first execution protocol and the standardized script format templates.
 
 **Language coverage:** This reference covers script format for both Python and R pipelines. The execution language is determined by the user's preference setting in CLAUDE.md. Language-specific sections are clearly marked. The execution wrapper (`run_with_capture.sh`) auto-detects the language from the file extension (`.py` → `python3`, `.R` → `Rscript`).
 
@@ -12,51 +12,10 @@ Every agent that writes or executes code (research-executor, code-reviewer, debu
 
 # Code Style: Sequential Inline Scripts
 
-All code produced by agents follows a **flat, sequential** style. Scripts read
-top-to-bottom like lab notebooks — no function definitions, no class hierarchies,
-no module abstractions. The same philosophy applies to both Python and R. (This is
-the canonical, complete statement of the sequential code-style rules that CLAUDE.md
-§ Code Style summarizes.)
-
-### Python Rules
-
-1. **No function definitions** — No `def main()`, no helper functions, no
-   `if __name__ == "__main__"` guards
-   - *Exceptions:* Marimo cell wrappers (`def _():`) and standalone CLI tools
-     requiring argparse
-2. **Inline validation** — Use `print()` and `assert` for validation, never a
-   separate `validation.py` module
-3. **Section separators** — Organize scripts with comment headers:
-   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
-   `# --- Validate ---`, `# --- Save ---`
-   Data Onboarding profiling scripts use: `# --- Config ---`, `# --- Load ---`,
-   `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
-4. **No type annotations** — Sequential scripts don't define function signatures
-5. **No test files** — Validation is inline (`assert` + `print`), not in
-   `tests/` directories
-
-### R Rules
-
-1. **No function definitions** — No reusable functions, no `source()` of external
-   modules
-   - *Exceptions:* Quarto cell structure and standalone CLI tools requiring
-     `commandArgs` argument handling (parallel to the Python argparse exception)
-2. **Inline validation** — Use `cat()` for output and `stopifnot()` for
-   assertions, never a separate `validation.R` module
-3. **Section separators** — Same convention as Python:
-   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
-   `# --- Validate ---`, `# --- Save ---`
-4. **Library calls at top** — All `library()` calls in the `# --- Config ---`
-   section
-5. **Pipe style** — Use native pipe `|>` (R 4.1+), not magrittr `%>%`
-6. **No test files** — Validation is inline (`stopifnot()` + `cat()`), not in
-   `tests/` directories
-
-**Why this style?** Research scripts are **write-once, execute-once, archive**
-artifacts — fundamentally different from application code. Functions add
-cognitive overhead without providing reuse value. Sequential code is immediately
-readable and self-documenting through its execution order. Combined with IAT
-documentation, a human auditor can follow every decision without running the code.
+The sequential code-style rules for Python and R (no function definitions, inline
+validation, section separators, and the language-specific rules) are stated in
+CLAUDE.md § Code Style, which every agent has loaded. They apply to every script
+this reference covers.
 
 ---
 

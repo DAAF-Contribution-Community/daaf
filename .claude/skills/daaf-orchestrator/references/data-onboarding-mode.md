@@ -1059,8 +1059,9 @@ The orchestrator loads these files progressively — only when the corresponding
 | DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
 | DO-2 (Synthetic path) | `WORKFLOW_PHASE_DO_SYNTHETIC.md` | When the DI-1 sensitivity gate returns outcome 3, before Stage DS-1 (replaces the standard profiling phase; raw data never enters the container) |
 | DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before the Pre-Authoring Research Offer / Stage DI-7 (this file also contains the optional pre-authoring research dispatch) |
+| Any stage (errors) | `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding) | When a script, QA review, validation checkpoint or skill compliance check fails, or a STOP condition fires (the section's stage table and STOP conditions; § Data Onboarding Error Budgets holds the budgets) |
 
-**Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
+**Do NOT load these files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
 
 ---
 

@@ -103,17 +103,17 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | M5 | Add branch to Mode Decision Framework tree | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Decision Framework code block |
 | M6 | Add row to Mode Summary Table | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Summary Table |
 | M7 | Add a process-only confirmation template: names the mode, restates the goal, previews the arc, checkpoints and kinds of output, names the materials the user referenced and where scope gets confirmed, ends with an explicit question; no scope estimates (nothing has been read yet) | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Confirmation Templates by Mode (rules in § Mode Confirmation Gate). The deploy smoke test T3.1 records whether the reply names a mode and asks a closing question as information only; DAAFBench grades adherence |
-| M7a | Declare the Scope Check tier (Hard / Soft / None) and where it happens, and the mode's staging decision. A hard-tier mode embeds the standard block in its first checkpoint's template, keeping that checkpoint's own fields | [M] | `.claude/skills/daaf-orchestrator/SKILL.md`; `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | SKILL.md § Scope Check > Tiers row and § Scope Check > Read First staging list (task folder exists when a material is read → write into it; none → stage and graduate on confirmation, or stage and never graduate); mode file `## Scope Check` section right after `## User Orientation` (tier, where, what is read first, staging, any carve-out, on-resume record) |
+| M7a | Declare the Scope Check tier (Hard / Soft / None) and where it happens, and the mode's staging decision. A hard-tier mode embeds the standard block in its first checkpoint's template, keeping that checkpoint's own fields | [M] | `.claude/skills/daaf-orchestrator/SKILL.md`; `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | SKILL.md § Scope Check > Read First staging list (task folder exists when a material is read → write into it; none → stage and graduate on confirmation, or stage and never graduate); mode file `## Scope Check` section right after `## User Orientation` (tier, where, what is read first, staging, any carve-out, on-resume record) |
 | M8 | Add escalation paths (from AND to new mode) | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Escalation Paths table |
-| M9 | Add row to Reference File Index | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | What to Load Next > Reference File Index. **Note:** `{mode-name}-mode.md` files register *here* (the orchestrator SKILL.md Reference File Index), NOT in CLAUDE.md's Reference Files table — that table lists `agent_reference/` docs (plus `.claude/agents/README.md`), not mode files |
-| M10 | Add branch to Documentation Loading Decision Tree | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Documentation Loading Decision Tree code block |
+| M9 | Add row to Reference File Index | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | What to Load Next > Reference File Index. **Note:** `{mode-name}-mode.md` files register *here* (the orchestrator SKILL.md Reference File Index), NOT in CLAUDE.md's Reference Files table — that table lists only the `agent_reference/` docs every agent may need, plus `.claude/agents/README.md` |
+| M10 | Name every file and skill the orchestrator loads after the mode file, each with its trigger | [M] | `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | The step that loads it, or a references table (precedent: `data-onboarding-mode.md` § Phase-Specific References); SKILL.md § What to Load Next defers to the mode file for every load after it |
 | M11 | Add mode-specific boundaries | [M] | `agent_reference/BOUNDARIES.md` | Mode-Specific Boundaries section |
 | M12 | Update README.md mode count and table | [M] | `README.md` | Engagement Modes section |
 | M13 | Add mode subsection to user_reference/02 | [M] | `user_reference/02_understanding_daaf.md` | The N Engagement Modes section (header, TOC, intro, subsection, transition table) |
 | M14 | Add mode-specific AI disclosure guidance | [M] | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | Mode-Specific Disclosure Guidance section |
 | M15 | Update session-recovery.md with recovery pattern; hard-tier modes: add a session-recovery.md § Step 5c row naming a record with a status field | [M] | `.claude/skills/daaf-orchestrator/references/session-recovery.md` | Purpose section + conditional recovery steps; § Step 5c table row (the record shows the Scope Check awaiting confirmation or confirmed; mirror it in the mode file's `## Scope Check` `**On resume:**` bullet or run-in) |
 | M16 | Add mode-specific error recovery (if non-trivial) | [C] | `agent_reference/ERROR_RECOVERY.md` | Mode-specific recovery section |
-| M17 | Create state template (if different from Full Pipeline) | [C] | `agent_reference/STATE_TEMPLATE_{MODE}.md` | New file + add to CLAUDE.md Reference Files table |
+| M17 | Create state template (if different from Full Pipeline) | [C] | `agent_reference/STATE_TEMPLATE_{MODE}.md` | New file, named with its trigger in the mode file that loads it (M10); add it to CLAUDE.md's Reference Files table only under R2 |
 | M18 | Update CONTRIBUTING.md if mode affects contribution workflow | [C] | `CONTRIBUTING.md` | Relevant tier sections |
 | M19 | Add FAQ entry if mode is likely to generate user questions | [C] | `user_reference/07_faq_technical.md` | New Q&A entry |
 | M20 | Add progressive testing level entry | [C] | `user_reference/02_understanding_daaf.md` | Progressive testing levels section |
@@ -129,7 +129,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | MM4 | If changing escalation paths, update both directions | [C] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Escalation Paths |
 | MM5 | If changing boundaries, update BOUNDARIES.md | [C] | `agent_reference/BOUNDARIES.md` | Mode-Specific Boundaries |
 | MM6 | If changing user-facing description, update user_reference/02 | [C] | `user_reference/02_understanding_daaf.md` | Mode subsection |
-| MM7 | If changing the mode's confirmation template, its first checkpoint, or its Scope Check tier, keep the three in step: the template stays process-only, and the SKILL.md tier row, the mode file's `## Scope Check` section and the checkpoint that carries the standard block agree | [C] | `.claude/skills/daaf-orchestrator/SKILL.md`; target mode file | Confirmation Templates by Mode, § Scope Check > Tiers; mode `## Scope Check` and its first-checkpoint template |
+| MM7 | If changing the mode's confirmation template, its first checkpoint, or its Scope Check tier, keep the three in step: the template stays process-only, and the mode file's `## Scope Check` section and the checkpoint that carries the standard block agree | [C] | `.claude/skills/daaf-orchestrator/SKILL.md`; target mode file | Confirmation Templates by Mode; mode `## Scope Check` and its first-checkpoint template |
 
 ---
 
@@ -142,7 +142,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | R1 | Create file in `agent_reference/` with clear purpose statement | [M] | `agent_reference/{file-name}.md` | First paragraph states purpose and audience |
 | R2 | Add to CLAUDE.md Reference Files table when every agent may need the file in any session; a file for framework authors and reviewers (such as `DOCUMENTATION_STANDARDS.md`) is reached from the authoring surfaces instead, because CLAUDE.md loads in every user session | [C] | `CLAUDE.md` | Reference Files table |
 | R3 | Add trigger conditions ("When to Read") in all referencing documents | [M] | Various | Agent Section 12, WORKFLOW_PHASE files, orchestrator SKILL.md |
-| R4 | Wire into Documentation Loading Decision Tree if loaded by orchestrator | [C] | `.claude/skills/daaf-orchestrator/SKILL.md` | Documentation Loading Decision Tree |
+| R4 | If the orchestrator loads the file, name it, with its trigger, in the mode file that loads it | [C] | `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` | The step that loads it, or the mode's references table |
 | R5 | Wire into agent Section 12 if used by specific agents | [C] | `.claude/agents/{agent-name}.md` | Section 12: References table |
 | R6 | Wire into WORKFLOW_PHASE file if stage-specific | [C] | `agent_reference/WORKFLOW_PHASE*.md` | Progressive loading notes |
 
@@ -152,7 +152,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 |---|------|-----|------|----|
 | RM1 | Read the full file before editing | [M] | Target file | Understand structure |
 | RM2 | Check which agents and skills reference this file | [M] | Multiple | Grep for filename |
-| RM3 | If changing the file's scope or purpose, update CLAUDE.md table description | [C] | `CLAUDE.md` | Reference Files table |
+| RM3 | If changing the file's scope or purpose and CLAUDE.md's Reference Files table lists it, update its description there | [C] | `CLAUDE.md` | Reference Files table |
 | RM4 | If renaming, update all references across codebase | [M] | Multiple | Grep for old name |
 
 ---

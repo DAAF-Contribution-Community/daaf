@@ -23,7 +23,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **If reading shows the user wants to do something:** propose the matching mode (§ Escalation Triggers) rather than widening this one.
 - **Update-conflict walkthrough:** the mode confirmation is skipped when the updater launched the session and is waiting (one of the exceptions listed in `SKILL.md` § Mode Confirmation Gate); the conflicted files are read in step 2 before any resolution is proposed, and each resolution waits for the user's approval file by file.
 
-The tier table is in `SKILL.md` § Scope Check.
+The tier definitions are in `SKILL.md` § Scope Check.
 
 ---
 
@@ -120,7 +120,7 @@ For questions that go beyond the four pre-loaded documents -- questions about DA
 | Citation practices | `agent_reference/CITATION_REFERENCE.md` |
 | State file templates | `agent_reference/STATE_TEMPLATE.md`, `agent_reference/STATE_TEMPLATE_ONBOARDING.md` |
 | Reproduction report template | `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` |
-| Full reference file index | `CLAUDE.md` > Reference Files table |
+| Full set of reference files | `agent_reference/` (`CLAUDE.md` > Reference Files lists the ones every agent may need; the mode files and agent definitions that load the rest name them) |
 
 ### Configuration and Safety
 

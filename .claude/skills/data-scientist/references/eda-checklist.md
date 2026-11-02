@@ -24,7 +24,7 @@ import polars as pl
 import polars.selectors as cs
 
 # Load data
-df = pl.read_csv("data.csv")
+df = pl.read_parquet("data.parquet")
 
 # Basic inspection
 print(f"Shape: {df.shape[0]} rows x {df.shape[1]} columns")
@@ -34,11 +34,11 @@ print(f"Memory usage: {df.estimated_size() / 1024 / 1024:.2f} MB")
 
 **R:**
 ```r
-library(readr)
+library(arrow)
 library(dplyr)
 
 # Load data
-df <- read_csv("data.csv")
+df <- read_parquet("data.parquet")
 
 # Basic inspection
 cat(sprintf("Shape: %d rows x %d columns\n", nrow(df), ncol(df)))

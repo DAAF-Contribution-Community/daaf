@@ -23,7 +23,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **What to say:** "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." The plan names the sources or topics you will explore and how the materials changed them. Then dispatch in the same turn.
 - **Hand the materials on:** list them in every Stage 2 dispatch's `USER-REFERENCED MATERIALS:` field (their staged absolute paths, so the subagent can read them, and any digest path, or "none"), and in Stage 3 dispatches when they bear on the source being examined, so subagents explore what the materials ask for rather than a guess from the request.
 
-The tier table and the soft-check wording are in `SKILL.md` § Scope Check.
+The tier definitions and the soft-check wording are in `SKILL.md` § Scope Check.
 
 ---
 

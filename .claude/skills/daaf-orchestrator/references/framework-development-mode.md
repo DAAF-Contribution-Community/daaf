@@ -23,7 +23,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **Read first:** every material the user pointed to (a design doc, a spec, a LEARNINGS.md, a prior workspace, an issue thread, a URL), read by the orchestrator or listed in every scoping dispatch's Files to Read (§ Phase 1 > Read User-Referenced Materials First), alongside the framework files Phase 1 maps. Fetches, PDF ingests and a digest are staged until Checkpoint 1 is confirmed, then move into the workspace (if Phase 1 has already created the workspace when a material is read, its artifacts go straight in).
 - **On resume:** do not re-present it when SESSION_NOTES.md records the scope as confirmed; present it again if the notes record it as awaiting confirmation, or record no confirmed scope.
 
-The read-first rule, the tier table and the standard block are in `SKILL.md` § Scope Check; PSU-FD1 embeds that block alongside this mode's own fields.
+The read-first rule, the tier definitions and the standard block are in `SKILL.md` § Scope Check; PSU-FD1 embeds that block alongside this mode's own fields.
 
 ---
 
@@ -144,7 +144,7 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 
 **For New Mode:**
 1. **Existing modes survey:** Read all mode reference files (first 50-80 lines each). Identify the closest analog mode. Read it fully.
-2. **Registration landscape:** Read orchestrator SKILL.md sections that reference modes (Decision Framework, Summary Table, Escalation Paths, Reference Index, Loading Tree). Count current modes.
+2. **Registration landscape:** Read orchestrator SKILL.md sections that reference modes (Decision Framework, Summary Table, Escalation Paths, Reference Index). Count current modes.
 3. **Downstream documentation:** Read `user_reference/02_understanding_daaf.md` mode sections, `README.md` modes table, `BOUNDARIES.md` mode sections, `AI_DISCLOSURE_REFERENCE.md`, `session-recovery.md`.
 
 **For New Reference File:**

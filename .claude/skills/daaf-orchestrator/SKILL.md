@@ -9,7 +9,7 @@ metadata:
 
 # DAAF Orchestrator Framework
 
-Operational framework for the DAAF orchestrator agent. Defines the ten engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference-loading decision tree. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
+Operational framework for the DAAF orchestrator agent. Defines the ten engagement modes and their confirmation protocol, subagent dispatch patterns, context budget rules, communication standards, and progressive reference loading. Loaded exclusively by the orchestrator agent to govern its own execution — not a general-purpose orchestration reference and should not be loaded by subagents or in response to user questions about pipeline coordination.
 
 ## Identity & Mission
 
@@ -326,21 +326,8 @@ Ad Hoc Collaboration has no confirmation step: its staged items graduate when it
 
 #### Tiers
 
-| Tier | Mode | Where the Scope Check happens |
-|------|------|-------------------------------|
-| Hard | Full Pipeline | Pre-Flight Checklist (`full-pipeline-mode.md`) |
-| Hard | Framework Development | Checkpoint 1, the PSU-FD1 Scope Check |
-| Hard | Revision and Extension | Revision Scope Check, at the step that confirms the revision type |
-| Hard | Reproducibility Verification | PSU-RV1, the post-inventory checkpoint |
-| Hard | Data Onboarding | PSU-DI1 Setup Confirmation (synthetic path: PSU-DS1) |
-| Hard | Literature Review | CP-1, the review plan checkpoint (quick scan: its short form) |
-| Soft | Ad Hoc Collaboration | Before each new multi-step or artifact-producing task |
-| Soft | Data Discovery | Before dispatching exploration (Stage 2), when the user referenced materials |
-| None | Data Lookup | — |
-| None | User Support | — |
-
 - **Hard (blocking):** embed the standard block below in the checkpoint's own template, keeping the checkpoint's mode-specific fields, and wait for the user's approval.
-- **Soft (non-blocking):** once per new multi-step task, not on every turn (Data Discovery: only when the user referenced materials; see its row), say in a line or two: "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." (With no materials, just the plan.) Then start in the same turn. It must never become a gate (Ad Hoc Collaboration forbids checkpoint gates).
+- **Soft (non-blocking):** once per new multi-step task, not on every turn (Data Discovery: only when the user referenced materials), say in a line or two: "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." (With no materials, just the plan.) Then start in the same turn. It must never become a gate (Ad Hoc Collaboration forbids checkpoint gates).
 - **None:** read the referenced materials, then adapt. If reading shows the request needs more than the mode offers, use the Mode Escalation Paths (and Data Lookup's existing rules against loading multiple skills or expanding without confirmation).
 
 Each mode file's `## Scope Check` section states its tier, where the check happens, what is read first, and any mode-specific carve-out.
@@ -360,7 +347,7 @@ Each mode file's `## Scope Check` section states its tier, where the check happe
 
 #### Session Recovery
 
-Skip the Scope Check when the mode's record shows a confirmed scope (STATE.md, SESSION_NOTES.md, or for Reproducibility Verification the status line of the Reproduction Report's Scope Decisions; for Full Pipeline the project folder's `output/preliminary_notes/{date}_preflight_scope-check.md`, written when the pre-flight is confirmed, and from Stage 4 also STATE.md; a folder without that file, after an interrupted confirmation or under the `/tmp` fallback, is not confirmed); re-present it only if it is recorded as awaiting confirmation or was never recorded. Materials staged before an interruption may still be in the earlier session's scratchpad: re-read or re-fetch them as needed rather than citing that path. `session-recovery.md` § Step 5c lists where each mode keeps that record.
+On a resume, `session-recovery.md` § Step 5c decides from each mode's record whether the Scope Check is skipped or re-presented. Materials staged before an interruption may still be in the earlier session's scratchpad: re-read or re-fetch them as needed rather than citing that path.
 
 ### Mode Escalation Paths
 
@@ -509,7 +496,7 @@ This standard is model-agnostic by design. The same structural discipline — le
 
 ## What to Load Next
 
-> **GATE:** This section applies ONLY after the user has explicitly confirmed the engagement mode in their response. Do NOT load any reference files until confirmation is received. If the user's response changes the mode, re-classify and re-confirm before loading. If it only adjusts scope, record the adjustment and carry it into the mode's Scope Check (§ Scope Check); the mode does not need re-confirming.
+> **GATE:** This section applies ONLY after the user has explicitly confirmed the engagement mode in their response. Do NOT load any reference files until confirmation is received. A reply that changes the mode or adjusts scope is handled per § Mode Confirmation Gate > "If the user adjusts at confirmation".
 
 **Path convention:** **`{SKILL_REFS}`** = `{BASE_DIR}/.claude/skills/daaf-orchestrator/references`. Resolve `{BASE_DIR}` from your working directory (the project root where `CLAUDE.md` resides).
 
@@ -532,82 +519,7 @@ This standard is model-agnostic by design. The same structural discipline — le
 | `{SKILL_REFS}/user-support-mode.md` | User Support documentation loading protocol, framework internals index, output format, boundaries | After confirming User Support mode |
 | `{BASE_DIR}/agent_reference/MODE_TEMPLATE.md` | Mode addition template and checklist | When adding new engagement modes |
 
-### Documentation Loading Decision Tree
-
-```
-Mode Confirmed
-    │
-    ├─ Data Onboarding Mode
-    │   └─ Read: {SKILL_REFS}/data-onboarding-mode.md
-    │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md
-    │          ├─ Profiling (Stages DI-3–6): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md
-    │          ├─ Synthetic path (DI-1 sensitivity gate → sensitive data, Stages DS-1–5): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md
-    │          ├─ Skill Authoring (Stages DI-7–8): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md
-    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │
-    ├─ Data Lookup Mode
-    │   └─ Read: {SKILL_REFS}/data-lookup-mode.md
-    │
-    ├─ Literature Review Mode
-    │   └─ Read: {SKILL_REFS}/literature-review-mode.md
-    │          ├─ Stage LR-0 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_LITREVIEW.md
-    │          ├─ Consuming a review's outputs (another mode picking up its handoff, tables or reference list): Read {BASE_DIR}/agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md
-    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │
-    ├─ Data Discovery Mode
-    │   └─ Read: {SKILL_REFS}/data-discovery-mode.md
-    │          └─ Subagent dispatch: Read {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
-    │
-    ├─ Ad Hoc Collaboration Mode
-    │   └─ Read: {SKILL_REFS}/ad-hoc-collaboration-mode.md
-    │          └─ Load skill: data-scientist (orchestrator loads directly — exception to standard pattern)
-    │
-    ├─ Full Pipeline Mode
-    │   └─ Read: {SKILL_REFS}/full-pipeline-mode.md (contains pre-flight checklist,
-    │          │   all PSU templates, invocation templates, QA protocols, quality framework)
-    │          ├─ Read the materials the user referenced (§ Scope Check > Read First)
-    │          ├─ ★ PRESENT Pre-Flight Checklist with its Scope Check to user (STOP — wait for confirmation)
-    │          ├─ On confirmation: create the project folder, move staged materials in, record the pre-flight (full-pipeline-mode.md § On Confirmation (Gate G1))
-    │          ├─ After pre-flight confirmed, load progressively per phase:
-    │          │   ├─ Phase 1: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
-    │          │   ├─ Phase 2: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
-    │          │   ├─ Phase 3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
-    │          │   ├─ Phase 4: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
-    │          │   └─ Phase 5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md
-    │          ├─ Code execution: Read {BASE_DIR}/agent_reference/VALIDATION_CHECKPOINTS.md
-    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │
-    ├─ Revision and Extension Mode
-    │   └─ Read: {SKILL_REFS}/revision-and-extension-mode.md
-    │          ├─ Re-execution: Read {SKILL_REFS}/full-pipeline-mode.md (QA enforcement, composite execution pattern)
-    │          ├─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │          └─ Re-entry stage-specific (load progressively):
-    │              ├─ Stage 2-3: {BASE_DIR}/agent_reference/WORKFLOW_PHASE1_DISCOVERY.md
-    │              ├─ Stage 4-4.5: {BASE_DIR}/agent_reference/WORKFLOW_PHASE2_PLANNING.md
-    │              ├─ Stage 5-6: {BASE_DIR}/agent_reference/WORKFLOW_PHASE3_ACQUISITION.md
-    │              ├─ Stage 7-8: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md
-    │              └─ Stage 9-12: {BASE_DIR}/agent_reference/WORKFLOW_PHASE4_ANALYSIS.md + WORKFLOW_PHASE5_SYNTHESIS.md
-    │
-    ├─ Reproducibility Verification Mode
-    │   └─ Read: {SKILL_REFS}/reproducibility-verification-mode.md
-    │          ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md
-    │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
-    │
-    ├─ Framework Development Mode
-    │   └─ Read: {SKILL_REFS}/framework-development-mode.md
-    │          ├─ Integration checklist: Read {BASE_DIR}/agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md
-    │          ├─ Before editing shipped text directly: Read {BASE_DIR}/agent_reference/DOCUMENTATION_STANDARDS.md
-    │          ├─ Load skill: skill-authoring (orchestrator loads directly — exception to standard pattern)
-    │          └─ Load skill: agent-authoring (orchestrator loads directly — exception to standard pattern)
-    │
-    └─ User Support Mode
-        └─ Read: {SKILL_REFS}/user-support-mode.md
-               └─ Read (parallel, on entry): {BASE_DIR}/README.md,
-                  {BASE_DIR}/user_reference/01_installation_and_quickstart.md,
-                  {BASE_DIR}/user_reference/02_understanding_daaf.md,
-                  {BASE_DIR}/user_reference/03_best_practices.md
-               └─ On demand: Framework internals per reference index in mode file
-```
+After loading a mode file, follow it for further loads: each mode file names the references it reads and when, and in Ad Hoc Collaboration and Framework Development it also names the skills the orchestrator loads directly.
 
 ---
 
@@ -628,7 +540,7 @@ Skills provide **domain knowledge** ("What do I need to know?"). Agents define *
 
 ### Skill Loading Mechanics
 
-Skills are loaded **by subagents**, not by the orchestrator (exceptions: Ad Hoc Collaboration and Framework Development modes, where the orchestrator loads designated skills directly — see the Documentation Loading Decision Tree above and those mode reference files):
+Skills are loaded **by subagents**, not by the orchestrator (exceptions: Ad Hoc Collaboration and Framework Development modes, where the orchestrator loads designated skills directly — see those mode reference files):
 
 1. **Orchestrator creates Agent call** with agent protocol and skill name in the prompt
 2. **Subagent receives prompt** and reads its agent protocol file
@@ -641,19 +553,8 @@ Skills are loaded **by subagents**, not by the orchestrator (exceptions: Ad Hoc 
 - Don't pre-load all skills at conversation start
 - Don't copy skill content into your prompts to subagents
 
-**Skill information is a starting point, not ground truth.** Skills encode curated
-domain knowledge, but they are point-in-time snapshots that can drift as APIs
-evolve, endpoints change, and documentation updates. More importantly, when an
-agent fills in details *beyond* what a skill explicitly states, that is
-LLM-generated inference — not curated knowledge — and is substantially more
-likely to be inaccurate. When the orchestrator or a subagent encounters
-unexpected results, errors, or uncertainty while working with skill-sourced
-information, online verification via WebSearch (discovery) plus the DAAF fetch
-protocol (`web-retrieval` skill) is the appropriate response. For agents without web tools, flag the uncertainty in the return output
-so the orchestrator can dispatch verification. See `CLAUDE.md` § Execution
-Philosophy > "Skill information awareness" for the universal principle.
-
-**Surfacing verification to users:** When presenting findings or encountering
+**Surfacing verification to users:** Skill facts are a starting point, not ground
+truth (`CLAUDE.md` § Execution Philosophy > "Skill information awareness"). When presenting findings or encountering
 ambiguity during any mode, proactively let the user know that online verification
 is available and valuable. Examples:
 - *"The skill says X, but this endpoint returned an unexpected error — want me to
@@ -752,8 +653,6 @@ DAAF uses **named agents** defined in `.claude/agents/`. When invoking a subagen
 
 **Named Agents (preferred for all pipeline operations):**
 
-"read-only" below means no Write or Edit tool; `plan` takes effect only outside auto, bypassPermissions and acceptEdits parent modes (see above).
-
 | Agent Name | Permission Mode | Use For |
 |------------|----------------|---------|
 | `research-executor` | `default` (read/write) | Data acquisition, cleaning, transformation, visualization (Stages 5-8) |
@@ -786,7 +685,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 
 **When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For exploration, lookup, and review tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (Explore starts without CLAUDE.md and cannot write files, so it neither follows DAAF's conventions nor saves a record of what it found; Claude Code subagents docs, verified 2026-11-02) and will be rejected, wasting time and context on failed launches.
 
-**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced in layers. First, the harness: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` in settings.json `env` makes Claude Code withhold the Agent/Task tool from every subagent (observed 2026-11-02, Claude Code 2.1.281; the Claude Code changelog says only that the setting disables nesting). Second, the named agents omit `Agent`/`Task` from their `tools:` lists. Third, the backstop: the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch originating inside a subagent, covering the generic built-in types too, should the spawn-depth limit ever be lifted or regress.
+**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. The layers that enforce this are set out in `agent_reference/BOUNDARIES.md` § Process Violations ("Dispatch-authority invariant").
 
 ### Model Selection for Subagent Dispatch
 
@@ -877,7 +776,7 @@ When a subagent returns findings:
 
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
 
-**Files subagents write (CLAUDE.md § Project Conventions > Subagent File Output):** when a dispatch asks a write-capable agent to persist a detailed report, name a compliant target path (a date or stage/sequence prefix, never a basename starting with `report`, `summary`, `findings` or `analysis`), because Claude Code rejects that Write for subagents. search-agent and source-researcher are write-capable for their own records: a dispatch may name a compliant path for the detailed record (e.g. a review file, or the Stage 2 and Stage 3 preliminary notes), and the agent returns a summary as well (step 2's carve-out applies); when a lossless record is wanted and the dispatch named no path, persist its return per steps 2a-2c. literature-searcher, paper-reader and literature-synthesizer are write-capable for their own named outputs only (JSONL inputs and the scoping record; the evidence card and chunk notes; the deliverables and their inputs), at the paths `literature-review-mode.md` § Dispatch Templates gives. Agents without the Write tool (plan-checker, data-verifier, integration-checker, citation-adjudicator) are never asked to write deliverable or report files: they return text, and when a lossless record is wanted the orchestrator persists it per steps 2a-2c. The citation-adjudicator's return is the exception to 2a-2c: only the lines inside its `jsonl` fence are persisted, verbatim and with no provenance header, to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`, because `lit_corpus adjudications ingest` parses that file. A subagent that hits the rejection recovers in order: Edit if the file exists and the dispatch asks for a change; else a minimally changed compliant name (date or sequence prefix), stated in its return; else the full content inline under a labeled section naming the intended path. Persist such inline content in full and unmodified at a compliant rename of the intended path, recorded in the provenance header (e.g. `<!-- Intended path: {path}; renamed for the Claude Code Write-tool name check -->`). Keep the exact matching name only when a codified downstream path requires it, and note in that path's defining document that subagents can then only Edit that file.
+**Files subagents write (CLAUDE.md § Project Conventions > Subagent File Output):** when a dispatch asks a write-capable agent to persist a detailed report, name a compliant target path (a date or stage/sequence prefix, never a basename starting with `report`, `summary`, `findings` or `analysis`), because Claude Code rejects that Write for subagents. search-agent and source-researcher are write-capable for their own records: a dispatch may name a compliant path for the detailed record (e.g. a review file, or the Stage 2 and Stage 3 preliminary notes), and the agent returns a summary as well (step 2's carve-out applies); when a lossless record is wanted and the dispatch named no path, persist its return per steps 2a-2c. literature-searcher, paper-reader and literature-synthesizer are write-capable for their own named outputs only (JSONL inputs and the scoping record; the evidence card and chunk notes; the deliverables and their inputs), at the paths `literature-review-mode.md` § Dispatch Templates gives. Agents without the Write tool (plan-checker, data-verifier, integration-checker, citation-adjudicator) are never asked to write deliverable or report files: they return text, and when a lossless record is wanted the orchestrator persists it per steps 2a-2c. The citation-adjudicator's return is the exception to 2a-2c: only the lines inside its `jsonl` fence are persisted, verbatim and with no provenance header, to `{PROJECT_DIR}/data/adjudication_raw/{batch_id}.jsonl`, because `lit_corpus adjudications ingest` parses that file. A subagent that hits the rejection recovers as CLAUDE.md § Subagent File Output directs. When it returns the content inline instead, persist that content in full and unmodified at a compliant rename of the intended path, recorded in the provenance header (e.g. `<!-- Intended path: {path}; renamed for the Claude Code Write-tool name check -->`). Keep the exact matching name only when a codified downstream path requires it, and note in that path's defining document that subagents can then only Edit that file.
 
 **Claim adjudication (applies across extraction and relay, steps 3-5):** For load-bearing claims in a return — especially negative capability claims ("X is unavailable/impossible/unsupported") and completion counts — verify the stated evidence is present (a quoted probe or command output). If it is absent, treat the claim as unverified inference: verify it directly, re-dispatch with an explicit evidence requirement, or carry it forward explicitly labeled as unverified. When relaying an unverified subagent claim to the user, mark its provenance (e.g., "the specialist reports, though I have not verified...") rather than passing it on with orchestrator authority attached.
 

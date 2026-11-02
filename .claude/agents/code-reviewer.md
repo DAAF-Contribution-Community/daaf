@@ -188,9 +188,11 @@ Before beginning the review, load skills that match the pipeline language of the
 | Data manipulation | `polars` | `tidyverse` |
 | Static visualization | `plotnine` | `ggplot2` |
 | Interactive visualization | `plotly` | `plotly-r` |
-| Fixed effects / DiD | `pyfixest` | `fixest` |
+| Fixed effects / IV with FE / DiD | `pyfixest` | `fixest` |
 | OLS / GLM / time series | `statsmodels` | `r-stats` |
-| Panel RE / GMM | `linearmodels` | `plm` |
+| Panel RE / between / FD / Fama-MacBeth | `linearmodels` | `plm` |
+| Dynamic-panel GMM (Arellano-Bond) | no skill: escalate | `plm` (`pgmm`) |
+| LIML / non-panel GMM-IV / SUR / 3SLS | `linearmodels` | no installed package: escalate |
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |

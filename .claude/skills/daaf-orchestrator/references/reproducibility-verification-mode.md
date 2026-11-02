@@ -130,6 +130,8 @@ User points to existing analysis folder
 
 ## Stage Details
 
+When a stage fails, follow `agent_reference/ERROR_RECOVERY.md` § Reproducibility Verification Mode Error Recovery.
+
 ### RV-1: Intake & Setup
 
 **Actor:** Orchestrator (directly, no subagent needed)

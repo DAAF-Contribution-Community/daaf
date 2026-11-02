@@ -25,7 +25,7 @@ The mode confirmation already gave the user this preview, so do not repeat it af
 - **What to say:** "Here's what I see in [materials]; here's my plan. I'm starting on it now — stop me if anything looks off." (With no materials, just the plan.) Then start in the same turn; the user can redirect at any point. When this action will create the workspace, name its proposed topic label here (§ Workspace Setup).
 - **When to ask instead:** if the materials or the request leave two readings that would lead to different work, ask that one question and wait. That is a clarifying question, not a checkpoint.
 
-Why: a plan stated after reading costs one sentence and lets the user catch a wrong interpretation before effort is spent, without turning a flexible session into a gated one. The tier table is in `SKILL.md` § Scope Check.
+Why: a plan stated after reading costs one sentence and lets the user catch a wrong interpretation before effort is spent, without turning a flexible session into a gated one. The tier definitions are in `SKILL.md` § Scope Check.
 
 ---
 

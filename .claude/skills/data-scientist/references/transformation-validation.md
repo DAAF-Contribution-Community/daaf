@@ -37,7 +37,7 @@ pre_total = df.select(pl.col("amount").sum()).item() if "amount" in df.columns e
 # ============================================================
 # STEP 2: Perform transformation (with comments)
 # ============================================================
-# GOAL: [State what you're trying to accomplish]
+# INTENT: [State what you're trying to accomplish]
 # EXPECTED: [State expected changes - row count, columns, etc.]
 # INVARIANTS: [State what should NOT change]
 
@@ -91,7 +91,7 @@ pre_total <- if ("amount" %in% names(df)) sum(df$amount, na.rm = TRUE) else NULL
 # ============================================================
 # STEP 2: Perform transformation (with comments)
 # ============================================================
-# GOAL: [State what you're trying to accomplish]
+# INTENT: [State what you're trying to accomplish]
 # EXPECTED: [State expected changes - row count, columns, etc.]
 # INVARIANTS: [State what should NOT change]
 
