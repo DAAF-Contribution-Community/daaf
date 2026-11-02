@@ -81,13 +81,14 @@ NAME = "elicit"
 LABEL = "Elicit"
 KEY_ENV = "ELICIT_API_KEY"
 REQUIRED_KEY = True           # every v2 endpoint needs the Bearer key (missing -> exit 10)
-LICENSE_CLASS = "restricted"  # API Terms §12.3 (delete cached outputs within 30 days of termination); user decision 2026-10-11
+LICENSE_CLASS = "restricted"  # API Terms §12.3 (delete cached outputs within 30 days of
+                              # termination); user decision 2026-10-11
 RATE_LIMIT = {"elicit": 0.75}  # 80/min, under the 100/min per-IP limit; polling shares the lane
 RATE_LIMIT_NOTE = ("100 req/min per IP across ALL endpoints incl. polling; a 429 blocks the IP 5 min "
                    "(gated 0.75 s; a 429 pauses the lane 300 s, never retried)")
 RETRY_POLICY = {"penalize_429_s": 300}
 CAPABILITIES = frozenset({"search"})   # opt-in `find --backends elicit`; reports are their own subcommands
-DEFAULT_IN_FIND = False                # user decision (Checkpoint 1, 2026-10-11): never in default fusion
+DEFAULT_IN_FIND = False                # user decision (2026-10-11): never in default fusion
 FIND_LEGS = ("elicit",)
 COST_NOTE = ("Pro plan or higher; per-call cost undocumented (usage draws from the plan's credit pool, API "
              "Terms §1.4): measure with elicit-usage before/after; reports are paid (--confirm-spend)")

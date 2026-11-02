@@ -5,8 +5,8 @@ screening fields: study-design tags (RCT, meta-analysis, systematic review,
 review, longitudinal), the journal's SJR quartile, and a best full-text link.
 **Paid research reports** are asynchronous, AI-generated syntheses over up to
 1,000 searched and 80 extracted papers. Both are **restricted**, and Elicit is
-**never part of default `find` fusion** (user decision, Checkpoint 1,
-2026-10-11). Systematic reviews and agent sessions are deferred to v1.1. Adapter:
+**never part of default `find` fusion** (user decision, 2026-10-11).
+Systematic reviews and agent sessions are deferred to v1.1. Adapter:
 `scripts/scholar_backends/elicit.py`; the poll loop, checkpoints and every
 artifact live in the core (`scripts/scholar_search.py` § ELICIT). Docs: the
 v2 reference https://docs.elicit.com/ and the OpenAPI spec

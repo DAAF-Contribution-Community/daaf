@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 # =============================================================================
 # lit_verify.py - DAAF deterministic evidence-card gate (no LLM, offline) with
-#                 a provenance record per run (added 2026-10-15, Lit Review
-#                 S3, FE-3)
+#                 a provenance record per run
 # =============================================================================
 #
 # `lit_verify card` is the gate that makes a paper-reader's evidence card
 # VERIFIABLE: every quoted coverage anchor, claim quote and claim number must
 # be found, on the cited page, in the unaltered page text pdf_ingest stored
 # (anchor{S}/pNNN.txt, byte-for-byte pdftotext). It never reads the fenced
-# reading copies (pages{S}/, fulltext{S}.md) and never calls a model. From
-# 1.4.0 it also checks cards over an arXiv HTML ingest (pdf_ingest --source
-# arxiv-html): the same checks per SECTION, cited by section label, against
-# the extracted unit text (anchor{S}/uNNN.txt); § arXiv HTML ingests below.
-# `lit_verify selftest` builds a synthetic ingest in code (and, from 1.4.0, a
-# synthetic arXiv HTML ingest through pdf_ingest's real arxiv-html lane),
-# plants known fabrications in cards, runs the real card gate on them and
-# asserts every expected verdict. From 1.10.0 `lit_verify report` checks a
-# Literature Review deliverable (a memo or synthesis in Markdown) against the
-# review's tables: § report below.
+# reading copies (pages{S}/, fulltext{S}.md) and never calls a model. It also
+# checks cards over an arXiv HTML ingest (pdf_ingest --source arxiv-html):
+# the same checks per SECTION, cited by section label, against the extracted
+# unit text (anchor{S}/uNNN.txt); § arXiv HTML ingests below.
+# `lit_verify selftest` builds a synthetic ingest in code (and a synthetic
+# arXiv HTML ingest through pdf_ingest's real arxiv-html lane), plants known
+# fabrications in cards, runs the real card gate on them and asserts every
+# expected verdict. `lit_verify report` checks a Literature Review
+# deliverable (a memo or synthesis in Markdown) against the review's tables:
+# § report below.
 #
 #   bash /daaf/scripts/lit_verify.sh card <PAPER_DIR> <CARD_PATH> [--ingest-suffix S] [--timeout S]
 #   bash /daaf/scripts/lit_verify.sh report <PROJECT_DIR> <DELIVERABLE> [--kind synthesis|final|bibliography]
@@ -32,7 +31,7 @@
 #        --decision matches|does_not_match --user-words "..." [--rationale "..."]
 #   bash /daaf/scripts/lit_verify.sh selftest <SCRATCH_DIR>
 #
-# --- audit and route (1.15.0, S5) -------------------------------------------
+# --- audit and route (1.15.0) -----------------------------------------------
 #   route    imports detect_route() from scripts/deploy_smoke/route_detection.py
 #            (by path; a pure environment check), prints "ROUTE: <name>", its
 #            basis and its limits, and appends a row (kind "lit_verify_route")
@@ -199,7 +198,7 @@
 #     vision     vision_mode "off" or vision_validated false: HTML units have no
 #                page images and no OCR lane, so no reading but the text exists
 #
-# --- Card schema "lit-verify-card-v3" (1.9.0, S4 D3) -------------------------
+# --- Card schema "lit-verify-card-v3" (1.9.0) -------------------------------
 #   Accepted beside v1 and v2 (both unchanged: they check exactly as before).
 #   v3 = v2 (anchor_kind, source_sha256, source_version; pdf or arxiv_html)
 #   plus typed claims and an optional per-paper note, so the Literature
@@ -267,8 +266,7 @@
 #   flagged the unit `sparse`: < 200 non-whitespace chars, mostly heading-only
 #   units; the sparse waiver and duplicate rule apply as on pages) or
 #   "normal"; no unit is ever scanned. Numbers: the PDF number rules
-#   (NUMBER_RULES_VERSION; numbers-v3 when 1.4.0 added this lane, numbers-v6
-#   from 1.8.0), with
+#   (NUMBER_RULES_VERSION), with
 #   rows{S}/uNNN.txt as the row source of the unique-row path (the HTML
 #   anchor is already row-major, so a quote copied through the cell clears
 #   in-quote). Conversion-error cap: a claim whose quote passes in a unit
@@ -290,12 +288,12 @@
 #     manifest's record and page_index's lane_b_sha256 (1.3.0; a mismatching
 #     lane B file is LANE_B_HASH_MISMATCH, a fail, and is not used); the
 #     ingest manifest = the hash in the papers dir's pdf_ingest MANIFEST row
-#     (no row -> NO_INGEST_ROW, a fail from 1.7.0; it was a warning).
+#     (no row -> NO_INGEST_ROW, a fail).
 #     1b Re-derivation (1.7.0; § Re-derivation below): the anchor
 #     text (and lane B / table rows) is re-derived from the stored source and
 #     compared byte-for-byte with the files the checks are about to trust;
-#     from 1.8.0 also the header/footer lines, the grade-relevant page flags
-#     and OCR acceptance, from the same hashed bytes.
+#     so are the header/footer lines, the grade-relevant page flags and OCR
+#     acceptance, from the same hashed bytes.
 #
 # --- Re-derivation (1.7.0, user decision 2026-10-23) ------------------------
 #   Hashes alone prove only that the manifest, page_index and anchor files
@@ -407,21 +405,21 @@
 #     declares page_end = N+1; an undeclared span is WRONG_PAGE (fix: declare
 #     page_end). Recorded header/footer lines between the pages are skipped.
 #     Coverage anchors are single-page (no page_end).
-#     Quote-number rule (ladder-v2, 1.6.0, S3-A B2): a claim quote that
+#     Quote-number rule (ladder-v2, 1.6.0): a claim quote that
 #     passes on any tier must print, in order, the same number tokens (sign
 #     included) as the page span it matched (pdf_text_common.
 #     quote_numbers_agree, on the page's number view); else
 #     QUOTE_NUMBERS_DIFFER (review; status_if_confirmed keeps the pass it
 #     replaced), which also takes the claim off the row path. Coverage
 #     anchors are not checked (they carry no claim). ladder-v3 (1.8.0,
-#     S3-C1b, NB2; pdf_text_common.quote_number_check): the tokens' superscript
+#     NB2; pdf_text_common.quote_number_check): the tokens' superscript
 #     and footnote-letter marks must agree too ("10³" over "10⁻³"), and every
 #     sign-shaped dash the span prints before a number (the superscript minus
 #     and a dash the line-break rejoin deleted included) must stand at the
 #     same SKELETON position in the quote, even where no token is parsed
 #     ("0.164ab" over "−0.164ab"); a spaced dash before a quote token, or a
 #     sign-ambiguous page token, compares the digits without their sign.
-#     ladder-v4 (1.8.0 part 3, S3-D, review cycle 3 W1): the dash check is
+#     ladder-v4 (1.8.0 part 3): the dash check is
 #     symmetric: a dash the QUOTE prints before a number that can read as a
 #     sign (spaced, or glued with no letter or digit before it: "by – 0.30",
 #     "(Girls)−0.30") where the page prints no dash is QUOTE_NUMBERS_DIFFER
@@ -491,7 +489,7 @@
 #                            ("vision-only"; allowed, labeled, partial)
 #       NUMBER_PRECISION_DIFFERS  same value, other digits (0.5 vs 0.50):
 #                            a human check, never a pass
-#       NUMBER_SIGN_AMBIGUOUS  (numbers-v6, 1.8.0 S3-C1b, W-a) inside the
+#       NUMBER_SIGN_AMBIGUOUS  (numbers-v6, 1.8.0, W-a) inside the
 #                            quote the only token printing the claim's digits
 #                            (either sign) follows a spaced dash after a word
 #                            or a closing bracket ("of – 0.30"): minus or
@@ -502,7 +500,7 @@
 #       read as the number; a claim without the letter matches it
 #       NUMBER_MISSING       anything else (a changed digit or a dropped minus
 #                            sign fails here, the spaced form "= - 0.041"
-#                            included from numbers-v4; "both" declares a text
+#                            included (numbers-v4); "both" declares a text
 #                            reading, so a number in no text lane fails). A
 #                            minus deleted INSIDE a quote is caught by the
 #                            quote-number rule (check 2), not here
@@ -526,15 +524,15 @@
 #     is raised to review (verdict NEEDS_REVIEW), with no other code change.
 #   6 Vision consistency: with vision_mode "off" or vision_validated false,
 #     every claim with source "vision"/"both" and every vision_only digest is
-#     a FAIL (VISION_UNAVAILABLE_CLAIM). lit_verify does not decide model
-#     identity (the Option C orchestrator audit does). From 1.6.0 it fails
+#     a FAIL (VISION_UNAVAILABLE_CLAIM). The card gate does not decide model
+#     identity (`lit_verify audit` does). It fails
 #     closed on an unvalidated claim of validation: vision_validated true
 #     with a reader_model that is not on the embedded VISION_VALIDATED_LISTS
 #     entry for the card's vision_list_version (or an unknown version) is
 #     VISION_NOT_ON_LIST (fail; vision then counts as unavailable). Only the
 #     block is read: the route is front matter, so the model ID is checked
-#     against the version's rows for any route. From 1.8.0 part 5 (user
-#     decision 2026-10-28) a vision reading on a scan goes to a human: a
+#     against the version's rows for any route. A vision reading on a scan
+#     goes to a human (user decision 2026-10-28): a
 #     claim with source "vision" or "both", or a vision_only digest, citing a
 #     page whose RE-DERIVED class is "scanned" or whose re-derived flags hold
 #     ocr_layer_suspected is VISION_ON_SCAN_PAGE (review; once per cited page
@@ -668,11 +666,10 @@
 #   normal   not flagged `scanned` by pdf_ingest
 #   scanned  TRULY scanned: flagged `scanned` (< 200 non-whitespace anchor
 #            chars) AND one embedded image covers >= TRULY_SCANNED_IMAGE_
-#            AREA_MIN of the page area (PROVISIONAL; from 1.8.0 the image
-#            evidence is re-derived from the source bytes, `pdfimages -list`
-#            and, where needed, pdfplumber, § Re-derivation; it was parsed
-#            from pdf_ingest's recorded flag_evidence "covers W% x H% of the
-#            page"); also when image evidence is unavailable (pdfimages lists
+#            AREA_MIN of the page area (PROVISIONAL; the image evidence is
+#            re-derived from the source bytes, `pdfimages -list` and, where
+#            needed, pdfplumber, § Re-derivation); also when image evidence
+#            is unavailable (pdfimages lists
 #            no image in the document AND pdfplumber is unavailable; a
 #            missing pdfimages is exit 10), the conservative reading. Its
 #            content is in the image, so every

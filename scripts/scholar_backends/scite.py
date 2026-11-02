@@ -71,8 +71,8 @@ TALLY_FIELDS = ("supporting", "contradicting", "mentioning", "unclassified", "to
 # Retraction-check status vocabulary (the template's): native notice statuses
 # are matched by stem, most severe first, so a variant spelling ("Retraction
 # Notice", "withdrawn") still maps to the severe class. A published comment
-# ("Comment", measured 2026-10-11) maps to "commented" (1.4.0, user decision
-# Checkpoint 2, 2026-10-12): it is not an editorial change to the paper, so
+# ("Comment", measured 2026-10-11) maps to "commented" (user decision,
+# 2026-10-12): it is not an editorial change to the paper, so
 # it ranks with "none" (SEVERITY below and the core's `retractions`) and
 # never raises a combined status. Anything else is the soft "updated" (a
 # notice exists, of no harder kind). The native value is always kept

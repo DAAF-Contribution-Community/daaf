@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # =============================================================================
 # pdf_text_common.py - shared text normalization for DAAF's PDF-layer
-#                      framework CLIs (added 2026-10-13, Lit Review S3, FE-2)
+#                      framework CLIs
 # =============================================================================
 #
 # Imported by scripts/pdf_ingest.py (two-extractor agreement on SKELETON
-# text) and, from FE-3, by scripts/lit_verify.py (quote anchoring). One
+# text) and by scripts/lit_verify.py (quote anchoring). One
 # definition of NORMALIZE and SKELETON keeps both tools comparing text the
 # same way; a change to either changes what counts as "the same text" for
 # both, so bump NORMALIZE_VERSION with any behavior change to them and record
@@ -38,8 +38,8 @@
 # code points NFKC produces, e.g. U+2011 NON-BREAKING HYPHEN -> U+2010). Both
 # passes are idempotent, so this changes nothing else.
 #
-# This module is part of standalone argparse CLIs (pdf_ingest.py, and
-# lit_verify.py from FE-3): the documented exception to DAAF's
+# This module is part of standalone argparse CLIs (pdf_ingest.py and
+# lit_verify.py): the documented exception to DAAF's
 # no-function-definitions rule (CLAUDE.md § Code Style, "standalone CLI tools
 # requiring argparse"). The functions here are pure (no I/O, no state).
 # NORMALIZE/SKELETON are covered by tests/python/test_pdf_ingest.py; the
@@ -52,14 +52,13 @@
 #                         and their constants (lit_verify only)
 #   NUMBER_RULES_VERSION  number normalization, comparison and locality,
 #                         including the unique-row rule (lit_verify)
-#   COLUMN_CHECK_VERSION  (2026-10-23, FE-5g) the column-not-checked
-#                         LABEL on cleared numbers (§ COLUMN_CHECK); it
-#                         changes no number status, so it is versioned apart
-#                         from NUMBER_RULES_VERSION
+#   COLUMN_CHECK_VERSION  the column-not-checked LABEL on cleared numbers
+#                         (§ COLUMN_CHECK); it changes no number status, so
+#                         it is versioned apart from NUMBER_RULES_VERSION
 #   lit_verify records all of these in every card_check JSON. OVERLAP_VERSION
 #   (the overlap_score diagnostic) is recorded by pdf_ingest.
 #
-# --- Quote match ladder (added 2026-10-15, FE-3) ----------------------------
+# --- Quote match ladder -----------------------------------------------------
 #   Evaluated in this order for a quote cited to page P (or the declared
 #   range P..P+1 when page_end is given); the first hit wins:
 #   REDACTED_SPAN  the quote holds a scrub/redaction token or fence text: it
@@ -89,7 +88,7 @@
 #   MIN_QUOTE_WORDS words AND its SKELETON occurs exactly once across all
 #   pages' anchor text and page boundaries (plus all OCR text when it matched
 #   in OCR). The caller applies this rule and the sparse-page waiver.
-#   ladder-v2 (2026-10-23, S3-A, review finding B2): the QUOTE-NUMBER rule,
+#   ladder-v2 (2026-10-23): the QUOTE-NUMBER rule,
 #   applied by the caller to every claim quote that passes on any tier. The
 #   number tokens of the quote (parse_numbers on the quote as written, sign
 #   included) must equal, in order, the number tokens of the page span it
@@ -100,7 +99,7 @@
 #   readings of a plain space between digit groups (equal under either is
 #   agreement). lit_verify grades a mismatch QUOTE_NUMBERS_DIFFER (review),
 #   never a pass. The tiers themselves are unchanged.
-#   ladder-v3 (2026-10-27, S3-C1b, review cycle 2 NB2): the quote-number rule
+#   ladder-v3 (2026-10-27): the quote-number rule
 #   (quote_number_check(); quote_numbers_agree() is its 3-tuple form) also
 #   fails when (a) a token's superscript or footnote-letter marks differ
 #   ("10³" over a printed "10⁻³"), or (b) the page span prints a SIGN-SHAPED
@@ -116,7 +115,7 @@
 #   cannot read as a sign, below). (c) A spaced dash read sign-ambiguous on
 #   the page (numbers-v6), or any spaced dash before a quote token, compares
 #   the two tokens without their sign (the dash itself is checked by (b)).
-#   ladder-v4 (2026-10-27, S3-D, review cycle 3 quality W1): (b) is symmetric.
+#   ladder-v4 (2026-10-27): (b) is symmetric.
 #   A sign-shaped dash the QUOTE prints before a number where the page prints
 #   no dash at that SKELETON position fails too (why "sign-dash-added"): "rose
 #   by – 0.30" or "(Girls)−0.30" over a page printing "by 0.30" / "(Girls)
@@ -131,7 +130,7 @@
 #   printed: one inside the span, one just before its first char, and one the
 #   line-break rejoin deleted (`dashed`, e.g. "of –\n0.30").
 #
-# --- Number rules (added 2026-10-15, FE-3) ----------------------------------
+# --- Number rules -----------------------------------------------------------
 #   U+2212, U+2013, U+FE63, U+FF0D directly before a digit -> "-"; then NFKC
 #   (fullwidth digits). "-" is a SIGN only at the start or after whitespace
 #   or one of ( [ { = < > : ; , / ~ (so "2019-2020" is two positive numbers);
@@ -145,22 +144,21 @@
 #   compare_number(): same Decimal value AND same digit string -> "exact";
 #   same value, different digit string (0.5 vs 0.50) -> "precision" (a
 #   warning for a human, never a pass); otherwise no match.
-#   numbers-v2 (2026-10-19, FE-5): LOCALITY. An exact page token
+#   numbers-v2 (2026-10-19): LOCALITY. An exact page token
 #   must also overlap the claim quote's matched span (+- NUMBER_NEAR_CHARS,
 #   chosen 0: inside the quote); quote_spans() / number_near_spans() below.
 #   The caller grades a page-level hit that is not local as a review item.
-#   numbers-v3 (2026-10-22, FE-5c): a second locality path, the
+#   numbers-v3 (2026-10-22): a second locality path, the
 #   UNIQUE-ROW rule (quote_row(), number_in_row(); § ROW_RULE below): the
 #   quote's leading label identifies exactly one lane B row on the page and
 #   that row prints the value. An ambiguous label falls back to in-quote.
 #   overlap_score() is the order-free character overlap, a
 #   diagnostic pdf_ingest records beside `agreement` (OVERLAP_VERSION).
-#   column-check-v1 (2026-10-23, FE-5g): column_values() (§ COLUMN_CHECK
+#   column-check-v1 (2026-10-23): column_values() (§ COLUMN_CHECK
 #   at the end) counts the comparable values a cleared number's clearing
 #   text prints; lit_verify labels the number "column-not-checked" when there
 #   are two or more. A label only: no number status changes.
-#   numbers-v4 (2026-10-23, S3-A, review findings B1, B3 and the superscript
-#   finding):
+#   numbers-v4 (2026-10-23):
 #     SPACED SIGN (B1): a "-" separated from the number by spaces/tabs and at
 #       most one newline is a sign when the char before the dash (skipping
 #       spaces/tabs) is one of SIGN_CONTEXT or the text starts there
@@ -187,14 +185,15 @@
 #     ROW RULE GUARDS (B3): § ROW_RULE (label >= ROW_LABEL_MIN_CHARS = 3
 #       letters, a cell-like tail, a table/numeric page, a quote that starts
 #       at a row start).
-#   numbers-v5 (2026-10-23, S3-B1, S3-A2 open question 1): a fifth row-rule
+#   numbers-v5 (2026-10-23): a fifth row-rule
 #     guard, the ANCHOR CELL: on the raw anchor line where the quote's match
 #     begins, the identified row label must stand as a cell (what follows it
-#     on that line is cell-like: row_label_is_cell()). Closes the two holes
-#     S3-A2 left (a prose sentence starting with a row label word,
-#     "ORGANIZATION and other models; ...", and a lane B fragment row "the 1"
-#     that any quote starting with "the" identified). Applied by the caller.
-#   numbers-v6 (2026-10-27, S3-C1b, review cycle 2 NB2 and W-a; user-approved
+#     on that line is cell-like: row_label_is_cell()). Closes two holes the
+#     four numbers-v4 guards leave (a prose sentence starting with a row label
+#     word, "ORGANIZATION and other models; ...", and a lane B fragment row
+#     "the 1" that any quote starting with "the" identified). Applied by the
+#     caller.
+#   numbers-v6 (2026-10-27; user-approved
 #   principle: when the parser cannot be sure a sign or a digit belongs to the
 #   number, the claim goes to review or fails, never to a silent pass):
 #     FOOTNOTE LETTER (NB2): a number followed by exactly ONE letter of
@@ -332,7 +331,7 @@ def normalize_map(text):
                 s[m.start() - 1].isalpha() and s[m.end():m.end() + 1].isdigit())):
             # INTENT: "749–\n756" / "6-\nyear": the rejoin fuses a number with
             #   what follows; the number view splits there (a token boundary).
-            #   S3-A2: the mirror case "K-\n12" / "COVID-\n19" (a letter before
+            #   The mirror case "K-\n12" / "COVID-\n19" (a letter before
             #   the dash, a digit after): the rejoin fuses the number INTO the
             #   word before it ("K12"), which hides it from the number rules,
             #   so a genuine quote "K-12" read as QUOTE_NUMBERS_DIFFER.
@@ -361,10 +360,11 @@ def normalize_map(text):
     return (norm, [r for _, r, _ in out], tagged("lost"), tagged("split"), tagged("dashed"), tagged("ambig"))
 
 
-# §§ MATCH_LADDER (MATCH_LADDER_VERSION; added 2026-10-15, FE-3)
-# PROVISIONAL: set from the design research before any real paper was
-#   read; the S3 bake-off on real papers calibrates them; uniqueness is the real test, and the length floor keeps
-#   short common phrases ("citation quality") from passing by luck.
+# §§ MATCH_LADDER (MATCH_LADDER_VERSION)
+# PROVISIONAL: set from the design research and kept after the bake-off
+#   on five real papers (2026-10-19), where uniqueness, not the length
+#   floor, decided the outcome; uniqueness is the real test, and the length
+#   floor keeps short common phrases ("citation quality") from passing by luck.
 MIN_QUOTE_CHARS = 40
 MIN_QUOTE_WORDS = 6
 FUZZ_SCORE_CUTOFF = 95.0
@@ -582,7 +582,7 @@ def quote_identity(quote, doc, include_ocr=False):
             words < MIN_QUOTE_WORDS, "identifying": not reasons, "reason": "; ".join(reasons)}
 
 
-# §§ NUMBERS (NUMBER_RULES_VERSION; added 2026-10-15, FE-3)
+# §§ NUMBERS (NUMBER_RULES_VERSION)
 # numbers-v4: also before a spaced gap (the spaced-sign rule decides whether
 #   the "-" is a sign).
 NUMBER_MINUS_RE = re.compile("[\u2212\u2013\ufe63\uff0d](?=[ \\t]*\\n?[ \\t]*\\.?\\d)")
@@ -780,7 +780,7 @@ def compare_number(claim, candidates):
     return ("precision", precision) if precision else (None, None)
 
 
-# §§ NUMBER_LOCALITY (numbers-v2; added 2026-10-19, FE-5, user decision)
+# §§ NUMBER_LOCALITY (numbers-v2; user decision 2026-10-19)
 # A claimed number printed somewhere on the cited page is not enough: a page
 # token printing it must overlap the place where the claim's quote matched,
 # widened by NUMBER_NEAR_CHARS normalized chars on each side. With the
@@ -814,12 +814,12 @@ NUMBER_NEAR_CHARS = 0
 #   lane_b_row_hit() and row_label_skeleton() are kept so that measurement can
 #   be re-run. The gate never calls them. numbers-v3 uses quote_row() below.
 LANE_B_LABEL_RE = re.compile(r"[^\W\d_]+")
-# numbers-v3 (2026-10-22, FE-5c, user decision): the UNIQUE-ROW rule. A
+# numbers-v3 (2026-10-22, user decision): the UNIQUE-ROW rule. A
 #   number also clears when the claim's quote identifies exactly one lane B
 #   row on the page and that row prints the value (quote_row(),
 #   number_in_row()). A row label shorter than this many letters never
 #   identifies a row (single letters are footnote marks and panel labels).
-# numbers-v4 (2026-10-23, S3-A, review finding B3): the row path accepted any
+# numbers-v4 (2026-10-23): the row path accepted any
 #   lane B line with letters before a number, on any page, so a PROSE quote
 #   "identified" a prose line and cleared its numbers (a review probe found
 #   62 identifying prose windows in 4 papers). Four guards, all required:
@@ -888,7 +888,7 @@ def number_near_spans(claim, norm, spans, window):
     return compare_number(claim, toks)[0] == "exact"
 
 
-# §§ NUMBER_VIEW (numbers-v4; added 2026-10-23, S3-A)
+# §§ NUMBER_VIEW (numbers-v4)
 # A page text's numbers in NORMALIZE coordinates (where quote_spans() puts a
 # quote), read without NORMALIZE's losses: `text` is NORMALIZE(page) with the
 # raw superscript / subscript chars and thin-space group separators put back
@@ -1075,7 +1075,7 @@ def quote_number_check(quote, view, spans):
     qmap = normalize_map(quote)
     qnorm, qdashed = (qmap[0], qmap[4]) if qmap else (normalize(quote), frozenset())
     qflags = sign_dash_flags(qnorm, 0, len(qnorm), qdashed)
-    # INTENT (ladder-v4, review cycle 3 W1): the quote's dashes that can read
+    # INTENT (ladder-v4): the quote's dashes that can read
     #   as a sign, for the "added" direction.
     qsign = sign_dash_flags(qnorm, 0, len(qnorm), qdashed, sign_only=True)
     first = None
@@ -1160,7 +1160,7 @@ def lane_b_row_hit(claim, quote, lane_b_text, min_shared):
     return None
 
 
-# §§ ROW_RULE (numbers-v3; added 2026-10-22, FE-5c, user decision)
+# §§ ROW_RULE (numbers-v3; user decision 2026-10-22)
 # pdftotext serializes most tables column-major, so a quote holding a row
 # label rarely reaches the cell; lane B (pypdfium2) keeps each row on one line.
 # The row rule uses lane B only as LOCALITY evidence for a value the anchor
@@ -1251,7 +1251,7 @@ def quote_row(quote, lane_b_texts):
 
 
 def row_label_is_cell(view, start, label_letters):
-    # numbers-v5 (2026-10-23, S3-B1, S3-A2 open question 1): True when the
+    # numbers-v5 (2026-10-23): True when the
     # identified row label stands as a CELL on the raw anchor line where the
     # quote's match begins at norm position `start`: what follows the label's
     # last letter up to the end of that line is cell-like (letters <=
@@ -1295,7 +1295,7 @@ def overlap_score(a, b):
     return round(2.0 * common / (len(sa) + len(sb)), 4)
 
 
-# §§ COLUMN_CHECK (COLUMN_CHECK_VERSION; added 2026-10-23, FE-5g, user decision)
+# §§ COLUMN_CHECK (COLUMN_CHECK_VERSION; user decision 2026-10-23)
 # A LABEL, not a number rule: it changes no number status. When a number
 # clears (in-quote or row), the gate knows WHERE the value is printed but not
 # WHICH of several cells the claim means. In "Overage 0.58 0.57 0.59 0.56"

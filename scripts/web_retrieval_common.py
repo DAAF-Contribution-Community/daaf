@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # =============================================================================
 # web_retrieval_common.py - shared guards and provenance helpers for DAAF's
-#                           framework retrieval CLIs (added 2026-10-02)
+#                           framework retrieval CLIs
 # =============================================================================
 #
 # Imported by scripts/scholar_search.py (and, through it, the adapter modules
@@ -45,7 +45,7 @@ from urllib.parse import unquote
 # INTENT: the allowed root is the DAAF checkout this module lives in, derived
 #   from the module's own real path: /daaf in the container, and the runner's
 #   checkout (e.g. /home/runner/work/daaf/daaf) in CI, where a hardcoded
-#   "/daaf" refused every test destination (CI run 38481261881, 2026-10-13).
+#   "/daaf" would refuse every test destination.
 # REASONING: no environment variable or flag can move the root, so the guard
 #   gains no escape hatch. Fail closed: if the derived directory is not a DAAF
 #   root (no CLAUDE.md beside scripts/), or is "/", fall back to "/daaf".
@@ -64,16 +64,16 @@ SLUG_MAX = 60
 LINE_WRAP = 2000
 
 # Injection-shaped patterns scrubbed from every agent-facing text. The first
-# five are web_fetch.py's set (the two tag patterns widened here, see below;
-# web_fetch.py keeps its own five-pattern copy and does not import this module,
-# see above; S3-B2 mirrored the widened tag pair into it, and
-# tests/python/test_web_fetch_scrub.py keeps the two pairs identical); the
+# five are web_fetch.py's set, with the two tag patterns widened (below).
+# web_fetch.py keeps its own five-pattern copy and does not import this module
+# (see above); its copy carries the same widened tag pair, and
+# tests/python/test_web_fetch_scrub.py keeps the two pairs identical. The
 # rest close two gaps the user's toolkit found: a forged fence marker would
 # let a hostile abstract "close" the UNTRUSTED block early, and a line
 # imitating a tool's own status output could fake extra triage rows. Matching
 # is case-insensitive.
-# 2026-10-23 (S3-B1, review W3): the two tag patterns are widened (never
-# narrowed) to spaced, attribute and line-broken forms: whitespace after "<"
+# The two tag patterns are wide (never narrow them) and match spaced,
+# attribute and line-broken forms: whitespace after "<"
 # and around "/" ("< /system-reminder>"), and anything but "<" or ">" before
 # the closing ">" ("<system-reminder >", "<system-reminder x=1>",
 # "<system-reminder\n>"). The tag NAME is removed even when no ">" closes it

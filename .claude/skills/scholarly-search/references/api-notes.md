@@ -8,8 +8,9 @@ constant or comment in the adapter it points to. Truth hierarchy: live
 measurement > vendor docs > this skill.
 
 The raw responses, run and probe scripts, derived tables and review probes
-behind these entries are the maintainer's development records and are not
-in this repository, so each entry states its method and its result itself.
+behind these entries are the maintainer's development records, and the notes
+behind the 2026-09-27 entry stayed in the user's own project. Neither is in
+this repository, so each entry states its method and its result itself.
 The labeled set of the `verify` calibration ships as
 `tests/python/fixtures/scholar_search/verify_calibration_set.json`. To check
 an entry, re-measure it through the CLI as described above.
@@ -523,7 +524,7 @@ mark, the series-name NOT FOUND, and the word-check set-asides.
 
 ## Measured behavior: records file and Semantic Scholar citation contexts (2026-10-31)
 
-**What changed (tool 1.7.0, S4 dispatch D2).** Open list commands write
+**What changed (tool 1.7.0).** Open list commands write
 `<base>.records.json` (`scholar-records-v1`) for `lit_corpus`; `cites` and
 `refs` take an opt-in `--s2-context` (one Semantic Scholar `/citations` or
 `/references` call, one retry, then the OpenAlex list stands).
@@ -578,7 +579,7 @@ Rockoff 2014 *AER*.
 - 1 of 10 runs was `rate_limited`; 4 needed the retry.
 - Read `--s2-context` as a sample of sentences, not coverage.
 
-**What changed in response (tool 1.8.0, S4 fix round F3, 2026-11-01).** A
+**What changed in response (tool 1.8.0, 2026-11-01).** A
 200 with no rows and the elision notice is `context_status: elided`, with a
 plain digest sentence (no sentences exist; their absence means nothing;
 retrying will not help) and its own stderr NOTE. `cites --s2-context` under
@@ -738,9 +739,10 @@ three processes started together:
 - Rate headers on every response: `x-ratelimit-cost-usd 0`,
   `-credits-used 0`, `-limit 10000`, `-limit-usd 1`, `-remaining 10000`,
   `-remaining-usd 1`, `-reset 15139`→`15138`, `-onetime-remaining 0`,
-  `-prepaid-remaining-usd 0`. The same nine names as on 2026-10-02 (S1 row
-  3). **No header states a per-second limit or the plan tier**, so the gate
-  cannot read it from the API. `-limit-usd 1` and `-prepaid-remaining-usd 0`
+  `-prepaid-remaining-usd 0`. The same nine names as on 2026-10-02 (entry
+  "2026-10-02 — re-measurement", row 3). **No header states a per-second
+  limit or the plan tier**, so the gate cannot read it from the API.
+  `-limit-usd 1` and `-prepaid-remaining-usd 0`
   match the documented free-key budget (inference: this container's key is a
   free key, so the 30 req/s tier applies).
 - Cross-process gate: the three processes started together recorded
@@ -750,7 +752,7 @@ three processes started together:
 - Not measured: keyless behavior (a key is set), any boolean-heavy search
   (paid, $0.001), and the gate under real contention. No 429 was sought.
 
-## Measured behavior: Elicit usage lag + S2 review fixes (2026-10-12)
+## Measured behavior: Elicit usage lag + spend-safety fixes (2026-10-12)
 
 - **Usage accounting lags.** `elicit-usage` read `percentUsed` **0** at
   2026-10-11T18:34:53Z, 18:35:06Z and 18:55:41Z (around a 1-result search
@@ -761,7 +763,7 @@ three processes started together:
   other use of the account is assumed (not verifiable), and the split
   between the search and the report is unknown. A usage bracket read right
   after a call can show nothing yet.
-- **Tool 1.4.0 (fix round S-D, mocked tests only, no live paid call).** The
+- **Tool 1.4.0 (mocked tests only, no live paid call).** The
   quality review's spend probes (cases A1–A6, B, C, E) showed accepted-but-odd creates (non-JSON, no or
   non-UUID sessionId, 201, empty, oversize) left no uncertain marker, a
   same-origin 307 loop re-POSTed the create 6 times with an empty
@@ -774,9 +776,9 @@ three processes started together:
   errors tolerated; the duplicate guard ignores punctuation; `elicit-search`
   is sent once (it may draw quota). openapi.json declares only 202 for the
   create (read 2026-10-12). Details: `elicit.md`.
-- **Tool 1.5.0 (fix round S-E, 2026-10-12, mocked tests only, no live or
-  paid call).** Review cycle 2's spend and redirect probes
-  (cases N1 and N5) showed that a 301/302/303
+- **Tool 1.5.0 (2026-10-12, mocked tests only, no live or paid call).**
+  Review cycle 2's spend probes (cases N1 and N5) and a redirect probe
+  showed that a 301/302/303
   on the create POST was followed as a GET, and a 404/401/403/400 or 429 on
   that GET was read as "not started", so a re-run created a second paid
   report; the 429 was also logged as the POST's status with no redirect
@@ -797,26 +799,27 @@ three processes started together:
   create with a recovery ID, not a followed redirect. Unit suite: 245 tests,
   OK (6 expected failures). Details: `elicit.md` §
   "Closing an uncertain create".
-- **Tool 1.5.1 (fix round S-F, 2026-10-12, user-authorized 4th round; mocked
-  tests only, no live or paid call).** Review cycle 3's close-path probe
-  found three ways to close an
-  uncertain create without evidence that its report exists: S3, `elicit-resume
-  SID --for-question Q` on a session the MANIFEST tied to another question
-  closed Q's create while SID kept counting for the other question (a plain Q
-  re-run then created again: `exit=13 creates=1`); S5, a `--new-session` whose
-  create never started (direct 402, or no key) still superseded the old
-  create (`exit=13 creates=1`); S11, a status read of `unknown` closed it
-  (`exit=13 creates=1`). Now: that `--for-question` is refused (exit 2, no
-  request, `elicit_for_question_conflict`); a supersession counts only with
-  the call's own outcome `uncertain`/`accepted` or an orphaned checkpoint
+- **Tool 1.5.1 (2026-10-12, user-authorized 4th round; mocked tests only,
+  no live or paid call).** Review cycle 3's close-path probe found three
+  ways to close an uncertain create without evidence that its report
+  exists: (1) `elicit-resume SID --for-question Q` on a session the
+  MANIFEST tied to another question closed Q's create while SID kept
+  counting for the other question (a plain Q re-run then created again:
+  `exit=13 creates=1`); (2) a `--new-session` whose create never started
+  (direct 402, or no key) still superseded the old create (`exit=13
+  creates=1`); (3) a status read of `unknown` closed it (`exit=13
+  creates=1`). Now: that `--for-question` is refused (exit 2, no request,
+  `elicit_for_question_conflict`); a supersession counts only with the
+  call's own outcome `uncertain`/`accepted` or an orphaned checkpoint
   (`elicit_supersession_effective` in the row); a status of `unknown` (or
   none) closes nothing (`elicit_close_skipped`). Re-run of the reviewer's
-  probes: S3, S5 (both) and S11 now `exit=2 creates=0`
-  on the plain re-run; every other case unchanged. Also: the S1 fixtures
-  `s2_search.json`, `s2_snippets.json` and `eric_search.json` are now
-  synthetic (live S1 shapes, invented values; user decision 2026-10-12;
-  checked: shapes identical, no old or live content value left). Unit
-  suite: 248 tests, OK (6 expected failures).
+  probes: cases (1), (2) (both variants) and (3) now `exit=2 creates=0` on
+  the plain re-run; every other case unchanged. Also: the fixtures
+  `s2_search.json`, `s2_snippets.json` and `eric_search.json` from the
+  2026-10-02 live runs are now synthetic (the live shapes, invented
+  values; user decision 2026-10-12; checked: shapes identical, no old or
+  live content value left). Unit suite: 248 tests, OK (6 expected
+  failures).
 
 ## Measured behavior: Elicit (2026-10-11)
 
@@ -846,8 +849,8 @@ Elicit output in the repository (see `elicit.md` § Storage).
   calls or an account with `extraUsage` enabled (`spentUsdCents`).
   **Superseded 2026-10-12:** the 0 → 0 readings were lagged accounting, not
   sub-resolution cost; the same counter read 3 the next day, so the two calls
-  together drew about 3% of the allowance (entry "Elicit usage lag + S2
-  review fixes (2026-10-12)" above). The per-call split is still unknown.
+  together drew about 3% of the allowance (entry "Elicit usage lag +
+  spend-safety fixes (2026-10-12)" above). The per-call split is still unknown.
 - **Statuses seen:** 200 (usage, search, report reads) and 202 (create).
   Not seen: 402, 409, 429, a pause, `failed`, `unknown` (mocked tests only).
   `rate_headers: null` on all 7 Elicit responses (no rate-limit headers).
@@ -972,7 +975,8 @@ unchanged).**
   orthographies) and Ɣ/ɣ (Ewe and other West African orthographies) are
   the most likely to appear in an author name. They are left out because
   their romanization is not settled (ǝ as a or e; ɣ as g, gh or x). This is
-  a candidate for the held-out validation, not a guess made now.
+  a candidate for the held-out validation, not a guess made now. The list
+  above is partial: the 118 letters are not all listed in this log.
 - **No new alternatives.** `TRANSLIT_ALTERNATIVES` is unchanged. A
   second romanization of ə ("Memmedov" for "Məmmədov") still fails. This is
   stated as a cost below.
@@ -993,8 +997,8 @@ unchanged).**
   delete the reviewer's artifacts):
   - The mocked gate matrix (100 mocked runs, 6 routes). The list
     `non-genuine CONFIDENT` is `[("hyphen half 'Paul Sartre'",
-    'design')]`. That cell is P-1, a design matter deferred to
-    pre-S5. B-1 "N-2 gap: 3rd given differs" is WEAK on all six routes.
+    'design')]`. That cell is P-1, a design matter left for a later
+    decision. B-1 "N-2 gap: 3rd given differs" is WEAK on all six routes.
     The collision "Liyev" is MISMATCH. "Aliyev" and
     "Habib" are CONFIDENT. `genuine MISMATCH: []`.
     EXISTS, NOT FOUND and fabricated titles never reach CONFIDENT (the
@@ -1345,7 +1349,8 @@ decision" elsewhere in this log):
 - the `verify` rule layer owns *identity* (the record exists, exact or
   near-exact title, numbers, year, surname, retraction) and is either
   certain or steps aside to WEAK;
-- a forthcoming model **citation adjudicator** (built with the S5 agents)
+- a forthcoming model **citation adjudicator** (built later, with the
+  Literature Review mode's agents)
   resolves the WEAK band (semantic equivalence);
 - a human resolves what the adjudicator marks uncertain.
 
@@ -2269,7 +2274,7 @@ timestamp 2026-10-02T19:08:51Z). OpenAlex spend $0
 Still not measured: Crossref polite pool (no Crossref call was needed in this
 probe); Unpaywall's daily limit.
 
-## 2026-10-02 — S1 re-measurement (DAAF port, live via the CLI)
+## 2026-10-02 — re-measurement (DAAF port, live via the CLI)
 
 Spend for the whole smoke run: about $0.006 of the OpenAlex $1/day budget
 (remaining $0.9939 after the last call).
