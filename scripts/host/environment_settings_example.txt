@@ -59,7 +59,7 @@
 # ============================================================================
 #   [1] Install & Update Settings ........ (set BEFORE install/update)
 #   [2] Claude Code Authentication ....... (restart required)
-#   [3] Model Routing (advanced) ......... (restart required)
+#   [3] Model Routing .................... (restart required)
 #   [4] Alternative Providers & Shim ..... (restart required)
 #   [5] Data Source API Keys ............. (restart required)
 #   [6] Workspace & Developer Options .... (varies, noted per key)
@@ -290,7 +290,7 @@
 #
 #
 # ============================================================================
-# [3] Model Routing (advanced)  (restart required)
+# [3] Model Routing  (restart required)
 # ============================================================================
 # You need this section whenever Claude Code talks to anything OTHER than plain
 # Anthropic: OpenRouter (Option C in [2] -- whether you use GPT, GLM, or Claude
@@ -306,10 +306,10 @@
 # Code itself also asks for two more tier names: 'haiku' for its own
 # housekeeping calls and 'fable' for Anthropic's top tier. On a non-Claude
 # endpoint those Claude names don't exist, so you map all four to YOUR models.
-# If you set none of these on a non-Claude session, DAAF's model-tier guard
-# blocks its Claude-tier specialist dispatches, because they would ask for a
-# Claude model your route doesn't serve. Set at least OPUS and SONNET; setting
-# all four is recommended.
+# If neither OPUS nor SONNET is set on a non-Claude session, DAAF's model-tier
+# guard blocks its Claude-tier specialist dispatches, because they would ask for
+# a Claude model your route doesn't serve (HAIKU or FABLE alone does not lift
+# the block). Set at least OPUS and SONNET; setting all four is recommended.
 #
 # ----------------------------------------------------------------------------
 # Four-tier routing: tell Claude Code which of YOUR models each tier means
@@ -475,9 +475,9 @@
 #
 # THE [1m] SLUG SUFFIX: appending [1m] to a model slug advertises a 1M window to
 # Claude Code, which budgets the full window locally and then strips [1m] before
-# sending (so the shim / backend see the bare slug). It is VERIFIED for the
-# direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
-# OpenRouter slugs -- so on Option C prefer the explicit
+# sending (so the shim / backend see the slug without [1m]). It is VERIFIED for
+# the direct-OpenAI shim lane (Option F in [4]) but UNTESTED on
+# "openai/"-prefixed OpenRouter slugs -- so on Option C prefer the explicit
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS above. On the ChatGPT-subscription lane ([4.3]),
 # the [1m] hint cannot raise the Codex backend's measured 919k ceiling: set the
 # override CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 per section [4.3]. DAAF keeps
@@ -570,10 +570,12 @@
 # MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
 # (see section [3] for what these four keys do -- set all four). Use BARE OpenAI
 # slugs here -- no "openai/" prefix -- and keep [1m] on every one of them.
-# gpt-6-sol / gpt-6-luna are the recommended pair but are UNTESTED on both shim
-# lanes: the shim forwards any slug unchanged, while DAAF's recorded shim-lane
-# tests used gpt-5.6-sol and gpt-6-astra. If OpenAI rejects a GPT-6 slug, use
-# gpt-5.6-sol[1m] / gpt-5.6-luna[1m] instead. Why the HAIKU line matters here:
+# gpt-6-sol / gpt-6-luna are the recommended pair. In DAAF's test of reading
+# pictures of PDF pages through a ChatGPT subscription (2026-10-28), OpenAI
+# accepted both slugs. Neither has run a full DAAF session, and DAAF has no
+# recorded test of either with an OpenAI API key. The shim forwards any
+# slug unchanged. If OpenAI rejects a GPT-6 slug, use gpt-5.6-sol[1m] /
+# gpt-5.6-luna[1m] instead. Why the HAIKU line matters here:
 # left unmapped, Claude Code's housekeeping calls have arrived as Claude Haiku
 # requests that the ChatGPT backend rejects (observed in DAAF's provider-shim
 # logs, July 2026, dozens of them).
@@ -584,9 +586,9 @@
 #ANTHROPIC_DEFAULT_HAIKU_MODEL=gpt-6-luna[1m]
 #
 # GPT-6 Astra is available as an alternative strong-tier slug on this lane --
-# gpt-6-astra[1m] (bare; the [1m] hint is verified here). Use it on BOTH strong
-# lines (FABLE and OPUS) in place of gpt-6-sol[1m]; the fast lines stay as they
-# are. One caveat: Astra does NOT accept reasoning effort "none" -- the shim
+# gpt-6-astra[1m] (no "openai/" prefix; keep [1m], which is verified here). Use
+# it on BOTH strong lines (FABLE and OPUS) in place of gpt-6-sol[1m]; the fast
+# lines stay as they are. One caveat: Astra does NOT accept reasoning effort "none" -- the shim
 # raises a requested "none" to "low" (see REASONING-EFFORT CONTROL in 4.4).
 # --- To activate, remove the leading '#' (replaces the two Sol lines): ---
 #ANTHROPIC_DEFAULT_FABLE_MODEL=gpt-6-astra[1m]
@@ -601,9 +603,9 @@
 # the shim raises a requested "none" to "low".
 #
 # CONTEXT WINDOW: CLAUDE_CODE_MAX_CONTEXT_TOKENS is LANE-SPECIFIC -- the two auth
-# lanes hit different effective ceilings (the ChatGPT/Codex backend is capped far
-# below the model's true 1M window), so it is set per-lane in 4.2 / 4.3 below,
-# not here.
+# lanes hit different effective ceilings (the ChatGPT/Codex backend is capped at
+# about 919,000 tokens, below the model's 1,050,000-token window), so it is set
+# per-lane in 4.2 / 4.3 below, not here.
 #
 # SESSION-START MODEL: nothing extra to set. DAAF's default session model is
 # the 'opus' tier, so with the four lines above in place your sessions should

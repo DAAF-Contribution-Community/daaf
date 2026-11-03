@@ -42,7 +42,7 @@ Install and begin using it in as little as 10 minutes from a fresh install with 
   <a href="https://youtu.be/BPlR9bXZxnY"><strong>Getting Started video (30 min)</strong></a> &nbsp;|&nbsp;
   <a href="user_reference/01_installation_and_quickstart.md"><strong>Installation Guide</strong></a> &nbsp;|&nbsp;
   <a href="#full-user-documentation-reference-and-recommended-next-steps"><strong>User Documentation Reference</strong></a> &nbsp;|&nbsp;
-  <a href="https://daafguide.substack.com/"><strong>DAAF Field Guide Substack</strong></a> &nbsp;|&nbsp;
+  <a href="https://openaugments.substack.com/"><strong>Open Augments Field Guide Substack</strong></a> &nbsp;|&nbsp;
   <a href="CONTRIBUTING.md"><strong>Contributing to DAAF</strong></a>
 </p>
 
@@ -189,7 +189,7 @@ The base framework comes ready to analyze any or all of the 40+ foundational pub
 **Included data sources:** CCD, CRDC, EdFacts, EADA, FSA, IPEDS, MEPS, NACUBO, NCCS, NHGIS, PSEO, SAIPE, College Scorecard, Campus Safety, plus County Presidential Election Returns 2000-2024 from the MIT Election Data and Science Lab (this one needs a Harvard Dataverse API key; see [Set up data source API keys](user_reference/01_installation_and_quickstart.md#set-up-data-source-api-keys))
 
 **Methodological support:**
-Difference-in-differences &bull; Fixed/random effects &bull; Mixed effects models &bull; Instrumental variables &bull; Regression discontinuity &bull; Synthetic control &bull; Event studies &bull; Propensity score matching &bull; Time series analysis &bull; Complex survey analysis &bull; Geospatial analysis & spatial statistics &bull; Network analysis & community detection &bull; Decomposition analysis &bull; Quantile regression &bull; Exploratory data analysis &bull; DAG modeling &bull; Predictive analytics &bull; Cross-validation &bull; Algorithmic fairness assessment &bull; Cluster analysis &bull; Wild bootstrap inference &bull; Sensitivity analysis
+Difference-in-differences &bull; Fixed/random effects &bull; Mixed effects models &bull; Instrumental variables &bull; Regression discontinuity &bull; Synthetic control &bull; Event studies &bull; Propensity score matching &bull; Time series analysis &bull; Complex survey analysis &bull; Geospatial analysis & spatial statistics &bull; Network analysis & community detection &bull; Decomposition analysis &bull; Quantile regression &bull; Exploratory data analysis &bull; DAG modeling &bull; Predictive analytics &bull; Cross-validation &bull; Algorithmic fairness assessment &bull; Cluster analysis &bull; Wild bootstrap inference &bull; Sensitivity analysis &bull; Supervised machine learning &bull; Unsupervised learning (clustering, dimension reduction) &bull; Text as data (coding open-ended text into variables)
 
 **Literature, PDFs, and web pages:**
 - *Literature search and review:* DAAF searches OpenAlex, Semantic Scholar, and ERIC together, follows citations forward and backward from key papers, finds legal open-access copies, and checks every reference it cites against a database record and for retractions. You choose how deep a review goes: a quick scan of abstracts, a standard review that reads the key papers in full, or a formal systematic review in which you make the judgment calls. A free OpenAlex API key is strongly recommended; see [Set up data source API keys](user_reference/01_installation_and_quickstart.md#set-up-data-source-api-keys).

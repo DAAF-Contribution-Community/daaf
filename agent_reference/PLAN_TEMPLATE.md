@@ -710,7 +710,7 @@ The analysis notebook is an audit document compiled from the final, already-run 
 
 ## Validation Checkpoints
 
-Each checkpoint is an automated validation block inside the scripts, and prints its result in a banner such as `CP1 VALIDATION: PASSED`. **STOP If** lists what makes the verdict `FAILED`, which halts the pipeline; **WARNING If** lists what makes it `PASSED WITH WARNINGS`, which continues with the warning recorded. A check whose project value is missing reports `[NOT VERIFIED]`, which also fails the checkpoint. The bands below restate `agent_reference/VALIDATION_CHECKPOINTS.md`, which owns them; fill in the Expected column for this project.
+Each validation check below is an automated block inside the scripts, and prints its result in a banner such as `CP1 VALIDATION: PASSED`. **STOP If** lists what makes the verdict `FAILED`, which halts the pipeline; **WARNING If** lists what makes it `PASSED WITH WARNINGS`, which continues with the warning recorded. A check whose project value is missing reports `[NOT VERIFIED]`, which also fails the whole validation check. The bands below restate `agent_reference/VALIDATION_CHECKPOINTS.md`, which owns them; fill in the Expected column for this project.
 
 ### CP1: After Data Fetch
 
@@ -759,7 +759,7 @@ Each checkpoint is an automated validation block inside the scripts, and prints 
 
 ### Pre-Output Verification (Stage 12)
 
-*Not a script checkpoint — an agent checklist owned by data-verifier, classified `human-verify`.
+*Not a script validation check — an agent checklist owned by data-verifier, classified `human-verify`.
 See `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stage 12).*
 
 **Expected Values:**

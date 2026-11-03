@@ -245,12 +245,12 @@ The table lists how each kind of output was compared with the original and how c
 
 <!-- Agent note (deleted at RV-4): add one **Declared artifact** row for every output the script declares. Preserve artifact-helper JSON and its exit code for each supported Parquet/exact pair. Compare PNGs visually. Compare tables/models through a defined inspectable saved representation; opaque models remain `NOT DIRECTLY VERIFIED`. Exact-byte `MATCH` means byte identity only. Never infer a match from successful execution, another matching dimension, or a log-helper summary. -->
 
-#### Checkpoint Comparison
+#### Validation Check Comparison
 
 A script with built-in automated validation prints a banner such as `CP2 VALIDATION: PASSED` in its execution log. This table compares the banner each run printed.
 
-| Checkpoint | Original Result | Reproduced Result | Evidence Source | Assessment |
-|------------|-----------------|-------------------|-----------------|------------|
+| Validation Check | Original Result | Reproduced Result | Evidence Source | Assessment |
+|------------------|-----------------|-------------------|-----------------|------------|
 | [CP1/CP2/CP3/CP4] | [PASSED / PASSED WITH WARNINGS / FAILED + count line + key metrics] | [PASSED / PASSED WITH WARNINGS / FAILED + count line + key metrics] | [Both execution logs / unavailable] | [MATCH/DIVERGED/NOT DIRECTLY VERIFIED] |
 
 <!-- Agent note (deleted at RV-4): transcribe the verdict line exactly as each log printed it — the three legal CP strings are `PASSED`, `PASSED WITH WARNINGS`, and `FAILED` (QA logs print `QA{n} RESULT: PASSED | WARNING | BLOCKER`). `PASSED WITH WARNINGS` is not `PASSED`; recording it as one manufactures a match. Include each log's count line (`Checks: N passed, N warnings, N failed, N not verified, N skipped`): two runs can print the same verdict while differing in what was actually checked, and a run with `not verified > 0` verified less than its verdict suggests. Differing count lines under an identical verdict are a `DIVERGED` assessment, not a match. -->

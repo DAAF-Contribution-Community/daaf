@@ -142,7 +142,7 @@ One useful way to think about where AI is right now -- and why people seem to di
 
 Each dimension is necessary but insufficient on its own. A brilliant model with no tools can only chat. Powerful tools connected to a weak model will produce sophisticated-looking garbage. A strong model with great tools but vague instructions will go confidently in the wrong direction. The real capability of any AI system is a product of all three working together -- which is why blanket statements about "what AI can and can't do" are so often wrong. It depends enormously on the configuration.
 
-Notice that the second and third dimensions are exactly what we just covered: the Body is tooling that lets a model act on the world and curate its own context, and the Instructions are context engineering made concrete. That's what DAAF is, at its core -- a **context engineering framework designed specifically for research workflows**. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [DAAF Field Guide](https://daafguide.substack.com/p/ai-progress-mental-model) has more detail on these concepts if you'd like to explore them further.
+Notice that the second and third dimensions are exactly what we just covered: the Body is tooling that lets a model act on the world and curate its own context, and the Instructions are context engineering made concrete. That's what DAAF is, at its core -- a **context engineering framework designed specifically for research workflows**. Everything in DAAF -- the skills, the agents, the orchestrator, the progressive loading of reference files -- is fundamentally an answer to the question: "What context does Claude need right now to do this specific research task well?" The [Open Augments Field Guide](https://openaugments.substack.com/p/ai-progress-mental-model) has more detail on these concepts if you'd like to explore them further.
 
 This framework also explains why people have such wildly different experiences with AI. Someone chatting casually with a basic web interface is experiencing one narrow slice of what's possible. Someone using Claude Code with DAAF and specific, well-crafted prompts is operating in a genuinely different capability regime -- not because the underlying model is different, but because the other two dimensions are dramatically more developed. The information gradient here is steep: a lot of people are still having the "AI is dumb, it can't count the Rs in strawberry" experience, while people who have invested in tooling and instruction quality are seeing capabilities that are invisible to casual users, and vice versa. This is a significant part of why the discourse around AI can feel so polarized -- people are often talking past each other because they're working with very different combinations of these three dimensions.
 
@@ -241,7 +241,7 @@ Other skills cover statistical modeling (such as `statsmodels`, `pyfixest`, `fix
 
 <img width="2398" height="1053" alt="orchestrator_diagram" src="https://github.com/user-attachments/assets/d142b457-3459-498b-b718-4b0cb7123d29" />
 
-> **Key takeaway:** DAAF works like a research lab. You give direction to a lab manager (the orchestrator), who delegates work to specialists (agents) who consult reference materials (skills).
+> **Key takeaway:** DAAF works like a research lab. You give direction to a lab director (the orchestrator), who delegates work to specialists (agents) who consult reference materials (skills).
 
 Four things to keep in mind as you use DAAF:
 
@@ -381,7 +381,7 @@ A standard or formal review runs in **rounds**: one cycle of searching, choosing
 - A stakeholder report synthesizing key findings, methodology, and limitations
 - A lessons-learned document with data and process insights
 
-**What to expect:** Your active part is the scope check at the start and four "check-in" points where DAAF pauses for your review and approval; between them DAAF works independently in the background, and at the end comes whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. How long a run takes depends heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and review. Plan accordingly!
+**What to expect:** Your active part is the scope check at the start and four checkpoints where DAAF pauses for your review and approval; between them DAAF works independently in the background, and at the end comes whatever time you (rightfully, importantly) dedicate to reviewing the final outputs. And, of course, whatever API fees you incur along the way. How long a run takes depends heavily on how complex your query is: primarily how many scripts it needs to write, rewrite, and review. Plan accordingly!
 
 **When to use it:** When you have a genuine research question you want to explore with data. It can be as simple as "How has enrollment in rural schools changed over the past decade?" or as complex as "What's the relationship between school-level poverty, access to advanced coursework, and disciplinary disparities, controlling for school size and urbanicity?" DAAF will scope accordingly: after you confirm the mode, it reads anything you pointed it to (a prior study, a memo, a codebook) and opens with a pre-flight scope check -- the data sources, years, and geography it proposes, and anything your materials changed -- for your approval before any exploration starts.
 
@@ -639,7 +639,7 @@ educational equity?
 
 ### Level 7: Replication Exercises
 
-The ultimate test of an analytical framework: can it reproduce results from published research? I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute's Learning Curve series](https://www.urban.org/projects/learning-curve), which leverage the same Education Data Portal datasets DAAF currently has access to. Many of these studies have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison.
+The ultimate test of an analytical framework: can it reproduce results from published research? I am actively trying to assess DAAF's performance by replicating studies conducted by the [Urban Institute's Learning Curve series](https://www.urban.org/projects/learning-curve), which leverage the same Education Data Portal datasets DAAF works with. Many of these studies have [open-source code available](https://github.com/UrbanInstitute/The-Learning-Curve/tree/main) for direct comparison.
 
 You'll want to pick one where the data was solely pulled from the Education Data Portal, and then think about exactly how to rephrase and pose the research question to DAAF to reasonably target the same questions and variables if full, actual replication is your goal. Feel free to steer it as needed conceptually to align.
 
@@ -711,7 +711,7 @@ research/2026-01-24_School_Poverty_Analysis/
 
 > **Note on execution language:** The folder structure is identical whether using Python or R. The differences are in file extensions (`.py` vs `.R` for scripts) and notebook format (`.py` marimo notebook vs `.qmd` Quarto notebook). Your execution language is set in CLAUDE.md's User Preferences section -- DAAF handles the rest automatically.
 
-R here is a core execution lane engineered for parity with Python, not an afterthought: both languages run the same pipeline through the same stages, with the same validation, the same adversarial code review, and the same reproducibility standards. Python is the default, and you choose R once in your preferences — everything downstream adapts. Parity is the goal we build toward rather than a finished fact, so a handful of method-level differences remain (a few methods are currently deeper in one language than the other); those are named honestly in the [technical FAQ's R-and-language section](07_faq_technical.md#q-are-there-any-known-differences-between-python-and-r-support), and reports of any gap you hit are always welcome.
+R here is a core execution lane engineered for parity with Python, not an afterthought: both languages run the same pipeline through the same stages, with the same validation, the same adversarial code review, and the same reproducibility standards. Python is the default, and you choose R once in your preferences — everything downstream adapts. Parity is the goal we build toward rather than a finished fact, so a handful of method-level differences remain (a few methods are deeper in one language than the other); those are named honestly in the [technical FAQ's R-and-language section](07_faq_technical.md#q-are-there-any-known-differences-between-python-and-r-support), and reports of any gap you hit are always welcome.
 
 **Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python and R scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 
@@ -809,7 +809,7 @@ You can also open the `.py` file in any text editor -- marimo notebooks are just
 
 ### STATE.md and LEARNINGS.md
 
-**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, checkpoint statuses, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
+**STATE.md** -- A session state file that tracks DAAF's progress through the analysis. It records transformation progress, validation check results, runtime decisions, and any blockers encountered. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the end-of-pipeline verification), any Runtime Risks discovered during execution, and Citations Accumulated (a running ledger of data source, methodological, software, and reporting standard citations extracted as each script executes). If a session is interrupted (context exhaustion, network issues, etc.), STATE.md allows DAAF to resume exactly where it left off. You generally don't need to read this unless debugging a session issue.
 
 **`logs/`** -- Session transcripts collected into the project folder at completion. When a project finishes, DAAF gathers all session transcripts that touched the project's files into this directory, making each project self-contained for audit purposes. If an analysis spanned multiple sessions, you'll find transcripts from each one here. These are copies of the global archives in `.claude/logs/sessions/` -- see the [Session Logs and Diagnostics FAQ](07_faq_technical.md#session-logs-and-diagnostics) for details on formats and storage. You can browse these logs visually using the **DAAF Log Explorer**, an interactive timeline that shows orchestrator actions, subagent dispatches, and tool calls in your browser — open it from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` → **3) View Session Logs**), or run `bash view_logs.sh` (`.\view_logs.ps1` on Windows) directly from your `daaf-docker` folder on the host. See the [Installation Guide — Viewing Session Logs](01_installation_and_quickstart.md#viewing-session-logs-in-your-browser) for details.
 
@@ -847,9 +847,9 @@ This is where DAAF really earns its keep -- where it most directly confronts tha
 
 ### Layer 1: Primary Validation (CP1-CP4)
 
-These are validation checks *embedded directly in the analysis scripts themselves*. Every script the research-executor writes includes built-in assertions and checks that run automatically:
+These are validation checks *embedded directly in the analysis scripts themselves*. They run on their own, unlike the four checkpoints where DAAF pauses for your review. Every script the research-executor writes includes built-in assertions and checks:
 
-| Checkpoint | When It Runs | What It Catches |
+| Validation check | When It Runs | What It Catches |
 |------------|-------------|-----------------|
 | **CP1** | After data fetch | Empty datasets, missing required columns or expected years, >90% missing values in a required column |
 | **CP2** | After data cleaning | >90% of rows lost in cleaning, suppression above the Plan's threshold (50% by default for education data), coded missing values left in the cleaned data |
@@ -860,15 +860,15 @@ Joins get an extra check of their own (`JOIN VALIDATION`), which looks for rows 
 
 A separate **Pre-Output Verification** pass happens later, at delivery time. That one is not embedded in a script -- it is a checklist the `data-verifier` agent works through, confirming that the report has every section the Plan promised, that the outputs match the Plan's commitments, that every Research Outcome is addressed with evidence, and that any Hypotheses are transparently assessed.
 
-Each checkpoint reports one of three results -- **PASSED**, **PASSED WITH WARNINGS**, or **FAILED** -- along with a count of how many individual checks passed, warned, failed, could not be verified, or were skipped as not applicable. A check that *could not run* (a required input was missing) counts as "not verified" and makes the whole checkpoint FAILED, because a check that never ran has not actually validated anything. You can read these results yourself in each script's execution log: every checkpoint prints a count line such as `Checks: 6 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped`, followed by its verdict, such as `CP2 VALIDATION: PASSED WITH WARNINGS`.
+Each validation check reports one of three results -- **PASSED**, **PASSED WITH WARNINGS**, or **FAILED** -- along with a count of how many individual checks passed, warned, failed, could not be verified, or were skipped as not applicable. A check that *could not run* (a required input was missing) counts as "not verified" and makes the whole validation check FAILED, because a check that never ran has not actually validated anything. You can read these results yourself in each script's execution log: every validation check prints a count line such as `Checks: 6 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped`, followed by its verdict, such as `CP2 VALIDATION: PASSED WITH WARNINGS`.
 
-If a checkpoint fails, execution stops. Period. DAAF doesn't try to power through -- it reports the failure and either attempts a fix or escalates to you.
+If a validation check fails, execution stops. Period. DAAF doesn't try to power through -- it reports the failure and either attempts a fix or escalates to you.
 
 ### Layer 2: Secondary Validation (QA1-QA4b)
 
-After every single script passes its embedded checkpoints, a *completely separate agent* -- the `code-reviewer` -- independently inspects both the code and its output data. The code-reviewer approaches each script with an adversarial mindset, specifically looking for:
+After every single script passes its embedded validation checks, a *completely separate agent* -- the `code-reviewer` -- independently inspects both the code and its output data. The code-reviewer approaches each script with an adversarial mindset, specifically looking for:
 
-| QA Checkpoint | When It Runs | What It Catches |
+| Quality review | When It Runs | What It Catches |
 |---------------|-------------|-----------------|
 | **QA1** | After fetch scripts | Schema problems, ID uniqueness violations, suspicious distributions |
 | **QA2** | After cleaning scripts | Incorrect coded value handling, flawed filtering logic |
@@ -910,7 +910,7 @@ Here's how a typical task flows through the system during a Full Pipeline analys
 
 Each checkpoint message is headed with the work just finished, such as "Checkpoint: Discovery Complete" or "Checkpoint: Planning Complete", and a progress bar shows how far along the analysis is.
 
-That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And after the scope check at the start, you get four mandatory check-in points where DAAF pauses and waits for your explicit approval before continuing.
+That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And after the scope check at the start, you get four mandatory checkpoints where DAAF pauses and waits for your explicit approval before continuing.
 
 **Between those checkpoints, you won't be left in the dark.** DAAF doesn't assume you're watching every step as it happens -- you might kick off a round of work and step away. So whenever it finishes a round and hands control back to you, it ends with a plain-language briefing of what happened since your last message: the bottom line first, then the key findings, decisions, and any files produced, and finally anything it needs from you to keep going. The four formal checkpoints above are the big, structured versions of this; the briefings in between are lighter, but they follow the same habit of catching you up rather than making you piece together what happened from the transcript.
 
@@ -978,7 +978,7 @@ That's it. The restart prompt does the heavy lifting of re-establishing context 
 - **A session restart is not a failure state.** We're constantly and deliberately toe-ing the line between "giving enough context for Claude to do a good job at what we're asking for" and "filling up the context so much that it gets confused and does weird stuff" to optimize our performance. The session restart is our way of maintaining that balance deliberately as a pressure valve.
 - **Let DAAF finish its current "atomic unit" before stopping it as the context window begins to fill.** If DAAF is in the middle of executing a script and running QA, try to let it complete that cycle before stopping. Interrupting mid-script is recoverable but creates a messier restart.
 - **You can always check progress.** At any point, you can ask DAAF: "What's the current status of the analysis?" and it'll tell you where things stand.
-- **Complex analyses may take several sessions.** A nine-source, multi-year analysis with extensive transformations and multiple statistical tests can easily fill up multiple context windows. This is fine -- I've designed the system such that each session picks up seamlessly and as painlessly as possible from where the last one left off. But it definitely can be annoying doing it multiple times!
+- **Complex analyses may take several sessions.** A nine-source, multi-year analysis with extensive transformations and multiple statistical tests can easily fill up multiple context windows. This is fine -- I've designed the system so that each session picks up where the last one left off, as smoothly and painlessly as possible. But it definitely can be annoying doing it multiple times!
 
 ---
 

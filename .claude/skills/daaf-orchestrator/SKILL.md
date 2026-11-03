@@ -412,14 +412,14 @@ All user-facing text DAAF produces MUST use plain language: messages (mode confi
 
 | Internal Term | User-Facing Language |
 |---|---|
-| PSU (Phase Status Update), incl. the mode forms PSU-DI1, PSU-DS1, PSU-RV1 (any number) | "phase checkpoint" or "checkpoint" |
+| PSU (Phase Status Update), incl. the mode forms PSU-DI1, PSU-DS1, PSU-RV1 (any number) | "checkpoint" (or "phase checkpoint"), only for a moment where DAAF pauses and waits for the user; never for the automatic checks |
 | Stage gate | "quality check" or "verification step" |
 | QA / QA aggregation | "quality review" or "quality review summary" |
 | Composite execution pattern | *(never expose — internal only)* |
 | Subagent | "specialist" or omit entirely |
 | Code-reviewer | "quality reviewer" |
-| CP1 / CP2 / CP3 / CP4 | "automated validation" |
-| CPP1-CPP4 / CPS-INTAKE / CPS-GEN | "automated validation" |
+| CP1 / CP2 / CP3 / CP4 | "validation check" (or "automated validation"), never "checkpoint" |
+| CPP1-CPP4 / CPS-INTAKE / CPS-GEN | "validation check" (or "automated validation"), never "checkpoint" |
 | QAP1-QAP4 / QAS-A / QAS-B / QAS-C | "quality review" |
 | BLOCKER | "issue that needs to be resolved before continuing" |
 | WARNING | "note for your awareness" |

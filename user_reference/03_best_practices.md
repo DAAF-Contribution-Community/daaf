@@ -9,7 +9,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 ## Table of Contents
 - [**Writing Effective Prompts**](#writing-effective-prompts)
 - [**Reviewing the Plan Before Execution**](#reviewing-the-plan-before-execution)
-- [**Interpreting Validation Checkpoints and STOP Conditions**](#interpreting-validation-checkpoints-and-stop-conditions)
+- [**Interpreting Validation Checks and STOP Conditions**](#interpreting-validation-checks-and-stop-conditions)
 - [**Reviewing Notebooks, Reports, and Script Logs**](#reviewing-notebooks-reports-and-script-logs)
 - [**Human Oversight Responsibilities**](#human-oversight-responsibilities)
 - [**When and How to Request Revisions**](#when-and-how-to-request-revisions)
@@ -125,13 +125,13 @@ When in doubt, just tell DAAF what you are thinking. It will let you know if the
 
 ---
 
-## Interpreting Validation Checkpoints and STOP Conditions
+## Interpreting Validation Checks and STOP Conditions
 
 DAAF runs a *lot* of validation. This is very much by design -- the core philosophy is "every transformation has a validation, no exceptions." But as a user, you do not need to understand every internal check. What you need to understand is: **what the results mean and when you need to act.**
 
-### Understanding Checkpoint Results (CP1-CP4)
+### Understanding Validation Check Results (CP1-CP4)
 
-DAAF has four primary validation checkpoints embedded directly in its code scripts. These run automatically during execution and check for operational problems -- things like empty data, missing columns, or data loss. You'll meet their names in two places: each script's execution log opens the check with a banner such as `CP1 VALIDATION: POST-FETCH` and ends it with a verdict line such as `CP1 VALIDATION: PASSED`, and the research notebook repeats that verdict in a **Status:** line under each script.
+DAAF has four primary validation checks embedded directly in its code scripts. These run automatically during execution and check for operational problems -- things like empty data, missing columns, or data loss. You'll meet their names in two places: each script's execution log opens the check with a banner such as `CP1 VALIDATION: POST-FETCH` and ends it with a verdict line such as `CP1 VALIDATION: PASSED`, and the research notebook repeats that verdict in a **Status:** line under each script.
 
 **CP1: Post-Fetch Validation** -- *"Did we get the data we expected?"*
 
@@ -158,7 +158,7 @@ This runs after DAAF has processed the raw data -- filtering out coded values (l
 
 **What PASSED WITH WARNINGS means:** Something is notable but not fatal -- most often, suppression above 20% in a key column, but also more than half the rows removed during cleaning, or coded values still present in the clean data. Enough data remains for analysis, but your results may be less precise, particularly for subgroup breakdowns. When suppression falls between 30% and 50%, DAAF pauses, shows you the rate and what it affects, and asks whether to proceed.
 
-**What FAILED means:** Suppression exceeds 50% in a key column, meaning more than half of its values are suppressed (50% is the default for education data; the Plan sets the threshold for each kind of data). DAAF will STOP -- this is a hard threshold because analysis on data with >50% suppression is generally unreliable. You will need to decide whether to narrow your scope, change your data source, or acknowledge this as a fundamental limitation. This checkpoint also fails, and DAAF stops, if cleaning removed more than 90% of the rows.
+**What FAILED means:** Suppression exceeds 50% in a key column, meaning more than half of its values are suppressed (50% is the default for education data; the Plan sets the threshold for each kind of data). DAAF will STOP -- this is a hard threshold because analysis on data with >50% suppression is generally unreliable. You will need to decide whether to narrow your scope, change your data source, or acknowledge this as a fundamental limitation. This validation check also fails, and DAAF stops, if cleaning removed more than 90% of the rows.
 
 **CP3: Post-Transformation Validation** -- *"Did the data transformation do what we intended?"*
 
@@ -197,9 +197,9 @@ Separately, just before delivery, DAAF's final reviewer (the `data-verifier` age
 
 This is a review checklist rather than automated code, so it is one of the places your own judgment matters most.
 
-### Reading a Checkpoint Result
+### Reading a Validation Check Result
 
-Each checkpoint prints a tally before its verdict, something like:
+Each validation check prints a tally before its verdict, something like:
 
 ```
 Checks: 5 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped
@@ -212,7 +212,7 @@ Three things are worth knowing about that output:
 - **"not verified" means a check could not run** -- a required input was missing, empty, or the wrong type. DAAF treats this as a failure rather than a pass, because a check that never ran has not validated anything. (In the independent quality reviews described below, it is at least a WARNING.)
 - **"skipped" means a check was explicitly declared not applicable**, with a stated reason -- for example, a data source that has no suppression code at all. Skips are always counted and always explain themselves; they are never silent.
 
-A checkpoint where every check was skipped (the tally shows `0 passed, 0 warnings, 0 failed`) has not validated anything either, so DAAF marks it FAILED too.
+A validation check where every individual check was skipped (the tally shows `0 passed, 0 warnings, 0 failed`) has not validated anything either, so DAAF marks it FAILED too.
 
 ### When DAAF Stops and Asks for Guidance
 
@@ -233,7 +233,7 @@ When DAAF stops, it will present the issue in a structured format: what happened
 
 ### Quality Review Findings: BLOCKER vs. WARNING vs. INFO
 
-In addition to the automated checkpoints above, every script DAAF writes gets independently reviewed by its quality reviewer (the `code-reviewer` agent), a separate specialist from the one that wrote the script. Think of this as a second pair of eyes -- an adversarial reviewer whose job is to find problems the original code might have missed. The reviewer classifies its findings by severity. You'll see these three labels in the review scripts in `scripts/cr/` and in the QA Findings Summary in STATE.md; DAAF's checkpoint messages to you describe a WARNING as a note for your awareness and a BLOCKER as an issue that needs to be resolved before continuing.
+In addition to the automated validation checks above, every script DAAF writes gets independently reviewed by its quality reviewer (the `code-reviewer` agent), a separate specialist from the one that wrote the script. Think of this as a second pair of eyes -- an adversarial reviewer whose job is to find problems the original code might have missed. The reviewer classifies its findings by severity. You'll see these three labels in the review scripts in `scripts/cr/` and in the QA Findings Summary in STATE.md; DAAF's checkpoint messages to you describe a WARNING as a note for your awareness and a BLOCKER as an issue that needs to be resolved before continuing.
 
 **INFO:** An observation that does not indicate a problem but is worth noting. Example: "The dataset has 47 states represented instead of 50, which is expected given the query filters." You will generally not see these unless you dig into the review scripts.
 
@@ -312,7 +312,7 @@ Every script file in the `scripts/` directory has its execution log appended to 
 
 - **When it ran**, the command that ran it, and how long it took
 - **Exit code** (0 = success, non-zero = failure)
-- **Capture status** -- a `Capture:` line that says `COMPLETE` when the whole record was saved. Trust the checkpoint results in a log only when it says `COMPLETE`.
+- **Capture status** -- a `Capture:` line that says `COMPLETE` when the whole record was saved. Trust the validation results in a log only when it says `COMPLETE`.
 - **Output** -- everything the script printed during execution (row counts, validation messages, summary statistics), with any warnings or errors included where they occurred
 
 If a script failed, you will also find versioned revisions:
@@ -351,7 +351,7 @@ These safeguards run without your involvement throughout the pipeline:
 
 | Safeguard | What It Does | Where It Happens |
 |-----------|-------------|-----------------|
-| **Primary Checkpoints (CP1-CP4)** | Validates data after download, cleaning, transformation, and analysis/visualization -- catches empty data, missing columns, data loss, invalid results, missing figures | Embedded in every script |
+| **Primary Validation Checks (CP1-CP4)** | Validates data after download, cleaning, transformation, and analysis/visualization -- catches empty data, missing columns, data loss, invalid results, missing figures | Embedded in every script |
 | **Independent quality review** | Adversarial review of every script by a separate quality reviewer (the `code-reviewer` agent) | After every script execution |
 | **Iteration Protocol** | Forces every transformation into small steps: DESCRIBE, CODE, EXECUTE, VALIDATE, DECIDE | During all data operations |
 | **Batch Size Limits** | Maximum 1-2 transformations per execution cycle to prevent error accumulation | While downloading, cleaning, transforming, and analyzing data |
@@ -402,7 +402,7 @@ LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an L
 3. **Check the script execution logs.** Even if the agent hallucinated a variable name, the script's execution log will show whether the code actually worked. Failed scripts with `KeyError` or unexpected empty results often point back to a loading failure.
 4. **Check Session logs to verify reference loading sequences.** DAAF's built-in session log viewer was built in part to help users monitor exactly whether and when DAAF loads proper reference files to inform its work. Load up your session and explore how the orchestrator and subagents loaded reference files accordingly.
 
-The good news is that DAAF's dual-layer validation (CP checkpoints + QA code review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during QA review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
+The good news is that DAAF's dual-layer validation (automatic validation checks + quality review) will catch many loading failures *downstream* -- a script that uses fabricated variable names will typically fail at execution or get flagged during quality review. But catching failures early, at the loading stage, saves time and prevents the cascading revisions that follow a fundamentally misinformed script.
 
 ---
 
@@ -570,9 +570,9 @@ Secondly, one of the most common attack surfaces for Claude Code is what's known
 
 The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users.
 
-DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checkpoints help catch outputs that don't match the data, even if something slips past the initial guardrails.
+DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checks help catch outputs that don't match the data, even if something slips past the initial guardrails.
 
-**A note on data privacy:** All computation happens locally on your machine, and DAAF's safety hooks block the common commands for uploading files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through your model provider's servers as part of the conversation -- that's how Claude Code works. Which provider receives it depends on how you connect: Anthropic, with an Anthropic subscription or API key; OpenAI, with an OpenAI API key or ChatGPT subscription through DAAF's provider shim; OpenRouter and the model provider it routes to, with OpenRouter; or your organization's own cloud account, with AWS Bedrock or Google Vertex AI. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your provider, your specific license, and your access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-where-is-my-data-sent-what-about-privacy) for the full picture.
+**A note on data privacy:** All computation happens locally on your machine, and DAAF's safety hooks block the common commands for uploading files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through your model provider's servers as part of the conversation -- that's how Claude Code works. Which provider receives it depends on how you connect: Anthropic, with an Anthropic subscription or API key; OpenAI, with an OpenAI API key or ChatGPT subscription through DAAF's provider shim (the small adapter, built into DAAF, that lets Claude Code use OpenAI's GPT models); OpenRouter and the model provider it routes to, with OpenRouter; or your organization's own cloud account, with AWS Bedrock or Google Vertex AI. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your provider, your specific license, and your access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-where-is-my-data-sent-what-about-privacy) for the full picture.
 
 If your data truly can't leave your environment, you're not out of options: DAAF includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report (or, at the highest disclosure tier, synthetic rows you generate yourself), and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
 
