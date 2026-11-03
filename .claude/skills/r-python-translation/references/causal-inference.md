@@ -507,7 +507,9 @@ fit.IV_Diag()
 
 ### IV without Fixed Effects
 
-**R (ivreg):**
+**R (ivreg):** `ivreg` is not installed in DAAF. In a DAAF R pipeline, fit plain
+2SLS with fixest, omitting the fixed-effects part:
+`feols(log_wage ~ experience | education ~ college_prox, data = df)`.
 ```r
 library(ivreg)
 fit <- ivreg(log_wage ~ experience + education | experience + college_prox,
@@ -539,12 +541,11 @@ print(fit.first_stage)
 
 ### LIML and GMM (Beyond 2SLS)
 
-**R:** No standard LIML/GMM package in base fixest. The `ivreg` package supports
-LIML via `method = "LIML"`.
-
-```r
-fit <- ivreg(y ~ x + endo | x + z1 + z2, data = df, method = "LIML")
-```
+**R:** fixest fits 2SLS but not LIML or GMM-IV, and the `ivreg` package has no
+LIML either: its `method` options are `"OLS"`, `"M"` and `"MM"` (verified against
+the CRAN ivreg reference manual on 2026-11-02). No installed R package fits LIML
+or non-panel GMM-IV, so a DAAF R pipeline escalates them to the orchestrator; in
+Python, use linearmodels as below.
 
 **Python (linearmodels):**
 ```python
@@ -917,8 +918,8 @@ exporting the completed datasets.
 | **RD density test** | `rddensity::rddensity()` | `rddensity.rddensity()` | Very High | `pip install rddensity` | Same core authors (Cattaneo, Jansson, Ma) |
 | **IV + FE** | `fixest::feols()` | `pf.feols()` | Very High | Pre-installed | Identical 3-part formula |
 | **IV (2SLS, no FE)** | `ivreg::ivreg()` | `linearmodels.IV2SLS()` | High | Pre-installed (Python); R `ivreg` not pre-installed | Formula syntax differs |
-| **LIML** | `ivreg(method="LIML")` | `linearmodels.IVLIML()` | High | Pre-installed (Python); R `ivreg` not pre-installed | |
-| **GMM-IV** | Limited | `linearmodels.IVGMM()` | N/A | Pre-installed | Python has broader coverage |
+| **LIML** | No installed package (escalate; `ivreg` has no LIML) | `linearmodels.IVLIML()` | N/A | Pre-installed (Python) | Python only in DAAF |
+| **GMM-IV** | No installed package for non-panel GMM-IV (escalate); dynamic-panel GMM: `plm::pgmm()` | `linearmodels.IVGMM()` | N/A | Pre-installed (Python) | Python has broader coverage |
 | **Panel FE** | `plm::plm(model="within")` | `linearmodels.PanelOLS()` | High | Pre-installed | MultiIndex vs pdata.frame |
 | **Panel RE** | `plm::plm(model="random")` | `linearmodels.RandomEffects()` | High | Pre-installed | MultiIndex vs pdata.frame |
 | **Marginal effects** | `marginaleffects` | `marginaleffects` | High | Pre-installed | Same author; Python version is younger |

@@ -214,7 +214,7 @@ Which Stata command?
 
 **Fidelity key:** Very High = near-identical API (for rdrobust/binsreg, the same rdpackages/nppackages project across languages). High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
-> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas or `plm` cover most cases), and runtime installs are blocked in DAAF (`install.packages()` is refused both at the command line and inside executed scripts — see CLAUDE.md § Runtime Package Installation). If one of these packages is genuinely required, escalate to the user to add it to the Dockerfile (user additions block) and rebuild before use.
+> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas cover 2SLS with or without fixed effects; LIML and non-panel GMM-IV have no installed R package, so escalate; dynamic-panel GMM is `plm::pgmm()`), and runtime installs are blocked in DAAF (`install.packages()` is refused both at the command line and inside executed scripts — see CLAUDE.md § Runtime Package Installation). If one of these packages is genuinely required, escalate to the user to add it to the Dockerfile (user additions block) and rebuild before use.
 
 ## Library Versions
 
@@ -326,7 +326,7 @@ df <- df |> inner_join(districts, by = "school_id")
 | `ggplot2` | R-side static visualization -- detailed API for the graph twoway equivalent |
 | `plotly-r` | R-side interactive visualization -- no direct Stata equivalent |
 | `r-stats` | R-side general modeling -- covers base R stats, sandwich, lmtest (logit, probit, glm equivalents) |
-| `plm` | R-side panel/IV models -- covers xtreg equivalents (plm has no SUR estimator; for sureg see `systemfit` in regression-modeling.md) |
+| `plm` | R-side panel models -- covers xtreg equivalents and dynamic-panel GMM (`pgmm`, the xtabond equivalent); panel IV goes to `fixest` (plm has no SUR estimator; for sureg see `systemfit` in regression-modeling.md) |
 | `survey-r` | R-side survey analysis -- covers svyset and svy: prefix command equivalents |
 | `sf-terra` | R-side spatial data -- covers Stata spmap/spregress equivalents |
 | `tidymodels` | R-side ML -- covers limited teffects/matching equivalents |

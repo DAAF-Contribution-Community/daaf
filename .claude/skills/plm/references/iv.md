@@ -282,7 +282,7 @@ cross-sections (entities).
 | System estimation | No | No | SUR, IV3SLS |
 
 **Key routing:**
-- Panel IV (FE + endogenous): plm or fixest
+- Panel IV (FE + endogenous): fixest, DAAF's route (plm with instruments also works)
 - Dynamic panels (lagged DV): plm pgmm() (unique capability)
 - Cross-sectional IV with LIML/GMM: linearmodels (Python)
 - IV with high-dimensional FE: fixest

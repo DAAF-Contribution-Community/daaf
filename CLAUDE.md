@@ -203,7 +203,7 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 ### Subagent Context Monitoring
 
-If the `context-reporter` hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. **Every subagent must act on these signals.** Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
+**Every subagent must act on the utilization reports it receives.** If the `context-reporter` hook cannot measure a subagent's transcript it stays silent, so the absence of utilization reports is not a guarantee of NOMINAL status. Subagents that exhaust their context without reporting back waste the orchestrator's context budget (which must re-dispatch the work) and risk losing completed work.
 
 **Subagent-specific actions by threshold:**
 
@@ -337,7 +337,7 @@ Framework files never cite scratch: a file they need lives in a tracked home. Be
 
 ### Versioning & Naming
 
-**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. A failed script's fixes go into `_a`/`_b` revisions, at most 2 self-revisions before escalating (§ Execution Philosophy > Immutable script versioning). The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
+**Every change creates new version files — no in-place modifications.** Date-suffix convention: `2026-01-24_Title` → `2026-01-24a_Title` → `2026-01-24b_Title`; all versions remain in the same folder. A failed script's fixes go into `_a`/`_b` revisions (§ Execution Philosophy > Immutable script versioning), at most 2 self-revisions before escalating. The complete file-naming tables (plans, notebooks, reports, data, figures, preliminary notes) and stage-based script-naming/directory tables: `agent_reference/SCRIPT_EXECUTION_REFERENCE.md`.
 
 ### Subagent File Output
 

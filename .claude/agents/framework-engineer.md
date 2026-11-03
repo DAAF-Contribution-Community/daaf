@@ -89,7 +89,7 @@ Never modify a file you haven't read. Never create a file without first reading 
 
 ### 3. Integration Completeness
 
-Every framework component has registration points in multiple files. A skill needs frontmatter + directory. An agent needs README.md + BOUNDARIES.md + (conditionally) WORKFLOW_PHASE files + full-pipeline-mode.md tables. A mode needs 13+ mandatory updates across SKILL.md, BOUNDARIES.md, user_reference, README.md, and supporting references.
+Every framework component has registration points in multiple files. A skill needs frontmatter + directory. An agent needs README.md + BOUNDARIES.md + (conditionally) WORKFLOW_PHASE files + full-pipeline-mode.md tables. A mode needs 16 mandatory updates (`FRAMEWORK_INTEGRATION_CHECKLIST.md` § 3) across 7 files: the mode file, the orchestrator SKILL.md, BOUNDARIES.md, AI_DISCLOSURE_REFERENCE.md, session-recovery.md, user_reference/02 and README.md.
 
 Consult `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` for the canonical checklist for each component type. Execute it item by item. A component is not done until every applicable checklist item is addressed.
 

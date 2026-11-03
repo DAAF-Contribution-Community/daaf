@@ -345,7 +345,7 @@ Time series data typically exhibit some combination of:
 - **Cyclicality**: Longer-run fluctuations not tied to a fixed period (business cycles)
 - **Noise**: Irregular, unpredictable variation
 
-Descriptive time series analysis aims to characterize these components, not forecast or model them causally. For forecasting or formal time-series modeling (ARIMA/SARIMAX, VAR, stationarity testing, exponential smoothing), load the `statsmodels` skill (Python) or the `r-stats` skill (R) — their time-series references cover estimation, diagnostics, and forecasting workflows.
+Descriptive time series analysis aims to characterize these components, not forecast or model them causally. For forecasting or formal time-series modeling (ARIMA/SARIMAX, VAR, stationarity testing, exponential smoothing), load the `statsmodels` skill (Python) or the `r-stats` skill (R) — their time-series references cover estimation, diagnostics, and forecasting workflows. VAR in R escalates to the orchestrator (no installed R VAR package; see the data-scientist SKILL.md § Related Skills - When to Load > "Load for Specific Needs", Statistical modeling branch).
 
 ### Moving Averages for Trend Extraction
 

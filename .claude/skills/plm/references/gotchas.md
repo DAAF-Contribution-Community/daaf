@@ -125,7 +125,7 @@ one wastes time or limits capabilities.
 | Fama-MacBeth | plm (pmg, with reversed time-first index -- see models.md) | fixest has no FM |
 | Dynamic GMM (Arellano-Bond) | plm (pgmm) | Unique to plm |
 | 3+ way FE | fixest | plm max 2-way |
-| FE + IV combined | fixest or plm | Both support it |
+| FE + IV combined | fixest | DAAF's route (three-part formula); plm with instruments also works |
 | DiD / event study | fixest | plm has no DiD |
 | Publication tables (etable) | fixest | plm uses modelsummary |
 | Poisson/GLM with FE | fixest | plm is linear only |

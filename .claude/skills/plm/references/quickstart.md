@@ -357,7 +357,8 @@ pdf_bal <- make.pbalanced(pdf, balance.type = "fill")
   reversed, time-first index -- see `./models.md`)
 - Panel diagnostic tests (serial correlation, cross-sectional dependence, unit root)
 - Dynamic GMM (Arellano-Bond, Blundell-Bond)
-- Panel IV within entity-demeaned data
+- Panel IV outside fixest's scope, such as IV with random effects (DAAF routes
+  FE + IV to fixest; plm with instruments also works)
 
 **Use fixest when:**
 - High-dimensional fixed effects (3+ way FE)
@@ -371,7 +372,9 @@ pdf_bal <- make.pbalanced(pdf, balance.type = "fill")
 - Cross-sectional regression without panel structure
 - GLMs (logit, probit, Poisson) without fixed effects
 - Classical hypothesis tests (t-test, chi-squared)
-- Time series models (ARIMA, VAR)
+- Time series models (ARIMA; VAR has no installed R VAR package, so escalate to
+  the orchestrator, per the data-scientist skill's Statistical modeling branch of
+  "Load for Specific Needs")
 
 ---
 

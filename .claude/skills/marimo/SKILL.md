@@ -55,7 +55,7 @@ Each topic in `./references/` contains focused documentation:
 Load these skills together with marimo for comprehensive workflow support:
 
 **Always Load Together:**
-- `data-scientist` - Provides validation methodology and EDA principles that inform notebook structure
+- `data-scientist` - Provides validation methodology and EDA principles for the scripts a Stage 9 notebook archives, and documentation patterns for standalone marimo apps (its `references/code-documentation.md`)
 - `polars` - DataFrame operations for data transformations within notebooks
 
 **Load for Specific Features:**

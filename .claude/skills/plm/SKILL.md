@@ -117,7 +117,7 @@ What panel estimation method?
 +-- Fixed effects (within estimator)
 |   +-- 1-2 way FE, no IV --> plm (model = "within") or fixest feols
 |   +-- 3+ way FE --> fixest (plm max 2-way via twoways)
-|   +-- FE + IV combined --> plm with instruments or fixest 3-part formula
+|   +-- FE + IV combined --> fixest 3-part formula (DAAF's routing; plm with instruments also works)
 |   +-- FE + DiD --> fixest (plm has no DiD)
 +-- Random effects (GLS) --> plm (model = "random")
 |   --> ./references/models.md

@@ -148,6 +148,8 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Versioning & Na
 
 The table above adds the revision cases (statistical method change, report error) to the canonical table in `agent_reference/ERROR_RECOVERY.md` § Re-run Procedures.
 
+When a re-run script, QA review or validation fails, when prior-version data files or STATE.md turn out missing, corrupted or incomplete, or when the revision grows beyond its classification, follow `agent_reference/ERROR_RECOVERY.md` § Revision and Extension Mode Error Recovery.
+
 For stages that need re-execution, load `{SKILL_REFS}/full-pipeline-mode.md` and follow the relevant stage's Composite Execution Pattern. All QA requirements from the full pipeline apply to re-executed stages.
 
 **Wave barrier discipline (async dispatch).** Because re-execution reuses the full pipeline's wave-based dispatch, the same barrier applies. See `SKILL.md` § Subagent Coordination > Wave Barrier Discipline (Async Dispatch) for how results arrive; the barrier holds however they arrive. When re-executing stages that dispatch multiple subagents in a wave, treat mid-wave notifications as status-only — do not run gates, update STATE.md conclusions, assemble the Revision Status Update, or present interim findings to the user until EVERY member of the wave has returned, and synthesize once over the complete wave (a failed or early-returning agent still counts as a completion). See the full statement in `full-pipeline-mode.md` § "Wave-Based Parallel Execution" and the master statement in `SKILL.md` § Subagent Coordination.

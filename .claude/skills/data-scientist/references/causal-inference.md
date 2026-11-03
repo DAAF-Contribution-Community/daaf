@@ -263,11 +263,13 @@ threats. This is the central decision reference for Stage 8 analysis work.
 | **Instrumental Variables** | Endogenous treatment, valid instrument exists | Relevance, independence, exclusion restriction, monotonicity | LATE (compliers only) | Weak instruments, exclusion restriction violations | pyfixest (IV formula) |
 | **Regression Discontinuity** | Treatment assigned by score crossing a cutoff | Continuity at cutoff, no manipulation | ATE at the cutoff (sharp); LATE for compliers at the cutoff (fuzzy) | Sorting/manipulation, bandwidth sensitivity | rdrobust (installed) |
 | **Difference-in-Differences** | Policy change affects some units but not others | Parallel trends, no anticipation | ATT | Parallel trends violations, anticipation | pyfixest (did2s, lpdid) |
-| **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | scipy manual or pip install (see causal-synth.md) |
+| **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | Manual scipy implementation (see causal-synth.md); a dedicated package (pysyncon, synthdid) is not installed and needs a Dockerfile addition |
 
-*(The package column shows Python implementations; in R, map to `fixest` for FE/IV/DiD,
-`plm` for panel RE/IV-GMM, and base `stats` for regression with controls, per the
-Language Routing table in SKILL.md and the R library skills' own references.)*
+*(The package column shows Python implementations; in R, map to `fixest` for FE/IV/DiD
+(panel IV included), `plm` for panel RE and dynamic-panel GMM (`pgmm`), and base `stats`
+for regression with controls, per the Language Routing table in SKILL.md and the R
+library skills' own references. LIML, non-panel GMM-IV, SUR and 3SLS have no installed R
+package: escalate to the orchestrator.)*
 
 **Implementation status note:** For Python, the DAAF environment includes `pyfixest`
 and `statsmodels` as installed causal inference packages; R ships unconditionally in
@@ -286,7 +288,8 @@ specialized packages:
   guidance including bandwidth selection, diagnostics, and visualization workarounds
 - **Synthetic control**: No SC package is installed; a manual scipy implementation
   is available as a fallback — see `./causal-synth.md` for manual and package-based
-  approaches (pysyncon, synthdid, scpi-pkg, CausalPy all require `pip install`)
+  approaches (pysyncon, synthdid, scpi-pkg and CausalPy each need a Dockerfile
+  addition, because runtime installs are blocked)
 - **Callaway-Sant'Anna estimator**: Requires installing `csdid`; for staggered DiD
   within the installed environment, use pyfixest's `did2s` or `lpdid`
 

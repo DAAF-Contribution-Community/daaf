@@ -227,7 +227,8 @@ The three-part formula is identical in both languages.
 
 ### ivreg / linearmodels Two-Part Formula
 
-**R (ivreg):**
+**R (ivreg):** `ivreg` is not installed in DAAF; a DAAF R pipeline fits IV with
+fixest's three-part formula above.
 ```r
 library(ivreg)
 # Two-part formula: outcome ~ exog + endog | exog + instruments
@@ -324,7 +325,7 @@ fit = RandomEffects.from_formula("y ~ 1 + x1 + x2", data=df_panel).fit()
 | First difference | `plm(..., model="fd")` | `FirstDifferenceOLS.from_formula("y ~ x", data)` |
 | Pooled OLS | `plm(..., model="pooling")` | `PooledOLS.from_formula("y ~ 1 + x", data)` |
 | Two-way FE | `plm(..., effect="twoways")` | `PanelOLS.from_formula("y ~ x + EntityEffects + TimeEffects", data)` |
-| Fama-MacBeth | Not in plm | `FamaMacBeth.from_formula("y ~ 1 + x", data)` |
+| Fama-MacBeth | `pmg(..., model="mg")` on a time-first index (plm `references/models.md`) | `FamaMacBeth.from_formula("y ~ 1 + x", data)` |
 
 ### Key Difference: Data Preparation
 

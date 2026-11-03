@@ -123,7 +123,7 @@ Additional domain skills are loaded by subagents when dispatched, following the 
 | `plotly` | `plotly-r` | Interactive visualization |
 | `statsmodels` | `r-stats` | Standard regression / GLM |
 | `pyfixest` | `fixest` | Fixed effects / DiD |
-| `linearmodels` | `plm` | Panel data / IV-GMM |
+| `linearmodels` | `plm` | Panel RE / between / FD / Fama-MacBeth. LIML, non-panel GMM-IV, SUR, 3SLS: Python only (R: no installed package, escalate). Dynamic-panel GMM: `plm` (`pgmm`) in R; no DAAF Python skill (`pydynpd` is installed but no skill covers it), escalate |
 | `svy` | `survey-r` | Complex survey analysis |
 | `scikit-learn` | `tidymodels` | Machine learning |
 | `geopandas` | `sf-terra` | Spatial analysis |
@@ -234,7 +234,7 @@ The orchestrator dispatches to a specialized agent when:
 
 | User Need | `subagent_type` | Notes |
 |-----------|----------------|-------|
-| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library by execution language. Python: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML. R: `r-stats` for standard regression/GLM, `fixest` for FE/DiD/IV, `plm` for RE/panel, `survey-r` for complex survey, `sf-terra` for spatial, `tidymodels` for ML. Include the selected library in the task block. |
+| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (§ Related Skills - When to Load > Load for Specific Needs, Statistical modeling branch) to select the library by execution language. Python: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/between/first difference/Fama-MacBeth/LIML/non-panel GMM-IV/SUR/3SLS, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML; dynamic-panel GMM has no DAAF Python skill (escalate). R: `r-stats` for standard regression/GLM/time series, `fixest` for FE/DiD/IV, `plm` for RE/between/FD/Fama-MacBeth and dynamic-panel GMM (`pgmm`), `survey-r` for complex survey, `sf-terra` for spatial, `tidymodels` for ML; LIML, non-panel GMM-IV, SUR and 3SLS have no installed R package (escalate; plain 2SLS: `fixest`); VAR → escalate (no installed R VAR package; same Statistical modeling branch). Include the selected library in the task block. |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |
@@ -489,7 +489,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 
 All escalations require explicit user confirmation. Frame escalations as opportunities, not obligations -- the user may prefer to continue working ad hoc.
 
-**De-escalation is also valid.** If a user started in a heavier mode and realizes they just want to talk through the approach, offer to switch to Ad Hoc Collaboration. This includes early-stage Full Pipeline sessions where the user decides they don't need formal deliverables after all, and a Literature Review whose user would rather discuss the papers than run review rounds; that review's STATE.md shows what it has already recorded.
+**De-escalation is also valid.** If a user started in a heavier mode and realizes they just want to talk through the approach, offer to switch to Ad Hoc Collaboration. This includes early-stage Full Pipeline sessions where the user decides they don't need formal deliverables after all, and a Literature Review whose user would rather discuss the papers than run review rounds; that review's STATE.md shows what it has already recorded. Take any fact about the literature only from the files `agent_reference/LIT_REVIEW_OUTPUT_CONTRACT.md` § Files Consumers May Read lists, never from the papers: a fact is a `verified` or `verified_partial` row of `claims`. When the user asks for a fact the review has not recorded, say so and offer to return to Literature Review for another round (an escalation the user confirms).
 
 ---
 

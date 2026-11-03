@@ -1,7 +1,7 @@
 ---
 name: statsmodels
 description: >-
-  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD use pyfixest; panel/IV use linearmodels. R equivalent: r-stats (use when execution language is R).
+  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD and IV with FE use pyfixest; for IV without FE (2SLS, LIML, GMM), panel RE/between and SUR/3SLS use linearmodels. R equivalent: r-stats (use when execution language is R; VAR in R escalates).
 metadata:
   audience: research-coders
   domain: python-library
@@ -11,7 +11,7 @@ metadata:
 
 # statsmodels Skill
 
-statsmodels general-purpose statistical modeling library for Python. Covers OLS/WLS/GLS, GLM (logit, probit, Poisson, negative binomial), discrete choice models, time series (ARIMA, SARIMAX, VAR), mixed effects (MixedLM), robust regression, hypothesis tests, and comprehensive diagnostics. Supports R-style formula API. Use when fitting regressions without fixed effects, running GLMs or logit/probit, analyzing time series, or using formula syntax. For fixed effects or DiD, use pyfixest; for panel/IV/system models, use linearmodels.
+statsmodels general-purpose statistical modeling library for Python. Covers OLS/WLS/GLS, GLM (logit, probit, Poisson, negative binomial), discrete choice models, time series (ARIMA, SARIMAX, VAR), mixed effects (MixedLM), robust regression, hypothesis tests, and comprehensive diagnostics. Supports R-style formula API. Use when fitting regressions without fixed effects, running GLMs or logit/probit, analyzing time series, or using formula syntax. For fixed effects, IV with fixed effects or DiD, use pyfixest; for IV without fixed effects (2SLS, LIML, GMM), panel RE/between and SUR/3SLS, use linearmodels.
 
 Comprehensive skill for statistical modeling with statsmodels. Use decision trees below to find the right guidance, then load detailed references.
 

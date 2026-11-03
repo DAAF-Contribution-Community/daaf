@@ -753,6 +753,24 @@ golden is refreshed. Any benchmark measuring a framework change MUST refresh
 (or re-record) its goldens first, and result sets spanning a golden change
 are not directly comparable.
 
+**Pending refresh (2026-11-02).** Commit f88773a changed the text of
+`.claude/skills/daaf-orchestrator/SKILL.md` and
+`.claude/skills/data-scientist/SKILL.md`, and later edits changed the
+frontmatter descriptions of the `linearmodels`, `statsmodels` and
+`data-scientist` skills; the goldens embed the older skill bodies and, in their
+skill-listing attachments, the older descriptions. Run
+`scripts/refresh_golden_checkpoint.py` (it rebuilds the skill listings too)
+before the next benchmark run whose results will be compared with runs recorded
+before the refresh; until the refresh, runs show agents the text the goldens
+hold. Affected (13 files): all nine
+`post_confirmation/*.jsonl`, `ad_hoc/after_confirmation.jsonl`,
+`dispatch_compliance/ad_hoc_initialized.jsonl`,
+`skill_routing/ad_hoc_initialized.jsonl` and `bootstrap_template.jsonl`. The
+twelve captured goldens embed the orchestrator body; the two
+`ad_hoc_initialized.jsonl` files also embed the data-scientist body;
+`bootstrap_template.jsonl` (the input to `scripts/generate_goldens.py`) carries
+only the skill listing. Delete this note once the goldens are refreshed.
+
 ## 6. Scoring
 
 All current scoring is **deterministic** — transcript parsing with string and
@@ -1565,10 +1583,13 @@ within 300s.
    billing reconciliation (§ 7) bounded the tokenizer-driven error at
    ~2-6% for most models.
 6. **Golden checkpoints embed recording-time framework content.** Golden JSONLs
-   contain `attachment` records with CLAUDE.md and hook-injection content from
-   when the session was recorded. Material framework changes can leave a
-   resumed model facing conflicting instructions (old history vs. current
-   system prompt). The only mitigation is re-recording or refreshing (§ 5),
+   contain the skill bodies and reference files the recorded session loaded, and
+   `attachment` records from when it was recorded: the skill listing, hook
+   output (`hook_success`, `hook_additional_context`), command permissions,
+   deferred-tool notices and output style. They contain no CLAUDE.md text, so a
+   refresh never has CLAUDE.md content to update. Material framework changes
+   can leave a resumed model facing conflicting instructions (old history vs.
+   current system prompt). The only mitigation is re-recording or refreshing (§ 5),
    which invalidates prior comparisons.
 7. **Scoring is not isolated from execution.** The runners, scorers, and the
    model under test all share the DAAF container and filesystem. Low practical
@@ -1772,7 +1793,7 @@ timed-out runs, matching OpenRouter's natural exclusion.
   in the scorer; the cases' `hard_/soft_requirements` lists drive viewer
   display only.
 - **Optional:** review of `data-scientist SKILL.md:353` "Tool-specific
-  syntax" branch label.
+  syntax" branch label. Resolved: the branch is gone (commit f88773a).
 
 ## 13. AI Disclosure
 

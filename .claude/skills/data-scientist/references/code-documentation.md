@@ -178,12 +178,12 @@ df <- df |>
 # ================================================================
 # INTENT: Enrich orders with customer demographic data
 #
-# JOIN TYPE: Left join
+# REASONING: Left join (not inner) on customer_id
 # - Keep all orders even if customer demographics missing
 # - Missing demographics will be analyzed separately
 #
-# JOIN KEY: customer_id
-# - Verified unique in customers table (1:1 relationship)
+# ASSUMES:
+# - customer_id is unique in the customers table (verified; the join is many:1, many orders per customer)
 # - Some orders may have customer_id not in customers table (new customers)
 #
 # EXPECTED RESULT:
@@ -210,12 +210,12 @@ print(f"Customer match rate: {match_rate:.1f}%")
 # ================================================================
 # INTENT: Enrich orders with customer demographic data
 #
-# JOIN TYPE: Left join
+# REASONING: Left join (not inner) on customer_id
 # - Keep all orders even if customer demographics missing
 # - Missing demographics will be analyzed separately
 #
-# JOIN KEY: customer_id
-# - Verified unique in customers table (1:1 relationship)
+# ASSUMES:
+# - customer_id is unique in the customers table (verified; the join is many:1, many orders per customer)
 # - Some orders may have customer_id not in customers table (new customers)
 #
 # EXPECTED RESULT:
@@ -349,7 +349,11 @@ stopifnot("Invalid FIPS codes found" = length(invalid) == 0)
 
 ## Marimo Cell Documentation
 
+The patterns in this section are for **standalone marimo apps** (an exploratory or diagnostic app built on request), not Stage 9 notebooks. A Stage 9 notebook computes nothing: it archives the executed Stage 5-8 scripts with their execution logs and may add only a bounded preview of an existing Parquet file or an already-created figure (`marimo` skill § Stage 9 Notebook Assembly and § ABSOLUTE PROHIBITIONS for Stage 9; assembled by the `notebook-assembler` agent). In a standalone app too, prefer showing results an executed script already saved over computing new ones in a cell, so the numbers keep their audit trail.
+
 ### Cell Organization Pattern
+
+Standalone-app example: Cell 4 computes inside the notebook, which a Stage 9 notebook never does.
 
 ```python
 # Cell 1: Setup (minimal documentation needed)
@@ -379,7 +383,7 @@ transaction data. Key questions:
 The following cells examine each of these dimensions.
 """)
 
-# Cell 4: Analysis with inline comments
+# Cell 4: Analysis with inline comments (standalone app only, never Stage 9)
 # Check for missing values in critical columns
 # Critical = columns that would invalidate the transaction if missing
 critical_columns = ["transaction_id", "customer_id", "amount", "transaction_date"]
@@ -398,7 +402,7 @@ mo.md(f"""
 """)
 ```
 
-> **R equivalent:** When execution language is R, DAAF uses Quarto (.qmd) notebooks instead of Marimo. The same documentation principles apply -- use markdown cells for narrative context and code chunk comments for technical detail. See the `quarto` skill for Quarto-specific conventions.
+> **R:** DAAF's Stage 9 notebook format for R is Quarto (.qmd), and a Stage 9 Quarto notebook follows the `quarto` skill's archive rules (§ CRITICAL: Stage 9 is Script COMPILATION, Not Report Authoring, and `references/daaf-notebook.md`), not this section. For a standalone Quarto document outside Stage 9, the same documentation principles apply as for a standalone marimo app: markdown for narrative context, code chunk comments for technical detail.
 
 ### When to Use Markdown Cells
 
@@ -419,6 +423,7 @@ Keep in code comments:
 > Interactive widgets such as `mo.ui.dropdown` belong only in standalone marimo apps, never in Stage 9 notebooks (`marimo` skill § ABSOLUTE PROHIBITIONS for Stage 9).
 
 ```python
+# Standalone app only, never Stage 9: this cell computes on each selection
 # Interactive column selector for exploration
 # Purpose: Allow user to quickly inspect any column's distribution
 column_selector = mo.ui.dropdown(

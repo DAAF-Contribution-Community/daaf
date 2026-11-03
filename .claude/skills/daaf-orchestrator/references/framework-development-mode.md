@@ -149,7 +149,7 @@ Launch **3 search-agent subagents** in parallel to thoroughly explore the releva
 
 **For New Reference File:**
 1. **Exemplars:** Read 2-3 existing reference files of the same type (same folder and purpose) for structure and depth. Voice and audience come from `agent_reference/DOCUMENTATION_STANDARDS.md` (§ Audiences), not from the exemplars; note any exemplar that departs from the standard.
-2. **Loading surfaces:** Find where comparable references are registered and loaded (skill tables, mode loading trees, agent References tables, the CLAUDE.md Reference Files table); FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 lists the points.
+2. **Loading surfaces:** Find where comparable references are registered and loaded (skill tables, mode files' reference-loading tables and steps, agent References tables, the CLAUDE.md Reference Files table); FRAMEWORK_INTEGRATION_CHECKLIST.md § 4 lists the points.
 3. **Overlap check:** Grep for existing coverage of the topic, so the new file references rather than duplicates it.
 
 **For New Scholarly Search Backend:**
@@ -871,7 +871,7 @@ The researcher directed all framework design decisions and approved all changes.
 
 - "The `data-scientist` skill currently has 14 reference files. Your proposed addition would bring it to 15."
 - "The closest analog agent is `source-researcher` (481 lines). I'd suggest differentiating in the Core Distinction table along the [specific] axis."
-- "Adding this mode requires updating 13 mandatory registration points across 6 files."
+- "Adding this mode requires updating 16 mandatory registration points across 7 files."
 
 If the user asks conceptual questions ("what's the difference between a skill and an agent?"), answer them — but don't volunteer foundational explanations unprompted.
 

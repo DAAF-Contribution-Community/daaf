@@ -469,6 +469,8 @@ How a BLOCKER is classed: A BLOCKER whose fix brings the code back to what the P
 | Phase 4 | Validation Checkpoints | STATE.md Management (runtime updates) | PSU4 (after Phase 4) | `agent_reference/WORKFLOW_PHASE4_ANALYSIS.md` |
 | Phase 5 | Synthesis & Delivery | Stages 11-12 | Final Review | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` |
 
+Read each phase's file when that phase begins, not at mode start; do not load them all at once.
+
 **Note:** Session Recovery is documented in `{SKILL_REFS}/session-recovery.md`.
 
 **Cross-Phase Concerns:**
@@ -524,7 +526,8 @@ How a BLOCKER is classed: A BLOCKER whose fix brings the code back to what the P
 - Standard regression (OLS, GLM, logit/probit) → `statsmodels`
 - Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or DiD → `pyfixest`
-- Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
+- Random effects, between estimation, first difference, Fama-MacBeth, LIML / non-panel GMM-IV, SUR/3SLS → `linearmodels`
+- Dynamic-panel GMM (Arellano-Bond, Blundell-Bond) → no Python skill: escalate
 - Survey-weighted analysis (complex survey design) → `svy`
 - Spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
@@ -533,8 +536,11 @@ How a BLOCKER is classed: A BLOCKER whose fix brings the code back to what the P
 
 **R:**
 - Standard regression (OLS, GLM, logit/probit) → `r-stats`
+- Time series modeling (ARIMA, forecasting, stationarity tests) → `r-stats`; VAR → escalate (no installed R VAR package; see the data-scientist skill's § Related Skills - When to Load > Load for Specific Needs, Statistical modeling branch)
 - Fixed effects, IV with FE, or DiD → `fixest`
-- Random effects, between estimation, Fama-MacBeth → `plm`
+- Random effects, between estimation, first difference, Fama-MacBeth → `plm`
+- Dynamic-panel GMM (Arellano-Bond, Blundell-Bond) → `plm` (`pgmm`)
+- LIML, non-panel GMM-IV, SUR/3SLS → no installed R package: escalate (plain 2SLS: `fixest`)
 - Survey-weighted analysis (complex survey design) → `survey-r`
 - Spatial analysis → `sf-terra`
 - Supervised/Unsupervised ML (classification, prediction, clustering) → `tidymodels`
@@ -1188,7 +1194,7 @@ Return findings in this EXACT structure:
 | `checkpoint:decision` | Multiple valid approaches | Present options, await selection |
 | `checkpoint:human-action` | User must perform action themselves | Report instructions, await completion |
 
-**Note:** `checkpoint:human-action` is used when Claude cannot automate a step (e.g., external authentication, restricted data downloads). See `VALIDATION_CHECKPOINTS.md` for full classification details.
+**Note:** `checkpoint:human-action` is used when Claude cannot automate a step (e.g., external authentication, restricted data downloads). See `agent_reference/VALIDATION_CHECKPOINTS.md` § Checkpoint Classification System for full classification details.
 
 ### checkpoint:auto (Default)
 
@@ -1714,7 +1720,7 @@ When interpreting data values and resolving discrepancies between sources, apply
 
 **Pre-Output Verification STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan.md methodology.
 
-See `agent_reference/VALIDATION_CHECKPOINTS.md` for Python code templates, the count line and verdict grammar, and the Pre-Output Verification (Stage 12) checklist.
+When a CP result needs interpreting (a reported FAILED or WARNING status; in the execution log, a FAILED or PASSED WITH WARNINGS verdict), or when you review the data-verifier's Pre-Output Verification (Stage 12), read these sections of `agent_reference/VALIDATION_CHECKPOINTS.md`, each in full: § Per-Check Outcome Vocabulary, § Count Line and Verdict Line, and that checkpoint's own section (§ CP1: Post-Fetch Validation through § CP4: Post-Analysis & Visualization Validation, § Join-Specific Validation, or § Pre-Output Verification (Stage 12)). The trigger loads those sections, not the file: `VALIDATION_CHECKPOINTS.md` is a catalogue of per-checkpoint sections holding every checkpoint's Python and R code templates, which the executing agents write their checkpoint code from; the orchestrator does not.
 
 ### QA Checkpoints (Secondary Validation)
 

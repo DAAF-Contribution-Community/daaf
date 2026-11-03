@@ -1,7 +1,7 @@
 ---
 name: data-scientist
 description: >-
-  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, network analysis, and visualization design. Contains the canonical method-to-library routing tree, routed by execution language — Python: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial), igraph (network analysis); R: r-stats (OLS/GLM/time series), fixest (FE/DiD), plm (panel/RE/IV), survey-r (complex surveys), tidymodels (ML), sf-terra (spatial), igraph-r (network analysis). Load the routed tool-specific skill before giving tool-specific advice or writing code — library skills encode environment constraints and curated caveats absent from general knowledge.
+  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, network analysis, and visualization design. Contains the canonical method-to-library routing tree, routed by execution language — Python: statsmodels (OLS/GLM/time series), pyfixest (FE/IV/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial), igraph (network analysis); R: r-stats (OLS/GLM/time series), fixest (FE/IV/DiD), plm (panel RE/between, dynamic GMM), survey-r (complex surveys), tidymodels (ML), sf-terra (spatial), igraph-r (network analysis). Load the routed tool-specific skill before giving tool-specific advice or writing code — library skills encode environment constraints and curated caveats absent from general knowledge.
 metadata:
   audience: any-agent
   domain: research-methodology
@@ -206,7 +206,9 @@ When no language is specified, default to Python.
 All decision trees below use Python skill names as the primary label, with the R
 counterpart noted inline as `(Python)`/`(R)` pairs. When the execution language is
 R, substitute the R skill from this table. Time-series estimation routes to
-`statsmodels` in Python and `r-stats` in R (see its `references/time-series.md`).
+`statsmodels` in Python and `r-stats` in R (see its `references/time-series.md`),
+except VAR in R, which escalates (Statistical modeling branch of "Load for
+Specific Needs" below).
 
 ## Related Skills - When to Load
 
@@ -255,8 +257,9 @@ What task are you performing?
 │       │   package → escalate to orchestrator
 │       ├─ Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity
 │       │   tests, exponential smoothing) → Load `statsmodels` skill (Python) or
-│       │   `r-stats` skill (R, see its references/time-series.md; VAR has no
-│       │   installed R package → escalate)
+│       │   `r-stats` skill (R, see its references/time-series.md; VAR: no installed
+│       │   R VAR package (`vars`); `stats::ar()` fits one but nothing installed
+│       │   gives impulse responses (`lmtest::grangertest()` is pairwise only) → escalate)
 │       │   (to *describe* trends or seasonality without formal modeling, read
 │       │   ./references/descriptive-analysis.md "Trend Analysis" section instead)
 │       └─ Spatial regression (spatial lag, spatial error, GWR) → Load `geopandas` skill (Python) or `sf-terra` skill (R)
@@ -289,8 +292,9 @@ What task are you performing?
 ├─ Causal / quasi-experimental analysis
 │   └─ FIRST read ./references/causal-inference.md
 │       THEN load appropriate library skill:
-│       Python: pyfixest for DiD/IV/FE, linearmodels for panel RE/IV-GMM
-│       R: fixest for DiD/IV/FE, plm for panel RE
+│       Python: pyfixest for DiD/IV/FE, linearmodels for panel RE/between and
+│         LIML/non-panel GMM-IV/SUR/3SLS
+│       R: fixest for DiD/IV/FE, plm for panel RE/between and dynamic-panel GMM (pgmm)
 │       For RD implementation (rdrobust) → also read ./references/causal-rd.md
 │       For matching/IPW/AIPW implementation → also read ./references/causal-matching.md
 │       For Heckman selection correction → also read ./references/causal-selection.md
@@ -361,7 +365,7 @@ This skill assumes familiarity with:
 | `visualization-design.md` | Chart selection, visual encoding, emphasis, integrity | **Before creating any visualization** |
 | `visualization-execution.md` | Color palettes, accessibility, labeling, typography, export | **When producing figures** |
 | `descriptive-analysis.md` | Summary statistics, subgroups, distributions, decompositions, weighting, inequality, correlation, missing data | Stage 8 analysis when the research contribution is descriptive |
-| `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing. For formal time-series estimation (ARIMA/SARIMAX, VAR, forecasting), load the `statsmodels` skill (Python) or the `r-stats` skill (R, see its `references/time-series.md`; VAR has no installed R package) directly |
+| `statistical-modeling.md` | Model selection, assumption checking, robust inference, coefficient interpretation, robustness checks | Stage 8.1 analysis involving regression, modeling, or hypothesis testing. For formal time-series estimation (ARIMA/SARIMAX, VAR, forecasting), load the `statsmodels` skill (Python) or the `r-stats` skill (R, see its `references/time-series.md`) directly; VAR in R escalates (see the Statistical modeling branch of "Load for Specific Needs") |
 | `causal-inference.md` | Causal identification, DAGs, RCTs, IV, RD, DiD, synthetic control, matching | Stage 8.1 analysis requiring causal claims |
 | `causal-rd.md` | Regression discontinuity implementation: rdrobust API (sharp, fuzzy, kink), bandwidth selection, manipulation testing, covariate balance, visualization, diagnostics | Stage 8.1 analysis using regression discontinuity designs |
 | `causal-matching.md` | Matching (NN, caliper, Mahalanobis, exact, CEM), IPW, doubly robust/AIPW implementation with sklearn + statsmodels + scipy + polars; balance diagnostics; inference | Stage 8.1 analysis using matching, propensity scores, IPW, or AIPW methods |
@@ -462,7 +466,8 @@ Am I trying to describe or explain?
 │       └─ Forecast or formally model temporal dynamics (ARIMA/SARIMAX, VAR,
 │           stationarity tests) → Load `statsmodels` skill (Python; see its
 │           "I need to analyze time series" decision tree) or `r-stats` skill
-│           (R, see its references/time-series.md; VAR has no installed R package → escalate)
+│           (R, see its references/time-series.md; VAR in R → escalate, see the
+│           Statistical modeling branch of "Load for Specific Needs" above)
 └─ Explain causally
     └─ → ./references/causal-inference.md
         └─ Select method per Method Selection Guide
@@ -593,7 +598,7 @@ From question to answer:
 | Common transformation errors | `./references/transformation-validation.md` |
 | Comment philosophy | `./references/code-documentation.md` |
 | Docstring patterns | `./references/code-documentation.md` |
-| Notebook documentation | `./references/code-documentation.md` |
+| Standalone marimo app documentation (Stage 9 notebooks: `marimo` / `quarto` skills) | `./references/code-documentation.md` |
 | Test documentation | `./references/code-documentation.md` |
 | Research question formulation | `./references/research-questions.md` |
 | Rigor vs. practicality | `./references/research-questions.md` |

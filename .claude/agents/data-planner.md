@@ -255,7 +255,8 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 - Standard regression (OLS, GLM, logit/probit) or diagnostic tests → `statsmodels`
 - Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or difference-in-differences → `pyfixest`
-- Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
+- Random effects, between estimation, first difference, Fama-MacBeth, LIML / non-panel GMM-IV, SUR/3SLS → `linearmodels`
+- Dynamic-panel GMM (Arellano-Bond, Blundell-Bond) → no Python skill: escalate to the orchestrator
 - Survey-weighted analysis (complex survey design) → `svy`
 - Spatial regression or spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
@@ -263,9 +264,11 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 - Network / graph analysis (centrality, community detection, bipartite) → `igraph`
 
 *R execution (orchestrator directive "Execution language: R"):*
-- Standard regression (OLS, GLM, logit/probit), diagnostic tests, or time series → `r-stats`
+- Standard regression (OLS, GLM, logit/probit), diagnostic tests, or time series → `r-stats`; VAR → escalate to the orchestrator (no installed R VAR package; see the data-scientist skill's § Related Skills - When to Load > Load for Specific Needs, Statistical modeling branch)
 - Fixed effects, IV with FE, or difference-in-differences → `fixest`
-- Random effects, between estimation, or other panel models → `plm`
+- Random effects, between estimation, first difference, or Fama-MacBeth → `plm`
+- Dynamic-panel GMM (Arellano-Bond, Blundell-Bond) → `plm` (`pgmm`)
+- LIML, non-panel GMM-IV, SUR/3SLS → no installed R package: escalate to the orchestrator (plain 2SLS: `fixest`)
 - Survey-weighted analysis (complex survey design) → `survey-r`
 - Spatial regression or spatial analysis → `sf-terra`
 - Supervised or unsupervised ML (classification, prediction, clustering, PCA/UMAP) → `tidymodels`

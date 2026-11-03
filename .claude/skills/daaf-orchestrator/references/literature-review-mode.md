@@ -918,7 +918,7 @@ Mandatory. Create the skeleton at LR-0; append at each CP-R and consolidate at C
 | `record-human` or `settle` exit 11 | Read the refusal; fix the rows or items file; never reword the user's words. A reference the list says is left out is never recorded: it is checked again only when the researcher asks (§ The Citation Second Check, step 4, "Check again") |
 | `ingest` refuses a batch (after evaluation) | Persist nothing more; keep the batch's rows on the glance |
 
-`agent_reference/ERROR_RECOVERY.md` holds the mode's recovery section.
+For a signal not in this table, or a tool exit the table does not name, follow `agent_reference/ERROR_RECOVERY.md` § Literature Review Mode Error Recovery.
 
 ---
 

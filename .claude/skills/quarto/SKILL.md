@@ -76,7 +76,7 @@ Each topic in `./references/` contains focused documentation:
 
 **Always Load Together (when execution language is R):**
 - `ggplot2` -- Visualization library used for figure chunks in .qmd documents
-- `data-scientist` -- Methodology and validation principles that inform notebook structure
+- `data-scientist` -- Methodology and validation principles for the scripts a Stage 9 notebook archives
 
 **Load for Specific Features:**
 - `gt` -- Publication-quality tables in .qmd documents
