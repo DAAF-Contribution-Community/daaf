@@ -39,9 +39,8 @@ CHATGPT_SUBSCRIPTION_PROVIDER = "chatgpt-subscription"
 # Rates updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
 # (verified against the pricing table at the source URL below). Prior schedule
 # was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long (accessed 2026-07-15).
-# Re-checked 2026-09-29 (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/
-# web_fetches/2026-09-29T204921Z_developers-openai-com_pricing-openai-api_00eaf917.html,
-# fetched 2026-09-29T20:49Z): SHORT rates UNCHANGED (raw HTML line 932, Standard
+# Re-checked 2026-09-29 against the source URL below (accessed
+# 2026-09-29T20:49Z): SHORT rates UNCHANGED (Standard
 # tier: gpt-5.6-luna 0.2 / 0.02 / 0.25 / 1.2). The page no longer publishes a
 # GPT-5.6 long-context row; LONG rates are carried from 2026-08-11 (output 1.80;
 # the 0.4 / 0.04 / 0.5 / 2.4 row on that page is Luna's Fast-tier SHORT rate,

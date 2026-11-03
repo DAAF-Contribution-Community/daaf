@@ -3,10 +3,9 @@
 # anthropic_openai_shim.py
 #
 # Hardened Anthropic Messages API -> OpenAI Responses API (/v1/responses)
-# translation shim for Claude Code. Productionized from the validated PoC
-# (research/2026-07-09_FrameworkDev_OpenAI_Provider/poc/shim_anthropic_openai.py),
-# then migrated from the OpenAI Chat Completions wire format to the Responses
-# API in v1.2.0 (see Changelog).
+# translation shim for Claude Code. Productionized from a validated proof of
+# concept, then migrated from the OpenAI Chat Completions wire format to the
+# Responses API in v1.2.0 (see Changelog).
 #
 # Claude Code speaks the Anthropic Messages API. When ANTHROPIC_BASE_URL points
 # at this shim, Claude Code POSTs Anthropic-format requests to /v1/messages
@@ -41,9 +40,10 @@
 #   ordering, and routing streamed argument deltas by internal item_id (fc_...)
 #   rather than public call_id — are ported (logic, NOT code) from two
 #   MIT-licensed reference implementations: raine/claude-code-proxy (Rust) and
-#   AmazingAng/auth2api (TypeScript). See
+#   AmazingAng/auth2api (TypeScript). See the prior-art note (maintainer-only
+#   record, not shipped:
 #   research/2026-07-11_FrameworkDev_ShimDiagnostics_AuthOptions/output/
-#   preliminary_notes/05_prior_art_responses_translators.md. The reasoning-cache
+#   preliminary_notes/05_prior_art_responses_translators.md). The reasoning-cache
 #   re-injection design (below) is NOVEL: neither reference implements reasoning
 #   re-injection on the request/replay path — this shim closes that gap.
 #
@@ -145,15 +145,17 @@
 #       long")||n.includes("input is too long for requested model")}`, with no
 #       status check, so it applies to non-stream errors and streamed SSE `error`
 #       events. Docs: OpenAI error-codes guide, fetched 2026-10-14
-#       (research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/
-#       opus_audit_2026-10-12/2026-10-14T011301Z_developers-openai-com_error-codes-
-#       openai-api_2d8d8b97.md, lines 22-39): four 429 billing codes and "Retrying
-#       billing, spend, or quota errors won't restore API access"; openai-python
-#       response.py (status "failed", `error: Optional[ResponseError]`) and
-#       response_error.py (code literals incl. server_error, rate_limit_exceeded,
-#       invalid_prompt), same folder, 2026-10-14T011227Z_*_2a16abff.bin and
-#       *_4ac68258.bin; OpenRouter HTTP 200 + status "failed" + code server_error
-#       (inspect-robots #448, 2026-10-14T011251Z_api-github-com_untitled_f20ca7c0.json).
+#       (https://developers.openai.com/api/docs/guides/error-codes): four 429
+#       billing codes and "Retrying billing, spend, or quota errors won't restore
+#       API access"; openai-python response.py (status "failed",
+#       `error: Optional[ResponseError]`) and response_error.py (code literals incl.
+#       server_error, rate_limit_exceeded, invalid_prompt), fetched 2026-10-14 from
+#       https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response.py
+#       and
+#       https://raw.githubusercontent.com/openai/openai-python/main/src/openai/types/responses/response_error.py;
+#       OpenRouter HTTP 200 + status "failed" + code server_error (inspect-robots
+#       #448, fetched 2026-10-14:
+#       https://api.github.com/repos/robocurve/inspect-robots/issues/448).
 #     FIXES:
 #       (A) A NON-STREAM error whose client-facing type is invalid_request_error now
 #         carries the header `x-should-retry: false` (_no_retry_headers_for). The
@@ -235,9 +237,7 @@
 #       under a hard-coded 502. Claude Code retries server errors "up to 10 times with
 #       exponential backoff" when they "arrive before any of Claude's response has
 #       streamed" (Claude Code error reference, fetched 2026-10-12:
-#       research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/web_fetches/
-#       opus_audit_2026-10-12/2026-10-12T205221Z_code-claude-com_error-reference-claude-
-#       code-docs_f880e24c.md, lines 12-13), so one unsatisfiable request could be
+#       https://code.claude.com/docs/en/errors), so one unsatisfiable request could be
 #       retried up to 10 times (up to 11 requests). CLIENT SOURCE (installed Claude
 #       Code 2.1.281, read 2026-10-14 with grep -a): the main-loop retry predicate ends
 #       `if(e.status===408)return!0;if(e.status===409)return!0;if(e.status===401)
@@ -267,6 +267,7 @@
 #       2.1.281 retry predicate does not retry (see CLIENT SOURCE above). The shim
 #       side was confirmed live 2026-10-14 16:01 (a direct probe on gpt-6.1-sol,
 #       non-stream: upstream status=200, client got HTTP 400, attempts=1;
+#       maintainer-only record, not shipped:
 #       research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/opus_audit_2026-10-12/
 #       RESULTS_05a_confirm_1.4.10.md); Claude Code's handling of that 400 was not
 #       exercised (as for v1.2.10). 429 rate_limit_error and
@@ -280,10 +281,11 @@
 #       retries a 401 (`if(e.status===401)return bKe(),!0`; bKe clears its credential
 #       cache), as it retried the old 502, so the retry can still reach the pre-stream
 #       lazy-401 refresh in _open_backend_stream. Review-time inference that a 401 is
-#       not retried (error reference line 26 mentions only the apiKeyHelper case) was
+#       not retried (the error reference mentions only the apiKeyHelper case) was
 #       contradicted by the client source. The in-band case is unobserved
 #       live: the only recorded token_invalidated arrived as a pre-stream HTTP 401
-#       (research/2026-07-20_FrameworkDev_ShimRoadmap/output/preliminary_notes/
+#       (maintainer-only record, not shipped:
+#       research/2026-07-20_FrameworkDev_ShimRoadmap/output/preliminary_notes/
 #       04_tier0_ground_truth_findings.md:57,63). To spot one in shim.log: an
 #       upstream_headers line with status=200, then a terminal line with stream=n,
 #       outcome=error and backend_code=token_invalidated (a pre-stream rejection
@@ -364,8 +366,8 @@
 #   v1.4.4 (2026-09-17): Fail-fast guard on runaway whitespace outside JSON strings in
 #     streamed tool arguments (256-character limit).
 #   v1.4.3 (2026-09-17): Live stream-interruption diagnostics revision.
-#     Details for 1.4.3-1.4.6 are in the project research notes under
-#     research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/ (STATE_2026-09-17_*,
+#     Details for 1.4.3-1.4.6 are in maintainer-only research notes (not shipped:
+#     research/2026-09-06_FrameworkDev_GPT_Shim_Native_Search/, STATE_2026-09-17_*,
 #     STATE_2026-09-20_*, STATE_2026-09-21_*).
 #   v1.4.2 (isolated draft, 2026-09-15): Support documented hosted search,
 #     open_page and find_in_page sequences without inventing ranked page results.
@@ -1149,8 +1151,9 @@
 #     sessions, same rationale as the SHIM_REASONING_EFFORT default "high".
 #     WHY the field is always sent: text.verbosity is LIVE-CONFIRMED accepted by
 #       gpt-5.6-sol on /v1/responses (HTTP 200 for both "high" and "low", probe
+#       2026-07-12; maintainer-only probe, not shipped:
 #       research/2026-07-11_FrameworkDev_ShimDiagnostics_AuthOptions/scripts/
-#       live_tests/18_diag-verbosity-compare.py, 2026-07-12) — reclassifying the
+#       live_tests/18_diag-verbosity-compare.py) — reclassifying the
 #       notes-04 §5/confidence-table "verbosity: LOW/not confirmed" claim to
 #       CONFIRMED. "medium" is the documented middle value; NOT independently
 #       live-probed here (the 18-probe exercised default/high/low only) — asserted
@@ -5371,7 +5374,8 @@ def _check_tool_argument_whitespace(st, fragment):
 def _sanitize_tool_args(tool_name, args):
     # Evidence-based cleanup of the GPT "fill-every-optional" tool-call habit,
     # quantified in the 2026-07-09/10 GPT DAAFBench smoke battery
-    # (research/2026-07-09_FrameworkDev_GPTBenchSmoke/SESSION_NOTES.md):
+    # (maintainer-only record, not shipped:
+    # research/2026-07-09_FrameworkDev_GPTBenchSmoke/SESSION_NOTES.md):
     #   * Read.pages == ""            — 724 occurrences; each one costs a
     #     rejected tool call + an error round-trip before the model retries.
     #   * Agent/Task isolation=<any>  — filled on essentially every dispatch;

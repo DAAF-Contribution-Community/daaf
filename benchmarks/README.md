@@ -65,7 +65,7 @@ reported tokens. The ~3–4x inflated token accounting persists, though. It
 still makes a GPT-6 `-pro` battery roughly 3x the cost of its base (equal
 per-token prices) and a `gpt-5.6-sol-pro` battery roughly 8x (its per-token
 price is 2x its base's); both multiples are derived, not invoice-verified.
-Evidence: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`.
+Evidence: the 2026-09-29 `-pro` retest (maintainer-only note, not shipped: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`).
 Each subscription entry maps both `ANTHROPIC_DEFAULT_OPUS_MODEL` and
 `ANTHROPIC_DEFAULT_SONNET_MODEL` to its own bare parent ID and deliberately omits
 `CLAUDE_CODE_SUBAGENT_MODEL`, preserving semantic tier selection while keeping
@@ -325,7 +325,7 @@ harness.
   stalled. A *first-activity* rule additionally counts a stalled read when **no**
   parent-or-subagent transcript exists at all past ~90s. The 330s threshold and the
   never-act-on-a-single-reading rule are empirically grounded in the K3 rerun
-  campaign (`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/2026-07-21_rerun-campaign_progress.md`):
+  campaign (maintainer-only progress log, not shipped: `research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/2026-07-21_rerun-campaign_progress.md`):
   **296s of legitimate dead air** was observed on a run that then passed
   everything, so the former 240s threshold false-positives; ~330s-plus with
   consecutive confirmations is the validated cutoff.
@@ -949,12 +949,9 @@ now caught dynamically like GLM's) and a `PERMASLUG_BASE_OVERRIDES` map was
 added for the dated-slug gotcha, so the v1 script now covers DeepSeek V4 Flash
 0731 and Gemini 3.5 Flash directly. The v2 (2026-07-29, Kimi
 K3 / Gemini campaigns) and v3 (2026-08-02, DeepSeek V4 Flash 0731) campaign
-lineage lives as campaign-workspace scratch scripts
-(`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/scripts/scratch/19-22_billing-*-v2.py`
-and
-`research/2026-08-02_FrameworkDev_DAAFBench_DeepSeek0731/scripts/scratch/01-05_billing-*-v3.py`),
-each consolidating all prior exports (generation_id-deduplicated, provenance
-column), classifying rows kept/excluded on empirical per-slug
+lineage lives as scratch scripts in those campaigns' research workspaces
+(maintainer-only, not shipped), each consolidating all prior exports
+(generation_id-deduplicated, provenance column), classifying rows kept/excluded on empirical per-slug
 registration-date boundaries, and reconciling per model × campaign over
 kept + covered + non-timed-out runs with a `runs_uncovered == 0` guard.
 Snapshots land in `derived/` (`YYYY-MM-DD_openrouter_billing_consolidated /
@@ -1037,7 +1034,7 @@ published credit schedule has no universal USD-per-credit conversion. Record
 throttling or observed allowance movement separately; never infer a constant
 cost per message.
 
-Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15). GPT-5.6 short-context API list rates and Sol's promotional schedule re-checked on that page on 2026-09-29 (artifact `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/2026-09-29T204921Z_developers-openai-com_pricing-openai-api_00eaf917.html`).
+Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15). GPT-5.6 short-context API list rates and Sol's promotional schedule re-checked on that page on 2026-09-29.
 
 ## 8. Results & Viewer
 
@@ -1618,8 +1615,81 @@ within 300s.
    `claude_code_version` values without annotating the version split; the
    viewer does not yet surface the field. The analytics pilot's own manifest
    (`analytics/scripts/run_analytics_pilot.py`) does not record it.
+11. **Runs where no model answered can be scored as model behaviour.** Only
+   `run_dispatch_compliance.py` applies a validity gate, and that gate rejects
+   a run only on *failed* child-model purity. A run whose transcript holds
+   nothing but `<synthetic>` API-error records (e.g. `model_not_found`, a
+   spend-limit stop) is `unverifiable`, which counts as valid. The other three
+   runners and the results viewer ignore `validity` altogether. Past cases
+   were removed by hand-quarantine. See § 12, "Before the next benchmark run".
 
 ## 12. Future Work
+
+### Before the next benchmark run (open to-do, added 2026-10-01)
+
+The existing corpus was recorded on Claude Code 2.1.202. Since then, DAAF has
+moved three CLI pins (to 2.1.281) and changed its hooks, dispatch settings, and
+smoke harness. Settle these items before adding results, and decide whether the
+next run starts a **fresh baseline** rather than extending the old corpus
+(Limitations 6, 8, 10).
+
+1. **Run-validity gate (Limitation 11).** Scoping on 2026-09-24 confirmed it.
+   Example: the stored quarantined run `dc-01_Qwen_3.8_2.4T_A95B_0` has a single
+   `<synthetic>` "API Error: 400" record and scored 0/10 with
+   `validity: valid`.
+   - **Proposed fix:** add a shared `run_health()` helper, a new
+     `harness/run_health.py` being the scoping recommendation over
+     `artifacts.py`. It reuses `_is_non_model_marker` and the deploy-smoke
+     harness's transcript API-error evaluator, which should be moved into the
+     helper and imported from both places. It classifies each run as
+     `answered`, `recovered_transient`, `ended_on_api_error`,
+     `no_model_answered`, or `unknown`.
+   - Mark `no_model_answered` runs `invalid` (reason `no_model_answered`) and
+     keep their records for audit. Wire validity into all four runners'
+     rollups.
+   - **Decisions needed first:**
+     - (a) Should the 71 currently visible runs that *ended* on an API error
+       after real work count as invalid? All of them, only infrastructure
+       errors (rate limit, server error, stream closed, spend limit), or none,
+       flagged only?
+     - (b) Should the viewer honour `validity`?
+     - (c) Should scalar CLI result fields be persisted?
+     - (d) Where should the helper live?
+2. **Persist the CLI result's scalar fields.** `executor.py`'s
+   `_parse_json_output` discards `is_error`, `subtype`, `api_error_status` and
+   `stop_reason`, so result-level errors can't be audited after the fact.
+   Persist the scalars only, never `raw_json`; the viewer tests assert that
+   `raw_json` is never embedded.
+3. **Viewer honours `validity`, after a recompute backfill.** Write a
+   dry-run-default backfill script modelled on `scripts/rescore_archives.py`
+   that recomputes purity and validity from the archived transcripts.
+   - Recompute *before* the viewer starts honouring validity.
+   - Two visible Kimi K3 runs (`20260720_164319/…/dc-12_Kimi_K3_0`,
+     `20260721_223921/…/dc-12_Kimi_K3_2`) carry stale `invalid` verdicts that
+     today's purity logic reverses.
+   - Fix the claim at § 4 (~line 613) that `load_runs` makes "validity and
+     display exclusions match the report exactly"; today it ignores validity.
+4. **Docs to update with item 1:**
+   - § 2 purity text (~lines 109-113): `unverifiable` also covers marker-only
+     transcripts.
+   - The quarantine and display-exclusion section in § 8 (~lines 1123-1149).
+   - The manual rate-limit replacement procedure in § 9 (~lines 1334-1356).
+   - Docstrings in `harness/artifacts.py` (`run_validity`,
+     `validity_coverage`), the "stays valid per B2" comment in
+     `run_dispatch_compliance.py`, and `load_runs`.
+   - A dated `benchmarks/CHANGELOG.md` entry.
+5. **Record the CLI version where it is missing,** and surface
+   `claude_code_version` in the viewer (Limitation 10).
+
+Tests to extend with item 1:
+- `tests/test_g1r_harness_fixes.py` (`PurityValidityGateTests`)
+- `tests/test_artifacts_and_preflight.py` (`ChildModelPurityTests`)
+- `tests/test_viewer_schema_loading.py`
+- a per-runner rollup test
+- `/daaf/tests/python/test_deploy_smoke.py`, which must stay green when the
+  evaluator moves
+
+### Ongoing
 
 - **Scorer improvements:**
   - Add clarifying-question patterns to the confirmation-gate regex (known

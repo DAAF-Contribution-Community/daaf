@@ -694,5 +694,4 @@ patterns that DAAF's Python stack translates from.
 > **Sources:** All resources listed above were accessed and verified on
 > 2026-03-28. Quality and currency assessments are based on examination of the
 > resource content, publication date, maintenance activity, and relevance to the
-> DAAF Python stack. This catalog was compiled from systematic research documented
-> in `/daaf/research/2026-03-28_Stata_Python_Translation_Research.md`.
+> DAAF Python stack. This catalog was compiled from systematic research on 2026-03-28.
