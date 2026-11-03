@@ -9,7 +9,7 @@ against pages. Source of truth: the `§§ ARXIV_HTML` block of
 `scripts/pdf_ingest.py` (added in 1.2.0-daaf; current 1.2.2-daaf,
 `HTML_EXTRACT_VERSION = "arxiv-html-v1"`) and the "arXiv HTML ingests"
 header block of `scripts/lit_verify.py` (added in 1.4.0-daaf; current
-1.15.0-daaf). If this page and the code disagree, the code wins.
+1.17.0-daaf). If this page and the code disagree, the code wins.
 
 **Contents:** Which path · Detecting an arXiv paper · Fetching the HTML ·
 Availability · Ingesting · Version pinning · Units and labels · Grades ·

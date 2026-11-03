@@ -326,6 +326,41 @@ _bin() {
     _assert_deny
 }
 
+# =========================================================================
+# The harness hand-back (SubagentHandback): allowed by exact name only
+# =========================================================================
+
+@test "SubagentHandback by the adjudicator: allow" {
+    _hook < <(jq -nc '{"tool_name":"SubagentHandback","agent_type":"citation-adjudicator","agent_id":"a1","tool_input":{"message":"```jsonl\n{}\n```"}}')
+    _assert_allow
+}
+
+@test "SubagentHandback with no agent_type: allow" {
+    _hook < <(jq -nc '{"tool_name":"SubagentHandback","tool_input":{"message":"done"}}')
+    _assert_allow
+}
+
+@test "tool_name 'SubagentHandback' plus newline: deny" {
+    _hook < <(_payload $'SubagentHandback\n' "${BUNDLE}")
+    _assert_deny
+    [[ "${HOOK_ERR}" == *"only the Read tool"* ]]
+}
+
+@test "tool_name 'subagenthandback' (another case): deny" {
+    _hook < <(_payload subagenthandback "${BUNDLE}")
+    _assert_deny
+}
+
+@test "tool_name 'SubagentHandbackX' (a longer name): deny" {
+    _hook < <(_payload SubagentHandbackX "${BUNDLE}")
+    _assert_deny
+}
+
+@test "tool_name an array holding SubagentHandback: deny" {
+    _hook < <(jq -nc '{"tool_name":["SubagentHandback"],"agent_type":"citation-adjudicator","agent_id":"a1","tool_input":{}}')
+    _assert_deny
+}
+
 @test "no agent_type (main thread) reading a project file: deny" {
     _hook < <(jq -nc --arg p "${ROOT}/CLAUDE.md" '{"tool_name":"Read","tool_input":{"file_path":$p}}')
     _assert_deny

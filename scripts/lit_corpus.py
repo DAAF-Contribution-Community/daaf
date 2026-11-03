@@ -38,12 +38,14 @@
 #   bash /daaf/scripts/lit_corpus.sh export-ris <PROJECT_DIR>
 #   bash /daaf/scripts/lit_corpus.sh manifest <PROJECT_DIR> --round R [--protocol PATH]
 #   bash /daaf/scripts/lit_corpus.sh adjudications pack <PROJECT_DIR> --batch ID --model-id MODEL
-#        [--keys K1,...] [--max-rows N]
+#        [--keys K1,... [--rejudge]] [--max-rows N]
 #   bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
 #   bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE
 #        --decision same_work|different_work|defer|override_mismatch --user-words "..." [--rationale "..."]
 #   bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--deliverable PATH] [--keys K1,...]
 #   bash /daaf/scripts/lit_corpus.sh adjudications release <PROJECT_DIR> --batch ID --reason "..."
+#   bash /daaf/scripts/lit_corpus.sh adjudications untested-checker <PROJECT_DIR> --model-id MODEL
+#        --user-words "..." (--rationale "..." | --revoke)
 #   bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
 #
 # --- Project layout and guards -----------------------------------------------
@@ -117,7 +119,7 @@
 # --- Citation status and the second check -----------------------------------
 #   attach verify sets CONFIDENT -> pending_adjudication (an old table's
 #   verified_rule reads as pending_adjudication), WEAK and everything else ->
-#   unverified. The second check moves a status (adjudication-v1):
+#   unverified. The second check moves a status (adjudication-v2):
 #     model_confirmed    CONFIDENT + SAME_WORK by an evaluated model
 #     model_adjudicated  WEAK + SAME_WORK by an evaluated model, title
 #                        similarity >= ADJ_TITLE_FLOOR, not org_unchecked
@@ -130,13 +132,21 @@
 #                        verify_record_json, so export-bib lists it)
 #     rejected           DIFFERENT_WORK (evaluated model) or a person's
 #                        different_work
+#     model_confirmed_untested  SAME_WORK on a CONFIDENT or WEAK row by a model
+#                        NOT on the evaluated list, while the researcher's
+#                        acceptance of that untested checker is in force
+#                        (`untested-checker`), the title floor and
+#                        org_unchecked rules as for model_adjudicated
 #   CITABLE_DRAFT / CITABLE_FINAL say which statuses a draft and a final
 #   deliverable may cite. ADJUDICATOR_EVALUATED_LISTS ships empty
 #   (adjudicator-list-none); its entries are whole identities (model ID,
 #   prompt template sha256, rubric version, agent file sha256). A judgment
 #   whose identity is not on the list in force (or whose agent file changed
-#   between pack and ingest) is recorded as given and counts as UNCERTAIN, so
-#   every row reaches a person until an evaluation passes. No status clears a
+#   between pack and ingest) is recorded as given and counts as UNCERTAIN: a
+#   hint the reference check sheet shows beside the row, which changes no
+#   status. Only `untested-checker` (the researcher's words, behind an
+#   Ask-First rule, per project and per model ID, revocable) lets such a
+#   model's SAME_WORK confirm a reference (adjudication-v2). No status clears a
 #   retraction. CLAUDE.md's sha256 is recorded beside the identity (pack log,
 #   bundle, MANIFEST rows, ledger) and, per list version, in
 #   ADJUDICATOR_EVALUATED_CLAUDE_MD, but it never decides whether a judgment
@@ -147,11 +157,18 @@
 #   scripts/lr_adjudication/NN_pack_batch_{batch}.py (run_with_capture.sh), so
 #   the hashes it prints land in an immutable log. Its --model-id must be the
 #   form ingest compares, the one lit_verify.norm_model leaves unchanged
-#   (otherwise exit 1, naming that form). `ingest` reads that log, the pack
+#   (otherwise exit 1, naming that form). It skips a row a checker already
+#   judged, unless a judgment packed now would count for more (an evaluated
+#   identity, or an accepted untested one, after a hint) or --rejudge names it
+#   with --keys (adj-selector-v2). `ingest` reads that log, the pack
 #   MANIFEST row, the bundle, the audit log, the adjudicator's own Claude Code
-#   transcript (adj-model-check-v1: it must record at least one model, and
-#   every model it records must be the packed model ID, else the batch is
-#   refused) and data/adjudication_raw/{batch}.jsonl; `release` marks a packed
+#   transcript (adj-model-check-v2: it must record at least one model, and
+#   every model it records must be the packed model ID; otherwise a batch of
+#   an evaluated identity is refused, and a batch of an unevaluated one is
+#   recorded as hints only, with a WARNING) and
+#   data/adjudication_raw/{batch}.jsonl; the audit log may show, besides the
+#   bundle Reads, the adjudicator's SubagentHandback calls (the harness tool
+#   that delivers its report), and nothing else; `release` marks a packed
 #   batch that was not ingested as released, so its rows can be packed again
 #   (the bundle stays on disk; an ingested batch is never released);
 #   `record-human` records a person's reply (their words are a command-line
@@ -166,8 +183,20 @@
 #   decision, binds a MISMATCH reference to that same record). A reference no
 #   check matched to a record (EXISTS, NOT FOUND, no record of the paper, not
 #   checked), which no reply can keep, is marked as left out of the reference
-#   list (glance-words-v3). "Authors as cited" is the author the check looked
-#   for, where it was run with one.
+#   list. "Authors as cited" is the author the check looked for, where it was
+#   run with one. A reference whose current judgment comes from an untested
+#   checker and that no one decided shows that judgment and its one-line reason
+#   as a hint, and the references it calls a different work, then those it
+#   could not judge, are listed first (glance-words-v4).
+#   `untested-checker` records the researcher's acceptance (or, with --revoke,
+#   its withdrawal) of an untested checker's SAME_WORK for one model ID; it is
+#   a MANIFEST row only, and it changes how later ingests count, never a
+#   ledger row already written. An acceptance row counts only as the step
+#   writes it (untested_accept_holds(): tool version, time, the words with
+#   their sha256, the researcher as decider, the Ask-First binding, matching
+#   parameters, a rationale, nothing in force before it); a latest row that
+#   is a withdrawal or does not hold up means no acceptance. An acceptance
+#   of a model ID on the evaluated list in force is refused.
 #
 # --- Licences ---------------------------------------------------------------
 #   A search row whose license_class is "restricted" or that names
@@ -201,7 +230,8 @@
 #       --agent-id, or one outside the context-reporter hook's id allowlist,
 #       at ingest; a --model-id at pack that is missing, or not in the form
 #       ingest compares (a trailing [1m], a dotted Claude ID, surrounding
-#       whitespace: the message names the form to pass); a missing --reason
+#       whitespace: the message names the form to pass), also at
+#       untested-checker; --rejudge at pack without --keys; a missing --reason
 #       at release)
 #   2   refused by a guard (PROJECT_DIR or SCRATCH_DIR outside the DAAF root
 #       or forbidden; an input path outside PROJECT_DIR; a secret value in an
@@ -224,17 +254,23 @@
 #       id, a finding on an unverified claim, a pooled or weighted field, a
 #       certainty without a reason, a descriptive summary with fewer than 3
 #       papers or mixed metrics, a gap whose search returned results; a
-#       CONFIDENT row under rules older than MIN_RULES_VERSION, a judgment on a
-#       row outside the bundle, an adjudicator tool call outside the bundle, a
-#       transcript that records a model other than the packed one (or none,
-#       or two transcripts for one agent ID), a released batch at ingest, a
+#       CONFIDENT row under rules older than MIN_RULES_VERSION, a pack with no
+#       row left to select (each one decided, held in a batch, already judged
+#       by the checker, or never adjudicated), a judgment on a
+#       row outside the bundle, an adjudicator tool call outside the bundle
+#       other than a SubagentHandback, a transcript of an evaluated identity's
+#       batch that records a model other than the packed one (or none), two
+#       transcripts for one agent ID, a released batch at ingest, a
 #       release of a batch never packed, ingested or released before, or
 #       with an empty --reason, a
 #       person's decision on a row no reply can decide (reply_can_decide:
 #       EXISTS, NOT FOUND, no record of the paper, a verify row with no
 #       verdict a reply can decide), a verify row with no verdict, or with one
-#       verify never gives, at attach verify); the reasons are in the MANIFEST
-#       row; selftest: an expectation did not hold
+#       verify never gives, at attach verify; an untested-checker call with no
+#       words, an acceptance without a rationale, an acceptance already in
+#       force or of a model ID on the evaluated list in force, a withdrawal of
+#       none); the reasons are in the MANIFEST row;
+#       selftest: an expectation did not hold
 #   12  internal error
 #
 # Titles, abstracts, quotes and every other text from a paper or a search
@@ -377,7 +413,34 @@ sc = _load_common()
 # surrounding whitespace), and its message names the normalized form to pass. The value is never rewritten: it is an
 # identity field, and evaluated_identity() compares it unnormalized with the evaluated list. An ID already in that
 # form is accepted and recorded unchanged. No row field, artifact or rule version changes. Contract 0.5.0.
-TOOL_VERSION = "1.8.1-daaf"
+# 1.9.0 (2026-11-03, the user's decisions D-49, D-50 and D-54): `adjudications ingest`'s audit-log scan accepts the
+# adjudicator's SubagentHandback records (tool exactly that name, same agent ID and agent type), the harness tool that
+# delivers its report, and still refuses any other tool or path. An unevaluated identity's judgments are hints: the
+# model check records a transcript that names another model (or none) as a WARNING and the ingest row's model_check
+# "mismatch", and accepts the batch, whose statuses do not change (adj-model-check-v2); an evaluated identity's batch
+# is still refused. New `adjudications untested-checker --model-id M --user-words "..." (--rationale "..." |
+# --revoke)` records the researcher's acceptance, or its withdrawal, of an untested checker for one model ID in this
+# project: while it is in force, an ingest of that model's batch (model check matched, identity not evaluated) gives a
+# SAME_WORK the status model_confirmed_untested (citable at final, labelled "confirmed by an untested AI check (your
+# choice)"), the title floor and org_unchecked rules applying as for model_adjudicated; DIFFERENT_WORK and UNCERTAIN
+# still go to a person. The ledger column untested_acceptance_ref names the MANIFEST line of the acceptance in force
+# (adjudication-v2; untested_acceptance() re-derives it). `adjudications glance-sheet` shows an untested checker's
+# verdict and one-line reason on each reference no one decided, and lists the references it calls a different work,
+# then those it could not judge, first (glance-words-v4). export-bib and export-ris add a daaf_citation_note on a
+# model_confirmed_untested reference. `adjudications pack` skips a row whose current ledger row holds a checker's
+# judgment on that verify row (a person's defer over one included) that counts at least as much as a judgment packed
+# now would: a hint, a judgment under the researcher's acceptance of an untested checker, an evaluated checker's
+# judgment, in rising order (ledger_standing(), already_judged()). --rejudge with --keys packs such a row again
+# (--rejudge without --keys is exit 1). A judgment whose transcript recorded another model or none never holds a row
+# back, and a new verify row is always selected. The pack row lists `rejudged` (adj-selector-v2). An untested-checker
+# acceptance row counts only as the step writes it (untested_accept_holds(): tool version and time, the researcher's
+# words whose sha256 is user_words_sha256, the researcher as decider, the Ask-First binding, parameters naming the same
+# model ID and no withdrawal, a rationale, no acceptance already in force); a latest row that is a withdrawal or does
+# not hold up means no acceptance, never the one before it. An acceptance of a model ID on the evaluated list in force
+# is refused (exit 11). A reference check sheet hint from a batch whose transcript recorded another
+# model, or none, reads "DAAF's AI reference check, which may not have run on the AI model planned for it, says: ".
+# Contract 0.6.0.
+TOOL_VERSION = "1.9.0-daaf"
 # Output contract semver (pre-1.0; additive changes bump the minor version).
 # 0.1.0 (S4 D3): the first contract. 0.2.0 (S4 review-fix E, 2026-10-31,
 # additive): claims from a paper's stored abstract (claim_id {paper_key}-aNN,
@@ -400,11 +463,16 @@ TOOL_VERSION = "1.8.1-daaf"
 # the MANIFEST row of `adjudications release`; pack and ingest row fields claude_md_sha256 (and, at ingest,
 # claude_md_sha256_at_ingest, model_id_observed, model_transcript, model_transcript_sha256); the bundle field
 # claude_md_sha256; the rule key adj_model_check and glance-words-v3. No column renamed or removed.
-CONTRACT_VERSION = "0.5.0"
+# 0.6.0 (2026-11-03, additive): the citation status model_confirmed_untested (in CITABLE_DRAFT, CITABLE_FINAL and
+# LABELLED_STATUSES); the ledger column untested_acceptance_ref; the MANIFEST row of `adjudications untested-checker`;
+# the ingest row fields model_check and untested_acceptance_ref; the pack row field rejudged; the .bib / .ris field
+# daaf_citation_note; adjudication-v2, adj-selector-v2, adj-model-check-v2 and glance-words-v4. No column renamed or
+# removed.
+CONTRACT_VERSION = "0.6.0"
 EXIT_CODES = {
     0: "written (also with counted skips); key and selftest success",
-    1: "usage (also PROJECT_DIR not a directory; ingest without a valid --agent-id; pack without a --model-id in the "
-       "form ingest compares; release without --reason)",
+    1: "usage (also PROJECT_DIR not a directory; ingest without a valid --agent-id; pack or untested-checker without "
+       "a --model-id in the form ingest compares; pack --rejudge without --keys; release without --reason)",
     2: "refused by a guard (PROJECT_DIR or SCRATCH_DIR, an input path outside PROJECT_DIR, a secret value, a named "
        "restricted-licence search row)",
     8: "input cannot be parsed (JSONL, MANIFEST line, records file, raw log, card, card_check) or is larger than "
@@ -414,8 +482,9 @@ EXIT_CODES = {
     10: "required dependency (polars or pyarrow) or required input missing (no corpus; a search without a records "
         "file; an adjudicator transcript)",
     11: "input rejected by validation, no version written (reasons in the MANIFEST row; e.g. a transcript recording "
-        "another model than the packed one, a released batch at ingest, a release of an ingested batch or with an "
-        "empty --reason); selftest: an expectation did not hold",
+        "another model than the packed one for an evaluated identity, a released batch at ingest, a release of an "
+        "ingested batch or with an empty --reason, an untested-checker call without words or for a model ID on the "
+        "evaluated list in force); selftest: an expectation did not hold",
     12: "internal error",
 }
 SCHEMAS = {"corpus": "lit-corpus-v1", "paper_aliases": "lit-aliases-v1", "search_log": "lit-search-log-v1",
@@ -430,9 +499,9 @@ RULE_VERSIONS = {"paperkey": "paperkey-v1", "citekey": "citekey-v2", "dedup": "d
                  "absence": "absence-v1", "counts": "counts-v1", "edges": "edges-v1",
                  "verify_regrade": "verify-regrade-v3", "retraction": "retraction-rederive-v3",
                  "abstract_claim": "abstract-claim-v1", "gap_words": "gap-words-v1",
-                 "abstract_fill": "abstract-fill-v1", "adjudication": "adjudication-v1",
-                 "adj_selector": "adj-selector-v1", "glance_words": "glance-words-v3",
-                 "adj_model_check": "adj-model-check-v1"}
+                 "abstract_fill": "abstract-fill-v1", "adjudication": "adjudication-v2",
+                 "adj_selector": "adj-selector-v2", "glance_words": "glance-words-v4",
+                 "adj_model_check": "adj-model-check-v2"}
 # INTENT (1.1.0): the verify verdicts that can make a citation citable, ranked; anything else ranks 0.
 VERIFY_RANK = {"CONFIDENT": 2, "WEAK": 1}
 # INTENT (1.7.0): every verdict scholar_search verify gives; attach verify refuses a row with any other (or none).
@@ -500,19 +569,25 @@ SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 #   LABELLED_STATUSES and read_status(); export-bib lists every draft-citable reference (CITABLE), and the final gate
 #   holds the line at CITABLE_FINAL.
 CITATION_STATUSES = ("pending_adjudication", "model_confirmed", "model_adjudicated", "human_confirmed",
-                     "human_overridden", "rejected", "unverified", "human_accepted_unbound")
+                     "human_overridden", "rejected", "unverified", "human_accepted_unbound", "model_confirmed_untested")
 # REASONING: a table written before 1.4.0 says verified_rule for a rule-passed CONFIDENT; this version holds such a
 #   reference until its second check, so it is read as pending_adjudication wherever a status is read.
 LEGACY_STATUSES = {"verified_rule": "pending_adjudication"}
 CITABLE_DRAFT = ("pending_adjudication", "model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden",
-                 "human_accepted_unbound")
-CITABLE_FINAL = ("model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden")
+                 "human_accepted_unbound", "model_confirmed_untested")
+CITABLE_FINAL = ("model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden",
+                 "model_confirmed_untested")
 DRAFT_REVIEW_STATUSES = ("pending_adjudication", "human_accepted_unbound")     # citable in a draft, as a review item
-LABELLED_STATUSES = ("model_confirmed", "model_adjudicated", "human_overridden")   # cited with a label in a final
+LABELLED_STATUSES = ("model_confirmed", "model_adjudicated", "human_overridden",   # cited with a label in a final
+                     "model_confirmed_untested")
+# INTENT (adjudication-v2): the words that label a reference the researcher let an untested checker confirm, in the
+#   reference check sheet, the .bib / .ris note and (for lit_verify report) the deliverable's label.
+UNTESTED_CONFIRMED_WORDS = "confirmed by an untested AI check (your choice)"
 CITABLE = CITABLE_DRAFT
 # INTENT (adjudication-v1): the adjudicator-evaluated list, versioned like the vision list. It ships EMPTY
 #   (adjudicator-list-none): nothing has passed the evaluation, so every model's SAME_WORK or
-#   DIFFERENT_WORK is recorded as given and counts as UNCERTAIN, and every row reaches a person.
+#   DIFFERENT_WORK is recorded as given and counts as UNCERTAIN (a hint on the reference check sheet), and every row
+#   reaches a person unless the researcher accepts that untested checker (`untested-checker`).
 #   Each entry is the whole evaluated identity, a 4-tuple (model_id, template_sha256, rubric_version,
 #   agent_file_sha256): the exact model ID, the sha256 of the fixed prompt body, the rubric version the template
 #   names, and the sha256 of .claude/agents/citation-adjudicator.md as evaluated. A judgment counts only when all
@@ -2493,6 +2568,9 @@ def bib_entry(r, meta, grade):
     fields += [("daaf_paper_key", r["paper_key"]), ("daaf_evidence_grade", grade or "none"),
                ("daaf_citation_status", read_status(r["citation_status"])),
                ("daaf_verify_row_sha256", r["verify_row_sha256"])]
+    # INTENT (1.9.0, adjudication-v2): the .bib says in words how a reference an untested checker confirmed was checked
+    if read_status(r["citation_status"]) == "model_confirmed_untested":
+        fields.append(("daaf_citation_note", UNTESTED_CONFIRMED_WORDS))
     # bibtex-v2 (Q-W8): every field is braced, so "{National Bureau ...} and Smith, Jane" stays one organisation
     #   plus one person, and a sole organisation author stays one name ({{...}}).
     body = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields if v)
@@ -2516,7 +2594,9 @@ def ris_entry(r, meta, grade):
               ris_line("DO", meta.get("doi") or ""), ris_line("ID", r["citekey"]),
               ris_line("N1", f"daaf_paper_key: {r['paper_key']}"), ris_line("N1", f"daaf_evidence_grade: {grade}"),
               ris_line("N1", f"daaf_citation_status: {read_status(r['citation_status'])}"),
-              ris_line("N1", f"daaf_verify_row_sha256: {r['verify_row_sha256']}"), "ER  - "]
+              ris_line("N1", f"daaf_verify_row_sha256: {r['verify_row_sha256']}"),
+              ris_line("N1", f"daaf_citation_note: {UNTESTED_CONFIRMED_WORDS}")
+              if read_status(r["citation_status"]) == "model_confirmed_untested" else None, "ER  - "]
     return "\n".join(x for x in lines if x) + "\n"
 
 
@@ -2649,7 +2729,7 @@ def cmd_manifest(ctx, a):
     return 0
 
 
-# §§ CITATION SECOND CHECK (adjudication-v1, adj-selector-v1, glance-words-v3, adj-model-check-v1)
+# §§ CITATION SECOND CHECK (adjudication-v2, adj-selector-v2, glance-words-v4, adj-model-check-v2)
 def read_status(status):
     # The citation status as this version reads it: an old table's verified_rule is pending_adjudication; none is
     #   unverified. Every reader of citation_status (export, glance sheet, pack, the report gate) goes through it.
@@ -2699,10 +2779,13 @@ def combine_dimensions(dim_verdicts, dims):
     return "SAME_WORK" if vals and all(v == "SAME_WORK" for v in vals) else "UNCERTAIN"
 
 
-def adjudication_status(rule_verdict, verdict, effective_verdict, title_floor_applied, human_decision):
-    # adjudication-v1: the citation status one ledger row gives its paper. The report
+def adjudication_status(rule_verdict, verdict, effective_verdict, title_floor_applied, human_decision,
+                        untested_accepted=False):
+    # adjudication-v2: the citation status one ledger row gives its paper. The report
     #   gate re-derives the corpus status with this function. `verdict` is the model's as given, `effective_verdict`
-    #   what counts (UNCERTAIN for a model not on the evaluated list).
+    #   what counts (UNCERTAIN for a model not on the evaluated list). `untested_accepted` is True when the row names
+    #   the researcher's acceptance of that untested checker (ledger untested_acceptance_ref, which
+    #   untested_acceptance() re-derives); a caller that omits it gets the adjudication-v1 status, which fails closed.
     if human_decision == "override_mismatch":
         return "human_overridden" if rule_verdict == "MISMATCH" else "unverified"
     if human_decision == "same_work":
@@ -2712,6 +2795,12 @@ def adjudication_status(rule_verdict, verdict, effective_verdict, title_floor_ap
         return "human_overridden" if "DIFFERENT_WORK" in (verdict, effective_verdict) else "human_confirmed"
     if human_decision == "different_work":
         return "rejected"
+    # INTENT (adjudication-v2, D-54): with the researcher's acceptance in force, an untested checker's SAME_WORK on a
+    #   CONFIDENT or WEAK row confirms it, except where the title floor or org_unchecked sends a WEAK row to a person.
+    #   An evaluated identity (effective SAME_WORK) keeps its own statuses; a person's defer leaves it unconfirmed.
+    if untested_accepted and human_decision is None and verdict == "SAME_WORK" and effective_verdict == "UNCERTAIN" \
+            and rule_verdict in VERIFY_RANK and not title_floor_applied:
+        return "model_confirmed_untested"
     if rule_verdict == "CONFIDENT":
         return {"SAME_WORK": "model_confirmed", "DIFFERENT_WORK": "rejected"}.get(effective_verdict,
                                                                                  "pending_adjudication")
@@ -2730,7 +2819,8 @@ def ledger_columns():
             "dimension_verdicts_json", "verdict", "effective_verdict", "title_similarity_subtitle_aware",
             "title_floor_applied", "rationale", "model_id", "model_id_source", "model_id_observed", "agent_name",
             "evaluated_model_list_version", "template_sha256", "agent_file_sha256", "agent_file_sha256_at_ingest",
-            "claude_md_sha256", "claude_md_sha256_at_ingest", "dispatch_id", "adjudicated_at", "human_decision",
+            "claude_md_sha256", "claude_md_sha256_at_ingest", "dispatch_id", "adjudicated_at",
+            "untested_acceptance_ref", "human_decision",
             "human_decider", "human_decided_at", "human_rationale", "human_instruction_verbatim", "human_binding",
             "human_binding_basis", "override_record_json", "citation_status", "superseded_by", "recorded_version"]
 
@@ -2788,8 +2878,9 @@ def cited_from_log(log):
 
 
 def adj_selector(row, verdict):
-    # adj-selector-v1: why a verify row is offered to the second check (a list: one row can match
-    #   several) and which dimensions the adjudicator is asked to judge. Deterministic, from the stored row only.
+    # adj-selector (unchanged since v1; v2 changed only which rows pack selects, already_judged()): why a verify row is
+    #   offered to the second check (a list: one row can match several) and which dimensions the adjudicator is asked
+    #   to judge. Deterministic, from the stored row only.
     if verdict == "CONFIDENT":
         return ["confident_second_check"], ["author", "title", "type", "version"]
     ac = row.get("author_check") if isinstance(row.get("author_check"), dict) else {}
@@ -2941,13 +3032,16 @@ def find_pack_log(ctx, batch):
 
 def audit_scan(ctx, agent_id, bundle_real):
     # Hardening (a): every audit-log record of the adjudicator dispatch (agent_id) must be a Read of the bundle by a
-    #   citation-adjudicator. Returns (records, bundle reads, stray reasons).
+    #   citation-adjudicator, or that agent's SubagentHandback. Returns (records, bundle reads, stray reasons).
     # REASONING: the audit hook writes after the tool ran and can lose a record (a failed append, its timeout), so a
     #   clean scan is EVIDENCE, not proof; the agent-scoped Read path hook (user-applied) is the real boundary.
+    # INTENT (1.9.0, D-49): SubagentHandback is the Claude Code harness tool a subagent delivers its report through
+    #   (observed 2026-11-03, Claude Code 2.1.281); it opens no file. Its record is accepted only under that exact tool
+    #   name and the same agent ID and agent type, and it never counts as a read of the bundle.
     path = ctx["paths"].get("audit_log") or os.path.join(ALLOWED_ROOT, AUDIT_LOG_REL)
     if not os.path.isfile(path):
         raise CorpusError(10, f"the audit log {AUDIT_LOG_REL} is missing; the adjudicator's reads cannot be checked")
-    n, reads, stray, needle = 0, 0, [], agent_id.encode("utf-8")
+    n, reads, handbacks, stray, needle = 0, 0, 0, [], agent_id.encode("utf-8")
     with open(path, "rb") as f:
         for i, raw in enumerate(f, 1):
             if needle not in raw:
@@ -2962,11 +3056,14 @@ def audit_scan(ctx, agent_id, bundle_real):
             tgt = str(rec.get("target") or "")
             if rec.get("agent_type") != ADJ_AGENT_NAME:
                 stray.append(f"audit line {i}: agent type {safe(rec.get('agent_type'), 40)!r}, not {ADJ_AGENT_NAME}")
+            elif rec.get("tool") == "SubagentHandback":
+                handbacks += 1
             elif rec.get("tool") != "Read" or not tgt or os.path.realpath(tgt) != bundle_real:
                 stray.append(f"audit line {i}: {safe(rec.get('tool'), 20)} on {safe(tgt, 160)!r}, not the bundle")
             else:
                 reads += 1
-    ctx["row"]["inputs"].append({"what": "audit log", "path": AUDIT_LOG_REL, "records_for_agent": n})
+    ctx["row"]["inputs"].append({"what": "audit log", "path": AUDIT_LOG_REL, "records_for_agent": n,
+                                 "handback_records": handbacks})
     return n, reads, stray
 
 
@@ -2997,6 +3094,160 @@ def open_batch_rows(ctx):
     done = {r.get("batch_id") for r in batch_rows(ctx, "adjudications ingest")} | released_batches(ctx)
     return {s: r.get("batch_id") for r in batch_rows(ctx, "adjudications pack") if r.get("batch_id") not in done
             for s in r.get("row_sha256s") or []}
+
+
+# adj-selector-v2: how much a checker's judgment counts: a hint (an untested identity), a confirmation under the
+#   researcher's acceptance of that untested checker (its SAME_WORK confirms), or an evaluated identity's verdict.
+JUDGMENT_STANDING = {0: "a hint", 1: "a judgment under the researcher's acceptance of an untested checker",
+                     2: "an evaluated checker's judgment"}
+
+
+def other_model_observed(row):
+    # adj-model-check-v2: True when a ledger row's transcript recorded another model than the packed one, or none
+    #   (model_id_observed, as ingest writes it): a batch kept as hints only, whose judgment is no judgment of the model
+    #   it names. The one rule behind ledger_standing() and the glance sheet's wording of such a hint.
+    # ASSUMES: model_id_observed is the comma-separated list ingest writes (adj-model-check-v1 and later); a ledger
+    #   written before that column existed has it null, and its batches had no model check, so the packed model stands.
+    observed = row.get("model_id_observed")
+    if observed is None:
+        return False
+    seen = [m.strip() for m in str(observed).split(",") if m.strip()]
+    return not seen or any(lv.norm_model(m) != lv.norm_model(str(row.get("model_id") or "")) for m in seen)
+
+
+def ledger_standing(prev):
+    # adj-selector-v2: the standing (JUDGMENT_STANDING) of the judgment in `prev`, a current ledger row, as it was
+    #   recorded: 2 when its identity was on the evaluated list it names (evaluated_identity(), as lit_verify report
+    #   re-derives it), 1 when it names an acceptance (untested_acceptance_ref), else 0. None when it holds no judgment
+    #   by the model it names: no verdict (a person's row over no model row), or a transcript that recorded another
+    #   model or none (model_id_observed; a hints-only batch whose provenance is broken). A person's defer over a model
+    #   row copies its fields, so it has the standing of that row.
+    if not prev or prev.get("verdict") is None or other_model_observed(prev):
+        return None
+    if evaluated_identity(prev.get("evaluated_model_list_version"), prev.get("model_id"), prev.get("template_sha256"),
+                          prev.get("rubric_version"), prev.get("agent_file_sha256"),
+                          prev.get("agent_file_sha256_at_ingest")):
+        return 2
+    return 1 if prev.get("untested_acceptance_ref") else 0
+
+
+def already_judged(prev, paper_key, standing_now):
+    # adj-selector-v2: True when the paper's attached verify row already holds a checker's judgment (for this paper)
+    #   that counts at least as much as a judgment packed now would (`standing_now`), so `pack` skips the row unless
+    #   --rejudge names it.
+    # ASSUMES: `prev` is current_ledger()'s row for the paper's attached verify row (or None).
+    # REASONING: an untested checker's verdict is a hint that leaves the status undecided, as is an evaluated
+    #   checker's UNCERTAIN, so the status alone cannot tell a judged row from an unjudged one; selecting on it would
+    #   pay for a second judgment and show a second hint. A new judgment is worth its dispatch only when it could count
+    #   for more than the one recorded: a hint from model X never holds a row back from an evaluated identity Y, nor
+    #   from a checker the researcher accepted, nor from X itself once X is evaluated (its hint never counted, a new
+    #   judgment would). Another untested model, or an edited prompt, rubric or agent file still untested, would give
+    #   one more hint, so it does not re-judge; neither does a withdrawn acceptance or a lapsed evaluation. A new
+    #   verify row (the mode's "check again") has no ledger row yet, so it is always selected.
+    standing = ledger_standing(prev)
+    return standing is not None and prev.get("paper_key") == paper_key and standing >= standing_now
+
+
+UNTESTED_COMMAND = "adjudications untested-checker"
+
+
+def untested_accept_holds(r, model_id, in_force):
+    # adjudication-v2: True when one successful untested-checker row for `model_id` is an acceptance that reads as
+    #   cmd_adj_untested writes it, given `in_force` (the line sha256 of the acceptance in force before it, or None):
+    #   decision "accept"; the tool version and the time; the researcher's words verbatim in parameters.user_words,
+    #   non-empty, whose sha256 (of the words as stripped) is user_words_sha256; human_decider "researcher" and
+    #   human_binding "permission_prompt"; parameters that name the same model ID and no withdrawal; a rationale; and
+    #   nothing in force before it, so ends_acceptance is null (the step refuses a second acceptance).
+    # REASONING (FR-1, review B1): the same bar as the sibling records (record-human's ledger row, lit_verify's choice
+    #   and settle records): a script that writes a decision row of its own must reproduce the step's whole row, never
+    #   five fields of it. That makes a forgery a whole-row one; it does not make it impossible (the Ask-First rule and
+    #   run_with_capture.sh's decision scan are the other layers). A withdrawal needs no check of its own: any row
+    #   that is not an acceptance that holds, a withdrawal or a damaged row, leaves none in force (untested_acceptance).
+    prm = r.get("parameters") if isinstance(r.get("parameters"), dict) else {}
+    words = prm.get("user_words")
+    return (r.get("decision") == "accept" and isinstance(r.get("tool_version"), str) and r["tool_version"].strip()
+            and isinstance(r.get("timestamp"), str) and r["timestamp"].strip()
+            and isinstance(words, str) and words.strip()
+            and r.get("user_words_sha256") == sha256_bytes(words.strip().encode("utf-8"))
+            and r.get("human_decider") == "researcher" and r.get("human_binding") == "permission_prompt"
+            and prm.get("model_id") == model_id and prm.get("revoke") is False
+            and isinstance(r.get("rationale"), str) and bool(r["rationale"].strip())
+            and in_force is None and r.get("ends_acceptance") is None)
+
+
+def untested_acceptance(rows, model_id, upto_sha=None):
+    # adjudication-v2: (line sha256, row) of the researcher's acceptance of an untested checker for `model_id` that is
+    #   in force after the data MANIFEST rows `rows` ([(line sha256, row)] in file order, as manifest_rows() gives
+    #   them), else None. The latest successful untested-checker row naming that exact model ID decides: an acceptance
+    #   that holds up (untested_accept_holds()) puts one in force; any other row, a withdrawal (--revoke) or a row that
+    #   does not hold up, leaves none. With `upto_sha`, only the rows before that line count, so lit_verify report can
+    #   re-derive the acceptance an ingest used from the rows before the ingest's own row.
+    # REASONING: a failing latest row is never skipped: skipping it would let a damaged or forged withdrawal, or a
+    #   forged acceptance, leave the grant before it in force (fail closed, as lit_verify's override_current()).
+    found = None
+    for sha, r in rows:
+        if upto_sha is not None and sha == upto_sha:
+            break
+        if r.get("kind") == "lit_corpus" and r.get("command") == UNTESTED_COMMAND and r.get("exit_code") == 0 and \
+                r.get("model_id") == model_id:
+            found = (sha, r) if untested_accept_holds(r, model_id, found[0] if found else None) else None
+    return found
+
+
+def cmd_adj_untested(ctx, a, state):
+    # `adjudications untested-checker` (adjudication-v2, D-54): the researcher's choice to let a reference checker
+    #   that is not on the evaluated list confirm references with its SAME_WORK, for one model ID in this project, or
+    #   (--revoke) the withdrawal of that choice. Writes only its MANIFEST row; ingest reads it (untested_acceptance()).
+    # REASONING: per project and per model ID, not per batch: the researcher decides about a model before any batch
+    #   exists (at the review plan, or when the model changes), batches are the tool's own unit, and a choice bound to
+    #   the model ID lapses by itself when another model runs the checker. It is forward-only: a ledger row is never
+    #   rewritten, so a withdrawal changes later ingests, and references already confirmed under the acceptance keep
+    #   their labelled status (a person's reply on the reference check sheet can still reject or confirm each one).
+    #   The words are a command-line argument behind an Ask-First rule, as for record-human (the binding the tool
+    #   records, and the limit of what it can see, are the same).
+    model_id = str(a.model_id or "")
+    norm = lv.norm_model(model_id)
+    if not MODEL_ID_RE.fullmatch(norm):
+        raise CorpusError(1, "untested-checker needs --model-id: the exact model ID the reference checker runs on")
+    if model_id != norm:
+        raise CorpusError(1, f"--model-id {safe(repr(model_id), 140)} is not in the form ingest compares (a trailing "
+                             f"[1m], a dotted Claude ID or surrounding whitespace); pass --model-id {norm} instead")
+    words, rationale = str(a.user_words or "").strip(), str(a.rationale or "").strip()
+    if not words:
+        raise CorpusError(11, "the user's own words are required (--user-words, quoted verbatim from their message)")
+    if not a.revoke and not rationale:
+        raise CorpusError(11, "an acceptance needs --rationale (why, in a sentence)")
+    # INTENT (FR-1, review I3): a model ID on the evaluated list in force needs no acceptance, so recording one is
+    #   refused (exit 11, nothing in force changes), as vision-override refuses a reader already on its tested list.
+    # REASONING: matched on the model ID alone, never the whole identity: an evaluated identity takes no acceptance
+    #   at ingest anyway, so the refusal only says so before a batch. A withdrawal is still allowed, so an acceptance
+    #   recorded before the model was listed can be ended.
+    if not a.revoke and any(e[0] == model_id for e in evaluated_identities(ADJUDICATOR_LIST_VERSION)):
+        raise CorpusError(11, f"{model_id} is already on DAAF's evaluated list for the reference checker "
+                              f"({ADJUDICATOR_LIST_VERSION}), so no acceptance is needed; no acceptance recorded")
+    current = untested_acceptance(manifest_rows(os.path.join(ctx["data"], "MANIFEST.jsonl")), model_id)
+    if a.revoke and current is None:
+        raise CorpusError(11, f"no acceptance of an untested reference checker on {model_id} is in force in this "
+                              "project; nothing to withdraw")
+    if not a.revoke and current is not None:
+        raise CorpusError(11, f"an acceptance of an untested reference checker on {model_id} is already in force "
+                              f"(MANIFEST line {current[0][:12]}); withdraw it first to record a new one")
+    decision = "revoke" if a.revoke else "accept"
+    ctx["row"].update(model_id=model_id, decision=decision, user_words_sha256=sha256_bytes(words.encode("utf-8")),
+                      rationale=scrub(one_line(rationale, 2000)) or None, human_decider="researcher",
+                      human_binding="permission_prompt",
+                      human_binding_basis="not detected by the tool: it cannot see a permission prompt or a !-typed run",
+                      ends_acceptance=current[0] if current else None,
+                      evaluated_model_list_version=ADJUDICATOR_LIST_VERSION)
+    if a.revoke:
+        ctx["out"].append(f"lit_corpus: adjudications untested-checker: the acceptance of an untested reference checker "
+                          f"on {model_id} is withdrawn; later batches of it are hints only (references it already "
+                          "confirmed keep their label)")
+    else:
+        ctx["out"].append(f"lit_corpus: adjudications untested-checker: the researcher accepts the untested reference "
+                          f"checker on {model_id} for this project; its same-work verdicts in later batches confirm "
+                          "references (labelled), and every other verdict still goes to the researcher")
+    return 0
 
 
 def claude_md_sha(ctx):
@@ -3080,28 +3331,48 @@ def cmd_adj_pack(ctx, a, state):
         raise CorpusError(11, f"batch {a.batch} is already packed; re-dispatch its bundle, never re-pack it")
     entries, cur, held = search_rows(ctx), current_ledger(ctx), open_batch_rows(ctx)
     keys = [k.strip() for k in (a.keys or "").split(",") if k.strip()]
+    # INTENT (adj-selector-v2): --rejudge packs again a row the checker already judged (the evaluation's
+    #   self-consistency re-runs; a researcher who asks for the AI check to look again at an unchanged check), only for
+    #   rows named with --keys.
+    # REASONING: each judged row costs a dispatch and adds a second hint, so a re-judgment is asked for by name, never
+    #   swept up by a pack of every undecided row; refusing here writes nothing (exit 1, a usage refusal).
+    if a.rejudge and not keys:
+        raise CorpusError(1, "--rejudge needs --keys: name the references the checker is to judge again")
     unknown = [k for k in keys if k not in corpus]
     if unknown:
         raise CorpusError(11, "unknown paper keys", [f"unknown {k}" for k in unknown])
-    picked, skipped = [], []
+    # INTENT (adj-selector-v2): how a judgment of this identity would count if packed now: evaluated (the list in
+    #   force holds the whole identity), under the researcher's acceptance of this untested model ID, or a hint.
+    #   Ingest decides how the batch counts; this only decides whether a judged row is worth packing again.
+    standing_now = 2 if evaluated_identity(ADJUDICATOR_LIST_VERSION, model_id, tsha, rver, asha, asha) else \
+        1 if untested_acceptance(manifest_rows(os.path.join(ctx["data"], "MANIFEST.jsonl")), model_id) else 0
+    picked, skipped, rejudged = [], [], []
     for key in keys or sorted(corpus):
         r = corpus[key]
         sha, v, st = r.get("verify_row_sha256"), r.get("verify_verdict"), read_status(r.get("citation_status"))
         prev = cur.get(sha or "")
+        judged = already_judged(prev, key, standing_now)
         why = ("no reference check attached" if not sha else
                f"its check reads {v}: never adjudicated" if v not in VERIFY_RANK else
                f"already {st}" if st not in ("pending_adjudication", "unverified", "human_accepted_unbound") else
                f"in batch {held[sha]}, packed and not ingested (re-dispatch that bundle, or release the batch)"
                if sha in held else
                "a person already decided it" if prev and prev.get("human_decision") in ("same_work", "different_work",
-                                                                                       "override_mismatch") else None)
+                                                                                       "override_mismatch") else
+               f"the checker already judged this check ({JUDGMENT_STANDING[ledger_standing(prev)]}), and a judgment "
+               f"packed now would be {JUDGMENT_STANDING[standing_now]}; name it with --keys and --rejudge to judge "
+               "it again" if judged and not a.rejudge else None)
         if why:
             skipped.append({"paper_key": key, "reason": why})
         else:
             picked.append(key)
+            if judged:
+                rejudged.append(key)
     picked = picked[:a.max_rows]
+    rejudged = [k for k in rejudged if k in picked]
     if not picked:
-        raise CorpusError(11, "no reference to pack (every row is decided, held in a batch, or never adjudicated)",
+        raise CorpusError(11, "no reference to pack (every row is decided, held in a batch, already judged by the "
+                              "checker, or never adjudicated)",
                           [f"{s['paper_key']}: {s['reason']}" for s in skipped[:30]])
     refusals, rows = [], []
     for key in picked:
@@ -3165,7 +3436,8 @@ def cmd_adj_pack(ctx, a, state):
     bsha, psha, shas = sha256_bytes(bdata), sha256_bytes(prompt), [x["row_sha256"] for x in rows]
     ctx["row"].update(batch_id=a.batch, bundle_sha256=bsha, prompt_sha256=psha, row_sha256s=shas,
                       model_id=a.model_id, agent_name=ADJ_AGENT_NAME, prompt_version=pver, rubric_version=rver,
-                      template_sha256=tsha, agent_file_sha256=asha, claude_md_sha256=cmd, skipped=skipped)
+                      template_sha256=tsha, agent_file_sha256=asha, claude_md_sha256=cmd, skipped=skipped,
+                      rejudged=rejudged)
     # INTENT (hardening (b)): these lines are what ingest reads back from the captured pack script's own log; the
     #   PACK line names the whole identity the evaluated list is matched on (model, template, rubric, agent file),
     #   then CLAUDE.md's sha256, recorded beside it and never part of it.
@@ -3176,7 +3448,8 @@ def cmd_adj_pack(ctx, a, state):
     ctx["out"].append(f"ADJUDICATION_BUNDLE_SHA256 {bsha} {os.path.relpath(bpath, ctx['pd'])}")
     ctx["out"].append(f"ADJUDICATION_PROMPT_SHA256 {psha} {os.path.relpath(ppath, ctx['pd'])}")
     ctx["out"].append(f"lit_corpus: adjudications pack: {len(rows)} row(s) in batch {a.batch}; {len(skipped)} "
-                      "not packed (listed in the MANIFEST row)")
+                      "not packed (listed in the MANIFEST row)" + (
+                          f"; {len(rejudged)} judged again by name (--rejudge)" if rejudged else ""))
     return 0
 
 
@@ -3241,23 +3514,39 @@ def cmd_adj_ingest(ctx, a, state):
         raise CorpusError(11, f"batch {a.batch} refused: the audit log does not show the adjudicator ({a.agent_id}) "
                               "reading only its bundle (evidence, not proof)",
                           stray[:30] or [f"{n} record(s) of the dispatch, {reads} read(s) of the bundle"])
-    # INTENT (adj-model-check-v1): the judgments count only if the model that gave them is the one packed: the
-    #   adjudicator's own transcript must record at least one model, and every model it records must normalize
-    #   (lit_verify's norm_model: [1m] dropped, dotted Claude IDs hyphenated) to the pack log's model ID, else the whole
-    #   batch is refused. The row records what was seen.
-    # REASONING: a refusal writes nothing, so the ledger's model_id stays the packed ID that ran and lit_verify report
-    #   re-derives every row as before; the batch's rows are freed with `adjudications release` and packed again.
+    # INTENT (adj-model-check-v2): the transcript must record at least one model, and every model it records must
+    #   normalize (lit_verify's norm_model: [1m] dropped, dotted Claude IDs hyphenated) to the pack log's model ID. For
+    #   an evaluated identity a failure refuses the whole batch, because its verdicts would change statuses. For an
+    #   unevaluated identity the batch is hints only, which change no status, so a failure is recorded (the row's
+    #   model_check "mismatch", model_id_observed, a WARNING) and the batch accepted; the researcher's acceptance of an
+    #   untested checker never applies to such a batch.
+    # REASONING: a refusal writes nothing, so the ledger's model_id stays the packed ID and lit_verify report
+    #   re-derives every row as before; a refused batch's rows are freed with `adjudications release`.
     tx = transcript_models(ctx, a.agent_id.strip())
     models_seen = [safe(m, 120) for m in tx["models"]]
     ctx["row"]["inputs"].append({"what": "adjudicator transcript", "path": tx["file"], "bytes": tx["bytes"],
                                  "sha256": tx["sha256"]})
     ctx["row"].update(model_id_observed=models_seen, model_transcript=tx["file"],
                       model_transcript_sha256=tx["sha256"])
-    if not models_seen or any(lv.norm_model(m) != lv.norm_model(log["model_id"]) for m in models_seen):
+    # INTENT (hardening (e)): model_id comes from the pack log (the orchestrator's dispatch record); any model_id or
+    #   agent_name inside the return is ignored. A verdict counts only when the whole identity (model, template,
+    #   rubric, agent file as packed and as hashed now) is on the evaluated list in force; otherwise it is kept as
+    #   given and counts UNCERTAIN.
+    model_id = log["model_id"]
+    agent_now = adj_agent_file(ctx, required=False)
+    claude_now = claude_md_sha(ctx)
+    evaluated = evaluated_identity(ADJUDICATOR_LIST_VERSION, model_id, bundle["template_sha256"],
+                                   bundle["rubric_version"], bundle["agent_file_sha256"], agent_now)
+    matched = bool(models_seen) and all(lv.norm_model(m) == lv.norm_model(model_id) for m in models_seen)
+    ctx["row"]["model_check"] = "match" if matched else "mismatch"
+    if not matched and evaluated:
         raise CorpusError(11, f"batch {a.batch} refused: the adjudicator's transcript records "
-                              f"{', '.join(models_seen) or 'no model'}, not the packed model {log['model_id']}",
+                              f"{', '.join(models_seen) or 'no model'}, not the packed model {model_id}",
                           [f"transcript {tx['file']}: {m}" for m in models_seen] or
                           [f"transcript {tx['file']}: no model"])
+    acceptance = untested_acceptance(manifest_rows(os.path.join(ctx["data"], "MANIFEST.jsonl")), model_id) \
+        if matched and not evaluated else None
+    ctx["row"]["untested_acceptance_ref"] = acceptance[0] if acceptance else None
     judgments = read_jsonl(ctx, os.path.join(ctx["data"], "adjudication_raw", f"{a.batch}.jsonl"), "adjudicator return")
     by_sha = {r["verify_row_sha256"]: r for r in corpus.values() if r.get("verify_row_sha256")}
     cur = current_ledger(ctx)
@@ -3293,23 +3582,16 @@ def cmd_adj_ingest(ctx, a, state):
             accepted.append((sha, br, cr, j))
     if refusals:
         raise CorpusError(11, f"batch {a.batch}: {len(refusals)} judgment problem(s); nothing written", refusals)
-    # INTENT (hardening (e)): model_id comes from the pack log (the orchestrator's dispatch record); any model_id or
-    #   agent_name inside the return is ignored. A verdict counts only when the whole identity (model, template,
-    #   rubric, agent file as packed and as hashed now) is on the evaluated list in force; otherwise it is kept as
-    #   given and counts UNCERTAIN.
-    model_id = log["model_id"]
-    agent_now = adj_agent_file(ctx, required=False)
-    claude_now = claude_md_sha(ctx)
-    evaluated = evaluated_identity(ADJUDICATOR_LIST_VERSION, model_id, bundle["template_sha256"],
-                                   bundle["rubric_version"], bundle["agent_file_sha256"], agent_now)
     new = []
     for sha, br, cr, j in accepted:
         v = j["verdict"]
         eff = v if evaluated else "UNCERTAIN"
         sim = br.get("title_similarity_subtitle_aware")
-        # INTENT (hardening (d)): an effective SAME_WORK on a WEAK row below the title floor, or on org_unchecked
-        floor = eff == "SAME_WORK" and br["rule_verdict"] == "WEAK" and (
-            not isinstance(sim, (int, float)) or sim < ADJ_TITLE_FLOOR or "org_unchecked" in (br.get("selector") or []))
+        # INTENT (hardening (d)): an effective SAME_WORK on a WEAK row below the title floor, or on org_unchecked, goes
+        #   to a person; so does an accepted untested checker's SAME_WORK on such a row (adjudication-v2)
+        floor = (eff == "SAME_WORK" or (acceptance is not None and v == "SAME_WORK")) and br["rule_verdict"] == "WEAK" \
+            and (not isinstance(sim, (int, float)) or sim < ADJ_TITLE_FLOOR or
+                 "org_unchecked" in (br.get("selector") or []))
         cited = br.get("cited") or {}
         new.append({"paper_key": cr["paper_key"], "verify_manifest": br.get("manifest"), "verify_row_sha256": sha,
                     "verify_row_line": br.get("manifest_line_no"), "extract_sha256": br.get("digest_sha256"),
@@ -3332,7 +3614,9 @@ def cmd_adj_ingest(ctx, a, state):
                     "agent_file_sha256_at_ingest": agent_now, "claude_md_sha256": bundle.get("claude_md_sha256"),
                     "claude_md_sha256_at_ingest": claude_now,
                     "dispatch_id": a.agent_id.strip(), "adjudicated_at": ctx["timestamp"],
-                    "citation_status": adjudication_status(br["rule_verdict"], v, eff, floor, None)})
+                    "untested_acceptance_ref": acceptance[0] if acceptance else None,
+                    "citation_status": adjudication_status(br["rule_verdict"], v, eff, floor, None,
+                                                           untested_accepted=acceptance is not None)})
     for row in stage_ledger(ctx, new):
         corpus[row["paper_key"]].update(citation_status=row["citation_status"], adjudication_ref=row["adjudication_id"])
     stage_corpus(ctx, state)
@@ -3345,8 +3629,15 @@ def cmd_adj_ingest(ctx, a, state):
                       model_evaluated=evaluated, judged=len(new), unjudged=unjudged)
     ctx["out"].append(f"lit_corpus: adjudications ingest: batch {a.batch}, {len(new)} judgment(s) recorded; model "
                       f"{model_id} with this prompt, rubric and agent file is {'on' if evaluated else 'NOT on'} the "
-                      f"evaluated list ({ADJUDICATOR_LIST_VERSION})"
-                      f"{'' if evaluated else ', so every verdict counts as UNCERTAIN'}")
+                      f"evaluated list ({ADJUDICATOR_LIST_VERSION})" + (
+                          "" if evaluated else
+                          "; the researcher's acceptance of this untested checker is in force, so its same-work "
+                          "verdicts confirm references (labelled) and its other verdicts go to the researcher"
+                          if acceptance else ", so its verdicts are hints only (each counts as UNCERTAIN)"))
+    if not matched:
+        ctx["out"].append(f"  WARNING: the adjudicator's transcript records {', '.join(models_seen) or 'no model'}, "
+                          f"not the packed model {model_id}; this batch of an unevaluated checker is recorded as hints "
+                          "only (no status changes, and no acceptance of an untested checker applies)")
     if changed:
         ctx["out"].append(f"  WARNING: the adjudicator's agent file {ADJ_AGENT_FILE_REL} changed (or is missing) since "
                           "the pack; this batch counts as unevaluated")
@@ -3443,7 +3734,7 @@ def cmd_adj_record_human(ctx, a, state):
                     "verdict", "effective_verdict", "title_floor_applied", "rationale", "model_id", "model_id_source",
                     "model_id_observed", "agent_name", "evaluated_model_list_version", "template_sha256",
                     "agent_file_sha256", "agent_file_sha256_at_ingest", "claude_md_sha256",
-                    "claude_md_sha256_at_ingest", "dispatch_id", "adjudicated_at")
+                    "claude_md_sha256_at_ingest", "dispatch_id", "adjudicated_at", "untested_acceptance_ref")
     new = []
     for s in dict.fromkeys(shas):
         cr, sr = by_sha[s], entries[s]["row"]
@@ -3501,7 +3792,22 @@ GLANCE_STATUS_WORDS = {
     "human_confirmed": "you confirmed it",
     "human_overridden": "accepted by you despite the automatic reference check",
     "rejected": "judged to be a different work; it will not be cited",
-    "human_accepted_unbound": "you accepted a partial match earlier; please look at it again"}
+    "human_accepted_unbound": "you accepted a partial match earlier; please look at it again",
+    "model_confirmed_untested": UNTESTED_CONFIRMED_WORDS}
+# INTENT (glance-words-v4, D-50): an untested checker's verdict on a reference no one decided, shown as a hint in plain
+#   words with its one-line reason, labelled as untested; the references it calls a different work, then those it
+#   could not judge, lead the sheet (GLANCE_HINT_ORDER), and a note above the table says what a hint is.
+GLANCE_HINT_WORDS = {"SAME_WORK": "the same work", "DIFFERENT_WORK": "a different work", "UNCERTAIN": "not sure"}
+GLANCE_HINT_LEAD = "DAAF's AI reference check, not yet tested with this model, says: "
+# INTENT (glance-words-v4, review W2): the lead of a hint from a batch whose transcript recorded another model than the
+#   one it was prepared for, or none (other_model_observed()): it may not be that model's view, so the sheet does not
+#   say "this model".
+GLANCE_HINT_LEAD_OTHER_MODEL = "DAAF's AI reference check, which may not have run on the AI model planned for it, says: "
+GLANCE_HINT_ORDER = {"DIFFERENT_WORK": 0, "UNCERTAIN": 1}
+GLANCE_HINT_NOTE = ("DAAF's AI reference check has not been tested with the AI model it ran on, so its view is shown "
+                    "beside each reference as a hint only: you decide.")
+GLANCE_HINT_FIRST = (" The references it thinks may be a different work, then those it could not judge, are listed "
+                     "first.")
 GLANCE_VERDICT_WORDS = {"WEAK": "partly matches; please decide", "MISMATCH": "does not match the record",
                         "EXISTS": "the identifier exists, but its title was not compared",
                         "NOT FOUND": "no record found"}
@@ -3559,6 +3865,41 @@ def glance_cell(text, limit=300):
     return t if t.strip() else "(none recorded)"
 
 
+def glance_numbers(xs):
+    # "Number 4" / "Numbers 1 and 2" / "Numbers 1, 2 and 3"
+    return f"Number {xs[0]}" if len(xs) == 1 else f"Numbers {', '.join(str(x) for x in xs[:-1])} and {xs[-1]}"
+
+
+def glance_hint(row, led):
+    # glance-words-v4: the untested checker's verdict to show beside a reference, or None. Shown when the current ledger
+    #   row of the reference's check is a model judgment (or a person's defer over one) from an identity not on the
+    #   evaluated list (evaluated_identity() on the row's own fields), and the reference is neither citable at final
+    #   nor rejected: a hint for the researcher, never a decision. A row whose transcript recorded another model, or
+    #   none, is still shown, with its own lead (glance_hint_words(), other_model_observed()).
+    if not led or led.get("paper_key") != row.get("paper_key") or led.get("verdict") not in ADJ_VERDICTS or \
+            led.get("human_decision") not in (None, "defer"):
+        return None
+    if read_status(row.get("citation_status")) in CITABLE_FINAL + ("rejected",):
+        return None
+    if evaluated_identity(led.get("evaluated_model_list_version"), led.get("model_id"), led.get("template_sha256"),
+                          led.get("rubric_version"), led.get("agent_file_sha256"),
+                          led.get("agent_file_sha256_at_ingest")):
+        return None
+    return led["verdict"]
+
+
+def glance_hint_words(verdict, rationale, other_model=False):
+    # The hint in plain words: the verdict, then the checker's one-line reason (untrusted text: scrubbed, cut to 200
+    #   characters, pipes escaped, its verdict codes written as words so no code reaches the sheet). `other_model`
+    #   (other_model_observed() of the ledger row) gives the lead that does not call it this model's view.
+    reason = str(rationale or "")
+    for code, words in (("DIFFERENT_WORK", "different work"), ("SAME_WORK", "same work"), ("UNCERTAIN", "uncertain")):
+        reason = reason.replace(code, words)
+    reason = glance_cell(reason, 200) if reason.strip() else ""
+    lead = GLANCE_HINT_LEAD_OTHER_MODEL if other_model else GLANCE_HINT_LEAD
+    return lead + GLANCE_HINT_WORDS[verdict] + (f" ({reason})" if reason else "")
+
+
 def glance_words(row, verdict, row_verdict, led):
     # The "Where it stands" cell for one corpus row (glance-words-v3).
     left_out = glance_left_out(row, row_verdict)
@@ -3574,7 +3915,10 @@ def glance_words(row, verdict, row_verdict, led):
         words = words or GLANCE_VERDICT_WORDS.get(verdict if verdict in ("EXISTS", "NOT FOUND") else "NOT FOUND")
         words += f"; {GLANCE_LEFT_OUT}"
     words = words or GLANCE_VERDICT_WORDS.get(verdict) or GLANCE_VERDICT_WORDS.get(row_verdict) or "no record found"
-    if led and led.get("verdict") == "DIFFERENT_WORK" and led.get("effective_verdict") != "DIFFERENT_WORK":
+    hint = glance_hint(row, led)
+    if hint:
+        words += "; " + glance_hint_words(hint, led.get("rationale"), other_model_observed(led))
+    elif led and led.get("verdict") == "DIFFERENT_WORK" and led.get("effective_verdict") != "DIFFERENT_WORK":
         words += "; an AI check that has not passed DAAF's test thought it may be a different work"
     if (jload(row.get("retraction_json"), {}) or {}).get("status") == "retracted":
         words += "; this paper was retracted"
@@ -3619,6 +3963,11 @@ def cmd_adj_glance(ctx, a, state):
         raise CorpusError(11, "glance-sheet needs references of the review (--deliverable, --keys, both, or included "
                           "papers)", [f"unknown {k}" for k in unknown])
     entries, cur = search_rows(ctx), current_ledger(ctx)
+    # INTENT (glance-words-v4): the references an untested checker calls a different work lead the sheet, then those it
+    #   could not judge, then the rest, each group in its own order (a stable sort), so the researcher meets the
+    #   flagged ones first; numbering, the rows file and the MANIFEST row's keys follow this order.
+    hints = {k: glance_hint(corpus[k], cur.get(corpus[k].get("verify_row_sha256") or "")) for k in keys}
+    keys = sorted(keys, key=lambda k: GLANCE_HINT_ORDER.get(hints[k], 2))
     md = ["| # | Reference | Title as cited | Title on record | Authors as cited | Authors on record | Year (cited / "
           "on record) | Where published | Where it stands |",
           "|---|---|---|---|---|---|---|---|---|"]
@@ -3709,11 +4058,7 @@ def cmd_adj_glance(ctx, a, state):
         nums = [x for x, _ in left_out]
         fresh = [x for x, checked in left_out if not checked]
         one = len(nums) == 1
-
-        def numbers(xs):
-            # "Number 4" / "Numbers 1 and 2" / "Numbers 1, 2 and 3"
-            return f"Number {xs[0]}" if len(xs) == 1 else \
-                f"Numbers {', '.join(str(x) for x in xs[:-1])} and {xs[-1]}"
+        numbers = glance_numbers
         ask = (ask + " " if ask else "") + (
             f"{numbers(nums)} could not be confirmed against a database record, so {'it' if one else 'they'} will be "
             f"left out of the reference list unless an automatic check matches {'it' if one else 'them'}.")
@@ -3737,7 +4082,14 @@ def cmd_adj_glance(ctx, a, state):
             "references"
         rest = f"number {nd + 1} was" if na == 1 else f"numbers {nd + 1} {'and' if na == 2 else 'to'} {nd + na} were"
         named = "the paper added by name is" if len(dict.fromkeys(given)) == 1 else "every paper added by name is"
-        source = [(f"{first} cited in {d}; {rest} added by name." if nd and na else
+        # REASONING (glance-words-v4): when the flagged references lead, the added ones may no longer be the last
+        #   numbers, so the sentence then names them one by one
+        added_nums = [n for n, k in enumerate(keys, 1) if k in set(added)]
+        if nd and na and added_nums != list(range(nd + 1, nd + na + 1)):
+            first, rest = None, None
+        source = [(f"{glance_numbers(added_nums)} {'was' if na == 1 else 'were'} added by name; the others are cited "
+                   f"in {d}." if nd and na and first is None else
+                   f"{first} cited in {d}; {rest} added by name." if nd and na else
                    f"Every reference below is cited in {d}; {named} already cited there." if nd else
                    f"None of the review's papers is cited in {d}; every reference below was added by name."), ""]
         if not nd:
@@ -3750,6 +4102,9 @@ def cmd_adj_glance(ctx, a, state):
     for lab in ("Does not match", "Not compared"):
         if lab in unmatched_labels:
             unmatched_note += [GLANCE_UNMATCHED_NOTES[lab], ""]
+    if any(hints.values()):
+        unmatched_note += [GLANCE_HINT_NOTE + (GLANCE_HINT_FIRST if any(v in GLANCE_HINT_ORDER for v in hints.values())
+                                               else ""), ""]
     # REASONING (1.6.0): "found for it, where one was found" holds for every row: a matched or bound record, a labelled
     #   record found for the identifier, or "(none recorded)" when no record was found.
     md = ["# Reference check: please look over each reference", "",
@@ -3807,6 +4162,9 @@ def cmd_adj_release(ctx, a, state):
 def cmd_adjudications(ctx, a):
     if a.action in ("pack", "ingest", "release") and not BATCH_ID_RE.match(str(a.batch or "")):
         raise CorpusError(1, f"{a.action} needs --batch ID (lowercase letters, digits, '-' or '_', at most 32)")
+    # REASONING: the researcher's choice about an untested checker is made at the review plan, before any corpus exists
+    if a.action == "untested-checker":
+        return cmd_adj_untested(ctx, a, None)
     state = corpus_state(ctx, required=True)
     return {"pack": cmd_adj_pack, "ingest": cmd_adj_ingest, "record-human": cmd_adj_record_human,
             "glance-sheet": cmd_adj_glance, "release": cmd_adj_release}[a.action](ctx, a, state)
@@ -4066,13 +4424,13 @@ def demo_audit_log(pd, agent_id, targets, agent_type=ADJ_AGENT_NAME):
 
 
 def demo_adjudicate(step, steps, pd, batch, keys=None, verdict="SAME_WORK", extra_targets=(), ret_extra=None,
-                    model_id=DEMO_ADJ_MODEL, ingest=True, ran=None):
+                    model_id=DEMO_ADJ_MODEL, ingest=True, ran=None, pack_extra=()):
     # pack (captured log), a synthetic return, an audit log and a transcript of the dispatch (the models in `ran`;
     #   by default the packed model), then ingest (unless ingest=False, for a test that ingests with a planted
-    #   change). Returns the paths used.
+    #   change). `pack_extra` adds pack arguments (such as --rejudge). Returns the paths used.
     paths = demo_adj_paths(pd)
     step(f"adjudications pack {batch}", ["adjudications", "pack", pd, "--batch", batch, "--model-id", model_id]
-         + (["--keys", ",".join(keys)] if keys else []), paths=paths)
+         + (["--keys", ",".join(keys)] if keys else []) + list(pack_extra), paths=paths)
     if steps[-1][1] != 0:
         return paths
     demo_pack_log(pd, batch, steps[-1][2])
@@ -4393,14 +4751,40 @@ def run_selftest(scratch, row):
                 c = run(argv, **internal)
             steps3.append((name, c, o.getvalue() + e.getvalue()))
             return c
-        demo_adjudicate(step3, steps3, pd, "b05", keys=[DEMO_PAPERS[2]["key"]], ran=[DEMO_ADJ_MODEL, "fixture-other"])
+        demo_adjudicate(step3, steps3, pd, "b05", keys=[DEMO_PAPERS[2]["key"]], ran=[DEMO_ADJ_MODEL, "fixture-other"],
+                        extra_targets=[("SubagentHandback", "")])
         selftest_expect(results, "release frees an un-ingested batch, never an ingested one; its rows pack again",
                         rel == [0, 11, 11] and steps3[:1] and steps3[0][1] == 0, {"release/ingest/release": rel,
                                                                                     "re-pack": steps3[:1] and
                                                                                     steps3[0][1]})
-        selftest_expect(results, "ingest refuses a transcript that records another model (exit 11)",
-                        [c for _, c, _ in steps3] == [0, 11] and "not the packed model" in steps3[-1][2],
-                        [(n, c) for n, c, _ in steps3])
+        # 1.9.0: the checker's hand-back record passes the audit scan, and an unevaluated batch run on another model is
+        #   kept as hints only (its statuses unchanged)
+        p3 = DEMO_PAPERS[2]["key"]
+        st3 = next(r["citation_status"] for r in load_table(dict(ctx, cache={}), "corpus")[0] if r["paper_key"] == p3)
+        selftest_expect(results, "ingest takes the hand-back record and keeps another model's batch as hints",
+                        [c for _, c, _ in steps3] == [0, 0] and "hints only" in steps3[-1][2] and
+                        st3 == "pending_adjudication", {"steps": [(n, c) for n, c, _ in steps3], "status": st3})
+        # 1.9.0 (adjudication-v2): the researcher's acceptance of the untested checker lets its SAME_WORK confirm a
+        #   reference, labelled in the reference list
+        steps4 = []
+
+        def step4(name, argv, **internal):
+            with redirect_stdout(io.StringIO()) as o, redirect_stderr(io.StringIO()) as e:
+                c = run(argv, **internal)
+            steps4.append((name, c, o.getvalue() + e.getvalue()))
+            return c
+        step4("untested-checker accept", ["adjudications", "untested-checker", pd, "--model-id", DEMO_ADJ_MODEL,
+                                          "--user-words", "Use the AI check as it is.", "--rationale", "Synthetic."])
+        demo_adjudicate(step4, steps4, pd, "b06", keys=[p3])
+        step4("export-bib", ["export-bib", pd])
+        st3 = next(r["citation_status"] for r in load_table(dict(ctx, cache={}), "corpus")[0] if r["paper_key"] == p3)
+        bibs4 = sorted((n for n in os.listdir(os.path.join(pd, "output")) if re.match(r"^references_v\d+\.bib$", n)),
+                       key=lambda n: int(n[len("references_v"):-4]))
+        bib4 = open(os.path.join(pd, "output", bibs4[-1]), encoding="utf-8").read() if bibs4 else ""
+        selftest_expect(results, "an accepted untested checker's same-work confirms, labelled in the .bib",
+                        [c for _, c, _ in steps4] == [0, 0, 0, 0] and st3 == "model_confirmed_untested" and
+                        f"daaf_citation_note = {{{UNTESTED_CONFIRMED_WORDS}}}" in bib4,
+                        {"steps": [(n, c) for n, c, _ in steps4], "status": st3})
         neg("pack refuses a CONFIDENT row under rules older than MIN_RULES_VERSION (exit 11)",
             ["adjudications", "pack", pd, "--batch", "b03", "--model-id", DEMO_ADJ_MODEL, "--keys",
              DEMO_PAPERS[1]["key"]], 11, paths=paths)
@@ -4471,6 +4855,28 @@ def run_selftest(scratch, row):
         selftest_expect(results, "override_mismatch binds its record; export-bib lists it",
                         codes == [0, 0, 0] and "Coastal Dentistry" in entry and
                         "daaf_citation_status = {human_overridden}" in entry, codes)
+        # 1.9.0 (adj-selector-v2): a new check of P1 judged UNCERTAIN by the accepted untested checker stays undecided;
+        #   pack under the same acceptance skips it as already judged, and --rejudge with --keys packs it again
+        p1 = DEMO_PAPERS[0]["key"]
+        steps5 = []
+
+        def step5(name, argv, **internal):
+            with redirect_stdout(io.StringIO()) as o, redirect_stderr(io.StringIO()) as e:
+                c = run(argv, **internal)
+            steps5.append((name, c, o.getvalue() + e.getvalue()))
+            return c
+        step5("attach verify", ["attach", "verify", pd, demo_jsonl(pd, "verify_p1_again.jsonl", [
+            {"row_sha256": demo_verify_row(pd, DEMO_PAPERS[0]), "paper_key": p1}])])
+        demo_adjudicate(step5, steps5, pd, "b07", keys=[p1], verdict="UNCERTAIN")
+        pack = ["adjudications", "pack", pd, "--batch", "b08", "--model-id", DEMO_ADJ_MODEL, "--keys", p1]
+        step5("pack judged", pack, paths=paths)
+        step5("pack --rejudge", pack + ["--rejudge"], paths=paths)
+        step5("release b08", ["adjudications", "release", pd, "--batch", "b08", "--reason", "Synthetic: not sent."])
+        selftest_expect(results, "pack skips a check the checker already judged; --rejudge packs it by name",
+                        [c for _, c, _ in steps5] == [0, 0, 0, 11, 0, 0] and
+                        "the checker already judged this check" in steps5[3][2] and
+                        "1 judged again by name (--rejudge)" in steps5[4][2],
+                        [(n, c) for n, c, _ in steps5])
         rows = [r for _, r in manifest_rows(os.path.join(pd, "data", "MANIFEST.jsonl"))]
         hashes_ok = all(sha256_bytes(open(os.path.join(pd, a["path"]), "rb").read()) == a["sha256"]
                         for r in rows for a in r.get("artifacts") or [])
@@ -4578,7 +4984,7 @@ def build_parser():
     s.add_argument("--round", type=_round, required=True)
     s.add_argument("--protocol")
     s = sub.add_parser("adjudications")
-    s.add_argument("action", choices=("pack", "ingest", "record-human", "glance-sheet", "release"))
+    s.add_argument("action", choices=("pack", "ingest", "record-human", "glance-sheet", "release", "untested-checker"))
     s.add_argument("project_dir")
     s.add_argument("--batch")
     s.add_argument("--model-id")
@@ -4591,6 +4997,8 @@ def build_parser():
     s.add_argument("--rationale")
     s.add_argument("--deliverable")
     s.add_argument("--reason")
+    s.add_argument("--revoke", action="store_true")
+    s.add_argument("--rejudge", action="store_true")
     sub.add_parser("selftest").add_argument("scratch_dir")
     return p
 

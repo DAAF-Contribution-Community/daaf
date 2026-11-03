@@ -1,8 +1,8 @@
 {
   "kind": "lit_verify_card_check",
   "schema_version": "lit-verify-card-check-v3",
-  "tool_version": "1.15.0-daaf",
-  "checked_at": "2026-11-02T23:39:32Z",
+  "tool_version": "1.17.0-daaf",
+  "checked_at": "2026-11-03T13:30:29Z",
   "paper_key": "user_f1c70002",
   "anchor_kind": "pdf",
   "card": {
@@ -15,7 +15,8 @@
     "reader_model": "fixture-synthetic",
     "vision_mode": "off",
     "vision_validated": false,
-    "vision_list_version": null
+    "vision_list_version": null,
+    "vision_override": null
   },
   "ingest": {
     "suffix": "",

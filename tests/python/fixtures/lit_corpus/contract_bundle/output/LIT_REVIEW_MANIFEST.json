@@ -1,5 +1,5 @@
 {
   "latest": "manifests/LIT_REVIEW_MANIFEST_v1.json",
-  "sha256": "9ccb5cb92eef4264dd753014421f1666063f4b7cdb3ae9c8d91f8cfe9d58fa54",
-  "contract_version": "0.5.0"
+  "sha256": "8eae512d5d07f25f855ac9241ff8019fdbe3517273363d00905dc582495107b5",
+  "contract_version": "0.6.0"
 }

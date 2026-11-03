@@ -19,11 +19,11 @@ the block · The fixed prompt
 
 | Step | Who | What happens |
 |------|-----|--------------|
-| 1 | Orchestrator, through a captured script | `bash /daaf/scripts/lit_corpus.sh adjudications pack PROJECT_DIR --batch ID --model-id MODEL` selects every CONFIDENT and WEAK reference not yet decided, writes `data/adjudication_bundles/{batch}.json` (`lit-adjudication-bundle-v1`) and `{batch}_prompt.txt` (the block below with `{BUNDLE_PATH}` replaced by the bundle's absolute path, plus a newline), and prints the row, bundle and prompt hashes into the script's execution log |
+| 1 | Orchestrator, through a captured script | `bash /daaf/scripts/lit_corpus.sh adjudications pack PROJECT_DIR --batch ID --model-id MODEL` selects every CONFIDENT and WEAK reference not yet decided, not held in a packed batch that was neither ingested nor released, and not already judged by a checker whose judgment counts at least as much as one packed now would (`--keys` with `--rejudge` packs such a reference again), writes `data/adjudication_bundles/{batch}.json` (`lit-adjudication-bundle-v1`) and `{batch}_prompt.txt` (the block below with `{BUNDLE_PATH}` replaced by the bundle's absolute path, plus a newline), and prints the row, bundle and prompt hashes into the script's execution log |
 | 2 | Orchestrator | Dispatches `citation-adjudicator` with `model: "opus"` (the Agent tool takes tier aliases, not model IDs; `pack --model-id` recorded the exact model ID the alias resolves to), with the content of `{batch}_prompt.txt` as the whole prompt: nothing added, removed or reworded |
 | 3 | citation-adjudicator | Reads the bundle (and no other file), judges every row, and returns one fenced `jsonl` block with one JSON line per row |
 | 4 | Orchestrator | Persists the lines of that block verbatim to `data/adjudication_raw/{batch}.jsonl` |
-| 5 | Orchestrator | `bash /daaf/scripts/lit_corpus.sh adjudications ingest PROJECT_DIR --batch ID --agent-id AGENT_ID` checks the hashes against the pack log, scans `.claude/logs/audit.jsonl` for any tool call of that dispatch that is not a Read of the bundle, checks in the adjudicator's own Claude Code transcript that it records at least one model and that every model it records is the packed model ID, validates every line, and writes the ledger and the citation statuses |
+| 5 | Orchestrator | `bash /daaf/scripts/lit_corpus.sh adjudications ingest PROJECT_DIR --batch ID --agent-id AGENT_ID` checks the hashes against the pack log, scans `.claude/logs/audit.jsonl` for any tool call of that dispatch that is not a Read of the bundle or the adjudicator's hand-back (`SubagentHandback`), checks in the adjudicator's own Claude Code transcript that it records at least one model and that every model it records is the packed model ID (a failure refuses the batch of an evaluated identity and keeps any other batch as hints only), validates every line, and writes the ledger and the citation statuses |
 
 The full contract of steps 1 and 5 (bundle fields, every refusal, the
 statuses, the ledger columns) is in
@@ -68,13 +68,14 @@ agent sets `omitClaudeMd`; an edit to CLAUDE.md changes what the judge reads
 without voiding an evaluation. The identity does not bind CLAUDE.md (user
 decision, 2026-11-02): its sha256 is recorded beside the identity (per list
 version in `ADJUDICATOR_EVALUATED_CLAUDE_MD`, in every bundle and ledger row)
-and never decides whether a judgment counts; the mode's gate check prints a
-WARNING when it differs from the evaluated value. The model that ran is
+and never decides whether a judgment counts; the mode's identity check prints
+a WARNING when it differs from the evaluated value. The model that ran is
 checked apart from the identity, because the dispatch names a tier alias, not
-a model ID: `ingest` refuses the batch unless the adjudicator's own Claude
-Code transcript records at least one model and every model it records is the
-packed model ID (`adj-model-check-v1`; evidence, not proof, as the audit-log
-scan is). `pack` takes `--model-id` only in the form that check compares (no
+a model ID: `ingest` checks that the adjudicator's own Claude Code transcript
+records at least one model and that every model it records is the packed
+model ID (`adj-model-check-v2`; evidence, not proof, as the audit-log scan
+is). A failure refuses the batch of an evaluated identity, and keeps any other
+batch as hints only, with a WARNING. `pack` takes `--model-id` only in the form that check compares (no
 trailing `[1m]`, a dotted Claude ID hyphenated) and refuses any other, so a
 `[1m]`, dotted Claude or space-padded spelling never stands in the identity; an
 evaluated-list entry must name the ID exactly as pack recorded it, a provider
@@ -86,8 +87,17 @@ agent_file_sha256)`. A judgment counts only when all four match an entry of
 the list in force and the agent file is unchanged between pack and ingest, so
 an edited block, rubric or agent file is never treated as evaluated: its
 verdicts count as `UNCERTAIN` until that identity is evaluated and the user
-adds it as a new list version. The list ships empty (`adjudicator-list-none`),
-so every model's verdict counts as `UNCERTAIN` and every row reaches a person.
+adds it as a new list version. Such verdicts are hints: the reference glance
+list shows each beside its reference, and they change no status. The one
+exception is the researcher's recorded acceptance of an untested checker for
+its model ID (`adjudications untested-checker`): while it is in force, that
+checker's `SAME_WORK` confirms a reference (`model_confirmed_untested`,
+labelled "confirmed by an untested AI check (your choice)"), except on a WEAK
+row below the title floor or with `org_unchecked`, which still goes to a
+person, as for `model_adjudicated`; its `DIFFERENT_WORK` and `UNCERTAIN` stay
+hints. The list ships empty
+(`adjudicator-list-none`), so every model's verdict counts as `UNCERTAIN`, and
+every row reaches a person unless that acceptance confirms it.
 
 ## The extraction contract
 
@@ -185,7 +195,9 @@ and can carry planted instructions. `scrub_injection` replaces known
 instruction shapes with `[REDACTED: injection-shaped content]` before the
 bundle is written, and the block tells the adjudicator to judge any remaining
 instruction-like text as words of the value it sits in. The adjudicator holds
-only the Read tool, so injected text cannot act on files or the network; the
+only the Read tool, plus the harness hand-back (`SubagentHandback`) that
+returns its report and opens no file, so injected text cannot act on files or
+the network; the
 verdict itself is what an injection would try to steer, which is why such text
 counts as a reason for doubt. The adjudicator evaluation plants injections in
 record fields to test this.

@@ -11,9 +11,10 @@ Labels: **[obs]** observed by a command or code read in a DAAF session,
 **[inf]** inference. The development notes behind these labels do not ship
 with DAAF, so this page states each finding it relies on where it is used.
 
-**Contents:** Why vision is gated · Modes · Gating (Option C) · Routes ·
-Cost · The validation probe · Promotion and demotion · Candidates · List
-history
+**Contents:** Why vision is gated · Modes · Gating (Option C) · The
+researcher's choice for an untested reader · The shim caveat and the card
+gate's copy of the list · Routes · Cost · The validation probe · Promotion
+and demotion · Candidates · List history
 
 ## Why vision is gated
 
@@ -52,12 +53,15 @@ CLAUDE.md § User Preferences, "PDF page-image cross-checking" (applied
 | `all-pages` | `pdf_ingest --render all` | Every page (about +4k tokens a page on Anthropic; ~+120k for a 30-page paper) |
 | `off` | any | Nothing; text layer only |
 
-Both `auto` and `all-pages` apply **only** when the reader's exact model ID
-and route are on the list (user decision, 2026-10-13). Otherwise the reader
-works from the text layer and lane B only, the card says `vision:
-unavailable` (front matter) and `vision_validated: false` (block), and
-renders stay unopened. Rendering still happens under `auto`, so a later
-validated reader or a human can use the same images.
+Both `auto` and `all-pages` apply only when the reader's exact model ID
+and route are on the list (user decision, 2026-10-13), or when the
+researcher has chosen to let an unlisted reader read page pictures anyway
+(user decisions of 2026-11-03: the list warns, it does not block; § The
+researcher's choice for an untested reader). Otherwise the reader works
+from the text layer and lane B only, the card says `vision: unavailable`
+(front matter) and `vision_validated: false` (block), and renders stay
+unopened. Rendering still happens under `auto`, so a later validated reader
+or a human can use the same images.
 
 ## Gating (Option C, user-agreed)
 
@@ -76,15 +80,22 @@ model from records the reader does not write.
    orchestrator copies that line from `lit_verify route` output and never
    types a route (§ Routes, "Where the route comes from"). A dispatch without
    a `ROUTE:` line means vision is unavailable.
-3. Look for an exact (model ID, route) row in SKILL.md's list. No row → text
-   only.
+3. Look for an exact (model ID, route) row in SKILL.md's list. No row →
+   follow the dispatch's `VISION:` line: `override-check` or
+   `override-accept` (the researcher's recorded choice, § The researcher's
+   choice for an untested reader) → you may look at page pictures under the
+   same preference and image cap; `text-only`, `validated` or no `VISION:`
+   line → text only.
 4. Record in the card. Block: `reader_model` (the bare ID), `vision_mode`,
-   `vision_validated` (true only on a row match), `vision_list_version`.
-   Front matter: `reader_model_source: self-report`, `reader_route` (the
-   route from the `ROUTE:` line), `vision: validated|unavailable`.
+   `vision_validated` (true only on a row match), `vision_list_version`, and
+   `vision_override` (`check` or `accept`, only under an
+   `override-…` line, with `vision_validated: false`). Front matter:
+   `reader_model_source: self-report`, `reader_route` (the route from the
+   `ROUTE:` line), `vision: validated|unavailable|untested-check|untested-accepted`.
 
-**Orchestrator, before the first reader dispatch:** run `lit_verify route`
-(§ Routes) and copy its `ROUTE:` line into every paper-reader dispatch.
+**Orchestrator, before the first reader dispatch:** run `lit_verify route
+--reader-model <ID>` (§ Routes) and copy its `ROUTE:` and `VISION:` lines
+into every paper-reader dispatch.
 
 **Orchestrator, after the reader returns** and `lit_verify card` has checked
 its latest card, run the audit on that card:
@@ -114,13 +125,14 @@ last:
 | 4 Route | Compares the front matter's `reader_route` with the latest successful `lit_verify route` row in `papers/MANIFEST.jsonl` recorded no later than the card check (`checked_at`): `match`, `mismatch`, or `unknown` (no such row, or the card names no route). A route recorded after the check does not count. Then looks up the (model, route) row in the card's `vision_list_version`: `listed`, `not_listed`, `unknown` (no recorded route) or `not_applicable` (the card has no vision reading) |
 | 5 Pages | `must_check`: every `VISION_ON_SCAN_PAGE` item of the `card_check`, plus every vision reading (a `vision`/`both` claim or a `vision_only` digest) on a page of class `sparse`. `should_look`: every `VISION_FIGURE_UNCORROBORATED` warning, plus one item when the `card_check` has no `rule_versions.vision_figure` (checked before the figure rule existed: check the card again so chart readings are screened) |
 | 6 Chain | The whole-chain check (`evidence-card.md` § Re-derivation): the source file must still hash to the value the card check recorded; a `web_fetch` source must be the very row (line, file name, hash, final URL) of a fetch under `PROJECT_DIR/web_fetches/`; a `user_supplied` source must sit under `PROJECT_DIR/user_pdfs/`; any other source kind is unconfirmed |
-| 3 Record | Writes `PAPER_DIR/vision_audit{S}.json` (`{S}` = the card's suffix, schema `lit-verify-vision-audit-v1`, rules `vision-audit-v1`), keyed by `card_sha256` and `card_check_sha256`, by exclusive create: an existing record is exit 9, so a second audit needs a new card revision. Appends a MANIFEST row (kind `lit_verify_audit`) to `papers/MANIFEST.jsonl`. The card is never edited: that would break the hash its `card_check` records |
+| 3 Record | Writes `PAPER_DIR/vision_audit{S}.json` (`{S}` = the card's suffix, schema `lit-verify-vision-audit-v1`, rules `vision-audit-v2`), keyed by `card_sha256` and `card_check_sha256`, by exclusive create: an existing record is exit 9, so a second audit needs a new card revision. Appends a MANIFEST row (kind `lit_verify_audit`) to `papers/MANIFEST.jsonl`. The card is never edited: that would break the hash its `card_check` records |
 
 | Outcome | Exit | When (checked in this order) | Orchestrator |
 |---------|------|------------------------------|--------------|
 | `chain_unconfirmed` | 11 | Step 6 did not confirm the source | Confirm the file is the paper expected before relying on the card; tell the user. A person's comparison of the readings does not settle this: fetch the paper with `web_fetch.sh` or put the user's PDF in `user_pdfs/`, then check and audit again |
 | `mismatch` | 11 | The model does not match (even on a card with no vision reading), or a card with vision readings has a route mismatch or no list row | Every vision-derived item (the record's `unvalidated` list) is unvalidated: show them to the user with `lit_verify settle --list` and record the user's comparison with `lit_verify settle` (below), or re-read them text-only or downgrade the claims |
 | `person_must_check` | 11 | The card has vision readings and the model is `unknown` or `source_not_confirmed`, or the route is `unknown` (every reading lands in `unvalidated`), or `must_check` lists items | Show the listed readings to the user with `lit_verify settle --list` and record the user's comparison with `lit_verify settle` (below), or re-read them text-only or downgrade the claims |
+| `confirmed_untested_reader` | 0 | The researcher's `accept` choice applies (§ The researcher's choice for an untested reader), the source is confirmed and nothing is in `must_check`. The readings are kept as `accepted_untested` items, not listed | Nothing to compare. The report labels every citation of the paper (`VISION_READ_BY_UNTESTED_MODEL`); show the user any `should_look` items |
 | `confirmed_with_checks` | 0 | Confirmed, with `should_look` items only | Show the user the listed items: numbers read from charts that the paper's text does not confirm |
 | `confirmed` | 0 | Source confirmed; no vision reading, or model, route and list row confirmed with nothing listed | Nothing more |
 
@@ -187,7 +199,9 @@ bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit vision_audit{S}.json
   prints). The record is
   `PAPER_DIR/audit_settlement{S}_{n}.json` (exclusive create, `n` the next
   free number; schema `lit-verify-audit-settlement-v1`, rules
-  `audit-settle-v1`): the audit, card and `card_check` SHA-256, the decision,
+  `audit-settle-v2`, under which readings accepted under the researcher's
+  `accept` choice are optional while that choice holds and required once it
+  is withdrawn or changed): the audit, card and `card_check` SHA-256, the decision,
   the user's words and rationale, `settled_at`, `human_binding:
   permission_prompt` (expected, not detected: a `!`-typed run looks the same)
   and each item (id, group, page, claim, numbers, decision, reason). A
@@ -206,14 +220,98 @@ After a `does_not_match`, write new reading notes without that number, or
 with the number as printed on the page, check them with `lit_verify card`
 and run `lit_verify audit`.
 
+## The researcher's choice for an untested reader
+
+The list warns; it does not block (user decisions of 2026-11-03: "warn the
+user beforehand with something informative but allow them to go forward
+with it regardless", with two levels). When the paper reader's exact model
+ID and route are not on the list, the reader reads text only unless the
+researcher chooses otherwise, before the review starts:
+
+| Choice | Reader | `lit_verify audit` | Final report |
+|--------|--------|--------------------|--------------|
+| none (default) | Text only; card `vision: unavailable` | As before (`confirmed` when the card takes nothing from pictures) | As before |
+| `check` | May read page pictures (preference and image cap apply) | Every reading goes in `unvalidated` with a reason saying the researcher chose to compare them: `person_must_check` | Fails until each reading is settled as matching (`lit_verify settle`), as for any listed reading |
+| `accept` | May read page pictures | Readings kept as `accepted_untested`, not listed: `confirmed_untested_reader`. Scan and sparse-page readings still go to `must_check` and figure warnings to `should_look`, as for a tested reader: `accept` puts the reader on a par with a tested one, not above it | Citable, labelled `VISION_READ_BY_UNTESTED_MODEL` (warning); the deliverable's methods or AI-use note says the readings came from a model DAAF has not tested, at the researcher's choice |
+
+**Before the review starts.** The orchestrator runs `bash
+/daaf/scripts/lit_verify.sh route <PROJECT_DIR> --reader-model <ID>` with
+the model ID the paper-reader dispatch resolves to. Its second line is the
+`VISION:` line (`validated`, `override-check`, `override-accept` or
+`text-only`), copied verbatim into every paper-reader dispatch beside the
+`ROUTE:` line. When the reader is not listed it also prints a plain warning
+for the researcher, shown as it stands at the review-plan checkpoint, with
+the three choices.
+
+**Recording the choice.** The researcher's reply is recorded, words
+verbatim, with
+
+```
+bash /daaf/scripts/lit_verify.sh vision-override <PROJECT_DIR> --level check|accept --model-id <ID>
+     --user-words "..." --rationale "..."
+bash /daaf/scripts/lit_verify.sh vision-override <PROJECT_DIR> --level withdraw --user-words "..."
+```
+
+Only the orchestrator runs it, as its own Bash call: the words are a
+command-line argument, so the Ask-First permission rule the user applies
+(`Bash(*lit_verify*vision-override*)` in `.claude/settings.json`) shows them
+in the prompt, as for `settle`, and `run_with_capture.sh` refuses a script
+that names `lit_verify` and the subcommand (exit 3). The model ID is normalized (`[1m]` dropped,
+a dotted Claude ID hyphenated); the route comes from the route detector at
+that moment, never typed. A model already listed for that route is refused
+(exit 11), as are empty words, words or a rationale over 4000 characters, a
+`check` or `accept` without `--rationale`, and a withdrawal with no choice in
+effect; nothing is written then. The
+record is `papers/vision_override_{n}.json` (exclusive create; schema
+`lit-verify-vision-override-v1`, rules `vision-override-v1`; `human_binding:
+permission_prompt`, expected, not detected) with a MANIFEST row of kind
+`lit_verify_vision_override`.
+
+**Scope: one choice per review, bound to a model and a route.** The latest
+valid record decides; a new choice replaces the old one and `withdraw` ends
+it. A choice counts only as `vision-override` wrote it. Its record
+(`papers/vision_override_{n}.json`) must hash to its MANIFEST row, carry
+`schema_version` `lit-verify-vision-override-v1`, `kind`
+`lit_verify_vision_override`, `human_decider` `researcher`, the researcher's
+words (whose sha256 is the row's `user_words_sha256`) and, for `check` or
+`accept`, a rationale, and repeat the row's level, model, route and time;
+the row must carry `tool_version` and the level in its `parameters`. When
+the latest choice record or row does not hold up, there is no choice at all
+(the reader reads text only), never the choice before it. A script that
+writes the whole record and row itself is the remaining gap, as for
+`settle`; the Ask-First rule and `run_with_capture.sh`'s decision scan stand
+behind it. Binding the choice to the review keeps one researcher's consent out of
+other reviews; binding it to the model and route means a model or route
+change makes it not apply, so the reader reads text only again until the
+researcher decides afresh.
+
+**How the audit applies it.** Only from the record, never from a flag on
+the audit's command line, and only when all of these hold: the card
+declares `vision_override` (`check` or `accept`, copied from the dispatch's
+`VISION:` line); the model is `transcript-confirmed` and equals the
+choice's model; the card's route matches the recorded route and the
+choice's route; and the same choice (level, model, route) was in effect at
+the card check and still is. The stricter of the card's level and the
+record's applies. Otherwise the readings are listed as for any unlisted
+reader (`mismatch`). The record's `override` block keeps what was applied
+(level, model, route, the choice's record and sha256, the researcher's
+words).
+
+**Withdrawn later.** If the choice is withdrawn or changed after an audit
+under `accept`, the accepted readings need the researcher's comparison:
+`settle --list` lists them as required, and the report fails the final
+deliverable until they are settled (or the same choice is recorded again).
+
+## The shim caveat and the card gate's copy of the list
+
 **Shim caveat.** Over the GPT provider shim, `.message.model` is the requested
 model name echoed back by the shim, not the upstream's own report of which
 model served the request [obs, shim session]. It is safe to key the list on, but
 it is not independent confirmation of the serving model.
 
 `lit_verify` enforces consistency with what the card declares
-(`vision_mode` not `off` and `vision_validated` true, or every vision claim
-fails). From 1.6.0 it also carries a copy of the list
+(`vision_mode` not `off` and `vision_validated` true, or a declared
+`vision_override`; else every vision claim fails). From 1.6.0 it also carries a copy of the list
 (`VISION_VALIDATED_LISTS`, one entry per list version): `vision_validated`
 true for a `reader_model` that is not on the card's `vision_list_version`
 entry fails as `VISION_NOT_ON_LIST`, as does an unknown list version, and
@@ -274,7 +372,10 @@ with the route, its basis, the detector file's SHA-256, the list version and
 its row count for the route, and the environment keys the detector consulted,
 recorded by presence only (`set`, `empty` or `unset`), never by value. Run it
 before the first reader dispatch: `lit_verify audit` counts only a route row
-recorded no later than the card check.
+recorded no later than the card check. With `--reader-model <ID>` it also
+prints the `VISION:` line as its second line and, for a reader not
+listed on this route, the warning for the researcher (§ The researcher's
+choice for an untested reader); the row records the model and the line.
 
 | Route | Basis printed |
 |-------|---------------|
@@ -294,7 +395,8 @@ Limits, also printed:
   confirmed by hand before any vision use.
 - **OpenRouter.** No list row names `openrouter`, so the output says PDF
   reading is text-only there, and a reader on that route writes `vision:
-  unavailable`.
+  unavailable` unless the researcher chose otherwise (§ The researcher's
+  choice for an untested reader).
 
 Exits: 0 route detected; 1 `PROJECT_DIR` is not a directory; 2 refused
 path (the destination guard, or a secret value in the argument); 10 the
@@ -429,9 +531,10 @@ indented column to that table's subgroup rows, which the scorer could not
 line up with the key. Runs 2 and 3 fail whatever that ruling, so the model
 fails. In a real reading, a page mix-up like this would put numbers from the
 wrong page into an evidence card [inf], so the model is not listed. DAAF's
-recommended GPT setup runs its lighter agents on GPT-6 Luna, including the
-search-agent that reads PDFs by default, so on that setup PDFs are read
-from their text only.
+recommended GPT setup runs its lighter (sonnet-tier) agents on GPT-6 Luna,
+search-agent among them, so on that setup those agents read PDFs from their
+text only; the Literature Review paper-reader keeps the opus tier (GPT-6 Sol
+there, which is listed).
 
 **Behavior on the unscored 1973 scan** (flagged `ocr_layer_suspected`). Two
 cells are damaged. On the first (1961, first column), every Opus 5.5 run,
@@ -525,7 +628,7 @@ Sonnet 5 under Legacy models [doc].
 
 | Candidate | Route(s) | Note |
 |-----------|----------|------|
-| `gpt-6-luna` | chatgpt-subscription, openai-api (shim) | Probed 2026-10-28 on chatgpt-subscription and failed (runs 2 and 3 failed; scored 2026-10-30; § The validation probe): not a list entry. DAAF recommends it for the lighter (sonnet-tier) agents on GPT installs, so those agents, including the default PDF reader, read text only. A re-probe that passes could list it |
+| `gpt-6-luna` | chatgpt-subscription, openai-api (shim) | Probed 2026-10-28 on chatgpt-subscription and failed (runs 2 and 3 failed; scored 2026-10-30; § The validation probe): not a list entry. DAAF recommends it for the lighter (sonnet-tier) agents on GPT installs, so those agents, search-agent among them, read text only; the Literature Review paper-reader keeps the opus tier, and a paper-reader that does run on it reads text only unless the researcher chooses otherwise (§ The researcher's choice for an untested reader). A re-probe that passes could list it |
 | `gpt-6-sol`, `gpt-6.1-sol`, `gpt-6-astra` | openai-api (shim) | Listed by inference since `vision-list-2026-10-30` (parity with chatgpt-subscription assumed by user decision 2026-10-30); a probe on that route would confirm it |
 | Any model | openrouter | Not probed, no rows. The GPT rows do not cover it (OpenRouter IDs are provider-prefixed, e.g. `openai/gpt-6-sol`, and DAAF has no observation of how that route handles images, § Routes) |
 | `claude-sonnet-5-5`, `claude-fable-5-1`, `claude-fable-5` | anthropic-subscription, anthropic-api | Listed by policy admission, not probed; a probe would confirm or remove them |

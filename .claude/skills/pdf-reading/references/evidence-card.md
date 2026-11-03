@@ -3,7 +3,7 @@
 How to write an evidence card that `scripts/lit_verify.sh card` can verify,
 what every check and status means, and how to fix a failing card. Source of
 truth: the header, `validate_card()`, `check_card()` and the selftest in
-`scripts/lit_verify.py` (`TOOL_VERSION = "1.15.0-daaf"`, 2026-11-01; card
+`scripts/lit_verify.py` (`TOOL_VERSION = "1.17.0-daaf"`; card
 schemas `lit-verify-card-v1`, `lit-verify-card-v2` and `lit-verify-card-v3`,
 result schema `lit-verify-card-check-v3`, re-derivation `rederive-v2`, quant
 fields `quant-v1`, page labels `page-label-v1`, figure pages `vision-figure-v1`) and the ladder,
@@ -83,7 +83,7 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 |-------|-------|-------------|
 | `reader_model_source` | `self-report` | The reader. The audit result (`transcript-confirmed`, `mismatch` or `unknown`) is recorded outside the card by `lit_verify audit`, in `vision_audit{S}.json`, because editing a checked card breaks the SHA-256 its `card_check` records (`vision-validation.md` § Gating) |
 | `reader_route` | One of the route names in `vision-validation.md` § Routes, copied from the dispatch's `ROUTE:` line (which the orchestrator copies from `lit_verify route`) | The reader, copying the dispatch. `lit_verify audit` compares it with the route `lit_verify route` recorded |
-| `vision` | `validated` or `unavailable` (the wording of CLAUDE.md § User Preferences, "PDF page-image cross-checking") | The reader, from the list check |
+| `vision` | `validated` or `unavailable` (the wording of CLAUDE.md § User Preferences, "PDF page-image cross-checking"); `untested-check` or `untested-accepted` when the reader, not on the list, read page pictures at the researcher's recorded choice (the dispatch's `VISION:` line) | The reader, from the list check and the `VISION:` line |
 
 `lit_verify` does **not** check any front-matter field.
 
@@ -99,6 +99,7 @@ source as "arXiv HTML vN". This skill adds the vision-gating fields that the blo
 | `vision_mode` | yes | `auto`, `all-pages` or `off` |
 | `vision_validated` | yes | JSON boolean |
 | `vision_list_version` | yes | String or `null` (write the list version from SKILL.md) |
+| `vision_override` | no (v1, v2 and v3) | `check` or `accept`: the researcher's recorded choice to let a reader that is not on the list read page pictures, copied from the dispatch's `VISION:` line (`override-check`, `override-accept`). Needs `vision_validated: false`, a `vision_mode` other than `off` and a PDF card (else exit 8). Omit it otherwise. The gate only reads the declaration; `lit_verify audit` binds it to the record (`vision-validation.md` § The researcher's choice for an untested reader) |
 | `coverage` | yes | Array, one object per page: `page` (int ≥ 1), `anchors` (array of strings), `summary` (string), optional `sparse` (bool, advisory), optional `vision_only` (bool). A page listed twice → exit 8. A page absent from 1..N is a recorded fail (`MISSING_PAGE`), not a parse error |
 | `claims` | yes | Array of objects: `claim_id` (unique, `[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}`), `page` (int), optional `page_end` (exactly `page + 1`), `quote` (string; `null` or empty only when `source` is `vision`), `numbers` (array of strings, as printed), `source` (`text`, `vision`, `both` or `ocr`), optional `table_ref` (string or null), optional `claim` (string) |
 
@@ -799,7 +800,14 @@ and page are notes on an `ok`, not failures.
 
 With `vision_mode: "off"` or `vision_validated: false`, every claim with
 `source` `vision` or `both` and every `vision_only` digest is a fail
-(`VISION_UNAVAILABLE_CLAIM`).
+(`VISION_UNAVAILABLE_CLAIM`), unless the block declares
+`vision_override` (`check` or `accept`): the researcher chose to let a
+reader that is not on the list read page pictures, so its readings are
+checked as a listed reader's are, and the scan and figure rules below apply
+unchanged. The gate does not bind the declaration to the researcher's
+record; `lit_verify audit` does (`vision-validation.md` § The researcher's
+choice for an untested reader), and a declaration with no matching record
+sends every reading to a person there.
 
 **Fail-closed on the list (1.6.0).** `lit_verify` embeds the vision-validated
 list (`VISION_VALIDATED_LISTS`, one entry per `vision_list_version`; the
@@ -1107,14 +1115,14 @@ dir writes no row.
 
 | Exit | Meaning |
 |------|---------|
-| 0 | Verdict PASS, PARTIAL or NEEDS_REVIEW (in the card_check JSON); `audit` outcome `confirmed` or `confirmed_with_checks`; `route` detected; `settle` items listed or settlement recorded; selftest: every expectation held |
-| 1 | Usage error (bad flags; PAPER_DIR or PROJECT_DIR not a directory; CARD_PATH, `--card` or `--audit` not a file; `settle` with `--list` and a decision flag, or with neither `--list` nor `--items` and `--decision`) |
+| 0 | Verdict PASS, PARTIAL or NEEDS_REVIEW (in the card_check JSON); `audit` outcome `confirmed`, `confirmed_with_checks` or `confirmed_untested_reader`; `route` detected; `settle` items listed or settlement recorded; `vision-override` choice recorded; selftest: every expectation held |
+| 1 | Usage error (bad flags; PAPER_DIR or PROJECT_DIR not a directory; CARD_PATH, `--card` or `--audit` not a file; `settle` with `--list` and a decision flag, or with neither `--list` nor `--items` and `--decision`; `vision-override` `--level check` or `accept` without `--model-id`, `--model-id` with `--level withdraw`, or a `--model-id` that is not a model ID) |
 | 2 | Refused path (PAPER_DIR / papers dir / PROJECT_DIR / SCRATCH_DIR guard; CARD_PATH, `--card` or `--audit` not directly inside PAPER_DIR; `audit` PAPER_DIR not under PROJECT_DIR/papers/; `settle --items` outside the DAAF root; basename not a paper key; an ingest artifact path resolving outside PAPER_DIR; a secret value in an argument) |
 | 3 | Reserved by `run_with_capture.sh`, never used |
-| 8 | Card cannot be parsed (missing, duplicate or invalid lit-verify block; oversize or non-UTF-8 card; a v2 structural rule broken: `source_version` missing on HTML or present on PDF, a non-`text` source or vision declared available on HTML, a bad or repeated section label, `section_end` = `section`; a v3 `vision_reading` on a claim that is not a PDF vision reading); `audit`: an agent ID outside the hook's id allowlist or given twice, or a `--transcript` that is not that agent's file; `settle`: not an audit record name, an unreadable record, or an items file that is oversize, not UTF-8, empty or holds a word that is not an item id |
+| 8 | Card cannot be parsed (missing, duplicate or invalid lit-verify block; oversize or non-UTF-8 card; a v2 structural rule broken: `source_version` missing on HTML or present on PDF, a non-`text` source or vision declared available on HTML, a bad or repeated section label, `section_end` = `section`; a v3 `vision_reading` on a claim that is not a PDF vision reading; a `vision_override` that is not `check` or `accept`, or one beside `vision_validated: true`, `vision_mode: "off"` or an arXiv HTML card); `audit`: an agent ID outside the hook's id allowlist or given twice, or a `--transcript` that is not that agent's file; `settle`: not an audit record name, an unreadable record, or an items file that is oversize, not UTF-8, empty or holds a word that is not an item id |
 | 9 | `audit`: an input fails its hash check (no card_check recorded for the card, the card_check differs from its MANIFEST row, or the card from its card_check), or an audit record for the card already exists; `settle`: the audit record differs from its MANIFEST row, the card or card_check changed or was checked again since the audit, or an item id does not re-derive |
-| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors; from 1.8.0 pdfimages, which re-derives page flags); `route`: the route detector cannot be loaded |
-| 11 | FAIL as a recorded result (card_check written); `audit` outcome `person_must_check`, `mismatch` or `chain_unconfirmed` (record written); `settle` refused, nothing written (empty user words, `does_not_match` without a rationale, an item id twice, not this audit's, or the chain's); selftest: an expectation did not hold |
+| 10 | Ingest artifacts missing or incomplete (no manifest for the suffix, a missing anchor, OCR, table-rows or page_index file, an unreadable manifest, a manifest with an unknown `anchor_kind`, an HTML manifest without unique unit labels or `arxiv.version`), or a required dependency missing (rapidfuzz; polars or pyarrow; from 1.7.0 pdftotext and pdfinfo, which re-derive PDF anchors; from 1.8.0 pdfimages, which re-derives page flags); `route` or `vision-override`: the route detector cannot be loaded |
+| 11 | FAIL as a recorded result (card_check written); `audit` outcome `person_must_check`, `mismatch` or `chain_unconfirmed` (record written); `settle` refused, nothing written (empty user words, user words over 4000 characters, `does_not_match` without a rationale, an item id twice, not this audit's, or the chain's); `vision-override` refused, nothing written (empty user words, `--user-words` or `--rationale` over 4000 characters, `check` or `accept` without a rationale, a model already on the vision-validated list for this route, nothing to withdraw); selftest: an expectation did not hold |
 | 12 | Internal error (no verdict; see the MANIFEST note) |
 
 ## Fixing a failing card
@@ -1205,9 +1213,12 @@ page with an existing OCR text layer (NEEDS_REVIEW via VISION_ON_SCAN_PAGE);
 (1.15.0) on a figure page, a listed reader's number from a chart that the
 paper prints nowhere (PARTIAL plus the warning
 VISION_FIGURE_UNCORROBORATED) and one the paper prints on another page
-(PARTIAL, no warning); plus one check that each card run wrote one MANIFEST
-row with a matching `card_check` hash: **55 card expectations**. Twelve
-`route`, `audit` and `settle` expectations follow (the ROUTE line and a row
+(PARTIAL, no warning); the page-3 vision claim of an unlisted reader under
+the researcher's choice (`vision_override: check`), checked like a listed
+reader's reading (PARTIAL, no VISION_UNAVAILABLE_CLAIM); plus one check that
+each card run wrote one MANIFEST row with a matching `card_check` hash: **56
+card expectations**. Eighteen `route`, `audit`, `settle` and
+`vision-override` expectations follow (the ROUTE line and a row
 with environment keys by presence only; a selftest card's synthetic source
 is `chain_unconfirmed`; a second audit of the same card is refused, exit 9;
 a glob character in the agent ID is refused, exit 8; a card edited after its
@@ -1215,14 +1226,18 @@ check is refused, exit 9; a figure reading by a model DAAF cannot confirm is
 listed for a person; `settle --list` lists it and marks the chain not
 settleable; `settle` refuses empty user words, an id not of this audit, the
 chain's id and a `does_not_match` without a rationale, exit 11, and records
-a matching reply with its hash-bound row, exit 0). The same selftest adds 23
+a matching reply with its hash-bound row, exit 0; `vision-override` refuses a
+withdrawal with no choice in effect, empty user words and a `check` without
+a rationale, exit 11, and records a `check`, after which `route
+--reader-model` prints `VISION: override-check` with the warning, and
+`VISION: text-only` once the choice is withdrawn). The same selftest adds 24
 `report` expectations (a synthetic review built by `lit_corpus`, memos with
 planted violations; literature-review `references/lit-verify-report.md`),
-**90 in all**. It needs
+**98 in all**. It needs
 no PDF tools, but it needs rapidfuzz, polars or pyarrow, **and polars** (the
 HTML case is ingested by `pdf_ingest`, which writes its page_index with
 polars; without it, exit 10). It removes its work dir and prints
-`lit_verify: SELFTEST PASS: 90/90 expectations held; work dir removed`.
+`lit_verify: SELFTEST PASS: 98/98 expectations held; work dir removed`.
 
 ## Worked examples
 

@@ -3,7 +3,7 @@
  "tool_version": "synthetic (lit_corpus demo)",
  "command": "find",
  "query": "small-group tutoring reading",
- "raw_artifact": "demo_find_e3563b97.json",
+ "raw_artifact": "demo_find_30ec1fa0.json",
  "raw_sha256": "3ad51f64038c692e5cb37c98d01b78a89b11c6c33156840d4ac3c45cacc8fc7e",
  "fusion": {
   "version": "fuse-v1"

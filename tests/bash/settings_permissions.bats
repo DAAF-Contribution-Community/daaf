@@ -244,14 +244,19 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
 
 @test "settings permissions: Literature Review record rules are ask rules, never allow-listed" {
     # `lit_corpus … record-human` and `lit_verify … settle --decision` record a
-    # person's words as that person's decision, so the person approves each
-    # call (literature-review-mode.md). Static contract only, as above.
+    # person's words as that person's decision, and the two choices recorded
+    # after the review plan, `lit_corpus … untested-checker` (the researcher
+    # lets an untested reference checker confirm references) and `lit_verify …
+    # vision-override` (the page-picture choice for an untested reader), record
+    # the researcher's words as that choice, so the person approves each call
+    # (literature-review-mode.md). Static contract only, as above.
     run jq -e '
         . as $settings
-        | (["Bash(*lit_corpus*record-human*)", "Bash(*lit_verify*settle*--d*)"]
+        | (["Bash(*lit_corpus*record-human*)", "Bash(*lit_verify*settle*--d*)",
+            "Bash(*lit_corpus*untested-checker*)", "Bash(*lit_verify*vision-override*)"]
            | all(. as $rule | ($settings.permissions.ask // []) | index($rule) != null))
         and ([($settings.permissions.allow // [])[]
-              | select(test("record-human|settle"))] | length == 0)
+              | select(test("record-human|settle|untested-checker|vision-override"))] | length == 0)
     ' "${SETTINGS_FILE}"
     assert_success
 }

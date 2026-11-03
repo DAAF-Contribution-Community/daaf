@@ -110,7 +110,9 @@
       "Bash(git -C * push)",
       "Bash(git -C * push *)",
       "Bash(*lit_corpus*record-human*)",
-      "Bash(*lit_verify*settle*--d*)"
+      "Bash(*lit_verify*settle*--d*)",
+      "Bash(*lit_corpus*untested-checker*)",
+      "Bash(*lit_verify*vision-override*)"
     ]
   },
   "env": {

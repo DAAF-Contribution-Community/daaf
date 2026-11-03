@@ -1196,7 +1196,97 @@ _expect_decision_pass() {
     refute_output --partial "INERT_COMPUTATION_COMPLETED"
 }
 
+@test "decision scan blocks .py untested-checker through the wrapper, the module and a variable (accept and --revoke)" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_12.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_corpus.sh", "adjudications", "untested-checker", "proj", "--model-id", "m", "--user-words", "use it", "--rationale", "fine"])' > "$f"
+    _expect_decision_block "$f" 3
+    assert_output --partial "lit_corpus adjudications untested-checker"
+    f="${BATS_TEST_TMPDIR}/dec_12b.py"
+    printf '%s\n' 'import os' 'raise SystemExit(0)  # inert guard' \
+        'os.system("python3 /daaf/scripts/lit_corpus.py adjudications untested-checker proj --model-id m --user-words stop --revoke")' > "$f"
+    _expect_decision_block "$f" 3
+    # a variable, in a script that names no tool on that line (the token alone is enough)
+    f="${BATS_TEST_TMPDIR}/dec_12c.py"
+    printf '%s\n' 'import subprocess, sys' 'raise SystemExit(0)  # inert guard' 'ACTION = "untested-checker"' \
+        'TOOL = sys.argv[1]' 'subprocess.run(["bash", TOOL, "adjudications", ACTION, "proj"])' > "$f"
+    _expect_decision_block "$f" 3
+}
+
+@test "decision scan blocks .py vision-override at each level through the wrapper and the module" {
+    _inert_interpreters
+    local f level n=0
+    for level in check accept withdraw; do
+        n=$((n + 1))
+        f="${BATS_TEST_TMPDIR}/dec_13_${n}.py"
+        printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+            "subprocess.run([\"bash\", \"/daaf/scripts/lit_verify.sh\", \"vision-override\", \"proj\", \"--level\", \"${level}\", \"--user-words\", \"ok\"])" > "$f"
+        echo "level: $level"
+        _expect_decision_block "$f" 3
+    done
+    assert_output --partial "lit_verify vision-override"
+    f="${BATS_TEST_TMPDIR}/dec_13b.py"
+    printf '%s\n' 'import sys' 'raise SystemExit(0)  # inert guard' 'sys.path.insert(0, "/daaf/scripts")' 'import lit_verify' \
+        'lit_verify.main(["vision-override", "proj", "--level", "accept", "--model-id", "m", "--user-words", "ok", "--rationale", "r"])' > "$f"
+    _expect_decision_block "$f" 5
+}
+
+@test "decision scan blocks .py vision-override whose list is split across lines, and .R via system2()" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_14.py"
+    printf '%s\n' 'import subprocess' 'raise SystemExit(0)  # inert guard' \
+        'LV = "/daaf/scripts/lit_verify.sh"' \
+        'cmd = ["bash", LV,' \
+        '       "vision-override", "proj",' \
+        '       "--level", "check", "--user-words", "ok", "--rationale", "r"]' \
+        'subprocess.run(cmd)' > "$f"
+    _expect_decision_block "$f" 5
+    f="${BATS_TEST_TMPDIR}/dec_14b.R"
+    printf '%s\n' 'quit(status = 0)  # inert guard' \
+        'system2("bash", c("/daaf/scripts/lit_verify.sh", "vision-override", "proj", "--level", "withdraw", "--user-words", "stop"))' > "$f"
+    _expect_decision_block "$f" 2
+    f="${BATS_TEST_TMPDIR}/dec_14c.R"
+    printf '%s\n' 'quit(status = 0)  # inert guard' \
+        "system(\"bash /daaf/scripts/lit_corpus.sh adjudications untested-checker proj --model-id m --user-words 'ok' --rationale 'r'\")" > "$f"
+    _expect_decision_block "$f" 2
+}
+
 # --- Allow -----------------------------------------------------------------------
+
+@test "decision scan allows near misses of untested-checker and vision-override" {
+    # untested_checker as a Python name (underscore), the record name vision_override_1.json, the word
+    # vision-overrides, route --reader-model (records no decision), and vision-override in a script that
+    # never names lit_verify.
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_05.py"
+    printf '%s\n' 'import json, subprocess' \
+        'def_name = "test_untested_checker_refuses_a_listed_model"' \
+        'untested_checker_rows = []' \
+        'subprocess.run(["bash", "/daaf/scripts/lit_verify.sh", "route", "proj", "--reader-model", "m"])' \
+        'names = ["vision_override_1.json", "vision-overrides"]' \
+        'rows = [json.loads(l) for l in open("papers/MANIFEST.jsonl")]' \
+        'kinds = [r for r in rows if r.get("kind") == "lit_verify_vision_override"]' > "$f"
+    _expect_decision_pass "$f"
+    f="${BATS_TEST_TMPDIR}/dec_ok_05b.py"
+    printf '%s\n' 'print("a vision-override of the default lens settings")' > "$f"
+    _expect_decision_pass "$f"
+}
+
+@test "decision scan allows untested-checker and vision-override on full-line comments only" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/dec_ok_06.py"
+    printf '%s\n' '# The orchestrator records the choices itself, never this script:' \
+        '#   bash /daaf/scripts/lit_corpus.sh adjudications untested-checker PROJECT --model-id M --user-words W --rationale R' \
+        '    # bash /daaf/scripts/lit_verify.sh vision-override PROJECT --level accept --model-id M --user-words W' \
+        'LV = "/daaf/scripts/lit_verify.sh"' \
+        'print("ok")' > "$f"
+    _expect_decision_pass "$f"
+    f="${BATS_TEST_TMPDIR}/dec_ok_06b.R"
+    printf '%s\n' '# system2("bash", c("/daaf/scripts/lit_verify.sh", "vision-override", "p", "--level", "check"))' \
+        '# lit_corpus.sh adjudications untested-checker' 'lv <- "/daaf/scripts/lit_verify.sh"' 'cat("ok\n")' > "$f"
+    _expect_decision_pass "$f"
+}
 
 @test "decision scan allows settle --list (.py and .R): it records no decision" {
     _inert_interpreters

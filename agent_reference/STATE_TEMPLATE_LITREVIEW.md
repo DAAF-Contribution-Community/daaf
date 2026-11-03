@@ -98,16 +98,40 @@ review is not using.
 
 ## Route Record (reading setup)
 
-> The setup line comes from `lit_verify route`, run at intake at every level, never typed. Each paper-reader dispatch copies the
-> `ROUTE:` line verbatim; no line means no picture reading.
+> The setup lines come from `lit_verify route --reader-model`, run at intake at every level, never
+> typed. Each paper-reader dispatch copies the `ROUTE:` and `VISION:` lines verbatim; no line means
+> no picture reading. Run `route --reader-model` again after a page-picture choice, and whenever
+> the reader's model or the setup changes (an earlier choice then no longer applies).
 
 | Field | Value |
 |-------|-------|
 | **ROUTE line (verbatim)** | `ROUTE: [name]` |
+| **VISION line (verbatim)** | `VISION: [validated / override-check / override-accept / text-only]` |
+| **Reader model ID (given to `--reader-model`)** | [model ID] |
 | **Route MANIFEST row** | `papers/MANIFEST.jsonl` line [n], sha256 [first 12 hex], timestamp [ISO] |
-| **Pictures of pages** | [Available on this setup / Text only on this setup] |
+| **Pictures of pages** | [Available on this setup / Text only on this setup / Untested reader: your choice below] |
+| **Page-picture choice** | [none / check / accept / withdrawn]: `papers/vision_override_[n].json`, [date], > [the researcher's words, verbatim] |
+| **Warning shown** | [the review plan, YYYY-MM-DD; again on [date] after a model or setup change / "not needed (tested reader)"] |
 | **PDF page-image preference** | [auto / all-pages / off, from CLAUDE.md § User Preferences] |
 | **Image cap per reader** | [8 on a 200k window / 30 on a 1M window] |
+
+---
+
+## AI Reference Check (checker setup)
+
+> The citation-adjudicator runs in every review, before the reference check. Whether it is tested
+> comes from the mode's identity check (`literature-review-mode.md` § The Citation Second Check),
+> never from memory. An acceptance covers one model ID: when the `opus` tier resolves to another
+> model, run the identity check again and show the warning again.
+
+| Field | Value |
+|-------|-------|
+| **Checker model ID (the form `pack` takes)** | [model ID] |
+| **Tested?** | [tested: on evaluated list [version] / not yet tested] |
+| **Researcher's choice** | [hints only (default) / confirm same-work (accepted) / withdrawn] |
+| **Researcher's words** | > [verbatim, or "none (default)"] |
+| **`untested-checker` MANIFEST row** | `data/MANIFEST.jsonl` timestamp [ISO], line sha256 [first 12 hex], or "none" |
+| **Warning shown** | [the review plan, YYYY-MM-DD; again on [date] after a model change / "not needed (tested checker)"] |
 
 ---
 
@@ -146,7 +170,7 @@ review is not using.
 
 | Paper key | Pages / chunk | Dispatch agent ID | Model tier (dispatch) | Model ID (recorded) | Card | Card check verdict | Card revisions | Audit record | Audit outcome | Settlement | Status |
 |-----------|---------------|-------------------|-----------------------|---------------------|------|--------------------|----------------|--------------|---------------|------------|--------|
-| [key] | [1-N / a-b (chunk k of m)] | [agent ID] | [opus] | [model ID from the audit record, or "none recorded"] | `papers/[key]/evidence_card[S].md` or "none yet" | [PASS / PARTIAL / NEEDS_REVIEW / FAIL / —] | [0-2] | `papers/[key]/vision_audit[S].json` or "none" or "not needed (no picture readings)" | [confirmed / confirmed_with_checks / person_must_check / mismatch / chain_unconfirmed / —] | [`audit_settlement[S]_[n].json` or "pending: [k] items" or "—"] | [dispatched / card written / audited / settled / done] |
+| [key] | [1-N / a-b (chunk k of m)] | [agent ID] | [opus] | [model ID from the audit record, or "none recorded"] | `papers/[key]/evidence_card[S].md` or "none yet" | [PASS / PARTIAL / NEEDS_REVIEW / FAIL / —] | [0-2] | `papers/[key]/vision_audit[S].json` or "none" or "not needed (no picture readings)" | [confirmed / confirmed_with_checks / confirmed_untested_reader / person_must_check / mismatch / chain_unconfirmed / —] | [`audit_settlement[S]_[n].json` or "pending: [k] items" or "—"] | [dispatched / card written / audited / settled / done] |
 
 **Chunk notes:** [for a chunked paper: `papers/[key]/chunk_notes_p[a]-[b].md` per finished chunk]
 
@@ -156,8 +180,9 @@ review is not using.
 
 ### Glance Records
 
-> Until an adjudicator passes its evaluation, every reference's second check is the researcher's
-> glance at the list to check before a final deliverable (one list, one reply per deliverable),
+> Every reference the AI reference check did not confirm (all of them while it is untested and
+> not accepted, its verdicts then shown as hints) is confirmed by the researcher's glance at the
+> list to check before a final deliverable (one list, one reply per deliverable),
 > shown at the reference check (CP-G; at a quick scan, at the final review). A request to check a
 > left-out reference again is `check_again`, distinct from `defer` (the researcher's own later
 > look): it is never a `record-human` call, and its new list is the next row.
@@ -168,15 +193,17 @@ review is not using.
 
 ### Adjudicator Batches
 
-> Only after an adjudicator identity is on an evaluated list. Pack runs from a captured script;
-> a packed batch that was not ingested is re-dispatched with the same bundle, never re-packed.
+> Every review, before the reference check. Pack runs from a captured script; it skips the
+> references the checker has already judged (`--keys` with `--rejudge` judges one again); a packed
+> batch that was not ingested is re-dispatched
+> with the same bundle, never re-packed.
 > One that will not be ingested (never dispatched, no completed pack log, or refused by
 > `ingest`) is released with `adjudications release` and a reason, and its rows are packed in a
 > new batch (the next row).
 
 | Batch | Pack script | Bundle sha256 | Prompt sha256 | Model tier (dispatch) | Model ID (packed) | Dispatch agent ID | Return saved | Ingest |
 |-------|-------------|---------------|---------------|-----------------------|-------------------|-------------------|--------------|--------|
-| [b01] | `scripts/lr_adjudication/[NN]_pack_batch_[b01].py` | [first 12 hex] | [first 12 hex] | [opus] | [the `--model-id` given to pack] | [agent ID or "not dispatched"] | `data/adjudication_raw/[b01].jsonl` or "no" | [not ingested / ingested (MANIFEST timestamp) / refused: exit [n], reason / released (MANIFEST timestamp): reason] |
+| [b01] | `scripts/lr_adjudication/[NN]_pack_batch_[b01].py` | [first 12 hex] | [first 12 hex] | [opus] | [the `--model-id` given to pack] | [agent ID or "not dispatched"] | `data/adjudication_raw/[b01].jsonl` or "no" | [not ingested / ingested (MANIFEST timestamp): tested / accepted / hints only [, model-check WARNING] / refused: exit [n], reason / released (MANIFEST timestamp): reason] |
 
 ### Reading Items for a Person
 
@@ -342,8 +369,9 @@ researcher stops. Use concrete values, never brackets.
 
 At intake, once the researcher has chosen the depth and stated the question and the project folder
 exists: before the scoping searches and the Scope Check, so a session that stops at the plan can
-be resumed. Fill Current Position (stage LR-0), Project, Session Metadata and the Route Record (run
-`lit_verify route` first), and set Scope Check status to `awaiting confirmation`. The mode file's
+be resumed. Fill Current Position (stage LR-0), Project, Session Metadata, the Route Record (run
+`lit_verify route --reader-model` first) and the AI Reference Check (run the identity check), and
+set Scope Check status to `awaiting confirmation`. The mode file's
 § State, Recovery and LEARNINGS.md > STATE.md update gates lists the fields each event updates; the
 table below follows it.
 
@@ -359,6 +387,8 @@ and the per-round flow counts in `output/counts_v{N}.json`.
 |-------|--------|
 | The review plan is shown | Current Position; Scope Check status `awaiting confirmation`; Status "Waiting for your reply" |
 | The researcher approves the plan, or a changed plan | Scope Check status `confirmed YYYY-MM-DD` with the plan path; the plan version row with their words; Spend Ledger (SPEND APPROVED) |
+| A checker or page-picture choice is recorded or withdrawn | AI Reference Check or Route Record: the choice, the researcher's words, the MANIFEST row or record file, and the new `VISION:` line |
+| The reader's or checker's model, or the setup, changes | Route Record and AI Reference Check: the new lines and status; the warning shown again; any new choice |
 | A searcher dispatch returns | Round Table (counts from `counts`); Spend Ledger; Open Review Items (retractions, missing seeds) |
 | The key-paper list or full-text decisions are agreed | Key-Paper and Full-Text Decisions, with the researcher's words |
 | A paper-reader is dispatched | A Reader Table row with the agent ID, before anything else |
@@ -398,6 +428,8 @@ does):
 | 8 | A glance sheet was shown and no reply is recorded | Show the same `reference_glance_v{N}.md` again (CP-G; at a quick scan, the final review), then record the reply with `record-human` in the researcher's own words |
 | 9 | A deliverable has no report check, or its newest check is FAIL | Run `lit_verify report`; on FAIL, re-dispatch the synthesizer with the failure items |
 | 10 | A round check-in has no decision | Show the round check-in again (CP-R) |
+| 11 | The reader's model (the `opus` tier) or the route differs from the Route Record | Run `lit_verify route --reader-model` again and copy the new lines; an earlier page-picture choice no longer applies (`VISION: text-only` unless the new model and route are on the list). Show the review plan's page-pictures warning again and record a new choice if the researcher wants one, before the next reader dispatch |
+| 12 | The checker's model differs from the AI Reference Check record | Run the identity check again; an acceptance covers only the model ID it names, so the new model's batches are hints. Show the review plan's checker paragraph again and record a new choice if the researcher wants one, before the next pack |
 
 **Stale state.** If a tool record is newer than this file (a card, audit, settlement or report
 check on disk that no row names; a MANIFEST row after **Last Updated**), the earlier session
@@ -405,8 +437,8 @@ stopped before saving. Rebuild the rows from `papers/MANIFEST.jsonl`, `data/MANI
 the files on disk, tag each rebuilt row `[reconstructed]`, and tell the researcher.
 
 **Words are never reconstructed.** A researcher's reply that is not in this file or in a tool
-record (the `record-human` or `settle` MANIFEST row) was never recorded: ask again rather than
-infer it.
+record (the `record-human`, `settle`, `untested-checker` or `vision-override` MANIFEST row) was
+never recorded: ask again rather than infer it.
 
 See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for the complete
 recovery procedure.

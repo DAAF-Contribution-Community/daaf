@@ -377,10 +377,13 @@ if [ -n "$SECRET_HITS" ]; then
 fi
 
 # --- Pre-execution researcher-decision scan -----------------------------------
-# Two Literature Review commands record a researcher's own decision, bound to
+# Four Literature Review commands record a researcher's own decision, bound to
 # the researcher's words quoted verbatim: `lit_corpus adjudications
-# record-human` (a citation decision) and `lit_verify settle ... --decision`
-# (the researcher's comparison of readings with the PDF pages). The
+# record-human` (a citation decision), `lit_corpus adjudications
+# untested-checker` (accepting, or withdrawing, a reference checker DAAF has
+# not tested), `lit_verify settle ... --decision` (the researcher's comparison
+# of readings with the PDF pages) and `lit_verify vision-override` (the
+# researcher's choice for a PDF reader DAAF has not tested). The
 # orchestrator runs each as its own Bash call after the researcher replies,
 # and settings.json ask rules make that call prompt, so the researcher
 # approves the command that shows their words. Called from a script, the
@@ -388,16 +391,25 @@ fi
 # the script on the same terms as the scans above: exit 3, NO log appended,
 # script editable in place, full-line comments excluded. Both languages get
 # the same case-sensitive rules (the CLIs take these words as written):
-#   - record-human: any line holding the token `record-human`, whether it
-#     reaches lit_corpus through the .sh wrapper, the .py module or an
-#     imported module's main([...]), in a command string, a list
-#     (["adjudications", "record-human", ...]) or a variable.
+#   - record-human and untested-checker: any line holding the token
+#     `record-human` or `untested-checker`, whether it reaches lit_corpus
+#     through the .sh wrapper, the .py module or an imported module's
+#     main([...]), in a command string, a list
+#     (["adjudications", "record-human", ...]) or a variable. Neither needs
+#     the tool's name on another line: both tokens are lit_corpus's own
+#     subcommand names and occur in no other DAAF command, so a script that
+#     reaches lit_corpus through a variable is caught too. A Python name
+#     such as untested_checker (underscore) is not the token and runs.
 #   - settle: the script names lit_verify on some line (wrapper, module or
 #     import), one line holds the word `settle`, and one line holds a
 #     decision flag: `--decision`, `--decision=...`, or any shorter prefix
 #     down to `--d`, which argparse expands to --decision for settle. The
 #     three may sit on different lines, so a list split across lines is
 #     caught. `settle --list` passes no decision flag and runs.
+#   - vision-override: the script names lit_verify on some line (as for
+#     settle) and one line holds the word `vision-override`. Every level
+#     (check, accept, withdraw) records a decision, so no flag is needed.
+#     `lit_verify route --reader-model` records none and runs.
 # ACCEPTED FALSE POSITIVES (fail-closed, as for the install scan): a string
 # literal, docstring or inline trailing comment that holds these words
 # without running them, such as a printed hint quoting the command or a
@@ -406,19 +418,24 @@ fi
 # ACCEPTED RESIDUALS: a command name or flag built by concatenation or
 # interpolation ("record-" + "human", or a flag made from a dict key), a
 # script that imports a module and calls its internal functions directly
-# (lit_corpus.cmd_adj_record_human(...), lit_verify.run_settle(...)), which
+# (lit_corpus.cmd_adj_record_human(...), lit_corpus.cmd_adj_untested(...),
+# lit_verify.run_settle(...), lit_verify.run_vision_override(...)), which
 # pass the decision as a value rather than a command word or flag, a settle
-# call in a script that never names lit_verify, and a call made by another
-# program the script runs. The ask rules and the orchestrator's instructions
-# remain behind this scan.
+# or vision-override call in a script that never names lit_verify, and a
+# call made by another program the script runs. The ask rules and the
+# orchestrator's instructions remain behind this scan.
 DECISION_COMMENT_RE='^[0-9]+:[[:space:]]*#'
-DECISION_HITS=$(grep -anE 'record-human' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+DECISION_HITS=$(grep -anE 'record-human|untested-checker' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
 LIT_VERIFY_LINES=$(grep -anE 'lit_verify' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
 if [ -n "$LIT_VERIFY_LINES" ]; then
     SETTLE_LINES=$(grep -anE '(^|[^A-Za-z0-9_-])settle([^A-Za-z0-9_-]|$)' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
     DECISION_FLAG_LINES=$(grep -anE '(^|[^A-Za-z0-9_-])--d(e(c(i(s(i(o(n)?)?)?)?)?)?)?([^A-Za-z0-9_-]|$)' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
     if [ -n "$SETTLE_LINES" ] && [ -n "$DECISION_FLAG_LINES" ]; then
         DECISION_HITS=$(printf '%s\n' "$DECISION_HITS" "$SETTLE_LINES" "$DECISION_FLAG_LINES" | grep -v '^$' | sort -t: -k1,1n -u)
+    fi
+    OVERRIDE_LINES=$(grep -anE '(^|[^A-Za-z0-9_-])vision-override([^A-Za-z0-9_-]|$)' "$SCRIPT_PATH" | grep -vE "$DECISION_COMMENT_RE" || true)
+    if [ -n "$OVERRIDE_LINES" ]; then
+        DECISION_HITS=$(printf '%s\n' "$DECISION_HITS" "$OVERRIDE_LINES" | grep -v '^$' | sort -t: -k1,1n -u)
     fi
 fi
 
@@ -436,9 +453,12 @@ if [ -n "$DECISION_HITS" ]; then
     echo "permission prompt shows the researcher their words before anything is" >&2
     echo "recorded. A script would skip that prompt. The scan reads lines, so it" >&2
     echo "cannot tell a call from text that only quotes the command. The" >&2
-    echo "commands: lit_corpus adjudications record-human (a citation decision)" >&2
-    echo "and lit_verify settle with --decision (the researcher's check of numbers" >&2
-    echo "the AI read from page images against the PDF pages)." >&2
+    echo "commands: lit_corpus adjudications record-human (a citation decision)," >&2
+    echo "lit_corpus adjudications untested-checker (the researcher's choice about" >&2
+    echo "an AI reference check DAAF has not tested), lit_verify settle with" >&2
+    echo "--decision (the researcher's check of numbers the AI read from page" >&2
+    echo "images against the PDF pages) and lit_verify vision-override (the" >&2
+    echo "researcher's choice for an AI PDF reader DAAF has not tested)." >&2
     echo "" >&2
     echo "WHAT TO DO:" >&2
     echo "  1. If the script runs the command, remove the call. The orchestrator" >&2
@@ -447,8 +467,10 @@ if [ -n "$DECISION_HITS" ]; then
     echo "  2. If a cited line only quotes the command (a printed hint, a filter" >&2
     echo "     on a MANIFEST row), move that text into a data file the script" >&2
     echo "     reads." >&2
-    echo "  3. 'lit_verify settle --list' records no decision and may stay in a" >&2
-    echo "     script. To test the recording commands, run their selftests" >&2
+    echo "  3. 'lit_verify settle --list' and 'lit_verify route --reader-model'" >&2
+    echo "     record no decision and may stay in a script (a script that names" >&2
+    echo "     lit_verify must not also hold the word vision-override). To test" >&2
+    echo "     the recording commands, run their selftests" >&2
     echo "     (lit_corpus.sh selftest <SCRATCH_DIR>, lit_verify.sh selftest" >&2
     echo "     <SCRATCH_DIR>)." >&2
     echo "" >&2

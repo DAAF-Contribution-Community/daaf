@@ -8,8 +8,8 @@ writes as JSONL. It computes what an agent must never type: paper keys and
 citekeys, the descriptive summary of three or more estimates, the sign test,
 the evidence of absence behind a gap. Source of truth: the header,
 `EXIT_CODES`, `SCHEMAS`, `RULE_VERSIONS` and `build_parser()` of
-`scripts/lit_corpus.py` (`TOOL_VERSION = "1.8.1-daaf"`;
-`CONTRACT_VERSION = "0.5.0"`). If this page and the code disagree, the code
+`scripts/lit_corpus.py` (`TOOL_VERSION = "1.9.0-daaf"`;
+`CONTRACT_VERSION = "0.6.0"`). If this page and the code disagree, the code
 wins: report the drift. `lit_verify report` (`lit-verify-report.md`) reads
 these tables to check a deliverable.
 
@@ -39,7 +39,14 @@ the ledger columns `model_id_observed`, `claude_md_sha256` and
 `claude_md_sha256_at_ingest`, the `adjudications release` MANIFEST row, the
 `claude_md_sha256` fields of the bundle and the pack and ingest rows (and the
 ingest row's model-check fields), the rule key `adj_model_check` and
-`glance-words-v3`; no column is renamed or removed.
+`glance-words-v3`; no column is renamed or removed. 0.6.0 (2026-11-03) adds
+the citation status `model_confirmed_untested` (in `CITABLE_DRAFT`,
+`CITABLE_FINAL` and `LABELLED_STATUSES`), the ledger column
+`untested_acceptance_ref`, the `adjudications untested-checker` MANIFEST row,
+the ingest row fields `model_check` and `untested_acceptance_ref`, the pack
+row field `rejudged`, the `.bib` / `.ris` field `daaf_citation_note`, and the
+versions `adjudication-v2`, `adj-selector-v2`, `adj-model-check-v2` and
+`glance-words-v4`; no column is renamed or removed.
 
 **Contents:** Syntax · Project layout and guards · Subcommands · Tables ·
 Citation second check · Keys, citekeys, dedup · Findings, summaries, sign
@@ -67,12 +74,14 @@ bash /daaf/scripts/lit_corpus.sh edges ingest <PROJECT_DIR> [--manifest PATH ...
 bash /daaf/scripts/lit_corpus.sh export-bib <PROJECT_DIR>
 bash /daaf/scripts/lit_corpus.sh export-ris <PROJECT_DIR>
 bash /daaf/scripts/lit_corpus.sh manifest <PROJECT_DIR> --round R [--protocol PATH]
-bash /daaf/scripts/lit_corpus.sh adjudications pack <PROJECT_DIR> --batch ID --model-id MODEL [--keys K1,...] [--max-rows N]
+bash /daaf/scripts/lit_corpus.sh adjudications pack <PROJECT_DIR> --batch ID --model-id MODEL [--keys K1,... [--rejudge]] [--max-rows N]
 bash /daaf/scripts/lit_corpus.sh adjudications ingest <PROJECT_DIR> --batch ID --agent-id AGENT_ID
 bash /daaf/scripts/lit_corpus.sh adjudications record-human <PROJECT_DIR> --rows FILE
      --decision same_work|different_work|defer|override_mismatch --user-words "..." [--rationale "..."]
 bash /daaf/scripts/lit_corpus.sh adjudications glance-sheet <PROJECT_DIR> [--deliverable PATH] [--keys K1,...]
 bash /daaf/scripts/lit_corpus.sh adjudications release <PROJECT_DIR> --batch ID --reason "..."
+bash /daaf/scripts/lit_corpus.sh adjudications untested-checker <PROJECT_DIR> --model-id MODEL
+     --user-words "..." (--rationale "..." | --revoke)
 bash /daaf/scripts/lit_corpus.sh selftest <SCRATCH_DIR>
 ```
 
@@ -114,14 +123,15 @@ path must resolve inside `PROJECT_DIR` (exit 2); inputs are at most 50 MiB
 | `findings record` | Findings with stated certainty, computed summaries | § Findings |
 | `gaps record` | Gap register with evidence of absence copied from the search rows (`gap_register_v{N}` and `output/gap_register_v{N}.md`). The `.md` is for the researcher: plain words in each heading and evidence line, never the codes (`gap-words-v1`; `gaps-and-saturation.md` § Gap types and modes) | `{gap_id, statement, absence: [{row_sha256, kind: zero_results \| none_eligible}], supporting_claim_ids, confidence, data_answerable, miles_type (optional), sa_mode (optional), data_note (optional)}`; a left-out code is stored as `unclassified` |
 | `edges ingest` | Citation links from `cites` / `refs` records files (`citation_edges_v{N}`), with the reader's quoted relation from `citation_use` claims | — |
-| `export-bib` / `export-ris` | `output/references_v{N}.bib` / `.ris`: included papers whose status is in `CITABLE_DRAFT` (the final line, `CITABLE_FINAL`, is held by `lit_verify report --kind final`), metadata from the check's own response, escaped; `daaf_citation_status` carries the status as read (`verified_rule` prints as `pending_adjudication`) | — |
+| `export-bib` / `export-ris` | `output/references_v{N}.bib` / `.ris`: included papers whose status is in `CITABLE_DRAFT` (the final line, `CITABLE_FINAL`, is held by `lit_verify report --kind final`), metadata from the check's own response, escaped; `daaf_citation_status` carries the status as read (`verified_rule` prints as `pending_adjudication`), and a `model_confirmed_untested` entry adds `daaf_citation_note` "confirmed by an untested AI check (your choice)" (RIS: an `N1` line) | — |
 | `manifest` | `output/manifests/LIT_REVIEW_MANIFEST_v{N}.json` and the one pointer file `output/LIT_REVIEW_MANIFEST.json` (the tool's only overwrite, atomic) | `--round` |
-| `adjudications pack` | Selects the rows for the second check, writes the bundle and the rendered fixed prompt, prints the hashes and the adjudicator's identity (§ Citation second check) | `--batch`, `--model-id` (the exact model ID to be dispatched, in the form `ingest` compares: no trailing `[1m]`, a dotted Claude ID hyphenated; another form is refused, exit 1) |
-| `adjudications ingest` | Binds the adjudicator's return to the audited pack, checks in the adjudicator's own transcript that the packed model ran, writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
+| `adjudications pack` | Selects the rows for the second check, skipping a row the checker already judged unless a judgment now would count for more, writes the bundle and the rendered fixed prompt, prints the hashes and the adjudicator's identity (§ Citation second check) | `--batch`, `--model-id` (the exact model ID to be dispatched, in the form `ingest` compares: no trailing `[1m]`, a dotted Claude ID hyphenated; another form is refused, exit 1); `--keys` to limit the selection; `--rejudge` (only with `--keys`) to judge named rows again |
+| `adjudications ingest` | Binds the adjudicator's return to the audited pack, checks in the adjudicator's own transcript that the packed model ran (refusing an evaluated identity's batch on a mismatch, keeping an unevaluated one's as hints), writes the ledger and the corpus statuses | `--batch`, `--agent-id` (from the dispatch result); `data/adjudication_raw/{batch}.jsonl` |
 | `adjudications release` | Marks a packed batch that will not be ingested as released, so its rows can be packed again in a new batch; writes only its MANIFEST row and keeps the bundle | `--batch`, `--reason` (why the batch will not be ingested) |
 | `adjudications record-human` | Records a person's reply for one or more verify rows | `--rows FILE` (one verify row sha256 per line, `#` comments), `--decision`, `--user-words`, `--rationale` (required except with `defer`) |
 | `adjudications glance-sheet` | Writes the plain-language reference list for the researcher and the rows file a reply can confirm | `--deliverable` (its `@citekey`s), `--keys`, both (one list: the deliverable's references, then each named paper it does not cite), or every included paper |
-| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (36 expectations) | — |
+| `adjudications untested-checker` | Records the researcher's acceptance of an adjudicator model that is not on the evaluated list, or (`--revoke`) its withdrawal, for one model ID in this project; writes only its MANIFEST row, needs no corpus (§ Citation second check > `untested-checker`) | `--model-id` (the form `pack` takes), `--user-words`, `--rationale` (acceptance) or `--revoke` |
+| `selftest` | Builds a synthetic review in a work dir under `SCRATCH_DIR`, runs every core subcommand and planted refusals, removes the work dir (38 expectations) | — |
 
 ## Tables
 
@@ -145,11 +155,15 @@ latest version against the MANIFEST row that wrote it (exit 9).
 ## Citation second check
 
 A reference whose rule check reads CONFIDENT is held as `pending_adjudication`
-until a second check confirms it (user decision, 2026-11-01). Until an adjudicator
-model passes its evaluation, that check is the researcher's glance at the
-list to check (`glance-sheet`), recorded with `record-human`.
+until a second check confirms it (user decision, 2026-11-01). The adjudicator
+runs whatever its model; its `SAME_WORK` confirms a reference only when its
+identity is evaluated (§ Evaluated identities) or the researcher accepted that
+untested checker for its model ID (§ `untested-checker`). Every other
+reference is confirmed by the researcher's glance at the list to check
+(`glance-sheet`), recorded with `record-human`, and an untested checker's
+verdict sits beside it there as a hint.
 
-**Statuses** (`adjudication-v1`; `adjudication_status()` derives each one from
+**Statuses** (`adjudication-v2`; `adjudication_status()` derives each one from
 a ledger row, and `lit_verify report` re-derives it with that function):
 
 | `citation_status` | Set by | Draft | Final |
@@ -159,8 +173,9 @@ a ledger row, and `lit_verify report` re-derives it with that function):
 | `model_adjudicated` | `ingest`: WEAK + `SAME_WORK` from an evaluated model, title similarity at or above the floor, not `org_unchecked` | citable | citable, labelled |
 | `human_confirmed` | `record-human same_work` on a CONFIDENT or WEAK row (whatever the model said, unless it said `DIFFERENT_WORK`) | citable | citable |
 | `human_overridden` | `record-human same_work` where a model said `DIFFERENT_WORK`, or `override_mismatch` on a MISMATCH row (bound to one record: § `record-human`) | citable | citable, labelled |
+| `model_confirmed_untested` | `ingest`: CONFIDENT or WEAK + `SAME_WORK` from a model not on the evaluated list, while the researcher's acceptance of that checker is in force and the transcript confirmed the packed model; a WEAK row only at or above the title floor and not `org_unchecked` | citable | citable, labelled "confirmed by an untested AI check (your choice)" |
 | `rejected` | `ingest` `DIFFERENT_WORK` from an evaluated model, or `record-human different_work` | no | no |
-| `unverified` | WEAK undecided (also a floor-routed `SAME_WORK`), MISMATCH, EXISTS, NOT FOUND, no check | no | no |
+| `unverified` | WEAK undecided (also a floor-routed `SAME_WORK`, and any untested checker's hint), MISMATCH, EXISTS, NOT FOUND, no check | no | no |
 | `human_accepted_unbound` | legacy `attach decision accept_weak` | review | not citable |
 
 Names a consumer imports from `lit_corpus`: `CITABLE_DRAFT`, `CITABLE_FINAL`,
@@ -181,10 +196,14 @@ when all four match an entry of the list in force and the agent file still
 hashes to the packed value at ingest (`evaluated_identity()`, which `ingest`
 and `lit_verify report` both call); any other `SAME_WORK` or `DIFFERENT_WORK`
 is recorded as given (`verdict`) but counted as `UNCERTAIN`
-(`effective_verdict`). A changed prompt, rubric or agent file is a new,
-unevaluated identity, so every row reaches a person until an evaluation of
-that identity passes and the user adds a dated list version. A malformed
-entry (a bare model ID, say) never matches.
+(`effective_verdict`): a hint the glance sheet shows, which changes no status.
+The one exception is the researcher's acceptance of that untested checker
+(§ `untested-checker`), under which its `SAME_WORK` gives
+`model_confirmed_untested`. A changed prompt, rubric or agent file is a new,
+unevaluated identity, so every row it does not confirm under an acceptance
+reaches a person until an evaluation of that identity passes and the user
+adds a dated list version. A malformed entry (a bare model ID, say) never
+matches.
 
 **CLAUDE.md is recorded, never part of the identity.** Its sha256 is
 recorded beside the identity wherever the identity is recorded: the
@@ -205,19 +224,59 @@ so a person can decide whether a small re-check is worth running.
 `SAME_WORK` on a WEAK row below it, or on an `org_unchecked` row, goes to a
 person (`title_floor_applied`).
 
-**`pack`** (`adj-selector-v1`). Run it from a captured script,
+**`pack`** (`adj-selector-v2`). Run it from a captured script,
 `scripts/lr_adjudication/NN_pack_batch_{batch}.py`, executed with
 `run_with_capture.sh` and letting the CLI's stdout reach the script's own
 stdout unchanged: the hashes it prints then sit in an immutable log. It
-selects, in paper-key order and at most `--max-rows` (default 30), every
-corpus paper whose attached check is CONFIDENT (selector
-`confident_second_check`) or WEAK (by cause: `org_not_exact`,
-`given_name_differs`, `translit_alternative`, `org_unchecked`,
-`author_ambiguous`, `title_band`, `version`, `regrade_weak`, else
-`title_guard`), never EXISTS, MISMATCH or NOT FOUND, and skips a paper already
-decided, decided by a person, or held in a packed batch that was neither
+selects, in paper-key order (or the papers `--keys` names) and at most
+`--max-rows` (default 30), every corpus paper whose attached check is
+CONFIDENT (selector `confident_second_check`) or WEAK (by cause:
+`org_not_exact`, `given_name_differs`, `translit_alternative`,
+`org_unchecked`, `author_ambiguous`, `title_band`, `version`, `regrade_weak`,
+else `title_guard`), never EXISTS, MISMATCH or NOT FOUND, and skips a paper
+already decided, decided by a person, held in a packed batch that was neither
 ingested nor released (re-dispatch that bundle, or release the batch; never
-re-pack). It refuses the batch (exit 11) when
+re-pack a batch), or already judged by the checker. Each skip and its reason
+is in the MANIFEST row's `skipped`; when nothing is left to select, `pack`
+refuses (exit 11) with the reasons.
+
+**Already judged** (`ledger_standing()`, `already_judged()`). A judgment's
+standing is how much it counts, in rising order: a hint (an identity not on
+the evaluated list), a judgment under the researcher's acceptance of that
+untested checker (whose `SAME_WORK` confirms), and an evaluated identity's
+judgment. A recorded judgment's standing is read from its ledger row as
+recorded (`evaluated_identity()` on the row's own fields and list version, as
+`lit_verify report` re-derives it; else 1 when it names an
+`untested_acceptance_ref`; else a hint). The standing of a judgment packed now
+is read from the identity about to be packed: evaluated on the list in force,
+else accepted when an `untested-checker` acceptance for its model ID is in
+force, else a hint. `pack` skips a paper whose attached verify row has a
+current ledger row, for that paper, holding a judgment (`verdict`; a
+person's `defer` over one copies it) whose standing is at least the standing
+now. The reason: an untested checker's verdict is a hint that leaves the
+status undecided (`pending_adjudication` or `unverified`), as is an evaluated
+checker's `UNCERTAIN`, so the status alone cannot tell a judged row from an
+unjudged one, and selecting on it would pay for a second judgment and show a
+second hint. A new judgment is worth its dispatch only when it could count
+for more. So a hint from one model never holds a row back from an evaluated
+identity on another model, nor from a checker the researcher has since
+accepted, nor from the same identity once it is evaluated (its hint never
+counted; a new judgment would). Another untested model, or an edited prompt,
+rubric or agent file still untested, would only add a hint, so it does not
+judge the row again; neither does a withdrawn acceptance or an evaluation no
+longer on the list. A judgment whose transcript recorded another model or
+none (`model_id_observed`, a hints-only batch) is no judgment by the model it
+names, so it never holds a row back. A new verify row (a reference checked
+again) has no ledger row yet, so it is always selected. `--rejudge` packs a
+judged row again on purpose, and only with `--keys` naming it (`--rejudge`
+without `--keys` is exit 1, nothing written): the evaluation's
+self-consistency re-runs, or the researcher asking the checker to look again
+at an unchanged check. It lifts only this skip, never a decided,
+person-decided or held row. The pack row's `rejudged` lists the papers packed
+again this way; ingest supersedes the earlier ledger row, which stays in the
+ledger.
+
+It refuses the batch (exit 11) when
 a selected CONFIDENT row was graded under verify rules older than
 `MIN_RULES_VERSION` (`2026-11-01d`; versions compare by date, then suffix
 length, then suffix): re-verify it first. Before it selects anything, it
@@ -322,27 +381,37 @@ so a later edit of the log shows.
    put back to `{BUNDLE_PATH}`, hashes to it (exit 9 otherwise).
 2. The batch was not ingested before (exit 11).
 3. Hardening (a): every record of `.claude/logs/audit.jsonl` with the
-   dispatch's `agent_id` must have `agent_type` `citation-adjudicator`, tool
-   `Read` and a target that resolves to the bundle, and there must be at
-   least one such Read (exit 11). Audit-log records carry `timestamp`,
+   dispatch's `agent_id` must have `agent_type` `citation-adjudicator` and
+   either tool `Read` with a target that resolves to the bundle, or tool
+   `SubagentHandback` (exactly that name: the Claude Code harness tool
+   through which a subagent delivers its report, which opens no file and
+   never counts as a read; observed 2026-11-03, Claude Code 2.1.281), and
+   there must be at least one such Read (exit 11). The row's audit-log input
+   records `handback_records`. Audit-log records carry `timestamp`,
    `session_id`, `tool`, `target` (the file path for Read, Write and Edit),
    `daaf_version`, `model` (session-wide, so never used for the model ID),
    `agent_type` and, on subagent calls, `agent_id`. A clean scan is evidence,
    not proof: the hook writes after the tool runs and can lose a record. The
    boundary is the agent-scoped `adjudicator-read-scope.sh` hook, which refuses
-   any other Read before it runs; it cannot tell which bundle the prompt
-   names, so this scan stays the check for that.
-3a. The model that ran (`adj-model-check-v1`). `ingest` finds the
+   any other Read, and every tool but Read and the hand-back, before it runs;
+   it cannot tell which bundle the prompt names, so this scan stays the check
+   for that.
+3a. The model that ran (`adj-model-check-v2`). `ingest` finds the
    adjudicator's own Claude Code transcript from `--agent-id`:
    `<home>/.claude/projects/<project>/<session>/subagents/agent-<agent id>.jsonl`
    (layout observed 2026-11-02, Claude Code 2.1.281), with the home folder
    taken from the password database, never from the environment or a typed
    path, so no argument can point the check at a hand-written file. It reads
    every `message.model` the transcript records (skipping `<synthetic>` and
-   API-error records, as the context-reporter hook does) and refuses the batch
-   (exit 11) unless there is at least one and every one is the packed model ID,
-   compared as `lit_verify` compares models (a trailing `[1m]` dropped, a
-   dotted Claude ID such as `claude-opus-5.5` read as `claude-opus-5-5`). No
+   API-error records, as the context-reporter hook does) and requires at least
+   one, every one the packed model ID, compared as `lit_verify` compares
+   models (a trailing `[1m]` dropped, a dotted Claude ID such as
+   `claude-opus-5.5` read as `claude-opus-5-5`); the ingest row's
+   `model_check` is `match` or `mismatch`. On a mismatch, a batch whose
+   identity is on the evaluated list is refused (exit 11), because its
+   verdicts would change statuses; a batch of an unevaluated identity is
+   accepted as hints only (no status changes, and no acceptance of an untested
+   checker applies to it), with a WARNING. No
    transcript is exit 10 (Claude Code keeps transcripts for
    `cleanupPeriodDays`, 30 days by default, so ingest soon after the
    dispatch; and with `CLAUDE_CONFIG_DIR` pointing outside `<home>/.claude`
@@ -359,9 +428,11 @@ so a later edit of the log shows.
    keyed by session, and the audit log's `model` is the session's, not the
    subagent's. A file at that place could also be written by a script, so the
    check is evidence, not proof, as the audit-log scan is. A refusal writes no
-   ledger row, so the packed model ID in the ledger is always one the
-   transcript confirmed; free the batch's rows with `release` and pack them
-   again.
+   ledger row, so a ledger row whose judgment counts (an evaluated identity's,
+   or one under an acceptance) always names a model the transcript confirmed;
+   a hints-only batch keeps the packed `model_id` and shows the models that
+   ran in `model_id_observed`. After a refusal, free the batch's rows with
+   `release` and pack them again.
 4. `data/adjudication_raw/{batch}.jsonl`, one object per judged row:
    `{row_sha256, verdict, dimension_verdicts: {dimension: verdict}, rationale}`.
    Refused (exit 11): a row not in the bundle, a second judgment of a row, a
@@ -380,6 +451,16 @@ so a later edit of the log shows.
    with a WARNING. CLAUDE.md is hashed again too
    (`claude_md_sha256_at_ingest`); a change is a WARNING only (§ Evaluated
    identities, "CLAUDE.md is recorded, never part of the identity").
+6. The researcher's acceptance (`adjudication-v2`). For an unevaluated
+   identity whose model check matched, `ingest` looks up the acceptance in
+   force for the packed `model_id` (`untested_acceptance()` over
+   `data/MANIFEST.jsonl`) and names its MANIFEST line in the row's and each
+   ledger row's `untested_acceptance_ref`. Under it, a `SAME_WORK` on a
+   CONFIDENT row, or on a WEAK row at or above the title floor and not
+   `org_unchecked`, gives `model_confirmed_untested`; a floor-routed one is
+   `title_floor_applied`; `DIFFERENT_WORK` and `UNCERTAIN` stay hints. Its
+   first output line says which applies: "its same-work verdicts confirm
+   references (labelled)" or "its verdicts are hints only".
 
 **`release`**. A packed batch that will not be ingested (never dispatched, a
 captured pack script that failed so no completed pack log exists, or a batch
@@ -410,7 +491,9 @@ adjudicator's transcript recorded, comma-separated), `agent_name`,
 `agent_file_sha256_at_ingest` (the identity the effective verdict was matched
 on), `claude_md_sha256`, `claude_md_sha256_at_ingest` (recorded; they never
 decide whether a judgment counts), `dispatch_id` (the agent ID),
-`adjudicated_at`, `human_decision`, `human_decider`, `human_decided_at`,
+`adjudicated_at`, `untested_acceptance_ref` (the sha256 of the
+`untested-checker` MANIFEST line in force at ingest, or null;
+`untested_acceptance()` re-derives it), `human_decision`, `human_decider`, `human_decided_at`,
 `human_rationale`, `human_instruction_verbatim`, `human_binding`,
 `human_binding_basis`, `override_record_json` (the record an
 `override_mismatch` accepts), `citation_status`, `superseded_by`,
@@ -454,22 +537,80 @@ shown or the user typed the command with `!` (both run with the same
 environment), so `human_binding_basis` says the binding was not detected and
 `user_typed` is never written.
 
+**`untested-checker`** (`adjudication-v2`). The researcher's choice to let an
+adjudicator model that is not on the evaluated list confirm references with
+its `SAME_WORK`, for one model ID in this project, or (`--revoke`) the
+withdrawal of that choice. The orchestrator offers it at the review plan,
+before any batch exists, so it needs no corpus. The words are a command-line
+argument behind the Ask-First rule `Bash(*lit_corpus*untested-checker*)`, as
+for `record-human`; only the orchestrator runs it, as its own Bash call,
+never inside a script. `--model-id` must be in the form `pack` takes (exit 1
+otherwise, naming the form). It writes only its MANIFEST row (`model_id`,
+`decision` `accept` or `revoke`, `user_words_sha256`, `rationale`,
+`human_decider` `researcher`, `human_binding` `permission_prompt`,
+`human_binding_basis`, `ends_acceptance`, `evaluated_model_list_version`; the
+words themselves are in `parameters.user_words`). The latest successful row
+for a model ID decides (`untested_acceptance()`), and an acceptance counts
+only as the step writes it (`untested_accept_holds()`): `tool_version` and
+`timestamp` present; `parameters.user_words` non-empty, its sha256 (of the
+words as stripped) equal to `user_words_sha256`; `human_decider`
+`researcher` and `human_binding` `permission_prompt`; `parameters.model_id`
+the row's model ID and `parameters.revoke` false; a non-empty `rationale`;
+and no acceptance already in force before it (`ends_acceptance` null). A
+latest row that is a withdrawal, or an acceptance that does not hold up,
+means no acceptance, never the one before it (fail closed: a damaged
+withdrawal or a hand-written line cannot keep or revive a grant). `ingest`,
+`pack` and `lit_verify report`'s re-derivation all read it through this one
+function, so a script that writes an acceptance row of its own must
+reproduce the whole row; the Ask-First rule and `run_with_capture.sh`'s
+decision scan stand behind that. It is forward-only: it
+changes how later ingests count, never a ledger row already written, so
+references confirmed under an acceptance keep their status after a
+withdrawal (a person's reply on the list can still reject or confirm each).
+The next `pack` for that model ID does select the undecided references the
+checker had only given hints on, because its judgment would now count for
+more (§ `pack`, "Already judged"). An acceptance bound to one model ID lapses
+by itself when another model runs the checker. Refused (exit 11, nothing
+written): no words; an acceptance without `--rationale`; an acceptance
+already in force for that model ID (withdraw it first); an acceptance of a
+model ID on the evaluated list in force (any entry naming that model ID: an
+evaluated identity takes no acceptance, as `vision-override` refuses a
+reader already on its tested list; a withdrawal is still allowed); a
+withdrawal with none in force.
+
 **`glance-sheet`** writes `output/reference_glance_v{N}.md`
 for the researcher: a table of number, reference (citekey), title as cited,
 title on record, authors as cited and on record, year cited and on record,
 where published (venue and record type in words), and where it stands in
-plain words. The rule version `glance-words-v3` covers this column's words,
+plain words. The rule version `glance-words-v4` covers this column's words,
 listed here, and the request sentences above the table, described below. The
 column's words: "matches the record; not yet confirmed", "partly matches;
 please decide", "does not match the record", "no record found", "the identifier
 exists, but its title was not compared", "not checked yet", "you confirmed
 it", "accepted by you despite the automatic reference check", "confirmed by
 DAAF's second check (an AI judgment)", "partly matches; confirmed by DAAF's
-second check (an AI judgment)", "judged to be a different work; it will not be
-cited", "you accepted a partial match earlier; please look at it again", and
-the endings "; left out of the reference list unless an automatic check
-matches it", "; an AI check that has not passed DAAF's test thought it may be
-a different work" and "; this paper was retracted" (where it was). A
+second check (an AI judgment)", "confirmed by an untested AI check (your
+choice)", "judged to be a different work; it will not be cited", "you
+accepted a partial match earlier; please look at it again", and the endings
+"; left out of the reference list unless an automatic check matches it", the
+hint "; DAAF's AI reference check, not yet tested with this model, says: " +
+"the same work" / "a different work" / "not sure" with the checker's one-line
+reason in brackets (untrusted text: scrubbed, cut to 200 characters, its
+verdict codes written as words; a batch whose transcript recorded another
+model than the packed one, or none, kept as hints by the model check, opens
+instead with "; DAAF's AI reference check, which may not have run on the AI
+model planned for it, says: "), "; an AI check that has not passed DAAF's
+test thought it may be a different work" (where a different-work verdict did
+not count and no hint is shown) and "; this paper was retracted" (where it
+was). A hint is shown on a reference whose current ledger row holds a model
+judgment (or a person's `defer` over one) from an identity not on the
+evaluated list, when the reference is neither citable at final nor rejected.
+When any hint is shown, the references the checker calls a different work,
+then those it could not judge, are listed first, and a note above the table
+says "DAAF's AI reference check has not been tested with the AI model it ran
+on, so its view is shown beside each reference as a hint only: you decide."
+(followed, when any hint is "a different work" or "not sure", by "The references it thinks may be a
+different work, then those it could not judge, are listed first."). A
 reference that no reply can decide (`reply_can_decide()`, as for
 `record-human`: EXISTS, NOT FOUND, a check whose response holds no record of
 the paper, no check yet, or a verify row that says NOT FOUND or gives no
@@ -643,15 +784,16 @@ Per-command extras on a successful row:
 | `edges ingest` | `skipped` (`restricted`, `no_sidecar`, `no_seed`), `edges` |
 | `export-bib` / `export-ris` | `entries`, `skipped_keys` (`[{paper_key, reason}]`) |
 | `manifest` | `pointer` (`{latest, sha256, contract_version}`) |
-| `adjudications pack` | `batch_id`, `bundle_sha256`, `prompt_sha256`, `row_sha256s`, `model_id`, `agent_name`, `prompt_version`, `rubric_version`, `template_sha256`, `agent_file_sha256`, `claude_md_sha256`, `skipped` (`[{paper_key, reason}]`) |
-| `adjudications ingest` | `batch_id`, `batch_log_file`, `batch_log_sha256`, `model_id`, `template_sha256`, `rubric_version`, `agent_file_sha256`, `agent_file_sha256_at_ingest`, `claude_md_sha256`, `claude_md_sha256_at_ingest`, `model_id_observed` (a list), `model_transcript`, `model_transcript_sha256` (these three also on a refusal at or after the model check), `model_evaluated`, `judged`, `unjudged` (row sha256s) |
+| `adjudications pack` | `batch_id`, `bundle_sha256`, `prompt_sha256`, `row_sha256s`, `model_id`, `agent_name`, `prompt_version`, `rubric_version`, `template_sha256`, `agent_file_sha256`, `claude_md_sha256`, `skipped` (`[{paper_key, reason}]`), `rejudged` (the papers `--rejudge` packed that the checker had already judged; `parameters.rejudge` records the flag) |
+| `adjudications ingest` | `batch_id`, `batch_log_file`, `batch_log_sha256`, `model_id`, `template_sha256`, `rubric_version`, `agent_file_sha256`, `agent_file_sha256_at_ingest`, `claude_md_sha256`, `claude_md_sha256_at_ingest`, `model_id_observed` (a list), `model_transcript`, `model_transcript_sha256` (these three also on a refusal at or after the model check), `model_check` (`match` or `mismatch`), `untested_acceptance_ref` (null unless an acceptance applied), `model_evaluated`, `judged`, `unjudged` (row sha256s) |
 | `adjudications release` | `batch_id`, `bundle_sha256`, `row_sha256s` (the rows freed), `reason`, `files_kept` (the bundle and prompt still on disk) |
+| `adjudications untested-checker` | `model_id`, `decision` (`accept` or `revoke`), `user_words_sha256`, `rationale`, `human_decider`, `human_binding`, `human_binding_basis`, `ends_acceptance` (the line it withdraws, or null), `evaluated_model_list_version`; the user's words are in `parameters.user_words` |
 | `adjudications record-human` | `decision`, `rows` (each verify row sha256 the reply covers), `statuses` (`{paper_key: status}`); the user's words are in `parameters.user_words` |
 | `adjudications glance-sheet` | `keys` (the list, in sheet order), `confirmable`, `keys_from_deliverable` (the deliverable's references; null without `--deliverable`), `keys_added` (the `--keys` papers listed after the deliverable's, every `--keys` paper without `--deliverable`; null without `--keys`) |
 
 `screen sheet`, `notes record` and `gaps record` add none. An `ingest` row's
 `inputs` also list the pack log (with its sha256) and the audit log (with
-`records_for_agent`, no hash), the adjudicator's transcript and the
+`records_for_agent` and `handback_records`, no hash), the adjudicator's transcript and the
 adjudicator's agent file and CLAUDE.md (each with its sha256, when present);
 a `pack` row's list the prompt template, the agent file and CLAUDE.md.
 
@@ -660,23 +802,23 @@ a `pack` row's list the prompt template, the agent file and CLAUDE.md.
 | Code | Meaning |
 |------|---------|
 | 0 | Written (also with counted skips); `key` and `selftest` success |
-| 1 | Usage (also a `PROJECT_DIR` that is not a directory, or `claims abstract` without a file; no row for the former; `ingest` without an `--agent-id` that passes the hook's id allowlist; `pack` without a `--model-id` in the form `ingest` compares, the message naming that form; `release` without `--reason`) |
+| 1 | Usage (also a `PROJECT_DIR` that is not a directory, or `claims abstract` without a file; no row for the former; `ingest` without an `--agent-id` that passes the hook's id allowlist; `pack` or `untested-checker` without a `--model-id` in the form `ingest` compares, the message naming that form; `pack --rejudge` without `--keys`; `release` without `--reason`) |
 | 2 | Refused by a guard (`PROJECT_DIR` or `SCRATCH_DIR`, an input outside `PROJECT_DIR`, a secret value, a named restricted-licence search row) |
 | 8 | An input cannot be parsed (JSONL, MANIFEST line, records file, raw log, card, card_check, an attach map line without `row_sha256` and `paper_key`, the prompt template block, a bundle, a rows file line) or is larger than 50 MiB; an adjudicator transcript that cannot be read (a symlink, pipe or device included) or is larger than 512 MiB |
 | 9 | Integrity mismatch, nothing written (bytes differ from their recorded sha256, or a table version no MANIFEST row wrote; an adjudication bundle, prompt or bundle row that differs from its pack log; a pack log and pack row that disagree; a bundle whose identity is not the one its pack log printed, or whose `template_sha256` is not the dispatched prompt's) |
 | 10 | Polars or pyarrow missing, or a required input missing (an input file; no corpus or other required table yet; a search without a records file; a `--rows` or `--web-fetch-row` sha256 in no MANIFEST of the project; nothing new to ingest; the prompt template, the adjudicator's agent file at `pack`, a completed pack log, the bundle, the adjudicator return, the audit log or the adjudicator's transcript) |
-| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; `attach verify` of a verify row with no verdict, or with one `verify` never gives; the second-check refusals in § Citation second check, among them a transcript that records a model other than the packed one, a released batch at `ingest`, and a `release` of a batch never packed, ingested or already released, or with an empty `--reason`); `selftest`: an expectation did not hold |
+| 11 | Input rejected by validation, no version written (reasons in the MANIFEST row; also `ingest --rows` naming a call that lists no papers; `attach verify` of a verify row with no verdict, or with one `verify` never gives; the second-check refusals in § Citation second check, among them a transcript that records a model other than the packed one for an evaluated identity's batch, a released batch at `ingest`, a `release` of a batch never packed, ingested or already released, or with an empty `--reason`, and an `untested-checker` call without words, an acceptance without a rationale, already in force or of a model ID on the evaluated list in force, or a withdrawal of none); `selftest`: an expectation did not hold |
 | 12 | Internal error |
 
 3 is reserved by `run_with_capture.sh` and never used.
 
 ## Tests and fixtures
 
-`tests/python/test_lit_corpus.py` (101 tests; the parquet and
+`tests/python/test_lit_corpus.py` (116 tests; the parquet and
 round-trip tests need polars or pyarrow, and rapidfuzz for the selftest and
 the second-check command tests, and are skipped without them; all
-three are pinned in the bare CI unit job, so they run there) and `lit_corpus.sh selftest` (36 expectations). The P3 contract
-bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.5.0:
+three are pinned in the bare CI unit job, so they run there) and `lit_corpus.sh selftest` (38 expectations). The P3 contract
+bundle (`tests/python/fixtures/lit_corpus/contract_bundle/`, contract 0.6.0:
 four invented papers with checked v3 cards, findings F01 and F02, two gaps
 (G02 left unclassified), one citation link, the second check of the four
 references (batch `b01` packed from a synthetic template, a synthetic captured

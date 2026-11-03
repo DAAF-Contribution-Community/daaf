@@ -339,10 +339,13 @@ bash /daaf/scripts/scholar_search.sh verify 'title:"The Effects of School Spendi
   second check on **every** CONFIDENT mandatory: in a
   Literature Review each CONFIDENT reference is held for that check, and
   these residuals are reviewed there. The citation adjudicator
-  (`.claude/agents/citation-adjudicator.md`) runs only for a model that has
-  passed its evaluation, and no model has, so the researcher's reference
-  check confirms each reference (`literature-review` skill,
-  `references/lit-corpus.md` § Citation second check). **Until the second
+  (`.claude/agents/citation-adjudicator.md`) runs in every review, but its
+  verdicts decide only for a model that has passed its evaluation, and no
+  model has: otherwise they are hints beside each reference, and the
+  researcher's reference check confirms it, unless the researcher chose to
+  let that untested checker confirm the references it judges the same work,
+  labelled (`literature-review` skill, `references/lit-corpus.md` § Citation
+  second check). **Until the second
   check confirms a reference, if the cited author is an organization cited
   by less than its full listed name, treat CONFIDENT as WEAK** (a human
   check, the WEAK workflow below). That includes a company cited with "&"
@@ -395,7 +398,9 @@ title, year and identifier checks still ran. Resolve it by judging
 whether the cited form names the listed body (`work <ID>` shows the full
 author list). Who decides: in a Literature Review, the researcher at the
 reference check (the citation second check; the citation adjudicator decides
-only for a model that has passed its evaluation, and no model has); elsewhere,
+only for a model that has passed its evaluation, which no model has, or that
+the researcher chose to accept untested, and otherwise shows its view as a
+hint); elsewhere,
 a person: the user. Record who decided and why: in a Literature Review, the
 orchestrator records the researcher's reply with
 `lit_corpus adjudications record-human`; elsewhere, write the decision, the

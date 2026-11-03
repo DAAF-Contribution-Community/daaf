@@ -197,8 +197,9 @@ only). Read opens any path, so a Read-only `tools` list does not keep an agent
 to the files its prompt names. This hook does that for the reference checker:
 registered with `matcher: ""`, it sees every tool call of that agent, allows
 only a Read of a bundle file (a canonical absolute path to an existing
-`research/…/data/adjudication_bundles/{batch_id}.json`) and denies everything
-else, fail-closed. Its coverage and limits are in `agent_reference/BOUNDARIES.md`
+`research/…/data/adjudication_bundles/{batch_id}.json`) and the harness's
+`SubagentHandback` call, through which the agent returns its answer, and
+denies everything else, fail-closed. Its coverage and limits are in `agent_reference/BOUNDARIES.md`
 § Defense-in-Depth Architecture, its tests in
 `tests/bash/adjudicator_read_scope.bats`. Another agent that must stay inside
 named files needs a hook of its own, drafted for the user to install (hooks are

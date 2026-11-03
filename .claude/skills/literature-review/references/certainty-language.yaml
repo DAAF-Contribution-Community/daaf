@@ -22,8 +22,8 @@
 #   suggests"; very low: "the evidence is very uncertain"). EPOC 2018 is an earlier
 #   variant of the same table. DAAF changes are listed under daaf_adaptations.
 schema_version: certainty-language-v1
-table_version: "2026-11-02"            # date of the last change (+ a letter for a second change that day); bump on ANY change; recorded in every report check
-contract_version: "0.5.0"               # Literature Review output contract semver (pre-1.0)
+table_version: "2026-11-03"            # date of the last change (+ a letter for a second change that day); bump on ANY change; recorded in every report check
+contract_version: "0.6.0"               # Literature Review output contract semver (pre-1.0)
 axis: body_of_evidence_certainty
 keys_are: [high, moderate, low, very_low]   # the machine values of a finding's certainty
 stated_by: >-

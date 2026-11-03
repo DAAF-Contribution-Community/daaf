@@ -43,15 +43,17 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_versions_and_schemas(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_corpus.sh").st_mode & 0o111)
-        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.8.1-daaf", "0.5.0"))
+        self.assertEqual((lc.TOOL_VERSION, lc.CONTRACT_VERSION), ("1.9.0-daaf", "0.6.0"))
         # The certainty phrase table and its lockstep copy carry the contract version.
         self.assertEqual(lc.lv.lrr.CERTAINTY_LANGUAGE["contract_version"], lc.CONTRACT_VERSION)
         self.assertEqual(lc.SCHEMAS["paper_notes"], "lit-paper-notes-v1")
         self.assertEqual(lc.SCHEMAS["citation_adjudications"], "lit-adjudications-v1")
         self.assertEqual(lc.RULE_VERSIONS["paperkey"], "paperkey-v1")
         self.assertEqual(lc.RULE_VERSIONS["verify_regrade"], "verify-regrade-v3")
-        self.assertEqual(lc.RULE_VERSIONS["glance_words"], "glance-words-v3")
-        self.assertEqual(lc.RULE_VERSIONS["adj_model_check"], "adj-model-check-v1")
+        self.assertEqual(lc.RULE_VERSIONS["glance_words"], "glance-words-v4")
+        self.assertEqual(lc.RULE_VERSIONS["adj_model_check"], "adj-model-check-v2")
+        self.assertEqual(lc.RULE_VERSIONS["adjudication"], "adjudication-v2")
+        self.assertEqual(lc.RULE_VERSIONS["adj_selector"], "adj-selector-v2")
         self.assertIn("exec python3 \"$TOOL\" \"$@\"", (_SCRIPTS / "lit_corpus.sh").read_text())
 
     def test_usage_exits_1_and_guards_exit_2(self):
@@ -185,7 +187,7 @@ class RoundTripTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = lc.run(["selftest", str(scratch)])
             self.assertEqual(code, 0, out.getvalue())
-            self.assertIn("SELFTEST PASS: 36/36", out.getvalue())
+            self.assertIn("SELFTEST PASS: 38/38", out.getvalue())
             self.assertEqual([p.name for p in scratch.iterdir()], ["MANIFEST.jsonl"])
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
@@ -530,7 +532,9 @@ class SecondCheckRuleTests(unittest.TestCase):
         self.assertEqual(lc.read_status("verified_rule"), "pending_adjudication")     # legacy tables
         self.assertEqual((lc.read_status(None), lc.read_status("human_confirmed")), ("unverified", "human_confirmed"))
         self.assertEqual(set(lc.CITABLE_FINAL), {"model_confirmed", "model_adjudicated", "human_confirmed",
-                                                 "human_overridden"})
+                                                 "human_overridden", "model_confirmed_untested"})
+        self.assertEqual(set(lc.LABELLED_STATUSES), {"model_confirmed", "model_adjudicated", "human_overridden",
+                                                     "model_confirmed_untested"})
         self.assertEqual(set(lc.CITABLE_DRAFT) - set(lc.CITABLE_FINAL), {"pending_adjudication",
                                                                           "human_accepted_unbound"})
         self.assertEqual(lc.CITABLE, lc.CITABLE_DRAFT)
@@ -583,6 +587,20 @@ class SecondCheckRuleTests(unittest.TestCase):
                  (("EXISTS", None, None, False, "same_work"), "unverified")]
         for args, want in cases:
             self.assertEqual(s(*args), want, args)
+        # adjudication-v2: an accepted untested checker's SAME_WORK confirms, and nothing else does
+        untested = [(("CONFIDENT", "SAME_WORK", "UNCERTAIN", False, None), "model_confirmed_untested"),
+                    (("WEAK", "SAME_WORK", "UNCERTAIN", False, None), "model_confirmed_untested"),
+                    (("WEAK", "SAME_WORK", "UNCERTAIN", True, None), "unverified"),           # floor: a person
+                    (("CONFIDENT", "DIFFERENT_WORK", "UNCERTAIN", False, None), "pending_adjudication"),
+                    (("CONFIDENT", "UNCERTAIN", "UNCERTAIN", False, None), "pending_adjudication"),
+                    (("CONFIDENT", "SAME_WORK", "SAME_WORK", False, None), "model_confirmed"),  # evaluated: its own
+                    (("CONFIDENT", "SAME_WORK", "UNCERTAIN", False, "defer"), "pending_adjudication"),
+                    (("CONFIDENT", "SAME_WORK", "UNCERTAIN", False, "same_work"), "human_confirmed"),
+                    (("MISMATCH", "SAME_WORK", "UNCERTAIN", False, None), "unverified"),
+                    (("EXISTS", "SAME_WORK", "UNCERTAIN", False, None), "unverified")]
+        for args, want in untested:
+            self.assertEqual(s(*args, untested_accepted=True), want, args)
+        self.assertEqual(s("CONFIDENT", "SAME_WORK", "UNCERTAIN", False, None), "pending_adjudication")  # v1 caller
 
     def test_per_dimension_rule(self):
         c = lc.combine_dimensions
@@ -844,6 +862,39 @@ class SecondCheckCommandTests(unittest.TestCase):
                 code, out = self.run_lc("adjudications", "ingest", self.pd, "--batch", "t1", "--agent-id", agent,
                                         paths=dict(lc.demo_adj_paths(str(self.pd)), audit_log=log))
                 self.assertEqual(code, 0 if name == "clean control" else 11, out)
+
+    def test_a_audit_accepts_the_handback_and_nothing_like_it(self):
+        # 1.9.0 (D-49): the adjudicator's SubagentHandback record passes (tool exactly that name, same agent ID and
+        #   agent type); a look-alike tool name, or a hand-back recorded under another agent type, refuses the batch;
+        #   a hand-back never stands in for the bundle Read
+        self.attach((0, {}))
+        lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t1", keys=[self.P1], ingest=False)
+        bundle = os.path.realpath(self.pd / "data" / "adjudication_bundles" / "t1.json")
+        hb = ("SubagentHandback", "")
+        # REASONING: every refused case runs before the accepted one, because a batch is ingested once
+        for name, targets, kw, want in (
+                ("hand-back only, no read", [hb], {}, 11),
+                ("look-alike tool name", [("Read", bundle), ("subagenthandback", "")], {}, 11),
+                ("longer tool name", [("Read", bundle), ("SubagentHandbackX", "")], {}, 11),
+                ("hand-back by another agent type", [("Read", bundle)], {"other_type_handback": True}, 11),
+                ("read and hand-back", [("Read", bundle), hb, hb], {}, 0)):
+            with self.subTest(name):
+                agent = f"x{uuid.uuid4().hex[:6]}"
+                log = lc.demo_audit_log(str(self.pd), agent, targets)
+                if kw.get("other_type_handback"):
+                    # the bundle Read by the adjudicator, then a hand-back recorded under another agent type
+                    os.chmod(log, 0o644)
+                    with open(log, "a") as f:
+                        f.write(lc.json.dumps({"timestamp": "2026-11-03T00:00:00Z", "session_id": "fixture",
+                                               "tool": "SubagentHandback", "target": "", "agent_type": "search-agent",
+                                               "agent_id": agent}) + "\n")
+                lc.demo_transcript(str(self.pd), agent, [lc.DEMO_ADJ_MODEL])
+                code, out = self.run_lc("adjudications", "ingest", self.pd, "--batch", "t1", "--agent-id", agent,
+                                        paths=dict(lc.demo_adj_paths(str(self.pd)), audit_log=log))
+                self.assertEqual(code, want, out)
+        row = [r for r in self.manifest() if r.get("command") == "adjudications ingest" and r["exit_code"] == 0][-1]
+        audit = [i for i in row["inputs"] if i.get("what") == "audit log"][0]
+        self.assertEqual((audit["records_for_agent"], audit["handback_records"]), (3, 2))
 
     def test_b_bundle_forged_with_its_manifest_row_is_caught_by_the_pack_log(self):
         self.attach((0, {}))
@@ -1548,21 +1599,322 @@ class SecondCheckCommandTests(unittest.TestCase):
         return code, out, row
 
     def test_model_check_refuses_a_transcript_naming_another_model(self):
+        # adj-model-check-v2: an EVALUATED identity's batch run on another model (or none) is refused, nothing written
         self.attach((0, {}))
+        e = lc.demo_evaluated_entry()
         for name, ran in (("another model", ["claude-invented-9"]), ("a change mid-run", [lc.DEMO_ADJ_MODEL, "other"]),
                           ("no model in it", [])):
             with self.subTest(name):
                 n = len(self.table("citation_adjudications"))
                 batch = f"m{uuid.uuid4().hex[:6]}"
-                code, out, row = self.ingest_with_transcript(batch, ran)
+                with mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-none": (e,)}):
+                    code, out, row = self.ingest_with_transcript(batch, ran)
                 self.assertEqual(code, 11, out)
                 self.assertIn("not the packed model", out)
-                self.assertEqual((row["command"], row["model_id_observed"]), ("adjudications ingest", ran))
+                self.assertEqual((row["command"], row["model_id_observed"], row["model_check"]),
+                                 ("adjudications ingest", ran, "mismatch"))
                 self.assertTrue(lc.SHA_RE.match(row["model_transcript_sha256"]))
                 self.assertEqual(len(self.table("citation_adjudications")), n)                 # nothing written
                 self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
                 self.assertEqual(self.run_lc("adjudications", "release", self.pd, "--batch", batch, "--reason",
                                              "Invented: the transcript names another model.")[0], 0)
+
+    def test_model_check_keeps_an_unevaluated_batch_as_hints(self):
+        # adj-model-check-v2 (D-50): an UNEVALUATED identity's batch run on another model (or none) is accepted as
+        #   hints: recorded, a WARNING, model_check "mismatch", statuses unchanged; an acceptance of the untested
+        #   checker for the packed model is not applied to it
+        self.assertEqual(self.untested("Use the AI check.", "Invented reason.")[0], 0)
+        for name, ran in (("another model", ["claude-invented-9"]), ("a change mid-run", [lc.DEMO_ADJ_MODEL, "other"]),
+                          ("no model in it", [])):
+            with self.subTest(name):
+                self.attach((0, {}))
+                batch = f"h{uuid.uuid4().hex[:6]}"
+                code, out, row = self.ingest_with_transcript(batch, ran)
+                self.assertEqual(code, 0, out)
+                self.assertIn("WARNING: the adjudicator's transcript records", out)
+                self.assertEqual((row["model_check"], row["model_id_observed"], row["untested_acceptance_ref"]),
+                                 ("mismatch", ran, None))
+                led = [r for r in self.table("citation_adjudications") if r["batch_id"] == batch][0]
+                self.assertEqual((led["verdict"], led["effective_verdict"], led["citation_status"],
+                                  led["model_id"], led["untested_acceptance_ref"]),
+                                 ("SAME_WORK", "UNCERTAIN", "pending_adjudication", lc.DEMO_ADJ_MODEL, None))
+                self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+
+    def untested(self, words, rationale=None, revoke=False, model=None):
+        argv = ["adjudications", "untested-checker", self.pd, "--model-id", model or lc.DEMO_ADJ_MODEL]
+        argv += (["--user-words", words] if words is not None else []) + (
+            ["--rationale", rationale] if rationale is not None else []) + (["--revoke"] if revoke else [])
+        return self.run_lc(*argv)
+
+    def manifest(self):
+        return [lc.json.loads(x) for x in (self.pd / "data" / "MANIFEST.jsonl").read_text().splitlines()]
+
+    def test_untested_checker_accept_and_revoke(self):
+        # adjudication-v2 (D-54): the researcher's acceptance, per model ID, bound to their words; refusals write no
+        #   acceptance; a withdrawal ends it; untested_acceptance() re-derives what is in force from the MANIFEST
+        for name, args, want in (("no words", (None, "r"), 11), ("empty words", ("  ", "r"), 11),
+                                 ("accept without a rationale", ("Use it.", None), 11)):
+            with self.subTest(name):
+                self.assertEqual(self.untested(*args)[0], want)
+        self.assertEqual(self.untested("Use it.", "r", model=lc.DEMO_ADJ_MODEL + "[1m]")[0], 1)   # not the form
+        self.assertEqual(self.untested("Stop.", revoke=True)[0], 11)                           # nothing in force
+        rows = lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl"))
+        self.assertIsNone(lc.untested_acceptance(rows, lc.DEMO_ADJ_MODEL))
+        code, out = self.untested("Use the AI check, it is fine.", "The researcher accepts an untested checker.")
+        self.assertEqual(code, 0, out)
+        row = self.manifest()[-1]
+        self.assertEqual((row["command"], row["decision"], row["model_id"], row["parameters"]["user_words"],
+                          row["human_binding"]),
+                         ("adjudications untested-checker", "accept", lc.DEMO_ADJ_MODEL,
+                          "Use the AI check, it is fine.", "permission_prompt"))
+        self.assertEqual(row["user_words_sha256"], lc.sha256_bytes(b"Use the AI check, it is fine."))
+        rows = lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl"))
+        acc = lc.untested_acceptance(rows, lc.DEMO_ADJ_MODEL)
+        self.assertEqual(acc[1]["decision"], "accept")
+        self.assertIsNone(lc.untested_acceptance(rows, "another-model"))                     # per model ID
+        self.assertIsNone(lc.untested_acceptance(rows, lc.DEMO_ADJ_MODEL, upto_sha=acc[0]))  # rows before it only
+        self.assertEqual(self.untested("Again.", "r")[0], 11)                                  # already in force
+        code, out = self.untested("Stop using it.", revoke=True)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.manifest()[-1]["ends_acceptance"], acc[0])
+        self.assertIsNone(lc.untested_acceptance(lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl")),
+                                                 lc.DEMO_ADJ_MODEL))
+
+    def test_untested_checker_needs_no_corpus(self):
+        # the choice is made at the review plan, before any corpus exists
+        empty = self.root / "empty_project"
+        empty.mkdir()
+        code, out = self.run_lc("adjudications", "untested-checker", empty, "--model-id", "m", "--user-words",
+                                "Use it.", "--rationale", "Invented.")
+        self.assertEqual(code, 0, out)
+
+    @staticmethod
+    def sha_rows(*rows):
+        # [(line sha256, row)] as manifest_rows() gives them, for rows built in the test
+        return [(lc.sha256_bytes(lc.json.dumps(r).encode("utf-8")), r) for r in rows]
+
+    def test_untested_acceptance_counts_only_a_whole_row(self):
+        # FR-1 (review B1): a MANIFEST row counts as the researcher's acceptance only as the step writes it: tool
+        #   version and time, the words verbatim with their sha256, the researcher as decider, the Ask-First binding, a
+        #   rationale, parameters that agree with the row, and no acceptance already in force. One changed field per
+        #   case; each case must give no acceptance.
+        code, out = self.untested("Use the AI check, it is fine.", "The researcher accepts an untested checker.")
+        self.assertEqual(code, 0, out)
+        acc = self.manifest()[-1]
+        self.assertIsNotNone(lc.untested_acceptance(self.sha_rows(acc), lc.DEMO_ADJ_MODEL))         # control
+        prm = acc["parameters"]
+        forged = {"kind": "lit_corpus", "command": lc.UNTESTED_COMMAND, "exit_code": 0,
+                  "model_id": lc.DEMO_ADJ_MODEL, "decision": "accept"}
+        cases = {"a hand-written five-field line": forged,
+                 "no tool version": dict(acc, tool_version=None),
+                 "no time": dict(acc, timestamp=""),
+                 "no words": dict(acc, parameters=dict(prm, user_words=None)),
+                 "blank words": dict(acc, parameters=dict(prm, user_words="   ")),
+                 "blank words with the hash of no words": dict(acc, parameters=dict(prm, user_words="   "),
+                                                              user_words_sha256=lc.sha256_bytes(b"")),
+                 "a blank rationale": dict(acc, rationale="   "),
+                 "no parameters": dict(acc, parameters=None),
+                 "words that are not the hashed ones": dict(acc, parameters=dict(prm, user_words="Other words.")),
+                 "no words hash": dict(acc, user_words_sha256=None),
+                 "another decider": dict(acc, human_decider="orchestrator"),
+                 "no binding": dict(acc, human_binding=None),
+                 "an acceptance without a rationale": dict(acc, rationale=None),
+                 "parameters for another model": dict(acc, parameters=dict(prm, model_id="another-model")),
+                 "parameters of a withdrawal": dict(acc, parameters=dict(prm, revoke=True)),
+                 "an acceptance that names a line it ends": dict(acc, ends_acceptance="0" * 64),
+                 "an unknown decision": dict(acc, decision="maybe")}
+        for name, row in cases.items():
+            with self.subTest(name):
+                self.assertIsNone(lc.untested_acceptance(self.sha_rows(row), lc.DEMO_ADJ_MODEL))
+        # a latest row that is a withdrawal, whole or damaged, or a forged acceptance, means no acceptance, never the
+        #   one before it (fail closed: a damaged withdrawal or a forged line cannot keep or revive a grant)
+        code, out = self.untested("Stop using it.", revoke=True)
+        self.assertEqual(code, 0, out)
+        rev = self.manifest()[-1]
+        rprm = rev["parameters"]
+        self.assertIsNone(lc.untested_acceptance(self.sha_rows(acc, rev), lc.DEMO_ADJ_MODEL))
+        for name, rows in {"a withdrawal of another line": (acc, dict(rev, ends_acceptance="0" * 64)),
+                           "a withdrawal with acceptance parameters": (acc, dict(rev, parameters=dict(rprm, revoke=False))),
+                           "a withdrawal without words": (acc, dict(rev, parameters=dict(rprm, user_words=None))),
+                           "a withdrawal without a tool version": (acc, dict(rev, tool_version=None)),
+                           "a forged acceptance after a withdrawal": (acc, rev, forged)}.items():
+            with self.subTest(name):
+                self.assertIsNone(lc.untested_acceptance(self.sha_rows(*rows), lc.DEMO_ADJ_MODEL))
+        # an acceptance already in force followed by a second acceptance the step would have refused: fail closed
+        self.assertIsNone(lc.untested_acceptance(self.sha_rows(acc, dict(acc, timestamp="2099-01-01T00:00:00Z")),
+                                                 lc.DEMO_ADJ_MODEL))
+        # a row of another model never touches this model's acceptance
+        other = dict(acc, model_id="another-model", parameters=dict(prm, model_id="another-model"))
+        self.assertEqual(lc.untested_acceptance(self.sha_rows(acc, other), lc.DEMO_ADJ_MODEL)[1], acc)
+
+    def test_hand_written_acceptance_line_is_no_acceptance_at_ingest(self):
+        # FR-1 (review B1, probe 1063 A): one line appended to data/MANIFEST.jsonl with only the fields a weak check
+        #   would read; the legitimate pack and ingest that follow keep the checker's SAME_WORK a hint, and the
+        #   researcher's own acceptance can still be recorded (the forged line is not "already in force")
+        self.attach((0, {}))
+        forged = {"kind": "lit_corpus", "command": lc.UNTESTED_COMMAND, "exit_code": 0,
+                  "model_id": lc.DEMO_ADJ_MODEL, "decision": "accept"}
+        with open(self.pd / "data" / "MANIFEST.jsonl", "a") as f:
+            f.write(lc.json.dumps(forged) + "\n")
+        self.assertIsNone(lc.untested_acceptance(lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl")),
+                                                 lc.DEMO_ADJ_MODEL))
+        self.assertEqual(self.adjudicate("t1", [self.P1]), [0, 0], self.steps[-1][2])
+        led = [r for r in self.table("citation_adjudications") if r["batch_id"] == "t1"][0]
+        self.assertEqual((led["citation_status"], led["untested_acceptance_ref"]), ("pending_adjudication", None))
+        self.assertEqual(self.manifest()[-1]["untested_acceptance_ref"], None)
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+        self.assertEqual(self.untested("Use the AI check.", "Invented reason.")[0], 0)
+
+    def test_untested_checker_refuses_a_model_on_the_evaluated_list(self):
+        # FR-1 (review I3): a model ID on the evaluated list in force needs no acceptance (an evaluated identity
+        #   takes none), so the choice is refused (exit 11, the reason in the MANIFEST row, no acceptance written),
+        #   as vision-override refuses a listed reader; another model ID is still accepted
+        with mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-none": (lc.demo_evaluated_entry(),)}):
+            code, out = self.untested("Use it.", "Invented.")
+            self.assertEqual(code, 11, out)
+            self.assertIn("already on DAAF's evaluated list", out)
+            row = self.manifest()[-1]
+            self.assertEqual((row["exit_code"], row.get("decision")), (11, None))
+            self.assertIsNone(lc.untested_acceptance(lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl")),
+                                                     lc.DEMO_ADJ_MODEL))
+            self.assertEqual(self.untested("Use it.", "Invented.", model="another-model")[0], 0)
+
+    def test_accepted_untested_checker_confirms_same_work_only(self):
+        # with the acceptance in force: SAME_WORK on CONFIDENT and on a WEAK row above the floor confirms
+        #   (model_confirmed_untested); a WEAK row below the floor or org_unchecked, DIFFERENT_WORK and UNCERTAIN stay
+        #   for a person; the ledger names the acceptance; export-bib labels it; a withdrawal stops later batches only
+        self.attach((0, {}), (1, {"verdict": "WEAK", "extra": {"title_similarity": 0.7,
+                                                               "title_similarity_subtitle_aware": 0.7}}),
+                    (2, {"verdict": "WEAK", "extra": {"title_similarity": 0.9, "title_similarity_subtitle_aware": 0.9,
+                                                      "author_check": {"status": "unchecked", "reason": "the cited "
+                                                                       "author reads as an organization"}}}),
+                    (3, {"verdict": "WEAK", "extra": {"title_similarity": 0.9,
+                                                      "title_similarity_subtitle_aware": 0.9}}))
+        self.assertEqual(self.untested("Let the AI check confirm them.", "The researcher's choice.")[0], 0)
+        acc = lc.untested_acceptance(lc.manifest_rows(str(self.pd / "data" / "MANIFEST.jsonl")), lc.DEMO_ADJ_MODEL)
+        self.assertEqual(self.adjudicate("t1", None), [0, 0], self.steps[-1][2])
+        p4 = lc.DEMO_PAPERS[3]["key"]
+        st = {k: self.paper(k)["citation_status"] for k in (self.P1, self.P2, self.P3, p4)}
+        self.assertEqual(st, {self.P1: "model_confirmed_untested", self.P2: "unverified", self.P3: "unverified",
+                              p4: "model_confirmed_untested"})
+        led = {r["paper_key"]: r for r in self.table("citation_adjudications") if r["batch_id"] == "t1"}
+        self.assertEqual({r["untested_acceptance_ref"] for r in led.values()}, {acc[0]})
+        self.assertEqual({r["effective_verdict"] for r in led.values()}, {"UNCERTAIN"})
+        self.assertEqual((led[self.P2]["title_floor_applied"], led[self.P3]["title_floor_applied"],
+                          led[self.P1]["title_floor_applied"]), (True, True, False))
+        row = self.manifest()[-1]
+        self.assertEqual((row["model_check"], row["untested_acceptance_ref"], row["model_evaluated"]),
+                         ("match", acc[0], False))
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        bib = self.latest("references_v*.bib").read_text()
+        entry = [x for x in bib.split("@") if self.P1 in x][0]
+        self.assertIn("daaf_citation_status = {model_confirmed_untested}", entry)
+        self.assertIn("daaf_citation_note = {confirmed by an untested AI check (your choice)}", entry)
+        self.assertEqual(self.run_lc("export-ris", self.pd)[0], 0)
+        ris = self.latest("references_v*.ris").read_text()
+        self.assertIn("N1  - daaf_citation_note: confirmed by an untested AI check (your choice)", ris)
+        # DIFFERENT_WORK and UNCERTAIN with the acceptance in force: no status change
+        self.attach((0, {}), (3, {"verdict": "WEAK", "extra": {"title_similarity": 0.9,
+                                                               "title_similarity_subtitle_aware": 0.9}}))
+        for batch, verdict in (("t2", "DIFFERENT_WORK"), ("t3", "UNCERTAIN")):
+            with self.subTest(verdict):
+                keys = [self.P1] if batch == "t2" else [p4]
+                self.assertEqual(self.adjudicate(batch, keys, verdict=verdict), [0, 0], self.steps[-1][2])
+                self.assertEqual(self.paper(keys[0])["citation_status"],
+                                 "pending_adjudication" if batch == "t2" else "unverified")
+        # a withdrawal: a later batch's SAME_WORK is a hint again; the earlier confirmation keeps its status. P1's
+        #   check was judged in t2, so the later batch judges a new check of it (adj-selector-v2)
+        self.assertEqual(self.untested("Stop using it.", revoke=True)[0], 0)
+        self.attach((0, {}))
+        self.assertEqual(self.adjudicate("t4", [self.P1]), [0, 0], self.steps[-1][2])
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+        self.assertEqual(self.paper(self.P2)["citation_status"], "unverified")
+
+    def test_untested_acceptance_never_applies_to_an_evaluated_identity_or_a_person(self):
+        # an evaluated identity keeps model_confirmed (no acceptance named); a person's defer leaves the reference
+        #   unconfirmed; a person's same_work confirms it as theirs
+        self.attach((0, {}))
+        self.assertEqual(self.untested("Use it.", "Invented.")[0], 0)
+        with mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-none": (lc.demo_evaluated_entry(),)}):
+            self.assertEqual(self.adjudicate("t1", [self.P1]), [0, 0], self.steps[-1][2])
+        led = [r for r in self.table("citation_adjudications") if r["batch_id"] == "t1"][0]
+        self.assertEqual((led["citation_status"], led["untested_acceptance_ref"]), ("model_confirmed", None))
+        self.attach((0, {}))
+        self.assertEqual(self.adjudicate("t2", [self.P1]), [0, 0], self.steps[-1][2])
+        sha = self.paper(self.P1)["verify_row_sha256"]
+        self.assertEqual(self.paper(self.P1)["citation_status"], "model_confirmed_untested")
+        self.assertEqual(self.human([sha], "defer", "Not sure now.", None)[0], 0)
+        self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+        self.assertEqual(self.human([sha], "same_work", "It is right.", "Checked.")[0], 0)
+        cur = [r for r in self.table("citation_adjudications") if r["verify_row_sha256"] == sha and
+               not r["superseded_by"]][0]
+        self.assertEqual((cur["citation_status"], bool(cur["untested_acceptance_ref"])), ("human_confirmed", True))
+
+    def test_glance_sheet_shows_untested_hints_flagged_first(self):
+        # glance-words-v4 (D-50): the untested checker's verdict and reason on each undecided reference, in plain
+        #   words; DIFFERENT_WORK then UNCERTAIN first; the note above the table; no code on the sheet
+        self.attach((0, {}), (1, {}), (2, {}), (3, {}))
+        k = [p["key"] for p in lc.DEMO_PAPERS]
+        self.assertEqual(self.adjudicate("t1", [k[0]], verdict="SAME_WORK"), [0, 0], self.steps[-1][2])
+        self.assertEqual(self.adjudicate("t2", [k[1]], verdict="UNCERTAIN"), [0, 0], self.steps[-1][2])
+        self.assertEqual(self.adjudicate("t3", [k[2]], verdict="DIFFERENT_WORK",
+                                         ret_extra={"rationale": "A DIFFERENT_WORK: the record | is a book review."}),
+                         [0, 0], self.steps[-1][2])
+        code, out = self.run_lc("adjudications", "glance-sheet", self.pd, "--keys", ",".join(k))
+        self.assertEqual(code, 0, out)
+        md = self.latest("reference_glance_v*.md").read_text()
+        order = [r["paper_key"] for r in [self.paper(x) for x in k]]
+        rows = [x for x in md.splitlines() if x.startswith("| ") and x[2].isdigit()]
+        cites = [self.paper(x)["citekey"] for x in (k[2], k[1], k[0], k[3])]
+        self.assertEqual([x.split(" | ")[1] for x in rows], cites, order)
+        self.assertIn(lc.GLANCE_HINT_NOTE + lc.GLANCE_HINT_FIRST, md)
+        self.assertIn("DAAF's AI reference check, not yet tested with this model, says: a different work (A different "
+                      "work: the record \\| is a book review.)", rows[0])
+        self.assertIn("says: not sure", rows[1])
+        self.assertIn("says: the same work", rows[2])
+        self.assertNotIn("not yet tested", rows[3])                                         # no judgment on record
+        for code_word in lc.CITATION_STATUSES + lc.ADJ_VERDICTS:
+            self.assertNotIn(code_word, md)
+        rows_file = max((self.pd / "output").glob("reference_glance_v*_rows.txt"),
+                        key=lambda p: int(p.stem[len("reference_glance_v"):-len("_rows")])).read_text()
+        self.assertEqual(len([x for x in rows_file.splitlines() if x and not x.startswith("#")]), 4)
+        man = self.manifest()[-1]
+        self.assertEqual(man["keys"], [k[2], k[1], k[0], k[3]])
+
+    def test_glance_hint_from_a_batch_run_on_another_model_says_so(self):
+        # FR-1 (review W2): a batch kept as hints because its transcript recorded another model (or none) is no
+        #   judgment of the model it was prepared for; its hint says the check may not have run on the planned model,
+        #   never "not yet tested with this model"; still a hint, still flagged first
+        for name, ran in (("another model", ["claude-invented-9"]), ("no model in it", [])):
+            with self.subTest(name):
+                self.attach((0, {}), (1, {}))
+                batch = f"w{uuid.uuid4().hex[:6]}"
+                code, out, row = self.ingest_with_transcript(batch, ran, verdict="DIFFERENT_WORK")
+                self.assertEqual((code, row["model_check"]), (0, "mismatch"), out)
+                code, out, text, _, _ = self.glance("--keys", f"{self.P2},{self.P1}")
+                self.assertEqual(code, 0, out)
+                cell = self.sheet_row(text, self.paper(self.P1)["citekey"])[8]
+                self.assertIn(lc.GLANCE_HINT_LEAD_OTHER_MODEL + "a different work", cell)
+                self.assertNotIn("not yet tested with this model", cell)
+                self.assertEqual(self.sheet_keys(text)[0], self.paper(self.P1)["citekey"])
+                self.assertIn(lc.GLANCE_HINT_NOTE, text)
+        # a batch whose transcript recorded the packed model keeps the usual words
+        self.attach((0, {}))
+        code, out, row = self.ingest_with_transcript("wmatch", [lc.DEMO_ADJ_MODEL])
+        self.assertEqual((code, row["model_check"]), (0, "match"), out)
+        code, out, text, _, _ = self.glance("--keys", self.P1)
+        self.assertIn(lc.GLANCE_HINT_LEAD + "the same work", self.sheet_row(text, self.paper(self.P1)["citekey"])[8])
+
+    def test_glance_sheet_deliverable_and_keys_names_added_numbers_when_reordered(self):
+        # with a flagged added paper leading the sheet, the source sentence names the added numbers one by one
+        self.attach((2, {}))
+        k3 = lc.DEMO_PAPERS[2]["key"]
+        self.assertEqual(self.adjudicate("t1", [k3], verdict="DIFFERENT_WORK"), [0, 0], self.steps[-1][2])
+        deliverable = self.pd / "output" / "synthesis_draft.md"
+        code, out = self.run_lc("adjudications", "glance-sheet", self.pd, "--deliverable", deliverable, "--keys", k3)
+        self.assertEqual(code, 0, out)
+        md = self.latest("reference_glance_v*.md").read_text()
+        self.assertIn("Number 1 was added by name; the others are cited in output/synthesis_draft.md.", md)
 
     def test_model_check_accepts_the_packed_model_in_another_spelling(self):
         # pack names claude-opus-5-5; the transcript's provider-dotted [1m] spelling is the same model (norm_model)
@@ -1654,6 +2006,121 @@ class SecondCheckCommandTests(unittest.TestCase):
         code, out = self.run_lc(*release, "t2", "--reason", "Invented.")
         self.assertEqual(code, 11, out)                                                           # ingested
         self.assertIn("was ingested", out)
+
+    # adj-selector-v2: `pack` skips a check the checker already judged unless a judgment packed now would count for more
+    #   (an untested checker's hint leaves the status undecided, so selecting on the status alone would pay for a
+    #   second judgment and show a second hint); --rejudge with --keys packs one again on purpose. Every model ID below is
+    #   invented.
+    JUDGED = "the checker already judged this check"
+
+    def pack_rows(self, batch, model=None, *extra, paths=None):
+        # (exit, output, the bundle's paper keys or None) of one pack
+        code, out = self.run_lc("adjudications", "pack", self.pd, "--batch", batch, "--model-id",
+                                model or lc.DEMO_ADJ_MODEL, *extra, paths=paths or lc.demo_adj_paths(str(self.pd)))
+        b = self.pd / "data" / "adjudication_bundles" / f"{batch}.json"
+        if not b.exists():
+            return code, out, None
+        by_sha = {r["verify_row_sha256"]: r["paper_key"] for r in self.table("corpus") if r["verify_row_sha256"]}
+        return code, out, sorted(by_sha[r["row_sha256"]] for r in lc.json.loads(b.read_text())["rows"])
+
+    def release_batch(self, batch):
+        code, out = self.run_lc("adjudications", "release", self.pd, "--batch", batch, "--reason",
+                                "Invented: a test pack, never dispatched.")
+        self.assertEqual(code, 0, out)
+
+    def judged_once(self):
+        # P1 CONFIDENT and P2 WEAK, judged once by the untested fixture checker: hints, both statuses undecided
+        self.attach((0, {}), (1, {"verdict": "WEAK", "extra": {"title_similarity": 0.9}}))
+        self.assertEqual(self.adjudicate("t1", None), [0, 0], self.steps[-1][2])
+        self.assertEqual((self.paper(self.P1)["citation_status"], self.paper(self.P2)["citation_status"]),
+                         ("pending_adjudication", "unverified"))
+
+    def test_pack_skips_a_check_the_same_checker_already_judged(self):
+        self.judged_once()
+        for batch, extra in (("t2", ()), ("t3", ("--keys", f"{self.P1},{self.P2}"))):
+            with self.subTest(batch):
+                code, out, keys = self.pack_rows(batch, None, *extra)
+                self.assertEqual((code, keys), (11, None), out)
+                self.assertIn(self.JUDGED, out)
+                refusals = self.last_row()["refusals"]
+                self.assertEqual(sorted(r.split(":", 1)[0] for r in refusals if self.JUDGED in r),
+                                 sorted([self.P1, self.P2]))
+        # an evaluated identity's UNCERTAIN also leaves the reference undecided: not packed again either
+        self.attach((0, {}))
+        with mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, {"adjudicator-list-none": (lc.demo_evaluated_entry(),)}):
+            lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t4", keys=[self.P1], verdict="UNCERTAIN")
+            self.assertEqual(self.steps[-1][1], 0, self.steps[-1][2])
+            self.assertEqual(self.paper(self.P1)["citation_status"], "pending_adjudication")
+            code, out, keys = self.pack_rows("t5", None, "--keys", self.P1)
+        self.assertEqual((code, keys), (11, None), out)
+        self.assertIn(self.JUDGED, out)
+
+    def test_pack_rejudge_packs_a_judged_check_again_by_name(self):
+        # the evaluation's self-consistency re-runs, and the researcher asking for the AI check to look again at an
+        #   unchanged check: --rejudge, only with --keys; a person's decision and a held batch still hold
+        self.judged_once()
+        code, out, keys = self.pack_rows("t2", None, "--rejudge")
+        self.assertEqual((code, keys), (1, None), out)
+        self.assertIn("--rejudge needs --keys", out)
+        lc.demo_adjudicate(self.step, self.steps, str(self.pd), "t3", keys=[self.P1], verdict="DIFFERENT_WORK",
+                           pack_extra=["--rejudge"])
+        self.assertEqual([c for _, c, _ in self.steps[-2:]], [0, 0], self.steps[-1][2])
+        pack = [r for r in self.manifest() if r["command"] == "adjudications pack" and r.get("batch_id") == "t3"][0]
+        self.assertEqual((pack["parameters"]["rejudge"], pack["rejudged"]), (True, [self.P1]))
+        led = sorted((r for r in self.table("citation_adjudications") if r["batch_id"] in ("t1", "t3") and
+                      r["paper_key"] == self.P1), key=lambda r: r["adjudicated_at"] + r["adjudication_id"])
+        self.assertEqual([(r["batch_id"], r["verdict"]) for r in led], [("t1", "SAME_WORK"), ("t3", "DIFFERENT_WORK")])
+        self.assertEqual(led[0]["superseded_by"], led[1]["adjudication_id"])       # the ledger keeps both judgments
+        code, out, keys = self.pack_rows("t4", None, "--keys", self.P2, "--rejudge")
+        self.assertEqual((code, keys), (0, [self.P2]), out)
+        code, out, keys = self.pack_rows("t5", None, "--keys", self.P2, "--rejudge")
+        self.assertEqual((code, keys), (11, None), out)                               # held in t4: re-dispatch t4
+        self.assertIn("in batch t4", out)
+        self.release_batch("t4")
+        sha2 = self.paper(self.P2)["verify_row_sha256"]
+        self.assertEqual(self.human([sha2])[0], 0)
+        code, out, keys = self.pack_rows("t6", None, "--keys", self.P2, "--rejudge")
+        self.assertEqual((code, keys), (11, None), out)                               # a person decided it
+
+    def test_pack_packs_a_judged_check_again_only_when_it_could_count_for_more(self):
+        # "already judged" compares how a judgment counts, rising: a hint, a judgment under the researcher's acceptance
+        #   of an untested checker, an evaluated checker's judgment. The rows hold hints from the untested checker.
+        self.judged_once()
+        edited = self.pd / "inputs" / "adjudicator_agent_edited.md"
+        edited.write_text(lc.DEMO_ADJ_AGENT_FILE + "An invented edit.\n")
+        for batch, model, paths in (("t2", "fixture-other-model", None),
+                                    ("t3", None, dict(lc.demo_adj_paths(str(self.pd)), agent_file=str(edited)))):
+            with self.subTest(batch):
+                code, out, keys = self.pack_rows(batch, model, paths=paths)
+                self.assertEqual((code, keys), (11, None), out)                   # one more hint: not packed
+                self.assertIn(self.JUDGED, out)
+        # a later, dated list version (a list version is never edited in place; a test-only one stands in) holding an
+        #   evaluated model Y and the fixture identity: Y judges the hinted rows, and so does the fixture identity
+        #   now that a judgment of it would count
+        later = {"adjudicator-list-fixture": (lc.demo_evaluated_entry("fixture-model-y"), lc.demo_evaluated_entry())}
+        with mock.patch.object(lc, "ADJUDICATOR_LIST_VERSION", "adjudicator-list-fixture"), \
+                mock.patch.dict(lc.ADJUDICATOR_EVALUATED_LISTS, later):
+            for batch, model in (("t4", "fixture-model-y"), ("t5", None)):
+                with self.subTest(batch):
+                    code, out, keys = self.pack_rows(batch, model)
+                    self.assertEqual((code, keys), (0, sorted([self.P1, self.P2])), out)
+                    self.release_batch(batch)
+        # the researcher accepts the untested checker: its same-work verdicts would now confirm, so it judges again
+        self.assertEqual(self.untested("Let the AI check confirm them.", "Invented reason.")[0], 0)
+        code, out, keys = self.pack_rows("t6")
+        self.assertEqual((code, keys), (0, sorted([self.P1, self.P2])), out)
+        self.release_batch("t6")
+        self.assertEqual(self.untested("Stop using it.", revoke=True)[0], 0)
+        # a new check of P1 (the mode's "check again") has no judgment yet; P2's hint still holds it back
+        self.attach((0, {}))
+        code, out, keys = self.pack_rows("t7")
+        self.assertEqual((code, keys), (0, [self.P1]), out)
+        self.release_batch("t7")
+        # hints from a batch whose transcript names another model are no judgment by the model packed
+        code, out, row = self.ingest_with_transcript("t8", ["claude-invented-9"])
+        self.assertEqual((code, row["model_check"]), (0, "mismatch"), out)
+        code, out, keys = self.pack_rows("t9", None, "--keys", self.P1)
+        self.assertEqual((code, keys), (0, [self.P1]), out)
 
     # One test per documented rule of the model check, release and the CLAUDE.md records that the module did not yet
     #   pin. Every word and model ID below is invented.

@@ -1,5 +1,5 @@
 # verify rows a reply can confirm (record-human --rows)
-3e6588fe5f972a941eeb1981efb7d9aeb6f90d61455a437e15c692641c9c609c  # 1 fixture-allen2019tutoring
-a6ca14502ffe89b93721b812f3dab78cb3c8beea4a309e60b9110e14a5c3daec  # 2 fixture-baker2020reading
-a16da17d6348ba57ef5ffe7579e2a9ccbdec261dd3b3e87008300cc560cb850d  # 3 fixture-chen2021library
-5a1a8cf0b0685dfc857d9331c14517146d83f458fd31351a318185effd95a94e  # 4 fixture-diaz2022teachers
+3cef055af0fcaf9ae661e4cf098087c1da3df513afc87740eb3f19872c712264  # 1 fixture-allen2019tutoring
+380ca5d301b2ab53714c776337a8c16a90d08e6c2e52a31703587f400c79873f  # 2 fixture-baker2020reading
+155426bfea641979db91d904f13835a27766ca16503cc35d89e6fde731c0dc45  # 3 fixture-chen2021library
+21228eaf4fd08bf44a5e5b811d71afeb3037e94e6f363cff4fb8b916ea9f92b9  # 4 fixture-diaz2022teachers

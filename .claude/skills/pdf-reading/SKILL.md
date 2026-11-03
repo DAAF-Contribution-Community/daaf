@@ -328,28 +328,33 @@ cross-checking" (default `auto`):
 | `off` | Text layer only |
 
 **Both `auto` and `all-pages` apply only when your exact model ID and route
-are on the list below.** Otherwise read the text layer only, write
-`vision: unavailable` in the card's front matter and `vision_validated: false`
-in its block, and do not open renders or `Read` the PDF. A vision
-transcription is a **second reading, never ground truth**: log every
-text/vision disagreement in the card.
+are on the list below,** or when the dispatch's `VISION:` line is
+`override-check` or `override-accept`: the researcher, warned before the
+review, chose to let an unlisted reader read page pictures (block
+`vision_override`, front matter `vision: untested-check|untested-accepted`;
+`references/vision-validation.md` § The researcher's choice for an untested
+reader). Otherwise read the text layer only, write `vision: unavailable` in
+the card's front matter and `vision_validated: false` in its block, and do not
+open renders or `Read` the PDF. A vision transcription is a **second reading,
+never ground truth**: log every text/vision disagreement in the card.
 
 ### Vision-validated model list
 
 `vision_list_version: "vision-list-2026-10-30"` (written into every card)
 
-**In short:** a model may look at pictures of PDF pages only if listed below
-for the way DAAF is installed, only on clean digital table pages (never
-scans), and only as a second reading checked against the text. Tested and
-passed: Opus 5.5 and Sonnet 5 (Claude subscription); GPT-6 Sol, GPT-6.1 Sol
-and GPT-6 Astra (ChatGPT subscription, through DAAF's provider shim). Listed
-without a test: Sonnet 5.5, Fable 5.1 and Fable 5 (the user's decision), and
-every listed model on an Anthropic or OpenAI API key (assumed to behave as
-on the subscription; nobody has checked: "inference"). Text only: GPT-6 Luna
-(failed: it copied a table from the wrong page), OpenRouter (not tested) and
-every other model. On DAAF's recommended GPT setup the specialist that reads
-PDFs by default runs on GPT-6 Luna, so it reads text only; pictures need
-GPT-6 Sol, GPT-6.1 Sol or GPT-6 Astra.
+**In short:** a model may look at pictures of PDF pages if listed below for
+the way DAAF is installed (or, unlisted, if the researcher chose so after a
+warning), validated only on clean digital table pages (never scans), and only
+as a second reading checked against the text. Tested and passed: Opus 5.5 and
+Sonnet 5 (Claude subscription); GPT-6 Sol, GPT-6.1 Sol and GPT-6 Astra
+(ChatGPT subscription, through DAAF's provider shim). Listed without a test:
+Sonnet 5.5, Fable 5.1 and Fable 5 (the user's decision), and every listed
+model on an Anthropic or OpenAI API key (assumed to behave as on the
+subscription; nobody has checked: "inference"). Not listed, so text only
+unless the researcher chooses otherwise: GPT-6 Luna (failed: it copied a table
+from the wrong page), OpenRouter (not tested), every other model. On DAAF's
+recommended GPT setup the sonnet-tier agents run on GPT-6 Luna and read text
+only; the Literature Review paper-reader keeps the opus tier (GPT-6 Sol).
 
 | Exact model ID | Route | Basis (date, result) | Validated on |
 |----------------|-------|----------------------|--------------|
@@ -412,11 +417,14 @@ is unreadable (`references/vision-validation.md` § The validation probe).
 
 1. **You check yourself.** Copy your exact model ID from your system prompt,
    drop a trailing `[1m]`, take the route from the dispatch's `ROUTE:` line
-   and look for an exact match in the list. No line or no match → text only.
+   and look for an exact match in the list. No line or no match → the
+   dispatch's `VISION:` line decides (`override-…` → pictures allowed;
+   otherwise text only).
 2. **The card records it.** Block: `reader_model`, `vision_mode`,
-   `vision_validated`, `vision_list_version`. Front matter (not checked by
-   the gate): `reader_model_source: self-report`, `reader_route`, `vision:
-   validated|unavailable`.
+   `vision_validated`, `vision_list_version` (and `vision_override` under an
+   `override-…` line). Front matter (not checked by the gate):
+   `reader_model_source: self-report`, `reader_route`, `vision:
+   validated|unavailable|untested-check|untested-accepted`.
 3. **The orchestrator audits it** after you return, with `lit_verify audit`:
    it compares your `reader_model` with the transcript-derived model (the
    `context-reporter` hook's cache, else your transcript's `.message.model`;
@@ -468,7 +476,7 @@ cannot run. Never install at runtime; the fix is a rebuild
 | Don't | Do instead |
 |-------|-----------|
 | `pip install pypdf` or load `anthropic-skills:pdf` to read a paper | Run `pdf_ingest`; a missing tool means a rebuild, never a runtime install |
-| `Read` the `.pdf` or a render when your model is not on the list | Text layer only; `vision: unavailable` |
+| `Read` the `.pdf` or a render when your model is not on the list and the dispatch's `VISION:` line is not `override-check` or `override-accept` | Text layer only; `vision: unavailable` |
 | Quote from memory, a summary or `fulltext.md` markers | Copy the sentence from `pages/pNNN.txt`, then let the gate check it |
 | Resolve a text/vision or text/OCR disagreement by choosing one | Log both in the discrepancy log |
 | Treat a `NEAR` as a pass | It is a human check |
@@ -488,13 +496,4 @@ cannot run. Never install at runtime; the fix is a rebuild
 | `references/extraction-strategies.md` | Two-column pages, tables, equations, scans and OCR layers, ligatures, rotation, CJK; reading-quality checks |
 | `references/long-papers.md` | Papers over ~60 pages, chunked reads, running notes |
 | `references/arxiv-and-html.md` | arXiv papers: which lane, fetching and availability, `--source arxiv-html`, version pinning, units and labels, grades, conversion errors, one key per source, measurements |
-| `references/toolchain.md` | Versions, licenses, the Dockerfile blocks, why PyMuPDF is excluded, rebuilds, tests |
-
-Tool source: `scripts/pdf_ingest.py`, `scripts/lit_verify.py`,
-`scripts/pdf_text_common.py` (NORMALIZE, SKELETON, ladder and number rules).
-Versions (2026-11-01): `pdf_ingest` 1.2.2-daaf, `lit_verify` 1.15.0-daaf
-(`ladder-v4`, `numbers-v6`, `column-check-v1`, `rederive-v2`; vision list
-`vision-list-2026-10-30`). Tests:
-`tests/python/test_pdf_ingest.py` (59), `tests/python/test_lit_verify.py`
-(246) and `lit_verify.sh selftest` (90 expectations), run file-first through
-a captured script (`references/toolchain.md` § Tests).
+| `references/toolchain.md` | Versions, licenses, the Dockerfile blocks, why PyMuPDF is excluded, rebuilds, tests; tool source files, versions and test counts (§ Tests) |

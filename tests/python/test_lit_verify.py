@@ -182,7 +182,7 @@ class ExitTableTests(unittest.TestCase):
 
     def test_wrapper_is_executable_and_versions(self):
         self.assertTrue(os.stat(_SCRIPTS / "lit_verify.sh").st_mode & 0o111)
-        self.assertEqual(lv.TOOL_VERSION, "1.15.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.17.0-daaf")
         self.assertEqual((lv.REDERIVE_VERSION, lv.SYNTHETIC_SOURCES.__class__), ("rederive-v2", dict))
         self.assertEqual(lv.VISION_SCOPE_VERSION, "vision-scope-v1")                 # 1.8.0 part 5
         self.assertEqual((ptc.COLUMN_CHECK_VERSION, lv.COLUMN_UNCHECKED_SEVERITY, lv.COLUMN_UNCHECKED_LABEL),
@@ -2215,7 +2215,7 @@ class IngestAndRowTests(ScratchCase):
     def test_selftest_passes_and_cleans_up(self):
         code, out, err = run_main(["selftest", self.root])
         self.assertEqual(code, 0, out + err)
-        self.assertIn("SELFTEST PASS: 90/90", out)            # 1.15.0: + 2 figure, 5 route/audit, 5 report, 7 settle
+        self.assertIn("SELFTEST PASS: 98/98", out)            # 1.15.0: + 2 figure, 5 route/audit, 5 report, 7 settle; 1.16.0: + 1 card, 6 vision-override; 1.17.0: + 1 report
         for case in ("settle --list: the reading listed, the chain not settleable", "settle: the source chain",
                      "settle: the reading, matches"):                           # 1.15.0 (S5 settle)
             self.assertIn(case, out)
@@ -3066,7 +3066,8 @@ class AuditRouteTests(ScratchCase):
 
     def project(self, key="user_00a0d170", claims=None, route_front="anthropic-subscription", kind="web_fetch",
                 items=(), pages=None, route="anthropic-subscription", route_ts="2026-01-01T00:00:00Z",
-                rule_versions=None, src_where=None):
+                rule_versions=None, src_where=None, model="claude-opus-5-5", override=None,
+                checked_at="2026-01-02T00:00:00Z"):
         # A review project holding one checked card: source file (+ its web_fetch row), card, card_check, card run
         #   row and a route row. Returns PAPER_DIR.
         kd = self.papers / key
@@ -3082,16 +3083,18 @@ class AuditRouteTests(ScratchCase):
                 f.write(json.dumps({"raw_artifact": src.name, "raw_sha256": sha, "final_url": self.URL}) + "\n")
             line = len((folder / "MANIFEST.jsonl").read_text().splitlines())
         block = {"schema_version": "lit-verify-card-v1", "paper_key": key, "source_pdf_sha256": sha,
-                 "reader_model": "claude-opus-5-5", "vision_mode": "auto", "vision_validated": True,
+                 "reader_model": model, "vision_mode": "auto", "vision_validated": override is None,
                  "vision_list_version": "vision-list-2026-10-30",
                  "coverage": [cov(1, "an invented sentence that covers the page")],
                  "claims": [self.VCLAIM] if claims is None else claims}
+        if override:
+            block["vision_override"] = override         # 1.16.0: the researcher's choice, as the dispatch states it
         text = (f"---\npaper_key: {key}\nreader_model_source: self-report\nreader_route: {route_front}\n"
                 "vision: validated\n---\n\n# card\n\n```lit-verify\n" + json.dumps(block) + "\n```\n")
         (kd / "evidence_card.md").write_text(text)
         rd = {"source_kind": kind, "source_path": str(src.resolve()), "source_sha256": sha,
               "web_fetch_row": {"manifest_line": line, "final_url": self.URL} if kind == "web_fetch" else None}
-        cc = {"kind": "lit_verify_card_check", "paper_key": key, "checked_at": "2026-01-02T00:00:00Z",
+        cc = {"kind": "lit_verify_card_check", "paper_key": key, "checked_at": checked_at,
               "card": {"path": "evidence_card.md", "sha256": lv.sha256_bytes(text.encode())}, "verdict": "PARTIAL",
               "rederive": rd, "items": list(items), "pages": pages or [{"page": 1, "class": "normal"}],
               "rule_versions": rule_versions if rule_versions is not None else {"vision_figure": "vision-figure-v1"}}
@@ -3120,7 +3123,7 @@ class AuditRouteTests(ScratchCase):
                           rec["route"]["list_row"], rec["chain"]["check"]),
                          ("hook_cache", "transcript-confirmed", "match", "listed", "confirmed"))
         row = [r for r in rows_of(self.papers) if r.get("kind") == "lit_verify_audit"][-1]
-        self.assertEqual((row["outcome"], row["exit_code"], row["tool_version"]), ("confirmed", 0, "1.15.0-daaf"))
+        self.assertEqual((row["outcome"], row["exit_code"], row["tool_version"]), ("confirmed", 0, lv.TOOL_VERSION))
         art = row["artifacts"]["vision_audit"]
         self.assertEqual(art["sha256"], lv.sha256_bytes((self.papers / "user_00a0d170" / art["name"]).read_bytes()))
         self.assertEqual(rec["card_sha256"], row["card"]["sha256"])
@@ -3411,6 +3414,296 @@ class AuditRouteTests(ScratchCase):
 
 
 # --- 1.15.0 (S5 settle): a person's record of the audit's listed readings; every word invented -----------------
+def fake_route(route):
+    # The route detector seam: detect_route() returns `route` whatever the environment holds (the real detector file
+    #   is still the one route hashes).
+    mod = mock.Mock(detect_route=lambda env: route)
+    return mock.patch.object(lv, "route_detector", return_value=(mod, str(_SCRIPTS / "deploy_smoke" /
+                                                                         "route_detection.py")))
+
+
+def choose(project, level, model=None, route="anthropic-subscription", words="Yes, go ahead (synthetic reply).",
+           rationale="The tables matter to the review (synthetic)."):
+    # 1.16.0: record the researcher's choice for an untested reader through the CLI (vision-override).
+    argv = (["vision-override", project, "--level", level] + (["--model-id", model] if model else [])
+            + ["--user-words", words] + (["--rationale", rationale] if rationale is not None else []))
+    with fake_route(route):
+        return run_main(argv)
+
+
+def forged_choice(project, level, model=None, route="anthropic-subscription", words=None, rationale=None):
+    # FR-1 (review W1, probe 1063 B): stands in for choose() with a hand-written record (six fields) and one appended
+    #   MANIFEST row whose hashes agree with it; vision-override never ran. Returns choose()'s shape.
+    papers = Path(project) / "papers"
+    words, ts = "Yes (forged; the researcher never said this).", "2020-01-01T00:00:01Z"
+    names = [int(p.stem.rsplit("_", 1)[1]) for p in papers.glob("vision_override_*.json")]
+    name = f"vision_override_{max(names, default=0) + 1}.json"
+    rec = {"kind": "lit_verify_vision_override", "level": level, "model_id": lv.norm_model(model), "route": route,
+           "recorded_at": ts, "human_instruction_verbatim": words}
+    blob = (json.dumps(rec) + "\n").encode("utf-8")
+    (papers / name).write_bytes(blob)
+    with open(papers / "MANIFEST.jsonl", "a") as f:
+        f.write(json.dumps({"kind": "lit_verify_vision_override", "command": "vision-override", "exit_code": 0,
+                            "timestamp": ts, "level": level, "model_id": lv.norm_model(model), "route": route,
+                            "user_words_sha256": lv.sha256_bytes(words.encode("utf-8")),
+                            "artifacts": {"vision_override": {"name": name, "sha256": lv.sha256_bytes(blob)}}}) + "\n")
+    return 0, "", ""
+
+
+class VisionOverrideTests(ScratchCase):
+    # 1.16.0 (user decisions D-52 and D-55, 2026-11-03): the researcher's choice for a paper reader that is not on the
+    #   vision-validated list. claude-opus-4-1 stands for an unlisted model; every word is invented.
+    AGENT, URL, VCLAIM = AuditRouteTests.AGENT, AuditRouteTests.URL, AuditRouteTests.VCLAIM
+    UNLISTED = "claude-opus-4-1"
+    LATER = "2099-01-01T00:00:00Z"
+    cache_model = AuditRouteTests.cache_model
+    project = AuditRouteTests.project
+    audit = AuditRouteTests.audit
+
+    def setUp(self):
+        hook_cache_seam(self)
+
+    def tearDown(self):
+        self._cdir.stop()
+        self._cenv.stop()
+        ScratchCase.tearDown(self)
+
+    def test_card_field_is_a_structure_rule(self):
+        good = mk_card([cov(1, "an invented sentence")], [], vision_validated=False, vision_override="check")
+        lv.validate_card(good)
+        for over in ({"vision_override": "maybe"}, {"vision_validated": True}, {"vision_mode": "off"},
+                     {"vision_override": None}):
+            with self.subTest(over=over), self.assertRaises(lv.LitVerifyError) as cm:
+                lv.validate_card(dict(good, **over))
+            self.assertEqual(cm.exception.code, 8)
+        html = mk_html_card([sec("front", "x")], vision_mode="auto", vision_validated=False, vision_override="accept")
+        with self.assertRaises(lv.LitVerifyError) as cm:
+            lv.validate_card(html)
+        self.assertEqual(cm.exception.code, 8)
+
+    def test_card_gate_checks_declared_readings_like_a_listed_readers(self):
+        ing = mk_ingest([{"anchor": PROSE[1]}])
+        vclaim = {"claim_id": "V1", "page": 1, "quote": None, "numbers": ["88"], "source": "vision"}
+        base = mk_card([cov(1, PROSE[1])], [vclaim], vision_validated=False, reader_model=self.UNLISTED)
+        self.assertIn("VISION_UNAVAILABLE_CLAIM", statuses(lv.check_card(base, ing, None)))
+        for level in ("check", "accept"):
+            res = lv.check_card(dict(base, vision_override=level), ing, None)
+            self.assertNotIn("VISION_UNAVAILABLE_CLAIM", statuses(res), level)
+            self.assertIn("NUMBER_VISION_ONLY", statuses(res), level)
+            self.assertEqual(res["verdict"], "PARTIAL", level)
+
+    def test_choice_is_recorded_with_the_users_words_and_refusals_write_nothing(self):
+        papers = self.papers
+        for level, model, words, rationale, want in (
+                ("withdraw", None, "Stop that (synthetic).", None, 11),        # nothing to withdraw
+                ("check", self.UNLISTED, " ", "r", 11),                       # no words
+                ("accept", self.UNLISTED, "Yes (synthetic).", None, 11),      # no rationale
+                ("check", "claude-opus-5-5", "Yes (synthetic).", "r", 11),    # already tested on this setup
+                ("check", None, "Yes (synthetic).", "r", 1),                  # no model
+                ("check", "bad id*", "Yes (synthetic).", "r", 1)):            # not a model ID
+            with self.subTest(level=level, model=model, words=words):
+                code, out, err = choose(self.root, level, model, words=words, rationale=rationale)
+                self.assertEqual(code, want, out + err)
+                self.assertEqual(list(papers.glob("vision_override_*.json")), [])
+        self.assertEqual(choose(self.root, "withdraw", self.UNLISTED, rationale=None)[0], 1)   # model with withdraw
+        self.assertIsNone(lv.override_current(str(papers)))
+        code, out, err = choose(self.root, "check", self.UNLISTED + "[1m]")
+        self.assertEqual(code, 0, out + err)
+        path = papers / "vision_override_1.json"
+        rec = json.loads(path.read_text())
+        self.assertEqual((rec["level"], rec["model_id"], rec["route"], rec["human_instruction_verbatim"],
+                          rec["human_rationale"], rec["human_binding"], rec["schema_version"]),
+                         ("check", self.UNLISTED, "anthropic-subscription", "Yes, go ahead (synthetic reply).",
+                          "The tables matter to the review (synthetic).", "permission_prompt",
+                          "lit-verify-vision-override-v1"))
+        row = [r for r in rows_of(papers) if r.get("kind") == "lit_verify_vision_override"][-1]
+        self.assertEqual((row["command"], row["exit_code"], row["level"], row["model_id"], row["timestamp"]),
+                         ("vision-override", 0, "check", self.UNLISTED, rec["recorded_at"]))
+        self.assertEqual(row["artifacts"]["vision_override"]["sha256"], lv.sha256_bytes(path.read_bytes()))
+        self.assertEqual(row["user_words_sha256"], lv.sha256_bytes(rec["human_instruction_verbatim"].encode()))
+        cur = lv.override_current(str(papers))
+        self.assertEqual((cur["level"], cur["model_id"], cur["route"]), ("check", self.UNLISTED,
+                                                                          "anthropic-subscription"))
+        # a model listed on one setup may be chosen on a setup where it is not listed
+        self.assertEqual(choose(self.root, "accept", "claude-opus-5-5", route="openrouter")[0], 0)
+        cur = lv.override_current(str(papers))
+        self.assertEqual((cur["level"], cur["route"], cur["record"]), ("accept", "openrouter", "vision_override_2.json"))
+        # the latest record damaged, or its row's words hash changed: no choice at all (never the earlier one)
+        p2 = papers / "vision_override_2.json"
+        good = p2.read_bytes()
+        os.chmod(p2, 0o644)
+        p2.write_bytes(good + b" ")
+        self.assertIsNone(lv.override_current(str(papers)))
+        p2.write_bytes(good)
+        self.assertEqual(lv.override_current(str(papers))["level"], "accept")
+        mf = papers / "MANIFEST.jsonl"
+        kept = mf.read_text()
+        mf.write_text("".join(json.dumps(dict(r, user_words_sha256="0" * 64) if r.get("kind") ==
+                                         "lit_verify_vision_override" else r) + "\n" for r in rows_of(papers)))
+        self.assertIsNone(lv.override_current(str(papers)))
+        mf.write_text(kept)
+        # withdraw: no choice; withdrawing again is refused
+        self.assertEqual(choose(self.root, "withdraw", rationale=None)[0], 0)
+        self.assertIsNone(lv.override_current(str(papers)))
+        self.assertEqual(choose(self.root, "withdraw", rationale=None)[0], 11)
+
+    def test_a_choice_counts_only_as_the_step_writes_it(self):
+        # FR-1 (review W1): the record and its row must read as vision-override wrote them, not only hash to each
+        #   other: the record's schema, kind, decider and (for check or accept) rationale, the row's tool version and
+        #   the level in its parameters. Each case rewrites ONE field and re-hashes the record into its row, so only
+        #   that check stands between it and an applied choice; the control changes a field no check reads.
+        self.assertEqual(choose(self.root, "accept", self.UNLISTED)[0], 0)
+        papers = self.papers
+        path, mf = papers / "vision_override_1.json", papers / "MANIFEST.jsonl"
+        rec, kept_rec, kept_mf = json.loads(path.read_text()), path.read_bytes(), mf.read_text()
+        os.chmod(path, 0o644)
+
+        def rewrite(rec_change=None, row_change=None):
+            blob = (json.dumps(dict(rec, **(rec_change or {})), indent=2) + "\n").encode("utf-8")
+            path.write_bytes(blob)
+            rows = []
+            for r in rows_of(papers):
+                if r.get("kind") == "lit_verify_vision_override":
+                    r = dict(r, artifacts={"vision_override": dict(r["artifacts"]["vision_override"], bytes=len(blob),
+                                                                   sha256=lv.sha256_bytes(blob))}, **(row_change or {}))
+                rows.append(r)
+            mf.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+        rewrite({"meaning": "Reworded (control)."})
+        self.assertEqual(lv.override_current(str(papers))["level"], "accept")
+        cases = (("no schema version", {"schema_version": None}, None),
+                 ("another schema version", {"schema_version": "lit-verify-vision-override-v0"}, None),
+                 ("another kind", {"kind": "lit_verify_settle"}, None),
+                 ("another decider", {"human_decider": "orchestrator"}, None),
+                 ("an accept without a rationale", {"human_rationale": None}, None),
+                 ("an accept with a blank rationale", {"human_rationale": "  "}, None),
+                 ("a row without a tool version", None, {"tool_version": None}),
+                 ("a row whose parameters name another level", None, {"parameters": {"level": "check"}}),
+                 ("a row without parameters", None, {"parameters": None}))
+        for name, rec_change, row_change in cases:
+            with self.subTest(name):
+                rewrite(rec_change, row_change)
+                self.assertIsNone(lv.override_current(str(papers)))
+                path.write_bytes(kept_rec)
+                mf.write_text(kept_mf)
+        self.assertEqual(lv.override_current(str(papers))["level"], "accept")
+        # the hand-written choice of the review's probe 1063 B (six record fields, one row): no choice
+        path.write_bytes(kept_rec)
+        mf.write_text(kept_mf)
+        forged_choice(self.root, "accept", self.UNLISTED)
+        self.assertIsNone(lv.override_current(str(papers)))
+
+    def test_route_prints_the_vision_line_and_the_warning(self):
+        def route(model, r="anthropic-subscription"):
+            with fake_route(r):
+                code, out, err = run_main(["route", self.root, "--reader-model", model])
+            self.assertEqual(code, 0, out + err)
+            return out.splitlines()
+        lines = route("claude-opus-5-5")
+        self.assertEqual(lines[:2], ["ROUTE: anthropic-subscription", "VISION: validated"])
+        self.assertFalse([x for x in lines if "WARNING" in x])
+        lines = route(self.UNLISTED)
+        self.assertEqual(lines[1], "VISION: text-only")
+        warn = next(x for x in lines if "WARNING" in x).split("(show it as it stands): ", 1)[1]
+        self.assertIn(f"The AI model that will read the papers ({self.UNLISTED}) has not been tested by DAAF", warn)
+        for word in ("route", "list row", "override", "vision_", "validated"):
+            self.assertNotIn(word, warn.lower())
+        self.assertEqual(choose(self.root, "accept", self.UNLISTED)[0], 0)
+        self.assertEqual(route(self.UNLISTED)[1], "VISION: override-accept")
+        self.assertEqual(route(self.UNLISTED + "[1m]")[1], "VISION: override-accept")
+        self.assertEqual(route("claude-sonnet-4-1")[1], "VISION: text-only")              # another model
+        self.assertEqual(route(self.UNLISTED, "anthropic-api")[1], "VISION: text-only")     # another setup
+        self.assertEqual(route("claude-opus-5-5", "openrouter")[1], "VISION: text-only")
+        row = [r for r in rows_of(self.papers) if r.get("kind") == "lit_verify_route"][-1]
+        self.assertEqual((row["reader_model"], row["vision_line"]), ("claude-opus-5-5", "text-only"))
+        with fake_route("anthropic-subscription"):
+            code, out, _ = run_main(["route", self.root])
+        self.assertEqual((code, [x for x in out.splitlines() if x.startswith("VISION:")]), (0, []))
+
+    def test_check_lists_every_reading_for_the_researcher(self):
+        self.assertEqual(choose(self.root, "check", self.UNLISTED)[0], 0)
+        self.cache_model(self.UNLISTED)
+        code, rec, out = self.audit(self.project(model=self.UNLISTED, override="check", checked_at=self.LATER))
+        self.assertEqual((code, rec["outcome"], rec["override"]["applied"], rec["override"]["level"]),
+                         (11, "person_must_check", True, "check"), out)
+        self.assertEqual((len(rec["unvalidated"]), rec["accepted_untested"], rec["rule_versions"]["audit"]),
+                         (1, [], "vision-audit-v2"))
+        self.assertIn("you chose to let it read them and to compare each reading with the page yourself",
+                      rec["unvalidated"][0]["reason"])
+        self.assertEqual(rec["override"]["user_words"], "Yes, go ahead (synthetic reply).")
+        # the card says accept, the record says check: the stricter level applies
+        self.cache_model(self.UNLISTED, agent="a00000000000000b1")
+        code, rec, _ = self.audit(self.project(key="user_00a0d171", model=self.UNLISTED, override="accept",
+                                               checked_at=self.LATER), agent="a00000000000000b1")
+        self.assertEqual((code, rec["outcome"], rec["override"]["level"], len(rec["unvalidated"])),
+                         (11, "person_must_check", "check", 1))
+
+    def test_accept_confirms_with_a_label_and_keeps_the_scan_and_figure_checks(self):
+        self.assertEqual(choose(self.root, "accept", self.UNLISTED)[0], 0)
+        self.cache_model(self.UNLISTED)
+        code, rec, out = self.audit(self.project(model=self.UNLISTED, override="accept", checked_at=self.LATER))
+        self.assertEqual((code, rec["outcome"], rec["unvalidated"], len(rec["accepted_untested"])),
+                         (0, "confirmed_untested_reader", [], 1), out)
+        self.assertEqual(rec["accepted_untested"][0]["item_id"],
+                         lv.audit_item_id(rec["card_sha256"], 1, "V1", ["88"], "untested_accepted"))
+        self.assertIn("ACCEPTED", out)
+        self.assertNotIn("MUST CHECK", out)
+        self.assertTrue(lv.audit_model_trusted(rec))
+        self.assertIn("you chose to accept its 1 reading(s)", rec["summary"])
+        scan = {"kind": "vision", "status": "VISION_ON_SCAN_PAGE", "page": 1, "claim_id": "V1",
+                "reason": "The AI reader took the number 88 from a picture of PDF page 1 ... Please compare 88."}
+        self.cache_model(self.UNLISTED, agent="a00000000000000b2")
+        code, rec, _ = self.audit(self.project(key="user_00a0d171", model=self.UNLISTED, override="accept",
+                                               checked_at=self.LATER, items=[scan]), agent="a00000000000000b2")
+        self.assertEqual((code, rec["outcome"], [x["why"] for x in rec["must_check"]], len(rec["accepted_untested"])),
+                         (11, "person_must_check", ["scan"], 1))
+        self.cache_model(self.UNLISTED, agent="a00000000000000b3")
+        code, rec, _ = self.audit(self.project(key="user_00a0d172", model=self.UNLISTED, override="accept",
+                                               checked_at=self.LATER,
+                                               items=[dict(scan, status="VISION_FIGURE_UNCORROBORATED")]),
+                                  agent="a00000000000000b3")
+        self.assertEqual((code, rec["outcome"], len(rec["should_look"])), (0, "confirmed_untested_reader", 1))
+        self.assertIn("charts or figures", rec["summary"])
+
+    def test_a_choice_for_another_model_setup_or_time_is_ignored(self):
+        # The mutation check: each case breaks one binding of an "accept" choice; every one falls back to the
+        #   unlisted reader's outcome (mismatch, every reading listed for a person), never confirmed_untested_reader.
+        cases = (("another model", ("claude-sonnet-4-1", "anthropic-subscription"), {}, True, False),
+                 ("another setup", (self.UNLISTED, "anthropic-api"), {}, True, False),
+                 ("recorded after the card check", (self.UNLISTED, "anthropic-subscription"),
+                  {"checked_at": "2026-01-02T00:00:00Z"}, True, False),
+                 ("withdrawn after the card check", (self.UNLISTED, "anthropic-subscription"), {}, True, True),
+                 ("the model not confirmed by the hook", (self.UNLISTED, "anthropic-subscription"), {}, False, False),
+                 ("no choice declared in the card", (self.UNLISTED, "anthropic-subscription"), {"override": None},
+                  True, False))
+        for n, (name, (gmodel, groute), over, cached, withdraw) in enumerate(cases):
+            with self.subTest(name):
+                self.assertEqual(choose(self.root, "accept", gmodel, route=groute)[0], 0)
+                if withdraw:
+                    self.assertEqual(choose(self.root, "withdraw", rationale=None)[0], 0)
+                agent = f"a0000000000000c{n:02x}"
+                if cached:
+                    self.cache_model(self.UNLISTED, agent=agent)
+                kw = dict({"model": self.UNLISTED, "override": "accept", "checked_at": self.LATER}, **over)
+                code, rec, out = self.audit(self.project(key=f"user_00b0d1{n:02x}", **kw), agent=agent)
+                self.assertEqual((code, rec["outcome"], len(rec["unvalidated"]), rec["accepted_untested"]),
+                                 (11, "mismatch", 1, []), out)
+                self.assertTrue(rec["override"] is None if "override" in over else rec["override"]["applied"] is False)
+
+    def test_accepted_readings_without_the_choice_in_effect_count_as_withdrawn(self):
+        papers = str(self.papers)
+        rec = {"outcome": "confirmed_untested_reader", "accepted_untested": [{"page": 1}], "override": None}
+        self.assertTrue(lv.override_withdrawn(papers, rec))                       # no applied choice in the record
+        rec["override"] = {"applied": True, "level": "accept", "model_id": self.UNLISTED,
+                           "route": "anthropic-subscription"}
+        self.assertTrue(lv.override_withdrawn(papers, rec))                       # no choice on record
+        self.assertEqual(choose(self.root, "accept", self.UNLISTED)[0], 0)
+        self.assertFalse(lv.override_withdrawn(papers, rec))
+        self.assertEqual(choose(self.root, "check", self.UNLISTED)[0], 0)
+        self.assertTrue(lv.override_withdrawn(papers, rec))                       # changed to check
+        self.assertFalse(lv.override_withdrawn(papers, {"outcome": "confirmed", "accepted_untested": []}))
+
+
 class SettleTests(ScratchCase):
     # Each refusal and integrity test plants one problem; the defence it targets alone stops it (see the mutation
     #   run of the build session). The project helpers are AuditRouteTests' own.
@@ -3724,6 +4017,9 @@ def mk_view():
                    "mc": paper("pmc", citation_status="model_confirmed"),
                    "ma": paper("pma", verdict="WEAK", citation_status="model_adjudicated"),
                    "ho": paper("pho", citation_status="human_overridden"),
+                   # report-rules-v8 (D-54): confirmed by an untested checker at the researcher's choice
+                   "mu": paper("pmu", citation_status="model_confirmed_untested"),
+                   "muw": paper("pmuw", verdict="WEAK", citation_status="model_confirmed_untested"),
                    "hw": paper("phw", verdict="WEAK", citation_status="human_confirmed"),
                    "odd": paper("podd", citation_status="something_else"),
                    "va": paper("pva", vision_audit={"state": "missing", "readings": 2,
@@ -4238,6 +4534,13 @@ class ReportRulesTests(unittest.TestCase):
          ("CITATION_CONFIRMED_BY_AI_CHECK",), ("CITATION_WEAK_UNDECIDED",)),
         ("S5 accepted despite the check is citable, labelled", "Tutoring helps [@ho].", "final", "PASS",
          ("CITATION_ACCEPTED_DESPITE_CHECK",), ()),
+        # report-rules-v8 (D-54): an untested checker's confirmation at the researcher's choice: its own label
+        ("BR3 untested AI check is citable at final, labelled", "Tutoring helps [@mu].", "final", "PASS",
+         ("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "CITATION_OK"), ("CITATION_CONFIRMED_BY_AI_CHECK",)),
+        ("BR3 untested AI check in a draft", "Tutoring helps [@mu].", "synthesis", "PASS",
+         ("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK",), ("CITATION_PENDING_SECOND_CHECK_DRAFT",)),
+        ("BR3 untested AI check on a partial match", "Tutoring helps [@muw].", "final", "PASS",
+         ("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK",), ("CITATION_WEAK_UNDECIDED", "CITATION_CONFIRMED_BY_AI_CHECK")),
         ("S5 partial match confirmed by the researcher", "Tutoring helps [@hw].", "final", "PASS", ("CITATION_OK",),
          ("CITATION_WEAK_UNDECIDED",)),
         ("S5 legacy accepted partial match fails at final", "Tutoring helps [@wa].", "final", "FAIL",
@@ -4370,6 +4673,18 @@ class ReportRulesTests(unittest.TestCase):
         self.assertIn("an AI judgment", one("Tutoring helps [@rj].", "final", "CITATION_REJECTED")["reason"])
         self.assertIn("the researcher recorded", one("Tutoring helps [@rjr].", "final", "CITATION_REJECTED")["reason"])
         self.assertIn("an AI judgment", one("Tutoring helps [@mc].", "final", "CITATION_CONFIRMED_BY_AI_CHECK")["fix"])
+        # report-rules-v8: the untested label names the words the reference list carries and what to say
+        it = one("Tutoring helps [@mu].", "final", "CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK")
+        self.assertIn('"confirmed by an untested AI check (your choice)"', it["reason"])
+        self.assertIn("DAAF has not tested", it["reason"])
+        self.assertIn("at the researcher's choice", it["fix"])
+        # FR-1 (review W4): one label in two wordings, each named for its place: the reference list's in the reason,
+        #   the deliverable's in the fix
+        self.assertIn("The reference list labels it", it["reason"])
+        self.assertIn(f'written for the deliverable\'s readers, for example: "{lrr.SECOND_CHECK_UNTESTED_DELIVERABLE_WORDS}"',
+                      it["fix"])
+        self.assertNotIn(lrr.SECOND_CHECK_UNTESTED_WORDS, it["fix"])
+        self.assertEqual(it["severity"], "warning")
         self.assertIn("despite the automatic check", one("Tutoring helps [@ho].", "final",
                                                          "CITATION_ACCEPTED_DESPITE_CHECK")["fix"])
         it = one("Tutoring helps [@va].", "final", "VISION_AUDIT_MISSING")
@@ -4431,12 +4746,21 @@ class ReportRulesTests(unittest.TestCase):
         self.assertEqual(lrr.SECOND_CHECK_CITABLE_FINAL, lc.CITABLE_FINAL)
         self.assertEqual(lrr.SECOND_CHECK_DRAFT_REVIEW, lc.DRAFT_REVIEW_STATUSES)
         self.assertEqual(lrr.SECOND_CHECK_LABELLED, lc.LABELLED_STATUSES)
-        self.assertEqual(set(lrr.SECOND_CHECK_AI_CHECKED), set(lc.LABELLED_STATUSES) - {"human_overridden"})
+        # report-rules-v8: the labelled statuses split into AI-checked, untested (the researcher's choice) and the
+        #   researcher's override, each with its own label; the untested label's words are lit_corpus's own
+        self.assertEqual(set(lrr.SECOND_CHECK_AI_CHECKED),
+                         set(lc.LABELLED_STATUSES) - {"human_overridden", "model_confirmed_untested"})
+        self.assertEqual(lrr.SECOND_CHECK_UNTESTED, ("model_confirmed_untested",))
+        self.assertEqual(set(lrr.SECOND_CHECK_AI_CHECKED) | set(lrr.SECOND_CHECK_UNTESTED) | {"human_overridden"},
+                         set(lc.LABELLED_STATUSES))
+        self.assertEqual(lrr.SECOND_CHECK_UNTESTED_WORDS, lc.UNTESTED_CONFIRMED_WORDS)
+        self.assertEqual(lv.CITATION_STATUS_WORDS["model_confirmed_untested"], lc.UNTESTED_CONFIRMED_WORDS)
         self.assertEqual(set(lv.CITATION_STATUS_WORDS), set(lc.CITATION_STATUSES))
         self.assertEqual(set(lrr.AUDIT_CONFIRMED), {k for k, v in lv.AUDIT_EXIT.items() if v == 0})
-        # (plus the report's own state for a confirming record whose model did not come from the hook's own record)
+        # (plus the report's own states: a confirming record whose model did not come from the hook's own record, and
+        #   1.16.0's withdrawn choice for an untested reader)
         self.assertEqual(set(lrr.AUDIT_OUTCOME_WORDS),
-                         {k for k, v in lv.AUDIT_EXIT.items() if v != 0} | {"model_not_confirmed"})
+                         {k for k, v in lv.AUDIT_EXIT.items() if v != 0} | {"model_not_confirmed", "override_withdrawn"})
         self.assertEqual(set(lrr.AUDIT_FIX_LEAD), set(lrr.AUDIT_OUTCOME_WORDS))
         self.assertEqual(lrr.AUDIT_SETTLEABLE, lv.SETTLE_OUTCOMES)                   # S5 settle
         self.assertNotIn("chain_unconfirmed", lrr.AUDIT_SETTLEABLE)
@@ -4481,12 +4805,12 @@ class ReportRulesTests(unittest.TestCase):
         self.assertEqual(set(lrr.REPORT_SEVERITY.values()), {"pass", "fail", "review", "warning"})
         self.assertEqual((lv.REPORT_CHECK_SCHEMA_VERSION, lv.REPORT_REDERIVE_VERSION, lrr.REPORT_RULES_VERSION,
                           lrr.CITATION_PARSE_VERSION, lrr.SENTENCE_SPLIT_VERSION, lrr.REPORT_LINT_VERSION),
-                         ("lit-verify-report-check-v1", "report-rederive-v6", "report-rules-v6", "citations-v2",
+                         ("lit-verify-report-check-v1", "report-rederive-v8", "report-rules-v8", "citations-v2",
                           "sentences-v1", "report-lint-v5"))
-        self.assertEqual(lv.TOOL_VERSION, "1.15.0-daaf")
+        self.assertEqual(lv.TOOL_VERSION, "1.17.0-daaf")
         self.assertEqual((lrr.CERTAINTY_LANGUAGE["table_version"], lrr.CERTAINTY_LANGUAGE["contract_version"]),
-                         ("2026-11-02", "0.5.0"))
-        self.assertEqual(len(lrr.REPORT_SEVERITY), 82)                # report-rules-v6: + 10 (S5 W1-c)
+                         ("2026-11-03", "0.6.0"))
+        self.assertEqual(len(lrr.REPORT_SEVERITY), 84)                # report-rules-v6: + 10 (S5 W1-c); v7: + 1; v8: + 1
         self.assertIn("citation_adjudications", lv.REPORT_TABLES)
         # a report item keeps 600 characters of its fix (report_body): every fixed remedy text fits whole
         for fix in [lv.TABLE_REMEDY, lv.TITLE_REMEDY, lrr.SECOND_CHECK_FIX, lrr.AUDIT_FIX_DOES_NOT_MATCH] + [
@@ -5619,6 +5943,256 @@ class SecondCheckReportTests(DemoReviewCase):
         code, _, check = self.report(self.FURTHER, "--kind", "final")
         self.assertEqual((code, self.bad(check)), (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"]))
 
+    # --- 1.17.0 (report-rederive-v8; user decisions D-50, D-54): the researcher's acceptance of an untested checker
+    UNTESTED_WORDS = "Let the AI check confirm the references it judges the same work (synthetic test choice)."
+    MISMATCH = (11, ["ADJUDICATION_ROW_MISMATCH", "CITATION_UNVERIFIED"])
+
+    def untested_checker(self, revoke=False, model=None):
+        # `adjudications untested-checker` for the fixture checker's model (on no evaluated list)
+        return self.run_lc("adjudications", "untested-checker", self.pd, "--model-id",
+                           model or self.lc.DEMO_ADJ_MODEL, "--user-words", self.UNTESTED_WORDS,
+                           *(("--revoke",) if revoke else ("--rationale", "Synthetic test choice.")))
+
+    def ledger_row(self, key):
+        return next(r for r in self.table("citation_adjudications") if r["paper_key"] == key
+                    and not r.get("superseded_by"))
+
+    def untested_confirmed(self, batch="b02"):
+        # evans included and checked (CONFIDENT); the researcher accepts the untested checker; its SAME_WORK on evans
+        #   is ingested (status model_confirmed_untested, the acceptance named in the ledger row)
+        self.add_evans()
+        code, out = self.untested_checker()
+        self.assertEqual(code, 0, out)
+        self.adjudicate([self.evans["w"]], "SAME_WORK", batch)
+        self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                         "model_confirmed_untested")
+        self.assertTrue(self.ledger_row(self.evans["w"])["untested_acceptance_ref"])
+
+    def forge_untested(self, good, drop=False, last=False, revoke_first=False, acc_change=None, ref="acc",
+                       ingest_ref="same", row_change=None):
+        # A forgery whose every hash record agrees: data/MANIFEST.jsonl rebuilt from `good` (unchanged lines byte for
+        #   byte) with the acceptance line dropped, moved after the ingest, preceded at the ingest by a withdrawal, or
+        #   changed; and, when the acceptance line changes or `ref`/`ingest_ref`/`row_change` asks, the ledger version
+        #   the ingest wrote rewritten in place with evans's row naming `ref` ("acc": the acceptance line as it now
+        #   reads; "pack": the pack row's line; None: no acceptance) and `row_change`, the ingest row naming
+        #   `ingest_ref` (by default the same reference) and the new ledger bytes. Only the re-derivation of the
+        #   acceptance stands between it and a PASS.
+        lines = [x for x in good.split("\n") if x.strip()]
+        rows = [json.loads(x) for x in lines]
+        ia = next(i for i, r in enumerate(rows) if r.get("command") == "adjudications untested-checker")
+        ii = next(i for i, r in enumerate(rows) if r.get("command") == "adjudications ingest"
+                  and r.get("batch_id") == "b02")
+        ip = next(i for i, r in enumerate(rows) if r.get("command") == "adjudications pack"
+                  and r.get("batch_id") == "b02")
+        if acc_change:
+            lines[ia] = json.dumps(dict(rows[ia], **acc_change))
+        if acc_change or ref != "acc" or ingest_ref != "same" or row_change:
+            shas = {"acc": lv.sha256_bytes(lines[ia].encode("utf-8")),
+                    "pack": lv.sha256_bytes(lines[ip].encode("utf-8")), None: None}
+            new_ref = shas[ref]
+            new_ingest_ref = new_ref if ingest_ref == "same" else shas[ingest_ref]
+            art = next(a for a in rows[ii]["artifacts"] if a.get("table") == "citation_adjudications")
+            path = self.pd / "data" / art["name"]
+            led = [dict(r) for r in self.lc.parquet_io()[0](path.read_bytes())]
+            led = [dict(r, untested_acceptance_ref=new_ref, **(row_change or {}))
+                   if r["paper_key"] == self.evans["w"] and not r.get("superseded_by") else r for r in led]
+            blob = self.lc.parquet_io()[1](led, self.lc.ledger_columns())
+            os.chmod(path, 0o644)
+            path.write_bytes(blob)
+            lines[ii] = json.dumps(dict(rows[ii], untested_acceptance_ref=new_ingest_ref, artifacts=[
+                dict(a, sha256=lv.sha256_bytes(blob)) if a is art else a for a in rows[ii]["artifacts"]]))
+        if revoke_first:
+            lines.insert(ii, json.dumps(dict(rows[ia], decision="revoke", rationale=None,
+                                             ends_acceptance=lv.sha256_bytes(lines[ia].encode("utf-8")))))
+        if last:
+            lines.append(lines.pop(ia))
+        if drop:
+            del lines[ia]
+        (self.pd / "data" / "MANIFEST.jsonl").write_text("\n".join(lines) + "\n")
+
+    def test_untested_confirmed_reference_is_citable_with_its_label(self):
+        # D-54: the researcher's recorded acceptance lets the untested checker's SAME_WORK confirm evans; the report
+        #   re-derives it and the reference is citable in a draft and a final deliverable, labelled
+        self.untested_confirmed()
+        for kind in ([], ["--kind", "final"]):
+            code, got, check = self.report(self.FURTHER, *kind)
+            self.assertEqual((code, check["verdict"]), (0, "PASS"), (kind, self.bad(check)))
+            it = next(i for i in check["items"] if i["status"] == "CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK")
+            self.assertEqual((it["severity"], it["citekeys"]), ("warning", ["evans2018invented"]))
+            self.assertIn(self.lc.UNTESTED_CONFIRMED_WORDS, it["reason"])
+            self.assertNotIn(("CITATION_CONFIRMED_BY_AI_CHECK", "evans2018invented"), got)
+        # a later withdrawal changes later batches only: the reference keeps its label (the acceptance is the one in
+        #   force before its own ingest)
+        code, out = self.untested_checker(revoke=True)
+        self.assertEqual(code, 0, out)
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        self.assertIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+        # the researcher's own reply still decides it: confirmed by them, no label
+        self.reply("same_work", {self.evans["w"]})
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        self.assertNotIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+
+    def test_untested_acceptance_that_does_not_rederive_fails_closed(self):
+        # Each forgery keeps every hash record consistent (forge_untested); a reference whose acceptance does not
+        #   re-derive (absent, recorded after the ingest, withdrawn before it, for another model, a reference to a row
+        #   that is no acceptance, a transcript naming another model) cannot keep its status. The control rewires the
+        #   same records with a harmless change and passes, so the forgery mechanics are not what fails.
+        self.untested_confirmed()
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        good = mf.read_text()
+        ingest = next(r for r in (json.loads(x) for x in good.splitlines() if x.strip())
+                      if r.get("command") == "adjudications ingest" and r.get("batch_id") == "b02")
+        art = next(a for a in ingest["artifacts"] if a.get("table") == "citation_adjudications")
+        ledger_path = self.pd / "data" / art["name"]
+        ledger_bytes = ledger_path.read_bytes()
+        cases = (("control: the acceptance's rationale reworded", {"acc_change": {"rationale": "Reworded."}}, None),
+                 ("acceptance absent", {"drop": True}, self.MISMATCH),
+                 ("acceptance recorded after the ingest", {"last": True}, self.MISMATCH),
+                 ("acceptance withdrawn before the ingest", {"revoke_first": True}, self.MISMATCH),
+                 ("acceptance for another model", {"acc_change": {"model_id": "fixture-other-model"}}, self.MISMATCH),
+                 ("acceptance that failed", {"acc_change": {"exit_code": 11}}, self.MISMATCH),
+                 ("reference to a row that is no acceptance", {"ref": "pack"}, self.MISMATCH),
+                 ("another model in the transcript", {"row_change": {"model_id_observed": (
+                     self.lc.DEMO_ADJ_MODEL + ", fixture-other-model")}}, self.MISMATCH),
+                 ("no model in the transcript", {"row_change": {"model_id_observed": ""}}, self.MISMATCH),
+                 ("the acceptance's reference removed", {"ref": None}, self.MISMATCH),
+                 ("the ledger's reference removed, the ingest's kept", {"ref": None, "ingest_ref": "acc"},
+                  self.MISMATCH),
+                 ("the ingest's reference removed, the ledger's kept", {"ingest_ref": None}, self.MISMATCH),
+                 # FR-1 (review B1): an acceptance line that does not read as the step wrote it is no acceptance
+                 ("acceptance reduced to the fields a hand-written line holds",
+                  {"acc_change": {"tool_version": None, "timestamp": None, "parameters": None,
+                                  "user_words_sha256": None, "human_decider": None, "human_binding": None,
+                                  "rationale": None}}, self.MISMATCH),
+                 ("acceptance without its tool version", {"acc_change": {"tool_version": None}}, self.MISMATCH),
+                 ("acceptance whose words are not the hashed ones",
+                  {"acc_change": {"user_words_sha256": "0" * 64}}, self.MISMATCH),
+                 ("acceptance without a rationale", {"acc_change": {"rationale": None}}, self.MISMATCH))
+        for label, change, want in cases:
+            with self.subTest(label):
+                self.forge_untested(good, **change)
+                code, got, check = self.report(self.FURTHER, "--kind", "final")
+                if want is None:
+                    self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+                    self.assertIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+                else:
+                    self.assertEqual((code, self.bad(check)), want)
+                    self.assertIn(("ADJUDICATION_ROW_MISMATCH", "evans2018invented"), got)
+                    self.assertNotIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+                os.chmod(ledger_path, 0o644)
+                ledger_path.write_bytes(ledger_bytes)
+                mf.write_text(good)
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+
+    def test_hand_written_acceptance_line_confirms_nothing(self):
+        # FR-1 (review B1, probe 1063 A): one hand-written MANIFEST line in place of `untested-checker`, then the
+        #   legitimate pack and ingest: the SAME_WORK stays a hint, so the final report fails on the unconfirmed
+        #   reference and never shows the untested label. The report re-derives with lit_corpus's own
+        #   untested_acceptance(), so the same line cannot be named afterwards either (forge_untested rewires it).
+        self.add_evans()
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        with open(mf, "a") as f:
+            f.write(json.dumps({"kind": "lit_corpus", "command": self.lc.UNTESTED_COMMAND, "exit_code": 0,
+                                "model_id": self.lc.DEMO_ADJ_MODEL, "decision": "accept"}) + "\n")
+        self.adjudicate([self.evans["w"]], "SAME_WORK", "b02")
+        self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                         "pending_adjudication")
+        self.assertIsNone(self.ledger_row(self.evans["w"])["untested_acceptance_ref"])
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_PENDING_SECOND_CHECK"]))
+        self.assertNotIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+        # the ledger, the ingest row and the corpus all rewired to name that line (hashes consistent): no PASS
+        self.forge_untested(mf.read_text(), ref="acc", row_change={"citation_status": "model_confirmed_untested"})
+        self.write_version([dict(r, citation_status="model_confirmed_untested") if r["paper_key"] == self.evans["w"]
+                            else r for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), self.MISMATCH)
+        self.assertNotIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+
+    def test_an_evaluated_checker_takes_no_acceptance(self):
+        # an acceptance of the model is in force, but its identity is on an evaluated list (a test-only version): the
+        #   batch confirms evans with the evaluated status and label, its ledger row names no acceptance, and the report
+        #   re-derives exactly that
+        self.add_evans()
+        code, out = self.untested_checker()
+        self.assertEqual(code, 0, out)
+        with mock.patch.dict(self.lc.ADJUDICATOR_EVALUATED_LISTS,
+                             {"adjudicator-list-test": (self.lc.demo_evaluated_entry(),)}), \
+                mock.patch.object(self.lc, "ADJUDICATOR_LIST_VERSION", "adjudicator-list-test"):
+            self.adjudicate([self.evans["w"]], "SAME_WORK", "b02")
+            self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                             "model_confirmed")
+            self.assertIsNone(self.ledger_row(self.evans["w"])["untested_acceptance_ref"])
+            code, got, check = self.report(self.FURTHER, "--kind", "final")
+            self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+            self.assertIn(("CITATION_CONFIRMED_BY_AI_CHECK", "evans2018invented"), got)
+            self.assertNotIn(("CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", "evans2018invented"), got)
+            # a forgery: the ledger row and the ingest row both name the acceptance; an evaluated batch never takes
+            #   one, so the row does not re-derive
+            self.forge_untested((self.pd / "data" / "MANIFEST.jsonl").read_text(), ingest_ref="acc")
+            code, got, check = self.report(self.FURTHER, "--kind", "final")
+            self.assertEqual((code, self.bad(check)), self.MISMATCH)
+
+    def test_untested_acceptance_of_another_model_gives_hints_only(self):
+        # an acceptance names another model ID: the fixture checker's SAME_WORK stays a hint (evans waits for its
+        #   second check); a forged confirmation naming that acceptance does not re-derive
+        self.add_evans()
+        code, out = self.untested_checker(model="fixture-other-model")
+        self.assertEqual(code, 0, out)
+        self.adjudicate([self.evans["w"]], "SAME_WORK", "b02")
+        self.assertEqual(next(r for r in self.rows() if r["paper_key"] == self.evans["w"])["citation_status"],
+                         "pending_adjudication")
+        self.assertIsNone(self.ledger_row(self.evans["w"])["untested_acceptance_ref"])
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_PENDING_SECOND_CHECK"]))
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        self.forge_untested(mf.read_text(), ref="acc", row_change={"citation_status": "model_confirmed_untested"})
+        self.write_version([dict(r, citation_status="model_confirmed_untested") if r["paper_key"] == self.evans["w"]
+                            else r for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), self.MISMATCH)
+        self.assertIn(("ADJUDICATION_ROW_MISMATCH", "evans2018invented"), got)
+
+    def test_untested_same_work_below_the_title_floor_goes_to_a_person(self):
+        # a WEAK check below the title floor: the accepted untested checker's SAME_WORK does not confirm it (ingest
+        #   sends it to a person); a forged confirmation that drops the floor does not re-derive
+        sp = self.pd / "inputs" / "br3_screen.jsonl"
+        sp.write_text(json.dumps({"paper_key": self.evans["w"], "stage": "ta", "pass": "researcher",
+                                  "decision": "include", "screener": {"role": "researcher"}}) + "\n")
+        self.assertEqual(self.run_lc("screen", "record", self.pd, sp)[0], 0)
+        v = self.lc.demo_verify_row(str(self.pd), self.evans, verdict="WEAK",
+                                    extra={"title_similarity": 0.7, "title_similarity_subtitle_aware": 0.7})
+        r = self.lc.demo_retractions_row(str(self.pd), [(self.evans["doi"], "none")])
+        for kind, sha in (("verify", v), ("retractions", r)):
+            mp = self.pd / "inputs" / f"br3_{kind}_{sha[:6]}.jsonl"
+            mp.write_text(json.dumps({"row_sha256": sha, "paper_key": self.evans["w"]}) + "\n")
+            self.assertEqual(self.run_lc("attach", kind, self.pd, mp)[0], 0)
+        code, out = self.untested_checker()
+        self.assertEqual(code, 0, out)
+        self.adjudicate([self.evans["w"]], "SAME_WORK", "b02")
+        lr = self.ledger_row(self.evans["w"])
+        self.assertEqual((lr["rule_verdict"], lr["title_floor_applied"], lr["citation_status"]),
+                         ("WEAK", True, "unverified"))
+        self.assertTrue(lr["untested_acceptance_ref"])
+        code, _, check = self.report(self.FURTHER, "--kind", "final")
+        # (a partial match no one confirmed is not exported to the reference list)
+        self.assertEqual((code, self.bad(check)), (11, ["CITATION_WEAK_UNDECIDED", "CITEKEY_NOT_IN_BIB"]))
+        # the forgery: the ledger row says no floor applied and the reference was confirmed; the corpus agrees
+        mf = self.pd / "data" / "MANIFEST.jsonl"
+        self.forge_untested(mf.read_text(), row_change={"title_floor_applied": False,
+                                                        "citation_status": "model_confirmed_untested"})
+        self.write_version([dict(r, citation_status="model_confirmed_untested") if r["paper_key"] == self.evans["w"]
+                            else r for r in self.rows()], {})
+        self.assertEqual(self.run_lc("export-bib", self.pd)[0], 0)
+        code, got, check = self.report(self.FURTHER, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), self.MISMATCH)
+        self.assertIn(("ADJUDICATION_ROW_MISMATCH", "evans2018invented"), got)
+
     def test_reply_against_a_different_work_verdict_is_labelled(self):
         # the adjudicator (not on any evaluated list) says a different work; the researcher accepts the reference
         self.add_evans()
@@ -5965,6 +6539,103 @@ class SettleReportTests(DemoReviewCase):
                 self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_MISSING"]))
         mf.write_text(good)
         self.assertEqual(self.report(self.DIAZ, "--kind", "final")[0], 0)
+
+
+@unittest.skipUnless(CAN_RUN_CLI, CLI_WHY)
+class VisionOverrideReportTests(DemoReviewCase):
+    # 1.16.0 (D-55): the report reads the audit of notes by an untested reader under the researcher's recorded choice.
+    #   Demo paper 4 gets a card revision whose first two claims were read from the text AND a picture of the page by
+    #   claude-opus-4-1 (on no list); the source chain is confirmed by the test seam. Every word invented.
+    DIAZ = SecondCheckReportTests.DIAZ
+    bad = staticmethod(SecondCheckReportTests.bad)
+    WORDS = SettleReportTests.WORDS
+    UNLISTED = "claude-opus-4-1"
+
+    def untested_audit(self, level, want_code):
+        ReportOnDiskTests.append_row(self.pd / "papers" / "MANIFEST.jsonl", {
+            "kind": "lit_verify_route", "command": "route", "route": "anthropic-subscription", "exit_code": 0,
+            "timestamp": "2020-01-01T00:00:00Z"})
+        self.assertEqual(choose(self.pd, level, self.UNLISTED)[0], 0)          # the choice precedes the reading
+        p = self.lc.DEMO_PAPERS[3]
+        kdir = self.pd / "papers" / p["key"]
+        head, rest = (kdir / "evidence_card.md").read_text().split("```lit-verify\n", 1)
+        self.assertTrue(head.startswith("---\n"))
+        head = head.replace("---\n", "---\nreader_route: anthropic-subscription\n", 1)
+        block = json.loads(rest.split("\n```", 1)[0])
+        block.update(reader_model=self.UNLISTED, vision_mode="auto", vision_validated=False, vision_override=level,
+                     vision_list_version=lv.VISION_LIST_VERSION,
+                     claims=[dict(c, source="both") if n < 2 else c for n, c in enumerate(block["claims"])])
+        (kdir / "evidence_card_a.md").write_text(head + "```lit-verify\n" + json.dumps(block, indent=2) + "\n```\n")
+        self.assertEqual(run_main(["card", kdir, kdir / "evidence_card_a.md"])[0], 0)
+        self.assertEqual(self.run_lc("claims", "build", self.pd)[0], 0)
+        cache = self.root / "hook_cache"
+        cache.mkdir(exist_ok=True)
+        (cache / "claude-subagent-model-sess-a0000000000000f1").write_text(self.UNLISTED)
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": "sess"}), \
+                mock.patch.object(lv, "HOOK_CACHE_DEFAULT_DIR", str(cache)), \
+                mock.patch.object(lv, "chain_check", return_value=dict(SettleReportTests.CHAIN_OK)):
+            code, out, err = run_main(["audit", kdir, "--card", "evidence_card_a.md", "--agent-id", "a0000000000000f1"])
+        self.assertEqual(code, want_code, out + err)
+        return kdir, json.loads((kdir / "vision_audit_a.json").read_text())
+
+    def test_accepted_readings_are_citable_with_a_label_until_the_choice_is_withdrawn(self):
+        kdir, rec = self.untested_audit("accept", 0)
+        self.assertEqual((rec["outcome"], len(rec["accepted_untested"])), ("confirmed_untested_reader", 2))
+        for kind in ([], ["--kind", "final"]):
+            code, _, check = self.report(self.DIAZ, *kind)
+            self.assertEqual((code, self.bad(check)), (0, []), kind)
+            it = [i for i in check["items"] if i["status"] == "VISION_READ_BY_UNTESTED_MODEL"]
+            self.assertTrue(it and "methods or AI-use note" in it[0]["fix"], kind)
+            self.assertIn("2 reading(s) in its notes were taken from pictures of PDF pages", it[0]["reason"])
+        # withdrawn: the readings need the researcher's comparison before the final report
+        self.assertEqual(choose(self.pd, "withdraw", rationale=None)[0], 0)
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        it = next(i for i in check["items"] if i["status"] == "VISION_AUDIT_NOT_CONFIRMED")
+        self.assertIn("no longer on record", it["reason"])
+        self.assertTrue(it["fix"].startswith(lrr.AUDIT_FIX_LEAD["override_withdrawn"]))
+        # recording the same choice again restores the label (the fix's second route)
+        self.assertEqual(choose(self.pd, "accept", self.UNLISTED)[0], 0)
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (0, []))
+        self.assertEqual(choose(self.pd, "withdraw", rationale=None)[0], 0)
+        # the researcher compares them (settle --list now lists them as required) and both match: passes, no label
+        self.assertEqual(run_main(["settle", kdir, "--audit", "vision_audit_a.json", "--list"])[0], 0)
+        ids = [ln.split("#")[0].strip() for ln in (kdir / "settle_items_a.txt").read_text().splitlines()
+               if ln.split("#")[0].strip()]
+        self.assertEqual(sorted(ids), sorted(x["item_id"] for x in rec["accepted_untested"]))
+        SettleReportTests.settle(self, kdir, ids)
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        self.assertFalse([i for i in check["items"] if i["status"] == "VISION_READ_BY_UNTESTED_MODEL"])
+
+    def test_hand_written_choice_gives_no_untested_label(self):
+        # FR-1 (review W1, probe 1063 B): a hand-written choice record and row (no vision-override run) is no choice:
+        #   the audit lists the untested reader's readings for a person (mismatch), and the final report fails until
+        #   they are compared, never VISION_READ_BY_UNTESTED_MODEL
+        with mock.patch.object(sys.modules[__name__], "choose", forged_choice):
+            kdir, rec = self.untested_audit("accept", 11)
+        self.assertEqual((rec["outcome"], rec["accepted_untested"], len(rec["unvalidated"])), ("mismatch", [], 2))
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]))
+        self.assertFalse([i for i in check["items"] if i["status"] == "VISION_READ_BY_UNTESTED_MODEL"])
+
+    def test_check_never_passes_the_final_report_unsettled(self):
+        # The mutation check of the "check" level: each listed reading left unsettled fails the final report.
+        kdir, rec = self.untested_audit("check", 11)
+        ids = [x["item_id"] for x in rec["unvalidated"]]
+        self.assertEqual((rec["outcome"], len(ids), rec["accepted_untested"]), ("person_must_check", 2, []))
+        for n, i in enumerate(ids):
+            code, _, check = self.report(self.DIAZ, "--kind", "final")
+            self.assertEqual((code, self.bad(check)), (11, ["VISION_AUDIT_NOT_CONFIRMED"]), n)
+            self.assertFalse([x for x in check["items"] if x["status"] == "VISION_READ_BY_UNTESTED_MODEL"])
+            SettleReportTests.settle(self, kdir, [i])
+        code, _, check = self.report(self.DIAZ, "--kind", "final")
+        self.assertEqual((code, check["verdict"]), (0, "PASS"), self.bad(check))
+        # a later "accept" choice does not turn this audit's listed readings into accepted ones
+        self.assertEqual(choose(self.pd, "accept", self.UNLISTED)[0], 0)
+        self.assertFalse([x for x in self.report(self.DIAZ, "--kind", "final")[2]["items"]
+                          if x["status"] == "VISION_READ_BY_UNTESTED_MODEL"])
 
 
 class VerifyAliasTests(unittest.TestCase):

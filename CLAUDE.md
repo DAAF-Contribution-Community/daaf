@@ -306,7 +306,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Defense-in-Depth Architecture
 
-Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh` and `adjudicator-read-scope.sh`, and the subagent-dispatch guards), a pre-execution content scan (exit 3: package installs, environment-secret prints, and the Literature Review commands that record a researcher's decision, which only the orchestrator runs at a permission prompt) and post-execution evidence verification (exit 74) in `run_with_capture.sh`, `settings.json` permission deny/allow/ask rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/`, `scripts/test_safety_hooks.sh` and `scripts/test_enforce_single_command.sh`.
+Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh` and `adjudicator-read-scope.sh`, and the subagent-dispatch guards), a pre-execution content scan (exit 3: package installs, environment-secret prints, and the four Literature Review commands that record a researcher's decision, which only the orchestrator runs at a permission prompt) and post-execution evidence verification (exit 74) in `run_with_capture.sh`, `settings.json` permission deny/allow/ask rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/`, `scripts/test_safety_hooks.sh` and `scripts/test_enforce_single_command.sh`.
 
 ---
 
@@ -405,9 +405,15 @@ indicates a preference during conversation.
        numeric-dense, scanned, garbled, rotated, low extractor agreement, a
        suspected existing OCR text layer). "all-pages" = render
        and read every page (about +4k tokens per page; ~+120k for a 30-page
-       paper). Both "auto" and "all-pages" apply only when the reading agent's
-       exact model ID and route are on the skill's dated vision-validated list;
-       otherwise the agent reads the text layer only and marks the evidence
-       card "vision: unavailable". "off" = text layer only. A vision reading is
+       paper). Both "auto" and "all-pages" apply when the reading agent's
+       exact model ID and route are on the skill's dated vision-validated list.
+       For any other model the agent reads the text layer only and marks the
+       evidence card "vision: unavailable", unless the researcher, warned
+       before a Literature Review starts, records a choice (lit_verify
+       vision-override): "check" (page images read; every number taken from
+       one is listed for the researcher to compare with the page) or "accept"
+       (page images read; the readings are accepted without a comparison and
+       the review labels them as read by a model DAAF has not tested). "off" =
+       text layer only. A vision reading is
        a second reading, never ground truth: text/vision disagreements are
        logged in the card, never silently resolved. -->

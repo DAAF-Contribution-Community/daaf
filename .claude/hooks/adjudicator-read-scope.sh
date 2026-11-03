@@ -5,9 +5,10 @@
 #   Agent-scoped PreToolUse hook for the citation-adjudicator agent. The agent
 #   judges one citation adjudication bundle and may read nothing else: a read
 #   of any other file can show it the citing context its judgment must not
-#   see, and ingest refuses the whole batch on any non-bundle tool call in the
-#   audit log. The agent's tool list holds only Read, but Read opens any path,
-#   so this hook is the boundary that keeps it to the bundle.
+#   see, and ingest refuses the whole batch on any tool call in the audit log
+#   other than a Read of the bundle or the agent's own SubagentHandback. The
+#   agent's tool list holds only Read, but Read opens any path, so this hook
+#   is the boundary that keeps it to the bundle.
 #
 #   ALLOWS a Read whose file_path
 #     - is an absolute path that is already canonical: `realpath -m -s` (no
@@ -20,20 +21,25 @@
 #       (so {batch_id}_prompt.txt and every other file in the folder is
 #       refused);
 #     - names an existing regular file.
-#   DENIES everything else: any other path, any tool other than Read, and
-#   every input or environment it cannot check.
+#   ALLOWS a SubagentHandback call: the Claude Code harness tool through which
+#     a subagent delivers its report (observed 2026-11-03, Claude Code
+#     2.1.281). It opens no file, and without it the agent cannot return its
+#     judgments. The tool name is compared exactly, inside jq; its input is
+#     not inspected (the report is the agent's answer, which ingest checks).
+#   DENIES everything else: any other path, any other tool, and every input
+#   or environment it cannot check.
 #
 # SCOPE
 #   Registered in .claude/agents/citation-adjudicator.md frontmatter under
-#   PreToolUse with matcher "" (every tool), so a tool other than Read is
-#   denied too. A call whose agent_type names a DIFFERENT agent is allowed
-#   untouched: the frontmatter hook is meant to fire only for this agent, and
-#   if the harness ever ran it for a sibling agent working in the same wave,
-#   denying that agent's reads would break unrelated work. A call with no
-#   agent_type (the main thread) is checked like an adjudicator call, so an
-#   absent field cannot open the gate. That costs the main thread nothing:
-#   with DAAF's CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 a dispatch runs in the
-#   foreground and returns inline in the dispatching turn (observed
+#   PreToolUse with matcher "" (every tool), so a tool other than Read and
+#   SubagentHandback is denied too. A call whose agent_type names a DIFFERENT
+#   agent is allowed untouched: the frontmatter hook is meant to fire only
+#   for this agent, and if the harness ever ran it for a sibling agent working
+#   in the same wave, denying that agent's reads would break unrelated work. A
+#   call with no agent_type (the main thread) is checked like an adjudicator
+#   call, so an absent field cannot open the gate. That costs the main thread
+#   nothing: with DAAF's CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 a dispatch runs
+#   in the foreground and returns inline in the dispatching turn (observed
 #   2026-09-24, Claude Code 2.1.281), so the main thread makes no tool calls
 #   while the adjudicator runs.
 #
@@ -116,13 +122,21 @@ if [[ -n "$AGENT_TYPE" && "$AGENT_TYPE" != "citation-adjudicator" ]]; then
     exit 0
 fi
 
+# --- Tool: the harness hand-back, which delivers the agent's report ---
+# Compared inside jq, exactly, as the Read check below is: "SubagentHandback"
+# plus a newline, another case or a longer name falls through to the Read
+# check and is denied there.
+if printf '%s' "$INPUT" | jq -e '.tool_name == "SubagentHandback"' >/dev/null 2>&1; then
+    exit 0
+fi
+
 # --- Tool: Read only ---
 # Compared inside jq: a value such as "Read" plus a newline must not pass as
 # Read after command substitution trims it.
 if ! printf '%s' "$INPUT" | jq -e '.tool_name == "Read"' >/dev/null 2>&1; then
     TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty | strings')
     SAFE_TOOL="${TOOL_NAME//[^A-Za-z0-9_.-]/?}"
-    deny "The reference checker may use only the Read tool on its bundle; the ${SAFE_TOOL:-unnamed} tool call was blocked."
+    deny "The reference checker may use only the Read tool on its bundle and its hand-back (SubagentHandback); the ${SAFE_TOOL:-unnamed} tool call was blocked."
 fi
 
 # --- file_path: a string with no control characters ---

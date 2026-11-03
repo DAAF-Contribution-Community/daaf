@@ -10,7 +10,7 @@ builds on a finished review. The workflow that produces these files is in
 `.claude/skills/daaf-orchestrator/references/literature-review-mode.md`; the method is the
 `literature-review` skill.
 
-**Contract version: 0.5.0.**
+**Contract version: 0.6.0.**
 
 ---
 
@@ -22,7 +22,7 @@ code wins: follow the code and report the drift to the orchestrator so the text 
 | Rank | Source | What it decides |
 |------|--------|-----------------|
 | 1 | `scripts/lit_corpus.py`: `CONTRACT_VERSION`, `SCHEMAS`, `CITATION_STATUSES`, `CITABLE_DRAFT`, `CITABLE_FINAL`, `DRAFT_REVIEW_STATUSES`, `LABELLED_STATUSES`, `LEGACY_STATUSES`, `ADJUDICATOR_EVALUATED_LISTS`, `evaluated_identity()`, `adjudication_status()`, `ledger_columns()` and the other `*_columns()` functions, `RULE_VERSIONS` | Tables, columns, statuses, what is citable, the evaluated identity |
-| 1 | `scripts/lit_verify.py` (`card`, `audit`, `settle`, `report`) and `scripts/lit_report_rules.py` | Reading-note checks, audit and settlement records, what a deliverable must look like and what `report` re-derives |
+| 1 | `scripts/lit_verify.py` (`card`, `route`, `audit`, `settle`, `vision-override`, `report`) and `scripts/lit_report_rules.py` | Reading-note checks, the route and page-picture choice records, audit and settlement records, what a deliverable must look like and what `report` re-derives |
 | 1 | `.claude/skills/literature-review/references/certainty-language.yaml` (with its lockstep copy `CERTAINTY_LANGUAGE` in `lit_report_rules.py`, kept equal by a test) | The wording allowed for each certainty level |
 | 2 | `.claude/skills/literature-review/references/lit-corpus.md` | The full `lit_corpus` CLI contract: every subcommand, input line, column note, refusal and exit code |
 | 2 | `.claude/skills/literature-review/references/lit-verify-report.md` | The full `lit_verify report` contract: every check, every re-derivation and all report statuses, plus the settlement record's fields |
@@ -76,7 +76,7 @@ A review project is `research/YYYY-MM-DD_LitReview_{Topic}/` (`PROJECT_DIR`). Th
 | `lit_search/` | `scholar_search` | Each search call's raw response, Markdown digest, records file (`scholar-records-v1`) and MANIFEST row |
 | `web_fetches/` | `web_fetch.sh` | Fetched pages and PDFs with their MANIFEST rows |
 | `user_pdfs/` | the researcher | PDFs the researcher supplied |
-| `papers/{paper_key}/` | `pdf_ingest`, the paper-reader, `lit_verify` | The ingest (`ingest_manifest{S}.json` and its artifacts), the reading notes (`evidence_card{S}.md`), their check (`card_check{S}.json`), the reading audit (`vision_audit{S}.json`) and any settlement records (`audit_settlement{S}_{n}.json`). `papers/MANIFEST.jsonl` holds the `lit_verify` rows of kinds `lit_verify` (card runs), `lit_verify_route`, `lit_verify_audit` and `lit_verify_settle` |
+| `papers/{paper_key}/` | `pdf_ingest`, the paper-reader, `lit_verify` | The ingest (`ingest_manifest{S}.json` and its artifacts), the reading notes (`evidence_card{S}.md`), their check (`card_check{S}.json`), the reading audit (`vision_audit{S}.json`) and any settlement records (`audit_settlement{S}_{n}.json`). The researcher's page-picture choices sit beside the papers, in `papers/vision_override_{n}.json`. `papers/MANIFEST.jsonl` holds the `lit_verify` rows of kinds `lit_verify` (card runs), `lit_verify_route`, `lit_verify_audit`, `lit_verify_settle` and `lit_verify_vision_override` |
 | `output/` | `lit_corpus`, the literature-synthesizer, `lit_verify report`, the orchestrator | Exports, the manifest and its pointer, the reference glance sheets, the deliverables and the review records (§ Files Consumers May Read, § Deliverables by Level) |
 | `lit_inputs/` | the Literature Review agents | The JSONL input files each `lit_corpus` write reads (screening, findings, gaps, notes); each is named, with its sha256, in the MANIFEST row of the run that read it |
 | `materials/`, `scripts/` | the orchestrator and agents | Background materials the researcher pointed to; captured scripts (for example `scripts/lr_adjudication/NN_pack_batch_{batch}.py`) |
@@ -167,27 +167,34 @@ The two columns on the right are the code's tuples, not a summary of them:
 | `model_adjudicated` | `adjudications ingest`: WEAK + `SAME_WORK` from an evaluated identity, title similarity at or above `ADJ_TITLE_FLOOR`, not `org_unchecked` | yes | yes | no | yes |
 | `human_confirmed` | `adjudications record-human same_work` on a CONFIDENT or WEAK row | yes | yes | no | no |
 | `human_overridden` | `record-human same_work` where a model said `DIFFERENT_WORK`, or `override_mismatch` on a MISMATCH row | yes | yes | no | yes |
+| `model_confirmed_untested` | `adjudications ingest`: CONFIDENT, or WEAK at or above `ADJ_TITLE_FLOOR` and not `org_unchecked`, + `SAME_WORK` from an identity not on the evaluated list, while the researcher's acceptance of that checker for its model ID (`adjudications untested-checker`) is in force; the ledger row's `untested_acceptance_ref` names it | yes | yes | no | yes |
 | `rejected` | `ingest` `DIFFERENT_WORK` from an evaluated identity, or `record-human different_work` | no | no | no | no |
 | `unverified` | WEAK undecided, MISMATCH, EXISTS, NOT FOUND, no check | no | no | no | no |
 | `human_accepted_unbound` | legacy `attach decision accept_weak` (the mode does not use it) | yes | no | yes | no |
 
 What `lit_verify report` does with each status (`CITATION_PENDING_SECOND_CHECK_DRAFT`,
 `CITATION_PENDING_SECOND_CHECK`, `CITATION_REJECTED`, `CITATION_CONFIRMED_BY_AI_CHECK`,
-`CITATION_ACCEPTED_DESPITE_CHECK`, `CITATION_HUMAN_DECISION_UNBOUND`, `CITATION_WEAK_UNDECIDED`)
+`CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK`, `CITATION_ACCEPTED_DESPITE_CHECK`,
+`CITATION_HUMAN_DECISION_UNBOUND`, `CITATION_WEAK_UNDECIDED`)
 is in `lit-verify-report.md` § What is checked > The citation second check. A labelled status is
 a warning there: the deliverable must say how the reference was checked ("confirmed by DAAF's
 second check, an AI judgment"; "accepted by the researcher despite the automatic reference
-check").
+check"; for `model_confirmed_untested`, "confirmed by an AI check DAAF has not tested, at the
+researcher's choice"). A `model_confirmed_untested` entry in the reference list also carries
+`daaf_citation_note` "confirmed by an untested AI check (your choice)".
 
 **No status clears a retraction.** The second check never touches `corpus.retraction_json`; a
 retracted paper is held by the retraction checks in `lit-verify-report.md` whatever its citation
 status.
 
-**Until an adjudicator passes its evaluation, every row reaches a person.**
-`ADJUDICATOR_EVALUATED_LISTS` ships with one empty version, `adjudicator-list-none`, so no
-model's judgment counts, `model_confirmed` and `model_adjudicated` do not occur, and a
-`pending_adjudication` reference becomes citable at final only through the researcher's recorded
-reply (`human_confirmed` or `human_overridden`).
+**With no evaluated adjudicator, a model's judgment counts only through the researcher's
+acceptance.** `ADJUDICATOR_EVALUATED_LISTS` ships with one empty version, `adjudicator-list-none`,
+so `model_confirmed` and `model_adjudicated` do not occur. The adjudicator still runs in every
+review: its verdicts are recorded as given and count as `UNCERTAIN`, shown to the researcher as
+hints, unless the researcher accepted that untested checker for its model ID, in which case its
+`SAME_WORK` gives `model_confirmed_untested`. Every other `pending_adjudication` reference
+becomes citable at final only through the researcher's recorded reply (`human_confirmed` or
+`human_overridden`).
 
 ---
 
@@ -206,7 +213,7 @@ fields of the row it supersedes. `current_ledger()` returns the current row per
 `effective_verdict`, `title_similarity_subtitle_aware`, `title_floor_applied`, `rationale`,
 `model_id`, `model_id_source`, `model_id_observed`, `agent_name`, `evaluated_model_list_version`,
 `template_sha256`, `agent_file_sha256`, `agent_file_sha256_at_ingest`, `claude_md_sha256`,
-`claude_md_sha256_at_ingest`, `dispatch_id`, `adjudicated_at`,
+`claude_md_sha256_at_ingest`, `dispatch_id`, `adjudicated_at`, `untested_acceptance_ref`,
 `human_decision`, `human_decider`, `human_decided_at`, `human_rationale`,
 `human_instruction_verbatim`, `human_binding`, `human_binding_basis`, `override_record_json`,
 `citation_status`, `superseded_by`, `recorded_version`.
@@ -216,6 +223,7 @@ The columns a consumer reads most:
 | Column | Meaning |
 |--------|---------|
 | `verdict` / `effective_verdict` | The model's judgment as given (`SAME_WORK`, `DIFFERENT_WORK`, `UNCERTAIN`) and the judgment that counts: `UNCERTAIN` unless the row's identity is evaluated |
+| `untested_acceptance_ref` | The sha256 of the `adjudications untested-checker` MANIFEST line whose acceptance was in force for this row's `model_id` at ingest, or null. Only with it does an unevaluated identity's `SAME_WORK` give `model_confirmed_untested`; `untested_acceptance()` re-derives it from the MANIFEST rows before the ingest's own |
 | `human_decision` | `same_work`, `different_work`, `defer` or `override_mismatch` (`HUMAN_DECISIONS`) |
 | `human_instruction_verbatim` | The researcher's own words, passed to `record-human --user-words` as a command-line argument; the `record-human` row in `data/MANIFEST.jsonl` carries `user_words_sha256`, the sha256 of those words |
 | `human_binding` / `human_binding_basis` | `permission_prompt`; the basis records that the tool cannot tell a prompted run from a `!`-typed one |
@@ -236,14 +244,23 @@ recorded by the user as a new dated list version naming the identities evaluated
 
 Three columns sit beside the identity without being part of it. `model_id_observed` lists the
 model IDs the adjudicator's own transcript recorded (comma-separated in the ledger; a list in the
-`adjudications ingest` MANIFEST row); `adjudications ingest` refuses a batch unless the transcript
-records at least one model and each is the packed `model_id`, so from contract 0.5.0 on, a ledger
-row's `model_id` is a model the
-adjudicator's transcript recorded (evidence, not proof: a file at that place could be written by a
-script). `claude_md_sha256` (as packed) and `claude_md_sha256_at_ingest` record CLAUDE.md, as
+`adjudications ingest` MANIFEST row). `adjudications ingest` requires the transcript to record at
+least one model, each the packed `model_id`: it refuses an evaluated identity's batch otherwise, and
+keeps an unevaluated identity's batch as hints only (the ingest row's `model_check` `mismatch`, and
+no acceptance applies). So from contract 0.5.0 on, a ledger row whose judgment counts names a model
+the adjudicator's transcript recorded (evidence, not proof: a file at that place could be written
+by a script). `claude_md_sha256` (as packed) and `claude_md_sha256_at_ingest` record CLAUDE.md, as
 `ADJUDICATOR_EVALUATED_CLAUDE_MD` does per list version; `evaluated_identity()` never reads them,
 so a changed CLAUDE.md never changes what counts. Rows written before contract 0.5.0 hold null in
 these three columns, and their `model_id` was never checked against a transcript.
+
+**The `adjudications untested-checker` MANIFEST row** (`data/MANIFEST.jsonl`) records the
+researcher's acceptance of an untested checker for one model ID, or its withdrawal (`--revoke`).
+An acceptance row counts only as the step writes it: `tool_version` and `timestamp`, non-empty
+`parameters.user_words` whose sha256 is `user_words_sha256`, `human_decider` `researcher`,
+`human_binding` `permission_prompt`, `parameters.model_id` equal to the row's and
+`parameters.revoke` false, a rationale, and no acceptance already in force. When the latest row for
+a model ID is a withdrawal or does not hold up, no acceptance is in force.
 
 `lit_verify report` re-derives each paper's status from its current ledger row with
 `adjudication_status()`; a corpus status, ledger status or reference between them that it cannot
@@ -259,7 +276,7 @@ paper.
 
 **Audit record** (`lit_verify audit`): `papers/{paper_key}/vision_audit{S}.json`, one per card
 revision, written with exclusive create (an existing record is never replaced), schema
-`lit-verify-vision-audit-v1`, rules `vision-audit-v1`, record `kind`
+`lit-verify-vision-audit-v1`, rules `vision-audit-v2`, record `kind`
 `lit_verify_vision_audit`, with a `papers/MANIFEST.jsonl` row of kind `lit_verify_audit`. It is
 keyed by `card_sha256` and `card_check_sha256` and records `paper_key`, `agent_ids` (one per
 reader dispatch that worked on the card; a chunked paper has one per chunk) with `agent_id` (the
@@ -267,8 +284,10 @@ first of them), `outcome`, `summary` (plain words for the researcher), the reade
 (`model`: the card's `reader_model`, the model observed, `model_source`, `check`, and
 `model.agents`, one entry per agent ID with its own `model_source` and observed model), the route
 (the card's `reader_route` against the latest `lit_verify_route` row no later than the card
-check, and the vision-list row), the source chain, and the item lists `must_check`,
-`should_look` and `unvalidated`.
+check, and the vision-list row), the source chain, the item lists `must_check`,
+`should_look` and `unvalidated`, and, where the researcher's page-picture choice applied,
+`override` (the choice's record, level, model and setup, and whether it applied) and
+`accepted_untested` (the readings accepted under the choice "accept", each with an item id).
 
 `model_source`, per agent, is `hook_cache` (the context-reporter hook's own record in its
 default folder, the only source that confirms a model), `hook_cache_env_dir` (a file in a folder
@@ -284,6 +303,7 @@ mismatch or an unconfirmed source chain decides it first).
 |---------|------|---------|
 | `confirmed` | 0 | No picture readings, or picture readings confirmed with nothing for a person |
 | `confirmed_with_checks` | 0 | Confirmed; some readings from charts or figures are worth a look (`should_look`) |
+| `confirmed_untested_reader` | 0 | The reader is not on the vision-validated list, and the researcher chose to accept its picture readings without a comparison ("accept"); they are stored as `accepted_untested`. Scan and sparse-page readings are still `must_check`, as for a tested reader, so an audit with any of them is `person_must_check` instead |
 | `person_must_check` | 11 | Readings a person must compare with the PDF page |
 | `mismatch` | 11 | The model or setup could not be confirmed; every picture reading counts as unvalidated |
 | `chain_unconfirmed` | 11 | Where the PDF came from could not be confirmed |
@@ -316,7 +336,8 @@ bash /daaf/scripts/lit_verify.sh settle <PAPER_DIR> --audit vision_audit{S}.json
   comparison can confirm.
 
 The record's schema is `lit-verify-audit-settlement-v1` (`SETTLE_SCHEMA_VERSION`), its rules
-`audit-settle-v1` (`SETTLE_RULES_VERSION`), and item ids follow `audit-item-id-v1`
+`audit-settle-v2` (`SETTLE_RULES_VERSION`; readings accepted under "accept" are optional while that
+choice holds and required once it is withdrawn or changed), and item ids follow `audit-item-id-v1`
 (`AUDIT_ITEM_ID_VERSION`). The decisions are `SETTLE_DECISIONS`, the items a settlement must
 cover are `SETTLE_REQUIRED_GROUPS`, and the outcomes it can settle are `SETTLE_OUTCOMES`, all in
 `scripts/lit_verify.py`. Like `record-human`, it records `human_binding` `permission_prompt`,
@@ -338,7 +359,42 @@ reason and fix. A `confirmed` or `confirmed_with_checks` audit counts as confirm
 model `check` is `transcript-confirmed` and every entry of `model.agents` has `model_source`
 `hook_cache`; any other confirming audit gives `VISION_AUDIT_NOT_CONFIRMED` (final) or
 `VISION_AUDIT_NOT_CONFIRMED_DRAFT` with the outcome key `model_not_confirmed`, and no settlement
-clears it.
+clears it. A `confirmed_untested_reader` audit makes every citation of the paper citable with the
+warning `VISION_READ_BY_UNTESTED_MODEL` (draft and final; the deliverable's methods or AI-use note
+says so) while the researcher's "accept" choice for that model and setup is still in force; once
+it is withdrawn or changed, its accepted readings need a settlement like any listed reading
+(`VISION_AUDIT_NOT_CONFIRMED` / `_DRAFT` with the outcome key `override_withdrawn` until then).
+
+**Page-picture choice record** (`lit_verify vision-override`): the researcher's choice to let a
+paper reader that is not on the vision-validated list read page pictures, for the whole review.
+
+```
+bash /daaf/scripts/lit_verify.sh vision-override <PROJECT_DIR> --level check|accept --model-id ID
+     --user-words "..." --rationale "..."
+bash /daaf/scripts/lit_verify.sh vision-override <PROJECT_DIR> --level withdraw --user-words "..."
+```
+
+It writes `papers/vision_override_{n}.json` (exclusive create; schema
+`lit-verify-vision-override-v1`, rules `vision-override-v1`) with the level, the normalized model
+ID, the route `detect_route()` found when it was recorded (never typed), the record it replaces,
+the researcher's words (`human_instruction_verbatim`) and reason, and `human_binding`
+`permission_prompt`, plus a `papers/MANIFEST.jsonl` row of kind `lit_verify_vision_override`
+carrying `user_words_sha256`. A choice counts only as `vision-override` wrote it. Its record
+(`papers/vision_override_{n}.json`) must hash to its MANIFEST row, carry `schema_version`
+`lit-verify-vision-override-v1`, `kind` `lit_verify_vision_override`, `human_decider`
+`researcher`, the researcher's words (whose sha256 is the row's `user_words_sha256`) and, for
+`check` or `accept`, a rationale, and repeat the row's level, model, route and time; the row must
+carry `tool_version` and the level in its `parameters`. When the latest choice record or row does
+not hold up, there is no choice at all (the reader reads text only), never the choice before it.
+A script that writes the whole record and row itself is the remaining gap, as for `settle`; the
+Ask-First rule and `run_with_capture.sh`'s decision scan stand behind it. `lit_verify route --reader-model ID` prints the choice as
+its second line, `VISION: validated | override-check | override-accept | text-only`, which each
+paper-reader dispatch copies; a card that read under a choice declares it in its optional
+`vision_override` field (`check` or `accept`), and the audit applies the choice only when that
+declaration, the transcript-confirmed model, the route and the choice in force at the card check
+and now all agree. Refused (exit 11, nothing written): no words; `--user-words` or
+`--rationale` longer than 4000 characters; `check` or `accept` without a rationale; a model
+already listed for the route; a withdrawal with no choice in effect.
 
 ---
 
@@ -364,7 +420,7 @@ new fact from it.
 | `data/findings_v{N}.parquet` | Every finding, with its claims, certainty, reason and who decided | yes |
 | `data/gap_register_v{N}.parquet` | Every gap, with its evidence of absence | yes |
 | `data/corpus_v{N}.parquet`, `data/paper_notes_v{N}.parquet`, `data/citation_edges_v{N}.parquet`, `data/citation_adjudications_v{N}.parquet` | Works and their citation status; paper notes (design, weight, directness); citation links; the second-check ledger | yes |
-| `output/references_v{N}.bib` / `.ris` | The reference list: every included paper whose status is in `CITABLE_DRAFT`, metadata from the check's own saved response, with the extra fields `daaf_paper_key`, `daaf_evidence_grade`, `daaf_citation_status` and `daaf_verify_row_sha256`. A final deliverable may cite only the entries whose `daaf_citation_status` is in `CITABLE_FINAL` | yes |
+| `output/references_v{N}.bib` / `.ris` | The reference list: every included paper whose status is in `CITABLE_DRAFT`, metadata from the check's own saved response, with the extra fields `daaf_paper_key`, `daaf_evidence_grade`, `daaf_citation_status` and `daaf_verify_row_sha256` (and `daaf_citation_note` on a `model_confirmed_untested` entry). A final deliverable may cite only the entries whose `daaf_citation_status` is in `CITABLE_FINAL` | yes |
 | `output/gap_register_v{N}.md` | The gap register in plain words for the researcher (no codes) | yes |
 | `output/counts_v{N}.json` / `.md` | Per-round counts (`lit-counts-v1`): records per source, unique works, screened, excluded by reason, read in full by grade, abstract-only, cited | yes (`.json`) |
 | The deliverables in `output/` (§ Deliverables by Level) and each one's `{stem}.report_check{_n}.json` | The memo or synthesis the researcher received, and the `lit_verify report` result that checked it | no |

@@ -249,6 +249,33 @@ You're always in control. If DAAF is heading in a direction you didn't intend:
 
 Remember: DAAF always asks you to confirm the mode -- how it will work -- before doing anything. In the larger modes it then reads whatever you pointed it to and shows you a scope check -- what exactly it plans to do, and what your materials changed -- for your approval before substantial work begins (and in a Full Pipeline you approve the research plan, too). If something is happening you didn't approve, it's likely a continuation of a previously-approved step.
 
+### A literature review warns that an AI model "has not been tested". What does that mean, and what should I choose?
+
+Two jobs in a literature review rest on an AI model's judgment, so DAAF tests models on each before relying on them:
+
+- **Checking references.** The automatic reference check looks each reference up in a database. A one-word change in a title can fool that match, so an AI model then compares each reference with the record found, to judge whether it is the work being cited.
+- **Reading numbers from pictures of PDF pages.** The AI reader takes quotes and numbers from each paper's text, and for tables it can also look at a picture of the page. A good overall score on reading tables does not mean every sign and decimal comes through, so DAAF keeps a list of the models it relies on for this, by setup.
+
+A test applies to one exact model. For reference checking it also covers DAAF's own instructions to the checker, and a similar model has not passed just because one did. For page pictures the list also names the setup, meaning how DAAF reaches the model (an Anthropic subscription or API key, the provider shim with a ChatGPT subscription or an OpenAI API key, or OpenRouter). DAAF tested some models on real tables itself and added others by decision: closely related models, and the same models reached with an API key instead of a subscription, without a separate test. No model has passed DAAF's test of the reference-checking judgment, so every review shows that warning.
+
+**With an untested model, the review still runs.** DAAF warns you in the review plan (the scope check), before any full search starts, and asks what you would like. By default, the reference checker's view is only a hint: it sits beside each reference on your list to check, with a one-line reason, the references it thinks may be a different work listed first, then those it was not sure about, and you decide every reference. The AI reader reads each PDF's text only: running text reads well that way, but numbers in tables, charts and figures, and anything on scanned pages, may be missed or less reliable. (A quick scan reads abstracts only, so it has no page-picture question.)
+
+**Your choices:**
+
+| Job | Choice | What it means for your review |
+|-----|--------|-------------------------------|
+| Reference checker | Hints only (the default) | You decide every reference at your reference check |
+| Reference checker | Let it confirm references | References it judges to be the same work are confirmed, labelled "confirmed by an untested AI check (your choice)" on your list, and the final version says so beside each. Those it thinks may be a different work, or is not sure about, still come to you, and so do a few whose database match was weak (a title too different, or an organisation as author that the automatic check could not compare) |
+| Page pictures | Text only (the default) | Quotes and numbers come from the page text |
+| Page pictures | Check | It may read page pictures, and every number it takes from one is listed for you to compare with the page before the final report |
+| Page pictures | Accept | It may read page pictures and its readings are taken without a comparison; the review's methods say they were read by a model DAAF has not tested, at your choice. Numbers from scanned pages, or pages with very little text, are still listed for you |
+
+DAAF records each choice with your reply in your own words, and a permission prompt shows you those words before anything is recorded. A reply that makes no choice keeps the default and records nothing. You can change or withdraw a choice later by telling DAAF. Withdraw the reference-checker choice and its views are hints again; references it already confirmed keep their label, and you can still mark any of them as a different paper on your list. Withdraw a page-picture choice and the reader goes back to text only; if you withdraw or change "accept", the numbers it already took from pictures are listed for you to compare before the final report.
+
+**When the model or setup changes, the warning comes back.** A choice covers only the model it names (and, for page pictures, the setup). If the model doing either job changes, or for page pictures your setup changes, the earlier choice no longer applies: unless the new model has passed DAAF's test, the checker's views are hints again and the reader reads text only. DAAF shows you the warning again, as a short check-in before the next step that uses that model, and you can choose again.
+
+Literature Review mode is experimental, so please tell us at [support@openaugments.org](mailto:support@openaugments.org) if a warning, a label or a choice does not behave as described here. For the mode as a whole, see [Literature Review Mode](02_understanding_daaf.md#literature-review-mode).
+
 ---
 
 ## Setup and Settings
@@ -449,7 +476,7 @@ This was verified with a privacy-safe probe on 2026-07-18 (a synthetic one-pixel
 
 Yes. When Claude Code reads a PDF with its Read tool, it turns the pages into text and images, and that works on the GPT route. A PDF can also reach the shim whole, for example when you attach one directly to a message. The shim sends such PDFs to the model as file inputs. If your backend rejects them, set `SHIM_PDF_MODE=omit` in `environment_settings.txt` and recreate the container; each attached PDF is then replaced by a short note. An attached PDF is re-sent on every turn, so a large one uses more quota.
 
-For research reading (quoting a paper, taking numbers from its tables), DAAF does not rely on the Read tool's page images: agents follow the `pdf-reading` skill, which ingests the PDF with `scripts/pdf_ingest.sh` and checks quotes and numbers against the page text with `scripts/lit_verify.sh`, and which uses page images only for a model on its vision-validated list.
+For research reading (quoting a paper, taking numbers from its tables), DAAF does not rely on the Read tool's page images: agents follow the `pdf-reading` skill, which ingests the PDF with `scripts/pdf_ingest.sh` and checks quotes and numbers against the page text with `scripts/lit_verify.sh`, and which uses page images for a model on its vision-validated list; for any other model it reads the text only, unless you choose otherwise when a review starts (DAAF warns you first and records your choice).
 
 ### Q: How do I diagnose a provider-shim server error mid-response?
 

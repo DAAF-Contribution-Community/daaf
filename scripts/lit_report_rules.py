@@ -130,7 +130,21 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 #   a person recorded as not matching keeps VISION_AUDIT_NOT_CONFIRMED(_DRAFT) with its own reason and fix
 #   (AUDIT_FIX_DOES_NOT_MATCH); the fixes name `settle` first. No status added.
 # Phrase table 2026-11-02: contract_version 0.5.0 only (lit_corpus 1.8.0 adds second-check record fields).
-REPORT_RULES_VERSION = "report-rules-v6"       # this module as a whole
+# v7 (lit_verify 1.16.0, S5 BR-2, 2026-11-03; user decisions D-52 and D-55: an untested paper reader may read page
+#   pictures at the researcher's choice): report-rules-v7. Reading notes whose readings from page pictures the
+#   researcher chose to accept without a comparison (audit outcome confirmed_untested_reader, or settled must-check
+#   items of such an audit) are citable with a label warning, VISION_READ_BY_UNTESTED_MODEL, whose fix asks the
+#   deliverable's methods or AI-use note to say so. Once that choice is withdrawn or changed, those readings need the
+#   researcher's comparison like any listed reading (VISION_AUDIT_NOT_CONFIRMED(_DRAFT), outcome words
+#   "override_withdrawn"). 83 statuses.
+# v8 (lit_verify 1.17.0, S5 BR-3a, 2026-11-03; user decisions D-50 and D-54: a reference checker DAAF has not tested
+#   may confirm references at the researcher's choice): report-rules-v8. A reference whose citation status is
+#   model_confirmed_untested (lit_corpus 1.9.0: the untested checker's same-work verdict, under the researcher's
+#   recorded acceptance of that checker) is citable in a draft and a final deliverable with its own label warning,
+#   CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK, whose reason names the label lit_corpus gives it ("confirmed by an
+#   untested AI check (your choice)") and whose fix asks the deliverable to say so. 84 statuses. Phrase table
+#   2026-11-03: contract_version 0.6.0 only.
+REPORT_RULES_VERSION = "report-rules-v8"       # this module as a whole
 CITATION_PARSE_VERSION = "citations-v2"        # Pandoc 3.10 citation syntax, stdlib regex
 SENTENCE_SPLIT_VERSION = "sentences-v1"
 REPORT_LINT_VERSION = "report-lint-v5"
@@ -138,8 +152,8 @@ REPORT_LINT_VERSION = "report-lint-v5"
 # §§ CERTAINTY LANGUAGE (lockstep copy of certainty-language.yaml; see header)
 CERTAINTY_LANGUAGE = {
     "schema_version": "certainty-language-v1",
-    "table_version": "2026-11-02",
-    "contract_version": "0.5.0",
+    "table_version": "2026-11-03",
+    "contract_version": "0.6.0",
     "axis": "body_of_evidence_certainty",
     "keys_are": ["high", "moderate", "low", "very_low"],
     "stated_by": ("At the standard level the synthesizer states the level with a written reason; at the formal level "
@@ -338,6 +352,10 @@ REPORT_SEVERITY = {
     "CITATION_CONFIRMED_BY_AI_CHECK": "warning", "CITATION_ACCEPTED_DESPITE_CHECK": "warning",
     "VISION_AUDIT_MISSING_DRAFT": "review", "VISION_AUDIT_MISSING": "fail",
     "VISION_AUDIT_NOT_CONFIRMED_DRAFT": "review", "VISION_AUDIT_NOT_CONFIRMED": "fail",
+    # report-rules-v7 (lit_verify 1.16.0, D-55): readings by an untested model, accepted at the researcher's choice
+    "VISION_READ_BY_UNTESTED_MODEL": "warning",
+    # report-rules-v8 (lit_verify 1.17.0, D-54): a reference an untested checker confirmed at the researcher's choice
+    "CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK": "warning",
 }
 REPORT_KINDS = ("synthesis", "final", "bibliography")
 REVIEW_LEVELS = ("quick", "standard", "formal")
@@ -358,14 +376,26 @@ VERIFIED = ("verified", "verified_partial", "abstract_verified")    # abstract_v
 # INTENT (report-rules-v6): LOCKSTEP COPIES of lit_corpus's second-check vocabulary
 #   (CITABLE_FINAL, DRAFT_REVIEW_STATUSES, LABELLED_STATUSES); this module stays stdlib, so it cannot import
 #   lit_corpus. A test keeps the copies equal. AI_CHECKED is the labelled pair a model confirmed.
-SECOND_CHECK_CITABLE_FINAL = ("model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden")
+#   report-rules-v8: UNTESTED is the status an untested checker gives at the researcher's choice (lit_corpus
+#   adjudication-v2), labelled on its own; UNTESTED_WORDS is a lockstep copy of lit_corpus UNTESTED_CONFIRMED_WORDS.
+SECOND_CHECK_CITABLE_FINAL = ("model_confirmed", "model_adjudicated", "human_confirmed", "human_overridden",
+                              "model_confirmed_untested")
 SECOND_CHECK_DRAFT_REVIEW = ("pending_adjudication", "human_accepted_unbound")
-SECOND_CHECK_LABELLED = ("model_confirmed", "model_adjudicated", "human_overridden")
+SECOND_CHECK_LABELLED = ("model_confirmed", "model_adjudicated", "human_overridden", "model_confirmed_untested")
 SECOND_CHECK_AI_CHECKED = ("model_confirmed", "model_adjudicated")
+SECOND_CHECK_UNTESTED = ("model_confirmed_untested",)
+SECOND_CHECK_UNTESTED_WORDS = "confirmed by an untested AI check (your choice)"
+# INTENT (report-rules-v8, review W4): the same label written for a deliverable's readers, in the third person; the
+#   report item names both, saying which is which, so a reader sees one label in two wordings, not two labels.
+SECOND_CHECK_UNTESTED_DELIVERABLE_WORDS = "confirmed by an AI check DAAF has not tested, at the researcher's choice"
 # INTENT (report-rules-v6): the audit outcomes that confirm reading notes (lit_verify audit, AUDIT_EXIT 0); any other
 #   outcome lists readings a person must check. The words say what the audit found, for the reason text.
-AUDIT_CONFIRMED = ("confirmed", "confirmed_with_checks")
+#   report-rules-v7: confirmed_untested_reader confirms them with a label (VISION_READ_BY_UNTESTED_MODEL).
+AUDIT_CONFIRMED = ("confirmed", "confirmed_with_checks", "confirmed_untested_reader")
 AUDIT_OUTCOME_WORDS = {
+    "override_withdrawn": "{n} reading(s) were taken from pictures of PDF pages by an AI model DAAF has not tested, "
+                          "and the researcher's choice to accept them without a comparison is no longer on record for "
+                          "this model and setup, so a person must compare them with the PDF",
     "person_must_check": "{n} reading(s) taken from pictures of PDF pages need a person to compare them with the PDF",
     "mismatch": "DAAF could not confirm that a tested AI model read the pictures of the pages",
     "chain_unconfirmed": "DAAF could not confirm where the PDF file came from",
@@ -387,6 +417,10 @@ AUDIT_FIX_LEAD = {
     "chain_unconfirmed": "Comparing readings with the page cannot settle this. Confirm the PDF is the paper you "
                          "expect; to use it, fetch it with DAAF's fetch tool (or put the researcher's own copy in "
                          "user_pdfs/), read and audit it again, or clear it as follows.",
+    "override_withdrawn": "Show the researcher each reading beside its PDF page (lit_verify settle --list) and "
+                          "record their reply in their own words (lit_verify settle); or, if they still accept such "
+                          "readings, record that choice again (lit_verify vision-override). Then check the "
+                          "deliverable again.",
     "model_not_confirmed": "This audit record lists nothing to compare, so it cannot be settled: check the notes again "
                            "(lit_verify card) and audit the new check in the review's own session with the reader's "
                            "agent IDs from the dispatch results (lit_verify audit), then check the deliverable again."}
@@ -875,7 +909,7 @@ def check_report(text, view, kind="synthesis"):
     #             FULL_TEXT_PARTIAL | UNCONFIRMED | ABSTRACT_ONLY | METADATA_ONLY; citation_status re-derived from
     #             the second-check record (absent: read as a check with no second check); vision_audit None (no
     #             readings from page pictures, confirmed, or settled by the researcher's records), or {state: missing
-    #             | not_confirmed | does_not_match, readings, why, outcome, open}
+    #             | not_confirmed | does_not_match | accepted_untested (v7: labelled), readings, why, outcome, open}
     #   claims   {claim_id: {paper_key, citekey, status, superseded_by, verification, quote, numbers}}
     #   findings {finding_id: {status, certainty_scheme, certainty, certainty_reason, decided_by, not_rated_reason,
     #             moderator_status, claim_ids, dsum, dirs}}
@@ -1061,6 +1095,15 @@ def check_report(text, view, kind="synthesis"):
                     f"Line {ln} cites {key}, whose reference was confirmed by DAAF's second check, an AI judgment "
                     "rather than a person's.", "Say so where the deliverable describes how its references were "
                     "checked (for example: confirmed by DAAF's second check, an AI judgment).", citekeys=[key])
+            elif st in SECOND_CHECK_UNTESTED:
+                # report-rules-v8 (D-54): citable, labelled (a warning: the verdict does not change), with its own
+                #   status, so a reader of the report sees that DAAF has not tested the AI check that confirmed it
+                add("citation", "CITATION_CONFIRMED_BY_UNTESTED_AI_CHECK", ln,
+                    f"Line {ln} cites {key}, whose reference was confirmed by an AI second check that DAAF has not "
+                    "tested, because the researcher chose to let that check confirm references. The reference list "
+                    f"labels it \"{SECOND_CHECK_UNTESTED_WORDS}\".", "Say so where the deliverable describes how its "
+                    "references were checked, with the same label written for the deliverable's readers, for "
+                    f"example: \"{SECOND_CHECK_UNTESTED_DELIVERABLE_WORDS}\".", citekeys=[key])
             elif st == "human_overridden":
                 add("citation", "CITATION_ACCEPTED_DESPITE_CHECK", ln,
                     f"Line {ln} cites {key}, whose reference the researcher accepted although DAAF's automatic check "
@@ -1144,6 +1187,17 @@ def check_report(text, view, kind="synthesis"):
                         "A final deliverable cannot rely on them until that is resolved." if kind == "final" else
                         "The final check will fail this citation until that is resolved."),
                     AUDIT_FIX_DOES_NOT_MATCH, citekeys=[key])
+            elif va.get("state") == "accepted_untested":
+                # report-rules-v7 (D-55): citable, labelled (a warning: the verdict does not change), as a reference
+                #   confirmed by an AI second check is
+                add("citation", "VISION_READ_BY_UNTESTED_MODEL", ln,
+                    f"Line {ln} cites {key}. {va.get('readings') or 'Some'} reading(s) in its notes were taken from "
+                    "pictures of PDF pages by an AI model DAAF has not tested on reading page pictures; the researcher "
+                    "chose to accept them without comparing them with the page.",
+                    "Say so where the deliverable describes how the papers were read (its methods or AI-use note), "
+                    "for example: some numbers were read from pictures of PDF pages by an AI model DAAF has not "
+                    "tested for this, at the researcher's choice, and were not compared with the page by a person.",
+                    citekeys=[key])
         rs = p.get("retraction_status")
         if rs in ("retracted", "expression of concern"):
             problems += 1

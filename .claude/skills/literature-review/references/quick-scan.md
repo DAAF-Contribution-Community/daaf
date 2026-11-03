@@ -88,14 +88,16 @@ Before a reference appears in the memo:
    reference whose automatic check matched the record (`CONFIDENT`) may be
    cited in the draft memo, but it is not yet confirmed (it waits for a
    second check): the rule check can be fooled by a one-word change in a
-   title. While no adjudicator
-   model has passed its evaluation, that second check is the researcher's
-   reference glance before the final memo: one list
+   title. That second check is the AI reference check, then the
+   researcher's reference glance before the final memo: one list
    (`lit_corpus adjudications glance-sheet`), one reply, recorded in the
    researcher's own words with `adjudications record-human`
-   (`lit-corpus.md` § Citation second check). A partial match (`WEAK`) is
-   not cited until the researcher confirms it the same way; a `MISMATCH`,
-   `NOT FOUND` or `EXISTS` result is not cited.
+   (`lit-corpus.md` § Citation second check). While no adjudicator model
+   has passed its evaluation, the AI check's verdicts are hints on that
+   list, unless the researcher chose to let it confirm the references it
+   judges the same work (labelled). A partial match (`WEAK`) is not cited
+   until it is confirmed the same way; a `MISMATCH`, `NOT FOUND` or
+   `EXISTS` result is not cited.
 2. `scholar_search retractions` on every paper the memo cites. A retraction or
    expression of concern is a hard flag: leave the paper out of the pointers,
    or name it as retracted if the researcher needs to know it exists.
